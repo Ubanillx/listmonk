@@ -19,13 +19,16 @@ import (
 	"net/mail"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
+	"unicode"
 
 	"github.com/gofrs/uuid/v5"
 	"github.com/knadh/listmonk/internal/i18n"
 	"github.com/knadh/listmonk/models"
 	"github.com/lib/pq"
+	"github.com/xuri/excelize/v2"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
@@ -95,6 +98,7 @@ type SessionOpt struct {
 	OverwriteUserInfo  bool   `json:"overwrite_userinfo"`
 	OverwriteSubStatus bool   `json:"overwrite_subscription_status"`
 	Delim              string `json:"delim"`
+	FieldMap           map[string]string `json:"field_map"`
 	ListIDs            []int  `json:"lists"`
 }
 
@@ -481,11 +485,6 @@ func (s *Session) LoadCSV(srcPath string, delim rune) error {
 		return errors.New("empty file")
 	}
 
-	// Exclude the header from count.
-	s.im.Lock()
-	s.im.status.Total = numLines - 1
-	s.im.Unlock()
-
 	// Rewind, now that we've done a linecount on the same handler.
 	_, _ = f.Seek(0, 0)
 	rd := csv.NewReader(f)
@@ -498,17 +497,32 @@ func (s *Session) LoadCSV(srcPath string, delim rune) error {
 		return err
 	}
 
-	hdrKeys := s.mapCSVHeaders(csvHdr, csvHeaders)
-	// email is a required header.
-	if _, ok := hdrKeys["email"]; !ok {
-		s.log.Printf("'email' column not found in '%s'", srcPath)
-		return errors.New("'email' column not found")
+	hdrKeys, hasHeader, err := s.resolveMappings(csvHdr)
+	if err != nil {
+		s.log.Printf("error resolving field mappings for '%s': %v", srcPath, err)
+		return err
 	}
 
+	// If CSV has a header row, don't include it in total row count.
+	s.im.Lock()
+	if hasHeader {
+		s.im.status.Total = numLines - 1
+	} else {
+		s.im.status.Total = numLines
+	}
+	s.im.Unlock()
+
 	var (
-		lnHdr = len(hdrKeys)
 		i     = 0
 	)
+
+	if !hasHeader {
+		i++
+		if err := s.enqueueRow(csvHdr, hdrKeys, i); err != nil {
+			s.log.Printf("skipping line %d: %v: %v", i, err, csvHdr)
+		}
+	}
+
 	for {
 		i++
 
@@ -535,47 +549,81 @@ func (s *Session) LoadCSV(srcPath string, delim rune) error {
 			}
 		}
 
-		lnCols := len(cols)
-		if lnCols < lnHdr {
-			s.log.Printf("skipping line %d. column count (%d) does not match minimum header count (%d)", i, lnCols, lnHdr)
-			continue
-		}
-
-		// Iterate the key map and based on the indices mapped earlier,
-		// form a map of key: csv_value, eg: email: user@user.com.
-		row := make(map[string]string, lnCols)
-		for key := range hdrKeys {
-			row[key] = cols[hdrKeys[key]]
-		}
-
-		sub := SubReq{}
-		sub.Email = row["email"]
-
-		if v, ok := row["name"]; ok {
-			sub.Name = v
-		}
-
-		sub, err = s.im.ValidateFields(sub)
-		if err != nil {
+		if err := s.enqueueRow(cols, hdrKeys, i); err != nil {
 			s.log.Printf("skipping line %d: %v: %v", i, err, cols)
 			continue
 		}
+	}
 
-		// JSON attributes.
-		if len(row["attributes"]) > 0 {
-			var (
-				attribs models.JSON
-				b       = []byte(row["attributes"])
-			)
-			if err := json.Unmarshal(b, &attribs); err != nil {
-				s.log.Printf("skipping invalid attributes JSON on line %d for '%s': %v", i, sub.Email, err)
-			} else {
-				sub.Attribs = attribs
-			}
+	close(s.subQueue)
+	failed = false
+
+	return nil
+}
+
+// LoadXLSX loads the first sheet in an XLSX file and imports subscriber entries.
+func (s *Session) LoadXLSX(srcPath string) error {
+	if s.im.isDone() {
+		return ErrIsImporting
+	}
+
+	failed := true
+	defer func() {
+		if failed {
+			s.im.setStatus(StatusFailed)
+		}
+	}()
+
+	xl, err := excelize.OpenFile(srcPath)
+	if err != nil {
+		return err
+	}
+	defer xl.Close()
+
+	sheets := xl.GetSheetList()
+	if len(sheets) == 0 {
+		return errors.New("no sheets found in xlsx")
+	}
+
+	rows, err := xl.GetRows(sheets[0])
+	if err != nil {
+		return err
+	}
+	if len(rows) == 0 {
+		return errors.New("empty file")
+	}
+
+	hdrKeys, hasHeader, err := s.resolveMappings(rows[0])
+	if err != nil {
+		s.log.Printf("error resolving field mappings for '%s': %v", srcPath, err)
+		return err
+	}
+
+	total := len(rows)
+	start := 0
+	if hasHeader {
+		total--
+		start = 1
+	}
+
+	s.im.Lock()
+	s.im.status.Total = total
+	s.im.Unlock()
+
+	for i := start; i < len(rows); i++ {
+		// Check for the stop signal.
+		select {
+		case <-s.im.stop:
+			failed = false
+			close(s.subQueue)
+			s.log.Println("stop request received")
+			return nil
+		default:
 		}
 
-		// Send the subscriber to the queue.
-		s.subQueue <- sub
+		if err := s.enqueueRow(rows[i], hdrKeys, i+1); err != nil {
+			s.log.Printf("skipping line %d: %v: %v", i+1, err, rows[i])
+		}
 	}
 
 	close(s.subQueue)
@@ -709,6 +757,152 @@ func (s *Session) mapCSVHeaders(csvHdrs []string, knownHdrs map[string]bool) map
 	}
 
 	return hdrKeys
+}
+
+func (s *Session) normalizeFieldMap() map[string]string {
+	out := make(map[string]string, len(s.opt.FieldMap))
+	for k, v := range s.opt.FieldMap {
+		k = strings.ToLower(strings.TrimSpace(k))
+		v = strings.TrimSpace(v)
+		if k == "" || v == "" {
+			continue
+		}
+		out[k] = v
+	}
+	return out
+}
+
+func (s *Session) resolveMappings(firstRow []string) (map[string]int, bool, error) {
+	fieldMap := s.normalizeFieldMap()
+
+	// Backward compatible mode: use CSV header names.
+	if len(fieldMap) == 0 {
+		hdrKeys := s.mapCSVHeaders(firstRow, csvHeaders)
+		if _, ok := hdrKeys["email"]; !ok {
+			s.log.Printf("'email' column not found")
+			return nil, false, errors.New("'email' column not found")
+		}
+		return hdrKeys, true, nil
+	}
+
+	headerIdx := make(map[string]int, len(firstRow))
+	for i, h := range firstRow {
+		h := strings.ToLower(strings.TrimSpace(regexCleanStr.ReplaceAllString(h, "")))
+		if h != "" {
+			headerIdx[h] = i
+		}
+	}
+
+	out := make(map[string]int, 3)
+	headerMatched := false
+	for _, key := range []string{"email", "name", "attributes"} {
+		ref, ok := fieldMap[key]
+		if !ok {
+			continue
+		}
+
+		normRef := strings.ToLower(strings.TrimSpace(ref))
+		if idx, ok := headerIdx[normRef]; ok {
+			out[key] = idx
+			headerMatched = true
+			continue
+		}
+
+		idx, ok := parseColumnRef(normRef)
+		if !ok {
+			return nil, false, fmt.Errorf("invalid mapping for %s: %s", key, ref)
+		}
+		out[key] = idx
+	}
+
+	if len(out) == 0 {
+		return nil, false, errors.New("field_map has no valid mappings")
+	}
+
+	if _, ok := out["email"]; !ok {
+		s.log.Printf("field_map.email not provided, falling back to auto-detecting email from each row")
+	}
+
+	return out, headerMatched, nil
+}
+
+func parseColumnRef(ref string) (int, bool) {
+	if ref == "" {
+		return 0, false
+	}
+
+	if n, err := strconv.Atoi(ref); err == nil {
+		if n <= 0 {
+			return 0, false
+		}
+		return n - 1, true
+	}
+
+	col := 0
+	for _, r := range ref {
+		if !unicode.IsLetter(r) {
+			return 0, false
+		}
+		col = col*26 + int(unicode.ToUpper(r)-'A'+1)
+	}
+	if col <= 0 {
+		return 0, false
+	}
+
+	return col - 1, true
+}
+
+func getMappedValue(cols []string, keyMap map[string]int, key string) string {
+	idx, ok := keyMap[key]
+	if !ok || idx < 0 || idx >= len(cols) {
+		return ""
+	}
+	return strings.TrimSpace(cols[idx])
+}
+
+func (s *Session) findEmailInRow(cols []string) string {
+	for _, col := range cols {
+		v := strings.TrimSpace(col)
+		if v == "" {
+			continue
+		}
+		if _, err := s.im.SanitizeEmail(v); err == nil {
+			return v
+		}
+	}
+	return ""
+}
+
+func (s *Session) enqueueRow(cols []string, keyMap map[string]int, line int) error {
+	sub := SubReq{}
+	sub.Email = getMappedValue(cols, keyMap, "email")
+	if sub.Email == "" {
+		sub.Email = s.findEmailInRow(cols)
+	}
+	if sub.Email == "" {
+		return errors.New("email not found in row")
+	}
+
+	sub.Name = getMappedValue(cols, keyMap, "name")
+
+	var err error
+	sub, err = s.im.ValidateFields(sub)
+	if err != nil {
+		return err
+	}
+
+	// JSON attributes.
+	if rawAttribs := getMappedValue(cols, keyMap, "attributes"); rawAttribs != "" {
+		var attribs models.JSON
+		if err := json.Unmarshal([]byte(rawAttribs), &attribs); err != nil {
+			s.log.Printf("skipping invalid attributes JSON on line %d for '%s': %v", line, sub.Email, err)
+		} else {
+			sub.Attribs = attribs
+		}
+	}
+
+	s.subQueue <- sub
+	return nil
 }
 
 // countLines counts the number of line breaks in a file. This does not

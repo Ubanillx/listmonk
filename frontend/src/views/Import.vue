@@ -42,7 +42,8 @@
             </div>
 
             <div class="column">
-              <b-field :label="$t('import.csvDelim')" :message="$t('import.csvDelimHelp')" class="delimiter">
+              <b-field :label="$t('import.csvDelim')" :message="$t('import.csvDelimHelp')" class="delimiter"
+                v-if="requiresDelimiter()">
                 <b-input v-model="form.delim" name="delim" placeholder="," maxlength="1" required />
               </b-field>
             </div>
@@ -72,10 +73,78 @@
           <list-selector v-if="form.mode === 'subscribe'" :label="$t('globals.terms.lists')"
             :placeholder="$t('import.listSubHelp')" :message="$t('import.listSubHelp')" v-model="form.lists"
             :selected="form.lists" :all="lists.results" />
+
+          <b-field :label="$t('import.firstRowHeader')" :message="$t('import.previewHelp')">
+            <b-switch v-model="preview.firstRowHeader" @input="rebuildPreviewFromRaw" />
+          </b-field>
+
+          <div class="columns">
+            <div class="column">
+              <b-field :label="$t('import.mapEmailField')">
+                <b-select v-model="form.fieldMap.email" expanded>
+                  <option value="">{{ $t('globals.terms.none') }}</option>
+                  <option v-for="col in preview.columns" :key="`email-${col.value}`" :value="col.value">
+                    {{ col.label }}
+                  </option>
+                </b-select>
+              </b-field>
+            </div>
+            <div class="column">
+              <b-field :label="$t('import.mapNameField')">
+                <b-select v-model="form.fieldMap.name" expanded>
+                  <option value="">{{ $t('globals.terms.none') }}</option>
+                  <option v-for="col in preview.columns" :key="`name-${col.value}`" :value="col.value">
+                    {{ col.label }}
+                  </option>
+                </b-select>
+              </b-field>
+            </div>
+            <div class="column">
+              <b-field :label="$t('import.mapAttributesField')">
+                <b-select v-model="form.fieldMap.attributes" expanded>
+                  <option value="">{{ $t('globals.terms.none') }}</option>
+                  <option v-for="col in preview.columns" :key="`attributes-${col.value}`" :value="col.value">
+                    {{ col.label }}
+                  </option>
+                </b-select>
+              </b-field>
+            </div>
+          </div>
+
+          <div class="content" v-if="preview.error">
+            <p class="has-text-danger">{{ preview.error }}</p>
+          </div>
+
+          <div class="box" v-if="preview.columns.length > 0">
+            <h5 class="title is-size-6">{{ $t('import.preview') }}</h5>
+            <div class="preview-table-wrap">
+              <b-table
+                :data="preview.rows"
+                :mobile-cards="false"
+                :paginated="false"
+                striped
+                hoverable
+                class="preview-table"
+              >
+                <b-table-column
+                  v-for="col in preview.columns"
+                  :key="`preview-col-${col.index}`"
+                  :label="col.label"
+                  :width="getPreviewColumnWidth(col)"
+                  v-slot="props"
+                >
+                  <span class="preview-cell" :title="getCellValue(props.row, col.index)">
+                    {{ getCellValue(props.row, col.index) }}
+                  </span>
+                </b-table-column>
+              </b-table>
+            </div>
+          </div>
+
           <hr />
 
           <b-field :label="$t('import.csvFile')" label-position="on-border">
-            <b-upload v-model="form.file" drag-drop expanded>
+            <b-upload v-model="form.file" drag-drop expanded accept=".csv,.zip,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
               <div class="has-text-centered section">
                 <p>
                   <b-icon icon="file-upload-outline" size="is-large" />
@@ -146,6 +215,8 @@
 
 <script>
 import Vue from 'vue';
+import Papa from 'papaparse';
+import * as XLSX from 'xlsx';
 import { mapState } from 'vuex';
 import ListSelector from '../components/ListSelector.vue';
 import LogView from '../components/LogView.vue';
@@ -171,7 +242,20 @@ export default Vue.extend({
         overwriteUserInfo: false,
         overwriteSubStatus: false,
         file: null,
+        fieldMap: {
+          email: '',
+          name: '',
+          attributes: '',
+        },
         example: '',
+      },
+
+      preview: {
+        columns: [],
+        rows: [],
+        rawRows: [],
+        firstRowHeader: true,
+        error: '',
       },
 
       // Initial page load still has to wait for the status API to return
@@ -196,11 +280,211 @@ export default Vue.extend({
         }
       });
     },
+
+    'form.file': function onFileChanged(file) {
+      if (!file) {
+        this.clearPreview();
+        return;
+      }
+      this.previewFromFile();
+    },
+
+    'form.delim': function onDelimiterChanged() {
+      if (this.form.file && this.requiresDelimiter()) {
+        this.previewFromFile();
+      }
+    },
   },
 
   methods: {
+    requiresDelimiter() {
+      if (!this.form.file || !this.form.file.name) {
+        return true;
+      }
+      return !String(this.form.file.name).toLowerCase().endsWith('.xlsx');
+    },
+
     clearFile() {
       this.form.file = null;
+      this.clearPreview();
+    },
+
+    clearPreview() {
+      this.preview.columns = [];
+      this.preview.rows = [];
+      this.preview.rawRows = [];
+      this.preview.error = '';
+      this.form.fieldMap.email = '';
+      this.form.fieldMap.name = '';
+      this.form.fieldMap.attributes = '';
+    },
+
+    getCellValue(row, idx) {
+      if (!row || typeof row[idx] === 'undefined') {
+        return '';
+      }
+      return row[idx];
+    },
+
+    getPreviewColumnWidth(col) {
+      const base = String((col && (col.header || col.label || col.letter)) || '').trim();
+      const len = Math.max(base.length, 6);
+
+      // Keep columns readable for long Chinese headers while still allowing horizontal scroll.
+      const px = Math.min(Math.max((len * 14) + 36, 120), 520);
+      return `${px}px`;
+    },
+
+    toColumnLetters(index) {
+      let n = index + 1;
+      let out = '';
+      while (n > 0) {
+        const rem = (n - 1) % 26;
+        out = String.fromCharCode(65 + rem) + out;
+        n = Math.floor((n - 1) / 26);
+      }
+      return out;
+    },
+
+    buildPreviewColumns(headerRow, width) {
+      const cols = [];
+      const used = new Set();
+      for (let i = 0; i < width; i += 1) {
+        const letter = this.toColumnLetters(i);
+        const header = (headerRow[i] || '').toString().trim();
+        let value = letter;
+        let label = letter;
+
+        if (this.preview.firstRowHeader && header) {
+          value = header;
+          label = `${letter} - ${header}`;
+        }
+
+        if (used.has(value)) {
+          value = letter;
+        }
+        used.add(value);
+
+        cols.push({
+          index: i,
+          label,
+          value,
+          header,
+          letter,
+        });
+      }
+
+      return cols;
+    },
+
+    normalizeFieldName(v) {
+      return String(v || '').trim().toLowerCase();
+    },
+
+    autoMapFields() {
+      const keyMap = {
+        email: ['email', 'e-mail', 'mail'],
+        name: ['name', 'fullname', 'full name'],
+        attributes: ['attributes', 'attribs', 'meta', 'metadata'],
+      };
+
+      Object.keys(keyMap).forEach((target) => {
+        if (this.form.fieldMap[target]) {
+          return;
+        }
+        const col = this.preview.columns.find((c) => {
+          const norm = this.normalizeFieldName(c.header || c.value);
+          return keyMap[target].includes(norm);
+        });
+        if (col) {
+          this.form.fieldMap[target] = col.value;
+        }
+      });
+    },
+
+    rebuildPreviewFromRaw() {
+      if (!this.preview.rawRows || this.preview.rawRows.length === 0) {
+        return;
+      }
+
+      const rows = this.preview.rawRows;
+      const width = rows.reduce((m, row) => Math.max(m, row.length), 0);
+      const headerRow = this.preview.firstRowHeader ? rows[0] : [];
+
+      this.preview.columns = this.buildPreviewColumns(headerRow, width);
+      this.preview.rows = this.preview.firstRowHeader
+        ? rows.slice(1, 6)
+        : rows.slice(0, 5);
+
+      this.form.fieldMap.email = '';
+      this.form.fieldMap.name = '';
+      this.form.fieldMap.attributes = '';
+      this.autoMapFields();
+    },
+
+    parseCSVRows(file) {
+      return new Promise((resolve, reject) => {
+        Papa.parse(file, {
+          delimiter: this.form.delim || ',',
+          skipEmptyLines: true,
+          complete: (res) => {
+            if (res.errors && res.errors.length > 0) {
+              reject(new Error(res.errors[0].message));
+              return;
+            }
+            resolve((res.data || []).map((r) => r.map((v) => String(v || ''))));
+          },
+          error: (err) => reject(err),
+        });
+      });
+    },
+
+    async parseXLSXRows(file) {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array' });
+      const firstSheet = wb.SheetNames[0];
+      if (!firstSheet) {
+        return [];
+      }
+      const ws = wb.Sheets[firstSheet];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, blankrows: false });
+      return rows.map((r) => r.map((v) => String(v || '')));
+    },
+
+    async previewFromFile() {
+      try {
+        this.preview.error = '';
+
+        if (!this.form.file) {
+          this.clearPreview();
+          return;
+        }
+
+        const name = String(this.form.file.name || '').toLowerCase();
+        let rows = [];
+
+        if (name.endsWith('.xlsx')) {
+          rows = await this.parseXLSXRows(this.form.file);
+        } else if (name.endsWith('.csv')) {
+          rows = await this.parseCSVRows(this.form.file);
+        } else {
+          this.clearPreview();
+          this.preview.error = this.$t('import.previewUnsupported');
+          return;
+        }
+
+        if (!rows || rows.length === 0) {
+          this.clearPreview();
+          this.preview.error = this.$t('import.previewNoData');
+          return;
+        }
+
+        this.preview.rawRows = rows.slice(0, 20);
+        this.rebuildPreviewFromRaw();
+      } catch (e) {
+        this.clearPreview();
+        this.preview.error = this.$t('import.previewParseFailed', { error: e.message || e });
+      }
     },
 
     // Returns true if we're free to do an upload.
@@ -286,6 +570,7 @@ export default Vue.extend({
       this.$api.stopImport().then(() => {
         this.pollStatus();
         this.form.file = null;
+        this.clearPreview();
       });
     },
 
@@ -305,6 +590,12 @@ export default Vue.extend({
       this.form.lists = [];
       this.form.subStatus = 'unconfirmed';
       this.form.delim = ',';
+      this.form.fieldMap = {
+        email: '',
+        name: '',
+        attributes: '',
+      };
+      this.clearPreview();
     },
 
     onUpload() {
@@ -328,6 +619,11 @@ export default Vue.extend({
         lists: this.form.lists.map((l) => l.id),
         overwrite_userinfo: this.form.overwriteUserInfo,
         overwrite_subscription_status: this.form.overwriteSubStatus,
+        field_map: {
+          email: this.form.fieldMap.email,
+          name: this.form.fieldMap.name,
+          attributes: this.form.fieldMap.attributes,
+        },
       }));
       params.set('file', this.form.file);
 
@@ -370,3 +666,36 @@ export default Vue.extend({
   },
 });
 </script>
+
+<style scoped>
+.preview-table-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.preview-table {
+  min-width: 100%;
+}
+
+.preview-table :deep(table) {
+  table-layout: auto;
+}
+
+.preview-table :deep(th),
+.preview-table :deep(td) {
+  padding: 0.3rem 0.5rem;
+  line-height: 1.2;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.preview-cell {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+</style>

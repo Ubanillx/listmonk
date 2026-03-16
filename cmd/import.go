@@ -48,15 +48,24 @@ func (a *App) ImportSubscribers(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("import.invalidSubStatus"))
 	}
 
-	if len(opt.Delim) != 1 {
-		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("import.invalidDelim"))
-	}
-
 	// Open the HTTP file.
 	file, err := c.FormFile("file")
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest,
 			a.i18n.Ts("import.invalidFile", "error", err.Error()))
+	}
+
+	filename := strings.ToLower(file.Filename)
+	isCSV := strings.HasSuffix(filename, ".csv")
+	isXLSX := strings.HasSuffix(filename, ".xlsx")
+	isZIP := strings.HasSuffix(filename, ".zip")
+	if !isCSV && !isXLSX && !isZIP {
+		return echo.NewHTTPError(http.StatusBadRequest,
+			a.i18n.T("import.invalidFile"))
+	}
+
+	if (isCSV || isZIP) && len(opt.Delim) != 1 {
+		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("import.invalidDelim"))
 	}
 
 	src, err := file.Open()
@@ -87,8 +96,10 @@ func (a *App) ImportSubscribers(c echo.Context) error {
 	}
 	go sess.Start()
 
-	if strings.HasSuffix(strings.ToLower(file.Filename), ".csv") {
+	if isCSV {
 		go sess.LoadCSV(out.Name(), rune(opt.Delim[0]))
+	} else if isXLSX {
+		go sess.LoadXLSX(out.Name())
 	} else {
 		// Only 1 CSV from the ZIP is considered. If multiple files have
 		// to be processed, counting the net number of lines (to track progress),

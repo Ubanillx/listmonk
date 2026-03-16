@@ -32,6 +32,7 @@ require (
 	github.com/pquerna/otp v1.5.0
 	github.com/rhnvrm/simples3 v0.9.1
 	github.com/spf13/pflag v1.0.6
+	github.com/xuri/excelize/v2 v2.9.1
 	github.com/yuin/goldmark v1.7.12
 	github.com/zerodha/easyjson v1.0.1
 	github.com/zerodha/simplesessions/stores/postgres/v3 v3.0.0
@@ -59,10 +60,15 @@ require (
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/pelletier/go-toml v1.9.5 // indirect
+	github.com/richardlehane/mscfb v1.0.4 // indirect
+	github.com/richardlehane/msoleps v1.0.4 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/spf13/cast v1.9.2 // indirect
+	github.com/tiendc/go-deepcopy v1.6.0 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
+	github.com/xuri/efp v0.0.1 // indirect
+	github.com/xuri/nfp v0.0.1 // indirect
 	golang.org/x/crypto v0.45.0 // indirect
 	golang.org/x/image v0.29.0 // indirect
 	golang.org/x/net v0.47.0 // indirect

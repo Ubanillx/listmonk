@@ -56,7 +56,7 @@ ______________________________________________________________________
 
 #### POST /api/import/subscribers
 
-Send a CSV (optionally ZIP compressed) file to import subscribers. Use a multipart form POST.
+Send a CSV / XLSX (optionally ZIP compressed CSV) file to import subscribers. Use a multipart form POST.
 
 ##### Parameters
 
@@ -70,15 +70,16 @@ Send a CSV (optionally ZIP compressed) file to import subscribers. Use a multipa
 | Name      | Type     | Required | Description                                                                                                                        |
 |:----------|:---------|:---------|:-----------------------------------------------------------------------------------------------------------------------------------|
 | mode      | string   | Yes      | `subscribe` or `blocklist`                                                                                                         |
-| delim     | string   | Yes      | Single character indicating delimiter used in the CSV file, eg: `,`                                                                |
+| delim     | string   | Yes (CSV/ZIP) | Single character indicating delimiter used in the CSV file, eg: `,`                                                           |
 | lists     | []number |          | Array of list IDs to subscribe to.                                                                                                 |
 | overwrite | bool     |          | Whether to overwrite the subscriber parameters including subscriptions or ignore records that are already present in the database. |
+| field_map | object   |          | Optional field mapping. Keys: `email`, `name`, `attributes`. Values can be header names (`email`) or column references (`A`, `B`, `1`, `2`). |
 
 ##### Example Request
 
 ```shell
 curl -u "api_user:token" -X POST 'http://localhost:9000/api/import/subscribers' \
-  -F 'params={"mode":"subscribe", "subscription_status":"confirmed", "delim":",", "lists":[1, 2], "overwrite": true}' \
+    -F 'params={"mode":"subscribe", "subscription_status":"confirmed", "delim":",", "lists":[1, 2], "overwrite": true, "field_map": {"email": "A", "name": "B", "attributes": "C"}}' \
   -F "file=@/path/to/subs.csv"
 ```
 

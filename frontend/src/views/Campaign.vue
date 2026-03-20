@@ -133,7 +133,8 @@
                     <b-field :label="$t('campaigns.dailyResumeTime')" label-position="on-border"
                       :message="$t('campaigns.dailyResumeTimeHelp')">
                       <b-input v-model="form.dailyResumeTime" :disabled="!canEdit" placeholder="09:00"
-                        pattern="^([01]\\d|2[0-3]):([0-5]\\d)$" required />
+                        maxlength="5" @blur="form.dailyResumeTime = normalizeDailyResumeTime(form.dailyResumeTime)"
+                        required />
                     </b-field>
                   </div>
                 </div>
@@ -403,7 +404,7 @@ export default Vue.extend({
         headers: [],
         attribsStr: '{}',
         messenger: 'email',
-        dailySendLimit: 1000,
+        dailySendLimit: 100,
         dailyResumeTime: '09:00',
         lists: [],
         tags: [],
@@ -489,7 +490,29 @@ export default Vue.extend({
       this.form.archiveMetaStr = this.$utils.getPref('campaign.archiveMetaStr') || JSON.stringify(JSON.parse(archiveStr), null, 4);
     },
 
+    normalizeDailyResumeTime(value) {
+      const match = /^(\d{1,2}):(\d{2})$/.exec((value || '').trim());
+      if (!match) {
+        return value;
+      }
+
+      return `${match[1].padStart(2, '0')}:${match[2]}`;
+    },
+
+    normalizeSMTPDailyFields(limit, resumeTime) {
+      return {
+        dailySendLimit: limit > 0 ? limit : 100,
+        dailyResumeTime: this.normalizeDailyResumeTime(resumeTime || '09:00'),
+      };
+    },
+
     onSubmit(typ) {
+      if (this.isLimitedSMTPCampaign) {
+        const normalized = this.normalizeSMTPDailyFields(this.form.dailySendLimit, this.form.dailyResumeTime);
+        this.form.dailySendLimit = normalized.dailySendLimit;
+        this.form.dailyResumeTime = normalized.dailyResumeTime;
+      }
+
       // Validate custom JSON headers.
       if (this.form.headersStr && this.form.headersStr !== '[]') {
         try {
@@ -544,10 +567,15 @@ export default Vue.extend({
 
     getCampaign(id) {
       return this.$api.getCampaign(id).then((data) => {
+        const normalizedSMTP = (data.type === 'regular' && (data.messenger === 'email' || data.messenger?.startsWith('email-')))
+          ? this.normalizeSMTPDailyFields(data.dailySendLimit, data.dailyResumeTime)
+          : { dailySendLimit: data.dailySendLimit, dailyResumeTime: data.dailyResumeTime };
+
         this.data = data;
         this.form = {
           ...this.form,
           ...data,
+          ...normalizedSMTP,
           headersStr: JSON.stringify(data.headers, null, 4),
           archiveMetaStr: data.archiveMeta ? JSON.stringify(data.archiveMeta, null, 4) : '{}',
           attribsStr: data.attribs ? JSON.stringify(data.attribs, null, 4) : '{}',

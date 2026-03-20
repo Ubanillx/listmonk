@@ -728,7 +728,12 @@ func (a *App) validateCampaignFields(c campReq) (campReq, error) {
 
 	if c.Type == models.CampaignTypeRegular && strings.HasPrefix(c.Messenger, emailMsgr) {
 		if c.DailySendLimit < 1 {
-			return c, errors.New(a.i18n.T("campaigns.fieldInvalidDailySendLimit"))
+			// Backward compatibility for legacy campaigns/clients created before
+			// daily SMTP limits became mandatory for regular email campaigns.
+			c.DailySendLimit = 100
+		}
+		if c.DailyResumeTime == "" {
+			c.DailyResumeTime = "09:00"
 		}
 		if _, err := time.ParseInLocation(dailyResumeLayout, c.DailyResumeTime, time.Local); err != nil {
 			return c, errors.New(a.i18n.T("campaigns.fieldInvalidDailyResumeTime"))

@@ -451,6 +451,11 @@ export default Vue.extend({
         sendAt = dayjs(c.sendAt).isAfter(now) ? c.sendAt : now.add(7, 'day');
       }
 
+      const isLimitedSMTPCampaign = c.type === 'regular'
+        && (c.messenger === 'email' || c.messenger?.startsWith('email-'));
+      const dailySendLimit = isLimitedSMTPCampaign && c.dailySendLimit > 0 ? c.dailySendLimit : 100;
+      const dailyResumeTime = isLimitedSMTPCampaign && c.dailyResumeTime ? c.dailyResumeTime : '09:00';
+
       const data = {
         name,
         subject: c.subject,
@@ -459,8 +464,8 @@ export default Vue.extend({
         from_email: c.fromEmail,
         content_type: c.contentType,
         messenger: c.messenger,
-        daily_send_limit: c.dailySendLimit,
-        daily_resume_time: c.dailyResumeTime,
+        daily_send_limit: isLimitedSMTPCampaign ? dailySendLimit : 0,
+        daily_resume_time: isLimitedSMTPCampaign ? dailyResumeTime : '09:00',
         tags: c.tags,
         template_id: c.templateId,
         body,

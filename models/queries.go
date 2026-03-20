@@ -67,6 +67,7 @@ type Queries struct {
 	GetCampaignStatus     *sqlx.Stmt `query:"get-campaign-status"`
 	GetArchivedCampaigns  *sqlx.Stmt `query:"get-archived-campaigns"`
 	CampaignHasLists      *sqlx.Stmt `query:"campaign-has-lists"`
+	GetCampaignListIDs    *sqlx.Stmt `query:"get-campaign-list-ids"`
 
 	// These two queries are read as strings and based on settings.individual_tracking=on/off,
 	// are interpolated and copied to view and click counts. Same query, different tables.
@@ -78,17 +79,27 @@ type Queries struct {
 	DeleteCampaignViews        *sqlx.Stmt `query:"delete-campaign-views"`
 	DeleteCampaignLinkClicks   *sqlx.Stmt `query:"delete-campaign-link-clicks"`
 
-	NextCampaigns            *sqlx.Stmt `query:"next-campaigns"`
-	GetRunningCampaign       *sqlx.Stmt `query:"get-running-campaign"`
-	NextCampaignSubscribers  *sqlx.Stmt `query:"next-campaign-subscribers"`
-	GetOneCampaignSubscriber *sqlx.Stmt `query:"get-one-campaign-subscriber"`
-	UpdateCampaign           *sqlx.Stmt `query:"update-campaign"`
-	UpdateCampaignStatus     *sqlx.Stmt `query:"update-campaign-status"`
-	UpdateCampaignCounts     *sqlx.Stmt `query:"update-campaign-counts"`
-	UpdateCampaignArchive    *sqlx.Stmt `query:"update-campaign-archive"`
-	RegisterCampaignView     *sqlx.Stmt `query:"register-campaign-view"`
-	DeleteCampaign           *sqlx.Stmt `query:"delete-campaign"`
-	DeleteCampaigns          *sqlx.Stmt `query:"delete-campaigns"`
+	NextCampaigns                   *sqlx.Stmt `query:"next-campaigns"`
+	GetCampaignSendState            *sqlx.Stmt `query:"get-campaign-send-state"`
+	HasCampaignRecipients           *sqlx.Stmt `query:"has-campaign-recipients"`
+	EnsureCampaignRecipients        *sqlx.Stmt `query:"ensure-campaign-recipients"`
+	SyncCampaignProgress            *sqlx.Stmt `query:"sync-campaign-progress"`
+	SetCampaignRunning              *sqlx.Stmt `query:"set-campaign-running"`
+	SetCampaignDeferred             *sqlx.Stmt `query:"set-campaign-deferred"`
+	NextCampaignSubscribers         *sqlx.Stmt `query:"queue-campaign-subscribers"`
+	MarkCampaignRecipientSent       *sqlx.Stmt `query:"mark-campaign-recipient-sent"`
+	MarkCampaignRecipientStatus     *sqlx.Stmt `query:"mark-campaign-recipient-status"`
+	ResetCampaignQueuedRecipients   *sqlx.Stmt `query:"reset-campaign-queued-recipients"`
+	UpdateCampaignRecipientStatuses *sqlx.Stmt `query:"update-campaign-recipient-statuses"`
+	IncrementCampaignDailyUsage     *sqlx.Stmt `query:"increment-campaign-daily-usage"`
+	GetOneCampaignSubscriber        *sqlx.Stmt `query:"get-one-campaign-subscriber"`
+	UpdateCampaign                  *sqlx.Stmt `query:"update-campaign"`
+	UpdateCampaignStatus            *sqlx.Stmt `query:"update-campaign-status"`
+	UpdateCampaignCounts            *sqlx.Stmt `query:"update-campaign-counts"`
+	UpdateCampaignArchive           *sqlx.Stmt `query:"update-campaign-archive"`
+	RegisterCampaignView            *sqlx.Stmt `query:"register-campaign-view"`
+	DeleteCampaign                  *sqlx.Stmt `query:"delete-campaign"`
+	DeleteCampaigns                 *sqlx.Stmt `query:"delete-campaigns"`
 
 	InsertMedia *sqlx.Stmt `query:"insert-media"`
 	GetMedia    *sqlx.Stmt `query:"get-media"`
@@ -105,9 +116,11 @@ type Queries struct {
 	GetLinkURL        *sqlx.Stmt `query:"get-link-url"`
 	RegisterLinkClick *sqlx.Stmt `query:"register-link-click"`
 
-	GetSettings         *sqlx.Stmt `query:"get-settings"`
-	UpdateSettings      *sqlx.Stmt `query:"update-settings"`
-	UpdateSettingsByKey *sqlx.Stmt `query:"update-settings-by-key"`
+	GetSettings             *sqlx.Stmt `query:"get-settings"`
+	UpdateSettings          *sqlx.Stmt `query:"update-settings"`
+	UpdateSettingsByKey     *sqlx.Stmt `query:"update-settings-by-key"`
+	GetSMTPDailyUsage       *sqlx.Stmt `query:"get-smtp-daily-usage"`
+	IncrementSMTPDailyUsage *sqlx.Stmt `query:"increment-smtp-daily-usage"`
 
 	// GetStats *sqlx.Stmt `query:"get-stats"`
 	RecordBounce                *sqlx.Stmt `query:"record-bounce"`

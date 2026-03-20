@@ -179,6 +179,8 @@ func (c *Core) CreateCampaign(o models.Campaign, listIDs []int, mediaIDs []int) 
 		o.Body,
 		o.AltBody,
 		o.ContentType,
+		o.DailySendLimit,
+		o.DailyResumeTime,
 		o.SendAt,
 		o.Headers,
 		o.Attribs,
@@ -219,6 +221,8 @@ func (c *Core) UpdateCampaign(id int, o models.Campaign, listIDs []int, mediaIDs
 		o.Body,
 		o.AltBody,
 		o.ContentType,
+		o.DailySendLimit,
+		o.DailyResumeTime,
 		o.SendAt,
 		o.Headers,
 		o.Attribs,
@@ -260,7 +264,7 @@ func (c *Core) UpdateCampaignStatus(id int, status string) (models.Campaign, err
 			errMsg = c.i18n.T("campaigns.onlyScheduledAsDraft")
 		}
 	case models.CampaignStatusScheduled:
-		if cm.Status != models.CampaignStatusDraft && cm.Status != models.CampaignStatusPaused {
+		if cm.Status != models.CampaignStatusDraft && cm.Status != models.CampaignStatusPaused && cm.Status != models.CampaignStatusDeferred {
 			errMsg = c.i18n.T("campaigns.onlyDraftAsScheduled")
 		}
 		if !cm.SendAt.Valid {
@@ -268,15 +272,15 @@ func (c *Core) UpdateCampaignStatus(id int, status string) (models.Campaign, err
 		}
 
 	case models.CampaignStatusRunning:
-		if cm.Status != models.CampaignStatusPaused && cm.Status != models.CampaignStatusDraft {
+		if cm.Status != models.CampaignStatusPaused && cm.Status != models.CampaignStatusDraft && cm.Status != models.CampaignStatusDeferred {
 			errMsg = c.i18n.T("campaigns.onlyPausedDraft")
 		}
 	case models.CampaignStatusPaused:
-		if cm.Status != models.CampaignStatusRunning {
+		if cm.Status != models.CampaignStatusRunning && cm.Status != models.CampaignStatusDeferred {
 			errMsg = c.i18n.T("campaigns.onlyActivePause")
 		}
 	case models.CampaignStatusCancelled:
-		if cm.Status != models.CampaignStatusRunning && cm.Status != models.CampaignStatusPaused {
+		if cm.Status != models.CampaignStatusRunning && cm.Status != models.CampaignStatusPaused && cm.Status != models.CampaignStatusDeferred {
 			errMsg = c.i18n.T("campaigns.onlyActiveCancel")
 		}
 	}
@@ -300,6 +304,38 @@ func (c *Core) UpdateCampaignStatus(id int, status string) (models.Campaign, err
 
 	cm.Status = status
 	return cm, nil
+}
+
+func (c *Core) HasCampaignRecipients(id int) (bool, error) {
+	var has bool
+	if err := c.q.HasCampaignRecipients.Get(&has, id); err != nil {
+		c.log.Printf("error fetching campaign recipients: %v", err)
+		return false, echo.NewHTTPError(http.StatusInternalServerError,
+			c.i18n.Ts("globals.messages.errorFetching", "name", "{globals.terms.campaign}", "error", pqErrMsg(err)))
+	}
+
+	return has, nil
+}
+
+func (c *Core) GetCampaignListIDs(id int) ([]int, error) {
+	out := []int{}
+	if err := c.q.GetCampaignListIDs.Select(&out, id); err != nil {
+		c.log.Printf("error fetching campaign lists: %v", err)
+		return nil, echo.NewHTTPError(http.StatusInternalServerError,
+			c.i18n.Ts("globals.messages.errorFetching", "name", "{globals.terms.campaign}", "error", pqErrMsg(err)))
+	}
+
+	return out, nil
+}
+
+func (c *Core) UpdateCampaignRecipientStatuses(id int, toStatus string, fromStatuses []string) error {
+	if _, err := c.q.UpdateCampaignRecipientStatuses.Exec(id, toStatus, pq.Array(fromStatuses)); err != nil {
+		c.log.Printf("error updating campaign recipients: %v", err)
+		return echo.NewHTTPError(http.StatusInternalServerError,
+			c.i18n.Ts("globals.messages.errorUpdating", "name", "{globals.terms.campaign}", "error", pqErrMsg(err)))
+	}
+
+	return nil
 }
 
 // UpdateCampaignArchive updates a campaign's archive properties.

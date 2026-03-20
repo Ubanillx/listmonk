@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/knadh/listmonk/internal/manager"
+	"github.com/knadh/listmonk/internal/messenger/email"
 	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
 )
@@ -142,6 +144,8 @@ func (a *App) SendTxMessage(c echo.Context) error {
 		msg.Subject = m.Subject
 		msg.ContentType = m.ContentType
 		msg.Messenger = m.Messenger
+		msg.UseSMTPQuota = strings.HasPrefix(m.Messenger, emailMsgr)
+		msg.UseSMTPFrom = strings.HasPrefix(m.Messenger, emailMsgr)
 		msg.Body = m.Body
 		msg.AltBody = []byte(m.AltBody)
 		for _, a := range m.Attachments {
@@ -160,6 +164,13 @@ func (a *App) SendTxMessage(c echo.Context) error {
 					msg.Headers.Add(hdr, val)
 				}
 			}
+		}
+
+		if err := a.manager.CanSendMessage(msg); err != nil {
+			if errors.Is(err, email.ErrSMTPQuotaExceeded) {
+				return echo.NewHTTPError(http.StatusTooManyRequests, a.i18n.T("tx.smtpQuotaExceeded"))
+			}
+			return err
 		}
 
 		if err := a.manager.PushMessage(msg); err != nil {

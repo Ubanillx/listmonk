@@ -2,11 +2,12 @@ package email
 
 import (
 	"crypto/tls"
+	"errors"
 	"fmt"
-	"math/rand"
 	"net/smtp"
 	"net/textproto"
 	"strings"
+	"sync/atomic"
 
 	"github.com/knadh/listmonk/models"
 	"github.com/knadh/smtppool/v2"
@@ -20,10 +21,23 @@ const (
 	hdrCc         = "Cc"
 )
 
+var ErrSMTPQuotaExceeded = errors.New("smtp daily quota exhausted")
+
+type QuotaTracker interface {
+	HasServerQuota(uuid string, limit int) (bool, error)
+	ReserveServer(uuid string, limit int) (bool, error)
+	CommitServer(uuid string) error
+	ReleaseServer(uuid string)
+}
+
 // Server represents an SMTP server's credentials.
 type Server struct {
 	// Name is a unique identifier for the server.
 	Name          string            `json:"name"`
+	UUID          string            `json:"uuid"`
+	IsPrimary     bool              `json:"is_primary"`
+	FromEmail     string            `json:"from_email"`
+	DailyLimit    int               `json:"daily_limit"`
 	Username      string            `json:"username"`
 	Password      string            `json:"password"`
 	AuthProtocol  string            `json:"auth_protocol"`
@@ -43,6 +57,8 @@ type Server struct {
 type Emailer struct {
 	servers []*Server
 	name    string
+	next    atomic.Uint64
+	tracker QuotaTracker
 }
 
 // New returns an SMTP e-mail Messenger backend with the given SMTP servers.
@@ -107,18 +123,40 @@ func (e *Emailer) Name() string {
 	return e.name
 }
 
+func (e *Emailer) SetQuotaTracker(t QuotaTracker) {
+	e.tracker = t
+}
+
+// DefaultFromEmail returns the sender configured on the first SMTP server.
+func (e *Emailer) DefaultFromEmail() string {
+	if len(e.servers) == 0 {
+		return ""
+	}
+
+	return e.servers[0].FromEmail
+}
+
+func (e *Emailer) CanSend(m models.Message) error {
+	_, _, err := e.pickServer(m, false)
+	return err
+}
+
 // Push pushes a message to the server.
 func (e *Emailer) Push(m models.Message) error {
-	// If there are more than one SMTP servers, send to a random
-	// one from the list.
-	var (
-		ln  = len(e.servers)
-		srv *Server
-	)
-	if ln > 1 {
-		srv = e.servers[rand.Intn(ln)]
-	} else {
-		srv = e.servers[0]
+	srv, reserved, err := e.pickServer(m, true)
+	if err != nil {
+		return err
+	}
+	if reserved {
+		defer func() {
+			if err != nil {
+				e.tracker.ReleaseServer(srv.UUID)
+				return
+			}
+			if cerr := e.tracker.CommitServer(srv.UUID); cerr != nil {
+				err = cerr
+			}
+		}()
 	}
 
 	// Are there attachments?
@@ -142,6 +180,9 @@ func (e *Emailer) Push(m models.Message) error {
 		To:          m.To,
 		Subject:     m.Subject,
 		Attachments: files,
+	}
+	if m.UseSMTPFrom && srv.FromEmail != "" {
+		em.From = srv.FromEmail
 	}
 
 	em.Headers = textproto.MIMEHeader{}
@@ -189,7 +230,8 @@ func (e *Emailer) Push(m models.Message) error {
 		}
 	}
 
-	return srv.pool.Send(em)
+	err = srv.pool.Send(em)
+	return err
 }
 
 // Flush flushes the message queue to the server.
@@ -203,4 +245,41 @@ func (e *Emailer) Close() error {
 		s.pool.Close()
 	}
 	return nil
+}
+
+func (e *Emailer) pickServer(m models.Message, reserve bool) (*Server, bool, error) {
+	ln := len(e.servers)
+	if ln == 0 {
+		return nil, false, fmt.Errorf("no SMTP servers configured")
+	}
+
+	start := e.next.Load()
+	if reserve {
+		start = e.next.Add(1) - 1
+	}
+
+	for i := range ln {
+		srv := e.servers[(start+uint64(i))%uint64(ln)]
+		if !m.UseSMTPQuota || e.tracker == nil || srv.UUID == "" || srv.DailyLimit <= 0 {
+			return srv, false, nil
+		}
+
+		var (
+			ok  bool
+			err error
+		)
+		if reserve {
+			ok, err = e.tracker.ReserveServer(srv.UUID, srv.DailyLimit)
+		} else {
+			ok, err = e.tracker.HasServerQuota(srv.UUID, srv.DailyLimit)
+		}
+		if err != nil {
+			return nil, false, err
+		}
+		if ok {
+			return srv, reserve, nil
+		}
+	}
+
+	return nil, false, ErrSMTPQuotaExceeded
 }

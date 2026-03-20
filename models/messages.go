@@ -20,7 +20,9 @@ type Message struct {
 	Headers     textproto.MIMEHeader
 	Attachments []Attachment
 
-	Subscriber Subscriber
+	Subscriber   Subscriber
+	UseSMTPFrom  bool
+	UseSMTPQuota bool
 
 	// Campaign is generally the same instance for a large number of subscribers.
 	Campaign *Campaign

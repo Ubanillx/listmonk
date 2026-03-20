@@ -10,6 +10,8 @@ ______________________________________________________________________
 
 Allows sending transactional messages to one or more subscribers via a preconfigured transactional template.
 
+When `messenger` is `email` or `email-*`, the selected SMTP's sender configuration overrides `from_email`, and the request is subject to SMTP daily quota checks. If no SMTP has quota left, the API returns HTTP `429 Too Many Requests`.
+
 ##### Parameters
 
 | Name              | Type       | Required | Description                                                                |
@@ -20,7 +22,7 @@ Allows sending transactional messages to one or more subscribers via a preconfig
 | subscriber_ids    | number\[\] |          | Multiple subscriber IDs as an alternative to `subscriber_id`.              |
 | subscriber_mode   | string     |          | Subscriber lookup mode: `default`, `fallback`, or `external`               |
 | template_id       | number     | Yes      | ID of the transactional template to be used for the message.               |
-| from_email        | string     |          | Optional sender email.                                                     |
+| from_email        | string     |          | Optional compatibility field. For `email` and `email-*` messengers, the final sender comes from the selected SMTP configuration. |
 | subject           | string     |          | Optional subject. If empty, the subject defined on the template is used    |
 | data              | JSON       |          | Optional nested JSON map. Available in the template as `{{ .Tx.Data.* }}`. |
 | headers           | JSON\[\]   |          | Optional array of email headers.                                           |

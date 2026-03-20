@@ -41,7 +41,7 @@ type App struct {
 	core       *core.Core
 	manager    *manager.Manager
 	messengers []manager.Messenger
-	emailMsgr  manager.Messenger
+	emailMsgr  *email.Emailer
 	importer   *subimporter.Importer
 	auth       *auth.Auth
 	media      media.Store
@@ -210,7 +210,8 @@ func main() {
 		core = initCore(fbOptinNotify, queries, db, i18n, ko)
 
 		// Initialize all messengers, SMTP and postback.
-		msgrs = append(initSMTPMessengers(), initPostbackMessengers(ko)...)
+		smtpMsgrs = initSMTPMessengers()
+		msgrs     = append(smtpMsgrs.messengers, initPostbackMessengers(ko)...)
 
 		// Campaign manager.
 		mgr = initCampaignManager(msgrs, queries, urlCfg, core, media, i18n, ko)
@@ -224,8 +225,6 @@ func main() {
 		// Initialize the webhook/POP3 bounce processor.
 		bounce *bounce.Manager
 
-		emailMsgr *email.Emailer
-
 		chReload = make(chan os.Signal, 1)
 	)
 
@@ -235,15 +234,8 @@ func main() {
 		bounce = initBounceManager(core.RecordBounce, queries.RecordBounce, lo, ko)
 	}
 
-	// Assign the default `email` messenger to the app.
-	for _, m := range msgrs {
-		if m.Name() == "email" {
-			emailMsgr = m.(*email.Emailer)
-		}
-	}
-
 	// Initialize the global admin/sub e-mail notifier.
-	initNotifs(fs, i18n, emailMsgr, urlCfg, ko)
+	initNotifs(fs, i18n, smtpMsgrs.primary, urlCfg, ko)
 
 	// Initialize and cache tx templates in memory.
 	initTxTemplates(mgr, core)
@@ -272,7 +264,7 @@ func main() {
 		core:       core,
 		manager:    mgr,
 		messengers: msgrs,
-		emailMsgr:  emailMsgr,
+		emailMsgr:  smtpMsgrs.primary,
 		importer:   importer,
 		auth:       auth,
 		media:      media,
@@ -330,6 +322,10 @@ func main() {
 		// Close the messenger pool.
 		for _, m := range app.messengers {
 			m.Close()
+		}
+
+		if app.emailMsgr != nil {
+			app.emailMsgr.Close()
 		}
 
 		// Signal the close.

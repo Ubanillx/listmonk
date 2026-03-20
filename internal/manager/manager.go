@@ -14,6 +14,7 @@ import (
 
 	"github.com/Masterminds/sprig/v3"
 	"github.com/knadh/listmonk/internal/i18n"
+	"github.com/knadh/listmonk/internal/messenger/email"
 	"github.com/knadh/listmonk/internal/notifs"
 	"github.com/knadh/listmonk/models"
 	"golang.org/x/text/cases"
@@ -30,15 +31,22 @@ const (
 	dummyUUID = "00000000-0000-0000-0000-000000000000"
 )
 
+var ErrCampaignDeferred = errors.New("campaign deferred")
+
 // Store represents a data backend, such as a database,
 // that provides subscriber and campaign records.
 type Store interface {
-	NextCampaigns(currentIDs []int64, sentCounts []int64) ([]*models.Campaign, error)
-	NextSubscribers(campID, limit int) ([]models.Subscriber, error)
+	NextCampaigns(currentIDs []int64) ([]*models.Campaign, error)
+	NextSubscribers(campID, limit int) ([]models.CampaignSubscriber, error)
 	GetCampaign(campID int) (*models.Campaign, error)
 	GetAttachment(mediaID int) (models.Attachment, error)
 	UpdateCampaignStatus(campID int, status string) error
 	UpdateCampaignCounts(campID int, toSend int, sent int, lastSubID int) error
+	MarkCampaignMessageSent(campID int, subID int) error
+	MarkCampaignRecipientStatus(campID int, subID int, status string) error
+	ResetCampaignQueuedRecipients(campID int, toStatus string) error
+	UpdateCampaignRecipientStatuses(campID int, toStatus string, fromStatuses []string) error
+	DeferCampaign(campID int, nextResumeAt time.Time) error
 	CreateLink(url string) (string, error)
 	BlocklistSubscriber(id int64) error
 	DeleteSubscriber(id int64) error
@@ -235,6 +243,19 @@ func (m *Manager) HasMessenger(id string) bool {
 	return ok
 }
 
+func (m *Manager) CanSendMessage(msg models.Message) error {
+	msgr, ok := m.messengers[msg.Messenger]
+	if !ok {
+		return fmt.Errorf("unknown messenger %s", msg.Messenger)
+	}
+
+	if p, ok := msgr.(interface{ CanSend(models.Message) error }); ok {
+		return p.CanSend(msg)
+	}
+
+	return nil
+}
+
 // HasRunningCampaigns checks if there are any active campaigns.
 func (m *Manager) HasRunningCampaigns() bool {
 	m.pipesMut.Lock()
@@ -283,7 +304,7 @@ func (m *Manager) Run() {
 
 			// If the batch fails, stop the pipe and release it so that it doesn't hang forever.
 			// The cleanup() records the state in DB and scanCampaigns() picks it up at a later point.
-			p.Stop(false)
+			p.Stop(stopReasonPause, false)
 			p.wg.Done()
 			continue
 		}
@@ -296,7 +317,7 @@ func (m *Manager) Run() {
 				// If the queue is full for any reason, stop the pipe and release it.
 				// The cleanup() records the state in DB and scanCampaigns() picks it up
 				// at a later point.
-				p.Stop(false)
+				p.Stop(stopReasonPause, false)
 				p.wg.Done()
 			}
 		} else {
@@ -402,10 +423,14 @@ func (m *Manager) GenericTemplateFuncs() template.FuncMap {
 }
 
 // StopCampaign marks a running campaign as stopped so that all its queued messages are ignored.
-func (m *Manager) StopCampaign(id int) {
+func (m *Manager) StopCampaign(id int, status string) {
 	m.pipesMut.RLock()
 	if p, ok := m.pipes[id]; ok {
-		p.Stop(false)
+		reason := stopReasonPause
+		if status == models.CampaignStatusCancelled {
+			reason = stopReasonCancelled
+		}
+		p.Stop(reason, false)
 	}
 	m.pipesMut.RUnlock()
 }
@@ -425,8 +450,8 @@ func (m *Manager) scanCampaigns(tick time.Duration) {
 
 	// Periodically scan the data source for campaigns to process.
 	for range t.C {
-		ids, counts := m.getCurrentCampaigns()
-		campaigns, err := m.store.NextCampaigns(ids, counts)
+		ids := m.getCurrentCampaigns()
+		campaigns, err := m.store.NextCampaigns(ids)
 		if err != nil {
 			m.log.Printf("error fetching campaigns: %v", err)
 			continue
@@ -450,7 +475,7 @@ func (m *Manager) scanCampaigns(tick time.Duration) {
 				// If the queue is full for any reason, stop the pipe and release it.
 				// The cleanup() records the state in DB and scanCampaigns() picks it up
 				// at a later point.
-				p.Stop(false)
+				p.Stop(stopReasonPause, false)
 				p.wg.Done()
 			}
 		}
@@ -486,15 +511,17 @@ func (m *Manager) worker() {
 
 			// Outgoing message.
 			out := models.Message{
-				From:        msg.from,
-				To:          []string{msg.to},
-				Subject:     msg.subject,
-				ContentType: msg.Campaign.ContentType,
-				Body:        msg.body,
-				AltBody:     msg.altBody,
-				Subscriber:  msg.Subscriber,
-				Campaign:    msg.Campaign,
-				Attachments: msg.Campaign.Attachments,
+				From:         msg.from,
+				To:           []string{msg.to},
+				Subject:      msg.subject,
+				ContentType:  msg.Campaign.ContentType,
+				Body:         msg.body,
+				AltBody:      msg.altBody,
+				Subscriber:   msg.Subscriber,
+				UseSMTPFrom:  strings.HasPrefix(msg.Campaign.Messenger, "email"),
+				UseSMTPQuota: strings.HasPrefix(msg.Campaign.Messenger, "email"),
+				Campaign:     msg.Campaign,
+				Attachments:  msg.Campaign.Attachments,
 			}
 
 			h := textproto.MIMEHeader{}
@@ -530,14 +557,18 @@ func (m *Manager) worker() {
 				// Mark the message as done.
 				msg.pipe.wg.Done()
 
-				if err != nil {
+				if errors.Is(err, email.ErrSMTPQuotaExceeded) {
+					msg.pipe.Defer()
+				} else if err != nil {
+					if uErr := m.store.MarkCampaignRecipientStatus(msg.Campaign.ID, msg.Subscriber.ID, models.CampaignRecipientStatusPending); uErr != nil {
+						m.log.Printf("error resetting campaign recipient (%s:%d): %v", msg.Campaign.Name, msg.Subscriber.ID, uErr)
+					}
 					// Call the error callback, which keeps track of the error count
 					// and stops the campaign if the error count exceeds the threshold.
 					msg.pipe.OnError()
 				} else {
-					id := uint64(msg.Subscriber.ID)
-					if id > msg.pipe.lastID.Load() {
-						msg.pipe.lastID.Store(uint64(msg.Subscriber.ID))
+					if uErr := m.store.MarkCampaignMessageSent(msg.Campaign.ID, msg.Subscriber.ID); uErr != nil {
+						m.log.Printf("error updating campaign recipient (%s:%d): %v", msg.Campaign.Name, msg.Subscriber.ID, uErr)
 					}
 					msg.pipe.rate.Incr(1)
 					msg.pipe.sent.Add(1)
@@ -559,26 +590,18 @@ func (m *Manager) worker() {
 }
 
 // getCurrentCampaigns returns the IDs of campaigns currently being processed
-// and their sent counts.
-func (m *Manager) getCurrentCampaigns() ([]int64, []int64) {
+// so that scanCampaigns doesn't duplicate work.
+func (m *Manager) getCurrentCampaigns() []int64 {
 	// Needs to return an empty slice in case there are no campaigns.
 	m.pipesMut.RLock()
 	defer m.pipesMut.RUnlock()
 
-	var (
-		ids    = make([]int64, 0, len(m.pipes))
-		counts = make([]int64, 0, len(m.pipes))
-	)
+	ids := make([]int64, 0, len(m.pipes))
 	for _, p := range m.pipes {
 		ids = append(ids, int64(p.camp.ID))
-
-		// Get the sent counts for campaigns and reset them to 0
-		// as in the database, they're stored cumulatively (sent += $newSent).
-		counts = append(counts, p.sent.Load())
-		p.sent.Store(0)
 	}
 
-	return ids, counts
+	return ids
 }
 
 // trackLink register a URL and return its UUID to be used in message templates

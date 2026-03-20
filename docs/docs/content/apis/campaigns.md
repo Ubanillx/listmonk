@@ -294,14 +294,16 @@ Create a new campaign.
 | name         | string     | Yes      | Campaign name.                                                                                                         |
 | subject      | string     | Yes      | Campaign email subject.                                                                                                |
 | lists        | number\[\] | Yes      | List IDs to send campaign to.                                                                                          |
-| from_email   | string     |          | 'From' email in campaign emails. Defaults to value from settings if not provided.                                      |
+| from_email   | string     |          | Optional compatibility field. For `email` and `email-*` messengers, the final sender comes from the selected SMTP configuration. |
+| daily_send_limit | number | Conditionally required | Required for `regular` campaigns using `email` or `email-*`. Limits campaign sends per local day.                    |
+| daily_resume_time | string | Conditionally required | Required for `regular` campaigns using `email` or `email-*`. Local server time in `HH:MM` at which deferred sends resume. |
 | type         | string     | Yes      | Campaign type: 'regular' or 'optin'.                                                                                   |
 | content_type | string     | Yes      | Content type: 'richtext', 'html', 'markdown', 'plain', 'visual'.                                                       |
 | body         | string     | Yes      | Content body of campaign.                                                                                              |
 | body_source  | string     |          | If content_type is `visual`, the JSON block source of the body.                                                        |
 | altbody      | string     |          | Alternate plain text body for HTML (and richtext) emails.                                                              |
 | send_at      | string     |          | Timestamp to schedule campaign. Format: 'YYYY-MM-DDTHH:MM:SSZ'.                                                        |
-| messenger    | string     |          | 'email' or a custom messenger defined in settings. Defaults to 'email' if not provided.                                |
+| messenger    | string     |          | 'email' or a custom messenger defined in settings. Defaults to 'email' if not provided. For `email` and `email-*`, SMTP sender overrides and daily quotas apply. |
 | template_id  | number     |          | Template ID to use. Defaults to default template if not provided.                                                      |
 | tags         | string\[\] |          | Tags to mark campaign.                                                                                                 |
 | headers      | JSON       |          | Key-value pairs to send as SMTP headers. Example: \[{"x-custom-header": "value"}\].                                    |
@@ -310,7 +312,7 @@ Create a new campaign.
 ##### Example request
 
 ```shell
-curl -u "api_user:token" 'http://localhost:9000/api/campaigns' -X POST -H 'Content-Type: application/json;charset=utf-8' --data-raw '{"name":"Test campaign","subject":"Hello, world","lists":[1],"from_email":"listmonk <noreply@listmonk.yoursite.com>","content_type":"richtext","messenger":"email","type":"regular","tags":["test"],"template_id":1}'
+curl -u "api_user:token" 'http://localhost:9000/api/campaigns' -X POST -H 'Content-Type: application/json;charset=utf-8' --data-raw '{"name":"Test campaign","subject":"Hello, world","lists":[1],"content_type":"richtext","messenger":"email","type":"regular","tags":["test"],"template_id":1}'
 ```
 
 ##### Example response

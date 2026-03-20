@@ -7,6 +7,11 @@
             <b-field :label="$t('globals.buttons.enabled')">
               <b-switch v-model="item.enabled" name="enabled" :native-value="true" data-cy="btn-enable-smtp" />
             </b-field>
+            <b-field :label="$t('settings.smtp.primary')" :message="$t('settings.smtp.primaryHelp')">
+              <b-radio v-model="primarySMTP" :native-value="smtpKey(item, n)" name="primary_smtp">
+                {{ $t('settings.smtp.primaryLabel') }}
+              </b-radio>
+            </b-field>
             <b-field v-if="form.smtp.length > 1">
               <a @click.prevent="$utils.confirm(null, () => removeSMTP(n))" href="#" data-cy="btn-delete-smtp">
                 <b-icon icon="trash-can-outline" />
@@ -149,6 +154,23 @@
                   <b-input v-model="item.name" name="name" placeholder="email-primary" :maxlength="100" />
                 </b-field>
               </div>
+              <div class="column is-6">
+                <b-field :label="$t('settings.smtp.fromEmail')" label-position="on-border"
+                  :message="$t('settings.smtp.fromEmailHelp')">
+                  <b-input v-model="item.from_email" name="from_email"
+                    placeholder="Your Name <noreply@yoursite.com>" :maxlength="200" />
+                </b-field>
+              </div>
+            </div>
+
+            <div class="columns">
+              <div class="column is-4">
+                <b-field :label="$t('settings.smtp.dailyLimit')" label-position="on-border"
+                  :message="$t('settings.smtp.dailyLimitHelp')">
+                  <b-numberinput v-model="item.daily_limit" name="daily_limit" type="is-light"
+                    controls-position="compact" min="0" max="100000000" />
+                </b-field>
+              </div>
             </div>
 
             <div class="columns">
@@ -170,9 +192,9 @@
               <div class="columns">
                 <template v-if="smtpTestItem === n">
                   <div class="column is-5">
-                    <strong>{{ $t('settings.general.fromEmail') }}</strong>
+                    <strong>{{ $t('settings.smtp.fromEmail') }}</strong>
                     <br />
-                    {{ settings['app.from_email'] }}
+                    {{ item.from_email }}
                   </div>
                   <div class="column is-4">
                     <b-field :label="$t('settings.smtp.toEmail')" label-position="on-border">
@@ -242,6 +264,8 @@ const smtpTemplates = {
   },
 };
 
+const smtpKey = (item, n) => item.uuid || `smtp-${n}`;
+
 export default Vue.extend({
   props: {
     form: {
@@ -250,9 +274,11 @@ export default Vue.extend({
   },
 
   data() {
+    const primary = this.form.smtp.findIndex((item) => item.is_primary);
     return {
       data: this.form,
       regDuration,
+      primarySMTP: primary >= 0 ? smtpKey(this.form.smtp[primary], primary) : null,
       // Index of the SMTP block item in the array to show the
       // test form in.
       smtpTestItem: null,
@@ -266,6 +292,9 @@ export default Vue.extend({
       this.data.smtp.push({
         name: '',
         enabled: true,
+        is_primary: this.data.smtp.length === 0,
+        from_email: this.settings['app.from_email'],
+        daily_limit: 0,
         host: '',
         hello_hostname: '',
         port: 587,
@@ -281,6 +310,10 @@ export default Vue.extend({
         tls_skip_verify: false,
       });
 
+      if (this.data.smtp.length === 1) {
+        this.primarySMTP = smtpKey(this.data.smtp[0], 0);
+      }
+
       this.$nextTick(() => {
         const items = document.querySelectorAll('.mail-servers input[name="host"]');
         items[items.length - 1].focus();
@@ -289,6 +322,17 @@ export default Vue.extend({
 
     removeSMTP(i) {
       this.data.smtp.splice(i, 1);
+      if (this.data.smtp.length === 0) {
+        this.primarySMTP = null;
+        return;
+      }
+
+      const primary = this.data.smtp.findIndex((item) => item.is_primary);
+      if (primary >= 0) {
+        this.primarySMTP = smtpKey(this.data.smtp[primary], primary);
+      } else {
+        this.primarySMTP = smtpKey(this.data.smtp[0], 0);
+      }
     },
 
     showSMTPHeaders(i) {
@@ -361,10 +405,25 @@ export default Vue.extend({
         document.querySelector(`.smtp-username-${n}`).focus();
       });
     },
+
+    smtpKey(item, n) {
+      return smtpKey(item, n);
+    },
   },
 
   computed: {
     ...mapState(['settings']),
+  },
+
+  watch: {
+    primarySMTP(value) {
+      const items = this.data.smtp.map((item, n) => ({
+        ...item,
+        // Keep a single primary SMTP selected in the form state.
+        is_primary: smtpKey(item, n) === value,
+      }));
+      this.data.smtp.splice(0, this.data.smtp.length, ...items);
+    },
   },
 });
 </script>

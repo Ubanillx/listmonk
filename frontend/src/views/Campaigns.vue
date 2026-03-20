@@ -77,6 +77,12 @@
               {{ $utils.niceDate(props.row.sendAt, true) }}
             </span>
           </p>
+          <p v-if="props.row.status === 'deferred' && props.row.nextResumeAt">
+            <span class="is-size-7 has-text-grey scheduled">
+              <b-icon icon="calendar-clock" size="is-small" />
+              {{ $utils.niceDate(props.row.nextResumeAt, true) }}
+            </span>
+          </p>
         </div>
       </b-table-column>
       <b-table-column v-slot="props" field="name" :label="$t('globals.fields.name')" width="25%" sortable
@@ -148,6 +154,10 @@
               {{ $utils.formatNumber(stats.sent) }} /
               {{ $utils.formatNumber(stats.toSend) }}
             </span>
+          </p>
+          <p v-if="props.row.unsentCount">
+            <label for="#">{{ $t('campaigns.unsent') }}</label>
+            <span>{{ $utils.formatNumber(props.row.unsentCount) }}</span>
           </p>
           <p>
             <label for="#">{{ $t('globals.terms.bounces') }}</label>
@@ -316,16 +326,16 @@ export default Vue.extend({
       return c.status === 'draft' && !c.sendAt;
     },
     canSchedule(c) {
-      return c.status === 'draft' && c.sendAt;
+      return (c.status === 'draft' || c.status === 'paused' || c.status === 'deferred') && c.sendAt;
     },
     canPause(c) {
       return c.status === 'running';
     },
     canCancel(c) {
-      return c.status === 'running' || c.status === 'paused';
+      return c.status === 'running' || c.status === 'paused' || c.status === 'deferred';
     },
     canResume(c) {
-      return c.status === 'paused';
+      return c.status === 'paused' || c.status === 'deferred';
     },
     isSheduled(c) {
       return c.status === 'scheduled' || c.sendAt !== null;
@@ -449,6 +459,8 @@ export default Vue.extend({
         from_email: c.fromEmail,
         content_type: c.contentType,
         messenger: c.messenger,
+        daily_send_limit: c.dailySendLimit,
+        daily_resume_time: c.dailyResumeTime,
         tags: c.tags,
         template_id: c.templateId,
         body,

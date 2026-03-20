@@ -62,6 +62,11 @@ const (
 	emailMsgr = "email"
 )
 
+type smtpMessengers struct {
+	messengers []manager.Messenger
+	primary    *email.Emailer
+}
+
 // UrlConfig contains various URL constants used in the app.
 type UrlConfig struct {
 	RootURL      string `koanf:"root_url"`
@@ -633,10 +638,12 @@ func initImporter(q *models.Queries, db *sqlx.DB, core *core.Core, i *i18n.I18n,
 }
 
 // initSMTPMessenger initializes the combined and individual SMTP messengers.
-func initSMTPMessengers() []manager.Messenger {
+func initSMTPMessengers() smtpMessengers {
 	var (
 		servers = []email.Server{}
 		out     = []manager.Messenger{}
+		primary *email.Emailer
+		tracker = newSMTPQuotaTracker(queries)
 	)
 
 	// Load the config for multiple SMTP servers.
@@ -654,6 +661,15 @@ func initSMTPMessengers() []manager.Messenger {
 		servers = append(servers, s)
 		lo.Printf("initialized email (SMTP) messenger: %s@%s", item.String("username"), item.String("host"))
 
+		if s.IsPrimary {
+			msgr, err := email.New(s.Name, s)
+			if err != nil {
+				lo.Fatalf("error initializing primary e-mail messenger: %v", err)
+			}
+			msgr.SetQuotaTracker(tracker)
+			primary = msgr
+		}
+
 		// If the server has a name, initialize it as a standalone e-mail messenger
 		// allowing campaigns to select individual SMTPs. In the UI and config, it'll appear as `email / $name`.
 		if s.Name != "" {
@@ -661,6 +677,7 @@ func initSMTPMessengers() []manager.Messenger {
 			if err != nil {
 				lo.Fatalf("error initializing e-mail messenger: %v", err)
 			}
+			msgr.SetQuotaTracker(tracker)
 			out = append(out, msgr)
 		}
 	}
@@ -670,16 +687,20 @@ func initSMTPMessengers() []manager.Messenger {
 	if err != nil {
 		lo.Fatalf("error initializing e-mail messenger: %v", err)
 	}
+	msgr.SetQuotaTracker(tracker)
+	if primary == nil {
+		lo.Fatal("no primary SMTP configured")
+	}
 
 	// If it's just one server, return the default "email" messenger.
 	if len(servers) == 1 {
-		return []manager.Messenger{msgr}
+		return smtpMessengers{messengers: []manager.Messenger{msgr}, primary: primary}
 	}
 
 	// If there are multiple servers, prepend the group "email" to be the first one.
 	out = append([]manager.Messenger{msgr}, out...)
 
-	return out
+	return smtpMessengers{messengers: out, primary: primary}
 }
 
 // initPostbackMessengers initializes and returns all the enabled
@@ -779,7 +800,7 @@ func initNotifs(fs stuffbin.FileSystem, i *i18n.I18n, em *email.Emailer, u *UrlC
 	}
 
 	notifs.Initialize(notifs.Opt{
-		FromEmail:    ko.String("app.from_email"),
+		FromEmail:    em.DefaultFromEmail(),
 		SystemEmails: ko.Strings("app.notify_emails"),
 		ContentType:  contentType,
 	}, tpls, em, lo)

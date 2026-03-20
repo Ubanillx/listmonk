@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -330,10 +331,25 @@ func (a *App) UpdateCampaign(c echo.Context) error {
 		return err
 	}
 
+	user := auth.GetUser(c)
+	o.ListIDs = user.FilterListsByPerm(auth.PermTypeGet|auth.PermTypeManage, o.ListIDs)
+
 	if c, err := a.validateCampaignFields(o); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	} else {
 		o = c
+	}
+
+	if hasRecipients, err := a.core.HasCampaignRecipients(id); err != nil {
+		return err
+	} else if hasRecipients {
+		curListIDs, err := a.core.GetCampaignListIDs(id)
+		if err != nil {
+			return err
+		}
+		if !sameIntSlice(curListIDs, o.ListIDs) {
+			return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("campaigns.cantUpdateListsAfterStart"))
+		}
 	}
 
 	out, err := a.core.UpdateCampaign(id, o.Campaign, o.ListIDs, o.MediaIDs)
@@ -369,7 +385,16 @@ func (a *App) UpdateCampaignStatus(c echo.Context) error {
 
 	// If the campaign is being stopped, send the signal to the manager to stop it in flight.
 	if req.Status == models.CampaignStatusPaused || req.Status == models.CampaignStatusCancelled {
-		a.manager.StopCampaign(id)
+		a.manager.StopCampaign(id, req.Status)
+	}
+	if req.Status == models.CampaignStatusCancelled {
+		if err := a.core.UpdateCampaignRecipientStatuses(id, models.CampaignRecipientStatusCancelled, []string{
+			models.CampaignRecipientStatusPending,
+			models.CampaignRecipientStatusDeferred,
+			models.CampaignRecipientStatusQueued,
+		}); err != nil {
+			return err
+		}
 	}
 
 	return c.JSON(http.StatusOK, okResp{out})
@@ -697,6 +722,22 @@ func (a *App) validateCampaignFields(c campReq) (campReq, error) {
 		}
 	}
 
+	if c.Type == "" {
+		c.Type = models.CampaignTypeRegular
+	}
+
+	if c.Type == models.CampaignTypeRegular && strings.HasPrefix(c.Messenger, emailMsgr) {
+		if c.DailySendLimit < 1 {
+			return c, errors.New(a.i18n.T("campaigns.fieldInvalidDailySendLimit"))
+		}
+		if _, err := time.ParseInLocation(dailyResumeLayout, c.DailyResumeTime, time.Local); err != nil {
+			return c, errors.New(a.i18n.T("campaigns.fieldInvalidDailyResumeTime"))
+		}
+	} else {
+		c.DailySendLimit = 0
+		c.DailyResumeTime = "09:00"
+	}
+
 	camp := models.Campaign{Body: c.Body, TemplateBody: tplTag}
 	if err := c.CompileTemplate(a.manager.TemplateFuncs(&camp)); err != nil {
 		return c, errors.New(a.i18n.Ts("campaigns.fieldInvalidBody", "error", err.Error()))
@@ -816,5 +857,18 @@ func (a *App) checkCampaignPerm(types auth.PermType, id int, c echo.Context) err
 func canEditCampaign(status string) bool {
 	return status == models.CampaignStatusDraft ||
 		status == models.CampaignStatusPaused ||
-		status == models.CampaignStatusScheduled
+		status == models.CampaignStatusScheduled ||
+		status == models.CampaignStatusDeferred
+}
+
+func sameIntSlice(a, b []int) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	left := append([]int(nil), a...)
+	right := append([]int(nil), b...)
+	slices.Sort(left)
+	slices.Sort(right)
+	return slices.Equal(left, right)
 }

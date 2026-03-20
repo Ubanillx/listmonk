@@ -632,7 +632,7 @@ func (a *App) doForgotPassword(c echo.Context) error {
 
 	// Send the email.
 	if err := a.emailMsgr.Push(models.Message{
-		From:    a.cfg.FromEmail,
+		From:    a.emailMsgr.DefaultFromEmail(),
 		To:      []string{email},
 		Subject: subject,
 		Body:    body,

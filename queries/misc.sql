@@ -15,6 +15,18 @@ UPDATE settings AS s SET value = c.value
 -- name: update-settings-by-key
 UPDATE settings SET value = $2, updated_at = NOW() WHERE key = $1;
 
+-- name: get-smtp-daily-usage
+SELECT COALESCE((
+    SELECT sent_count FROM smtp_daily_usage WHERE smtp_uuid = $1 AND usage_date = $2::DATE
+), 0) AS sent_count;
+
+-- name: increment-smtp-daily-usage
+INSERT INTO smtp_daily_usage (smtp_uuid, usage_date, sent_count, updated_at)
+VALUES ($1, $2::DATE, 1, NOW())
+ON CONFLICT (smtp_uuid, usage_date) DO UPDATE
+SET sent_count = smtp_daily_usage.sent_count + 1,
+    updated_at = NOW();
+
 -- name: get-db-info
 SELECT JSON_BUILD_OBJECT('version', (SELECT VERSION()),
                         'size_mb', (SELECT ROUND(pg_database_size((SELECT CURRENT_DATABASE()))/(1024^2)))) AS info;

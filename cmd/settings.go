@@ -103,9 +103,19 @@ func (a *App) UpdateSettings(c echo.Context) error {
 
 	// There should be at least one SMTP block that's enabled.
 	has := false
+	numPrimary := 0
 	for i, s := range set.SMTP {
 		if s.Enabled {
 			has = true
+		}
+
+		set.SMTP[i].FromEmail = strings.TrimSpace(s.FromEmail)
+		if s.IsPrimary {
+			if !s.Enabled {
+				return echo.NewHTTPError(http.StatusBadRequest,
+					a.i18n.T("settings.errorPrimarySMTPDisabled"))
+			}
+			numPrimary++
 		}
 
 		// Sanitize and normalize the SMTP server name.
@@ -135,6 +145,22 @@ func (a *App) UpdateSettings(c echo.Context) error {
 		// Ensure the HOST is trimmed of any whitespace.
 		// This is a common mistake when copy-pasting SMTP settings.
 		set.SMTP[i].Host = strings.TrimSpace(s.Host)
+		if s.DailyLimit < 0 {
+			return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("settings.errorSMTPDailyLimit"))
+		}
+
+		if s.Enabled {
+			if set.SMTP[i].FromEmail == "" {
+				return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("settings.errorSMTPFromEmail"))
+			}
+			if !reFromAddress.Match([]byte(set.SMTP[i].FromEmail)) {
+				em, err := a.importer.SanitizeEmail(set.SMTP[i].FromEmail)
+				if err != nil {
+					return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("settings.errorSMTPFromEmail"))
+				}
+				set.SMTP[i].FromEmail = em
+			}
+		}
 
 		// If there's no password coming in from the frontend, copy the existing
 		// password by matching the UUID.
@@ -148,6 +174,12 @@ func (a *App) UpdateSettings(c echo.Context) error {
 	}
 	if !has {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("settings.errorNoSMTP"))
+	}
+	if numPrimary == 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("settings.errorNoPrimarySMTP"))
+	}
+	if numPrimary > 1 {
+		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("settings.errorMultiplePrimarySMTP"))
 	}
 
 	// Always remove the trailing slash from the app root URL.
@@ -389,7 +421,7 @@ func (a *App) TestSMTPSettings(c echo.Context) error {
 	}
 
 	m := models.Message{}
-	m.From = a.cfg.FromEmail
+	m.From = req.FromEmail
 	m.To = []string{to}
 	m.Subject = a.i18n.T("settings.smtp.testConnection")
 	m.Body = b.Bytes()

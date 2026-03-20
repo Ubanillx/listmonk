@@ -29,7 +29,7 @@ type Settings struct {
 	AppMessageSlidingWindowRate     int    `json:"app.message_sliding_window_rate"`
 
 	PrivacyIndividualTracking bool     `json:"privacy.individual_tracking"`
-	PrivacyDisableTracking   bool     `json:"privacy.disable_tracking"`
+	PrivacyDisableTracking    bool     `json:"privacy.disable_tracking"`
 	PrivacyUnsubHeader        bool     `json:"privacy.unsubscribe_header"`
 	PrivacyAllowBlocklist     bool     `json:"privacy.allow_blocklist"`
 	PrivacyAllowPreferences   bool     `json:"privacy.allow_preferences"`
@@ -84,6 +84,9 @@ type Settings struct {
 		Name          string              `json:"name"`
 		UUID          string              `json:"uuid"`
 		Enabled       bool                `json:"enabled"`
+		IsPrimary     bool                `json:"is_primary"`
+		FromEmail     string              `json:"from_email"`
+		DailyLimit    int                 `json:"daily_limit"`
 		Host          string              `json:"host"`
 		HelloHostname string              `json:"hello_hostname"`
 		Port          int                 `json:"port"`

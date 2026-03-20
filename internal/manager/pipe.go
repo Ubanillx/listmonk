@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -10,15 +11,22 @@ import (
 	"github.com/paulbellamy/ratecounter"
 )
 
+const (
+	stopReasonNone int32 = iota
+	stopReasonPause
+	stopReasonDeferred
+	stopReasonCancelled
+)
+
 type pipe struct {
 	camp       *models.Campaign
 	rate       *ratecounter.RateCounter
 	wg         *sync.WaitGroup
 	sent       atomic.Int64
-	lastID     atomic.Uint64
 	errors     atomic.Uint64
 	stopped    atomic.Bool
 	withErrors atomic.Bool
+	stopReason atomic.Int32
 
 	m *Manager
 }
@@ -76,6 +84,10 @@ func (m *Manager) newPipe(c *models.Campaign) (*pipe, error) {
 func (p *pipe) NextSubscribers() (bool, error) {
 	// Fetch the next batch of subscribers from a 'running' campaign.
 	subs, err := p.m.store.NextSubscribers(p.camp.ID, p.m.cfg.BatchSize)
+	if errors.Is(err, ErrCampaignDeferred) {
+		p.Defer()
+		return false, nil
+	}
 	if err != nil {
 		return false, fmt.Errorf("error fetching campaign subscribers (%s): %v", p.camp.Name, err)
 	}
@@ -146,14 +158,28 @@ func (p *pipe) OnError() {
 		return
 	}
 
-	p.Stop(true)
+	p.Stop(stopReasonPause, true)
 	p.m.log.Printf("error count exceeded %d. pausing campaign %s", p.m.cfg.MaxSendErrors, p.camp.Name)
+}
+
+func (p *pipe) Defer() {
+	if p.stopped.Load() {
+		return
+	}
+
+	next := nextResumeAt(p.camp.DailyResumeTime, time.Now())
+	if err := p.m.store.DeferCampaign(p.camp.ID, next); err != nil {
+		p.m.log.Printf("error deferring campaign (%s): %v", p.camp.Name, err)
+		return
+	}
+
+	p.Stop(stopReasonDeferred, false)
 }
 
 // Stop "marks" a campaign as stopped. It doesn't actually stop the processing
 // of messages. That happens when every queued message in the campaign is processed,
 // marking .wg, the waitgroup counter as done. That triggers cleanup().
-func (p *pipe) Stop(withErrors bool) {
+func (p *pipe) Stop(reason int32, withErrors bool) {
 	// Already stopped.
 	if p.stopped.Load() {
 		return
@@ -163,14 +189,15 @@ func (p *pipe) Stop(withErrors bool) {
 		p.withErrors.Store(true)
 	}
 
+	p.stopReason.Store(reason)
 	p.stopped.Store(true)
 }
 
 // newMessage returns a campaign message while internally incrementing the
 // number of messages in the pipe wait group so that the status of every
 // message can be atomically tracked.
-func (p *pipe) newMessage(s models.Subscriber) (CampaignMessage, error) {
-	msg, err := p.m.NewCampaignMessage(p.camp, s)
+func (p *pipe) newMessage(s models.CampaignSubscriber) (CampaignMessage, error) {
+	msg, err := p.m.NewCampaignMessage(p.camp, s.Subscriber)
 	if err != nil {
 		return msg, err
 	}
@@ -191,13 +218,11 @@ func (p *pipe) cleanup() {
 		p.m.pipesMut.Unlock()
 	}()
 
-	// Update campaign's 'sent count.
-	if err := p.m.store.UpdateCampaignCounts(p.camp.ID, 0, int(p.sent.Load()), int(p.lastID.Load())); err != nil {
-		p.m.log.Printf("error updating campaign counts (%s): %v", p.camp.Name, err)
-	}
-
 	// The campaign was auto-paused due to errors.
 	if p.withErrors.Load() {
+		if err := p.m.store.ResetCampaignQueuedRecipients(p.camp.ID, models.CampaignRecipientStatusPending); err != nil {
+			p.m.log.Printf("error resetting queued recipients (%s): %v", p.camp.Name, err)
+		}
 		if err := p.m.store.UpdateCampaignStatus(p.camp.ID, models.CampaignStatusPaused); err != nil {
 			p.m.log.Printf("error updating campaign (%s) status to %s: %v", p.camp.Name, models.CampaignStatusPaused, err)
 		} else {
@@ -210,6 +235,24 @@ func (p *pipe) cleanup() {
 
 	// The campaign was manually stopped (pause, cancel).
 	if p.stopped.Load() {
+		switch p.stopReason.Load() {
+		case stopReasonPause:
+			if err := p.m.store.ResetCampaignQueuedRecipients(p.camp.ID, models.CampaignRecipientStatusPending); err != nil {
+				p.m.log.Printf("error resetting queued recipients (%s): %v", p.camp.Name, err)
+			}
+		case stopReasonDeferred:
+			if err := p.m.store.ResetCampaignQueuedRecipients(p.camp.ID, models.CampaignRecipientStatusDeferred); err != nil {
+				p.m.log.Printf("error deferring queued recipients (%s): %v", p.camp.Name, err)
+			}
+		case stopReasonCancelled:
+			if err := p.m.store.UpdateCampaignRecipientStatuses(p.camp.ID, models.CampaignRecipientStatusCancelled, []string{
+				models.CampaignRecipientStatusPending,
+				models.CampaignRecipientStatusDeferred,
+				models.CampaignRecipientStatusQueued,
+			}); err != nil {
+				p.m.log.Printf("error cancelling queued recipients (%s): %v", p.camp.Name, err)
+			}
+		}
 		p.m.log.Printf("stop processing campaign (%s)", p.camp.Name)
 		return
 	}
@@ -223,7 +266,7 @@ func (p *pipe) cleanup() {
 	}
 
 	// If a running campaign has exhausted subscribers, it's finished.
-	if c.Status == models.CampaignStatusRunning || c.Status == models.CampaignStatusScheduled {
+	if c.Status == models.CampaignStatusRunning || c.Status == models.CampaignStatusScheduled || c.Status == models.CampaignStatusDeferred {
 		c.Status = models.CampaignStatusFinished
 		if err := p.m.store.UpdateCampaignStatus(p.camp.ID, models.CampaignStatusFinished); err != nil {
 			p.m.log.Printf("error finishing campaign (%s): %v", p.camp.Name, err)
@@ -236,4 +279,19 @@ func (p *pipe) cleanup() {
 
 	// Notify admin.
 	_ = p.m.sendNotif(c, c.Status, "")
+}
+
+func nextResumeAt(hhmm string, now time.Time) time.Time {
+	base := now.In(time.Local)
+	t, err := time.ParseInLocation("15:04", hhmm, time.Local)
+	if err != nil {
+		return base.Add(24 * time.Hour).Truncate(time.Minute)
+	}
+
+	next := time.Date(base.Year(), base.Month(), base.Day(), t.Hour(), t.Minute(), 0, 0, time.Local)
+	if !next.After(base) {
+		next = next.Add(24 * time.Hour)
+	}
+
+	return next
 }

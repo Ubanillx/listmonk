@@ -73,13 +73,21 @@
                     :placeholder="$t('campaigns.subject')" required />
                 </b-field>
 
-                <b-field :label="$t('campaigns.fromAddress')" label-position="on-border">
+                <b-field v-if="!isSMTPMessenger" :label="$t('campaigns.fromAddress')" label-position="on-border">
                   <b-input :maxlength="200" v-model="form.fromEmail" name="from_email" :disabled="!canEdit"
                     :placeholder="$t('campaigns.fromAddressPlaceholder')" required />
                 </b-field>
+                <b-field v-else :label="$t('campaigns.fromAddress')" label-position="on-border"
+                  :message="smtpFromHint">
+                  <b-input :value="smtpFromPreview" disabled />
+                </b-field>
 
-                <list-selector v-model="form.lists" :selected="form.lists" :all="lists.results" :disabled="!canEdit"
+                <list-selector v-model="form.lists" :selected="form.lists" :all="lists.results" :disabled="!canEdit || listsLocked"
                   :label="$t('globals.terms.lists')" :placeholder="$t('campaigns.sendToLists')" />
+
+                <p v-if="listsLocked" class="help is-info">
+                  {{ $t('campaigns.listsLockedHelp') }}
+                </p>
 
                 <div class="columns">
                   <div class="column is-6">
@@ -112,6 +120,27 @@
                     </b-field>
                   </div>
                 </div>
+
+                <div v-if="isLimitedSMTPCampaign" class="columns">
+                  <div class="column is-6">
+                    <b-field :label="$t('campaigns.dailySendLimit')" label-position="on-border"
+                      :message="$t('campaigns.dailySendLimitHelp')">
+                      <b-numberinput v-model="form.dailySendLimit" :disabled="!canEdit" min="1" max="100000000"
+                        type="is-light" controls-position="compact" required />
+                    </b-field>
+                  </div>
+                  <div class="column is-6">
+                    <b-field :label="$t('campaigns.dailyResumeTime')" label-position="on-border"
+                      :message="$t('campaigns.dailyResumeTimeHelp')">
+                      <b-input v-model="form.dailyResumeTime" :disabled="!canEdit" placeholder="09:00"
+                        pattern="^([01]\\d|2[0-3]):([0-5]\\d)$" required />
+                    </b-field>
+                  </div>
+                </div>
+
+                <p v-if="data.status === 'deferred' && data.nextResumeAt" class="help is-warning">
+                  {{ $t('campaigns.nextResumeAt') }}: {{ $utils.niceDate(data.nextResumeAt, true) }}
+                </p>
 
                 <b-field :label="$t('globals.terms.tags')" label-position="on-border">
                   <b-taginput v-model="form.tags" name="tags" :disabled="!canEdit" ellipsis icon="tag-outline"
@@ -374,6 +403,8 @@ export default Vue.extend({
         headers: [],
         attribsStr: '{}',
         messenger: 'email',
+        dailySendLimit: 1000,
+        dailyResumeTime: '09:00',
         lists: [],
         tags: [],
         sendAt: null,
@@ -547,6 +578,8 @@ export default Vue.extend({
         subject: this.form.subject,
         lists: this.form.lists.map((l) => l.id),
         from_email: this.form.fromEmail,
+        daily_send_limit: this.isLimitedSMTPCampaign ? this.form.dailySendLimit : 0,
+        daily_resume_time: this.isLimitedSMTPCampaign ? this.form.dailyResumeTime : '09:00',
         messenger: this.form.messenger,
         type: 'regular',
         headers: this.form.headers,
@@ -572,6 +605,8 @@ export default Vue.extend({
         subject: this.form.subject,
         lists: this.form.lists.map((l) => l.id),
         from_email: this.form.fromEmail,
+        daily_send_limit: this.isLimitedSMTPCampaign ? this.form.dailySendLimit : 0,
+        daily_resume_time: this.isLimitedSMTPCampaign ? this.form.dailyResumeTime : '09:00',
         content_type: this.form.content.contentType,
         messenger: this.form.messenger,
         type: 'regular',
@@ -595,6 +630,8 @@ export default Vue.extend({
         subject: this.form.subject,
         lists: this.form.lists.map((l) => l.id),
         from_email: this.form.fromEmail,
+        daily_send_limit: this.isLimitedSMTPCampaign ? this.form.dailySendLimit : 0,
+        daily_resume_time: this.isLimitedSMTPCampaign ? this.form.dailyResumeTime : '09:00',
         messenger: this.form.messenger,
         type: 'regular',
         tags: this.form.tags,
@@ -696,11 +733,15 @@ export default Vue.extend({
 
     canEdit() {
       return this.isNew
-        || this.data.status === 'draft' || this.data.status === 'scheduled' || this.data.status === 'paused';
+        || this.data.status === 'draft'
+        || this.data.status === 'scheduled'
+        || this.data.status === 'paused'
+        || this.data.status === 'deferred';
     },
 
     canSchedule() {
-      return (this.data.status === 'draft' || this.data.status === 'paused') && (this.form.sendLater && this.form.sendAtDate);
+      return (this.data.status === 'draft' || this.data.status === 'paused' || this.data.status === 'deferred')
+        && (this.form.sendLater && this.form.sendAtDate);
     },
 
     canUnSchedule() {
@@ -708,7 +749,7 @@ export default Vue.extend({
     },
 
     canStart() {
-      return (this.data.status === 'draft' || this.data.status === 'paused') && !this.form.sendLater;
+      return (this.data.status === 'draft' || this.data.status === 'paused' || this.data.status === 'deferred') && !this.form.sendLater;
     },
 
     canArchive() {
@@ -729,6 +770,34 @@ export default Vue.extend({
 
     otherMessengers() {
       return this.serverConfig.messengers.filter((m) => m !== 'email' && !m.startsWith('email-'));
+    },
+
+    isSMTPMessenger() {
+      return this.form.messenger === 'email' || !!this.form.messenger?.startsWith('email-');
+    },
+
+    isLimitedSMTPCampaign() {
+      return this.isSMTPMessenger && this.data.type !== 'optin';
+    },
+
+    listsLocked() {
+      return this.isEditing && this.data.toSend > 0;
+    },
+
+    smtpFromHint() {
+      if (this.form.messenger === 'email') {
+        return this.$t('campaigns.smtpFromHintPooled');
+      }
+
+      return this.$t('campaigns.smtpFromHintNamed', { messenger: this.form.messenger });
+    },
+
+    smtpFromPreview() {
+      if (this.form.messenger === 'email') {
+        return this.$t('campaigns.smtpFromPreviewPooled');
+      }
+
+      return this.$t('campaigns.smtpFromPreviewNamed', { messenger: this.form.messenger });
     },
   },
 

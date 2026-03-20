@@ -1,12 +1,16 @@
 package main
 
 import (
+	"strings"
+	"time"
+
 	"github.com/gofrs/uuid/v5"
 	"github.com/knadh/listmonk/internal/core"
 	"github.com/knadh/listmonk/internal/manager"
 	"github.com/knadh/listmonk/internal/media"
 	"github.com/knadh/listmonk/models"
 	"github.com/lib/pq"
+	null "gopkg.in/volatiletech/null.v6"
 )
 
 // store implements DataSource over the primary
@@ -17,12 +21,23 @@ type store struct {
 	media   media.Store
 }
 
-type runningCamp struct {
-	CampaignID       int    `db:"campaign_id"`
-	CampaignType     string `db:"campaign_type"`
-	LastSubscriberID int    `db:"last_subscriber_id"`
-	MaxSubscriberID  int    `db:"max_subscriber_id"`
-	ListID           int    `db:"list_id"`
+type campaignSendState struct {
+	CampaignID      int       `db:"campaign_id"`
+	CampaignType    string    `db:"campaign_type"`
+	Status          string    `db:"status"`
+	Messenger       string    `db:"messenger"`
+	DailySendLimit  int       `db:"daily_send_limit"`
+	DailyResumeTime string    `db:"daily_resume_time"`
+	NextResumeAt    null.Time `db:"next_resume_at"`
+	DailySentCount  int       `db:"daily_sent_count"`
+	QueuedCount     int       `db:"queued_count"`
+	UnsentCount     int       `db:"unsent_count"`
+}
+
+type campaignProgress struct {
+	ToSend    int       `db:"to_send"`
+	Sent      int       `db:"sent"`
+	StartedAt null.Time `db:"started_at"`
 }
 
 func newManagerStore(q *models.Queries, c *core.Core, m media.Store) *store {
@@ -34,35 +49,90 @@ func newManagerStore(q *models.Queries, c *core.Core, m media.Store) *store {
 }
 
 // NextCampaigns retrieves active campaigns ready to be processed excluding
-// campaigns that are also being processed. Additionally, it takes a map of campaignID:sentCount
-// of campaigns that are being processed and updates them in the DB.
-func (s *store) NextCampaigns(currentIDs []int64, sentCounts []int64) ([]*models.Campaign, error) {
+// campaigns that are also being processed.
+func (s *store) NextCampaigns(currentIDs []int64) ([]*models.Campaign, error) {
 	var out []*models.Campaign
-	err := s.queries.NextCampaigns.Select(&out, pq.Int64Array(currentIDs), pq.Int64Array(sentCounts))
-	return out, err
-}
-
-// NextSubscribers retrieves a subset of subscribers of a given campaign.
-// Since batches are processed sequentially, the retrieval is ordered by ID,
-// and every batch takes the last ID of the last batch and fetches the next
-// batch above that.
-func (s *store) NextSubscribers(campID, limit int) ([]models.Subscriber, error) {
-	var camps []runningCamp
-	if err := s.queries.GetRunningCampaign.Select(&camps, campID); err != nil {
+	if err := s.queries.NextCampaigns.Select(&out, pq.Int64Array(currentIDs)); err != nil {
 		return nil, err
 	}
 
-	var listIDs []int
-	for _, c := range camps {
-		listIDs = append(listIDs, c.ListID)
+	ready := make([]*models.Campaign, 0, len(out))
+	for _, c := range out {
+		if c.Status == models.CampaignStatusScheduled || c.Status == models.CampaignStatusDeferred {
+			if _, err := s.queries.SetCampaignRunning.Exec(c.ID); err != nil {
+				return nil, err
+			}
+			c.Status = models.CampaignStatusRunning
+			c.NextResumeAt.Valid = false
+		}
+
+		hasRecipients := false
+		if err := s.queries.HasCampaignRecipients.Get(&hasRecipients, c.ID); err != nil {
+			return nil, err
+		}
+		if !hasRecipients {
+			if _, err := s.queries.EnsureCampaignRecipients.Exec(c.ID); err != nil {
+				return nil, err
+			}
+		}
+
+		if _, err := s.queries.ResetCampaignQueuedRecipients.Exec(c.ID, models.CampaignRecipientStatusPending); err != nil {
+			return nil, err
+		}
+
+		var prog campaignProgress
+		if err := s.queries.SyncCampaignProgress.Get(&prog, c.ID); err != nil {
+			return nil, err
+		}
+		c.ToSend = prog.ToSend
+		c.Sent = prog.Sent
+		c.StartedAt = prog.StartedAt
+		c.UnsentCount = max(0, prog.ToSend-prog.Sent)
+		if c.UnsentCount == 0 {
+			if err := s.UpdateCampaignStatus(c.ID, models.CampaignStatusFinished); err != nil {
+				return nil, err
+			}
+			continue
+		}
+
+		ready = append(ready, c)
 	}
 
-	if len(listIDs) == 0 {
+	return ready, nil
+}
+
+// NextSubscribers retrieves a subset of subscribers of a given campaign.
+// Since batches are processed sequentially, the retrieval is ordered by subscriber ID.
+func (s *store) NextSubscribers(campID, limit int) ([]models.CampaignSubscriber, error) {
+	var st campaignSendState
+	if err := s.queries.GetCampaignSendState.Get(&st, campID, currentLocalDate()); err != nil {
+		return nil, err
+	}
+
+	if st.Status != models.CampaignStatusRunning {
 		return nil, nil
 	}
 
-	var out []models.Subscriber
-	err := s.queries.NextCampaignSubscribers.Select(&out, camps[0].CampaignID, camps[0].CampaignType, camps[0].LastSubscriberID, camps[0].MaxSubscriberID, pq.Array(listIDs), limit)
+	if limit < 1 {
+		limit = 1
+	}
+
+	if st.CampaignType == models.CampaignTypeRegular && strings.HasPrefix(st.Messenger, emailMsgr) && st.DailySendLimit > 0 {
+		remaining := st.DailySendLimit - st.DailySentCount - st.QueuedCount
+		if remaining <= 0 {
+			return nil, manager.ErrCampaignDeferred
+		}
+		if remaining < limit {
+			limit = remaining
+		}
+	}
+
+	var out []models.CampaignSubscriber
+	err := s.queries.NextCampaignSubscribers.Select(&out,
+		campID,
+		pq.Array([]string{models.CampaignRecipientStatusPending, models.CampaignRecipientStatusDeferred}),
+		limit,
+	)
 	return out, err
 }
 
@@ -83,6 +153,39 @@ func (s *store) UpdateCampaignStatus(campID int, status string) error {
 func (s *store) UpdateCampaignCounts(campID int, toSend int, sent int, lastSubID int) error {
 	_, err := s.queries.UpdateCampaignCounts.Exec(campID, toSend, sent, lastSubID)
 	return err
+}
+
+func (s *store) MarkCampaignMessageSent(campID int, subID int) error {
+	if _, err := s.queries.MarkCampaignRecipientSent.Exec(campID, subID); err != nil {
+		return err
+	}
+	if _, err := s.queries.IncrementCampaignDailyUsage.Exec(campID, currentLocalDate()); err != nil {
+		return err
+	}
+	_, err := s.queries.UpdateCampaignCounts.Exec(campID, 0, 1, 0)
+	return err
+}
+
+func (s *store) MarkCampaignRecipientStatus(campID int, subID int, status string) error {
+	_, err := s.queries.MarkCampaignRecipientStatus.Exec(campID, subID, status)
+	return err
+}
+
+func (s *store) ResetCampaignQueuedRecipients(campID int, toStatus string) error {
+	_, err := s.queries.ResetCampaignQueuedRecipients.Exec(campID, toStatus)
+	return err
+}
+
+func (s *store) UpdateCampaignRecipientStatuses(campID int, toStatus string, fromStatuses []string) error {
+	_, err := s.queries.UpdateCampaignRecipientStatuses.Exec(campID, toStatus, pq.Array(fromStatuses))
+	return err
+}
+
+func (s *store) DeferCampaign(campID int, nextResumeAt time.Time) error {
+	if _, err := s.queries.SetCampaignDeferred.Exec(campID, nextResumeAt); err != nil {
+		return err
+	}
+	return s.UpdateCampaignRecipientStatuses(campID, models.CampaignRecipientStatusDeferred, []string{models.CampaignRecipientStatusPending})
 }
 
 // GetAttachment fetches a media attachment blob.

@@ -20,6 +20,7 @@ const (
 	CampaignStatusScheduled     = "scheduled"
 	CampaignStatusRunning       = "running"
 	CampaignStatusPaused        = "paused"
+	CampaignStatusDeferred      = "deferred"
 	CampaignStatusFinished      = "finished"
 	CampaignStatusCancelled     = "cancelled"
 	CampaignTypeRegular         = "regular"
@@ -50,6 +51,10 @@ type Campaign struct {
 	SendAt            null.Time       `db:"send_at" json:"send_at"`
 	Status            string          `db:"status" json:"status"`
 	ContentType       string          `db:"content_type" json:"content_type"`
+	DailySendLimit    int             `db:"daily_send_limit" json:"daily_send_limit"`
+	DailyResumeTime   string          `db:"daily_resume_time" json:"daily_resume_time"`
+	NextResumeAt      null.Time       `db:"next_resume_at" json:"next_resume_at"`
+	UnsentCount       int             `db:"unsent_count" json:"unsent_count"`
 	Tags              pq.StringArray  `db:"tags" json:"tags"`
 	Headers           Headers         `db:"headers" json:"headers"`
 	Attribs           JSON            `db:"attribs" json:"attribs"`
@@ -98,6 +103,14 @@ type CampaignMeta struct {
 	ToSend    int       `db:"to_send" json:"to_send"`
 	Sent      int       `db:"sent" json:"sent"`
 }
+
+const (
+	CampaignRecipientStatusPending   = "pending"
+	CampaignRecipientStatusQueued    = "queued"
+	CampaignRecipientStatusDeferred  = "deferred"
+	CampaignRecipientStatusSent      = "sent"
+	CampaignRecipientStatusCancelled = "cancelled"
+)
 
 // GetIDs returns the list of campaign IDs.
 func (camps Campaigns) GetIDs() []int {

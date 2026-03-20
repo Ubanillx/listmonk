@@ -3,8 +3,9 @@ DROP TYPE IF EXISTS list_optin CASCADE; CREATE TYPE list_optin AS ENUM ('single'
 DROP TYPE IF EXISTS list_status CASCADE; CREATE TYPE list_status AS ENUM ('active', 'archived');
 DROP TYPE IF EXISTS subscriber_status CASCADE; CREATE TYPE subscriber_status AS ENUM ('enabled', 'disabled', 'blocklisted');
 DROP TYPE IF EXISTS subscription_status CASCADE; CREATE TYPE subscription_status AS ENUM ('unconfirmed', 'confirmed', 'unsubscribed');
-DROP TYPE IF EXISTS campaign_status CASCADE; CREATE TYPE campaign_status AS ENUM ('draft', 'running', 'scheduled', 'paused', 'cancelled', 'finished');
+DROP TYPE IF EXISTS campaign_status CASCADE; CREATE TYPE campaign_status AS ENUM ('draft', 'running', 'scheduled', 'paused', 'deferred', 'cancelled', 'finished');
 DROP TYPE IF EXISTS campaign_type CASCADE; CREATE TYPE campaign_type AS ENUM ('regular', 'optin');
+DROP TYPE IF EXISTS campaign_recipient_status CASCADE; CREATE TYPE campaign_recipient_status AS ENUM ('pending', 'queued', 'deferred', 'sent', 'cancelled');
 DROP TYPE IF EXISTS content_type CASCADE; CREATE TYPE content_type AS ENUM ('richtext', 'html', 'plain', 'markdown', 'visual');
 DROP TYPE IF EXISTS bounce_type CASCADE; CREATE TYPE bounce_type AS ENUM ('soft', 'hard', 'complaint');
 DROP TYPE IF EXISTS template_type CASCADE; CREATE TYPE template_type AS ENUM ('campaign', 'campaign_visual', 'tx');
@@ -106,6 +107,9 @@ CREATE TABLE campaigns (
     headers          JSONB NOT NULL DEFAULT '[]',
     attribs          JSONB NOT NULL DEFAULT '{}',
     status           campaign_status NOT NULL DEFAULT 'draft',
+    daily_send_limit INT NOT NULL DEFAULT 0,
+    daily_resume_time TEXT NOT NULL DEFAULT '09:00',
+    next_resume_at   TIMESTAMP WITH TIME ZONE,
     tags             VARCHAR(100)[],
 
     -- The subscription statuses of subscribers to which a campaign will be sent.
@@ -134,6 +138,7 @@ CREATE TABLE campaigns (
 );
 DROP INDEX IF EXISTS idx_camps_status; CREATE INDEX idx_camps_status ON campaigns(status);
 DROP INDEX IF EXISTS idx_camps_name; CREATE INDEX idx_camps_name ON campaigns(name);
+DROP INDEX IF EXISTS idx_camps_next_resume_at; CREATE INDEX idx_camps_next_resume_at ON campaigns(next_resume_at);
 DROP INDEX IF EXISTS idx_camps_created_at; CREATE INDEX idx_camps_created_at ON campaigns(created_at);
 DROP INDEX IF EXISTS idx_camps_updated_at; CREATE INDEX idx_camps_updated_at ON campaigns(updated_at);
 
@@ -151,6 +156,37 @@ CREATE TABLE campaign_lists (
 CREATE UNIQUE INDEX ON campaign_lists (campaign_id, list_id);
 DROP INDEX IF EXISTS idx_camp_lists_camp_id; CREATE INDEX idx_camp_lists_camp_id ON campaign_lists(campaign_id);
 DROP INDEX IF EXISTS idx_camp_lists_list_id; CREATE INDEX idx_camp_lists_list_id ON campaign_lists(list_id);
+
+DROP TABLE IF EXISTS campaign_recipients CASCADE;
+CREATE TABLE campaign_recipients (
+    campaign_id    INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    subscriber_id  INTEGER NOT NULL REFERENCES subscribers(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    status         campaign_recipient_status NOT NULL DEFAULT 'pending',
+    sent_at        TIMESTAMP WITH TIME ZONE,
+    created_at     TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at     TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    PRIMARY KEY (campaign_id, subscriber_id)
+);
+DROP INDEX IF EXISTS idx_camp_recipients_status; CREATE INDEX idx_camp_recipients_status ON campaign_recipients(campaign_id, status, subscriber_id);
+DROP INDEX IF EXISTS idx_camp_recipients_sub_id; CREATE INDEX idx_camp_recipients_sub_id ON campaign_recipients(subscriber_id);
+
+DROP TABLE IF EXISTS smtp_daily_usage CASCADE;
+CREATE TABLE smtp_daily_usage (
+    smtp_uuid    uuid NOT NULL,
+    usage_date   DATE NOT NULL,
+    sent_count   INT NOT NULL DEFAULT 0,
+    updated_at   TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    PRIMARY KEY (smtp_uuid, usage_date)
+);
+
+DROP TABLE IF EXISTS campaign_daily_usage CASCADE;
+CREATE TABLE campaign_daily_usage (
+    campaign_id  INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    usage_date   DATE NOT NULL,
+    sent_count   INT NOT NULL DEFAULT 0,
+    updated_at   TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    PRIMARY KEY (campaign_id, usage_date)
+);
 
 DROP TABLE IF EXISTS campaign_views CASCADE;
 CREATE TABLE campaign_views (
@@ -278,8 +314,8 @@ INSERT INTO settings (key, value) VALUES
     ('upload.s3.bucket_type', '"public"'),
     ('upload.s3.expiry', '"167h"'),
     ('smtp',
-        '[{"enabled":true, "host":"smtp.yoursite.com","port":25,"auth_protocol":"cram","username":"username","password":"password","hello_hostname":"","max_conns":10,"idle_timeout":"15s","wait_timeout":"5s","max_msg_retries":2,"tls_type":"STARTTLS","tls_skip_verify":false,"email_headers":[]},
-          {"enabled":false, "host":"smtp.gmail.com","port":465,"auth_protocol":"login","username":"username@gmail.com","password":"password","hello_hostname":"","max_conns":10,"idle_timeout":"15s","wait_timeout":"5s","max_msg_retries":2,"tls_type":"TLS","tls_skip_verify":false,"email_headers":[]}]'),
+        '[{"enabled":true, "is_primary":true, "from_email":"listmonk <noreply@listmonk.yoursite.com>", "daily_limit":0, "host":"smtp.yoursite.com","port":25,"auth_protocol":"cram","username":"username","password":"password","hello_hostname":"","max_conns":10,"idle_timeout":"15s","wait_timeout":"5s","max_msg_retries":2,"tls_type":"STARTTLS","tls_skip_verify":false,"email_headers":[]},
+          {"enabled":false, "is_primary":false, "from_email":"listmonk <noreply@listmonk.yoursite.com>", "daily_limit":0, "host":"smtp.gmail.com","port":465,"auth_protocol":"login","username":"username@gmail.com","password":"password","hello_hostname":"","max_conns":10,"idle_timeout":"15s","wait_timeout":"5s","max_msg_retries":2,"tls_type":"TLS","tls_skip_verify":false,"email_headers":[]}]'),
     ('messengers', '[]'),
     ('bounce.enabled', 'false'),
     ('bounce.webhooks_enabled', 'false'),

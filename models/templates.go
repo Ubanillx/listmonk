@@ -59,14 +59,16 @@ func (t *Template) Compile(f template.FuncMap) error {
 }
 
 type CampaignStats struct {
-	ID        int       `db:"id" json:"id"`
-	Status    string    `db:"status" json:"status"`
-	ToSend    int       `db:"to_send" json:"to_send"`
-	Sent      int       `db:"sent" json:"sent"`
-	Started   null.Time `db:"started_at" json:"started_at"`
-	UpdatedAt null.Time `db:"updated_at" json:"updated_at"`
-	Rate      int       `json:"rate"`
-	NetRate   int       `json:"net_rate"`
+	ID           int       `db:"id" json:"id"`
+	Status       string    `db:"status" json:"status"`
+	ToSend       int       `db:"to_send" json:"to_send"`
+	Sent         int       `db:"sent" json:"sent"`
+	Unsent       int       `db:"unsent_count" json:"unsent_count"`
+	Started      null.Time `db:"started_at" json:"started_at"`
+	UpdatedAt    null.Time `db:"updated_at" json:"updated_at"`
+	NextResumeAt null.Time `db:"next_resume_at" json:"next_resume_at"`
+	Rate         int       `json:"rate"`
+	NetRate      int       `json:"net_rate"`
 }
 
 type CampaignAnalyticsCount struct {

@@ -17,7 +17,7 @@ describe('Campaigns', () => {
     // Fill fields.
     cy.get('input[name=name]').clear().type('new-attach');
     cy.get('input[name=subject]').clear().type('new-subject');
-    cy.get('input[name=from_email]').clear().type('new <from@email>');
+    cy.get('input[name=from_email]').should('not.exist');
     cy.get('.list-selector input').click();
     cy.get('.list-selector .autocomplete a').eq(0).click();
 
@@ -58,7 +58,7 @@ describe('Campaigns', () => {
     // Fill fields.
     cy.get('input[name=name]').clear().type('new-name');
     cy.get('input[name=subject]').clear().type('new-subject');
-    cy.get('input[name=from_email]').clear().type('new <from@email>');
+    cy.get('input[name=from_email]').should('not.exist');
 
     // Change the list.
     cy.get('.list-selector a.delete').click();

@@ -1,0 +1,4 @@
+version: 1
+display_name: listmonk OpenClaw Marketing
+short_description: Operate listmonk marketing workflows from OpenClaw using REST APIs and Bearer integration tokens.
+default_prompt: Use listmonk's REST APIs to create or reuse a list, add subscribers, clone a template, create a campaign, start or schedule it, and fetch analytics.

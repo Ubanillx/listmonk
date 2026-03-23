@@ -3,6 +3,7 @@ package core
 import (
 	"database/sql"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gofrs/uuid/v5"
@@ -20,6 +21,14 @@ const (
 	campaignTplDefault = "default"
 	campaignTplArchive = "archive"
 )
+
+var campaignReportRecipientSortFields = map[string]string{
+	"last_engaged_at": "last_engaged_at",
+	"email":           "email",
+	"view_count":      "view_count",
+	"click_count":     "click_count",
+	"sent_at":         "sent_at",
+}
 
 // QueryCampaigns retrieves paginated campaigns optionally filtering them by the given arbitrary
 // query expression. It also returns the total number of records in the DB.
@@ -194,6 +203,7 @@ func (c *Core) CreateCampaign(o models.Campaign, listIDs []int, mediaIDs []int) 
 		o.ArchiveMeta,
 		pq.Array(mediaIDs),
 		o.BodySource,
+		o.AutoTrackLinks,
 	); err != nil {
 		if err == sql.ErrNoRows {
 			return models.Campaign{}, echo.NewHTTPError(http.StatusBadRequest, c.i18n.T("campaigns.noSubs"))
@@ -235,7 +245,8 @@ func (c *Core) UpdateCampaign(id int, o models.Campaign, listIDs []int, mediaIDs
 		o.ArchiveTemplateID,
 		o.ArchiveMeta,
 		pq.Array(mediaIDs),
-		o.BodySource)
+		o.BodySource,
+		o.AutoTrackLinks)
 	if err != nil {
 		c.log.Printf("error updating campaign: %v", err)
 		return models.Campaign{}, echo.NewHTTPError(http.StatusInternalServerError,
@@ -455,6 +466,169 @@ func (c *Core) GetCampaignAnalyticsLinks(campIDs []int, typ, fromDate, toDate st
 	}
 
 	return out, nil
+}
+
+func (c *Core) GetCampaignReportSummary(campID int, fromDate, toDate string, individualTracking bool) (models.CampaignReportSummary, error) {
+	if !strHasLen(fromDate, 10, 30) || !strHasLen(toDate, 10, 30) {
+		return models.CampaignReportSummary{}, echo.NewHTTPError(http.StatusBadRequest, c.i18n.T("analytics.invalidDates"))
+	}
+
+	var row models.CampaignReportSummaryDB
+	if err := c.q.GetCampaignReportSummary.Get(&row, campID, fromDate, toDate); err != nil {
+		c.log.Printf("error fetching campaign report summary: %v", err)
+		return models.CampaignReportSummary{}, echo.NewHTTPError(http.StatusInternalServerError,
+			c.i18n.Ts("globals.messages.errorFetching", "name", "{globals.terms.analytics}", "error", pqErrMsg(err)))
+	}
+
+	out := models.CampaignReportSummary{
+		CampaignID:  row.CampaignID,
+		Sent:        row.Sent,
+		Bounced:     row.Bounced,
+		ViewsTotal:  row.ViewsTotal,
+		ClicksTotal: row.ClicksTotal,
+	}
+
+	if individualTracking {
+		out.UniqueViewers = intPtr(row.UniqueViewers)
+		out.UniqueClickers = intPtr(row.UniqueClickers)
+		out.OpenRate = ratePtr(row.UniqueViewers, row.Sent)
+		out.ClickRate = ratePtr(row.UniqueClickers, row.Sent)
+		out.CTOR = ratePtr(row.UniqueClickers, row.UniqueViewers)
+	}
+
+	return out, nil
+}
+
+func (c *Core) GetCampaignReportSeries(campID int, fromDate, toDate string) (models.CampaignReportSeries, error) {
+	views, err := c.GetCampaignAnalyticsCounts([]int{campID}, CampaignAnalyticsViews, fromDate, toDate)
+	if err != nil {
+		return models.CampaignReportSeries{}, err
+	}
+
+	clicks, err := c.GetCampaignAnalyticsCounts([]int{campID}, CampaignAnalyticsClicks, fromDate, toDate)
+	if err != nil {
+		return models.CampaignReportSeries{}, err
+	}
+
+	bounces, err := c.GetCampaignAnalyticsCounts([]int{campID}, CampaignAnalyticsBounces, fromDate, toDate)
+	if err != nil {
+		return models.CampaignReportSeries{}, err
+	}
+
+	return models.CampaignReportSeries{
+		Views:   views,
+		Clicks:  clicks,
+		Bounces: bounces,
+	}, nil
+}
+
+func (c *Core) GetCampaignReportLinks(campID int, fromDate, toDate string, individualTracking bool) ([]models.CampaignReportLinkRow, error) {
+	if !strHasLen(fromDate, 10, 30) || !strHasLen(toDate, 10, 30) {
+		return nil, echo.NewHTTPError(http.StatusBadRequest, c.i18n.T("analytics.invalidDates"))
+	}
+
+	var raw []models.CampaignReportLinkRowDB
+	if err := c.q.GetCampaignReportLinks.Select(&raw, campID, fromDate, toDate); err != nil {
+		c.log.Printf("error fetching campaign report links: %v", err)
+		return nil, echo.NewHTTPError(http.StatusInternalServerError,
+			c.i18n.Ts("globals.messages.errorFetching", "name", "{globals.terms.analytics}", "error", pqErrMsg(err)))
+	}
+
+	summary, err := c.GetCampaignReportSummary(campID, fromDate, toDate, individualTracking)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]models.CampaignReportLinkRow, 0, len(raw))
+	for _, row := range raw {
+		item := models.CampaignReportLinkRow{
+			LinkID:      row.LinkID,
+			URL:         row.URL,
+			TotalClicks: row.TotalClicks,
+		}
+
+		if individualTracking {
+			item.UniqueClickers = intPtr(row.UniqueClickers)
+			item.UniqueClickRate = ratePtr(row.UniqueClickers, summary.Sent)
+		}
+
+		out = append(out, item)
+	}
+
+	return out, nil
+}
+
+func (c *Core) QueryCampaignReportRecipients(campID int, fromDate, toDate string, filters models.CampaignReportRecipientFilters, offset, limit int) ([]models.CampaignReportRecipientRow, int, error) {
+	if !strHasLen(fromDate, 10, 30) || !strHasLen(toDate, 10, 30) {
+		return nil, 0, echo.NewHTTPError(http.StatusBadRequest, c.i18n.T("analytics.invalidDates"))
+	}
+
+	orderExpr := makeCampaignReportRecipientOrder(filters.SortBy, filters.Order)
+	stmt := strings.ReplaceAll(c.q.QueryCampaignReportRecipients, "%order%", orderExpr)
+
+	search := strings.TrimSpace(filters.Search)
+	if search != "" {
+		search = "%" + search + "%"
+	}
+
+	opened := normalizeReportTriState(filters.Opened)
+	clicked := normalizeReportTriState(filters.Clicked)
+	bounced := normalizeReportTriState(filters.Bounced)
+
+	var out []models.CampaignReportRecipientRow
+	if err := c.db.Select(&out, stmt, campID, fromDate, toDate, search, opened, clicked, bounced, filters.LinkID, offset, limit); err != nil {
+		c.log.Printf("error fetching campaign report recipients: %v", err)
+		return nil, 0, echo.NewHTTPError(http.StatusInternalServerError,
+			c.i18n.Ts("globals.messages.errorFetching", "name", "{globals.terms.analytics}", "error", pqErrMsg(err)))
+	}
+
+	total := 0
+	if len(out) > 0 {
+		total = out[0].Total
+	}
+
+	return out, total, nil
+}
+
+func normalizeReportTriState(v string) string {
+	switch v {
+	case "yes", "no":
+		return v
+	default:
+		return "all"
+	}
+}
+
+func makeCampaignReportRecipientOrder(sortBy, order string) string {
+	field, ok := campaignReportRecipientSortFields[sortBy]
+	if !ok {
+		field = campaignReportRecipientSortFields["last_engaged_at"]
+	}
+
+	if order != SortAsc && order != SortDesc {
+		order = SortDesc
+	}
+
+	switch field {
+	case "last_engaged_at", "sent_at":
+		return field + " " + order + " NULLS LAST"
+	default:
+		return field + " " + order
+	}
+}
+
+func intPtr(v int) *int {
+	out := v
+	return &out
+}
+
+func ratePtr(num, den int) *float64 {
+	if den <= 0 {
+		return nil
+	}
+
+	out := (float64(num) / float64(den)) * 100
+	return &out
 }
 
 // RegisterCampaignView registers a subscriber's view on a campaign.

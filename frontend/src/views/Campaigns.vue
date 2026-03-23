@@ -464,6 +464,7 @@ export default Vue.extend({
         from_email: c.fromEmail,
         content_type: c.contentType,
         messenger: c.messenger,
+        auto_track_links: c.autoTrackLinks,
         daily_send_limit: isLimitedSMTPCampaign ? dailySendLimit : 0,
         daily_resume_time: isLimitedSMTPCampaign ? dailyResumeTime : '09:00',
         tags: c.tags,

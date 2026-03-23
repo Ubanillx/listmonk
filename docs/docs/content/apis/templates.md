@@ -6,6 +6,7 @@
 | GET    | [/api/templates/{template_id}](#get-apitemplates-template_id)                 | Retrieve a template            |
 | GET    | [/api/templates/{template_id}/preview](#get-apitemplates-template_id-preview) | Retrieve template HTML preview |
 | POST   | [/api/templates](#post-apitemplates)                                          | Create a template              |
+| POST   | [/api/templates/{template_id}/clone](#post-apitemplates-template_id-clone)    | Clone a template               |
 | POST   | /api/templates/preview                                                        | Render and preview a template  |
 | PUT    | [/api/templates/{template_id}](#put-apitemplatestemplate_id)                  | Update a template              |
 | PUT    | [/api/templates/{template_id}/default](#put-apitemplates-template_id-default) | Set default template           |
@@ -167,6 +168,48 @@ ______________________________________________________________________
 Update a template.
 
 > Refer to parameters from [POST /api/templates](#post-apitemplates)
+
+______________________________________________________________________
+
+#### POST /api/templates/{template_id}/clone
+
+Clone an existing template into a new template. The source template's `type`, `body`, and `body_source` are copied. For `tx` templates, the fixed `subject` can optionally be overridden in the request.
+
+##### Parameters
+
+| Name        | Type   | Required | Description                                      |
+|:------------|:-------|:---------|:-------------------------------------------------|
+| template_id | number | Yes      | ID of the template to clone                      |
+| name        | string | Yes      | Name of the new template                         |
+| subject     | string |          | Optional replacement subject for `tx` templates  |
+
+##### Example Request
+
+```shell
+curl -u "api_user:token" -X POST 'http://localhost:9000/api/templates/1/clone' \
+-H 'Content-Type: application/json' \
+-d '{
+    "name": "OpenClaw Campaign Template",
+    "subject": "Hello from OpenClaw"
+}'
+```
+
+##### Example Response
+
+```json
+{
+    "data": {
+        "id": 2,
+        "created_at": "2026-03-23T14:10:00.000000+08:00",
+        "updated_at": "2026-03-23T14:10:00.000000+08:00",
+        "name": "OpenClaw Campaign Template",
+        "body": "{{ template \"content\" . }}",
+        "body_source": null,
+        "type": "campaign",
+        "is_default": false
+    }
+}
+```
 
 ______________________________________________________________________
 

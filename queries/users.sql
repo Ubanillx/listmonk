@@ -131,6 +131,39 @@ FROM sel
 -- name: get-api-tokens
 SELECT username, password FROM users WHERE status='enabled' AND type='api';
 
+-- name: create-integration-token
+WITH api_user AS (
+    SELECT id FROM users WHERE id = $1 AND type = 'api'
+)
+INSERT INTO integration_tokens (user_id, name, token_hash)
+SELECT id, $2, $3 FROM api_user
+RETURNING id;
+
+-- name: get-integration-tokens
+SELECT id, user_id, name, token_hash, last_used_at, revoked_at, created_at, updated_at
+FROM integration_tokens
+WHERE ($1 = 0 OR user_id = $1)
+ORDER BY created_at DESC, id DESC;
+
+-- name: get-active-integration-tokens
+SELECT id, user_id, name, token_hash, last_used_at, revoked_at, created_at, updated_at
+FROM integration_tokens
+WHERE revoked_at IS NULL
+ORDER BY id;
+
+-- name: delete-integration-token
+UPDATE integration_tokens
+SET revoked_at = NOW(),
+    updated_at = NOW()
+WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL
+RETURNING id;
+
+-- name: update-integration-token-usage
+UPDATE integration_tokens
+SET last_used_at = NOW(),
+    updated_at = NOW()
+WHERE id = $1 AND revoked_at IS NULL;
+
 -- name: login-user
 WITH u AS (
     SELECT users.*, r.name as role_name, r.permissions FROM users

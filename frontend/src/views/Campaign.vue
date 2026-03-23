@@ -147,6 +147,10 @@
                   <b-taginput v-model="form.tags" name="tags" :disabled="!canEdit" ellipsis icon="tag-outline"
                     :placeholder="$t('globals.terms.tags')" />
                 </b-field>
+                <b-field :label="$t('campaigns.autoTrackLinks')" label-position="on-border"
+                  :message="$t('campaigns.autoTrackLinksHelp')">
+                  <b-switch v-model="form.autoTrackLinks" :disabled="!canEdit" />
+                </b-field>
                 <hr />
 
                 <div class="columns">
@@ -213,7 +217,7 @@
 
       <b-tab-item :label="$t('campaigns.content')" icon="text" :disabled="isNew" value="content">
         <editor v-if="data.id" v-model="form.content" :id="data.id" :title="data.name" :disabled="!canEdit"
-          :templates="templates" :content-types="contentTypes" />
+          :templates="templates" :content-types="contentTypes" :auto-track-links="form.autoTrackLinks" />
 
         <div class="columns">
           <div class="column is-6">
@@ -259,6 +263,17 @@
           </b-field>
         </section>
       </b-tab-item><!-- attribs -->
+
+      <b-tab-item
+        v-if="isEditing && $can('campaigns:get_analytics')"
+        :label="$t('globals.terms.analytics')"
+        icon="chart-box-outline"
+        value="analytics"
+      >
+        <section class="wrap">
+          <campaign-report :campaign="data" :active="activeTab === 'analytics'" />
+        </section>
+      </b-tab-item><!-- analytics -->
 
       <b-tab-item :label="$t('campaigns.archive')" icon="newspaper-variant-outline" value="archive" :disabled="isNew">
         <section class="wrap">
@@ -357,6 +372,7 @@ import Vue from 'vue';
 import { mapState } from 'vuex';
 
 import CampaignPreview from '../components/CampaignPreview.vue';
+import CampaignReport from '../components/CampaignReport.vue';
 import CopyText from '../components/CopyText.vue';
 import Editor from '../components/Editor.vue';
 import ListSelector from '../components/ListSelector.vue';
@@ -369,6 +385,7 @@ export default Vue.extend({
     Media,
     CopyText,
     CampaignPreview,
+    CampaignReport,
   },
 
   data() {
@@ -404,6 +421,7 @@ export default Vue.extend({
         headers: [],
         attribsStr: '{}',
         messenger: 'email',
+        autoTrackLinks: false,
         dailySendLimit: 100,
         dailyResumeTime: '09:00',
         lists: [],
@@ -609,6 +627,7 @@ export default Vue.extend({
         daily_send_limit: this.isLimitedSMTPCampaign ? this.form.dailySendLimit : 0,
         daily_resume_time: this.isLimitedSMTPCampaign ? this.form.dailyResumeTime : '09:00',
         messenger: this.form.messenger,
+        auto_track_links: this.form.autoTrackLinks,
         type: 'regular',
         headers: this.form.headers,
         tags: this.form.tags,
@@ -637,6 +656,7 @@ export default Vue.extend({
         daily_resume_time: this.isLimitedSMTPCampaign ? this.form.dailyResumeTime : '09:00',
         content_type: this.form.content.contentType,
         messenger: this.form.messenger,
+        auto_track_links: this.form.autoTrackLinks,
         type: 'regular',
         tags: this.form.tags,
         send_at: this.form.sendLater ? this.form.sendAtDate : null,
@@ -661,6 +681,7 @@ export default Vue.extend({
         daily_send_limit: this.isLimitedSMTPCampaign ? this.form.dailySendLimit : 0,
         daily_resume_time: this.isLimitedSMTPCampaign ? this.form.dailyResumeTime : '09:00',
         messenger: this.form.messenger,
+        auto_track_links: this.form.autoTrackLinks,
         type: 'regular',
         tags: this.form.tags,
         send_at: this.form.sendLater ? this.form.sendAtDate : null,

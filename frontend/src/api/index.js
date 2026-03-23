@@ -322,6 +322,26 @@ export const getCampaignLinkCounts = async (params) => http.get(
   { params, loading: models.campaigns },
 );
 
+export const getCampaignReportSummary = async (id, params) => http.get(
+  `/api/campaigns/${id}/report/summary`,
+  { params, loading: models.campaigns },
+);
+
+export const getCampaignReportSeries = async (id, params) => http.get(
+  `/api/campaigns/${id}/report/timeseries`,
+  { params, loading: models.campaigns },
+);
+
+export const getCampaignReportLinks = async (id, params) => http.get(
+  `/api/campaigns/${id}/report/links`,
+  { params, loading: models.campaigns },
+);
+
+export const getCampaignReportRecipients = async (id, params) => http.get(
+  `/api/campaigns/${id}/report/recipients`,
+  { params, loading: models.campaigns },
+);
+
 export const convertCampaignContent = async (data) => http.post(
   `/api/campaigns/${data.id}/content`,
   data,

@@ -1122,6 +1122,9 @@ func initAuth(co *core.Core, db *sql.DB, ko *koanf.Koanf) (bool, *auth.Auth) {
 		GetUser: func(id int) (auth.User, error) {
 			return co.GetUser(id, "", "")
 		},
+		TouchIntegrationToken: func(id int) error {
+			return co.TouchIntegrationToken(id)
+		},
 	}
 
 	// Initiaize the auth module.

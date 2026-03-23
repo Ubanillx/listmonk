@@ -164,6 +164,9 @@ func (a *App) PreviewCampaign(c echo.Context) error {
 	if isPost {
 		camp.ContentType = contentType
 		camp.Body = c.FormValue("body")
+		if v := c.FormValue("auto_track_links"); v != "" {
+			camp.AutoTrackLinks, _ = strconv.ParseBool(v)
+		}
 
 		// For visual campaigns, template body from the DB shouldn't be used.
 		if contentType == models.CampaignContentTypeVisual {
@@ -652,6 +655,122 @@ func (a *App) GetCampaignViewAnalytics(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{out})
 }
 
+func (a *App) GetCampaignReportSummary(c echo.Context) error {
+	id := getID(c)
+	if err := a.checkCampaignPerm(auth.PermTypeGet, id, c); err != nil {
+		return err
+	}
+
+	from, to, err := a.getCampaignReportDateRange(c)
+	if err != nil {
+		return err
+	}
+
+	out, err := a.core.GetCampaignReportSummary(id, from, to, a.cfg.Privacy.IndividualTracking)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, okResp{out})
+}
+
+func (a *App) GetCampaignReportSeries(c echo.Context) error {
+	id := getID(c)
+	if err := a.checkCampaignPerm(auth.PermTypeGet, id, c); err != nil {
+		return err
+	}
+
+	from, to, err := a.getCampaignReportDateRange(c)
+	if err != nil {
+		return err
+	}
+
+	out, err := a.core.GetCampaignReportSeries(id, from, to)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, okResp{out})
+}
+
+func (a *App) GetCampaignReportLinks(c echo.Context) error {
+	id := getID(c)
+	if err := a.checkCampaignPerm(auth.PermTypeGet, id, c); err != nil {
+		return err
+	}
+
+	from, to, err := a.getCampaignReportDateRange(c)
+	if err != nil {
+		return err
+	}
+
+	out, err := a.core.GetCampaignReportLinks(id, from, to, a.cfg.Privacy.IndividualTracking)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, okResp{out})
+}
+
+func (a *App) GetCampaignReportRecipients(c echo.Context) error {
+	user := auth.GetUser(c)
+	id := getID(c)
+
+	if err := a.checkCampaignPerm(auth.PermTypeGet, id, c); err != nil {
+		return err
+	}
+	if !user.HasPerm(auth.PermSubscribersGet) && !user.HasPerm(auth.PermSubscribersGetAll) {
+		return echo.NewHTTPError(http.StatusForbidden,
+			a.i18n.Ts("globals.messages.permissionDenied", "name", auth.PermSubscribersGet))
+	}
+	if !a.cfg.Privacy.IndividualTracking {
+		return echo.NewHTTPError(http.StatusForbidden, a.i18n.T("analytics.nonIndividualTracking"))
+	}
+
+	from, to, err := a.getCampaignReportDateRange(c)
+	if err != nil {
+		return err
+	}
+
+	linkID := 0
+	if v := c.QueryParam("link_id"); v != "" {
+		linkID, err = strconv.Atoi(v)
+		if err != nil || linkID < 0 {
+			return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("globals.messages.invalidID"))
+		}
+	}
+
+	pg := a.pg.NewFromURL(c.Request().URL.Query())
+	out, total, err := a.core.QueryCampaignReportRecipients(id, from, to, models.CampaignReportRecipientFilters{
+		Search:  c.QueryParam("search"),
+		Opened:  c.QueryParam("opened"),
+		Clicked: c.QueryParam("clicked"),
+		Bounced: c.QueryParam("bounced"),
+		LinkID:  linkID,
+		SortBy:  c.QueryParam("sort_by"),
+		Order:   c.QueryParam("order"),
+	}, pg.Offset, pg.Limit)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, okResp{models.PageResults{
+		Results: out,
+		Total:   total,
+		Page:    pg.Page,
+		PerPage: pg.PerPage,
+	}})
+}
+
+func (a *App) getCampaignReportDateRange(c echo.Context) (string, string, error) {
+	from := c.QueryParam("from")
+	to := c.QueryParam("to")
+	if !strHasLen(from, 10, 30) || !strHasLen(to, 10, 30) {
+		return "", "", echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("analytics.invalidDates"))
+	}
+	return from, to, nil
+}
+
 // sendTestMessage takes a campaign and a subscriber and sends out a sample campaign message.
 func (a *App) sendTestMessage(sub models.Subscriber, camp *models.Campaign) error {
 	if err := camp.CompileTemplate(a.manager.TemplateFuncs(camp)); err != nil {
@@ -743,7 +862,12 @@ func (a *App) validateCampaignFields(c campReq) (campReq, error) {
 		c.DailyResumeTime = "09:00"
 	}
 
-	camp := models.Campaign{Body: c.Body, TemplateBody: tplTag}
+	camp := models.Campaign{
+		Body:           c.Body,
+		TemplateBody:   tplTag,
+		ContentType:    c.ContentType,
+		AutoTrackLinks: c.AutoTrackLinks,
+	}
 	if err := c.CompileTemplate(a.manager.TemplateFuncs(&camp)); err != nil {
 		return c, errors.New(a.i18n.Ts("campaigns.fieldInvalidBody", "error", err.Error()))
 	}

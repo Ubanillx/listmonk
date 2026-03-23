@@ -64,6 +64,7 @@ nav:
     - "Campaigns": apis/campaigns.md
     - "Media": apis/media.md
     - "Templates": apis/templates.md
+    - "Users": apis/users.md
     - "Transactional": apis/transactional.md
     - "Bounces": apis/bounces.md
   - "Maintenance":

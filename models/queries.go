@@ -71,13 +71,16 @@ type Queries struct {
 
 	// These two queries are read as strings and based on settings.individual_tracking=on/off,
 	// are interpolated and copied to view and click counts. Same query, different tables.
-	GetCampaignAnalyticsCounts string     `query:"get-campaign-analytics-counts"`
-	GetCampaignViewCounts      *sqlx.Stmt `query:"get-campaign-view-counts"`
-	GetCampaignClickCounts     *sqlx.Stmt `query:"get-campaign-click-counts"`
-	GetCampaignLinkCounts      *sqlx.Stmt `query:"get-campaign-link-counts"`
-	GetCampaignBounceCounts    *sqlx.Stmt `query:"get-campaign-bounce-counts"`
-	DeleteCampaignViews        *sqlx.Stmt `query:"delete-campaign-views"`
-	DeleteCampaignLinkClicks   *sqlx.Stmt `query:"delete-campaign-link-clicks"`
+	GetCampaignAnalyticsCounts    string     `query:"get-campaign-analytics-counts"`
+	GetCampaignViewCounts         *sqlx.Stmt `query:"get-campaign-view-counts"`
+	GetCampaignClickCounts        *sqlx.Stmt `query:"get-campaign-click-counts"`
+	GetCampaignLinkCounts         *sqlx.Stmt `query:"get-campaign-link-counts"`
+	GetCampaignBounceCounts       *sqlx.Stmt `query:"get-campaign-bounce-counts"`
+	GetCampaignReportSummary      *sqlx.Stmt `query:"get-campaign-report-summary"`
+	GetCampaignReportLinks        *sqlx.Stmt `query:"get-campaign-report-links"`
+	QueryCampaignReportRecipients string     `query:"query-campaign-report-recipients"`
+	DeleteCampaignViews           *sqlx.Stmt `query:"delete-campaign-views"`
+	DeleteCampaignLinkClicks      *sqlx.Stmt `query:"delete-campaign-link-clicks"`
 
 	NextCampaigns                   *sqlx.Stmt `query:"next-campaigns"`
 	GetCampaignSendState            *sqlx.Stmt `query:"get-campaign-send-state"`
@@ -130,16 +133,21 @@ type Queries struct {
 	DeleteBouncesBySubscriber   *sqlx.Stmt `query:"delete-bounces-by-subscriber"`
 	GetDBInfo                   string     `query:"get-db-info"`
 
-	CreateUser        *sqlx.Stmt `query:"create-user"`
-	UpdateUser        *sqlx.Stmt `query:"update-user"`
-	UpdateUserProfile *sqlx.Stmt `query:"update-user-profile"`
-	UpdateUserLogin   *sqlx.Stmt `query:"update-user-login"`
-	SetUserTwoFA      *sqlx.Stmt `query:"set-user-twofa"`
-	DeleteUsers       *sqlx.Stmt `query:"delete-users"`
-	GetUsers          *sqlx.Stmt `query:"get-users"`
-	GetUser           *sqlx.Stmt `query:"get-user"`
-	GetAPITokens      *sqlx.Stmt `query:"get-api-tokens"`
-	LoginUser         *sqlx.Stmt `query:"login-user"`
+	CreateUser                  *sqlx.Stmt `query:"create-user"`
+	UpdateUser                  *sqlx.Stmt `query:"update-user"`
+	UpdateUserProfile           *sqlx.Stmt `query:"update-user-profile"`
+	UpdateUserLogin             *sqlx.Stmt `query:"update-user-login"`
+	SetUserTwoFA                *sqlx.Stmt `query:"set-user-twofa"`
+	DeleteUsers                 *sqlx.Stmt `query:"delete-users"`
+	GetUsers                    *sqlx.Stmt `query:"get-users"`
+	GetUser                     *sqlx.Stmt `query:"get-user"`
+	GetAPITokens                *sqlx.Stmt `query:"get-api-tokens"`
+	CreateIntegrationToken      *sqlx.Stmt `query:"create-integration-token"`
+	GetIntegrationTokens        *sqlx.Stmt `query:"get-integration-tokens"`
+	GetActiveIntegrationTokens  *sqlx.Stmt `query:"get-active-integration-tokens"`
+	DeleteIntegrationToken      *sqlx.Stmt `query:"delete-integration-token"`
+	UpdateIntegrationTokenUsage *sqlx.Stmt `query:"update-integration-token-usage"`
+	LoginUser                   *sqlx.Stmt `query:"login-user"`
 
 	CreateRole            *sqlx.Stmt `query:"create-role"`
 	GetUserRoles          *sqlx.Stmt `query:"get-user-roles"`

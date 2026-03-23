@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"regexp"
 	"strings"
 	txttpl "text/template"
 
@@ -60,6 +61,7 @@ type Campaign struct {
 	Attribs           JSON            `db:"attribs" json:"attribs"`
 	TemplateID        null.Int        `db:"template_id" json:"template_id"`
 	Messenger         string          `db:"messenger" json:"messenger"`
+	AutoTrackLinks    bool            `db:"auto_track_links" json:"auto_track_links"`
 	Archive           bool            `db:"archive" json:"archive"`
 	ArchiveSlug       null.String     `db:"archive_slug" json:"archive_slug"`
 	ArchiveTemplateID null.Int        `db:"archive_template_id" json:"archive_template_id"`
@@ -111,6 +113,8 @@ const (
 	CampaignRecipientStatusSent      = "sent"
 	CampaignRecipientStatusCancelled = "cancelled"
 )
+
+var reTrackableHREF = regexp.MustCompile(`(?i)(href\s*=\s*)(['"])(https?://[^"'<>]+)(['"])`)
 
 // GetIDs returns the list of campaign IDs.
 func (camps Campaigns) GetIDs() []int {
@@ -191,6 +195,10 @@ func (c *Campaign) CompileTemplate(f template.FuncMap) error {
 		body = c.Body
 	}
 
+	if c.AutoTrackLinks && c.ContentType != CampaignContentTypePlain {
+		body = autoTrackBodyLinks(body)
+	}
+
 	// Compile the campaign message.
 	for _, r := range regTplFuncs {
 		body = r.regExp.ReplaceAllString(body, r.replace)
@@ -220,6 +228,37 @@ func (c *Campaign) CompileTemplate(f template.FuncMap) error {
 	}
 
 	return nil
+}
+
+func autoTrackBodyLinks(body string) string {
+	matches := reTrackableHREF.FindAllStringSubmatchIndex(body, -1)
+	if len(matches) == 0 {
+		return body
+	}
+
+	var (
+		out  strings.Builder
+		last int
+	)
+
+	for _, m := range matches {
+		start, end := m[0], m[1]
+		urlStart, urlEnd := m[6], m[7]
+		url := body[urlStart:urlEnd]
+
+		out.WriteString(body[last:start])
+		if strings.HasSuffix(url, "@TrackLink") {
+			out.WriteString(body[start:end])
+		} else {
+			out.WriteString(body[start:urlEnd])
+			out.WriteString("@TrackLink")
+			out.WriteString(body[urlEnd:end])
+		}
+		last = end
+	}
+
+	out.WriteString(body[last:])
+	return out.String()
 }
 
 // ConvertContent converts a campaign's body from one format to another,

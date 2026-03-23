@@ -48,6 +48,21 @@
       </div><!-- columns -->
     </form>
 
+    <div class="columns is-multiline mt-4">
+      <div class="column is-3" v-for="card in summaryCards" :key="card.key">
+        <div class="box has-text-centered">
+          <p class="heading">{{ card.label }}</p>
+          <p class="title is-5">{{ $utils.niceNumber(card.value) }}</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="buttons mt-2" v-if="singleCampaign">
+      <router-link :to="{ name: 'campaign', params: { id: singleCampaign.id }, hash: '#analytics' }" class="button is-primary is-light">
+        {{ $t('analytics.openCampaignReport') }}
+      </router-link>
+    </div>
+
     <section class="charts mt-5">
       <div class="chart" v-for="(v, k) in charts" :key="k">
         <div class="columns">
@@ -176,6 +191,7 @@ export default Vue.extend({
     },
 
     makeLinksChart(typ, camps, data) {
+      this.urls = [];
       const labels = data.map((l) => {
         try {
           this.urls.push(l.url);
@@ -292,6 +308,20 @@ export default Vue.extend({
 
   computed: {
     ...mapState(['serverConfig']),
+
+    singleCampaign() {
+      return this.form.campaigns.length === 1 ? this.form.campaigns[0] : null;
+    },
+
+    summaryCards() {
+      return [
+        { key: 'campaigns', label: this.$t('globals.terms.campaigns'), value: this.form.campaigns.length },
+        { key: 'views', label: this.$t('campaigns.views'), value: this.counts.views },
+        { key: 'clicks', label: this.$t('campaigns.clicks'), value: this.counts.clicks },
+        { key: 'bounces', label: this.$t('globals.terms.bounces'), value: this.counts.bounces },
+        { key: 'links', label: this.$t('analytics.links'), value: this.counts.links },
+      ];
+    },
   },
 
   created() {

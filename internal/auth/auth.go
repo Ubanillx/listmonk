@@ -2,9 +2,11 @@ package auth
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/subtle"
 	"database/sql"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
@@ -53,13 +55,15 @@ type Config struct {
 
 // Callbacks takes two callback functions required by simplesessions.
 type Callbacks struct {
-	SetCookie func(cookie *http.Cookie, w any) error
-	GetCookie func(name string, r any) (*http.Cookie, error)
-	GetUser   func(id int) (User, error)
+	SetCookie             func(cookie *http.Cookie, w any) error
+	GetCookie             func(name string, r any) (*http.Cookie, error)
+	GetUser               func(id int) (User, error)
+	TouchIntegrationToken func(id int) error
 }
 
 type Auth struct {
-	apiUsers map[string]User
+	apiUsers          map[string]User
+	integrationTokens map[string]IntegrationToken
 	sync.RWMutex
 
 	cfg       Config
@@ -81,7 +85,8 @@ func New(cfg Config, db *sql.DB, cb *Callbacks, lo *log.Logger) (*Auth, error) {
 		cb:  cb,
 		log: lo,
 
-		apiUsers: map[string]User{},
+		apiUsers:          map[string]User{},
+		integrationTokens: map[string]IntegrationToken{},
 	}
 
 	// Initialize session manager.
@@ -132,6 +137,18 @@ func (o *Auth) CacheAPIUser(u User) {
 	o.Unlock()
 }
 
+// CacheIntegrationTokens caches integration bearer tokens for authenticating requests.
+// The input tokens are expected to be active and already associated with users.
+func (o *Auth) CacheIntegrationTokens(tokens []IntegrationToken) {
+	o.Lock()
+	defer o.Unlock()
+
+	o.integrationTokens = map[string]IntegrationToken{}
+	for _, t := range tokens {
+		o.integrationTokens[t.TokenHash] = t
+	}
+}
+
 // GetAPIToken validates an API user+token.
 func (o *Auth) GetAPIToken(user string, token string) (User, bool) {
 	o.RLock()
@@ -143,6 +160,24 @@ func (o *Auth) GetAPIToken(user string, token string) (User, bool) {
 	}
 
 	return t, true
+}
+
+// GetIntegrationToken validates an integration bearer token.
+func (o *Auth) GetIntegrationToken(token string) (User, int, bool) {
+	o.RLock()
+	t, ok := o.integrationTokens[HashIntegrationToken(token)]
+	o.RUnlock()
+	if !ok {
+		return User{}, 0, false
+	}
+
+	return t.User, t.ID, true
+}
+
+// HashIntegrationToken returns the stable SHA-256 hash of an integration token.
+func HashIntegrationToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
 }
 
 // initOIDC initializes the OIDC provider, verifier, and OAuth config.
@@ -300,6 +335,24 @@ func (o *Auth) Middleware(next echo.HandlerFunc) echo.HandlerFunc {
 		}
 
 		if len(hdr) > 0 {
+			if strings.HasPrefix(hdr, "Bearer ") {
+				token := strings.TrimSpace(strings.TrimPrefix(hdr, "Bearer "))
+				user, tokenID, ok := o.GetIntegrationToken(token)
+				if !ok {
+					c.Set(UserHTTPCtxKey, echo.NewHTTPError(http.StatusForbidden, "invalid integration token"))
+					return next(c)
+				}
+
+				if o.cb != nil && o.cb.TouchIntegrationToken != nil {
+					if err := o.cb.TouchIntegrationToken(tokenID); err != nil {
+						o.log.Printf("error updating integration token usage: %v", err)
+					}
+				}
+
+				c.Set(UserHTTPCtxKey, user)
+				return next(c)
+			}
+
 			key, token, err := parseAuthHeader(hdr)
 			if err != nil {
 				c.Set(UserHTTPCtxKey, echo.NewHTTPError(http.StatusForbidden, err.Error()))

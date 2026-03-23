@@ -76,7 +76,8 @@
 
     <!-- campaign preview //-->
     <campaign-preview v-if="isPreviewing" is-post @close="onTogglePreview" type="campaign" :id="id" :title="title"
-      :content-type="self.contentType" :template-id="templateId" :body="self.body" />
+      :content-type="self.contentType" :template-id="templateId" :body="self.body"
+      :auto-track-links="autoTrackLinks" />
   </section>
 </template>
 
@@ -107,6 +108,7 @@ export default {
     title: { type: String, default: '' },
     disabled: { type: Boolean, default: false },
     templates: { type: Array, default: null },
+    autoTrackLinks: { type: Boolean, default: false },
 
     // value is provided by the parent component.
     // Throught the editor, `this.self` (a mutable clone of `value`) is used,

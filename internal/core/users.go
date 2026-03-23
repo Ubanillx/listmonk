@@ -72,6 +72,40 @@ func (c *Core) CreateUser(u auth.User) (auth.User, error) {
 	return out, err
 }
 
+// CreateIntegrationToken creates a new bearer integration token for an API user.
+func (c *Core) CreateIntegrationToken(userID int, name string) (auth.IntegrationToken, string, error) {
+	user, err := c.GetUser(userID, "", "")
+	if err != nil {
+		return auth.IntegrationToken{}, "", err
+	}
+	if user.Type != auth.UserTypeAPI {
+		return auth.IntegrationToken{}, "", echo.NewHTTPError(http.StatusBadRequest, "integration tokens are only available for API users")
+	}
+
+	token, err := utils.GenerateRandomString(48)
+	if err != nil {
+		return auth.IntegrationToken{}, "", echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	token = "lmit_" + token
+
+	var id int
+	if err := c.q.CreateIntegrationToken.Get(&id, userID, name, auth.HashIntegrationToken(token)); err != nil {
+		if err == sql.ErrNoRows {
+			return auth.IntegrationToken{}, "", echo.NewHTTPError(http.StatusBadRequest, "integration tokens are only available for API users")
+		}
+
+		return auth.IntegrationToken{}, "", echo.NewHTTPError(http.StatusInternalServerError,
+			c.i18n.Ts("globals.messages.errorCreating", "name", "{globals.terms.user}", "error", pqErrMsg(err)))
+	}
+
+	out, err := c.GetIntegrationToken(userID, id)
+	if err != nil {
+		return auth.IntegrationToken{}, "", err
+	}
+
+	return out, token, nil
+}
+
 // UpdateUser updates a given user.
 func (c *Core) UpdateUser(id int, u auth.User) (auth.User, error) {
 	listRoleID := 0
@@ -96,6 +130,61 @@ func (c *Core) UpdateUser(id int, u auth.User) (auth.User, error) {
 	return out, err
 }
 
+// GetIntegrationTokens retrieves integration tokens, optionally for a single user.
+func (c *Core) GetIntegrationTokens(userID int) ([]auth.IntegrationToken, error) {
+	out := []auth.IntegrationToken{}
+	if err := c.q.GetIntegrationTokens.Select(&out, userID); err != nil {
+		return nil, echo.NewHTTPError(http.StatusInternalServerError,
+			c.i18n.Ts("globals.messages.errorFetching", "name", "{globals.terms.user}", "error", pqErrMsg(err)))
+	}
+
+	return out, nil
+}
+
+// GetActiveIntegrationTokens retrieves active integration tokens for auth cache warmup.
+func (c *Core) GetActiveIntegrationTokens() ([]auth.IntegrationToken, error) {
+	out := []auth.IntegrationToken{}
+	if err := c.q.GetActiveIntegrationTokens.Select(&out); err != nil {
+		return nil, echo.NewHTTPError(http.StatusInternalServerError,
+			c.i18n.Ts("globals.messages.errorFetching", "name", "{globals.terms.user}", "error", pqErrMsg(err)))
+	}
+
+	return out, nil
+}
+
+// GetIntegrationToken retrieves a specific integration token by ID for a user.
+func (c *Core) GetIntegrationToken(userID int, tokenID int) (auth.IntegrationToken, error) {
+	out, err := c.GetIntegrationTokens(userID)
+	if err != nil {
+		return auth.IntegrationToken{}, err
+	}
+
+	for _, t := range out {
+		if t.ID == tokenID {
+			return t, nil
+		}
+	}
+
+	return auth.IntegrationToken{}, echo.NewHTTPError(http.StatusNotFound,
+		c.i18n.Ts("globals.messages.notFound", "name", "integration token"))
+}
+
+// DeleteIntegrationToken revokes an integration token for a user.
+func (c *Core) DeleteIntegrationToken(userID int, tokenID int) error {
+	var id int
+	if err := c.q.DeleteIntegrationToken.Get(&id, tokenID, userID); err != nil {
+		if err == sql.ErrNoRows {
+			return echo.NewHTTPError(http.StatusNotFound,
+				c.i18n.Ts("globals.messages.notFound", "name", "integration token"))
+		}
+
+		return echo.NewHTTPError(http.StatusInternalServerError,
+			c.i18n.Ts("globals.messages.errorDeleting", "name", "integration token", "error", pqErrMsg(err)))
+	}
+
+	return nil
+}
+
 // UpdateUserProfile updates the basic fields of a given uesr (name, email, password).
 func (c *Core) UpdateUserProfile(id int, u auth.User) (auth.User, error) {
 	res, err := c.q.UpdateUserProfile.Exec(id, u.Name, u.Email, u.PasswordLogin, u.Password)
@@ -117,6 +206,16 @@ func (c *Core) UpdateUserLogin(id int, avatar string) error {
 	if _, err := c.q.UpdateUserLogin.Exec(id, avatar); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError,
 			c.i18n.Ts("globals.messages.errorUpdating", "name", "{globals.terms.user}", "error", pqErrMsg(err)))
+	}
+
+	return nil
+}
+
+// TouchIntegrationToken updates the last-used timestamp for a bearer integration token.
+func (c *Core) TouchIntegrationToken(id int) error {
+	if _, err := c.q.UpdateIntegrationTokenUsage.Exec(id); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError,
+			c.i18n.Ts("globals.messages.errorUpdating", "name", "integration token", "error", pqErrMsg(err)))
 	}
 
 	return nil

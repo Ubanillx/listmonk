@@ -7,6 +7,10 @@
 | GET    | [/api/campaigns/{campaign_id}/preview](#get-apicampaignscampaign_idpreview) | Retrieve preview of a campaign.           |
 | GET    | [/api/campaigns/running/stats](#get-apicampaignsrunningstats)               | Retrieve stats of specified campaigns.    |
 | GET    | [/api/campaigns/analytics/{type}](#get-apicampaignsanalyticstype)           | Retrieve view counts for a  campaign.     |
+| GET    | [/api/campaigns/{campaign_id}/report/summary](#get-apicampaignscampaign_idreportsummary) | Retrieve summary analytics for a campaign. |
+| GET    | [/api/campaigns/{campaign_id}/report/timeseries](#get-apicampaignscampaign_idreporttimeseries) | Retrieve time series analytics for a campaign. |
+| GET    | [/api/campaigns/{campaign_id}/report/links](#get-apicampaignscampaign_idreportlinks) | Retrieve link analytics for a campaign.   |
+| GET    | [/api/campaigns/{campaign_id}/report/recipients](#get-apicampaignscampaign_idreportrecipients) | Retrieve recipient-level analytics for a campaign. |
 | POST   | [/api/campaigns](#post-apicampaigns)                                        | Create a new campaign.                    |
 | POST   | [/api/campaigns/{campaign_id}/test](#post-apicampaignscampaign_idtest)      | Test campaign with arbitrary subscribers. |
 | PUT    | [/api/campaigns/{campaign_id}](#put-apicampaignscampaign_id)                | Update a campaign.                        |
@@ -278,6 +282,164 @@ curl -u "api_user:token" -X GET 'http://localhost:9000/api/campaigns/analytics/l
       "count": 260
     }
   ]
+}
+```
+
+______________________________________________________________________
+
+#### GET /api/campaigns/{campaign_id}/report/summary
+
+Retrieve a campaign analytics summary for a date range.
+
+##### Parameters
+
+| Name        | Type   | Required | Description                    |
+| :---------- | :----- | :------- | :----------------------------- |
+| campaign_id | number | Yes      | Campaign ID.                   |
+| from        | string | Yes      | Start of reporting range.      |
+| to          | string | Yes      | End of reporting range.        |
+
+##### Example Request
+
+```shell
+curl -u "api_user:token" -X GET 'http://localhost:9000/api/campaigns/1/report/summary?from=2024-08-04&to=2024-08-12'
+```
+
+##### Example Response
+
+```json
+{
+  "data": {
+    "campaign_id": 1,
+    "sent": 1200,
+    "bounced": 12,
+    "views_total": 640,
+    "clicks_total": 184,
+    "unique_viewers": 510,
+    "unique_clickers": 121,
+    "open_rate": 42.5,
+    "click_rate": 10.08,
+    "ctor": 23.73
+  }
+}
+```
+
+______________________________________________________________________
+
+#### GET /api/campaigns/{campaign_id}/report/timeseries
+
+Retrieve campaign time series analytics for views, clicks, and bounces.
+
+##### Example Request
+
+```shell
+curl -u "api_user:token" -X GET 'http://localhost:9000/api/campaigns/1/report/timeseries?from=2024-08-04&to=2024-08-12'
+```
+
+##### Example Response
+
+```json
+{
+  "data": {
+    "views": [
+      {
+        "campaign_id": 1,
+        "count": 10,
+        "timestamp": "2024-08-04T00:00:00Z"
+      }
+    ],
+    "clicks": [],
+    "bounces": []
+  }
+}
+```
+
+______________________________________________________________________
+
+#### GET /api/campaigns/{campaign_id}/report/links
+
+Retrieve link performance analytics for a campaign.
+
+##### Example Request
+
+```shell
+curl -u "api_user:token" -X GET 'http://localhost:9000/api/campaigns/1/report/links?from=2024-08-04&to=2024-08-12'
+```
+
+##### Example Response
+
+```json
+{
+  "data": [
+    {
+      "link_id": 18,
+      "url": "https://listmonk.app",
+      "total_clicks": 88,
+      "unique_clickers": 61,
+      "unique_click_rate": 5.08
+    }
+  ]
+}
+```
+
+______________________________________________________________________
+
+#### GET /api/campaigns/{campaign_id}/report/recipients
+
+Retrieve recipient-level analytics for a campaign. This endpoint requires individual tracking to be enabled.
+
+##### Parameters
+
+| Name        | Type   | Required | Description                                                 |
+| :---------- | :----- | :------- | :---------------------------------------------------------- |
+| campaign_id | number | Yes      | Campaign ID.                                                |
+| from        | string | Yes      | Start of reporting range.                                   |
+| to          | string | Yes      | End of reporting range.                                     |
+| page        | number |          | Page number for pagination.                                 |
+| per_page    | number |          | Results per page.                                           |
+| search      | string |          | Filter recipients by e-mail or name.                        |
+| opened      | string |          | Filter by open state.                                       |
+| clicked     | string |          | Filter by click state.                                      |
+| bounced     | string |          | Filter by bounce state.                                     |
+| link_id     | number |          | Filter recipients who clicked a specific link.              |
+| sort_by     | string |          | Sort field.                                                 |
+| order       | string |          | Sort direction.                                             |
+
+##### Example Request
+
+```shell
+curl -u "api_user:token" -X GET 'http://localhost:9000/api/campaigns/1/report/recipients?from=2024-08-04&to=2024-08-12&page=1&per_page=20'
+```
+
+##### Example Response
+
+```json
+{
+  "data": {
+    "results": [
+      {
+        "subscriber_id": 5,
+        "uuid": "6f06411c-d505-4f48-a0db-98ab394c86c0",
+        "email": "jane@example.com",
+        "name": "Jane",
+        "recipient_status": "sent",
+        "sent_at": "2024-08-05T09:00:00Z",
+        "bounce_count": 0,
+        "view_count": 2,
+        "click_count": 1,
+        "first_viewed_at": "2024-08-05T09:14:00Z",
+        "last_viewed_at": "2024-08-05T10:10:00Z",
+        "first_clicked_at": "2024-08-05T10:12:00Z",
+        "last_clicked_at": "2024-08-05T10:12:00Z",
+        "last_link_id": 18,
+        "last_link_url": "https://listmonk.app",
+        "last_engaged_at": "2024-08-05T10:12:00Z"
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "per_page": 20
+  }
 }
 ```
 

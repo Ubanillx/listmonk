@@ -7,7 +7,7 @@ All features that are available on the listmonk dashboard are also available as 
 
 
 ## Auth
-HTTP API requests support BasicAuth and a Authorization `token` headers. API users and tokens with the required permissions can be created and managed on the admin UI (Admin -> Users).
+HTTP API requests support BasicAuth, Authorization `token` headers, and Bearer integration tokens. API users and tokens with the required permissions can be created and managed on the admin UI (Admin -> Users).
 
 ##### BasicAuth example
 ```shell
@@ -18,6 +18,13 @@ curl -u "api_user:token" http://localhost:9000/api/lists
 ```shell
 curl -H "Authorization: token api_user:token" http://localhost:9000/api/lists
 ```
+
+##### Bearer integration token example
+```shell
+curl -H "Authorization: Bearer lmit_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" http://localhost:9000/api/lists
+```
+
+Bearer integration tokens are linked to an API user account and inherit that account's user role and list role permissions. They are intended for external service integrations such as OpenClaw.
 
 ## Permissions
 **User role**: Permissions allowed for a user are defined as a *User role* (Admin -> User roles) and then attached to a user. 
@@ -82,4 +89,3 @@ All timestamp fields are in the format `2019-01-01T09:00:00.000000+05:30`. The s
 ## OpenAPI (Swagger) spec
 
 The auto-generated OpenAPI (Swagger) specification site for the APIs are available at [**listmonk.app/docs/swagger**](https://listmonk.app/docs/swagger/)
-

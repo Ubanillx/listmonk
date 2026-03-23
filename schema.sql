@@ -131,6 +131,7 @@ CREATE TABLE campaigns (
     archive_slug        TEXT NULL UNIQUE,
     archive_template_id INTEGER REFERENCES templates(id) ON DELETE SET NULL,
     archive_meta        JSONB NOT NULL DEFAULT '{}',
+    auto_track_links    BOOLEAN NOT NULL DEFAULT false,
 
     started_at       TIMESTAMP WITH TIME ZONE,
     created_at       TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -384,6 +385,19 @@ CREATE TABLE users (
     created_at       TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at       TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+CREATE TABLE integration_tokens (
+    id               SERIAL PRIMARY KEY,
+    user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    name             TEXT NOT NULL,
+    token_hash       TEXT NOT NULL UNIQUE,
+    last_used_at     TIMESTAMP WITH TIME ZONE NULL,
+    revoked_at       TIMESTAMP WITH TIME ZONE NULL,
+    created_at       TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at       TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+CREATE INDEX idx_integration_tokens_user_id ON integration_tokens(user_id);
+CREATE INDEX idx_integration_tokens_active ON integration_tokens(user_id, revoked_at);
 
 -- user sessions
 DROP TABLE IF EXISTS sessions CASCADE;

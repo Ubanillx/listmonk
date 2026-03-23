@@ -120,6 +120,19 @@ type User struct {
 	HasPassword        bool                        `db:"-" json:"-"`
 }
 
+type IntegrationToken struct {
+	Base
+
+	UserID     int       `db:"user_id" json:"user_id"`
+	Name       string    `db:"name" json:"name"`
+	TokenHash  string    `db:"token_hash" json:"-"`
+	LastUsedAt null.Time `db:"last_used_at" json:"last_used_at"`
+	RevokedAt  null.Time `db:"revoked_at" json:"revoked_at"`
+
+	// Non-DB field filled post-retrieval for auth cache lookups.
+	User User `db:"-" json:"-"`
+}
+
 type ListPermission struct {
 	ID          int            `json:"id"`
 	Name        string         `json:"name"`

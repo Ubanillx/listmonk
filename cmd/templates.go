@@ -31,6 +31,11 @@ var (
 	regexpTplTag = regexp.MustCompile(`{{(\s+)?template\s+?"content"(\s+)?\.(\s+)?}}`)
 )
 
+type templateCloneReq struct {
+	Name    string `json:"name"`
+	Subject string `json:"subject"`
+}
+
 // GetTemplate handles the retrieval of a template
 func (a *App) GetTemplate(c echo.Context) error {
 	// If no_body is true, blank out the body of the template from the response.
@@ -110,23 +115,9 @@ func (a *App) CreateTemplate(c echo.Context) error {
 	if err := c.Bind(&o); err != nil {
 		return err
 	}
-	if err := a.validateTemplate(o); err != nil {
+	o, err := a.prepareTemplate(o)
+	if err != nil {
 		return err
-	}
-
-	// Subject is only relevant for fixed tx templates. For campaigns,
-	// the subject changes per campaign and is on models.Campaign.
-	var funcs template.FuncMap
-	if o.Type == models.TemplateTypeCampaign || o.Type == models.TemplateTypeCampaignVisual {
-		o.Subject = ""
-		funcs = a.manager.TemplateFuncs(nil)
-	} else {
-		funcs = a.manager.GenericTemplateFuncs()
-	}
-
-	// Compile the template and validate.
-	if err := o.Compile(funcs); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
 	// Create the template the in the DB.
@@ -150,23 +141,9 @@ func (a *App) UpdateTemplate(c echo.Context) error {
 	if err := c.Bind(&o); err != nil {
 		return err
 	}
-	if err := a.validateTemplate(o); err != nil {
+	o, err := a.prepareTemplate(o)
+	if err != nil {
 		return err
-	}
-
-	// Subject is only relevant for fixed tx templates. For campaigns,
-	// the subject changes per campaign and is on models.Campaign.
-	var funcs template.FuncMap
-	if o.Type == models.TemplateTypeCampaign || o.Type == models.TemplateTypeCampaignVisual {
-		o.Subject = ""
-		funcs = a.manager.TemplateFuncs(nil)
-	} else {
-		funcs = a.manager.GenericTemplateFuncs()
-	}
-
-	// Compile the template and validate.
-	if err := o.Compile(funcs); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
 	// Update the template in the DB.
@@ -183,6 +160,37 @@ func (a *App) UpdateTemplate(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, okResp{out})
 
+}
+
+// CloneTemplate copies an existing template into a new template with a new name.
+func (a *App) CloneTemplate(c echo.Context) error {
+	id := getID(c)
+
+	src, err := a.core.GetTemplate(id, false)
+	if err != nil {
+		return err
+	}
+
+	var req templateCloneReq
+	if err := c.Bind(&req); err != nil {
+		return err
+	}
+
+	clone, err := a.prepareTemplate(src.Clone(req.Name, req.Subject))
+	if err != nil {
+		return err
+	}
+
+	out, err := a.core.CreateTemplate(clone.Name, clone.Type, clone.Subject, []byte(clone.Body), clone.BodySource)
+	if err != nil {
+		return err
+	}
+
+	if clone.Type == models.TemplateTypeTx {
+		a.manager.CacheTpl(out.ID, &clone)
+	}
+
+	return c.JSON(http.StatusOK, okResp{out})
 }
 
 // TemplateSetDefault handles template modification.
@@ -208,6 +216,29 @@ func (a *App) DeleteTemplate(c echo.Context) error {
 	a.manager.DeleteTpl(id)
 
 	return c.JSON(http.StatusOK, okResp{true})
+}
+
+func (a *App) prepareTemplate(o models.Template) (models.Template, error) {
+	if err := a.validateTemplate(o); err != nil {
+		return o, err
+	}
+
+	// Subject is only relevant for fixed tx templates. For campaigns,
+	// the subject changes per campaign and is on models.Campaign.
+	var funcs template.FuncMap
+	if o.Type == models.TemplateTypeCampaign || o.Type == models.TemplateTypeCampaignVisual {
+		o.Subject = ""
+		funcs = a.manager.TemplateFuncs(nil)
+	} else {
+		funcs = a.manager.GenericTemplateFuncs()
+	}
+
+	// Compile the template and validate.
+	if err := o.Compile(funcs); err != nil {
+		return o, echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
+	return o, nil
 }
 
 // compileTemplate validates template fields.

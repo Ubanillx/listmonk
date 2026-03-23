@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/knadh/listmonk/internal/auth"
@@ -217,6 +218,74 @@ func (a *App) DeleteUsers(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{true})
 }
 
+// GetUserIntegrationTokens retrieves integration bearer tokens for an API user.
+func (a *App) GetUserIntegrationTokens(c echo.Context) error {
+	id := getID(c)
+	if _, err := a.core.GetUser(id, "", ""); err != nil {
+		return err
+	}
+
+	out, err := a.core.GetIntegrationTokens(id)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, okResp{out})
+}
+
+// CreateUserIntegrationToken creates a new integration bearer token for an API user.
+func (a *App) CreateUserIntegrationToken(c echo.Context) error {
+	id := getID(c)
+
+	req := struct {
+		Name string `json:"name"`
+	}{}
+	if err := c.Bind(&req); err != nil {
+		return err
+	}
+
+	req.Name = strings.TrimSpace(req.Name)
+	if !strHasLen(req.Name, 1, stdInputMaxLen) {
+		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.Ts("globals.messages.invalidFields", "name", "name"))
+	}
+
+	out, token, err := a.core.CreateIntegrationToken(id, req.Name)
+	if err != nil {
+		return err
+	}
+
+	if _, err := cacheUsers(a.core, a.auth); err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, okResp{struct {
+		auth.IntegrationToken
+		Token string `json:"token"`
+	}{
+		IntegrationToken: out,
+		Token:            token,
+	}})
+}
+
+// DeleteUserIntegrationToken revokes an integration bearer token.
+func (a *App) DeleteUserIntegrationToken(c echo.Context) error {
+	userID := getID(c)
+	tokenID, err := strconv.Atoi(c.Param("token_id"))
+	if err != nil || tokenID < 1 {
+		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("globals.messages.invalidID"))
+	}
+
+	if err := a.core.DeleteIntegrationToken(userID, tokenID); err != nil {
+		return err
+	}
+
+	if _, err := cacheUsers(a.core, a.auth); err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, okResp{true})
+}
+
 // GetUserProfile fetches the uesr profile for the currently logged in user.
 func (a *App) GetUserProfile(c echo.Context) error {
 	// Get the authenticated user.
@@ -344,9 +413,17 @@ func cacheUsers(co *core.Core, a *auth.Auth) (bool, error) {
 		return false, err
 	}
 
+	tokens, err := co.GetActiveIntegrationTokens()
+	if err != nil {
+		return false, err
+	}
+
 	hasUser := false
 	apiUsers := make([]auth.User, 0, len(users))
+	userByID := make(map[int]auth.User, len(users))
 	for _, u := range users {
+		userByID[u.ID] = u
+
 		if u.Type == auth.UserTypeAPI && u.Status == auth.UserStatusEnabled {
 			apiUsers = append(apiUsers, u)
 		}
@@ -357,5 +434,16 @@ func cacheUsers(co *core.Core, a *auth.Auth) (bool, error) {
 	}
 
 	a.CacheAPIUsers(apiUsers)
+	activeTokens := make([]auth.IntegrationToken, 0, len(tokens))
+	for _, t := range tokens {
+		u, ok := userByID[t.UserID]
+		if !ok || u.Type != auth.UserTypeAPI || u.Status != auth.UserStatusEnabled {
+			continue
+		}
+
+		t.User = u
+		activeTokens = append(activeTokens, t)
+	}
+	a.CacheIntegrationTokens(activeTokens)
 	return hasUser, nil
 }

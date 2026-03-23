@@ -14,6 +14,7 @@
             <input v-if="contentType" type="hidden" name="content_type" :value="contentType" />
             <input v-if="templateType" type="hidden" name="template_type" :value="templateType" />
             <input v-if="archiveMeta" type="hidden" name="archive_meta" :value="archiveMeta" />
+            <input v-if="autoTrackLinks !== null" type="hidden" name="auto_track_links" :value="autoTrackLinks" />
             <input v-if="body" type="hidden" name="body" :value="body" />
           </form>
 
@@ -54,6 +55,7 @@ export default {
     body: { type: String, default: '' },
     contentType: { type: String, default: '' },
     templateId: { type: [Number, null], default: null },
+    autoTrackLinks: { type: [Boolean, null], default: null },
     isArchive: { type: Boolean, default: false },
   },
 

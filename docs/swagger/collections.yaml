@@ -12,6 +12,11 @@ info:
     name: AGPL-3.0 license
     url: https://github.com/knadh/listmonk/blob/master/LICENSE
 
+security:
+  - bearerAuth: []
+  - basicAuth: []
+  - apiTokenAuth: []
+
 tags:
   - name: Miscellaneous
     description: Misc API
@@ -47,6 +52,10 @@ tags:
     description: Templates API
     externalDocs:
       url: https://listmonk.app/docs/apis/templates/
+  - name: Users
+    description: Users API
+    externalDocs:
+      url: https://listmonk.app/docs/apis/users/
   - name: Transactional
     description: Transactional API
     externalDocs:
@@ -2130,7 +2139,306 @@ paths:
                   has_optin:
                     type: boolean
 
+  "/campaigns/{campaign_id}/report/summary":
+    get:
+      tags:
+        - Campaigns
+      description: returns campaign summary analytics for a date range.
+      operationId: getCampaignReportSummary
+      parameters:
+        - in: path
+          name: campaign_id
+          required: true
+          schema:
+            type: integer
+        - in: query
+          name: from
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: to
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: campaign summary analytics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/CampaignReportSummary"
+
+  "/campaigns/{campaign_id}/report/timeseries":
+    get:
+      tags:
+        - Campaigns
+      description: returns campaign time series analytics for a date range.
+      operationId: getCampaignReportTimeseries
+      parameters:
+        - in: path
+          name: campaign_id
+          required: true
+          schema:
+            type: integer
+        - in: query
+          name: from
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: to
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: campaign time series analytics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/CampaignReportSeries"
+
+  "/campaigns/{campaign_id}/report/links":
+    get:
+      tags:
+        - Campaigns
+      description: returns campaign link analytics for a date range.
+      operationId: getCampaignReportLinks
+      parameters:
+        - in: path
+          name: campaign_id
+          required: true
+          schema:
+            type: integer
+        - in: query
+          name: from
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: to
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: campaign link analytics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CampaignReportLink"
+
+  "/campaigns/{campaign_id}/report/recipients":
+    get:
+      tags:
+        - Campaigns
+      description: returns recipient-level campaign analytics for a date range.
+      operationId: getCampaignReportRecipients
+      parameters:
+        - in: path
+          name: campaign_id
+          required: true
+          schema:
+            type: integer
+        - in: query
+          name: from
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: to
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: per_page
+          schema:
+            type: integer
+        - in: query
+          name: search
+          schema:
+            type: string
+        - in: query
+          name: opened
+          schema:
+            type: string
+        - in: query
+          name: clicked
+          schema:
+            type: string
+        - in: query
+          name: bounced
+          schema:
+            type: string
+        - in: query
+          name: link_id
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: recipient-level campaign analytics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      results:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/CampaignReportRecipient"
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      per_page:
+                        type: integer
+
+  "/templates/{template_id}/clone":
+    post:
+      tags:
+        - Templates
+      description: clones a template into a new template.
+      operationId: cloneTemplate
+      parameters:
+        - in: path
+          name: template_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TemplateCloneRequest"
+      responses:
+        "200":
+          description: cloned template
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Template"
+
+  "/users/{user_id}/integration-tokens":
+    get:
+      tags:
+        - Users
+      description: lists integration bearer tokens for an API user.
+      operationId: getUserIntegrationTokens
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: list of integration tokens
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/IntegrationToken"
+    post:
+      tags:
+        - Users
+      description: creates a new integration bearer token for an API user.
+      operationId: createUserIntegrationToken
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateIntegrationTokenRequest"
+      responses:
+        "200":
+          description: created integration token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    allOf:
+                      - $ref: "#/components/schemas/IntegrationToken"
+                      - type: object
+                        properties:
+                          token:
+                            type: string
+
+  "/users/{user_id}/integration-tokens/{token_id}":
+    delete:
+      tags:
+        - Users
+      description: revokes an integration bearer token for an API user.
+      operationId: deleteUserIntegrationToken
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: integer
+        - in: path
+          name: token_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: token revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: boolean
+
 components:
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+    bearerAuth:
+      type: http
+      scheme: bearer
+    apiTokenAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: 'Use the header format: `Authorization: token api_user:token`'
   schemas:
     LanguagePack:
       type: object
@@ -4169,6 +4477,163 @@ components:
         body:
           type: string
           description: HTML body of the template
+
+    TemplateCloneRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        subject:
+          type: string
+
+    IntegrationToken:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: integer
+        name:
+          type: string
+        last_used_at:
+          type: string
+          format: date-time
+          nullable: true
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateIntegrationTokenRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+
+    CampaignReportSummary:
+      type: object
+      properties:
+        campaign_id:
+          type: integer
+        sent:
+          type: integer
+        bounced:
+          type: integer
+        views_total:
+          type: integer
+        clicks_total:
+          type: integer
+        unique_viewers:
+          type: integer
+          nullable: true
+        unique_clickers:
+          type: integer
+          nullable: true
+        open_rate:
+          type: number
+          format: double
+          nullable: true
+        click_rate:
+          type: number
+          format: double
+          nullable: true
+        ctor:
+          type: number
+          format: double
+          nullable: true
+
+    CampaignReportSeries:
+      type: object
+      properties:
+        views:
+          type: array
+          items:
+            $ref: "#/components/schemas/CampaignAnalyticsCount"
+        clicks:
+          type: array
+          items:
+            $ref: "#/components/schemas/CampaignAnalyticsCount"
+        bounces:
+          type: array
+          items:
+            $ref: "#/components/schemas/CampaignAnalyticsCount"
+
+    CampaignReportLink:
+      type: object
+      properties:
+        link_id:
+          type: integer
+        url:
+          type: string
+        total_clicks:
+          type: integer
+        unique_clickers:
+          type: integer
+          nullable: true
+        unique_click_rate:
+          type: number
+          format: double
+          nullable: true
+
+    CampaignReportRecipient:
+      type: object
+      properties:
+        subscriber_id:
+          type: integer
+        uuid:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        recipient_status:
+          type: string
+        sent_at:
+          type: string
+          format: date-time
+          nullable: true
+        bounce_count:
+          type: integer
+        view_count:
+          type: integer
+        click_count:
+          type: integer
+        first_viewed_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_viewed_at:
+          type: string
+          format: date-time
+          nullable: true
+        first_clicked_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_clicked_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_link_id:
+          type: integer
+          nullable: true
+        last_link_url:
+          type: string
+          nullable: true
+        last_engaged_at:
+          type: string
+          format: date-time
+          nullable: true
 
     TransactionalMessage:
       type: object

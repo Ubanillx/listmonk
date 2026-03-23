@@ -35,6 +35,24 @@ type Template struct {
 	Tpl        *template.Template `json:"-"`
 }
 
+// Clone returns a copy of the template with a new name.
+// Only transactional templates allow overriding the fixed subject.
+func (t Template) Clone(name, subject string) Template {
+	out := Template{
+		Name:       strings.TrimSpace(name),
+		Type:       t.Type,
+		Subject:    t.Subject,
+		Body:       t.Body,
+		BodySource: t.BodySource,
+	}
+
+	if t.Type == TemplateTypeTx && strings.TrimSpace(subject) != "" {
+		out.Subject = strings.TrimSpace(subject)
+	}
+
+	return out
+}
+
 // Compile compiles a template body and subject (only for tx templates) and
 // caches the templat references to be executed later.
 func (t *Template) Compile(f template.FuncMap) error {
@@ -78,6 +96,7 @@ type CampaignAnalyticsCount struct {
 }
 
 type CampaignAnalyticsLink struct {
-	URL   string `db:"url" json:"url"`
-	Count int    `db:"count" json:"count"`
+	LinkID int    `db:"link_id" json:"link_id"`
+	URL    string `db:"url" json:"url"`
+	Count  int    `db:"count" json:"count"`
 }

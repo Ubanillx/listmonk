@@ -25,7 +25,7 @@ WITH tpl AS (
 camp AS (
     INSERT INTO campaigns (uuid, type, name, subject, from_email, body, altbody,
         content_type, daily_send_limit, daily_resume_time, send_at, headers, attribs, tags, messenger, template_id, to_send,
-        max_subscriber_id, archive, archive_slug, archive_template_id, archive_meta, body_source)
+        max_subscriber_id, archive, archive_slug, archive_template_id, archive_meta, body_source, auto_track_links)
         SELECT $1, $2, $3, $4, $5,
             -- body
             COALESCE(NULLIF($6, ''), (SELECT body FROM tpl), ''),
@@ -42,7 +42,8 @@ camp AS (
             $20,
             $21,
             -- body_source
-            COALESCE($23, (SELECT body_source FROM tpl))
+            COALESCE($23, (SELECT body_source FROM tpl)),
+            $24
         RETURNING id
 ),
 med AS (
@@ -278,11 +279,202 @@ SELECT campaign_id, COUNT(*) AS "count", DATE_TRUNC((SELECT * FROM intval), crea
 -- name: get-campaign-link-counts
 -- raw: true
 -- %s = * or DISTINCT subscriber_id (prepared based on based on individual tracking=on/off). Prepared on boot.
-SELECT COUNT(%s) AS "count", url
+SELECT links.id AS link_id, COUNT(%s) AS "count", url
     FROM link_clicks
     LEFT JOIN links ON (link_clicks.link_id = links.id)
     WHERE campaign_id=ANY($1) AND link_clicks.created_at >= $2 AND link_clicks.created_at <= $3
-    GROUP BY links.url ORDER BY "count" DESC LIMIT 50;
+    GROUP BY links.id, links.url ORDER BY "count" DESC, links.url ASC LIMIT 50;
+
+-- name: get-campaign-report-summary
+WITH sent AS (
+    SELECT COUNT(*) AS sent
+    FROM campaign_recipients
+    WHERE campaign_id = $1
+      AND sent_at IS NOT NULL
+      AND sent_at >= $2
+      AND sent_at <= $3
+),
+views AS (
+    SELECT
+        COUNT(*) AS views_total,
+        COUNT(DISTINCT subscriber_id) AS unique_viewers
+    FROM campaign_views
+    WHERE campaign_id = $1
+      AND created_at >= $2
+      AND created_at <= $3
+),
+clicks AS (
+    SELECT
+        COUNT(*) AS clicks_total,
+        COUNT(DISTINCT subscriber_id) AS unique_clickers
+    FROM link_clicks
+    WHERE campaign_id = $1
+      AND created_at >= $2
+      AND created_at <= $3
+),
+bounces AS (
+    SELECT COUNT(*) AS bounced
+    FROM bounces
+    WHERE campaign_id = $1
+      AND created_at >= $2
+      AND created_at <= $3
+)
+SELECT
+    $1 AS campaign_id,
+    COALESCE((SELECT sent FROM sent), 0) AS sent,
+    COALESCE((SELECT bounced FROM bounces), 0) AS bounced,
+    COALESCE((SELECT views_total FROM views), 0) AS views_total,
+    COALESCE((SELECT clicks_total FROM clicks), 0) AS clicks_total,
+    COALESCE((SELECT unique_viewers FROM views), 0) AS unique_viewers,
+    COALESCE((SELECT unique_clickers FROM clicks), 0) AS unique_clickers;
+
+-- name: get-campaign-report-links
+SELECT
+    links.id AS link_id,
+    links.url,
+    COUNT(*) AS total_clicks,
+    COUNT(DISTINCT link_clicks.subscriber_id) AS unique_clickers
+FROM link_clicks
+LEFT JOIN links ON (link_clicks.link_id = links.id)
+WHERE link_clicks.campaign_id = $1
+  AND link_clicks.created_at >= $2
+  AND link_clicks.created_at <= $3
+GROUP BY links.id, links.url
+ORDER BY total_clicks DESC, links.url ASC
+LIMIT 50;
+
+-- name: query-campaign-report-recipients
+WITH view_stats AS (
+    SELECT
+        subscriber_id,
+        COUNT(*) AS view_count,
+        MIN(created_at) AS first_viewed_at,
+        MAX(created_at) AS last_viewed_at
+    FROM campaign_views
+    WHERE campaign_id = $1
+      AND created_at >= $2
+      AND created_at <= $3
+      AND subscriber_id IS NOT NULL
+    GROUP BY subscriber_id
+),
+click_stats AS (
+    SELECT
+        subscriber_id,
+        COUNT(*) AS click_count,
+        MIN(created_at) AS first_clicked_at,
+        MAX(created_at) AS last_clicked_at
+    FROM link_clicks
+    WHERE campaign_id = $1
+      AND created_at >= $2
+      AND created_at <= $3
+      AND subscriber_id IS NOT NULL
+    GROUP BY subscriber_id
+),
+last_click AS (
+    SELECT DISTINCT ON (lc.subscriber_id)
+        lc.subscriber_id,
+        lc.link_id AS last_link_id,
+        links.url AS last_link_url,
+        lc.created_at AS last_clicked_at
+    FROM link_clicks lc
+    LEFT JOIN links ON links.id = lc.link_id
+    WHERE lc.campaign_id = $1
+      AND lc.created_at >= $2
+      AND lc.created_at <= $3
+      AND lc.subscriber_id IS NOT NULL
+    ORDER BY lc.subscriber_id, lc.created_at DESC, lc.id DESC
+),
+bounce_stats AS (
+    SELECT
+        subscriber_id,
+        COUNT(*) AS bounce_count,
+        MAX(created_at) AS last_bounced_at
+    FROM bounces
+    WHERE campaign_id = $1
+      AND created_at >= $2
+      AND created_at <= $3
+    GROUP BY subscriber_id
+),
+filtered AS (
+    SELECT
+        s.id AS subscriber_id,
+        s.uuid,
+        s.email,
+        s.name,
+        cr.status AS recipient_status,
+        cr.sent_at,
+        COALESCE(bs.bounce_count, 0) AS bounce_count,
+        COALESCE(vs.view_count, 0) AS view_count,
+        COALESCE(cs.click_count, 0) AS click_count,
+        vs.first_viewed_at,
+        vs.last_viewed_at,
+        cs.first_clicked_at,
+        cs.last_clicked_at,
+        lc.last_link_id,
+        lc.last_link_url,
+        GREATEST(
+            COALESCE(vs.last_viewed_at, '-infinity'::TIMESTAMP WITH TIME ZONE),
+            COALESCE(cs.last_clicked_at, '-infinity'::TIMESTAMP WITH TIME ZONE),
+            COALESCE(bs.last_bounced_at, '-infinity'::TIMESTAMP WITH TIME ZONE),
+            COALESCE(cr.sent_at, '-infinity'::TIMESTAMP WITH TIME ZONE)
+        ) AS last_engaged_at,
+        COUNT(*) OVER() AS total
+    FROM campaign_recipients cr
+    JOIN subscribers s ON s.id = cr.subscriber_id
+    LEFT JOIN view_stats vs ON vs.subscriber_id = cr.subscriber_id
+    LEFT JOIN click_stats cs ON cs.subscriber_id = cr.subscriber_id
+    LEFT JOIN last_click lc ON lc.subscriber_id = cr.subscriber_id
+    LEFT JOIN bounce_stats bs ON bs.subscriber_id = cr.subscriber_id
+    WHERE cr.campaign_id = $1
+      AND ($4 = '' OR s.email ILIKE $4 OR s.name ILIKE $4)
+      AND (
+          $5 = 'all'
+          OR ($5 = 'yes' AND COALESCE(vs.view_count, 0) > 0)
+          OR ($5 = 'no' AND COALESCE(vs.view_count, 0) = 0)
+      )
+      AND (
+          $6 = 'all'
+          OR ($6 = 'yes' AND COALESCE(cs.click_count, 0) > 0)
+          OR ($6 = 'no' AND COALESCE(cs.click_count, 0) = 0)
+      )
+      AND (
+          $7 = 'all'
+          OR ($7 = 'yes' AND COALESCE(bs.bounce_count, 0) > 0)
+          OR ($7 = 'no' AND COALESCE(bs.bounce_count, 0) = 0)
+      )
+      AND (
+          $8 = 0 OR EXISTS (
+              SELECT 1
+              FROM link_clicks lcf
+              WHERE lcf.campaign_id = $1
+                AND lcf.subscriber_id = cr.subscriber_id
+                AND lcf.created_at >= $2
+                AND lcf.created_at <= $3
+                AND lcf.link_id = $8
+          )
+      )
+)
+SELECT
+    subscriber_id,
+    uuid,
+    email,
+    name,
+    recipient_status,
+    sent_at,
+    bounce_count,
+    view_count,
+    click_count,
+    first_viewed_at,
+    last_viewed_at,
+    first_clicked_at,
+    last_clicked_at,
+    last_link_id,
+    last_link_url,
+    NULLIF(last_engaged_at, '-infinity'::TIMESTAMP WITH TIME ZONE) AS last_engaged_at,
+    total
+FROM filtered
+ORDER BY %order%, email ASC
+OFFSET $9 LIMIT (CASE WHEN $10 < 1 THEN NULL ELSE $10 END);
 
 -- name: get-campaign-send-state
 SELECT campaigns.id AS campaign_id,
@@ -470,6 +662,7 @@ WITH camp AS (
         archive_template_id=(CASE WHEN $7::content_type = 'visual' THEN NULL ELSE $19::INT END),
         archive_meta=$20,
         body_source=$22,
+        auto_track_links=$23,
         updated_at=NOW()
     WHERE id = $1 RETURNING id
 ),

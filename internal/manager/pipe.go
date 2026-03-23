@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/knadh/listmonk/internal/schedule"
 	"github.com/knadh/listmonk/models"
 	"github.com/paulbellamy/ratecounter"
 )
@@ -167,7 +168,7 @@ func (p *pipe) Defer() {
 		return
 	}
 
-	next := nextResumeAt(p.camp.DailyResumeTime, time.Now())
+	next := schedule.NextDailyResumeAt(p.camp.DailyResumeTime, time.Now())
 	if err := p.m.store.DeferCampaign(p.camp.ID, next); err != nil {
 		p.m.log.Printf("error deferring campaign (%s): %v", p.camp.Name, err)
 		return
@@ -279,19 +280,4 @@ func (p *pipe) cleanup() {
 
 	// Notify admin.
 	_ = p.m.sendNotif(c, c.Status, "")
-}
-
-func nextResumeAt(hhmm string, now time.Time) time.Time {
-	base := now.In(time.Local)
-	t, err := time.ParseInLocation("15:04", hhmm, time.Local)
-	if err != nil {
-		return base.Add(24 * time.Hour).Truncate(time.Minute)
-	}
-
-	next := time.Date(base.Year(), base.Month(), base.Day(), t.Hour(), t.Minute(), 0, 0, time.Local)
-	if !next.After(base) {
-		next = next.Add(24 * time.Hour)
-	}
-
-	return next
 }

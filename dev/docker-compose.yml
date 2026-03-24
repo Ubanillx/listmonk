@@ -1,5 +1,3 @@
-version: "3"
-
 services:
   adminer:
     image: adminer:4.8.1-standalone
@@ -60,7 +58,7 @@ services:
       - db
     volumes:
       - ../:/app
-      - $GOPATH/pkg/mod/cache:/go/pkg/mod/cache
+      - ${HOME}/go/pkg/mod/cache:/go/pkg/mod/cache
     networks:
       - listmonk-dev
 

@@ -3,22 +3,22 @@ services:
     image: adminer:4.8.1-standalone
     restart: always
     ports:
-      - 38071:8080
+      - 8171:8080
     networks:
       - listmonk-dev
 
   mailhog:
     image: mailhog/mailhog:v1.0.1
     ports:
-      - "31026:1025" # SMTP
-      - "38026:8025" # UI
+      - "6125:1025" # SMTP
+      - "8265:8025" # UI
     networks:
       - listmonk-dev
 
   db:
     image: postgres:13
     ports:
-      - "35433:5432"
+      - "5437:5432"
     networks:
       - listmonk-dev
     environment:
@@ -37,9 +37,9 @@ services:
       dockerfile: dev/app.Dockerfile
     command: ["make", "run-frontend"]
     ports:
-      - "38081:8080"
+      - "8181:8080"
     environment:
-      - LISTMONK_API_URL=http://backend:9000
+      - LISTMONK_API_URL=http://backend:9173
       - npm_config_registry=${NPM_CONFIG_REGISTRY:-https://registry.npmmirror.com}
       - YARN_REGISTRY=${YARN_REGISTRY:-https://registry.npmmirror.com}
     depends_on:
@@ -55,7 +55,7 @@ services:
       dockerfile: dev/app.Dockerfile
     command: ["sh", "dev/run-backend.sh"]
     ports:
-      - "39100:9000"
+      - "9173:9173"
     environment:
       - GOPROXY=${GOPROXY:-https://goproxy.cn,direct}
       - GOSUMDB=${GOSUMDB:-sum.golang.google.cn}

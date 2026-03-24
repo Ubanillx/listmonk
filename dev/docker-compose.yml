@@ -3,22 +3,22 @@ services:
     image: adminer:4.8.1-standalone
     restart: always
     ports:
-      - 8070:8080
+      - 38071:8080
     networks:
       - listmonk-dev
 
   mailhog:
     image: mailhog/mailhog:v1.0.1
     ports:
-      - "1025:1025" # SMTP
-      - "8025:8025" # UI
+      - "31026:1025" # SMTP
+      - "38026:8025" # UI
     networks:
       - listmonk-dev
 
   db:
     image: postgres:13
     ports:
-      - "5432:5432"
+      - "35433:5432"
     networks:
       - listmonk-dev
     environment:
@@ -37,7 +37,7 @@ services:
       dockerfile: dev/app.Dockerfile
     command: ["make", "run-frontend"]
     ports:
-      - "8080:8080"
+      - "38081:8080"
     environment:
       - LISTMONK_API_URL=http://backend:9000
     depends_on:
@@ -53,7 +53,7 @@ services:
       dockerfile: dev/app.Dockerfile
     command: ["sh", "dev/run-backend.sh"]
     ports:
-      - "9000:9000"
+      - "39100:9000"
     depends_on:
       - db
     volumes:

@@ -4,10 +4,10 @@ services:
     container_name: listmonk_app
     restart: unless-stopped
     ports:
-      - "${APP_PORT:-39100}:9000"
+      - "${APP_PORT:-39173}:9000"
     networks:
       - listmonk
-    hostname: ${APP_HOSTNAME:-listmonk.example.com}
+    hostname: ${APP_HOSTNAME:-lmk-7q9n.edge.example.net}
     depends_on:
       db:
         condition: service_healthy
@@ -17,9 +17,9 @@ services:
       - ./listmonk --install --idempotent --yes --config '' && ./listmonk --upgrade --yes --config '' && ./listmonk --config ''
     environment:
       LISTMONK_app__address: 0.0.0.0:9000
-      LISTMONK_db__user: ${POSTGRES_USER:-listmonk}
-      LISTMONK_db__password: ${POSTGRES_PASSWORD:-listmonk}
-      LISTMONK_db__database: ${POSTGRES_DB:-listmonk}
+      LISTMONK_db__user: ${POSTGRES_USER:-lmkp_A7vN3qY8}
+      LISTMONK_db__password: ${POSTGRES_PASSWORD:-Db_T9x4Qm7Lp2Rs8Vk}
+      LISTMONK_db__database: ${POSTGRES_DB:-lmkd_A7vN3qY8}
       LISTMONK_db__host: db
       LISTMONK_db__port: 5432
       LISTMONK_db__ssl_mode: disable
@@ -37,15 +37,15 @@ services:
     container_name: listmonk_db
     restart: unless-stopped
     ports:
-      - "${POSTGRES_PORT_BIND:-127.0.0.1:35433}:5432"
+      - "${POSTGRES_PORT_BIND:-127.0.0.1:35491}:5432"
     networks:
       - listmonk
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-listmonk}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-listmonk}
-      POSTGRES_DB: ${POSTGRES_DB:-listmonk}
+      POSTGRES_USER: ${POSTGRES_USER:-lmkp_A7vN3qY8}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-Db_T9x4Qm7Lp2Rs8Vk}
+      POSTGRES_DB: ${POSTGRES_DB:-lmkd_A7vN3qY8}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-listmonk}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lmkp_A7vN3qY8}"]
       interval: 10s
       timeout: 5s
       retries: 6

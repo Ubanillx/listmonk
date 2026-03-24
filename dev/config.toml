@@ -9,11 +9,11 @@ address = "0.0.0.0:9000"
 [db]
 host = "db"
 port = 5432
-user = "listmonk-dev"
-password = "listmonk-dev"
+user = "lmkdev_M7q2Xr8N"
+password = "P9vL2xT7nQ4mK8sR"
 
 # Ensure that this database has been created in Postgres.
-database = "listmonk-dev"
+database = "lmkdev_M7q2Xr8N"
 
 ssl_mode = "disable"
 max_open = 25

@@ -22,9 +22,9 @@ services:
     networks:
       - listmonk-dev
     environment:
-      - POSTGRES_PASSWORD=listmonk-dev
-      - POSTGRES_USER=listmonk-dev
-      - POSTGRES_DB=listmonk-dev
+      - POSTGRES_PASSWORD=P9vL2xT7nQ4mK8sR
+      - POSTGRES_USER=lmkdev_M7q2Xr8N
+      - POSTGRES_DB=lmkdev_M7q2Xr8N
     restart: unless-stopped
     volumes:
       - type: volume

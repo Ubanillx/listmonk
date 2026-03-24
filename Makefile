@@ -90,7 +90,7 @@ build-email-builder: $(FRONTEND_EMAIL_BUILDER_DIST_FINAL)
 
 # Run the JS frontend server in dev mode.
 .PHONY: run-frontend
-run-frontend: $(FRONTEND_EMAIL_BUILDER_DIST_FINAL)
+run-frontend: $(FRONTEND_YARN_MODULES) $(FRONTEND_EMAIL_BUILDER_DIST_FINAL)
 	export VUE_APP_VERSION="${VERSION}" && cd frontend && $(YARN) dev --host 0.0.0.0 --port 8080
 
 # Run Go tests.

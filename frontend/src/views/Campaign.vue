@@ -147,21 +147,22 @@
                   <b-taginput v-model="form.tags" name="tags" :disabled="!canEdit" ellipsis icon="tag-outline"
                     :placeholder="$t('globals.terms.tags')" />
                 </b-field>
-                <b-field :label="$t('campaigns.autoTrackLinks')" label-position="on-border"
-                  :message="$t('campaigns.autoTrackLinksHelp')">
+                <div class="campaign-toggle-field">
+                  <label class="label">{{ $t('campaigns.autoTrackLinks') }}</label>
                   <b-switch v-model="form.autoTrackLinks" :disabled="!canEdit" />
-                </b-field>
+                  <p class="help">{{ $t('campaigns.autoTrackLinksHelp') }}</p>
+                </div>
                 <hr />
 
-                <div class="columns">
+                <div class="columns campaign-send-later-row">
                   <div class="column is-4">
-                    <b-field :label="$t('campaigns.sendLater')" data-cy="btn-send-later">
+                    <div class="campaign-toggle-field" data-cy="btn-send-later">
+                      <label class="label">{{ $t('campaigns.sendLater') }}</label>
                       <b-switch v-model="form.sendLater" :disabled="!canEdit" />
-                    </b-field>
+                    </div>
                   </div>
                   <div class="column">
-                    <br />
-                    <b-field v-if="form.sendLater" data-cy="send_at"
+                    <b-field v-if="form.sendLater" class="campaign-send-at-field" data-cy="send_at"
                       :message="form.sendAtDate ? $utils.duration(Date(), form.sendAtDate) : ''">
                       <b-datetimepicker v-model="form.sendAtDate" :disabled="!canEdit" required editable mobile-native
                         position="is-top-right" :placeholder="$t('campaigns.dateAndTime')" icon="calendar-clock"
@@ -942,3 +943,25 @@ export default Vue.extend({
   },
 });
 </script>
+
+<style scoped>
+.campaign-toggle-field {
+  margin-bottom: 1.25rem;
+}
+
+.campaign-toggle-field .label {
+  margin-bottom: 0.5rem;
+}
+
+.campaign-toggle-field .help {
+  margin-top: 0.5rem;
+}
+
+.campaign-send-later-row {
+  align-items: flex-start;
+}
+
+.campaign-send-at-field {
+  margin-top: 1.9rem;
+}
+</style>

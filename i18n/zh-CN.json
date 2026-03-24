@@ -201,6 +201,7 @@
     "globals.buttons.ok": "好的",
     "globals.buttons.refresh": "刷新",
     "globals.buttons.remove": "移除",
+    "globals.buttons.search": "搜索",
     "globals.buttons.save": "保存",
     "globals.buttons.saveChanges": "保存更改",
     "globals.buttons.toggleSelect": "切换选择",

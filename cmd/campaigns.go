@@ -674,6 +674,25 @@ func (a *App) GetCampaignReportSummary(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{out})
 }
 
+func (a *App) GetCampaignsReportSummary(c echo.Context) error {
+	ids, err := a.getAccessibleCampaignReportIDs(c)
+	if err != nil {
+		return err
+	}
+
+	from, to, err := a.getCampaignReportDateRange(c)
+	if err != nil {
+		return err
+	}
+
+	out, err := a.core.GetCampaignsReportSummary(ids, from, to, a.cfg.Privacy.IndividualTracking)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, okResp{out})
+}
+
 func (a *App) GetCampaignReportSeries(c echo.Context) error {
 	id := getID(c)
 	if err := a.checkCampaignPerm(auth.PermTypeGet, id, c); err != nil {
@@ -693,6 +712,25 @@ func (a *App) GetCampaignReportSeries(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{out})
 }
 
+func (a *App) GetCampaignsReportSeries(c echo.Context) error {
+	ids, err := a.getAccessibleCampaignReportIDs(c)
+	if err != nil {
+		return err
+	}
+
+	from, to, err := a.getCampaignReportDateRange(c)
+	if err != nil {
+		return err
+	}
+
+	out, err := a.core.GetCampaignsReportSeries(ids, from, to)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, okResp{out})
+}
+
 func (a *App) GetCampaignReportLinks(c echo.Context) error {
 	id := getID(c)
 	if err := a.checkCampaignPerm(auth.PermTypeGet, id, c); err != nil {
@@ -705,6 +743,25 @@ func (a *App) GetCampaignReportLinks(c echo.Context) error {
 	}
 
 	out, err := a.core.GetCampaignReportLinks(id, from, to, a.cfg.Privacy.IndividualTracking)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, okResp{out})
+}
+
+func (a *App) GetCampaignsReportLinks(c echo.Context) error {
+	ids, err := a.getAccessibleCampaignReportIDs(c)
+	if err != nil {
+		return err
+	}
+
+	from, to, err := a.getCampaignReportDateRange(c)
+	if err != nil {
+		return err
+	}
+
+	out, err := a.core.GetCampaignsReportLinks(ids, from, to, a.cfg.Privacy.IndividualTracking)
 	if err != nil {
 		return err
 	}
@@ -762,6 +819,56 @@ func (a *App) GetCampaignReportRecipients(c echo.Context) error {
 	}})
 }
 
+func (a *App) GetCampaignsReportRecipients(c echo.Context) error {
+	user := auth.GetUser(c)
+	if !user.HasPerm(auth.PermSubscribersGet) && !user.HasPerm(auth.PermSubscribersGetAll) {
+		return echo.NewHTTPError(http.StatusForbidden,
+			a.i18n.Ts("globals.messages.permissionDenied", "name", auth.PermSubscribersGet))
+	}
+	if !a.cfg.Privacy.IndividualTracking {
+		return echo.NewHTTPError(http.StatusForbidden, a.i18n.T("analytics.nonIndividualTracking"))
+	}
+
+	ids, err := a.getAccessibleCampaignReportIDs(c)
+	if err != nil {
+		return err
+	}
+
+	from, to, err := a.getCampaignReportDateRange(c)
+	if err != nil {
+		return err
+	}
+
+	linkID := 0
+	if v := c.QueryParam("link_id"); v != "" {
+		linkID, err = strconv.Atoi(v)
+		if err != nil || linkID < 0 {
+			return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("globals.messages.invalidID"))
+		}
+	}
+
+	pg := a.pg.NewFromURL(c.Request().URL.Query())
+	out, total, err := a.core.QueryCampaignsReportRecipients(ids, from, to, models.CampaignReportRecipientFilters{
+		Search:  c.QueryParam("search"),
+		Opened:  c.QueryParam("opened"),
+		Clicked: c.QueryParam("clicked"),
+		Bounced: c.QueryParam("bounced"),
+		LinkID:  linkID,
+		SortBy:  c.QueryParam("sort_by"),
+		Order:   c.QueryParam("order"),
+	}, pg.Offset, pg.Limit)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, okResp{models.PageResults{
+		Results: out,
+		Total:   total,
+		Page:    pg.Page,
+		PerPage: pg.PerPage,
+	}})
+}
+
 func (a *App) getCampaignReportDateRange(c echo.Context) (string, string, error) {
 	from := c.QueryParam("from")
 	to := c.QueryParam("to")
@@ -769,6 +876,52 @@ func (a *App) getCampaignReportDateRange(c echo.Context) (string, string, error)
 		return "", "", echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("analytics.invalidDates"))
 	}
 	return from, to, nil
+}
+
+func (a *App) getAccessibleCampaignReportIDs(c echo.Context) ([]int, error) {
+	ids, err := getQueryInts("id", c.QueryParams())
+	if err != nil {
+		return nil, echo.NewHTTPError(http.StatusBadRequest,
+			a.i18n.Ts("globals.messages.errorInvalidIDs", "error", err.Error()))
+	}
+
+	if len(ids) > 0 {
+		seen := make(map[int]struct{}, len(ids))
+		out := make([]int, 0, len(ids))
+		for _, id := range ids {
+			if id < 1 {
+				return nil, echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("globals.messages.invalidID"))
+			}
+			if err := a.checkCampaignPerm(auth.PermTypeGet, id, c); err != nil {
+				return nil, err
+			}
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			out = append(out, id)
+		}
+		return out, nil
+	}
+
+	user := auth.GetUser(c)
+	hasAllPerm := user.HasPerm(auth.PermCampaignsGetAll)
+	permittedLists := []int{}
+	if !hasAllPerm {
+		hasAllPerm, permittedLists = user.GetPermittedLists(auth.PermTypeGet | auth.PermTypeManage)
+	}
+
+	camps, _, err := a.core.QueryCampaigns("", nil, nil, "created_at", "DESC", hasAllPerm, permittedLists, 0, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]int, 0, len(camps))
+	for _, camp := range camps {
+		out = append(out, camp.ID)
+	}
+
+	return out, nil
 }
 
 // sendTestMessage takes a campaign and a subscriber and sends out a sample campaign message.

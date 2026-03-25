@@ -327,8 +327,18 @@ export const getCampaignReportSummary = async (id, params) => http.get(
   { params, loading: models.campaigns },
 );
 
+export const getCampaignsReportSummary = async (params) => http.get(
+  '/api/campaigns/report/summary',
+  { params, loading: models.campaigns },
+);
+
 export const getCampaignReportSeries = async (id, params) => http.get(
   `/api/campaigns/${id}/report/timeseries`,
+  { params, loading: models.campaigns },
+);
+
+export const getCampaignsReportSeries = async (params) => http.get(
+  '/api/campaigns/report/timeseries',
   { params, loading: models.campaigns },
 );
 
@@ -337,8 +347,18 @@ export const getCampaignReportLinks = async (id, params) => http.get(
   { params, loading: models.campaigns },
 );
 
+export const getCampaignsReportLinks = async (params) => http.get(
+  '/api/campaigns/report/links',
+  { params, loading: models.campaigns },
+);
+
 export const getCampaignReportRecipients = async (id, params) => http.get(
   `/api/campaigns/${id}/report/recipients`,
+  { params, loading: models.campaigns },
+);
+
+export const getCampaignsReportRecipients = async (params) => http.get(
+  '/api/campaigns/report/recipients',
   { params, loading: models.campaigns },
 );
 

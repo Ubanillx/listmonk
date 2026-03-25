@@ -3,6 +3,7 @@ package core
 import (
 	"database/sql"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -28,6 +29,16 @@ var campaignReportRecipientSortFields = map[string]string{
 	"view_count":      "view_count",
 	"click_count":     "click_count",
 	"sent_at":         "sent_at",
+}
+
+var campaignsReportRecipientSortFields = map[string]string{
+	"campaign_subject": "campaign_subject",
+	"email":            "email",
+	"view_count":       "view_count",
+	"click_count":      "click_count",
+	"bounce_count":     "bounce_count",
+	"last_engaged_at":  "last_engaged_at",
+	"sent_at":          "sent_at",
 }
 
 // QueryCampaigns retrieves paginated campaigns optionally filtering them by the given arbitrary
@@ -499,6 +510,40 @@ func (c *Core) GetCampaignReportSummary(campID int, fromDate, toDate string, ind
 	return out, nil
 }
 
+func (c *Core) GetCampaignsReportSummary(campIDs []int, fromDate, toDate string, individualTracking bool) (models.CampaignReportSummary, error) {
+	if !strHasLen(fromDate, 10, 30) || !strHasLen(toDate, 10, 30) {
+		return models.CampaignReportSummary{}, echo.NewHTTPError(http.StatusBadRequest, c.i18n.T("analytics.invalidDates"))
+	}
+
+	if len(campIDs) == 0 {
+		return models.CampaignReportSummary{}, nil
+	}
+
+	var row models.CampaignsReportSummaryDB
+	if err := c.q.GetCampaignsReportSummary.Get(&row, pq.Array(campIDs), fromDate, toDate); err != nil {
+		c.log.Printf("error fetching campaigns report summary: %v", err)
+		return models.CampaignReportSummary{}, echo.NewHTTPError(http.StatusInternalServerError,
+			c.i18n.Ts("globals.messages.errorFetching", "name", "{globals.terms.analytics}", "error", pqErrMsg(err)))
+	}
+
+	out := models.CampaignReportSummary{
+		Sent:        row.Sent,
+		Bounced:     row.Bounced,
+		ViewsTotal:  row.ViewsTotal,
+		ClicksTotal: row.ClicksTotal,
+	}
+
+	if individualTracking {
+		out.UniqueViewers = intPtr(row.UniqueViewers)
+		out.UniqueClickers = intPtr(row.UniqueClickers)
+		out.OpenRate = ratePtr(row.UniqueViewers, row.Sent)
+		out.ClickRate = ratePtr(row.UniqueClickers, row.Sent)
+		out.CTOR = ratePtr(row.UniqueClickers, row.UniqueViewers)
+	}
+
+	return out, nil
+}
+
 func (c *Core) GetCampaignReportSeries(campID int, fromDate, toDate string) (models.CampaignReportSeries, error) {
 	views, err := c.GetCampaignAnalyticsCounts([]int{campID}, CampaignAnalyticsViews, fromDate, toDate)
 	if err != nil {
@@ -519,6 +564,33 @@ func (c *Core) GetCampaignReportSeries(campID int, fromDate, toDate string) (mod
 		Views:   views,
 		Clicks:  clicks,
 		Bounces: bounces,
+	}, nil
+}
+
+func (c *Core) GetCampaignsReportSeries(campIDs []int, fromDate, toDate string) (models.CampaignReportSeries, error) {
+	if len(campIDs) == 0 {
+		return models.CampaignReportSeries{}, nil
+	}
+
+	views, err := c.GetCampaignAnalyticsCounts(campIDs, CampaignAnalyticsViews, fromDate, toDate)
+	if err != nil {
+		return models.CampaignReportSeries{}, err
+	}
+
+	clicks, err := c.GetCampaignAnalyticsCounts(campIDs, CampaignAnalyticsClicks, fromDate, toDate)
+	if err != nil {
+		return models.CampaignReportSeries{}, err
+	}
+
+	bounces, err := c.GetCampaignAnalyticsCounts(campIDs, CampaignAnalyticsBounces, fromDate, toDate)
+	if err != nil {
+		return models.CampaignReportSeries{}, err
+	}
+
+	return models.CampaignReportSeries{
+		Views:   aggregateCampaignAnalyticsCounts(views),
+		Clicks:  aggregateCampaignAnalyticsCounts(clicks),
+		Bounces: aggregateCampaignAnalyticsCounts(bounces),
 	}, nil
 }
 
@@ -550,6 +622,44 @@ func (c *Core) GetCampaignReportLinks(campID int, fromDate, toDate string, indiv
 		if individualTracking {
 			item.UniqueClickers = intPtr(row.UniqueClickers)
 			item.UniqueClickRate = ratePtr(row.UniqueClickers, summary.Sent)
+		}
+
+		out = append(out, item)
+	}
+
+	return out, nil
+}
+
+func (c *Core) GetCampaignsReportLinks(campIDs []int, fromDate, toDate string, individualTracking bool) ([]models.CampaignsReportLinkRow, error) {
+	if !strHasLen(fromDate, 10, 30) || !strHasLen(toDate, 10, 30) {
+		return nil, echo.NewHTTPError(http.StatusBadRequest, c.i18n.T("analytics.invalidDates"))
+	}
+
+	if len(campIDs) == 0 {
+		return []models.CampaignsReportLinkRow{}, nil
+	}
+
+	var raw []models.CampaignsReportLinkRowDB
+	if err := c.q.GetCampaignsReportLinks.Select(&raw, pq.Array(campIDs), fromDate, toDate); err != nil {
+		c.log.Printf("error fetching campaigns report links: %v", err)
+		return nil, echo.NewHTTPError(http.StatusInternalServerError,
+			c.i18n.Ts("globals.messages.errorFetching", "name", "{globals.terms.analytics}", "error", pqErrMsg(err)))
+	}
+
+	out := make([]models.CampaignsReportLinkRow, 0, len(raw))
+	for _, row := range raw {
+		item := models.CampaignsReportLinkRow{
+			CampaignID:      row.CampaignID,
+			CampaignName:    row.CampaignName,
+			CampaignSubject: row.CampaignSubject,
+			LinkID:          row.LinkID,
+			URL:             row.URL,
+			TotalClicks:     row.TotalClicks,
+		}
+
+		if individualTracking {
+			item.UniqueClickers = intPtr(row.UniqueClickers)
+			item.UniqueClickRate = ratePtr(row.UniqueClickers, row.Sent)
 		}
 
 		out = append(out, item)
@@ -590,6 +700,42 @@ func (c *Core) QueryCampaignReportRecipients(campID int, fromDate, toDate string
 	return out, total, nil
 }
 
+func (c *Core) QueryCampaignsReportRecipients(campIDs []int, fromDate, toDate string, filters models.CampaignReportRecipientFilters, offset, limit int) ([]models.CampaignsReportRecipientRow, int, error) {
+	if !strHasLen(fromDate, 10, 30) || !strHasLen(toDate, 10, 30) {
+		return nil, 0, echo.NewHTTPError(http.StatusBadRequest, c.i18n.T("analytics.invalidDates"))
+	}
+
+	if len(campIDs) == 0 {
+		return []models.CampaignsReportRecipientRow{}, 0, nil
+	}
+
+	orderExpr := makeCampaignsReportRecipientOrder(filters.SortBy, filters.Order)
+	stmt := strings.ReplaceAll(c.q.QueryCampaignsReportRecipients, "%order%", orderExpr)
+
+	search := strings.TrimSpace(filters.Search)
+	if search != "" {
+		search = "%" + search + "%"
+	}
+
+	opened := normalizeReportTriState(filters.Opened)
+	clicked := normalizeReportTriState(filters.Clicked)
+	bounced := normalizeReportTriState(filters.Bounced)
+
+	var out []models.CampaignsReportRecipientRow
+	if err := c.db.Select(&out, stmt, pq.Array(campIDs), fromDate, toDate, search, opened, clicked, bounced, filters.LinkID, offset, limit); err != nil {
+		c.log.Printf("error fetching campaigns report recipients: %v", err)
+		return nil, 0, echo.NewHTTPError(http.StatusInternalServerError,
+			c.i18n.Ts("globals.messages.errorFetching", "name", "{globals.terms.analytics}", "error", pqErrMsg(err)))
+	}
+
+	total := 0
+	if len(out) > 0 {
+		total = out[0].Total
+	}
+
+	return out, total, nil
+}
+
 func normalizeReportTriState(v string) string {
 	switch v {
 	case "yes", "no":
@@ -615,6 +761,53 @@ func makeCampaignReportRecipientOrder(sortBy, order string) string {
 	default:
 		return field + " " + order
 	}
+}
+
+func makeCampaignsReportRecipientOrder(sortBy, order string) string {
+	field, ok := campaignsReportRecipientSortFields[sortBy]
+	if !ok {
+		field = campaignsReportRecipientSortFields["last_engaged_at"]
+	}
+
+	if order != SortAsc && order != SortDesc {
+		order = SortDesc
+	}
+
+	switch field {
+	case "last_engaged_at", "sent_at":
+		return field + " " + order + " NULLS LAST"
+	default:
+		return field + " " + order
+	}
+}
+
+func aggregateCampaignAnalyticsCounts(in []models.CampaignAnalyticsCount) []models.CampaignAnalyticsCount {
+	if len(in) == 0 {
+		return []models.CampaignAnalyticsCount{}
+	}
+
+	bucket := make(map[time.Time]int)
+	for _, row := range in {
+		bucket[row.Timestamp] += row.Count
+	}
+
+	keys := make([]time.Time, 0, len(bucket))
+	for stamp := range bucket {
+		keys = append(keys, stamp)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		return keys[i].Before(keys[j])
+	})
+
+	out := make([]models.CampaignAnalyticsCount, 0, len(keys))
+	for _, stamp := range keys {
+		out = append(out, models.CampaignAnalyticsCount{
+			Count:     bucket[stamp],
+			Timestamp: stamp,
+		})
+	}
+
+	return out
 }
 
 func intPtr(v int) *int {

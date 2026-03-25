@@ -43,6 +43,15 @@ const DEFAULT_DONUT = {
   },
 };
 
+const DEFAULT_PIE = {
+  ...DEFAULT_DONUT,
+  type: 'pie',
+  options: {
+    ...DEFAULT_DONUT.options,
+    cutout: 0,
+  },
+};
+
 const DEFAULT_LINE = {
   type: 'line',
   data: {},
@@ -143,6 +152,9 @@ export default {
 
     let def = {};
     switch (this.$props.type) {
+      case 'pie':
+        def = DEFAULT_PIE;
+        break;
       case 'donut':
         def = DEFAULT_DONUT;
         break;

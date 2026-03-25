@@ -87,7 +87,7 @@ const routes = [
     path: '/campaigns/analytics',
     name: 'campaignAnalytics',
     meta: { title: 'analytics.title', group: 'campaigns' },
-    component: () => import('../views/CampaignAnalytics.vue'),
+    component: () => import('../views/CampaignAnalyticsReport.vue'),
   },
   {
     path: '/campaigns/:id',

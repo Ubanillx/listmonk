@@ -148,7 +148,7 @@
                     :placeholder="$t('globals.terms.tags')" />
                 </b-field>
                 <div class="campaign-toggle-field">
-                  <label class="label">{{ $t('campaigns.autoTrackLinks') }}</label>
+                  <p class="label">{{ $t('campaigns.autoTrackLinks') }}</p>
                   <b-switch v-model="form.autoTrackLinks" :disabled="!canEdit" />
                   <p class="help">{{ $t('campaigns.autoTrackLinksHelp') }}</p>
                 </div>
@@ -157,7 +157,7 @@
                 <div class="columns campaign-send-later-row">
                   <div class="column is-4">
                     <div class="campaign-toggle-field" data-cy="btn-send-later">
-                      <label class="label">{{ $t('campaigns.sendLater') }}</label>
+                      <p class="label">{{ $t('campaigns.sendLater') }}</p>
                       <b-switch v-model="form.sendLater" :disabled="!canEdit" />
                     </div>
                   </div>
@@ -268,7 +268,6 @@
       <b-tab-item
         v-if="isEditing && $can('campaigns:get_analytics')"
         :label="$t('globals.terms.analytics')"
-        icon="chart-box-outline"
         value="analytics"
       >
         <section class="wrap">
@@ -922,7 +921,9 @@ export default Vue.extend({
     if (this.isEditing) {
       this.getCampaign(id).then(() => {
         if (this.$route.hash !== '') {
-          this.activeTab = this.$route.hash.replace('#', '');
+          const tab = this.$route.hash.replace('#', '');
+          const availableTabs = new Set(['campaign', 'content', 'attribs', 'analytics', 'archive']);
+          this.activeTab = availableTabs.has(tab) ? tab : 'campaign';
         }
       });
     } else {

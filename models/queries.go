@@ -77,8 +77,11 @@ type Queries struct {
 	GetCampaignLinkCounts         *sqlx.Stmt `query:"get-campaign-link-counts"`
 	GetCampaignBounceCounts       *sqlx.Stmt `query:"get-campaign-bounce-counts"`
 	GetCampaignReportSummary      *sqlx.Stmt `query:"get-campaign-report-summary"`
+	GetCampaignsReportSummary     *sqlx.Stmt `query:"get-campaigns-report-summary"`
 	GetCampaignReportLinks        *sqlx.Stmt `query:"get-campaign-report-links"`
+	GetCampaignsReportLinks       *sqlx.Stmt `query:"get-campaigns-report-links"`
 	QueryCampaignReportRecipients string     `query:"query-campaign-report-recipients"`
+	QueryCampaignsReportRecipients string     `query:"query-campaigns-report-recipients"`
 	DeleteCampaignViews           *sqlx.Stmt `query:"delete-campaign-views"`
 	DeleteCampaignLinkClicks      *sqlx.Stmt `query:"delete-campaign-link-clicks"`
 

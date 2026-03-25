@@ -1,44 +1,124 @@
 <template>
-  <section class="campaign-report">
-    <div class="columns is-vcentered">
-      <div class="column is-8">
-        <div class="notification is-info" v-if="trackingDisabled">
-          {{ $t('analytics.trackingDisabled') }}
+  <section class="campaign-analytics-report">
+    <header class="columns page-header is-vcentered">
+      <div class="column">
+        <h1 class="title is-4">
+          {{ $t('analytics.title') }}
+          <b-tag class="ml-3" type="is-light">
+            {{ activeScopeLabel }}
+          </b-tag>
+        </h1>
+      </div>
+    </header>
+
+    <div class="notification is-info" v-if="trackingDisabled">
+      {{ $t('analytics.trackingDisabled') }}
+    </div>
+    <div class="notification is-info" v-else-if="!serverConfig.privacy.individual_tracking">
+      {{ $t('analytics.nonIndividualTracking') }}
+    </div>
+
+    <section class="box campaign-selector-panel">
+      <div class="columns is-variable is-6 is-multiline is-vcentered">
+        <div class="column is-6-desktop">
+          <p class="is-size-7 has-text-weight-semibold has-text-grey campaign-selector-label">
+            {{ translateOr('analytics.selectedCampaigns', '已选营销活动', 'Selected campaigns') }}
+          </p>
+          <div class="campaign-selector-tags">
+            <b-tag
+              v-if="form.campaigns.length === 0"
+              type="is-light"
+              size="is-medium"
+              class="campaign-scope-tag"
+            >
+              {{ translateOr('analytics.allCampaigns', '全部营销活动', 'All campaigns') }}
+            </b-tag>
+            <b-tag
+              v-for="campaign in form.campaigns"
+              :key="campaign.id"
+              type="is-info"
+              size="is-medium"
+              closable
+              class="campaign-scope-tag"
+              @close="removeCampaign(campaign.id)"
+            >
+              {{ campaign.name }}
+            </b-tag>
+          </div>
         </div>
-        <div class="notification is-info" v-else-if="!serverConfig.privacy.individual_tracking">
-          {{ $t('analytics.nonIndividualTracking') }}
+
+        <div class="column is-6-desktop">
+          <b-field
+            :label="translateOr('analytics.campaignSearch', '搜索并添加营销活动', 'Search and add campaigns')"
+            label-position="on-border"
+            :message="translateOr('analytics.allCampaignsHint', '未选择营销活动时，默认显示全部营销活动数据。', 'Shows all campaigns by default when no campaign is selected.')"
+          >
+            <b-autocomplete
+              v-model="campaignQuery"
+              icon="magnify"
+              clearable
+              field="name"
+              keep-first
+              open-on-focus
+              :data="availableCampaignOptions"
+              :loading="isSearchLoading"
+              :placeholder="translateOr('analytics.campaignSearchPlaceholder', '输入名称搜索营销活动', 'Type to search campaigns')"
+              @focus="onCampaignSearchFocus"
+              @typing="queryCampaigns"
+              @select="selectCampaign"
+            />
+          </b-field>
+
+          <div class="campaign-selector-actions">
+            <b-button
+              type="is-light"
+              :disabled="form.campaigns.length === 0"
+              @click="clearCampaignSelection"
+            >
+              {{ translateOr('analytics.clearCampaignSelection', '查看全部营销活动', 'View all campaigns') }}
+            </b-button>
+          </div>
         </div>
       </div>
-      <div class="column is-4">
-        <form @submit.prevent="onDateSubmit">
-          <div class="columns">
-            <div class="column is-6">
-              <b-field :label="$t('analytics.fromDate')" label-position="on-border">
-                <b-datetimepicker
-                  v-model="filters.from"
-                  icon="calendar-clock"
-                  :timepicker="{ hourFormat: '24' }"
-                  :datetime-formatter="formatDateTime"
-                />
-              </b-field>
-            </div>
-            <div class="column is-6">
-              <b-field :label="$t('analytics.toDate')" label-position="on-border">
-                <b-datetimepicker
-                  v-model="filters.to"
-                  icon="calendar-clock"
-                  :timepicker="{ hourFormat: '24' }"
-                  :datetime-formatter="formatDateTime"
-                />
-              </b-field>
-            </div>
-          </div>
-          <b-button native-type="submit" type="is-primary" icon-left="magnify" size="is-small" expanded>
+    </section>
+
+    <form @submit.prevent="onSubmit">
+      <div class="columns is-vcentered">
+        <div class="column is-3">
+          <b-field :label="$t('analytics.fromDate')" label-position="on-border">
+            <b-datetimepicker
+              v-model="filters.from"
+              icon="calendar-clock"
+              :timepicker="{ hourFormat: '24' }"
+              :datetime-formatter="formatDateTime"
+              @input="onFromDateChange"
+            />
+          </b-field>
+        </div>
+        <div class="column is-3">
+          <b-field :label="$t('analytics.toDate')" label-position="on-border">
+            <b-datetimepicker
+              v-model="filters.to"
+              icon="calendar-clock"
+              :timepicker="{ hourFormat: '24' }"
+              :datetime-formatter="formatDateTime"
+              @input="onToDateChange"
+            />
+          </b-field>
+        </div>
+        <div class="column is-2">
+          <b-button native-type="submit" type="is-primary" icon-left="magnify" expanded>
             {{ $t('analytics.refreshReport') }}
           </b-button>
-        </form>
+        </div>
+        <div class="column is-4 has-text-right">
+          <router-link v-if="singleCampaign" :to="{ name: 'campaign', params: { id: singleCampaign.id }, hash: '#analytics' }"
+            class="button is-primary is-light">
+            {{ $t('analytics.openCampaignReport') }}
+          </router-link>
+        </div>
       </div>
-    </div>
+    </form>
 
     <div class="columns is-multiline report-cards">
       <div class="column is-4-tablet is-3-desktop" v-for="card in summaryCards" :key="card.key">
@@ -129,6 +209,12 @@
         {{ $t('analytics.trackingChartsUnavailable') }}
       </div>
       <b-table v-else :data="links" :loading="loading.links" hoverable narrowed>
+        <b-table-column v-slot="props" field="campaignSubject" :label="$tc('globals.terms.campaign', 1)">
+          <router-link :to="{ name: 'campaign', params: { id: props.row.campaignId }, hash: '#analytics' }">
+            {{ props.row.campaignSubject }}
+          </router-link>
+          <p class="is-size-7 has-text-grey">{{ props.row.campaignName }}</p>
+        </b-table-column>
         <b-table-column v-slot="props" field="url" :label="$t('globals.terms.url')">
           <a href="#" @click.prevent="applyLinkFilter(props.row)">
             {{ props.row.url }}
@@ -164,12 +250,17 @@
       </div>
       <div v-else>
         <div class="columns is-multiline recipient-filters">
-          <div class="column is-4">
+          <div class="column is-3">
             <b-field :label="$t('globals.buttons.search')" label-position="on-border">
               <b-input v-model="filters.search" :placeholder="$t('analytics.recipientSearch')" icon="magnify" />
             </b-field>
           </div>
-          <div class="column is-2">
+          <div class="column is-3">
+            <b-field :label="$tc('globals.terms.campaign', 1)" label-position="on-border">
+              <b-input :value="activeScopeLabel" disabled />
+            </b-field>
+          </div>
+          <div class="column is-1">
             <b-field :label="$t('campaigns.views')" label-position="on-border">
               <b-select v-model="filters.opened" expanded>
                 <option value="all">{{ $t('analytics.filterAll') }}</option>
@@ -178,7 +269,7 @@
               </b-select>
             </b-field>
           </div>
-          <div class="column is-2">
+          <div class="column is-1">
             <b-field :label="$t('campaigns.clicks')" label-position="on-border">
               <b-select v-model="filters.clicked" expanded>
                 <option value="all">{{ $t('analytics.filterAll') }}</option>
@@ -219,6 +310,13 @@
           :per-page="recipients.perPage || recipientQuery.perPage"
           :total="recipients.total || 0"
         >
+          <b-table-column v-slot="props" field="campaignSubject" :label="$tc('globals.terms.campaign', 1)" sortable>
+            <router-link :to="{ name: 'campaign', params: { id: props.row.campaignId }, hash: '#analytics' }">
+              {{ props.row.campaignSubject }}
+            </router-link>
+            <p class="is-size-7 has-text-grey">{{ props.row.campaignName }}</p>
+          </b-table-column>
+
           <b-table-column v-slot="props" field="email" :label="$t('subscribers.email')" sortable>
             <router-link :to="{ name: 'subscriber', params: { id: props.row.subscriberId } }">
               {{ props.row.email }}
@@ -238,7 +336,7 @@
             </b-tag>
           </b-table-column>
 
-          <b-table-column v-slot="props" field="bounce_count" :label="$t('globals.terms.bounces')" numeric>
+          <b-table-column v-slot="props" field="bounce_count" :label="$t('globals.terms.bounces')" sortable numeric>
             <b-tag :type="props.row.bounceCount > 0 ? 'is-danger' : 'is-light'">
               {{ props.row.bounceCount }}
             </b-tag>
@@ -264,7 +362,7 @@
 import dayjs from 'dayjs';
 import Vue from 'vue';
 import { mapState } from 'vuex';
-import Chart from './Chart.vue';
+import Chart from '../components/Chart.vue';
 
 const chartColors = {
   views: '#0055d4',
@@ -280,32 +378,42 @@ const breakdownColors = {
 };
 
 export default Vue.extend({
-  name: 'CampaignReport',
+  name: 'CampaignAnalyticsReport',
 
   components: {
     Chart,
   },
 
-  props: {
-    campaign: {
-      type: Object,
-      required: true,
-    },
-    active: {
-      type: Boolean,
-      default: false,
-    },
-  },
-
   data() {
     return {
-      initialized: false,
+      syncToken: 0,
+      isSearchLoading: false,
+      campaignQuery: '',
+      queriedCampaigns: [],
       chartVersion: 0,
       loading: {
         summary: false,
         series: false,
         links: false,
         recipients: false,
+      },
+      form: {
+        campaigns: [],
+      },
+      filters: {
+        from: null,
+        to: null,
+        search: '',
+        opened: 'all',
+        clicked: 'all',
+        bounced: 'all',
+        linkID: 0,
+      },
+      recipientQuery: {
+        page: 1,
+        perPage: 20,
+        sortBy: 'last_engaged_at',
+        order: 'desc',
       },
       summary: {
         sent: 0,
@@ -330,21 +438,6 @@ export default Vue.extend({
         total: 0,
         perPage: 20,
       },
-      filters: {
-        from: null,
-        to: null,
-        search: '',
-        opened: 'all',
-        clicked: 'all',
-        bounced: 'all',
-        linkID: 0,
-      },
-      recipientQuery: {
-        page: 1,
-        perPage: 20,
-        sortBy: 'last_engaged_at',
-        order: 'desc',
-      },
     };
   },
 
@@ -361,6 +454,22 @@ export default Vue.extend({
 
     canShowRecipients() {
       return !this.trackingDisabled && this.serverConfig.privacy.individual_tracking && this.canReadSubscribers;
+    },
+
+    singleCampaign() {
+      return this.form.campaigns.length === 1 ? this.form.campaigns[0] : null;
+    },
+
+    activeScopeLabel() {
+      if (this.form.campaigns.length === 0) {
+        return this.translateOr('analytics.allCampaigns', '全部营销活动', 'All campaigns');
+      }
+
+      if (this.form.campaigns.length === 1) {
+        return this.form.campaigns[0].name;
+      }
+
+      return `${this.form.campaigns.length} ${this.$tc('globals.terms.campaign', this.form.campaigns.length)}`;
     },
 
     summaryCards() {
@@ -399,28 +508,28 @@ export default Vue.extend({
       return [
         {
           key: 'clicked',
-          label: this.translateOr('analytics.breakdownClicked', 'Clicked'),
+          label: this.translateOr('analytics.breakdownClicked', '已点击', 'Clicked'),
           value: clicked,
           color: breakdownColors.clicked,
           percentage: total > 0 ? (clicked / total) * 100 : 0,
         },
         {
           key: 'openedOnly',
-          label: this.translateOr('analytics.breakdownOpenedOnly', 'Opened, no click'),
+          label: this.translateOr('analytics.breakdownOpenedOnly', '已打开未点击', 'Opened, no click'),
           value: openedOnly,
           color: breakdownColors.openedOnly,
           percentage: total > 0 ? (openedOnly / total) * 100 : 0,
         },
         {
           key: 'unopened',
-          label: this.translateOr('analytics.breakdownUnopened', 'Delivered, no open'),
+          label: this.translateOr('analytics.breakdownUnopened', '已送达未打开', 'Delivered, no open'),
           value: unopened,
           color: breakdownColors.unopened,
           percentage: total > 0 ? (unopened / total) * 100 : 0,
         },
         {
           key: 'bounced',
-          label: this.translateOr('analytics.breakdownBounced', 'Bounced'),
+          label: this.translateOr('analytics.breakdownBounced', '退信', 'Bounced'),
           value: bounced,
           color: breakdownColors.bounced,
           percentage: total > 0 ? (bounced / total) * 100 : 0,
@@ -460,55 +569,78 @@ export default Vue.extend({
       }
 
       const row = this.links.find((item) => item.linkId === this.filters.linkID);
-      return row ? row.url : '';
+      if (!row) {
+        return '';
+      }
+
+      return `${row.campaignSubject} / ${row.url}`;
+    },
+
+    availableCampaignOptions() {
+      const selected = new Set(this.form.campaigns.map((campaign) => campaign.id));
+      return this.queriedCampaigns.filter((campaign) => !selected.has(campaign.id));
     },
   },
 
   watch: {
-    active(val) {
-      if (val) {
-        this.ensureLoaded();
-      }
-    },
-
-    'campaign.id': function onCampaignChange() {
-      this.initialized = false;
-      this.chartData = null;
-      this.resetFilters();
-      if (this.active) {
-        this.ensureLoaded();
-      }
+    '$route.query': {
+      deep: true,
+      handler() {
+        this.syncFromRoute();
+      },
     },
   },
 
   mounted() {
-    if (this.active) {
-      this.ensureLoaded();
-    }
+    this.syncFromRoute();
   },
 
   methods: {
-    ensureLoaded() {
-      if (!this.campaign || !this.campaign.id) {
+    translateOr(key, zhFallback, enFallback = zhFallback) {
+      if (this.$te(key)) {
+        return this.$t(key);
+      }
+
+      const locale = (this.$i18n?.locale || '').toLowerCase();
+      return locale.startsWith('zh') ? zhFallback : enFallback;
+    },
+
+    defaultDateRange() {
+      const now = dayjs().set('hour', 23).set('minute', 59).set('seconds', 0);
+      const weekAgo = now.subtract(7, 'day').set('hour', 0).set('minute', 0);
+      return { from: weekAgo.toDate(), to: now.toDate() };
+    },
+
+    async syncFromRoute() {
+      const token = this.syncToken + 1;
+      this.syncToken = token;
+
+      const defaults = this.defaultDateRange();
+      this.filters.from = this.$route.query.from ? dayjs.unix(this.$route.query.from).toDate() : defaults.from;
+      this.filters.to = this.$route.query.to ? dayjs.unix(this.$route.query.to).toDate() : defaults.to;
+      this.resetInteractiveFilters();
+
+      const ids = this.$utils.parseQueryIDs(this.$route.query.id).filter((id) => !Number.isNaN(id));
+      if (ids.length === 0) {
+        this.form.campaigns = [];
+        this.refreshReport();
         return;
       }
 
-      if (!this.initialized) {
-        this.resetFilters();
-        this.initialized = true;
+      this.isSearchLoading = true;
+      const data = await Promise.allSettled(ids.map((id) => this.$api.getCampaign(id)));
+      if (token !== this.syncToken) {
+        return;
       }
 
+      this.form.campaigns = data
+        .filter((item) => item.status === 'fulfilled')
+        .map((item) => this.normalizeCampaign(item.value));
+      this.isSearchLoading = false;
       this.refreshReport();
     },
 
-    resetFilters() {
-      const from = this.campaign.startedAt || this.campaign.createdAt;
-      const to = this.campaign.status === 'finished' && this.campaign.updatedAt
-        ? this.campaign.updatedAt
-        : new Date();
-
-      this.filters.from = dayjs(from).toDate();
-      this.filters.to = dayjs(to).toDate();
+    resetInteractiveFilters() {
       this.filters.search = '';
       this.filters.opened = 'all';
       this.filters.clicked = 'all';
@@ -519,26 +651,16 @@ export default Vue.extend({
       this.recipientQuery.order = 'desc';
     },
 
-    reportParams() {
-      return {
-        from: this.filters.from,
-        to: this.filters.to,
-      };
+    onFromDateChange() {
+      if (this.filters.from > this.filters.to) {
+        this.filters.to = dayjs(this.filters.from).add(7, 'day').toDate();
+      }
     },
 
-    recipientParams() {
-      return {
-        ...this.reportParams(),
-        search: this.filters.search,
-        opened: this.filters.opened,
-        clicked: this.filters.clicked,
-        bounced: this.filters.bounced,
-        link_id: this.filters.linkID,
-        page: this.recipientQuery.page,
-        per_page: this.recipientQuery.perPage,
-        sort_by: this.recipientQuery.sortBy,
-        order: this.recipientQuery.order,
-      };
+    onToDateChange() {
+      if (this.filters.from > this.filters.to) {
+        this.filters.from = dayjs(this.filters.to).add(-7, 'day').toDate();
+      }
     },
 
     formatDateTime(value) {
@@ -563,15 +685,6 @@ export default Vue.extend({
       return `${value.toFixed(1)}%`;
     },
 
-    translateOr(key, zhFallback, enFallback = zhFallback) {
-      if (this.$te(key)) {
-        return this.$t(key);
-      }
-
-      const locale = (this.$i18n?.locale || '').toLowerCase();
-      return locale.startsWith('zh') ? zhFallback : enFallback;
-    },
-
     buildChartData(series) {
       const mkDataset = (label, data, color) => ({
         label,
@@ -594,6 +707,93 @@ export default Vue.extend({
       };
     },
 
+    normalizeCampaign(campaign) {
+      return { ...campaign, name: `#${campaign.id}: ${campaign.name}` };
+    },
+
+    async queryCampaigns(q = '') {
+      this.isSearchLoading = true;
+
+      try {
+        const data = await this.$api.getCampaigns({
+          query: q,
+          order_by: 'created_at',
+          order: 'DESC',
+          per_page: 20,
+        });
+        this.queriedCampaigns = data.results.map(this.normalizeCampaign);
+      } finally {
+        this.isSearchLoading = false;
+      }
+    },
+
+    onCampaignSearchFocus() {
+      if (this.queriedCampaigns.length === 0) {
+        this.queryCampaigns('');
+      }
+    },
+
+    selectCampaign(campaign) {
+      if (!campaign || this.form.campaigns.find(({ id }) => id === campaign.id)) {
+        return;
+      }
+
+      this.form.campaigns = [...this.form.campaigns, campaign];
+      this.campaignQuery = '';
+    },
+
+    removeCampaign(id) {
+      this.form.campaigns = this.form.campaigns.filter((campaign) => campaign.id !== id);
+    },
+
+    clearCampaignSelection() {
+      this.form.campaigns = [];
+      this.campaignQuery = '';
+    },
+
+    baseReportParams() {
+      const params = {
+        from: this.filters.from,
+        to: this.filters.to,
+      };
+
+      if (this.form.campaigns.length === 0) {
+        params.all = true;
+      } else {
+        params.id = this.form.campaigns.map((c) => c.id);
+      }
+
+      return params;
+    },
+
+    recipientParams() {
+      return {
+        ...this.baseReportParams(),
+        search: this.filters.search,
+        opened: this.filters.opened,
+        clicked: this.filters.clicked,
+        bounced: this.filters.bounced,
+        link_id: this.filters.linkID,
+        page: this.recipientQuery.page,
+        per_page: this.recipientQuery.perPage,
+        sort_by: this.recipientQuery.sortBy,
+        order: this.recipientQuery.order,
+      };
+    },
+
+    onSubmit() {
+      const query = {
+        from: dayjs(this.filters.from).unix(),
+        to: dayjs(this.filters.to).unix(),
+      };
+
+      if (this.form.campaigns.length > 0) {
+        query.id = this.form.campaigns.map((c) => c.id);
+      }
+
+      this.$router.push({ query });
+    },
+
     refreshReport() {
       this.loadSummary();
       if (this.trackingDisabled) {
@@ -612,7 +812,7 @@ export default Vue.extend({
 
     loadSummary() {
       this.loading.summary = true;
-      this.$api.getCampaignReportSummary(this.campaign.id, this.reportParams()).then((data) => {
+      this.$api.getCampaignsReportSummary(this.baseReportParams()).then((data) => {
         this.summary = data;
       }).finally(() => {
         this.loading.summary = false;
@@ -621,7 +821,7 @@ export default Vue.extend({
 
     loadSeries() {
       this.loading.series = true;
-      this.$api.getCampaignReportSeries(this.campaign.id, this.reportParams()).then((data) => {
+      this.$api.getCampaignsReportSeries(this.baseReportParams()).then((data) => {
         this.series = data;
         this.chartData = this.buildChartData(data);
         this.chartVersion += 1;
@@ -632,7 +832,7 @@ export default Vue.extend({
 
     loadLinks() {
       this.loading.links = true;
-      this.$api.getCampaignReportLinks(this.campaign.id, this.reportParams()).then((data) => {
+      this.$api.getCampaignsReportLinks(this.baseReportParams()).then((data) => {
         this.links = data;
       }).finally(() => {
         this.loading.links = false;
@@ -641,16 +841,11 @@ export default Vue.extend({
 
     loadRecipients() {
       this.loading.recipients = true;
-      this.$api.getCampaignReportRecipients(this.campaign.id, this.recipientParams()).then((data) => {
+      this.$api.getCampaignsReportRecipients(this.recipientParams()).then((data) => {
         this.recipients = data;
       }).finally(() => {
         this.loading.recipients = false;
       });
-    },
-
-    onDateSubmit() {
-      this.recipientQuery.page = 1;
-      this.refreshReport();
     },
 
     applyLinkFilter(row) {
@@ -681,9 +876,11 @@ export default Vue.extend({
 
     onRecipientSort(field, order) {
       const fields = {
+        campaignSubject: 'campaign_subject',
         email: 'email',
         view_count: 'view_count',
         click_count: 'click_count',
+        bounce_count: 'bounce_count',
         last_engaged_at: 'last_engaged_at',
       };
 
@@ -696,6 +893,31 @@ export default Vue.extend({
 </script>
 
 <style scoped>
+.campaign-selector-panel {
+  margin-bottom: 1.5rem;
+}
+
+.campaign-selector-label {
+  margin-bottom: 0.6rem;
+}
+
+.campaign-selector-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  min-height: 2.75rem;
+  align-items: flex-start;
+}
+
+.campaign-scope-tag {
+  max-width: 100%;
+}
+
+.campaign-selector-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .report-section {
   margin-top: 2rem;
 }
@@ -781,6 +1003,12 @@ export default Vue.extend({
   height: 0.9rem;
   border-radius: 999px;
   flex: 0 0 auto;
+}
+
+@media (max-width: 1023px) {
+  .campaign-selector-actions {
+    justify-content: flex-start;
+  }
 }
 
 .breakdown-label {

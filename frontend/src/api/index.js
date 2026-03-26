@@ -549,6 +549,22 @@ export const deleteUser = (id) => http.delete(
   { loading: models.users },
 );
 
+export const getUserIntegrationTokens = (id) => http.get(
+  `/api/users/${id}/integration-tokens`,
+  { loading: models.users },
+);
+
+export const createUserIntegrationToken = (id, data) => http.post(
+  `/api/users/${id}/integration-tokens`,
+  data,
+  { loading: models.users },
+);
+
+export const deleteUserIntegrationToken = (id, tokenID) => http.delete(
+  `/api/users/${id}/integration-tokens/${tokenID}`,
+  { loading: models.users },
+);
+
 export const getUserProfile = () => http.get(
   '/api/profile',
   { loading: models.users, store: models.profile },

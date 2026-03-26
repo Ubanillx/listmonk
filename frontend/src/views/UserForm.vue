@@ -108,16 +108,36 @@
           </div>
         </div>
 
-        <div v-if="apiToken" class="user-api-token">
-          <p>{{ $t('users.apiOneTimeToken') }}</p>
-          <copy-text :text="apiToken" />
+        <div v-if="creatingIntegrationToken" class="user-api-token">
+          <p>{{ $t('users.integrationTokenCreating') }}</p>
+        </div>
+
+        <div v-if="integrationTokenError" class="user-api-token mt-5">
+          <p>{{ $t('users.integrationTokenCreateFailed') }}</p>
+          <p class="help mt-3">{{ integrationTokenError }}</p>
+          <b-button
+            type="is-primary"
+            :loading="creatingIntegrationToken"
+            @click="createIntegrationToken()"
+            data-cy="btn-retry-integration-token"
+          >
+            {{ $t('users.integrationTokenRetry') }}
+          </b-button>
+        </div>
+
+        <div v-if="integrationToken" class="user-api-token mt-5">
+          <p>{{ $t('users.integrationOneTimeToken') }}</p>
+          <copy-text :text="integrationToken" />
+          <p class="help mt-3">
+            {{ $t('users.integrationOneTimeTokenHelp') }}
+          </p>
         </div>
       </section>
       <footer class="modal-card-foot has-text-right">
         <b-button @click="$parent.close()">
           {{ $t('globals.buttons.close') }}
         </b-button>
-        <b-button v-if="$can('users:manage') && !apiToken" native-type="submit" type="is-primary"
+        <b-button v-if="$can('users:manage') && !createdUserID" native-type="submit" type="is-primary"
           :loading="loading.lists" data-cy="btn-save">
           {{ $t('globals.buttons.save') }}
         </b-button>
@@ -155,7 +175,10 @@ export default Vue.extend({
         type: 'user',
         status: 'enabled',
       },
-      apiToken: null,
+      integrationToken: null,
+      integrationTokenError: '',
+      createdUserID: null,
+      creatingIntegrationToken: false,
     };
   },
 
@@ -192,15 +215,40 @@ export default Vue.extend({
         this.$emit('finished');
         this.$utils.toast(this.$t('globals.messages.created', { name: data.name }));
 
-        // If the user is an API user, show the one-time token.
+        // For API users, generate the Bearer integration token immediately
+        // and only show that token in the UI.
         if (form.type === 'api') {
-          this.apiToken = data.password;
+          this.createdUserID = data.id;
+          this.createIntegrationToken(data.id);
           return;
         }
 
         this.$emit('finished');
         this.$parent.close();
       });
+    },
+
+    createIntegrationToken(userID = this.createdUserID) {
+      if (!userID) {
+        return;
+      }
+
+      const name = `openclaw-${this.form.username || 'integration'}`;
+      this.creatingIntegrationToken = true;
+      this.integrationTokenError = '';
+      this.integrationToken = null;
+      this.$api.createUserIntegrationToken(userID, { name })
+        .then((data) => {
+          this.integrationToken = data.token;
+        })
+        .catch((err) => {
+          this.integrationTokenError = (err.response && err.response.data && err.response.data.message)
+            ? err.response.data.message
+            : err.toString();
+        })
+        .finally(() => {
+          this.creatingIntegrationToken = false;
+        });
     },
 
     updateUser() {

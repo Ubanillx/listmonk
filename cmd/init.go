@@ -660,6 +660,7 @@ func initSMTPMessengers() smtpMessengers {
 
 		servers = append(servers, s)
 		lo.Printf("initialized email (SMTP) messenger: %s@%s", item.String("username"), item.String("host"))
+		lo.Printf("smtp messenger quota: name=%s uuid=%s daily_limit=%d", s.Name, s.UUID, s.DailyLimit)
 
 		if s.IsPrimary {
 			msgr, err := email.New(s.Name, s)

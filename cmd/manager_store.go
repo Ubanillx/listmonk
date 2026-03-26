@@ -52,7 +52,7 @@ func newManagerStore(q *models.Queries, c *core.Core, m media.Store) *store {
 // campaigns that are also being processed.
 func (s *store) NextCampaigns(currentIDs []int64) ([]*models.Campaign, error) {
 	var out []*models.Campaign
-	if err := s.queries.NextCampaigns.Select(&out, pq.Int64Array(currentIDs)); err != nil {
+	if err := s.queries.NextCampaigns.Select(&out, pq.Int64Array(currentIDs), time.Now().UTC()); err != nil {
 		return nil, err
 	}
 
@@ -120,6 +120,13 @@ func (s *store) NextSubscribers(campID, limit int) ([]models.CampaignSubscriber,
 	if st.CampaignType == models.CampaignTypeRegular && strings.HasPrefix(st.Messenger, emailMsgr) && st.DailySendLimit > 0 {
 		remaining := st.DailySendLimit - st.DailySentCount - st.QueuedCount
 		if remaining <= 0 {
+			lo.Printf("campaign %d deferred due to daily limit: limit=%d sent_today=%d queued=%d local_date=%s",
+				campID,
+				st.DailySendLimit,
+				st.DailySentCount,
+				st.QueuedCount,
+				currentLocalDate(),
+			)
 			return nil, manager.ErrCampaignDeferred
 		}
 		if remaining < limit {

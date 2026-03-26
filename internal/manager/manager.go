@@ -558,6 +558,10 @@ func (m *Manager) worker() {
 				msg.pipe.wg.Done()
 
 				if errors.Is(err, email.ErrSMTPQuotaExceeded) {
+					m.log.Printf("smtp daily quota exhausted for campaign %s (id=%d). deferring until daily_resume_time",
+						msg.Campaign.Name,
+						msg.Campaign.ID,
+					)
 					msg.pipe.Defer()
 				} else if err != nil {
 					if uErr := m.store.MarkCampaignRecipientStatus(msg.Campaign.ID, msg.Subscriber.ID, models.CampaignRecipientStatusPending); uErr != nil {

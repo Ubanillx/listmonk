@@ -976,7 +976,7 @@ func (a *App) validateCampaignFields(c campReq) (campReq, error) {
 
 	// If there's a "send_at" date, it should be in the future.
 	if c.SendAt.Valid {
-		if c.SendAt.Time.Before(time.Now()) {
+		if c.SendAt.Time.UTC().Before(time.Now().UTC()) {
 			return c, errors.New(a.i18n.T("campaigns.fieldInvalidSendAt"))
 		}
 	}
@@ -1003,6 +1003,7 @@ func (a *App) validateCampaignFields(c campReq) (campReq, error) {
 			// Backward compatibility for legacy campaigns/clients created before
 			// daily SMTP limits became mandatory for regular email campaigns.
 			c.DailySendLimit = 100
+			a.log.Printf("campaign %d using legacy daily_send_limit fallback=100 (messenger=%s)", c.ID, c.Messenger)
 		}
 		if c.DailyResumeTime == "" {
 			c.DailyResumeTime = "09:00"

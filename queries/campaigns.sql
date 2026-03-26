@@ -229,8 +229,8 @@ WITH camps AS (
     LEFT JOIN templates ON (templates.id = campaigns.template_id)
     WHERE (
         status='running'
-        OR (status='scheduled' AND NOW() >= campaigns.send_at)
-        OR (status='deferred' AND campaigns.next_resume_at IS NOT NULL AND NOW() >= campaigns.next_resume_at)
+        OR (status='scheduled' AND $2::TIMESTAMPTZ >= campaigns.send_at)
+        OR (status='deferred' AND campaigns.next_resume_at IS NOT NULL AND $2::TIMESTAMPTZ >= campaigns.next_resume_at)
     )
     AND NOT(campaigns.id = ANY($1::INT[]))
 ),

@@ -201,22 +201,30 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
 
 ## 3. Add subscribers
 
-For small batches:
+The skill now converts JSON or Excel input into a temporary CSV and uses listmonk's native bulk import API:
 
 ```shell
 curl -X POST -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  "$BASE_URL/api/subscribers" \
-  -d '{
-    "email": "jane@example.com",
-    "name": "Jane",
-    "status": "enabled",
-    "lists": [12],
-    "preconfirm_subscriptions": true
-  }'
+  "$BASE_URL/api/import/subscribers" \
+  -F 'params={"mode":"subscribe","subscription_status":"confirmed","delim":",","lists":[12],"overwrite_userinfo":false,"overwrite_subscription_status":true,"field_map":{"email":"A","name":"B","attributes":"C"}}' \
+  -F "file=@/tmp/subscribers.csv"
 ```
 
-The Python skill currently creates subscribers row-by-row with `POST /api/subscribers` so it can report precise row-level failures for JSON and Excel inputs.
+Then poll until the import completes:
+
+```shell
+curl -H "Authorization: Bearer $TOKEN" \
+  "$BASE_URL/api/import/subscribers"
+```
+
+And fetch logs if you need per-line importer diagnostics:
+
+```shell
+curl -H "Authorization: Bearer $TOKEN" \
+  "$BASE_URL/api/import/subscribers/logs"
+```
+
+The token used by this step needs the `subscribers:import` permission.
 
 ## 4. Choose the campaign blueprint
 

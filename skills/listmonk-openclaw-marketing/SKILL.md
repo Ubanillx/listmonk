@@ -32,7 +32,7 @@ Use the smallest script that fits the task:
 - `scripts/ensure_list.py`
   - Reuse a list by ID or find/create a list by name.
 - `scripts/import_subscribers.py`
-  - Import subscribers from JSON or `.xlsx`, with row-level reporting.
+  - Import subscribers from JSON or `.xlsx` through listmonk's native batch importer, with pre-validation plus importer-log reporting.
 - `scripts/clone_template.py`
   - Clone a base template into a new template.
 - `scripts/create_campaign.py`
@@ -53,9 +53,9 @@ The shared implementation lives under `scripts/listmonk_marketing/`. When updati
 3. When only `list_name` is provided, search `GET /api/lists` first and reuse an exact match when found.
 4. If no matching list exists, create one with `POST /api/lists`.
 5. Import subscribers:
-   - If `subscribers_file` is provided, load the JSON array and create subscribers with `POST /api/subscribers`.
+   - If `subscribers_file` is provided, load the JSON array and normalize it into a temporary CSV for batch import.
    - If `excel_file` is provided, parse the `.xlsx` file with `openpyxl`, map one email column and an optional name column, and convert all other non-empty columns into subscriber `attribs`.
-   - Create subscribers with `POST /api/subscribers`, capturing imported, skipped, and failed rows.
+   - Upload the generated CSV with `POST /api/import/subscribers`, then poll the import status and logs until the batch finishes.
 6. Source selection:
    - If `source_template_id` is provided, clone the base template with `POST /api/templates/{id}/clone`.
    - If `source_campaign_id` or `source_campaign_name` is provided, fetch that campaign and use it as a blueprint for the new campaign.
@@ -106,6 +106,7 @@ For local smoke tests only, BasicAuth may be used once to bootstrap a Bearer int
 - If recipient analytics fail with a privacy or tracking error, fall back to summary, timeseries, and link analytics.
 - Do not use subscriber SQL query APIs unless the caller explicitly needs them and the service account is trusted for `subscribers:sql_query`.
 - If `openpyxl` is missing and Excel mode is requested, fail fast with an installation hint.
+- If bulk import fails with `403`, report that the token is missing `subscribers:import`.
 
 ## Response contract
 

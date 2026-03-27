@@ -95,5 +95,76 @@ class SubscriberImportTests(unittest.TestCase):
         self.assertEqual(result["failed_rows"][0]["email"], "boom@example.com")
 
 
+class BatchImportClient:
+    def __init__(self) -> None:
+        self.started: list[dict[str, object]] = []
+        self.status_calls = 0
+        self.logs = "2026/03/27 10:00:00 importer.go:548: skipping line 2: email not found in row: [bad-row  ]"
+
+    def start_subscriber_import(self, *, file_path: str, params: dict[str, object], filename: str = "") -> dict[str, object]:
+        self.started.append(
+            {
+                "file_path": file_path,
+                "filename": filename,
+                "params": params,
+                "content": Path(file_path).read_text(encoding="utf-8"),
+            }
+        )
+        return {"status": "importing"}
+
+    def get_subscriber_import_status(self) -> dict[str, object]:
+        self.status_calls += 1
+        return {"status": "finished", "total": 2, "imported": 1}
+
+    def get_subscriber_import_logs(self) -> str:
+        return self.logs
+
+
+class BatchSubscriberImportTests(unittest.TestCase):
+    def make_json_file(self, payload: list[dict[str, object]]) -> str:
+        handle = tempfile.NamedTemporaryFile(suffix=".json", delete=False)
+        handle.write(json.dumps(payload).encode("utf-8"))
+        handle.close()
+        self.addCleanup(lambda: Path(handle.name).unlink(missing_ok=True))
+        return handle.name
+
+    def test_json_import_uses_native_batch_import(self) -> None:
+        client = BatchImportClient()
+        source = self.make_json_file(
+            [
+                {"email": "good@example.com", "name": "Good", "attribs": {"city": "Shanghai"}},
+                {"email": "", "name": "Bad"},
+            ]
+        )
+
+        result = create_subscribers_if_needed(
+            client,
+            list_id=3,
+            subscribers_file=source,
+            preconfirm_subscriptions=True,
+        )
+
+        self.assertEqual(result["imported_count"], 1)
+        self.assertEqual(result["created_subscribers"], [])
+        self.assertEqual(result["failed_rows"], [{"row": 2, "reason": "email not found in row"}])
+        self.assertEqual(client.started[0]["params"]["subscription_status"], "confirmed")
+        self.assertEqual(client.started[0]["params"]["overwrite_userinfo"], False)
+        self.assertEqual(client.started[0]["params"]["overwrite_subscription_status"], True)
+        self.assertIn("good@example.com,Good,", client.started[0]["content"])
+        self.assertIn('"{""city"":""Shanghai""}"', client.started[0]["content"])
+
+    def test_batch_import_rejects_additional_lists(self) -> None:
+        client = BatchImportClient()
+        source = self.make_json_file([{"email": "good@example.com", "lists": [3, 9]}])
+
+        with self.assertRaisesRegex(ValueError, "additional lists"):
+            create_subscribers_if_needed(
+                client,
+                list_id=3,
+                subscribers_file=source,
+                preconfirm_subscriptions=False,
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

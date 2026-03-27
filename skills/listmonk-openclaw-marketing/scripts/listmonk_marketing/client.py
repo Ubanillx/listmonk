@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import mimetypes
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
+from pathlib import Path
 from typing import Any
 
 
@@ -32,17 +35,23 @@ class ListmonkClient:
         *,
         params: dict[str, Any] | None = None,
         payload: dict[str, Any] | list[Any] | None = None,
+        data: bytes | None = None,
+        headers: dict[str, str] | None = None,
     ) -> Any:
         url = f"{self.base_url}{path}"
         if params:
             query = urllib.parse.urlencode(params, doseq=True)
             url = f"{url}?{query}"
 
-        data = None
+        body = data
         if payload is not None:
-            data = json.dumps(payload).encode("utf-8")
+            body = json.dumps(payload).encode("utf-8")
 
-        req = urllib.request.Request(url, data=data, method=method, headers=self.headers)
+        request_headers = dict(self.headers)
+        if headers:
+            request_headers.update(headers)
+
+        req = urllib.request.Request(url, data=body, method=method, headers=request_headers)
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 raw = resp.read()
@@ -121,6 +130,47 @@ class ListmonkClient:
             "status": status,
         }
         return self.request("PUT", "/api/subscribers/lists", payload=payload)
+
+    def start_subscriber_import(
+        self,
+        *,
+        file_path: str,
+        params: dict[str, Any],
+        filename: str = "",
+    ) -> dict[str, Any]:
+        boundary = f"----listmonk-{uuid.uuid4().hex}"
+        source_path = Path(file_path)
+        upload_name = filename or source_path.name
+        content_type = mimetypes.guess_type(upload_name)[0] or "application/octet-stream"
+
+        body = bytearray()
+        body.extend(f"--{boundary}\r\n".encode("utf-8"))
+        body.extend(b'Content-Disposition: form-data; name="params"\r\n\r\n')
+        body.extend(json.dumps(params, ensure_ascii=False).encode("utf-8"))
+        body.extend(b"\r\n")
+
+        body.extend(f"--{boundary}\r\n".encode("utf-8"))
+        disposition = f'Content-Disposition: form-data; name="file"; filename="{upload_name}"\r\n'
+        body.extend(disposition.encode("utf-8"))
+        body.extend(f"Content-Type: {content_type}\r\n\r\n".encode("utf-8"))
+        body.extend(source_path.read_bytes())
+        body.extend(b"\r\n")
+        body.extend(f"--{boundary}--\r\n".encode("utf-8"))
+
+        return self.request(
+            "POST",
+            "/api/import/subscribers",
+            data=bytes(body),
+            headers={
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+            },
+        )
+
+    def get_subscriber_import_status(self) -> dict[str, Any]:
+        return self.request("GET", "/api/import/subscribers")
+
+    def get_subscriber_import_logs(self) -> str:
+        return self.request("GET", "/api/import/subscribers/logs")
 
     def clone_template(self, template_id: int, name: str, subject: str | None) -> dict[str, Any]:
         payload: dict[str, Any] = {"name": name}

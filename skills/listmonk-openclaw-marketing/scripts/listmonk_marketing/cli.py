@@ -1,11 +1,28 @@
 from __future__ import annotations
 
 import argparse
+import os
+
+
+BASE_URL_ENV = "LISTMONK_BASE_URL"
+BEARER_TOKEN_ENV = "LISTMONK_BEARER_TOKEN"
 
 
 def add_auth_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--base-url", required=True, help="Base listmonk URL, for example https://listmonk.example.com")
-    parser.add_argument("--bearer-token", required=True, help="listmonk integration Bearer token")
+    base_url = os.getenv(BASE_URL_ENV)
+    bearer_token = os.getenv(BEARER_TOKEN_ENV)
+    parser.add_argument(
+        "--base-url",
+        default=base_url,
+        required=base_url is None,
+        help=f"Base listmonk URL, defaults to ${BASE_URL_ENV} when set",
+    )
+    parser.add_argument(
+        "--bearer-token",
+        default=bearer_token,
+        required=bearer_token is None,
+        help=f"listmonk integration Bearer token, defaults to ${BEARER_TOKEN_ENV} when set",
+    )
 
 
 def add_verbose_argument(parser: argparse.ArgumentParser) -> None:

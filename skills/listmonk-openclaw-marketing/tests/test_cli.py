@@ -1,12 +1,20 @@
 from __future__ import annotations
 
+import argparse
 import subprocess
 import sys
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+SCRIPTS_DIR = ROOT / "scripts"
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+from listmonk_marketing.cli import add_auth_arguments
+
 SCRIPTS = [
     "run_marketing_flow.py",
     "ensure_list.py",
@@ -41,6 +49,22 @@ class CLITests(unittest.TestCase):
                 result = self.run_script(script)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("usage:", result.stderr)
+
+    def test_auth_arguments_can_read_environment_defaults(self) -> None:
+        parser = argparse.ArgumentParser()
+        with patch.dict(
+            "os.environ",
+            {
+                "LISTMONK_BASE_URL": "https://listmonk.bid-gun.com",
+                "LISTMONK_BEARER_TOKEN": "env-token",
+            },
+            clear=False,
+        ):
+            add_auth_arguments(parser)
+            args = parser.parse_args([])
+
+        self.assertEqual(args.base_url, "https://listmonk.bid-gun.com")
+        self.assertEqual(args.bearer_token, "env-token")
 
 
 if __name__ == "__main__":

@@ -108,6 +108,28 @@ func TestInlineMediaImagesMatchesRelativeMediaSource(t *testing.T) {
 	}
 }
 
+func TestInlineMediaImagesMatchesEscapedMediaFilename(t *testing.T) {
+	image := models.Attachment{
+		Name:      "image004(08-25-22-12-43).png",
+		MediaID:   11,
+		SourceURL: "http://192.168.1.67:9173/uploads/image004(08-25-22-12-43).png",
+		Header:    MakeAttachmentHeader("image004(08-25-22-12-43).png", "base64", "image/png"),
+		Content:   []byte("image bytes"),
+	}
+
+	body, attachments := InlineMediaImages(
+		[]byte(`<img src="http://192.168.1.67:9173/uploads/image004%2808-25-22-12-43%29.png">`),
+		[]models.Attachment{image},
+	)
+
+	if !strings.Contains(string(body), `src="cid:media-11@listmonk"`) {
+		t.Fatalf("expected escaped media filename replacement, got %q", body)
+	}
+	if !attachments[0].Inline {
+		t.Fatal("escaped media filename should mark the image inline")
+	}
+}
+
 func TestInlineMediaImagesDoesNotRewriteUnrelatedImageWithSamePath(t *testing.T) {
 	image := models.Attachment{
 		Name:      "logo.png",

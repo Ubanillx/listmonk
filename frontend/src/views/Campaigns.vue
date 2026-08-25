@@ -484,6 +484,7 @@ export default Vue.extend({
         // embed media-library images in outgoing e-mail.
         media: (Array.isArray(c.media) ? c.media : [])
           .map((m) => (m && typeof m === 'object' ? m.id : m))
+          .map((id) => Number(id))
           .filter((id) => Number.isInteger(id) && id > 0),
       };
 

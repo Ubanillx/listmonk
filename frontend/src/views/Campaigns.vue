@@ -483,7 +483,7 @@ export default Vue.extend({
         // the cloned campaign gets the campaign_media relationships needed to
         // embed media-library images in outgoing e-mail.
         media: (Array.isArray(c.media) ? c.media : [])
-          .map((m) => (typeof m === 'object' ? m.id : m))
+          .map((m) => (m && typeof m === 'object' ? m.id : m))
           .filter((id) => Number.isInteger(id) && id > 0),
       };
 

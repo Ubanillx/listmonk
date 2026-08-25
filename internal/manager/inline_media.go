@@ -6,6 +6,8 @@ import (
 	"html"
 	"mime"
 	"net/textproto"
+	"net/url"
+	"path"
 	"regexp"
 	"strings"
 
@@ -22,6 +24,7 @@ func InlineMediaImages(body []byte, attachments []models.Attachment) ([]byte, []
 	}
 
 	byURL := make(map[string]int, len(attachments))
+	byPath := make(map[string]int, len(attachments))
 	for i, attachment := range attachments {
 		if attachment.MediaID < 1 || !isImageAttachment(attachment) {
 			continue
@@ -29,9 +32,17 @@ func InlineMediaImages(body []byte, attachments []models.Attachment) ([]byte, []
 
 		if sourceURL := normalizeImageSource(attachment.SourceURL); sourceURL != "" {
 			byURL[sourceURL] = i
+			if sourcePath := imageSourcePath(sourceURL); sourcePath != "" {
+				// Only use a path fallback when it identifies a concrete media
+				// file. Restricting this to the final filename avoids accidentally
+				// matching unrelated external images that share a generic path.
+				if filename := path.Base(sourcePath); filename != "." && filename != "/" {
+					byPath[sourcePath] = i
+				}
+			}
 		}
 	}
-	if len(byURL) == 0 {
+	if len(byURL) == 0 && len(byPath) == 0 {
 		return body, attachments
 	}
 
@@ -49,7 +60,14 @@ func InlineMediaImages(body []byte, attachments []models.Attachment) ([]byte, []
 			continue
 		}
 
-		attachmentIndex, ok := byURL[normalizeImageSource(string(body[start:end]))]
+		source := normalizeImageSource(string(body[start:end]))
+		attachmentIndex, ok := byURL[source]
+		if !ok {
+			candidatePath := imageSourcePath(source)
+			if candidatePath != "" {
+				attachmentIndex, ok = byPath[candidatePath]
+			}
+		}
 		if !ok {
 			continue
 		}
@@ -92,6 +110,19 @@ func isImageAttachment(attachment models.Attachment) bool {
 
 func normalizeImageSource(source string) string {
 	return strings.TrimSpace(html.UnescapeString(source))
+}
+
+// imageSourcePath returns a stable URL path for matching media URLs. Media
+// URLs can differ between the original campaign and its clone (for example,
+// when the app root URL changes), while the media filename/path remains the
+// same. Query and fragment components are intentionally ignored.
+func imageSourcePath(source string) string {
+	u, err := url.Parse(source)
+	if err != nil || u.Path == "" {
+		return ""
+	}
+
+	return path.Clean("/" + strings.TrimSpace(u.Path))
 }
 
 func makeInlineImageAttachment(attachment models.Attachment) models.Attachment {

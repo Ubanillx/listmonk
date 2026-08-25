@@ -63,3 +63,47 @@ func TestInlineMediaImages(t *testing.T) {
 		t.Fatal("preloaded campaign attachment must not be mutated")
 	}
 }
+
+func TestInlineMediaImagesMatchesMediaPathWhenHostDiffers(t *testing.T) {
+	image := models.Attachment{
+		Name:      "logo.png",
+		MediaID:   9,
+		SourceURL: "http://current-host:9173/uploads/logo.png",
+		Header:    MakeAttachmentHeader("logo.png", "base64", "image/png"),
+		Content:   []byte("image bytes"),
+	}
+
+	body, attachments := InlineMediaImages(
+		[]byte(`<p><img src="http://old-host:9173/uploads/logo.png?cache=1#top"></p>`),
+		[]models.Attachment{image},
+	)
+
+	if !strings.Contains(string(body), `src="cid:media-9@listmonk"`) {
+		t.Fatalf("expected host-independent CID replacement, got %q", body)
+	}
+	if !attachments[0].Inline {
+		t.Fatal("matched image should be marked inline")
+	}
+}
+
+func TestInlineMediaImagesDoesNotRewriteUnrelatedImageWithSamePath(t *testing.T) {
+	image := models.Attachment{
+		Name:      "logo.png",
+		MediaID:   9,
+		SourceURL: "http://current-host:9173/uploads/logo.png",
+		Header:    MakeAttachmentHeader("logo.png", "base64", "image/png"),
+		Content:   []byte("image bytes"),
+	}
+
+	body, attachments := InlineMediaImages(
+		[]byte(`<img src="https://external.example/uploads/logo.png">`),
+		[]models.Attachment{image},
+	)
+
+	if strings.Contains(string(body), "cid:media-9@listmonk") {
+		t.Fatalf("external image must remain unchanged, got %q", body)
+	}
+	if attachments[0].Inline {
+		t.Fatal("unrelated image must not mark the media attachment inline")
+	}
+}

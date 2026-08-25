@@ -478,7 +478,13 @@ export default Vue.extend({
         archive: c.archive,
         archive_template_id: c.archiveTemplateId,
         archive_meta: c.archiveMeta,
-        media: c.media.map((m) => m.id),
+        // Campaign list responses expose media as JSON objects, but older
+        // records or API clients may omit that field. Keep only valid IDs so
+        // the cloned campaign gets the campaign_media relationships needed to
+        // embed media-library images in outgoing e-mail.
+        media: (Array.isArray(c.media) ? c.media : [])
+          .map((m) => (typeof m === 'object' ? m.id : m))
+          .filter((id) => Number.isInteger(id) && id > 0),
       };
 
       if (c.archive) {

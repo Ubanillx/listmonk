@@ -58,11 +58,12 @@
     </div>
 
     <!-- wsywig //-->
-    <richtext-editor v-if="self.contentType === 'richtext'" :disabled="disabled" v-model="self.body" />
+    <richtext-editor v-if="self.contentType === 'richtext'" :disabled="disabled" v-model="self.body"
+      @media-selected="onMediaSelect" />
 
     <!-- visual editor //-->
     <visual-editor v-if="self.contentType === 'visual'" :source="self.bodySource" @change="onVisualEditorChange"
-      height="65vh" ref="visualEditor" />
+      @media-selected="onMediaSelect" height="65vh" ref="visualEditor" />
 
     <!-- raw html editor //-->
     <code-editor lang="html" v-if="self.contentType === 'html'" v-model="self.body" key="editor-html" />
@@ -261,6 +262,10 @@ export default {
     onVisualEditorChange({ body, source }) {
       this.self.body = body;
       this.self.bodySource = source;
+    },
+
+    onMediaSelect(media) {
+      this.$emit('media-selected', media);
     },
 
     beautifyHTML(str) {

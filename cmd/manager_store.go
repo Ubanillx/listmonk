@@ -208,9 +208,11 @@ func (s *store) GetAttachment(mediaID int) (models.Attachment, error) {
 	}
 
 	return models.Attachment{
-		Name:    m.Filename,
-		Content: b,
-		Header:  manager.MakeAttachmentHeader(m.Filename, "base64", m.ContentType),
+		Name:      m.Filename,
+		Content:   b,
+		Header:    manager.MakeAttachmentHeader(m.Filename, "base64", m.ContentType),
+		MediaID:   mediaID,
+		SourceURL: m.URL,
 	}, nil
 }
 

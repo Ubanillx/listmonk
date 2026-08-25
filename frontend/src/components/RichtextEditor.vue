@@ -327,6 +327,7 @@ export default {
 
     onMediaSelect(media) {
       this.imageCallack(media.url);
+      this.$emit('media-selected', media);
     },
 
     beautifyHTML(str) {

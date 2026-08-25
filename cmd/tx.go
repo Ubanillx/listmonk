@@ -161,9 +161,11 @@ func (a *App) SendTxMessage(c echo.Context) error {
 		msg.AltBody = []byte(rendered.AltBody)
 		for _, a := range templateAttachments {
 			msg.Attachments = append(msg.Attachments, models.Attachment{
-				Name:    a.Name,
-				Header:  a.Header,
-				Content: a.Content,
+				Name:      a.Name,
+				Header:    a.Header,
+				Content:   a.Content,
+				MediaID:   a.MediaID,
+				SourceURL: a.SourceURL,
 			})
 		}
 		for _, a := range rendered.Attachments {
@@ -172,6 +174,9 @@ func (a *App) SendTxMessage(c echo.Context) error {
 				Header:  a.Header,
 				Content: a.Content,
 			})
+		}
+		if msg.ContentType != models.CampaignContentTypePlain && strings.HasPrefix(msg.Messenger, emailMsgr) {
+			msg.Body, msg.Attachments = manager.InlineMediaImages(msg.Body, msg.Attachments)
 		}
 
 		// Optional headers.

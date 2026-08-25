@@ -110,6 +110,7 @@ export default {
 
         const inputEvent = new Event('input', { bubbles: true });
         input.dispatchEvent(inputEvent);
+        this.$emit('media-selected', media);
       }
     },
 

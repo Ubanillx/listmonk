@@ -219,7 +219,8 @@
       <b-tab-item :label="$t('campaigns.content')" icon="text" :disabled="isNew" value="content">
         <editor v-if="data.id" v-model="form.content" :id="data.id" :title="data.name" :disabled="!canEdit"
           :templates="templates" :content-types="contentTypes" :auto-track-links="form.autoTrackLinks"
-          @template-media="onTemplateMedia" @template-attachments="onTemplateAttachments" />
+          @template-media="onTemplateMedia" @template-attachments="onTemplateAttachments"
+          @media-selected="onMediaSelect" />
 
         <div class="columns">
           <div class="column is-6">
@@ -499,6 +500,11 @@ export default Vue.extend({
       }
 
       this.form.media.push(o);
+    },
+
+    onMediaSelect(media) {
+      this.onAttachSelect(media);
+      this.isAttachFieldVisible = this.form.media.length > 0;
     },
 
     onTemplateMedia(media) {

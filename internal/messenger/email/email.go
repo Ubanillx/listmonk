@@ -160,19 +160,7 @@ func (e *Emailer) Push(m models.Message) error {
 	}
 
 	// Are there attachments?
-	var files []smtppool.Attachment
-	if m.Attachments != nil {
-		files = make([]smtppool.Attachment, 0, len(m.Attachments))
-		for _, f := range m.Attachments {
-			a := smtppool.Attachment{
-				Filename: f.Name,
-				Header:   f.Header,
-				Content:  make([]byte, len(f.Content)),
-			}
-			copy(a.Content, f.Content)
-			files = append(files, a)
-		}
-	}
+	files := toSMTPAttachments(m.Attachments)
 
 	// Create the email.
 	em := smtppool.Email{
@@ -225,13 +213,51 @@ func (e *Emailer) Push(m models.Message) error {
 		em.Text = []byte(m.Body)
 	default:
 		em.HTML = m.Body
-		if len(m.AltBody) > 0 {
-			em.Text = m.AltBody
-		}
+		em.Text = relatedAttachmentsTextBody(m.AltBody, files)
 	}
 
 	err = srv.pool.Send(em)
 	return err
+}
+
+func toSMTPAttachments(attachments []models.Attachment) []smtppool.Attachment {
+	if attachments == nil {
+		return nil
+	}
+
+	files := make([]smtppool.Attachment, 0, len(attachments))
+	for _, f := range attachments {
+		a := smtppool.Attachment{
+			Filename:    f.Name,
+			Header:      f.Header,
+			Content:     make([]byte, len(f.Content)),
+			HTMLRelated: f.Inline,
+		}
+		copy(a.Content, f.Content)
+		files = append(files, a)
+	}
+
+	return files
+}
+
+func relatedAttachmentsTextBody(altBody []byte, attachments []smtppool.Attachment) []byte {
+	if len(altBody) > 0 || !hasHTMLRelatedAttachment(attachments) {
+		return altBody
+	}
+
+	// smtppool creates a writer for HTML-related parts only when an
+	// alternative text body or a regular attachment is present.
+	return []byte(" ")
+}
+
+func hasHTMLRelatedAttachment(attachments []smtppool.Attachment) bool {
+	for _, attachment := range attachments {
+		if attachment.HTMLRelated {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Flush flushes the message queue to the server.

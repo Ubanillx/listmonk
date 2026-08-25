@@ -37,6 +37,12 @@ type Attachment struct {
 	Name    string
 	Header  textproto.MIMEHeader
 	Content []byte
+
+	// MediaID and SourceURL identify media-library files. They are used only
+	// while preparing an e-mail for delivery.
+	MediaID   int    `json:"-"`
+	SourceURL string `json:"-"`
+	Inline    bool   `json:"-"`
 }
 
 // TxMessage subscriber modes.

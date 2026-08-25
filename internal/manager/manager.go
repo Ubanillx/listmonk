@@ -511,18 +511,24 @@ func (m *Manager) worker() {
 			numMsg++
 
 			// Outgoing message.
+			body := msg.body
+			attachments := msg.Campaign.Attachments
+			if msg.Campaign.ContentType != models.CampaignContentTypePlain && strings.HasPrefix(msg.Campaign.Messenger, email.MessengerName) {
+				body, attachments = InlineMediaImages(body, attachments)
+			}
+
 			out := models.Message{
 				From:         msg.from,
 				To:           []string{msg.to},
 				Subject:      msg.subject,
 				ContentType:  msg.Campaign.ContentType,
-				Body:         msg.body,
+				Body:         body,
 				AltBody:      msg.altBody,
 				Subscriber:   msg.Subscriber,
 				UseSMTPFrom:  strings.HasPrefix(msg.Campaign.Messenger, "email"),
 				UseSMTPQuota: strings.HasPrefix(msg.Campaign.Messenger, "email"),
 				Campaign:     msg.Campaign,
-				Attachments:  msg.Campaign.Attachments,
+				Attachments:  attachments,
 			}
 
 			h := textproto.MIMEHeader{}
@@ -704,6 +710,7 @@ func (m *Manager) GetMediaAttachments(mediaIDs []int64) ([]models.Attachment, er
 		if err != nil {
 			return nil, fmt.Errorf("error fetching attachment %d: %w", mid, err)
 		}
+		a.MediaID = int(mid)
 
 		attachments = append(attachments, a)
 	}

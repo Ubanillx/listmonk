@@ -125,8 +125,8 @@
                   <div class="column is-6">
                     <b-field :label="$t('campaigns.dailySendLimit')" label-position="on-border"
                       :message="$t('campaigns.dailySendLimitHelp')">
-                      <b-numberinput v-model="form.dailySendLimit" :disabled="!canEdit" min="1" max="100000000"
-                        type="is-light" controls-position="compact" required />
+                      <b-numberinput v-model="form.dailySendLimit" :disabled="!canEdit" name="daily_send_limit"
+                        min="1" max="100000000" type="is-light" controls-position="compact" required />
                     </b-field>
                   </div>
                   <div class="column is-6">
@@ -436,7 +436,7 @@ export default Vue.extend({
         attribsStr: '{}',
         messenger: 'email',
         autoTrackLinks: false,
-        dailySendLimit: 100,
+        dailySendLimit: 300,
         dailyResumeTime: '09:00',
         lists: [],
         tags: [],
@@ -546,7 +546,7 @@ export default Vue.extend({
 
     normalizeSMTPDailyFields(limit, resumeTime) {
       return {
-        dailySendLimit: limit > 0 ? limit : 100,
+        dailySendLimit: limit > 0 ? limit : 300,
         dailyResumeTime: this.normalizeDailyResumeTime(resumeTime || '09:00'),
       };
     },

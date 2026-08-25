@@ -13,6 +13,7 @@ describe('Campaigns', () => {
 
   it('Creates campaign', () => {
     cy.get('a[data-cy=btn-new]').click();
+    cy.get('input[name=daily_send_limit]').should('have.value', '300');
 
     // Fill fields.
     cy.get('input[name=name]').clear().type('new-attach');

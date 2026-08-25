@@ -453,7 +453,7 @@ export default Vue.extend({
 
       const isLimitedSMTPCampaign = c.type === 'regular'
         && (c.messenger === 'email' || c.messenger?.startsWith('email-'));
-      const dailySendLimit = isLimitedSMTPCampaign && c.dailySendLimit > 0 ? c.dailySendLimit : 100;
+      const dailySendLimit = isLimitedSMTPCampaign && c.dailySendLimit > 0 ? c.dailySendLimit : 300;
       const dailyResumeTime = isLimitedSMTPCampaign && c.dailyResumeTime ? c.dailyResumeTime : '09:00';
 
       const data = {

@@ -86,6 +86,28 @@ func TestInlineMediaImagesMatchesMediaPathWhenHostDiffers(t *testing.T) {
 	}
 }
 
+func TestInlineMediaImagesMatchesRelativeMediaSource(t *testing.T) {
+	image := models.Attachment{
+		Name:      "logo.png",
+		MediaID:   10,
+		SourceURL: "http://current-host:9173/uploads/logo.png",
+		Header:    MakeAttachmentHeader("logo.png", "base64", "image/png"),
+		Content:   []byte("image bytes"),
+	}
+
+	body, attachments := InlineMediaImages(
+		[]byte(`<img src="/uploads/logo.png?cache=1">`),
+		[]models.Attachment{image},
+	)
+
+	if !strings.Contains(string(body), `src="cid:media-10@listmonk"`) {
+		t.Fatalf("expected relative media source replacement, got %q", body)
+	}
+	if !attachments[0].Inline {
+		t.Fatal("relative media source should mark the image inline")
+	}
+}
+
 func TestInlineMediaImagesDoesNotRewriteUnrelatedImageWithSamePath(t *testing.T) {
 	image := models.Attachment{
 		Name:      "logo.png",

@@ -33,12 +33,7 @@ func InlineMediaImages(body []byte, attachments []models.Attachment) ([]byte, []
 		if sourceURL := normalizeImageSource(attachment.SourceURL); sourceURL != "" {
 			byURL[sourceURL] = i
 			if sourcePath := imageSourcePath(sourceURL); sourcePath != "" {
-				// Only use a path fallback when it identifies a concrete media
-				// file. Restricting this to the final filename avoids accidentally
-				// matching unrelated external images that share a generic path.
-				if filename := path.Base(sourcePath); filename != "." && filename != "/" {
-					byPath[sourcePath] = i
-				}
+				byPath[sourcePath] = i
 			}
 		}
 	}
@@ -60,9 +55,12 @@ func InlineMediaImages(body []byte, attachments []models.Attachment) ([]byte, []
 			continue
 		}
 
-		source := normalizeImageSource(string(body[start:end]))
+		rawSource := string(body[start:end])
+		source := normalizeImageSource(rawSource)
 		attachmentIndex, ok := byURL[source]
-		if !ok {
+		// Relative image sources don't carry the app's host. Match them by
+		// path, but never use this fallback for an absolute external URL.
+		if !ok && isRelativeImageSource(rawSource) {
 			candidatePath := imageSourcePath(source)
 			if candidatePath != "" {
 				attachmentIndex, ok = byPath[candidatePath]
@@ -109,13 +107,39 @@ func isImageAttachment(attachment models.Attachment) bool {
 }
 
 func normalizeImageSource(source string) string {
-	return strings.TrimSpace(html.UnescapeString(source))
+	source = strings.TrimSpace(html.UnescapeString(source))
+	if source == "" {
+		return ""
+	}
+
+	u, err := url.Parse(source)
+	if err != nil {
+		return source
+	}
+
+	// URL escaping may be introduced while html/template renders an image
+	// attribute (for example, parentheses become percent-escaped). Compare
+	// the decoded path and a canonical query instead of the raw spelling.
+	decodedPath, err := url.PathUnescape(u.EscapedPath())
+	if err != nil {
+		decodedPath = u.Path
+	}
+	decodedPath = path.Clean("/" + strings.TrimSpace(decodedPath))
+	query := u.Query().Encode()
+	if u.Host == "" && u.Scheme == "" {
+		return "relative:" + decodedPath + "?" + query
+	}
+
+	return strings.ToLower(u.Scheme) + "://" + strings.ToLower(u.Host) + decodedPath + "?" + query
 }
 
-// imageSourcePath returns a stable URL path for matching media URLs. Media
-// URLs can differ between the original campaign and its clone (for example,
-// when the app root URL changes), while the media filename/path remains the
-// same. Query and fragment components are intentionally ignored.
+func isRelativeImageSource(source string) bool {
+	u, err := url.Parse(strings.TrimSpace(html.UnescapeString(source)))
+	return err == nil && u.Scheme == "" && u.Host == ""
+}
+
+// imageSourcePath returns a stable URL path for matching relative media URLs.
+// Query and fragment components are intentionally ignored.
 func imageSourcePath(source string) string {
 	u, err := url.Parse(source)
 	if err != nil || u.Path == "" {

@@ -73,6 +73,7 @@
 
 <script>
 import Vue from 'vue';
+import dayjs from 'dayjs';
 import { mapState } from 'vuex';
 import CopyText from '../components/CopyText.vue';
 
@@ -92,7 +93,7 @@ export default Vue.extend({
     return {
       // Binds form input values.
       form: {
-        name: '',
+        name: dayjs().format('YYYY-MM-DD'),
         type: 'private',
         optin: 'single',
         status: 'active',

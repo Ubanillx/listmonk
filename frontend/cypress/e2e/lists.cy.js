@@ -85,7 +85,8 @@ describe('Lists', () => {
         const name = `list-${t}-${o}-${n}`;
 
         cy.get('[data-cy=btn-new]').click();
-        cy.get('input[name=name]').type(name);
+        cy.get('input[name=name]').invoke('val').should('match', /^\d{4}-\d{2}-\d{2}$/);
+        cy.get('input[name=name]').clear().type(name);
         cy.get('select[name=type]').select(t);
         cy.get('select[name=optin]').select(o);
         cy.get('input[name=tags]').type(`tag${n}{enter}${t}{enter}${o}{enter}`);

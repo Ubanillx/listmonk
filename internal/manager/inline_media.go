@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html"
 	"mime"
+	"net"
 	"net/textproto"
 	"net/url"
 	"path"
@@ -60,10 +61,17 @@ func InlineMediaImages(body []byte, attachments []models.Attachment) ([]byte, []
 		attachmentIndex, ok := byURL[source]
 		// Relative image sources don't carry the app's host. Match them by
 		// path, but never use this fallback for an absolute external URL.
-		if !ok && isRelativeImageSource(rawSource) {
+		if !ok {
 			candidatePath := imageSourcePath(source)
 			if candidatePath != "" {
-				attachmentIndex, ok = byPath[candidatePath]
+				if candidate, found := byPath[candidatePath]; found {
+					// A path fallback is useful for cloned messages whose internal
+					// root URL changed, but must not turn an unrelated external image
+					// into a CID reference merely because its filename is identical.
+					if isRelativeImageSource(rawSource) || isLikelyLocalMediaURL(rawSource, attachments[candidate].SourceURL) {
+						attachmentIndex, ok = candidate, true
+					}
+				}
 			}
 		}
 		if !ok {
@@ -136,6 +144,26 @@ func normalizeImageSource(source string) string {
 func isRelativeImageSource(source string) bool {
 	u, err := url.Parse(strings.TrimSpace(html.UnescapeString(source)))
 	return err == nil && u.Scheme == "" && u.Host == ""
+}
+
+func isLikelyLocalMediaURL(source, mediaSource string) bool {
+	sourceURL, sourceErr := url.Parse(strings.TrimSpace(html.UnescapeString(source)))
+	mediaURL, mediaErr := url.Parse(strings.TrimSpace(html.UnescapeString(mediaSource)))
+	if sourceErr != nil || mediaErr != nil || sourceURL.Host == "" || mediaURL.Host == "" {
+		return false
+	}
+
+	return isLocalMediaHost(sourceURL.Hostname()) && isLocalMediaHost(mediaURL.Hostname())
+}
+
+func isLocalMediaHost(host string) bool {
+	host = strings.Trim(strings.ToLower(host), "[]")
+	if host == "localhost" || strings.HasSuffix(host, ".local") || !strings.Contains(host, ".") {
+		return true
+	}
+
+	ip := net.ParseIP(host)
+	return ip != nil && (ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast())
 }
 
 // imageSourcePath returns a stable URL path for matching relative media URLs.

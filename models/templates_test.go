@@ -3,6 +3,7 @@ package models
 import (
 	"testing"
 
+	"github.com/lib/pq"
 	null "gopkg.in/volatiletech/null.v6"
 )
 
@@ -13,6 +14,7 @@ func TestTemplateCloneCopiesSourceFields(t *testing.T) {
 		Subject:    "ignored",
 		Body:       "<h1>Hello</h1>",
 		BodySource: null.StringFrom(`{"root":true}`),
+		MediaIDs:   pq.Int64Array{7, 11},
 	}
 
 	out := src.Clone("Cloned", "should not apply")
@@ -31,6 +33,14 @@ func TestTemplateCloneCopiesSourceFields(t *testing.T) {
 	}
 	if out.Subject != src.Subject {
 		t.Fatalf("expected non-tx subject to stay unchanged, got %q", out.Subject)
+	}
+	if len(out.MediaIDs) != 2 || out.MediaIDs[0] != 7 || out.MediaIDs[1] != 11 {
+		t.Fatalf("expected media IDs to be copied, got %v", out.MediaIDs)
+	}
+
+	out.MediaIDs[0] = 99
+	if src.MediaIDs[0] != 7 {
+		t.Fatal("expected cloned media IDs not to share the source backing array")
 	}
 }
 

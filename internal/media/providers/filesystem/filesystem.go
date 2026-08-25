@@ -33,6 +33,12 @@ func (c *Client) Put(filename string, cType string, src io.ReadSeeker) (string, 
 	// Get the directory path
 	dir := getDir(c.opts.UploadPath)
 
+	// Ensure a fresh filesystem-backed media store can accept uploads without
+	// requiring its upload directory to be created manually beforehand.
+	if err := os.MkdirAll(dir, 0775); err != nil {
+		return "", fmt.Errorf("create media upload directory %q: %w", dir, err)
+	}
+
 	// Read the  file contents.
 	out, err := os.OpenFile(filepath.Join(dir, filename), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0664)
 	if err != nil {

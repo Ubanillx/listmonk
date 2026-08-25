@@ -8,6 +8,7 @@ WITH tpl AS (
         -- body and its block source as the campaign's block source,
         -- and don't set a template_id in the campaigns table, as it's essentially an
         -- HTML template body "import" during creation.
+        id AS source_id,
         (CASE WHEN type = 'campaign_visual' THEN NULL ELSE id END) AS id,
         (CASE WHEN type = 'campaign_visual' THEN body ELSE '' END) AS body,
         (CASE WHEN type = 'campaign_visual' THEN body_source ELSE NULL END) AS body_source,
@@ -48,7 +49,13 @@ camp AS (
 ),
 med AS (
     INSERT INTO campaign_media (campaign_id, media_id, filename)
-        (SELECT (SELECT id FROM camp), id, filename FROM media WHERE id=ANY($22::INT[]))
+        (SELECT (SELECT id FROM camp), id, filename FROM media WHERE id=ANY($22::INT[])
+         UNION
+         SELECT (SELECT id FROM camp), m.id, m.filename
+         FROM template_media tm JOIN media m ON (m.id = tm.media_id)
+         WHERE tm.template_id = (SELECT source_id FROM tpl)
+            AND (SELECT id FROM tpl) IS NULL)
+        ON CONFLICT (campaign_id, media_id) DO NOTHING
 ),
 insLists AS (
     INSERT INTO campaign_lists (campaign_id, list_id, list_name)
@@ -179,6 +186,17 @@ CASE
     ELSE GREATEST(campaigns.to_send - campaigns.sent, 0)
 END AS unsent_count,
 COALESCE(templates.body, '') AS template_body,
+COALESCE((
+    SELECT ARRAY_AGG(DISTINCT x.media_id ORDER BY x.media_id)::INT[]
+    FROM (
+        SELECT cm.media_id FROM campaign_media cm
+        WHERE cm.campaign_id = campaigns.id AND cm.media_id IS NOT NULL
+        UNION
+        SELECT tm.media_id FROM template_media tm
+        WHERE tm.template_id = COALESCE(NULLIF($2, 0), campaigns.template_id)
+            AND tm.media_id IS NOT NULL
+    ) x
+), '{}') AS media_id,
 (
 	SELECT COALESCE(ARRAY_TO_JSON(ARRAY_AGG(l)), '[]') FROM (
 		SELECT COALESCE(campaign_lists.list_id, 0) AS id,
@@ -235,9 +253,16 @@ WITH camps AS (
     AND NOT(campaigns.id = ANY($1::INT[]))
 ),
 campMedia AS (
-    SELECT campaign_id, ARRAY_AGG(campaign_media.media_id)::INT[] AS media_id FROM campaign_media
-    WHERE campaign_id = ANY(SELECT id FROM camps) AND media_id IS NOT NULL
-    GROUP BY campaign_id
+    SELECT c.id AS campaign_id, ARRAY_AGG(DISTINCT x.media_id ORDER BY x.media_id)::INT[] AS media_id
+    FROM camps c
+    JOIN LATERAL (
+        SELECT cm.media_id FROM campaign_media cm
+        WHERE cm.campaign_id = c.id AND cm.media_id IS NOT NULL
+        UNION
+        SELECT tm.media_id FROM template_media tm
+        WHERE tm.template_id = c.template_id AND tm.media_id IS NOT NULL
+    ) x ON TRUE
+    GROUP BY c.id
 )
 SELECT camps.*, campMedia.media_id FROM camps LEFT JOIN campMedia ON (campMedia.campaign_id = camps.id);
 

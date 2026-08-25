@@ -577,8 +577,13 @@ func (a *App) TestCampaign(c echo.Context) error {
 		return err
 	}
 
-	// Get the campaign from the DB for previewing.
-	tplID, _ := strconv.Atoi(c.FormValue("template_id"))
+	// Get the campaign from the DB for previewing. The request is normally JSON,
+	// so use the bound value rather than FormValue (which only reliably covers
+	// form-encoded requests).
+	tplID := 0
+	if req.TemplateID.Valid {
+		tplID = int(req.TemplateID.Int)
+	}
 	camp, err := a.core.GetCampaignForPreview(id, tplID)
 	if err != nil {
 		return err

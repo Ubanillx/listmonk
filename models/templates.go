@@ -7,6 +7,8 @@ import (
 	txttpl "text/template"
 	"time"
 
+	"github.com/jmoiron/sqlx/types"
+	"github.com/lib/pq"
 	null "gopkg.in/volatiletech/null.v6"
 )
 
@@ -30,6 +32,11 @@ type Template struct {
 	BodySource null.String `db:"body_source" json:"body_source,omitempty"`
 	IsDefault  bool        `db:"is_default" json:"is_default"`
 
+	// MediaIDs are loaded internally when a template is used to send a message.
+	// Media contains the corresponding API representation ({id, filename}).
+	MediaIDs pq.Int64Array  `db:"media_id" json:"-"`
+	Media    types.JSONText `db:"media" json:"media,omitempty"`
+
 	// Only relevant to tx (transactional) templates.
 	SubjectTpl *txttpl.Template   `json:"-"`
 	Tpl        *template.Template `json:"-"`
@@ -44,6 +51,7 @@ func (t Template) Clone(name, subject string) Template {
 		Subject:    t.Subject,
 		Body:       t.Body,
 		BodySource: t.BodySource,
+		MediaIDs:   append(pq.Int64Array(nil), t.MediaIDs...),
 	}
 
 	if t.Type == TemplateTypeTx && strings.TrimSpace(subject) != "" {

@@ -297,8 +297,8 @@ export default Vue.extend({
         daily_limit: 0,
         host: '',
         hello_hostname: '',
-        port: 587,
-        auth_protocol: 'none',
+        port: 465,
+        auth_protocol: 'plain',
         username: '',
         password: '',
         email_headers: [],
@@ -306,7 +306,7 @@ export default Vue.extend({
         max_msg_retries: 2,
         idle_timeout: '15s',
         wait_timeout: '5s',
-        tls_type: 'STARTTLS',
+        tls_type: 'TLS',
         tls_skip_verify: false,
       });
 

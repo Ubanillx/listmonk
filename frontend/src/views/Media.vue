@@ -33,7 +33,7 @@
         <form @submit.prevent="onSubmit" class="mb-6" data-cy="upload">
           <div>
             <b-field :label="$t('media.upload')">
-              <b-upload v-model="form.files" drag-drop multiple xaccept=".png,.jpg,.jpeg,.gif,.svg" expanded>
+              <b-upload v-model="form.files" drag-drop multiple expanded>
                 <div class="has-text-centered section">
                   <p>
                     <b-icon icon="file-upload-outline" size="is-large" />

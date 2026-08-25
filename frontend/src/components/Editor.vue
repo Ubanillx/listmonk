@@ -310,6 +310,10 @@ export default {
             this.self.bodySource = data.bodySource;
             this.isVisualTplDisabled = true;
 
+            // Visual templates are copied into a campaign rather than linked
+            // to it, so their attachments use the same snapshot semantics.
+            this.$emit('template-media', data.media || []);
+
             this.$refs.visualEditor.render(JSON.parse(data.bodySource));
           });
         },
@@ -328,12 +332,19 @@ export default {
         this.templateId = defaultTemplate?.id || this.validTemplates[0]?.id || null;
       }
     },
+
+    emitTemplateAttachments() {
+      const template = this.validTemplates.find((item) => item.id === this.templateId);
+      this.$emit('template-attachments', template?.media || []);
+    },
   },
 
   mounted() {
     // Set initial content type for the selector.
     this.contentTypeSel = this.value.contentType;
     this.templateId = this.value.templateId;
+    this.setDefaultTemplate();
+    this.emitTemplateAttachments();
 
     window.addEventListener('keydown', this.onKeyboardShortcut);
 
@@ -374,6 +385,7 @@ export default {
       // When the filtered list of validTemplates changes (visual vs. regular),
       // select the appropriate 'default' in the template select list.
       this.setDefaultTemplate();
+      this.emitTemplateAttachments();
     },
 
     contentTypeSel(to, from) {
@@ -387,6 +399,8 @@ export default {
     },
 
     templateId(to) {
+      this.emitTemplateAttachments();
+
       if (this.self.templateId === to) {
         return;
       }

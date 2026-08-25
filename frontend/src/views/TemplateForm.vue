@@ -50,6 +50,20 @@
             </div>
           </div>
 
+          <div class="columns mb-2">
+            <div class="column is-12">
+              <b-button @click="onOpenAttach" icon-left="file-upload-outline" data-cy="btn-template-attach">
+                {{ $t('campaigns.addAttachments') }}
+              </b-button>
+
+              <b-field v-if="form.media.length > 0" :label="$t('campaigns.attachments')"
+                label-position="on-border" expanded class="mt-4" data-cy="template-media">
+                <b-taginput v-model="form.media" name="media" ellipsis icon="tag-outline" field="filename"
+                  @focus="onOpenAttach" />
+              </b-field>
+            </div>
+          </div>
+
           <template v-if="form.body !== null">
             <b-field v-if="form.type === 'campaign_visual'" label-position="on-border" class="mb-1">
               <visual-editor v-if="form.type === 'campaign_visual'" name="body" :source="form.bodySource"
@@ -80,6 +94,13 @@
         </footer>
       </div>
     </form>
+    <b-modal scroll="keep" :aria-modal="true" :active.sync="isAttachModalOpen" :width="900">
+      <div class="modal-card content" style="width: auto">
+        <section expanded class="modal-card-body">
+          <media is-modal @selected="onAttachSelect" />
+        </section>
+      </div>
+    </b-modal>
     <campaign-preview v-if="previewItem" is-post type="template" :title="previewItem.name"
       :template-type="previewItem.type" :body="form.body" @close="onTogglePreview" />
   </section>
@@ -92,11 +113,13 @@ import CampaignPreview from '../components/CampaignPreview.vue';
 import CodeEditor from '../components/CodeEditor.vue';
 import VisualEditor from '../components/VisualEditor.vue';
 import CopyText from '../components/CopyText.vue';
+import Media from './Media.vue';
 
 export default Vue.extend({
   components: {
     CampaignPreview,
     CopyText,
+    Media,
     'code-editor': CodeEditor,
     'visual-editor': VisualEditor,
   },
@@ -114,11 +137,13 @@ export default Vue.extend({
         subject: '',
         type: 'campaign',
         optin: '',
-        body: null,
+        body: '',
         bodySource: null,
+        media: [],
       },
       previewItem: null,
       egPlaceholder: '{{ template "content" . }}',
+      isAttachModalOpen: false,
     };
   },
 
@@ -143,6 +168,17 @@ export default Vue.extend({
       this.createTemplate();
     },
 
+    onOpenAttach() {
+      this.isAttachModalOpen = true;
+    },
+
+    onAttachSelect(o) {
+      if (this.form.media.some((m) => m.id === o.id)) {
+        return;
+      }
+      this.form.media.push(o);
+    },
+
     createTemplate() {
       const data = {
         id: this.data.id,
@@ -151,6 +187,7 @@ export default Vue.extend({
         subject: this.form.subject,
         body: this.form.body,
         body_source: this.form.bodySource,
+        media: this.form.media.filter((m) => m.id).map((m) => m.id),
       };
 
       this.$api.createTemplate(data).then((d) => {
@@ -168,6 +205,7 @@ export default Vue.extend({
         subject: this.form.subject,
         body: this.form.body,
         body_source: this.form.bodySource,
+        media: this.form.media.filter((m) => m.id).map((m) => m.id),
       };
 
       this.$api.updateTemplate(data).then((d) => {
@@ -188,8 +226,14 @@ export default Vue.extend({
   },
 
   mounted() {
-    this.form = { ...this.$props.data };
-
+    this.form = {
+      ...this.form,
+      ...this.$props.data,
+      body: this.$props.data.body || '',
+      media: (this.$props.data.media || []).map((m) => (
+        m.id ? m : { ...m, filename: `❌ ${m.filename}` }
+      )),
+    };
     this.$nextTick(() => {
       this.$refs.focus.focus();
     });

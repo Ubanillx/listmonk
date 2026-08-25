@@ -78,6 +78,15 @@ func (a *App) SendTxMessage(c echo.Context) error {
 			a.i18n.Ts("globals.messages.notFound", "name", fmt.Sprintf("template %d", m.TemplateID)))
 	}
 
+	// Template attachments are stored as media-library references and loaded
+	// only when a message is sent. Request-level multipart attachments are
+	// appended below, so callers can add one-off files to a reusable template.
+	templateAttachments, err := a.manager.GetMediaAttachments([]int64(tpl.MediaIDs))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError,
+			a.i18n.Ts("globals.messages.errorFetching", "name", err.Error()))
+	}
+
 	var (
 		num      = len(m.SubscriberEmails)
 		isEmails = true
@@ -130,8 +139,10 @@ func (a *App) SendTxMessage(c echo.Context) error {
 			}
 		}
 
-		// Render the message.
-		if err := m.Render(sub, tpl, a.manager.GenericTemplateFuncs()); err != nil {
+		// Render a per-recipient copy. Render mutates subject/body/altbody, and
+		// reusing the same instance would leak a rendered value to the next recipient.
+		rendered := m
+		if err := rendered.Render(sub, tpl, a.manager.GenericTemplateFuncs()); err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest,
 				a.i18n.Ts("globals.messages.errorFetching", "name"))
 		}
@@ -140,15 +151,22 @@ func (a *App) SendTxMessage(c echo.Context) error {
 		msg := models.Message{}
 		msg.Subscriber = sub
 		msg.To = []string{sub.Email}
-		msg.From = m.FromEmail
-		msg.Subject = m.Subject
-		msg.ContentType = m.ContentType
-		msg.Messenger = m.Messenger
-		msg.UseSMTPQuota = strings.HasPrefix(m.Messenger, emailMsgr)
-		msg.UseSMTPFrom = strings.HasPrefix(m.Messenger, emailMsgr)
-		msg.Body = m.Body
-		msg.AltBody = []byte(m.AltBody)
-		for _, a := range m.Attachments {
+		msg.From = rendered.FromEmail
+		msg.Subject = rendered.Subject
+		msg.ContentType = rendered.ContentType
+		msg.Messenger = rendered.Messenger
+		msg.UseSMTPQuota = strings.HasPrefix(rendered.Messenger, emailMsgr)
+		msg.UseSMTPFrom = strings.HasPrefix(rendered.Messenger, emailMsgr)
+		msg.Body = rendered.Body
+		msg.AltBody = []byte(rendered.AltBody)
+		for _, a := range templateAttachments {
+			msg.Attachments = append(msg.Attachments, models.Attachment{
+				Name:    a.Name,
+				Header:  a.Header,
+				Content: a.Content,
+			})
+		}
+		for _, a := range rendered.Attachments {
 			msg.Attachments = append(msg.Attachments, models.Attachment{
 				Name:    a.Name,
 				Header:  a.Header,
@@ -157,9 +175,9 @@ func (a *App) SendTxMessage(c echo.Context) error {
 		}
 
 		// Optional headers.
-		if len(m.Headers) != 0 {
-			msg.Headers = make(textproto.MIMEHeader, len(m.Headers))
-			for _, set := range m.Headers {
+		if len(rendered.Headers) != 0 {
+			msg.Headers = make(textproto.MIMEHeader, len(rendered.Headers))
+			for _, set := range rendered.Headers {
 				for hdr, val := range set {
 					msg.Headers.Add(hdr, val)
 				}

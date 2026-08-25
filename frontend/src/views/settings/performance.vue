@@ -1,29 +1,38 @@
 <template>
   <div class="items">
-    <b-field :label="$t('settings.performance.concurrency')" label-position="on-border"
-      :message="$t('settings.performance.concurrencyHelp')">
-      <b-numberinput v-model="data['app.concurrency']" name="app.concurrency" type="is-light" placeholder="5" min="1"
-        max="10000" />
-    </b-field>
+    <section>
+      <h2 class="is-size-5 mb-4">{{ $t('settings.performance.name') }}</h2>
+      <div class="columns">
+        <div class="column is-6">
+          <b-field :label="$t('settings.performance.concurrency')" label-position="on-border"
+            :message="$t('settings.performance.concurrencyHelp')">
+            <b-numberinput v-model="data['app.concurrency']" name="app.concurrency" type="is-light" placeholder="5" min="1"
+              max="10000" />
+          </b-field>
+        </div>
+        <div class="column is-6">
+          <b-field :label="$t('settings.performance.messageRate')" label-position="on-border"
+            :message="$t('settings.performance.messageRateHelp')">
+            <b-numberinput v-model="data['app.message_rate']" name="app.message_rate" type="is-light" placeholder="5" min="1"
+              max="100000" />
+          </b-field>
+        </div>
+      </div>
 
-    <b-field :label="$t('settings.performance.messageRate')" label-position="on-border"
-      :message="$t('settings.performance.messageRateHelp')">
-      <b-numberinput v-model="data['app.message_rate']" name="app.message_rate" type="is-light" placeholder="5" min="1"
-        max="100000" />
-    </b-field>
+      <b-field :label="$t('settings.performance.batchSize')" label-position="on-border"
+        :message="$t('settings.performance.batchSizeHelp')">
+        <b-numberinput v-model="data['app.batch_size']" name="app.batch_size" type="is-light" placeholder="1000" min="1"
+          max="100000" />
+      </b-field>
 
-    <b-field :label="$t('settings.performance.batchSize')" label-position="on-border"
-      :message="$t('settings.performance.batchSizeHelp')">
-      <b-numberinput v-model="data['app.batch_size']" name="app.batch_size" type="is-light" placeholder="1000" min="1"
-        max="100000" />
-    </b-field>
+      <b-field :label="$t('settings.performance.maxErrThreshold')" label-position="on-border"
+        :message="$t('settings.performance.maxErrThresholdHelp')">
+        <b-numberinput v-model="data['app.max_send_errors']" name="app.max_send_errors" type="is-light" placeholder="1999"
+          min="0" max="100000" />
+      </b-field>
+    </section>
 
-    <b-field :label="$t('settings.performance.maxErrThreshold')" label-position="on-border"
-      :message="$t('settings.performance.maxErrThresholdHelp')">
-      <b-numberinput v-model="data['app.max_send_errors']" name="app.max_send_errors" type="is-light" placeholder="1999"
-        min="0" max="100000" />
-    </b-field>
-
+    <hr />
     <div>
       <div class="columns">
         <div class="column is-6">

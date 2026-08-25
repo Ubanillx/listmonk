@@ -10,6 +10,8 @@ import (
 
 	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
+	"github.com/lib/pq"
+	null "gopkg.in/volatiletech/null.v6"
 )
 
 const (
@@ -34,6 +36,39 @@ var (
 type templateCloneReq struct {
 	Name    string `json:"name"`
 	Subject string `json:"subject"`
+}
+
+// templateReq keeps the API's write representation of media (a list of IDs)
+// separate from Template.Media, which is the read representation sent to the UI.
+type templateReq struct {
+	ID         int         `json:"id"`
+	Name       string      `json:"name"`
+	Subject    string      `json:"subject"`
+	Type       string      `json:"type"`
+	Body       string      `json:"body"`
+	BodySource null.String `json:"body_source"`
+	MediaIDs   []int       `json:"media"`
+}
+
+func (r templateReq) template() models.Template {
+	return models.Template{
+		Base:       models.Base{ID: r.ID},
+		Name:       r.Name,
+		Subject:    r.Subject,
+		Type:       r.Type,
+		Body:       r.Body,
+		BodySource: r.BodySource,
+	}
+}
+
+func (r templateReq) mediaIDs() pq.Int64Array {
+	ids := make(pq.Int64Array, 0, len(r.MediaIDs))
+	for _, id := range r.MediaIDs {
+		if id > 0 {
+			ids = append(ids, int64(id))
+		}
+	}
+	return ids
 }
 
 // GetTemplate handles the retrieval of a template
@@ -111,17 +146,17 @@ func (a *App) PreviewTemplateBody(c echo.Context) error {
 
 // CreateTemplate handles template creation.
 func (a *App) CreateTemplate(c echo.Context) error {
-	var o models.Template
-	if err := c.Bind(&o); err != nil {
+	var req templateReq
+	if err := c.Bind(&req); err != nil {
 		return err
 	}
-	o, err := a.prepareTemplate(o)
+	o, err := a.prepareTemplate(req.template())
 	if err != nil {
 		return err
 	}
 
 	// Create the template the in the DB.
-	out, err := a.core.CreateTemplate(o.Name, o.Type, o.Subject, []byte(o.Body), o.BodySource)
+	out, err := a.core.CreateTemplate(o.Name, o.Type, o.Subject, []byte(o.Body), o.BodySource, req.mediaIDs())
 	if err != nil {
 		return err
 	}
@@ -129,7 +164,9 @@ func (a *App) CreateTemplate(c echo.Context) error {
 	// If it's a transactional template, cache it in the manager
 	// to be used for arbitrary incoming tx message pushes.
 	if o.Type == models.TemplateTypeTx {
-		a.manager.CacheTpl(out.ID, &o)
+		out.Tpl = o.Tpl
+		out.SubjectTpl = o.SubjectTpl
+		a.manager.CacheTpl(out.ID, &out)
 	}
 
 	return c.JSON(http.StatusOK, okResp{out})
@@ -137,25 +174,27 @@ func (a *App) CreateTemplate(c echo.Context) error {
 
 // UpdateTemplate handles template modification.
 func (a *App) UpdateTemplate(c echo.Context) error {
-	var o models.Template
-	if err := c.Bind(&o); err != nil {
+	var req templateReq
+	if err := c.Bind(&req); err != nil {
 		return err
 	}
-	o, err := a.prepareTemplate(o)
+	o, err := a.prepareTemplate(req.template())
 	if err != nil {
 		return err
 	}
 
 	// Update the template in the DB.
 	id := getID(c)
-	out, err := a.core.UpdateTemplate(id, o.Name, o.Subject, []byte(o.Body), o.BodySource)
+	out, err := a.core.UpdateTemplate(id, o.Name, o.Subject, []byte(o.Body), o.BodySource, req.mediaIDs())
 	if err != nil {
 		return err
 	}
 
 	// If it's a transactional template, cache it.
 	if out.Type == models.TemplateTypeTx {
-		a.manager.CacheTpl(out.ID, &o)
+		out.Tpl = o.Tpl
+		out.SubjectTpl = o.SubjectTpl
+		a.manager.CacheTpl(out.ID, &out)
 	}
 
 	return c.JSON(http.StatusOK, okResp{out})
@@ -181,13 +220,15 @@ func (a *App) CloneTemplate(c echo.Context) error {
 		return err
 	}
 
-	out, err := a.core.CreateTemplate(clone.Name, clone.Type, clone.Subject, []byte(clone.Body), clone.BodySource)
+	out, err := a.core.CreateTemplate(clone.Name, clone.Type, clone.Subject, []byte(clone.Body), clone.BodySource, clone.MediaIDs)
 	if err != nil {
 		return err
 	}
 
 	if clone.Type == models.TemplateTypeTx {
-		a.manager.CacheTpl(out.ID, &clone)
+		out.Tpl = clone.Tpl
+		out.SubjectTpl = clone.SubjectTpl
+		a.manager.CacheTpl(out.ID, &out)
 	}
 
 	return c.JSON(http.StatusOK, okResp{out})

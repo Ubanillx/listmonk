@@ -218,10 +218,23 @@
 
       <b-tab-item :label="$t('campaigns.content')" icon="text" :disabled="isNew" value="content">
         <editor v-if="data.id" v-model="form.content" :id="data.id" :title="data.name" :disabled="!canEdit"
-          :templates="templates" :content-types="contentTypes" :auto-track-links="form.autoTrackLinks" />
+          :templates="templates" :content-types="contentTypes" :auto-track-links="form.autoTrackLinks"
+          @template-media="onTemplateMedia" @template-attachments="onTemplateAttachments" />
 
         <div class="columns">
           <div class="column is-6">
+            <div v-if="templateMedia.length > 0" class="template-media" data-cy="template-media">
+              <p class="label template-media-label">
+                {{ $t('campaigns.templateAttachments') }}
+              </p>
+              <b-taglist class="template-media-tags">
+                <b-tag v-for="(item, index) in templateMedia" :key="`template-media-${item.id || item.filename}-${index}`"
+                  type="is-info">
+                  {{ item.filename }}
+                </b-tag>
+              </b-taglist>
+            </div>
+
             <p v-if="!isAttachFieldVisible" class="is-size-6 has-text-grey">
               <a href="#" @click.prevent="onShowAttachField()" data-cy="btn-attach">
                 <b-icon icon="file-upload-outline" size="is-small" />
@@ -229,7 +242,7 @@
               </a>
             </p>
 
-            <b-field v-if="isAttachFieldVisible" :label="$t('campaigns.attachments')" label-position="on-border"
+            <b-field v-if="isAttachFieldVisible" :label="$t('campaigns.campaignAttachments')" label-position="on-border"
               expanded data-cy="media">
               <b-taginput v-model="form.media" name="media" ellipsis icon="tag-outline" ref="media" field="filename"
                 @focus="onOpenAttach" :disabled="!canEdit" />
@@ -405,6 +418,7 @@ export default Vue.extend({
       isAttachModalOpen: false,
       isPreviewingArchive: false,
       activeTab: 'campaign',
+      templateMedia: [],
 
       data: {},
 
@@ -485,6 +499,19 @@ export default Vue.extend({
       }
 
       this.form.media.push(o);
+    },
+
+    onTemplateMedia(media) {
+      media.forEach((item) => {
+        if (item.id && !this.form.media.some((m) => m.id === item.id)) {
+          this.form.media.push(item);
+        }
+      });
+      this.isAttachFieldVisible = this.form.media.length > 0;
+    },
+
+    onTemplateAttachments(media) {
+      this.templateMedia = Array.isArray(media) ? media : [];
     },
 
     isUnsaved() {
@@ -964,5 +991,17 @@ export default Vue.extend({
 
 .campaign-send-at-field {
   margin-top: 1.9rem;
+}
+
+.template-media {
+  margin-bottom: 1.25rem;
+}
+
+.template-media-label {
+  margin-bottom: 0.5rem;
+}
+
+.template-media-tags {
+  margin-bottom: 0;
 }
 </style>

@@ -21,6 +21,9 @@ export default defineConfig(({ _, mode }) => {
     },
     server: {
       port: env.LISTMONK_FRONTEND_PORT || 8080,
+      // Docker Desktop bind mounts on Windows can miss native file-change events.
+      // Keep polling opt-in so native local development does not pay that cost.
+      watch: env.LISTMONK_WATCH_POLLING === 'true' ? { usePolling: true, interval: 500 } : undefined,
       proxy: {
         '^/$': {
           target: env.LISTMONK_API_URL || 'http://127.0.0.1:9000',

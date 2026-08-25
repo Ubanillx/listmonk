@@ -177,6 +177,7 @@ export default Vue.extend({
         subject: t.subject,
         body: t.body,
         body_source: t.bodySource,
+        media: (t.media || []).filter((m) => m.id).map((m) => m.id),
       };
       this.$api.createTemplate(data).then((d) => {
         this.$api.getTemplates();

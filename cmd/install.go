@@ -195,7 +195,7 @@ func installTemplates(q *models.Queries) (int, int) {
 	}
 
 	var campTplID int
-	if err := q.CreateTemplate.Get(&campTplID, "Default campaign template", models.TemplateTypeCampaign, "", campTpl.ReadBytes(), nil); err != nil {
+	if err := q.CreateTemplate.Get(&campTplID, "Default campaign template", models.TemplateTypeCampaign, "", campTpl.ReadBytes(), nil, pq.Int64Array{}); err != nil {
 		lo.Fatalf("error creating default campaign template: %v", err)
 	}
 	if _, err := q.SetDefaultTemplate.Exec(campTplID); err != nil {
@@ -209,7 +209,7 @@ func installTemplates(q *models.Queries) (int, int) {
 	}
 
 	var archiveTplID int
-	if err := q.CreateTemplate.Get(&archiveTplID, "Default archive template", models.TemplateTypeCampaign, "", archiveTpl.ReadBytes(), nil); err != nil {
+	if err := q.CreateTemplate.Get(&archiveTplID, "Default archive template", models.TemplateTypeCampaign, "", archiveTpl.ReadBytes(), nil, pq.Int64Array{}); err != nil {
 		lo.Fatalf("error creating default campaign template: %v", err)
 	}
 
@@ -219,7 +219,7 @@ func installTemplates(q *models.Queries) (int, int) {
 		lo.Fatalf("error reading default e-mail template: %v", err)
 	}
 
-	if _, err := q.CreateTemplate.Exec("Sample transactional template", models.TemplateTypeTx, "Welcome {{ .Subscriber.Name }}", txTpl.ReadBytes(), nil); err != nil {
+	if _, err := q.CreateTemplate.Exec("Sample transactional template", models.TemplateTypeTx, "Welcome {{ .Subscriber.Name }}", txTpl.ReadBytes(), nil, pq.Int64Array{}); err != nil {
 		lo.Fatalf("error creating sample transactional template: %v", err)
 	}
 
@@ -233,7 +233,7 @@ func installTemplates(q *models.Queries) (int, int) {
 		lo.Fatalf("error reading default visual template json: %v", err)
 	}
 
-	if _, err := q.CreateTemplate.Exec("Sample visual template", models.TemplateTypeCampaignVisual, "", visualTpl.ReadBytes(), visualSrc.ReadBytes()); err != nil {
+	if _, err := q.CreateTemplate.Exec("Sample visual template", models.TemplateTypeCampaignVisual, "", visualTpl.ReadBytes(), visualSrc.ReadBytes(), pq.Int64Array{}); err != nil {
 		lo.Fatalf("error creating default campaign template: %v", err)
 	}
 

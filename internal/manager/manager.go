@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	"log"
+	"mime"
 	"net/textproto"
 	"strings"
 	"sync"
@@ -686,6 +687,30 @@ func (m *Manager) makeGnericFuncMap() template.FuncMap {
 	return funcs
 }
 
+// GetMediaAttachments loads media blobs and returns them as message attachments.
+func (m *Manager) GetMediaAttachments(mediaIDs []int64) ([]models.Attachment, error) {
+	attachments := make([]models.Attachment, 0, len(mediaIDs))
+	seen := make(map[int64]struct{}, len(mediaIDs))
+	for _, mid := range mediaIDs {
+		if mid < 1 {
+			continue
+		}
+		if _, ok := seen[mid]; ok {
+			continue
+		}
+		seen[mid] = struct{}{}
+
+		a, err := m.store.GetAttachment(int(mid))
+		if err != nil {
+			return nil, fmt.Errorf("error fetching attachment %d: %w", mid, err)
+		}
+
+		attachments = append(attachments, a)
+	}
+
+	return attachments, nil
+}
+
 // attachMedia loads any media/attachments from the media store and attaches
 // the byte blobs to the campaign.
 func (m *Manager) attachMedia(c *models.Campaign) error {
@@ -693,15 +718,11 @@ func (m *Manager) attachMedia(c *models.Campaign) error {
 		return nil
 	}
 
-	// Load any media/attachments.
-	for _, mid := range []int64(c.MediaIDs) {
-		a, err := m.store.GetAttachment(int(mid))
-		if err != nil {
-			return fmt.Errorf("error fetching attachment %d on campaign %s: %v", mid, c.Name, err)
-		}
-
-		c.Attachments = append(c.Attachments, a)
+	attachments, err := m.GetMediaAttachments([]int64(c.MediaIDs))
+	if err != nil {
+		return fmt.Errorf("error fetching attachments on campaign %s: %w", c.Name, err)
 	}
+	c.Attachments = attachments
 
 	return nil
 }
@@ -713,13 +734,27 @@ func MakeAttachmentHeader(filename, encoding, contentType string) textproto.MIME
 	if encoding == "" {
 		encoding = "base64"
 	}
+
+	// Do not allow a user-provided filename to create additional MIME headers.
+	filename = strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(filename, "\r", ""), "\n", ""))
+	if filename == "" {
+		filename = "attachment"
+	}
+
+	mediaType, params, err := mime.ParseMediaType(contentType)
+	if err != nil || mediaType == "" {
+		mediaType = "application/octet-stream"
+		params = map[string]string{}
+	}
+	params["name"] = filename
+	contentType = mime.FormatMediaType(mediaType, params)
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
 
 	h := textproto.MIMEHeader{}
-	h.Set("Content-Disposition", "attachment; filename="+filename)
-	h.Set("Content-Type", fmt.Sprintf("%s; name=\""+filename+"\"", contentType))
+	h.Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filename}))
+	h.Set("Content-Type", contentType)
 	h.Set("Content-Transfer-Encoding", encoding)
 	return h
 }

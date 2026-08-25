@@ -90,7 +90,6 @@ CREATE TABLE templates (
 );
 CREATE UNIQUE INDEX ON templates (is_default) WHERE is_default = true;
 
-
 -- campaigns
 DROP TABLE IF EXISTS campaigns CASCADE;
 CREATE TABLE campaigns (
@@ -230,6 +229,19 @@ CREATE TABLE campaign_media (
 DROP INDEX IF EXISTS idx_camp_media_id; CREATE UNIQUE INDEX idx_camp_media_id ON campaign_media (campaign_id, media_id);
 DROP INDEX IF EXISTS idx_camp_media_camp_id; CREATE INDEX idx_camp_media_camp_id ON campaign_media(campaign_id);
 
+-- template_media
+CREATE TABLE template_media (
+    template_id  INTEGER REFERENCES templates(id) ON DELETE CASCADE ON UPDATE CASCADE,
+
+    -- Media items may be deleted, so media_id is nullable
+    -- and a copy of the original name is maintained here.
+    media_id     INTEGER NULL REFERENCES media(id) ON DELETE SET NULL ON UPDATE CASCADE,
+
+    filename     TEXT NOT NULL DEFAULT ''
+);
+CREATE UNIQUE INDEX idx_template_media_id ON template_media (template_id, media_id);
+CREATE INDEX idx_template_media_template_id ON template_media(template_id);
+
 
 -- links
 DROP TABLE IF EXISTS links CASCADE;
@@ -315,7 +327,7 @@ INSERT INTO settings (key, value) VALUES
     ('upload.s3.bucket_type', '"public"'),
     ('upload.s3.expiry', '"167h"'),
     ('smtp',
-        '[{"enabled":true, "is_primary":true, "from_email":"listmonk <noreply@listmonk.yoursite.com>", "daily_limit":0, "host":"smtp.yoursite.com","port":25,"auth_protocol":"cram","username":"username","password":"password","hello_hostname":"","max_conns":10,"idle_timeout":"15s","wait_timeout":"5s","max_msg_retries":2,"tls_type":"STARTTLS","tls_skip_verify":false,"email_headers":[]},
+        '[{"enabled":true, "is_primary":true, "from_email":"listmonk <noreply@listmonk.yoursite.com>", "daily_limit":0, "host":"smtp.yoursite.com","port":465,"auth_protocol":"plain","username":"username","password":"password","hello_hostname":"","max_conns":10,"idle_timeout":"15s","wait_timeout":"5s","max_msg_retries":2,"tls_type":"TLS","tls_skip_verify":false,"email_headers":[]},
           {"enabled":false, "is_primary":false, "from_email":"listmonk <noreply@listmonk.yoursite.com>", "daily_limit":0, "host":"smtp.gmail.com","port":465,"auth_protocol":"login","username":"username@gmail.com","password":"password","hello_hostname":"","max_conns":10,"idle_timeout":"15s","wait_timeout":"5s","max_msg_retries":2,"tls_type":"TLS","tls_skip_verify":false,"email_headers":[]}]'),
     ('messengers', '[]'),
     ('bounce.enabled', 'false'),

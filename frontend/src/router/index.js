@@ -102,6 +102,12 @@ const routes = [
     component: () => import('../views/UserProfile.vue'),
   },
   {
+    path: '/organizations',
+    name: 'organizations',
+    meta: { title: '组织', group: 'organizations' },
+    component: () => import('../views/Organizations.vue'),
+  },
+  {
     path: '/settings',
     name: 'settings',
     meta: { title: 'globals.terms.settings', group: 'settings' },

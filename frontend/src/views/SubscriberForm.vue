@@ -20,20 +20,20 @@
 
       <section expanded class="modal-card-body">
         <b-field :label="$t('subscribers.email')" label-position="on-border">
-          <b-input :maxlength="200" v-model="form.email" name="email" :ref="'focus'"
+          <b-input :maxlength="200" v-model="form.email" name="email" :ref="'focus'" :disabled="!canEdit"
             :placeholder="$t('subscribers.email')" required />
         </b-field>
 
         <div class="columns">
           <div class="column is-8">
             <b-field :label="$t('globals.fields.name')" label-position="on-border">
-              <b-input :maxlength="200" v-model="form.name" name="name" :placeholder="$t('globals.fields.name')" />
+              <b-input :maxlength="200" v-model="form.name" name="name" :disabled="!canEdit" :placeholder="$t('globals.fields.name')" />
             </b-field>
           </div>
           <div class="column is-4">
             <b-field :label="$t('globals.fields.status')" label-position="on-border"
               :message="$t('subscribers.blocklistedHelp')">
-              <b-select v-model="form.status" name="status" :placeholder="$t('globals.fields.status')" required
+              <b-select v-model="form.status" name="status" :placeholder="$t('globals.fields.status')" :disabled="!canEdit" required
                 expanded>
                 <option value="enabled">
                   {{ $t('subscribers.status.enabled') }}
@@ -49,16 +49,17 @@
         <b-tabs type="is-boxed" :animated="false">
           <b-tab-item :label="$t('globals.terms.lists')" label-position="on-border">
             <list-selector :label="$t('subscribers.lists')" :placeholder="$t('subscribers.listsPlaceholder')"
-              :message="$t('subscribers.listsHelp')" v-model="form.lists" :selected="form.lists" :all="lists.results" />
+              :message="$t('subscribers.listsHelp')" v-model="form.lists" :selected="form.lists" :all="lists.results"
+              :disabled="!canEdit" />
             <div class="columns">
               <div class="column is-7">
                 <b-field :message="$t('subscribers.preconfirmHelp')">
-                  <b-checkbox v-model="form.preconfirm" :native-value="true" :disabled="!hasOptinList">
+                  <b-checkbox v-model="form.preconfirm" :native-value="true" :disabled="!canEdit || !hasOptinList">
                     {{ $t('subscribers.preconfirm') }}
                   </b-checkbox>
                 </b-field>
               </div>
-              <div v-if="$can('subscribers:manage') && isEditing" class="column is-5 has-text-right">
+              <div v-if="canEdit && isEditing" class="column is-5 has-text-right">
                 <a href="#" @click.prevent="sendOptinConfirmation" :class="{ 'is-disabled': !hasOptinList }">
                   <b-icon icon="email-outline" size="is-small" />
                   {{ $t('subscribers.sendOptinConfirm') }}</a>
@@ -108,7 +109,7 @@
           <b-tab-item :label="`${$t('globals.terms.bounces')} (${bounces.length})`" class="bounces"
             :disabled="bounces.length === 0">
             <a href="#" class="is-size-6 is-pulled-right" disabed="true" @click.prevent="deleteBounces"
-              v-if="isBounceVisible">
+               v-if="isBounceVisible && canEdit">
               <b-icon icon="trash-can-outline" />
               {{ $t('globals.buttons.delete') }}
             </a>
@@ -147,7 +148,7 @@
         <b-field :message="$t('subscribers.attribsHelp') + ' ' + egAttribs" class="mt-6">
           <div>
             <h5>{{ $t('globals.terms.attribs') }}</h5>
-            <b-input v-model="form.strAttribs" name="attribs" type="textarea" />
+            <b-input v-model="form.strAttribs" name="attribs" type="textarea" :disabled="!canEdit" />
             <a href="https://listmonk.app/docs/concepts" target="_blank" rel="noopener noreferrer" class="is-size-7">
               {{ $t('globals.buttons.learnMore') }} <b-icon icon="link-variant" size="is-small" />
             </a>
@@ -158,7 +159,7 @@
         <b-button @click="$parent.close()">
           {{ $t('globals.buttons.close') }}
         </b-button>
-        <b-button v-if="$can('subscribers:manage')" native-type="submit" type="is-primary"
+        <b-button v-if="canEdit" native-type="submit" type="is-primary"
           :loading="loading.subscribers">
           {{ $t('globals.buttons.save') }}
         </b-button>
@@ -333,6 +334,11 @@ export default Vue.extend({
 
   computed: {
     ...mapState(['lists', 'loading']),
+
+    canEdit() {
+      return this.$can('subscribers:manage')
+        && (!this.isEditing || this.$canManageResource(this.data));
+    },
 
     hasOptinList() {
       return this.form.lists.some((l) => l.optin === 'double');

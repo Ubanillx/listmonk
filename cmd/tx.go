@@ -17,6 +17,10 @@ import (
 
 // SendTxMessage handles the sending of a transactional message.
 func (a *App) SendTxMessage(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	var m models.TxMessage
 
 	// If it's a multipart form, there may be file attachments.
@@ -71,6 +75,13 @@ func (a *App) SendTxMessage(c echo.Context) error {
 		m = r
 	}
 
+	// Templates may be globally shared, but a transactional message must never
+	// use a private template outside the selected personal or organization
+	// workspace.
+	if _, err := a.core.RequireReadResource(access, resourceTemplates, m.TemplateID); err != nil {
+		return err
+	}
+
 	// Get the cached tx template.
 	tpl, err := a.manager.GetTpl(m.TemplateID)
 	if err != nil {
@@ -120,20 +131,33 @@ func (a *App) SendTxMessage(c echo.Context) error {
 			}
 
 			var err error
-			sub, err = a.core.GetSubscriber(subID, "", subEmail)
+			if !isEmails {
+				if _, err = a.core.RequireManageResource(access, resourceSubscribers, subID); err == nil {
+					sub, err = a.core.GetSubscriber(subID, "", "")
+				}
+			} else {
+				var subs models.Subscribers
+				subs, err = a.core.GetManagedWorkspaceSubscribersByEmails(access, []string{subEmail})
+				if err == nil {
+					sub = subs[0]
+				}
+			}
 			if err != nil {
-				if er, ok := err.(*echo.HTTPError); ok && er.Code == http.StatusBadRequest {
-					// `fallback`: Create an ephemeral "subscriber" if the subscriber wasn't found.
-					if m.SubscriberMode == models.TxSubModeFallback {
-						sub = models.Subscriber{
-							Email: subEmail,
-						}
+				if m.SubscriberMode == models.TxSubModeFallback {
+					// `fallback` is only for an address that does not exist in the
+					// caller's writable workspace. Do not turn a database or list
+					// loading failure into an untracked external send.
+					if er, ok := err.(*echo.HTTPError); ok && er.Code == http.StatusBadRequest {
+						sub = models.Subscriber{Email: subEmail}
 					} else {
-						// `default`: log error and continue.
+						return err
+					}
+				} else {
+					// `default`: do not expose cross-workspace subscriber data.
+					if er, ok := err.(*echo.HTTPError); ok {
 						notFound = append(notFound, fmt.Sprintf("%v", er.Message))
 						continue
 					}
-				} else {
 					return err
 				}
 			}

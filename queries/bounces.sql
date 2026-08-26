@@ -1,10 +1,26 @@
 -- name: record-bounce
 -- Insert a bounce and count the bounces for the subscriber and either unsubscribe them,
-WITH sub AS (
-    SELECT id, status FROM subscribers WHERE CASE WHEN $1 != '' THEN uuid = $1::UUID ELSE email = $2 END
+WITH camp AS (
+    SELECT id, organization_id, owner_user_id FROM campaigns WHERE $3 != '' AND uuid = $3::UUID
 ),
-camp AS (
-    SELECT id FROM campaigns WHERE $3 != '' AND uuid = $3::UUID
+sub AS (
+    SELECT s.id, s.status
+    FROM subscribers s
+    WHERE (CASE WHEN $1 != '' THEN s.uuid = $1::UUID ELSE LOWER(s.email) = LOWER($2) END)
+        AND (
+            CASE
+                -- A campaign-bound bounce must resolve to a subscriber in
+                -- that campaign owner's workspace. This avoids an identical
+                -- e-mail in another organization being modified.
+                WHEN $3 != '' THEN s.organization_id IS NOT DISTINCT FROM (SELECT organization_id FROM camp)
+                    AND s.owner_user_id = (SELECT owner_user_id FROM camp)
+                -- UUIDs are globally unique. E-mail-only bounces are safe
+                -- only when the address exists in exactly one workspace.
+                WHEN $1 != '' THEN TRUE
+                ELSE 1 = (SELECT COUNT(*) FROM subscribers sx WHERE LOWER(sx.email) = LOWER($2))
+            END
+        )
+    LIMIT 1
 ),
 num AS (
     -- Add a +1 to include the current insertion that is happening.
@@ -23,7 +39,8 @@ bounce AS (
     -- Record the bounce if the subscriber is not already blocklisted;
     INSERT INTO bounces (subscriber_id, campaign_id, type, source, meta, created_at)
     SELECT (SELECT id FROM sub), (SELECT id FROM camp), $4, $5, $6, $7
-    WHERE NOT EXISTS (SELECT 1 WHERE (SELECT status FROM sub) = 'blocklisted' OR (SELECT num FROM num) > $8)
+    WHERE (SELECT id FROM sub) IS NOT NULL
+        AND NOT EXISTS (SELECT 1 WHERE (SELECT status FROM sub) = 'blocklisted' OR (SELECT num FROM num) > $8)
 )
 -- This delete  will only run when $9 = 'delete' and the number of bounces exceed $8.
 DELETE FROM subscribers
@@ -73,4 +90,3 @@ b AS (
 )
 UPDATE subscriber_lists SET status='unsubscribed', updated_at=NOW()
     WHERE subscriber_id = ANY(SELECT subscriber_id FROM subs);
-

@@ -92,8 +92,12 @@ func (a *App) GetServerConfig(c echo.Context) error {
 
 // GetDashboardCharts returns chart data points to render ont he dashboard.
 func (a *App) GetDashboardCharts(c echo.Context) error {
-	// Get the chart data from the DB.
-	out, err := a.core.GetDashboardCharts()
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
+	// Get the chart data from the selected workspace.
+	out, err := a.core.GetWorkspaceDashboardCharts(access)
 	if err != nil {
 		return err
 	}
@@ -103,8 +107,12 @@ func (a *App) GetDashboardCharts(c echo.Context) error {
 
 // GetDashboardCounts returns stats counts to show on the dashboard.
 func (a *App) GetDashboardCounts(c echo.Context) error {
-	// Get the chart data from the DB.
-	out, err := a.core.GetDashboardCounts()
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
+	// Get the counts from the selected workspace.
+	out, err := a.core.GetWorkspaceDashboardCounts(access)
 	if err != nil {
 		return err
 	}

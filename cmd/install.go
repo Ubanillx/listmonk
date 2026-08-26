@@ -110,7 +110,8 @@ func install(lastVer string, db *sqlx.DB, fs stuffbin.FileSystem, prompt, idempo
 	}
 
 	if hasUser {
-		installUser(user, password, apiUser, q)
+		adminID := installUser(user, password, apiUser, q)
+		claimInstallResources(db, adminID)
 	}
 
 	lo.Printf("setup complete")
@@ -145,6 +146,10 @@ func installLists(q *models.Queries) (int, int) {
 		models.ListStatusActive,
 		pq.StringArray{"test"},
 		"",
+		nil,
+		nil,
+		nil,
+		models.ResourceVisibilityPrivate,
 	); err != nil {
 		lo.Fatalf("error creating list: %v", err)
 	}
@@ -156,6 +161,10 @@ func installLists(q *models.Queries) (int, int) {
 		models.ListStatusActive,
 		pq.StringArray{"test"},
 		"",
+		nil,
+		nil,
+		nil,
+		models.ResourceVisibilityPrivate,
 	); err != nil {
 		lo.Fatalf("error creating list: %v", err)
 	}
@@ -165,24 +174,29 @@ func installLists(q *models.Queries) (int, int) {
 
 func installSubs(defListID, optinListID int, q *models.Queries) {
 	// Sample subscriber.
-	if _, err := q.UpsertSubscriber.Exec(
+	var id int
+	if err := q.InsertSubscriber.Get(&id,
 		uuid.Must(uuid.NewV4()),
 		"john@example.com",
 		"John Doe",
+		models.SubscriberStatusEnabled,
 		`{"type": "known", "good": true, "city": "Bengaluru"}`,
 		pq.Int64Array{int64(defListID)},
+		pq.StringArray{},
 		models.SubscriptionStatusUnconfirmed,
-		true, true); err != nil {
+	); err != nil {
 		lo.Fatalf("Error creating subscriber: %v", err)
 	}
-	if _, err := q.UpsertSubscriber.Exec(
+	if err := q.InsertSubscriber.Get(&id,
 		uuid.Must(uuid.NewV4()),
 		"anon@example.com",
 		"Anon Doe",
+		models.SubscriberStatusEnabled,
 		`{"type": "unknown", "good": true, "city": "Bengaluru"}`,
 		pq.Int64Array{int64(optinListID)},
+		pq.StringArray{},
 		models.SubscriptionStatusUnconfirmed,
-		true, true); err != nil {
+	); err != nil {
 		lo.Fatalf("error creating subscriber: %v", err)
 	}
 }
@@ -195,7 +209,7 @@ func installTemplates(q *models.Queries) (int, int) {
 	}
 
 	var campTplID int
-	if err := q.CreateTemplate.Get(&campTplID, "Default campaign template", models.TemplateTypeCampaign, "", campTpl.ReadBytes(), nil, pq.Int64Array{}); err != nil {
+	if err := q.CreateTemplate.Get(&campTplID, "Default campaign template", models.TemplateTypeCampaign, "", campTpl.ReadBytes(), nil, pq.Int64Array{}, nil, nil, nil, models.ResourceVisibilityGlobal); err != nil {
 		lo.Fatalf("error creating default campaign template: %v", err)
 	}
 	if _, err := q.SetDefaultTemplate.Exec(campTplID); err != nil {
@@ -209,7 +223,7 @@ func installTemplates(q *models.Queries) (int, int) {
 	}
 
 	var archiveTplID int
-	if err := q.CreateTemplate.Get(&archiveTplID, "Default archive template", models.TemplateTypeCampaign, "", archiveTpl.ReadBytes(), nil, pq.Int64Array{}); err != nil {
+	if err := q.CreateTemplate.Get(&archiveTplID, "Default archive template", models.TemplateTypeCampaign, "", archiveTpl.ReadBytes(), nil, pq.Int64Array{}, nil, nil, nil, models.ResourceVisibilityGlobal); err != nil {
 		lo.Fatalf("error creating default campaign template: %v", err)
 	}
 
@@ -219,7 +233,7 @@ func installTemplates(q *models.Queries) (int, int) {
 		lo.Fatalf("error reading default e-mail template: %v", err)
 	}
 
-	if _, err := q.CreateTemplate.Exec("Sample transactional template", models.TemplateTypeTx, "Welcome {{ .Subscriber.Name }}", txTpl.ReadBytes(), nil, pq.Int64Array{}); err != nil {
+	if _, err := q.CreateTemplate.Exec("Sample transactional template", models.TemplateTypeTx, "Welcome {{ .Subscriber.Name }}", txTpl.ReadBytes(), nil, pq.Int64Array{}, nil, nil, nil, models.ResourceVisibilityPrivate); err != nil {
 		lo.Fatalf("error creating sample transactional template: %v", err)
 	}
 
@@ -233,7 +247,7 @@ func installTemplates(q *models.Queries) (int, int) {
 		lo.Fatalf("error reading default visual template json: %v", err)
 	}
 
-	if _, err := q.CreateTemplate.Exec("Sample visual template", models.TemplateTypeCampaignVisual, "", visualTpl.ReadBytes(), visualSrc.ReadBytes(), pq.Int64Array{}); err != nil {
+	if _, err := q.CreateTemplate.Exec("Sample visual template", models.TemplateTypeCampaignVisual, "", visualTpl.ReadBytes(), visualSrc.ReadBytes(), pq.Int64Array{}, nil, nil, nil, models.ResourceVisibilityPrivate); err != nil {
 		lo.Fatalf("error creating default campaign template: %v", err)
 	}
 
@@ -273,6 +287,10 @@ func installCampaign(campTplID, archiveTplID int, q *models.Queries) {
 		pq.Array([]int{}),
 		nil,
 		false,
+		nil,
+		nil,
+		nil,
+		models.ResourceVisibilityPrivate,
 	); err != nil {
 		lo.Fatalf("error creating sample campaign: %v", err)
 	}
@@ -315,7 +333,7 @@ func checkSchema(db *sqlx.DB) (bool, error) {
 	return true, nil
 }
 
-func installUser(username, password, apiUsername string, q *models.Queries) {
+func installUser(username, password, apiUsername string, q *models.Queries) int {
 	consts := initConstConfig(ko)
 
 	// Super Admin role gets all permissions.
@@ -331,7 +349,8 @@ func installUser(username, password, apiUsername string, q *models.Queries) {
 	}
 
 	// Create the admin user.
-	if _, err := q.CreateUser.Exec(username, true, password, username+"@listmonk", username, auth.RoleTypeUser, role.ID, nil, auth.UserStatusEnabled); err != nil {
+	var adminID int
+	if err := q.CreateUser.Get(&adminID, username, true, password, username+"@listmonk", username, auth.RoleTypeUser, role.ID, nil, auth.UserStatusEnabled); err != nil {
 		lo.Fatalf("error creating superadmin user: %v", err)
 	}
 
@@ -355,5 +374,21 @@ func installUser(username, password, apiUsername string, q *models.Queries) {
 		// Print the token to stdout so that it can be grepped out.
 		lo.Println("writing API token LISTMONK_ADMIN_API_TOKEN to stderr")
 		fmt.Fprintf(os.Stderr, "export LISTMONK_ADMIN_API_TOKEN=\"%s\"\n", tk)
+	}
+
+	return adminID
+}
+
+// claimInstallResources mirrors first-time web setup for installations that
+// create the super administrator from environment variables. Seed resources
+// exist before that account, so they must become personal resources of it.
+func claimInstallResources(db *sqlx.DB, userID int) {
+	for _, table := range []string{"lists", "subscribers", "templates", "campaigns", "media"} {
+		stmt := fmt.Sprintf(`
+			UPDATE %s SET owner_user_id = $1, original_owner_user_id = $1
+			WHERE owner_user_id IS NULL AND organization_id IS NULL`, table)
+		if _, err := db.Exec(stmt, userID); err != nil {
+			lo.Fatalf("error assigning seed %s to initial administrator: %v", table, err)
+		}
 	}
 }

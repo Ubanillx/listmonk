@@ -16,6 +16,13 @@ DROP TYPE IF EXISTS twofa_type CASCADE; CREATE TYPE twofa_type AS ENUM ('none', 
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
+-- Organization tenancy tables are declared after users below because they
+-- reference user IDs. Drop them explicitly on a destructive fresh install.
+DROP TABLE IF EXISTS organization_invites CASCADE;
+DROP TABLE IF EXISTS organization_join_requests CASCADE;
+DROP TABLE IF EXISTS organization_members CASCADE;
+DROP TABLE IF EXISTS organizations CASCADE;
+
 -- subscribers
 DROP TABLE IF EXISTS subscribers CASCADE;
 CREATE TABLE subscribers (
@@ -211,7 +218,8 @@ CREATE TABLE media (
     content_type     TEXT NOT NULL DEFAULT 'application/octet-stream',
     thumb            TEXT NOT NULL,
     meta             JSONB NOT NULL DEFAULT '{}',
-    created_at       TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at       TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at       TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 DROP INDEX IF EXISTS idx_media_filename; CREATE INDEX idx_media_filename ON media(provider, filename);
 
@@ -410,6 +418,115 @@ CREATE TABLE integration_tokens (
 );
 CREATE INDEX idx_integration_tokens_user_id ON integration_tokens(user_id);
 CREATE INDEX idx_integration_tokens_active ON integration_tokens(user_id, revoked_at);
+
+-- organizations and membership
+CREATE TABLE organizations (
+    id                 BIGSERIAL PRIMARY KEY,
+    name               TEXT NOT NULL,
+    description        TEXT NOT NULL DEFAULT '',
+    status             TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
+    created_by_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    archived_at        TIMESTAMP WITH TIME ZONE,
+    created_at         TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at         TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+CREATE UNIQUE INDEX idx_organizations_name_lower ON organizations (LOWER(name));
+CREATE INDEX idx_organizations_status ON organizations(status);
+
+CREATE TABLE organization_members (
+    organization_id    BIGINT NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+    user_id            INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    role               TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('member', 'manager')),
+    joined_at          TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    removed_at         TIMESTAMP WITH TIME ZONE,
+    removed_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    PRIMARY KEY (organization_id, user_id)
+);
+CREATE INDEX idx_organization_members_user_active ON organization_members(user_id, organization_id) WHERE removed_at IS NULL;
+CREATE INDEX idx_organization_members_org_active ON organization_members(organization_id, role) WHERE removed_at IS NULL;
+
+CREATE TABLE organization_join_requests (
+    id                   BIGSERIAL PRIMARY KEY,
+    requested_name       TEXT NOT NULL,
+    description          TEXT NOT NULL DEFAULT '',
+    status               TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+    requested_by_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    reviewed_by_user_id  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    reviewed_at          TIMESTAMP WITH TIME ZONE,
+    review_note          TEXT NOT NULL DEFAULT '',
+    organization_id      BIGINT REFERENCES organizations(id) ON DELETE SET NULL,
+    created_at           TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at           TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX idx_organization_join_requests_pending_name ON organization_join_requests(LOWER(requested_name)) WHERE status = 'pending';
+CREATE INDEX idx_organization_join_requests_status ON organization_join_requests(status, created_at DESC);
+
+CREATE TABLE organization_invites (
+    id                 BIGSERIAL PRIMARY KEY,
+    organization_id    BIGINT NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+    name               TEXT NOT NULL DEFAULT '',
+    code_hash          TEXT NOT NULL UNIQUE,
+    created_by_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    expires_at         TIMESTAMP WITH TIME ZONE,
+    revoked_at         TIMESTAMP WITH TIME ZONE,
+    max_uses           INTEGER,
+    use_count          INTEGER NOT NULL DEFAULT 0,
+    created_at         TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at         TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    CHECK (max_uses IS NULL OR max_uses > 0)
+);
+CREATE INDEX idx_organization_invites_org_active ON organization_invites(organization_id, created_at DESC) WHERE revoked_at IS NULL;
+
+-- All user-owned resources receive an explicit tenancy and ownership scope.
+-- organization_id is NULL for a personal workspace.
+ALTER TABLE lists
+    ADD COLUMN organization_id BIGINT REFERENCES organizations(id) ON DELETE RESTRICT,
+    ADD COLUMN owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    ADD COLUMN original_owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('private', 'organization', 'global')),
+    ADD COLUMN transfer_pending_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE subscribers
+    ADD COLUMN organization_id BIGINT REFERENCES organizations(id) ON DELETE RESTRICT,
+    ADD COLUMN owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    ADD COLUMN original_owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('private', 'organization', 'global')),
+    ADD COLUMN transfer_pending_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE templates
+    ADD COLUMN organization_id BIGINT REFERENCES organizations(id) ON DELETE RESTRICT,
+    ADD COLUMN owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    ADD COLUMN original_owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('private', 'organization', 'global')),
+    ADD COLUMN transfer_pending_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE campaigns
+    ADD COLUMN organization_id BIGINT REFERENCES organizations(id) ON DELETE RESTRICT,
+    ADD COLUMN owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    ADD COLUMN original_owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('private', 'organization', 'global')),
+    ADD COLUMN transfer_pending_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE media
+    ADD COLUMN organization_id BIGINT REFERENCES organizations(id) ON DELETE RESTRICT,
+    ADD COLUMN owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    ADD COLUMN original_owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('private', 'organization', 'global')),
+    ADD COLUMN transfer_pending_at TIMESTAMP WITH TIME ZONE;
+
+CREATE INDEX idx_lists_workspace_owner ON lists(organization_id, owner_user_id);
+CREATE INDEX idx_subscribers_workspace_owner ON subscribers(organization_id, owner_user_id);
+CREATE INDEX idx_templates_workspace_owner_visibility ON templates(organization_id, owner_user_id, visibility);
+CREATE INDEX idx_campaigns_workspace_owner_visibility ON campaigns(organization_id, owner_user_id, visibility);
+CREATE INDEX idx_media_workspace_owner ON media(organization_id, owner_user_id);
+
+ALTER TABLE subscribers DROP CONSTRAINT subscribers_email_key;
+DROP INDEX idx_subs_email;
+CREATE UNIQUE INDEX idx_subscribers_scope_owner_email
+    ON subscribers ((COALESCE(organization_id, 0)), owner_user_id, LOWER(email))
+    WHERE owner_user_id IS NOT NULL;
+
+-- Defaults are local to an owner in a personal or organization workspace.
+DROP INDEX IF EXISTS templates_is_default_idx;
+CREATE UNIQUE INDEX idx_templates_workspace_default
+    ON templates ((COALESCE(organization_id, 0)), owner_user_id)
+    WHERE is_default AND owner_user_id IS NOT NULL;
 
 -- user sessions
 DROP TABLE IF EXISTS sessions CASCADE;

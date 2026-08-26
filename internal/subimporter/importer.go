@@ -71,10 +71,12 @@ type Importer struct {
 
 // Options represents import options.
 type Options struct {
-	UpsertStmt         *sql.Stmt
-	BlocklistStmt      *sql.Stmt
-	UpdateListDateStmt *sql.Stmt
-	PostCB             func(subject string, data any) error
+	UpsertStmt             *sql.Stmt
+	BlocklistStmt          *sql.Stmt
+	WorkspaceUpsertStmt    *sql.Stmt
+	WorkspaceBlocklistStmt *sql.Stmt
+	UpdateListDateStmt     *sql.Stmt
+	PostCB                 func(subject string, data any) error
 
 	DomainBlocklist []string
 	DomainAllowlist []string
@@ -91,24 +93,32 @@ type Session struct {
 
 // SessionOpt represents the options for an importer session.
 type SessionOpt struct {
-	Filename           string `json:"filename"`
-	Mode               string `json:"mode"`
-	SubStatus          string `json:"subscription_status"`
-	Overwrite          bool   `json:"overwrite"`
-	OverwriteUserInfo  bool   `json:"overwrite_userinfo"`
-	OverwriteSubStatus bool   `json:"overwrite_subscription_status"`
-	Delim              string `json:"delim"`
+	Filename           string            `json:"filename"`
+	Mode               string            `json:"mode"`
+	SubStatus          string            `json:"subscription_status"`
+	Overwrite          bool              `json:"overwrite"`
+	OverwriteUserInfo  bool              `json:"overwrite_userinfo"`
+	OverwriteSubStatus bool              `json:"overwrite_subscription_status"`
+	Delim              string            `json:"delim"`
 	FieldMap           map[string]string `json:"field_map"`
-	ListIDs            []int  `json:"lists"`
+	ListIDs            []int             `json:"lists"`
+
+	// Scope is assigned only by authenticated handlers. It is deliberately
+	// excluded from client JSON so an importer cannot choose another owner.
+	OrganizationID      *int `json:"-"`
+	OwnerUserID         int  `json:"-"`
+	OriginalOwnerUserID int  `json:"-"`
 }
 
 // Status represents statistics from an ongoing import session.
 type Status struct {
-	Name     string `json:"name"`
-	Total    int    `json:"total"`
-	Imported int    `json:"imported"`
-	Status   string `json:"status"`
-	logBuf   *bytes.Buffer
+	Name           string `json:"name"`
+	Total          int    `json:"total"`
+	Imported       int    `json:"imported"`
+	Status         string `json:"status"`
+	OwnerUserID    int    `json:"-"`
+	OrganizationID int    `json:"-"`
+	logBuf         *bytes.Buffer
 }
 
 // SubReq is a wrapper over the Subscriber model.
@@ -138,6 +148,20 @@ var (
 
 	regexCleanStr = regexp.MustCompile("[[:^ascii:]]")
 )
+
+func organizationID(id *int) int {
+	if id == nil {
+		return 0
+	}
+	return *id
+}
+
+func organizationValue(id *int) any {
+	if id == nil {
+		return nil
+	}
+	return *id
+}
 
 // New returns a new instance of Importer.
 func New(opt Options, db *sql.DB, i *i18n.I18n) *Importer {
@@ -182,8 +206,10 @@ func (im *Importer) NewSession(opt SessionOpt) (*Session, error) {
 
 	im.Lock()
 	im.status = Status{Status: StatusImporting,
-		Name:   opt.Filename,
-		logBuf: bytes.NewBuffer(nil)}
+		Name:           opt.Filename,
+		OwnerUserID:    opt.OwnerUserID,
+		OrganizationID: organizationID(opt.OrganizationID),
+		logBuf:         bytes.NewBuffer(nil)}
 	im.Unlock()
 
 	s := &Session{
@@ -203,10 +229,12 @@ func (im *Importer) GetStats() Status {
 	defer im.RUnlock()
 
 	return Status{
-		Name:     im.status.Name,
-		Status:   im.status.Status,
-		Total:    im.status.Total,
-		Imported: im.status.Imported,
+		Name:           im.status.Name,
+		Status:         im.status.Status,
+		Total:          im.status.Total,
+		Imported:       im.status.Imported,
+		OwnerUserID:    im.status.OwnerUserID,
+		OrganizationID: im.status.OrganizationID,
 	}
 }
 
@@ -295,7 +323,13 @@ func (s *Session) Start() {
 				continue
 			}
 
-			if s.opt.Mode == ModeSubscribe {
+			if s.opt.OwnerUserID > 0 {
+				if s.opt.Mode == ModeSubscribe {
+					stmt = tx.Stmt(s.im.opt.WorkspaceUpsertStmt)
+				} else {
+					stmt = tx.Stmt(s.im.opt.WorkspaceBlocklistStmt)
+				}
+			} else if s.opt.Mode == ModeSubscribe {
 				stmt = tx.Stmt(s.im.opt.UpsertStmt)
 			} else {
 				stmt = tx.Stmt(s.im.opt.BlocklistStmt)
@@ -310,9 +344,20 @@ func (s *Session) Start() {
 		}
 
 		if s.opt.Mode == ModeSubscribe {
-			_, err = stmt.Exec(uu, sub.Email, sub.Name, sub.Attribs, pq.Array(listIDs), s.opt.SubStatus, s.opt.OverwriteUserInfo, s.opt.OverwriteSubStatus)
+			if s.opt.OwnerUserID > 0 {
+				_, err = stmt.Exec(uu, sub.Email, sub.Name, sub.Attribs, pq.Array(listIDs), s.opt.SubStatus,
+					s.opt.OverwriteUserInfo, s.opt.OverwriteSubStatus, organizationValue(s.opt.OrganizationID),
+					s.opt.OwnerUserID, s.opt.OriginalOwnerUserID)
+			} else {
+				_, err = stmt.Exec(uu, sub.Email, sub.Name, sub.Attribs, pq.Array(listIDs), s.opt.SubStatus, s.opt.OverwriteUserInfo, s.opt.OverwriteSubStatus)
+			}
 		} else if s.opt.Mode == ModeBlocklist {
-			_, err = stmt.Exec(uu, sub.Email, sub.Name, sub.Attribs)
+			if s.opt.OwnerUserID > 0 {
+				_, err = stmt.Exec(uu, sub.Email, sub.Name, sub.Attribs, organizationValue(s.opt.OrganizationID),
+					s.opt.OwnerUserID, s.opt.OriginalOwnerUserID)
+			} else {
+				_, err = stmt.Exec(uu, sub.Email, sub.Name, sub.Attribs)
+			}
 		}
 		if err != nil {
 			s.log.Printf("error executing insert: %v", err)
@@ -513,7 +558,7 @@ func (s *Session) LoadCSV(srcPath string, delim rune) error {
 	s.im.Unlock()
 
 	var (
-		i     = 0
+		i = 0
 	)
 
 	if !hasHeader {

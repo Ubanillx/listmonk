@@ -24,23 +24,26 @@
         data-cy="bounces" icon="email-bounce" :label="$t('globals.terms.bounces')" />
     </b-menu-item><!-- subscribers -->
 
-    <b-menu-item v-if="$can('campaigns:*')" :expanded="activeGroup.campaigns" :active="activeGroup.campaigns"
+    <b-menu-item :expanded="activeGroup.campaigns" :active="activeGroup.campaigns"
       data-cy="campaigns" @update:active="(state) => toggleGroup('campaigns', state)" icon="rocket-launch-outline"
       :label="$t('globals.terms.campaigns')">
-      <b-menu-item v-if="$can('campaigns:get')" :to="{ name: 'campaigns' }" tag="router-link"
+      <b-menu-item :to="{ name: 'campaigns' }" tag="router-link"
         :active="activeItem.campaigns" data-cy="all-campaigns" icon="rocket-launch-outline"
         :label="$t('menu.allCampaigns')" />
       <b-menu-item v-if="$can('campaigns:manage')" :to="{ name: 'campaign', params: { id: 'new' } }" tag="router-link"
         :active="activeItem.campaign" data-cy="new-campaign" icon="plus" :label="$t('menu.newCampaign')" />
       <b-menu-item v-if="$can('media:*')" :to="{ name: 'media' }" tag="router-link" :active="activeItem.media"
         data-cy="media" icon="image-outline" :label="$t('menu.media')" />
-      <b-menu-item v-if="$can('templates:get')" :to="{ name: 'templates' }" tag="router-link"
+      <b-menu-item :to="{ name: 'templates' }" tag="router-link"
         :active="activeItem.templates" data-cy="templates" icon="file-image-outline"
         :label="$t('globals.terms.templates')" />
       <b-menu-item v-if="$can('campaigns:get_analytics')" :to="{ name: 'campaignAnalytics' }" tag="router-link"
         :active="activeItem.campaignAnalytics" data-cy="analytics" icon="chart-bar"
         :label="$t('globals.terms.analytics')" />
     </b-menu-item><!-- campaigns -->
+
+    <b-menu-item :to="{ name: 'organizations' }" tag="router-link" :active="activeItem.organizations"
+      icon="domain" label="组织" />
 
     <b-menu-item v-if="$can('users:*', 'roles:*')" :expanded="activeGroup.users" :active="activeGroup.users"
       data-cy="users" @update:active="(state) => toggleGroup('users', state)" icon="account-multiple"

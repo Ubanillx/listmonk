@@ -9,6 +9,8 @@ import (
 
 // Media represents an uploaded object.
 type Media struct {
+	models.ResourceScope
+
 	ID          int         `db:"id" json:"id"`
 	UUID        string      `db:"uuid" json:"uuid"`
 	Filename    string      `db:"filename" json:"filename"`

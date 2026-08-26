@@ -81,7 +81,7 @@
               </div>
             </a>
             <div class="actions">
-              <a href="#" @click.prevent="$utils.confirm(null, () => onDeleteMedia(item.id))" data-cy="btn-delete"
+              <a v-if="canManageMedia(item)" href="#" @click.prevent="$utils.confirm(null, () => onDeleteMedia(item.id))" data-cy="btn-delete"
                 :aria-label="$t('globals.buttons.delete')" class="delete-btn">
                 <b-icon icon="trash-can-outline" size="is-small" />
               </a>
@@ -90,6 +90,7 @@
           <div class="info">
             <p class="filename" :title="item.filename">{{ item.filename }}</p>
             <p class="date">{{ $utils.niceDate(item.createdAt, false) }}</p>
+            <p v-if="item.ownerName || item.ownerUsername" class="date">{{ ownerLabel(item) }}</p>
           </div>
         </div>
       </div>
@@ -169,6 +170,9 @@ export default Vue.extend({
       // Otherwise, do nothing and let the image open like a normal link.
       if (this.isModal) {
         e.preventDefault();
+        if (!this.canManageMedia(m)) {
+          return;
+        }
         this.$emit('selected', m);
         this.$parent.close();
       }
@@ -193,6 +197,14 @@ export default Vue.extend({
       this.$api.deleteMedia(id).then(() => {
         this.getMedia();
       });
+    },
+
+    canManageMedia(item) {
+      return this.$can('media:manage') && this.$canManageResource(item);
+    },
+
+    ownerLabel(resource) {
+      return resource.ownerName || resource.ownerUsername || '-';
     },
 
     onUploaded() {

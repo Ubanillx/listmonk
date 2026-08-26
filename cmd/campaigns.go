@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/knadh/listmonk/internal/auth"
+	"github.com/knadh/listmonk/internal/core"
 	"github.com/knadh/listmonk/internal/notifs"
 	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
@@ -27,6 +27,10 @@ import (
 type campReq struct {
 	models.Campaign
 
+	// Visibility is intentionally kept outside the embedded Campaign so a
+	// partial update can distinguish an omitted value from the saved scope.
+	Visibility string `json:"visibility"`
+
 	// This overrides Campaign.Lists to receive and
 	// write a list of int IDs during creation and updation.
 	// Campaign.Lists is JSONText for sending lists children
@@ -37,6 +41,12 @@ type campReq struct {
 
 	// This is only relevant to campaign test requests.
 	SubscriberEmails pq.StringArray `json:"subscribers"`
+}
+
+type campaignCloneReq struct {
+	// Nil means the active workspace. Zero explicitly selects personal space.
+	TargetOrganizationID *int   `json:"target_organization_id"`
+	Name                 string `json:"name"`
 }
 
 // campContentReq wraps params coming from API requests for converting
@@ -54,18 +64,9 @@ var (
 
 // GetCampaigns handles retrieval of campaigns.
 func (a *App) GetCampaigns(c echo.Context) error {
-	// Get the authenticated user.
-	user := auth.GetUser(c)
-
-	var (
-		hasAllPerm     = user.HasPerm(auth.PermCampaignsGetAll)
-		permittedLists []int
-	)
-
-	if !hasAllPerm {
-		// Either the user has campaigns:get_all permissions and can view all campaigns,
-		// or the campaigns are filtered by the lists the user has get|manage access to.
-		hasAllPerm, permittedLists = user.GetPermittedLists(auth.PermTypeGet | auth.PermTypeManage)
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
 	}
 
 	var (
@@ -79,8 +80,8 @@ func (a *App) GetCampaigns(c echo.Context) error {
 		noBody, _ = strconv.ParseBool(c.QueryParam("no_body"))
 	)
 
-	// Query and retrieve campaigns from the DB.
-	res, total, err := a.core.QueryCampaigns(query, status, tags, orderBy, order, hasAllPerm, permittedLists, pg.Offset, pg.Limit)
+	// Query and retrieve campaigns from the active workspace only.
+	res, total, err := a.core.QueryWorkspaceCampaigns(access, query, status, tags, orderBy, order, pg.Offset, pg.Limit)
 	if err != nil {
 		return err
 	}
@@ -111,11 +112,14 @@ func (a *App) GetCampaigns(c echo.Context) error {
 
 // GetCampaign handles retrieval of campaigns.
 func (a *App) GetCampaign(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	// Get the campaign ID.
 	id := getID(c)
 
-	// Check if the user has access to the campaign.
-	if err := a.checkCampaignPerm(auth.PermTypeGet, id, c); err != nil {
+	if _, err := a.core.RequireReadResource(access, resourceCampaigns, id); err != nil {
 		return err
 	}
 
@@ -136,11 +140,14 @@ func (a *App) GetCampaign(c echo.Context) error {
 
 // PreviewCampaign renders the HTML preview of a campaign body.
 func (a *App) PreviewCampaign(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	// Get the campaign ID.
 	id := getID(c)
 
-	// Check if the user has access to the campaign.
-	if err := a.checkCampaignPerm(auth.PermTypeGet, id, c); err != nil {
+	if _, err := a.core.RequireReadResource(access, resourceCampaigns, id); err != nil {
 		return err
 	}
 
@@ -152,6 +159,8 @@ func (a *App) PreviewCampaign(c echo.Context) error {
 	// For visual content, template ID for previewing is irrelevant.
 	if contentType == models.CampaignContentTypeVisual || tplID < 1 {
 		tplID = 0
+	} else if _, err := a.core.RequireReadResource(access, resourceTemplates, tplID); err != nil {
+		return err
 	}
 
 	// Get the campaign from the DB for previewing with the `template_body` field.
@@ -201,16 +210,24 @@ func (a *App) PreviewCampaign(c echo.Context) error {
 
 // PreviewCampaignArchive renders the public campaign archives page.
 func (a *App) PreviewCampaignArchive(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	// Get the campaign ID.
 	id := getID(c)
 
-	// Check if the user has access to the campaign.
-	if err := a.checkCampaignPerm(auth.PermTypeGet, id, c); err != nil {
+	if _, err := a.core.RequireReadResource(access, resourceCampaigns, id); err != nil {
 		return err
 	}
 
 	// Fetch the campaign body from the DB.
 	tplID, _ := strconv.Atoi(c.FormValue("template_id"))
+	if tplID > 0 {
+		if _, err := a.core.RequireReadResource(access, resourceTemplates, tplID); err != nil {
+			return err
+		}
+	}
 	camp, err := a.core.GetCampaignForPreview(id, tplID)
 	if err != nil {
 		return err
@@ -239,6 +256,13 @@ func (a *App) PreviewCampaignArchive(c echo.Context) error {
 
 // CampaignContent handles campaign content (body) format conversions.
 func (a *App) CampaignContent(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
+	if _, err := a.core.RequireManageResource(access, resourceCampaigns, getID(c)); err != nil {
+		return err
+	}
 	var camp campContentReq
 	if err := c.Bind(&camp); err != nil {
 		return err
@@ -256,14 +280,25 @@ func (a *App) CampaignContent(c echo.Context) error {
 // CreateCampaign handles campaign creation.
 // Newly created campaigns are always drafts.
 func (a *App) CreateCampaign(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	var o campReq
 	if err := c.Bind(&o); err != nil {
 		return err
 	}
 
-	// Filter lists against the current user's permitted lists.
-	user := auth.GetUser(c)
-	o.ListIDs = user.FilterListsByPerm(auth.PermTypeGet|auth.PermTypeManage, o.ListIDs)
+	if err := a.requireWorkspaceListIDs(access, o.ListIDs, true); err != nil {
+		return err
+	}
+	if err := a.requireReadableCampaignResources(access, o); err != nil {
+		return err
+	}
+	visibility, err := normalizeResourceVisibility(access, resourceCampaigns, o.Visibility)
+	if err != nil {
+		return err
+	}
 
 	// If the campaign's 'opt-in', prepare a default message.
 	switch o.Type {
@@ -292,7 +327,7 @@ func (a *App) CreateCampaign(c echo.Context) error {
 		o.ArchiveTemplateID = o.TemplateID
 	}
 
-	out, err := a.core.CreateCampaign(o.Campaign, o.ListIDs, o.MediaIDs)
+	out, err := a.core.CreateCampaign(o.Campaign, o.ListIDs, o.MediaIDs, core.ApplyWorkspaceScope(access, visibility))
 	if err != nil {
 		return err
 	}
@@ -300,14 +335,50 @@ func (a *App) CreateCampaign(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{out})
 }
 
+// CloneCampaign performs a server-side snapshot copy. The frontend only
+// selects a target; it never supplies lists, sender settings, or media rows.
+func (a *App) CloneCampaign(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
+	sourceID := getID(c)
+	if _, err := a.core.RequireReadResource(access, resourceCampaigns, sourceID); err != nil {
+		return err
+	}
+
+	var req campaignCloneReq
+	if err := c.Bind(&req); err != nil {
+		return err
+	}
+	target := access
+	if req.TargetOrganizationID != nil {
+		target, err = a.workspaceAccessForOrganization(c, *req.TargetOrganizationID)
+		if err != nil {
+			return err
+		}
+	}
+	if req.Name != "" && !strHasLen(strings.TrimSpace(req.Name), 1, stdInputMaxLen) {
+		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("campaigns.fieldInvalidName"))
+	}
+	out, err := a.core.CloneCampaignForWorkspace(sourceID, target, req.Name)
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusCreated, okResp{out})
+}
+
 // UpdateCampaign handles campaign modification.
 // Campaigns that are done cannot be modified.
 func (a *App) UpdateCampaign(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	// Get the campaign ID.
 	id := getID(c)
 
-	// Check if the user has access to the campaign.
-	if err := a.checkCampaignPerm(auth.PermTypeManage, id, c); err != nil {
+	if _, err := a.core.RequireManageResource(access, resourceCampaigns, id); err != nil {
 		return err
 	}
 
@@ -334,8 +405,12 @@ func (a *App) UpdateCampaign(c echo.Context) error {
 		return err
 	}
 
-	user := auth.GetUser(c)
-	o.ListIDs = user.FilterListsByPerm(auth.PermTypeGet|auth.PermTypeManage, o.ListIDs)
+	if err := a.requireWorkspaceListIDs(access, o.ListIDs, true); err != nil {
+		return err
+	}
+	if err := a.requireReadableCampaignResources(access, o); err != nil {
+		return err
+	}
 
 	if c, err := a.validateCampaignFields(o); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
@@ -359,17 +434,30 @@ func (a *App) UpdateCampaign(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	if o.Visibility != "" {
+		visibility, err := normalizeResourceVisibility(access, resourceCampaigns, o.Visibility)
+		if err != nil {
+			return err
+		}
+		if err := a.core.SetResourceVisibility(resourceCampaigns, id, visibility); err != nil {
+			return err
+		}
+		out.Visibility = visibility
+	}
 
 	return c.JSON(http.StatusOK, okResp{out})
 }
 
 // UpdateCampaignStatus handles campaign status modification.
 func (a *App) UpdateCampaignStatus(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	// Get the campaign ID.
 	id := getID(c)
 
-	// Check if the user has access to the campaign.
-	if err := a.checkCampaignPerm(auth.PermTypeManage, id, c); err != nil {
+	if _, err := a.core.RequireManageResource(access, resourceCampaigns, id); err != nil {
 		return err
 	}
 
@@ -405,10 +493,13 @@ func (a *App) UpdateCampaignStatus(c echo.Context) error {
 
 // UpdateCampaignArchive handles campaign status modification.
 func (a *App) UpdateCampaignArchive(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	id := getID(c)
 
-	// Check if the user has access to the campaign.
-	if err := a.checkCampaignPerm(auth.PermTypeManage, id, c); err != nil {
+	if _, err := a.core.RequireManageResource(access, resourceCampaigns, id); err != nil {
 		return err
 	}
 
@@ -420,6 +511,11 @@ func (a *App) UpdateCampaignArchive(c echo.Context) error {
 	}{}
 	if err := c.Bind(&req); err != nil {
 		return err
+	}
+	if req.TemplateID > 0 {
+		if _, err := a.core.RequireReadResource(access, resourceTemplates, req.TemplateID); err != nil {
+			return err
+		}
 	}
 
 	if req.ArchiveSlug != "" {
@@ -440,11 +536,14 @@ func (a *App) UpdateCampaignArchive(c echo.Context) error {
 // DeleteCampaign handles campaign deletion.
 // Only scheduled campaigns that have not started yet can be deleted.
 func (a *App) DeleteCampaign(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	// Get the campaign ID.
 	id := getID(c)
 
-	// Check if the user has access to the campaign.
-	if err := a.checkCampaignPerm(auth.PermTypeManage, id, c); err != nil {
+	if _, err := a.core.RequireManageResource(access, resourceCampaigns, id); err != nil {
 		return err
 	}
 
@@ -458,18 +557,9 @@ func (a *App) DeleteCampaign(c echo.Context) error {
 
 // DeleteCampaigns deletes multiple campaigns by IDs or by query.
 func (a *App) DeleteCampaigns(c echo.Context) error {
-	// Get the authenticated user.
-	user := auth.GetUser(c)
-
-	var (
-		hasAllPerm     = user.HasPerm(auth.PermCampaignsManageAll)
-		permittedLists []int
-	)
-
-	if !hasAllPerm {
-		// Either the user has campaigns:manage_all permissions and can manage all campaigns,
-		// or the campaigns are filtered by the lists the user has get|manage access to.
-		hasAllPerm, permittedLists = user.GetPermittedLists(auth.PermTypeGet | auth.PermTypeManage)
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
 	}
 
 	var (
@@ -498,9 +588,40 @@ func (a *App) DeleteCampaigns(c echo.Context) error {
 			a.i18n.Ts("globals.messages.errorInvalidIDs", "error", "id or query required"))
 	}
 
-	// Delete the campaigns from the DB.
-	if err := a.core.DeleteCampaigns(ids, query, hasAllPerm, permittedLists); err != nil {
-		return err
+	if len(ids) > 0 {
+		if err := a.core.RequireManagedResources(access, resourceCampaigns, ids); err != nil {
+			return err
+		}
+	} else {
+		managed, err := a.core.ListManagedWorkspaceResources(access, resourceCampaigns)
+		if err != nil {
+			return err
+		}
+		// The UI's "select all" action still means every record matching the
+		// current filter. Intersect it with managed resources so an organization
+		// manager cannot delete a member's campaign and a forged all=true request
+		// cannot ignore the query.
+		visible, _, err := a.core.QueryWorkspaceCampaigns(access, query, nil, nil, "created_at", "DESC", 0, 0)
+		if err != nil {
+			return err
+		}
+		allowed := make(map[int]struct{}, len(managed))
+		for _, id := range managed {
+			allowed[id] = struct{}{}
+		}
+		for _, campaign := range visible {
+			if _, ok := allowed[campaign.ID]; ok {
+				ids = append(ids, campaign.ID)
+			}
+		}
+	}
+
+	// The legacy deletion query treats an empty ID array as an unrestricted
+	// search. Do not call it when no caller-owned workspace resources matched.
+	if len(ids) > 0 {
+		if err := a.core.DeleteCampaigns(ids, "", true, nil); err != nil {
+			return err
+		}
 	}
 
 	return c.JSON(http.StatusOK, okResp{true})
@@ -508,11 +629,30 @@ func (a *App) DeleteCampaigns(c echo.Context) error {
 
 // GetRunningCampaignStats returns stats of a given set of campaign IDs.
 func (a *App) GetRunningCampaignStats(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	// Get the running campaign stats from the DB.
 	out, err := a.core.GetRunningCampaignStats()
 	if err != nil {
 		return err
 	}
+	visible, err := a.core.ListWorkspaceResources(access, resourceCampaigns)
+	if err != nil {
+		return err
+	}
+	visibleSet := make(map[int]struct{}, len(visible))
+	for _, id := range visible {
+		visibleSet[id] = struct{}{}
+	}
+	filtered := out[:0]
+	for _, stat := range out {
+		if _, ok := visibleSet[stat.ID]; ok {
+			filtered = append(filtered, stat)
+		}
+	}
+	out = filtered
 
 	if len(out) == 0 {
 		return c.JSON(http.StatusOK, okResp{[]struct{}{}})
@@ -542,11 +682,14 @@ func (a *App) GetRunningCampaignStats(c echo.Context) error {
 // TestCampaign handles the sending of a campaign message to
 // arbitrary subscribers for testing.
 func (a *App) TestCampaign(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	// Get the campaign ID.
 	id := getID(c)
 
-	// Check if the user has access to the campaign.
-	if err := a.checkCampaignPerm(auth.PermTypeManage, id, c); err != nil {
+	if _, err := a.core.RequireManageResource(access, resourceCampaigns, id); err != nil {
 		return err
 	}
 
@@ -562,6 +705,12 @@ func (a *App) TestCampaign(c echo.Context) error {
 	} else {
 		req = c
 	}
+	if err := a.requireWorkspaceListIDs(access, req.ListIDs, true); err != nil {
+		return err
+	}
+	if err := a.requireReadableCampaignResources(access, req); err != nil {
+		return err
+	}
 	if len(req.SubscriberEmails) == 0 {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("campaigns.noSubsToTest"))
 	}
@@ -572,7 +721,7 @@ func (a *App) TestCampaign(c echo.Context) error {
 	}
 
 	// Get the subscribers from the DB by their e-mails.
-	subs, err := a.core.GetSubscribersByEmail(req.SubscriberEmails)
+	subs, err := a.core.GetManagedWorkspaceSubscribersByEmails(access, req.SubscriberEmails)
 	if err != nil {
 		return err
 	}
@@ -621,6 +770,10 @@ func (a *App) TestCampaign(c echo.Context) error {
 
 // GetCampaignViewAnalytics retrieves view counts for a campaign.
 func (a *App) GetCampaignViewAnalytics(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	ids, err := parseStringIDs(c.Request().URL.Query()["id"])
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest,
@@ -630,6 +783,11 @@ func (a *App) GetCampaignViewAnalytics(c echo.Context) error {
 	if len(ids) == 0 {
 		return echo.NewHTTPError(http.StatusBadRequest,
 			a.i18n.Ts("globals.messages.missingFields", "name", "`id`"))
+	}
+	for _, id := range ids {
+		if _, err := a.core.RequireReadResource(access, resourceCampaigns, id); err != nil {
+			return err
+		}
 	}
 
 	var (
@@ -661,8 +819,12 @@ func (a *App) GetCampaignViewAnalytics(c echo.Context) error {
 }
 
 func (a *App) GetCampaignReportSummary(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	id := getID(c)
-	if err := a.checkCampaignPerm(auth.PermTypeGet, id, c); err != nil {
+	if _, err := a.core.RequireReadResource(access, resourceCampaigns, id); err != nil {
 		return err
 	}
 
@@ -699,8 +861,12 @@ func (a *App) GetCampaignsReportSummary(c echo.Context) error {
 }
 
 func (a *App) GetCampaignReportSeries(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	id := getID(c)
-	if err := a.checkCampaignPerm(auth.PermTypeGet, id, c); err != nil {
+	if _, err := a.core.RequireReadResource(access, resourceCampaigns, id); err != nil {
 		return err
 	}
 
@@ -737,8 +903,12 @@ func (a *App) GetCampaignsReportSeries(c echo.Context) error {
 }
 
 func (a *App) GetCampaignReportLinks(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	id := getID(c)
-	if err := a.checkCampaignPerm(auth.PermTypeGet, id, c); err != nil {
+	if _, err := a.core.RequireReadResource(access, resourceCampaigns, id); err != nil {
 		return err
 	}
 
@@ -775,15 +945,16 @@ func (a *App) GetCampaignsReportLinks(c echo.Context) error {
 }
 
 func (a *App) GetCampaignReportRecipients(c echo.Context) error {
-	user := auth.GetUser(c)
-	id := getID(c)
-
-	if err := a.checkCampaignPerm(auth.PermTypeGet, id, c); err != nil {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
 		return err
 	}
-	if !user.HasPerm(auth.PermSubscribersGet) && !user.HasPerm(auth.PermSubscribersGetAll) {
-		return echo.NewHTTPError(http.StatusForbidden,
-			a.i18n.Ts("globals.messages.permissionDenied", "name", auth.PermSubscribersGet))
+	id := getID(c)
+
+	// This report includes recipient identities, so organization managers may
+	// not retrieve another member's data even though they may view aggregates.
+	if _, err := a.core.RequireManageResource(access, resourceCampaigns, id); err != nil {
+		return err
 	}
 	if !a.cfg.Privacy.IndividualTracking {
 		return echo.NewHTTPError(http.StatusForbidden, a.i18n.T("analytics.nonIndividualTracking"))
@@ -825,16 +996,15 @@ func (a *App) GetCampaignReportRecipients(c echo.Context) error {
 }
 
 func (a *App) GetCampaignsReportRecipients(c echo.Context) error {
-	user := auth.GetUser(c)
-	if !user.HasPerm(auth.PermSubscribersGet) && !user.HasPerm(auth.PermSubscribersGetAll) {
-		return echo.NewHTTPError(http.StatusForbidden,
-			a.i18n.Ts("globals.messages.permissionDenied", "name", auth.PermSubscribersGet))
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
 	}
 	if !a.cfg.Privacy.IndividualTracking {
 		return echo.NewHTTPError(http.StatusForbidden, a.i18n.T("analytics.nonIndividualTracking"))
 	}
 
-	ids, err := a.getAccessibleCampaignReportIDs(c)
+	ids, err := a.getManagedCampaignReportIDs(c, access)
 	if err != nil {
 		return err
 	}
@@ -884,6 +1054,10 @@ func (a *App) getCampaignReportDateRange(c echo.Context) (string, string, error)
 }
 
 func (a *App) getAccessibleCampaignReportIDs(c echo.Context) ([]int, error) {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return nil, err
+	}
 	ids, err := getQueryInts("id", c.QueryParams())
 	if err != nil {
 		return nil, echo.NewHTTPError(http.StatusBadRequest,
@@ -897,7 +1071,7 @@ func (a *App) getAccessibleCampaignReportIDs(c echo.Context) ([]int, error) {
 			if id < 1 {
 				return nil, echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("globals.messages.invalidID"))
 			}
-			if err := a.checkCampaignPerm(auth.PermTypeGet, id, c); err != nil {
+			if _, err := a.core.RequireReadResource(access, resourceCampaigns, id); err != nil {
 				return nil, err
 			}
 			if _, ok := seen[id]; ok {
@@ -909,14 +1083,7 @@ func (a *App) getAccessibleCampaignReportIDs(c echo.Context) ([]int, error) {
 		return out, nil
 	}
 
-	user := auth.GetUser(c)
-	hasAllPerm := user.HasPerm(auth.PermCampaignsGetAll)
-	permittedLists := []int{}
-	if !hasAllPerm {
-		hasAllPerm, permittedLists = user.GetPermittedLists(auth.PermTypeGet | auth.PermTypeManage)
-	}
-
-	camps, _, err := a.core.QueryCampaigns("", nil, nil, "created_at", "DESC", hasAllPerm, permittedLists, 0, 0)
+	camps, _, err := a.core.QueryWorkspaceCampaigns(access, "", nil, nil, "created_at", "DESC", 0, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -926,6 +1093,33 @@ func (a *App) getAccessibleCampaignReportIDs(c echo.Context) ([]int, error) {
 		out = append(out, camp.ID)
 	}
 
+	return out, nil
+}
+
+func (a *App) getManagedCampaignReportIDs(c echo.Context, access models.WorkspaceAccess) ([]int, error) {
+	ids, err := getQueryInts("id", c.QueryParams())
+	if err != nil {
+		return nil, echo.NewHTTPError(http.StatusBadRequest,
+			a.i18n.Ts("globals.messages.errorInvalidIDs", "error", err.Error()))
+	}
+	if len(ids) == 0 {
+		return a.core.ListManagedWorkspaceResources(access, resourceCampaigns)
+	}
+	seen := make(map[int]struct{}, len(ids))
+	out := make([]int, 0, len(ids))
+	for _, id := range ids {
+		if id < 1 {
+			return nil, echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("globals.messages.invalidID"))
+		}
+		if _, err := a.core.RequireManageResource(access, resourceCampaigns, id); err != nil {
+			return nil, err
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
 	return out, nil
 }
 
@@ -945,6 +1139,28 @@ func (a *App) sendTestMessage(sub models.Subscriber, camp *models.Campaign) erro
 	}
 
 	return a.manager.PushCampaignMessage(msg)
+}
+
+func (a *App) requireReadableCampaignResources(access models.WorkspaceAccess, req campReq) error {
+	if req.TemplateID.Valid && req.TemplateID.Int > 0 {
+		if _, err := a.core.RequireReadResource(access, resourceTemplates, int(req.TemplateID.Int)); err != nil {
+			return err
+		}
+	}
+	if req.ArchiveTemplateID.Valid && req.ArchiveTemplateID.Int > 0 {
+		if _, err := a.core.RequireReadResource(access, resourceTemplates, int(req.ArchiveTemplateID.Int)); err != nil {
+			return err
+		}
+	}
+	for _, id := range req.MediaIDs {
+		if id < 1 {
+			continue
+		}
+		if _, err := a.core.RequireReadResource(access, resourceMedia, id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // validateCampaignFields validates incoming campaign field values.
@@ -1007,8 +1223,8 @@ func (a *App) validateCampaignFields(c campReq) (campReq, error) {
 		if c.DailySendLimit < 1 {
 			// Backward compatibility for legacy campaigns/clients created before
 			// daily SMTP limits became mandatory for regular email campaigns.
-			c.DailySendLimit = 100
-			a.log.Printf("campaign %d using legacy daily_send_limit fallback=100 (messenger=%s)", c.ID, c.Messenger)
+			c.DailySendLimit = 300
+			a.log.Printf("campaign %d using legacy daily_send_limit fallback=300 (messenger=%s)", c.ID, c.Messenger)
 		}
 		if c.DailyResumeTime == "" {
 			c.DailyResumeTime = "09:00"
@@ -1100,44 +1316,6 @@ func (a *App) makeOptinCampaignMessage(o campReq) (campReq, error) {
 
 	o.Body = b.String()
 	return o, nil
-}
-
-// checkCampaignPerm checks if the user has get or manage access to the given campaign.
-// Either the user has blanket get_all/manage_all permissions, or the campaign
-// belongs to lists that the user has access to.
-func (a *App) checkCampaignPerm(types auth.PermType, id int, c echo.Context) error {
-	// Get the authenticated user.
-	user := auth.GetUser(c)
-
-	perm := auth.PermCampaignsGet
-	if types&auth.PermTypeGet != 0 {
-		// It's a get request and there's a blanket get all permission.
-		if user.HasPerm(auth.PermCampaignsGetAll) {
-			return nil
-		}
-	} else {
-		// It's a manage request and there's a blanket manage_all permission.
-		if user.HasPerm(auth.PermCampaignsManageAll) {
-			return nil
-		}
-
-		perm = auth.PermCampaignsManage
-	}
-
-	// There are no *_all campaign permissions. Instead, check if the user access
-	// blanket get_all/manage_all list permissions. If yes, then the user can access
-	// all campaigns. If there are no *_all permissions, then ensure that the
-	// campaign belongs to the lists that the user has access to.
-	if hasAllPerm, permittedListIDs := user.GetPermittedLists(auth.PermTypeGet | auth.PermTypeManage); !hasAllPerm {
-		if ok, err := a.core.CampaignHasLists(id, permittedListIDs); err != nil {
-			return err
-		} else if !ok {
-			return echo.NewHTTPError(http.StatusForbidden,
-				a.i18n.Ts("globals.messages.permissionDenied", "name", perm))
-		}
-	}
-
-	return nil
 }
 
 // canEditCampaign returns true if a campaign is in a status where updating

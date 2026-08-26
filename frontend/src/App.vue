@@ -13,6 +13,26 @@
         <navigation v-if="isMobile" :is-mobile="isMobile" :active-item="activeItem" :active-group="activeGroup"
           @toggleGroup="toggleGroup" @doLogout="doLogout" />
 
+        <b-navbar-dropdown class="workspace" tag="div" right>
+          <template #label>
+            <b-icon icon="domain" size="is-small" />
+            <span class="workspace-label">{{ workspaceLabel }}</span>
+          </template>
+          <b-navbar-item tag="a" href="#" @click.prevent="switchWorkspace({ organizationId: 0, personal: true })">
+            <b-icon icon="account-outline" />
+            <span>个人空间</span>
+          </b-navbar-item>
+          <b-navbar-item v-for="organization in organizations" :key="organization.id" tag="a" href="#"
+            @click.prevent="switchWorkspace(organization)">
+            <b-icon icon="domain" />
+            <span>{{ organization.name }}</span>
+          </b-navbar-item>
+          <b-navbar-item tag="router-link" to="/organizations">
+            <b-icon icon="account-group-outline" />
+            <span>组织管理</span>
+          </b-navbar-item>
+        </b-navbar-dropdown>
+
         <b-navbar-item tag="a" href="#" @click.prevent="emitPageRefresh" data-cy="btn-refresh"
           :aria-label="$t('globals.buttons.refresh')">
           <b-tooltip :label="$t('globals.buttons.refresh')" type="is-dark" position="is-bottom">
@@ -176,6 +196,19 @@ export default Vue.extend({
       });
     },
 
+    switchWorkspace(workspace) {
+      const nextOrganizationID = Number(
+        workspace.organizationId || workspace.organization_id || workspace.id,
+      ) || 0;
+      const currentOrganizationID = Number(this.workspace.organizationId) || 0;
+      if (nextOrganizationID === currentOrganizationID) {
+        return;
+      }
+      this.$store.commit('setWorkspace', workspace);
+      this.$store.commit('resetWorkspaceModels');
+      this.$router.go(0);
+    },
+
     listenEvents() {
       const reMatchLog = /(.+?)\.go:\d+:(.+?)$/im;
       const evtSource = new EventSource(uris.errorEvents, { withCredentials: true });
@@ -196,7 +229,11 @@ export default Vue.extend({
   },
 
   computed: {
-    ...mapState(['serverConfig', 'profile']),
+    ...mapState(['serverConfig', 'profile', 'workspace', 'organizations']),
+
+    workspaceLabel() {
+      return this.workspace.organizationId ? this.workspace.organizationName : '个人空间';
+    },
 
     isGlobalNotices() {
       return (this.serverConfig.needs_restart

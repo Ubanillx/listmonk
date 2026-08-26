@@ -15,8 +15,15 @@ import (
 // ImportSubscribers handles the uploading and bulk importing of
 // a ZIP file of one or more CSV files.
 func (a *App) ImportSubscribers(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	// Is an import already running?
 	if a.importer.GetStats().Status == subimporter.StatusImporting {
+		if err := a.requireImportAccess(access); err != nil {
+			return err
+		}
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("import.alreadyRunning"))
 	}
 
@@ -46,6 +53,15 @@ func (a *App) ImportSubscribers(c echo.Context) error {
 		opt.SubStatus != models.SubscriptionStatusConfirmed &&
 		opt.SubStatus != models.SubscriptionStatusUnsubscribed {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("import.invalidSubStatus"))
+	}
+	if err := a.requireWorkspaceListIDs(access, opt.ListIDs, true); err != nil {
+		return err
+	}
+	opt.OwnerUserID = access.UserID
+	opt.OriginalOwnerUserID = access.UserID
+	if access.IsOrganization() {
+		organizationID := access.OrganizationID
+		opt.OrganizationID = &organizationID
 	}
 
 	// Open the HTTP file.
@@ -121,12 +137,26 @@ func (a *App) ImportSubscribers(c echo.Context) error {
 
 // GetImportSubscribers returns import statistics.
 func (a *App) GetImportSubscribers(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
+	if err := a.requireImportAccess(access); err != nil {
+		return err
+	}
 	s := a.importer.GetStats()
 	return c.JSON(http.StatusOK, okResp{s})
 }
 
 // GetImportSubscriberStats returns import statistics.
 func (a *App) GetImportSubscriberStats(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
+	if err := a.requireImportAccess(access); err != nil {
+		return err
+	}
 	return c.JSON(http.StatusOK, okResp{string(a.importer.GetLogs())})
 }
 
@@ -134,6 +164,28 @@ func (a *App) GetImportSubscriberStats(c echo.Context) error {
 // If there's an ongoing import, it'll be stopped, and if an import
 // is finished, it's state is cleared.
 func (a *App) StopImportSubscribers(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
+	if err := a.requireImportAccess(access); err != nil {
+		return err
+	}
 	a.importer.Stop()
 	return c.JSON(http.StatusOK, okResp{a.importer.GetStats()})
+}
+
+func (a *App) requireImportAccess(access models.WorkspaceAccess) error {
+	status := a.importer.GetStats()
+	if status.OwnerUserID == 0 || access.PlatformAdmin {
+		return nil
+	}
+	workspaceID := 0
+	if access.IsOrganization() {
+		workspaceID = access.OrganizationID
+	}
+	if status.OwnerUserID != access.UserID || status.OrganizationID != workspaceID {
+		return echo.NewHTTPError(http.StatusForbidden, "import belongs to another workspace")
+	}
+	return nil
 }

@@ -117,7 +117,8 @@ SELECT id from sub;
 WITH sub AS (
     INSERT INTO subscribers as s (uuid, email, name, attribs, status)
     VALUES($1, $2, $3, $4, 'enabled')
-    ON CONFLICT (email)
+    ON CONFLICT ((COALESCE(organization_id, 0)), owner_user_id, LOWER(email))
+        WHERE owner_user_id IS NOT NULL
     DO UPDATE SET
         name=(CASE WHEN $7 THEN $3 ELSE s.name END),
         attribs=(CASE WHEN $7 THEN $4 ELSE s.attribs END),
@@ -142,7 +143,55 @@ SELECT uuid, id from sub;
 WITH sub AS (
     INSERT INTO subscribers (uuid, email, name, attribs, status)
     VALUES($1, $2, $3, $4, 'blocklisted')
-    ON CONFLICT (email) DO UPDATE SET status='blocklisted', updated_at=NOW()
+    ON CONFLICT ((COALESCE(organization_id, 0)), owner_user_id, LOWER(email))
+        WHERE owner_user_id IS NOT NULL
+    DO UPDATE SET status='blocklisted', updated_at=NOW()
+    RETURNING id
+)
+UPDATE subscriber_lists SET status='unsubscribed', updated_at=NOW()
+    WHERE subscriber_id = (SELECT id FROM sub);
+
+-- name: upsert-workspace-subscriber
+-- Scoped importer variant. Legacy bootstrap records still use upsert-subscriber
+-- because they are created before the first administrator exists.
+WITH sub AS (
+    INSERT INTO subscribers AS s (
+        uuid, email, name, attribs, status,
+        organization_id, owner_user_id, original_owner_user_id, visibility
+    ) VALUES($1, $2, $3, $4, 'enabled', $9, $10, $11, 'private')
+    ON CONFLICT ((COALESCE(organization_id, 0)), owner_user_id, LOWER(email))
+        WHERE owner_user_id IS NOT NULL
+    DO UPDATE SET
+        name=(CASE WHEN $7 THEN $3 ELSE s.name END),
+        attribs=(CASE WHEN $7 THEN $4 ELSE s.attribs END),
+        updated_at=NOW()
+    RETURNING uuid, id, status
+),
+subs AS (
+    INSERT INTO subscriber_lists (subscriber_id, list_id, status)
+    SELECT sub.id, l.id,
+        CASE WHEN sub.status = 'blocklisted' THEN 'unsubscribed' ELSE $6::subscription_status END
+    FROM sub
+    JOIN UNNEST($5::INT[]) AS requested_list(id) ON TRUE
+    JOIN lists l ON l.id = requested_list.id
+        AND l.organization_id IS NOT DISTINCT FROM $9::BIGINT
+        AND l.owner_user_id = $10
+        AND l.transfer_pending_at IS NULL
+    ON CONFLICT (subscriber_id, list_id) DO UPDATE
+    SET updated_at = NOW(),
+        status = CASE WHEN $8 THEN EXCLUDED.status ELSE subscriber_lists.status END
+)
+SELECT uuid, id FROM sub;
+
+-- name: upsert-workspace-blocklist-subscriber
+WITH sub AS (
+    INSERT INTO subscribers AS s (
+        uuid, email, name, attribs, status,
+        organization_id, owner_user_id, original_owner_user_id, visibility
+    ) VALUES($1, $2, $3, $4, 'blocklisted', $5, $6, $7, 'private')
+    ON CONFLICT ((COALESCE(organization_id, 0)), owner_user_id, LOWER(email))
+        WHERE owner_user_id IS NOT NULL
+    DO UPDATE SET status='blocklisted', updated_at=NOW()
     RETURNING id
 )
 UPDATE subscriber_lists SET status='unsubscribed', updated_at=NOW()

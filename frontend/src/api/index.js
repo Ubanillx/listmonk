@@ -16,13 +16,27 @@ const http = axios.create({
 });
 
 const utils = new Utils();
+const workspaceHeader = 'X-Listmonk-Organization-ID';
 
 // Intercept requests to set the 'loading' state of a model.
 http.interceptors.request.use((config) => {
-  if ('loading' in config) {
-    store.commit('setLoading', { model: config.loading, status: true });
+  const requestConfig = { ...config };
+
+  // All authenticated resource requests are scoped by the active workspace.
+  // Public endpoints deliberately do not receive the header.
+  if (!requestConfig.skipWorkspace && requestConfig.url && requestConfig.url.startsWith('/api/')) {
+    const organizationId = Number(store.state.workspace && store.state.workspace.organizationId) || 0;
+    if (organizationId > 0) {
+      requestConfig.headers = {
+        ...requestConfig.headers,
+        [workspaceHeader]: String(organizationId),
+      };
+    }
   }
-  return config;
+  if ('loading' in requestConfig) {
+    store.commit('setLoading', { model: requestConfig.loading, status: true });
+  }
+  return requestConfig;
 }, (error) => Promise.reject(error));
 
 // Intercept responses to set them to store.
@@ -131,6 +145,17 @@ export const queryLists = (params) => http.get(
   },
 );
 
+// Resource migration needs to show the caller's personal lists while an
+// organization workspace is active. Skipping the workspace header selects the
+// personal workspace on the server without changing the user's UI selection.
+export const getPersonalLists = () => http.get(
+  '/api/lists',
+  {
+    params: { per_page: 'all', status: 'active' },
+    skipWorkspace: true,
+  },
+);
+
 export const getList = async (id) => http.get(
   `/api/lists/${id}`,
   { loading: models.list },
@@ -157,6 +182,43 @@ export const deleteLists = (params) => http.delete(
   '/api/lists',
   { params, loading: models.lists },
 );
+
+// Organizations and workspaces.
+export const getCurrentWorkspace = (config = {}) => http.get('/api/workspace', config);
+
+export const getMyOrganizations = () => http.get('/api/organizations/me');
+
+export const createOrganizationRequest = (data) => http.post('/api/organizations/requests', data);
+
+export const joinOrganization = (data) => http.post('/api/organizations/join', data);
+
+export const leaveOrganization = () => http.post('/api/organizations/leave');
+
+export const getOrganizationMembers = () => http.get('/api/organizations/members');
+
+export const addOrganizationMember = (data) => http.post('/api/organizations/members', data);
+
+export const updateOrganizationMember = (userID, data) => http.put(`/api/organizations/members/${userID}`, data);
+
+export const removeOrganizationMember = (userID) => http.delete(`/api/organizations/members/${userID}`);
+
+export const getOrganizationInvites = () => http.get('/api/organizations/invites');
+
+export const createOrganizationInvite = (data) => http.post('/api/organizations/invites', data);
+
+export const revokeOrganizationInvite = (id) => http.delete(`/api/organizations/invites/${id}`);
+
+export const transferPendingOrganizationResources = (data) => http.post('/api/organizations/resources/transfer', data);
+
+export const transferOrganizationTemplate = (id, data) => http.post(`/api/organizations/templates/${id}/transfer`, data);
+
+export const unpublishOrganizationTemplate = (id) => http.post(`/api/organizations/templates/${id}/unpublish`);
+
+export const migratePersonalLists = (data) => http.post('/api/organizations/resources/lists/migrate', data);
+
+export const getOrganizationRequests = () => http.get('/api/organizations/requests');
+
+export const reviewOrganizationRequest = (id, data) => http.put(`/api/organizations/requests/${id}`, data);
 
 // Subscribers.
 export const getSubscribers = async (params) => http.get(
@@ -302,6 +364,12 @@ export const createCampaign = async (data) => http.post(
   { loading: models.campaigns },
 );
 
+export const cloneCampaign = async (id, data) => http.post(
+  `/api/campaigns/${id}/clone`,
+  data,
+  { loading: models.campaigns },
+);
+
 export const getCampaignViewCounts = async (params) => http.get(
   '/api/campaigns/analytics/views',
   { params, loading: models.campaigns },
@@ -439,6 +507,12 @@ export const getTemplate = async (id) => http.get(
 
 export const updateTemplate = async (data) => http.put(
   `/api/templates/${data.id}`,
+  data,
+  { loading: models.templates },
+);
+
+export const cloneTemplate = async (id, data) => http.post(
+  `/api/templates/${id}/clone`,
   data,
   { loading: models.templates },
 );

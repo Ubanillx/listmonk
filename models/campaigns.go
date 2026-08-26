@@ -39,6 +39,7 @@ type Campaigns []Campaign
 // Campaign represents an e-mail campaign.
 type Campaign struct {
 	Base
+	ResourceScope
 	CampaignMeta
 
 	UUID              string          `db:"uuid" json:"uuid"`

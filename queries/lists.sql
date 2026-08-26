@@ -53,7 +53,10 @@ SELECT id, uuid, type FROM lists WHERE
     END);
 
 -- name: create-list
-INSERT INTO lists (uuid, name, type, optin, status, tags, description) VALUES($1, $2, $3, $4, $5, $6, $7) RETURNING id;
+INSERT INTO lists (
+    uuid, name, type, optin, status, tags, description,
+    organization_id, owner_user_id, original_owner_user_id, visibility
+) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id;
 
 -- name: update-list
 WITH l AS (
@@ -86,4 +89,3 @@ AND CASE
     -- Optional list IDs based on user permission.
     WHEN $3 = TRUE THEN TRUE ELSE id = ANY($4::INT[])
 END;
-

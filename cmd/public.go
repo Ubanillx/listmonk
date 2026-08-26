@@ -18,7 +18,6 @@ import (
 	"github.com/knadh/listmonk/internal/notifs"
 	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
-	"github.com/lib/pq"
 )
 
 const (
@@ -121,8 +120,8 @@ func (t *tplRenderer) Render(w io.Writer, name string, data any, c echo.Context)
 // GetPublicLists returns the list of public lists with minimal fields
 // required to submit a subscription.
 func (a *App) GetPublicLists(c echo.Context) error {
-	// Get all public lists.
-	lists, err := a.core.GetLists(models.ListTypePublic, models.ListStatusActive, true, nil)
+	// Get all active public lists that still have an owning workspace.
+	lists, err := a.core.GetPublicSubscriptionLists(nil)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("public.errorFetchingLists"))
 	}
@@ -416,8 +415,8 @@ func (a *App) SubscriptionFormPage(c echo.Context) error {
 			makeMsgTpl(a.i18n.T("public.errorTitle"), "", a.i18n.Ts("public.invalidFeature")))
 	}
 
-	// Get all public lists from the DB.
-	lists, err := a.core.GetLists(models.ListTypePublic, models.ListStatusActive, true, nil)
+	// Get all active public lists from the DB.
+	lists, err := a.core.GetPublicSubscriptionLists(nil)
 	if err != nil {
 		return c.Render(http.StatusInternalServerError, tplMessage,
 			makeMsgTpl(a.i18n.T("public.errorTitle"), "", a.i18n.Ts("public.errorFetchingLists")))
@@ -737,52 +736,72 @@ func (a *App) processSubForm(c echo.Context) (bool, error) {
 		return false, echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("subscribers.invalidName"))
 	}
 
-	listUUIDs := pq.StringArray(req.FormListUUIDs)
-
-	// Fetch the list types and ensure that they are not private.
-	listTypes, err := a.core.GetListTypes(nil, req.FormListUUIDs)
-	if err != nil {
-		return false, echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("%s", err.(*echo.HTTPError).Message))
-	}
-
-	for _, t := range listTypes {
-		if t == models.ListTypePrivate {
+	seen := make(map[string]struct{}, len(req.FormListUUIDs))
+	for _, listUUID := range req.FormListUUIDs {
+		if !reUUID.MatchString(listUUID) {
 			return false, echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("globals.messages.invalidUUID"))
 		}
+		seen[listUUID] = struct{}{}
+	}
+	if len(seen) != len(req.FormListUUIDs) {
+		return false, echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("globals.messages.invalidUUID"))
 	}
 
-	// Insert the subscriber into the DB.
-	_, hasOptin, err := a.core.InsertSubscriber(models.Subscriber{
+	lists, err := a.core.GetPublicSubscriptionLists(req.FormListUUIDs)
+	if err != nil {
+		return false, err
+	}
+	if len(lists) != len(req.FormListUUIDs) {
+		return false, echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("globals.messages.invalidUUID"))
+	}
+	access, err := publicSubscriptionWorkspace(lists)
+	if err != nil {
+		return false, err
+	}
+	listIDs := make([]int, 0, len(lists))
+	for _, list := range lists {
+		listIDs = append(listIDs, list.ID)
+	}
+
+	// Insert or reuse a subscriber inside the owning user/workspace boundary.
+	_, hasOptin, err := a.core.UpsertPublicWorkspaceSubscriber(access, models.Subscriber{
 		Name:   req.Name,
 		Email:  req.Email,
 		Status: models.SubscriberStatusEnabled,
-	}, nil, listUUIDs, false, true)
-	if err == nil {
-		return hasOptin, nil
-	}
-
-	// Insert returned an error. Examine it.
-	var lastErr = err
-
-	// Subscriber already exists. Update subscriptions in the DB.
-	if e, ok := err.(*echo.HTTPError); ok && e.Code == http.StatusConflict {
-		// Get the subscriber from the DB by their email.
-		sub, err := a.core.GetSubscriber(0, "", req.Email)
-		if err != nil {
-			return false, err
+	}, listIDs)
+	if err != nil {
+		if e, ok := err.(*echo.HTTPError); ok {
+			return false, echo.NewHTTPError(e.Code, fmt.Sprintf("%s", e.Message))
 		}
+		return false, echo.NewHTTPError(http.StatusInternalServerError, a.i18n.T("public.errorProcessingRequest"))
+	}
+	return hasOptin, nil
+}
 
-		// Update the subscriber's subscriptions in the DB.
-		_, hasOptin, err := a.core.UpdateSubscriberWithLists(sub.ID, sub, nil, listUUIDs, false, false, true, nil)
-		if err == nil {
-			return hasOptin, nil
+// publicSubscriptionWorkspace derives the only valid scope for an
+// unauthenticated subscription request. A browser may choose several public
+// lists, but they must all be owned by the same user in the same workspace.
+func publicSubscriptionWorkspace(lists []models.List) (models.WorkspaceAccess, error) {
+	if len(lists) == 0 || !lists[0].OwnerUserID.Valid {
+		return models.WorkspaceAccess{}, echo.NewHTTPError(http.StatusBadRequest, "selected public list has no owner")
+	}
+	first := lists[0]
+	ownerID := int(first.OwnerUserID.Int)
+	organizationID := 0
+	if first.OrganizationID.Valid {
+		organizationID = int(first.OrganizationID.Int)
+	}
+	for _, list := range lists[1:] {
+		listOrganizationID := 0
+		if list.OrganizationID.Valid {
+			listOrganizationID = int(list.OrganizationID.Int)
 		}
-		lastErr = err
+		if !list.OwnerUserID.Valid || int(list.OwnerUserID.Int) != ownerID || listOrganizationID != organizationID {
+			return models.WorkspaceAccess{}, echo.NewHTTPError(http.StatusBadRequest, "selected public lists belong to different workspaces")
+		}
 	}
-
-	// Something else went wrong.
-	if e, ok := lastErr.(*echo.HTTPError); ok {
-		return false, echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("%s", e.Message))
-	}
-	return false, echo.NewHTTPError(http.StatusInternalServerError, a.i18n.T("public.errorProcessingRequest"))
+	return models.WorkspaceAccess{
+		Workspace: models.Workspace{OrganizationID: organizationID, Personal: organizationID == 0},
+		UserID:    ownerID,
+	}, nil
 }

@@ -27,6 +27,7 @@ type Subscribers []Subscriber
 // Subscriber represents an e-mail subscriber.
 type Subscriber struct {
 	Base
+	ResourceScope
 
 	UUID    string         `db:"uuid" json:"uuid"`
 	Email   string         `db:"email" json:"email" form:"email"`
@@ -34,6 +35,9 @@ type Subscriber struct {
 	Attribs JSON           `db:"attribs" json:"attribs"`
 	Status  string         `db:"status" json:"status"`
 	Lists   types.JSONText `db:"lists" json:"lists"`
+
+	// Pseudofield for paginated workspace queries.
+	Total int `db:"total" json:"-"`
 }
 
 type subLists struct {

@@ -23,6 +23,7 @@ const (
 // Template represents a reusable e-mail template.
 type Template struct {
 	Base
+	ResourceScope
 
 	Name string `db:"name" json:"name"`
 	// Subject is only for type=tx.

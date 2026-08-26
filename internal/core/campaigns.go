@@ -180,7 +180,7 @@ func (c *Core) GetArchivedCampaigns(offset, limit int) (models.Campaigns, int, e
 }
 
 // CreateCampaign creates a new campaign.
-func (c *Core) CreateCampaign(o models.Campaign, listIDs []int, mediaIDs []int) (models.Campaign, error) {
+func (c *Core) CreateCampaign(o models.Campaign, listIDs []int, mediaIDs []int, scope models.ResourceScope) (models.Campaign, error) {
 	uu, err := uuid.NewV4()
 	if err != nil {
 		c.log.Printf("error generating UUID: %v", err)
@@ -215,6 +215,10 @@ func (c *Core) CreateCampaign(o models.Campaign, listIDs []int, mediaIDs []int) 
 		pq.Array(mediaIDs),
 		o.BodySource,
 		o.AutoTrackLinks,
+		scope.OrganizationID,
+		scope.OwnerUserID,
+		scope.OriginalOwnerUserID,
+		scope.Visibility,
 	); err != nil {
 		if err == sql.ErrNoRows {
 			return models.Campaign{}, echo.NewHTTPError(http.StatusBadRequest, c.i18n.T("campaigns.noSubs"))

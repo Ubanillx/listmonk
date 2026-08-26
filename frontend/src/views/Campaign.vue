@@ -68,6 +68,14 @@
                     :placeholder="$t('globals.fields.name')" required autofocus />
                 </b-field>
 
+                <b-field label="可见范围" label-position="on-border">
+                  <b-select v-model="form.visibility" :disabled="!canEdit" expanded>
+                    <option value="private">个人私有</option>
+                    <option v-if="workspace.organizationId" value="organization">当前组织共享</option>
+                    <option value="global">全体登录用户可见</option>
+                  </b-select>
+                </b-field>
+
                 <b-field :label="$t('campaigns.subject')" label-position="on-border">
                   <b-input :maxlength="5000" v-model="form.subject" name="subject" :disabled="!canEdit"
                     :placeholder="$t('campaigns.subject')" required />
@@ -82,7 +90,7 @@
                   <b-input :value="smtpFromPreview" disabled />
                 </b-field>
 
-                <list-selector v-model="form.lists" :selected="form.lists" :all="lists.results" :disabled="!canEdit || listsLocked"
+                <list-selector v-model="form.lists" :selected="form.lists" :all="availableLists" :disabled="!canEdit || listsLocked"
                   :label="$t('globals.terms.lists')" :placeholder="$t('campaigns.sendToLists')" />
 
                 <p v-if="listsLocked" class="help is-info">
@@ -236,7 +244,7 @@
               </b-taglist>
             </div>
 
-            <p v-if="!isAttachFieldVisible" class="is-size-6 has-text-grey">
+            <p v-if="!isAttachFieldVisible && canEdit" class="is-size-6 has-text-grey">
               <a href="#" @click.prevent="onShowAttachField()" data-cy="btn-attach">
                 <b-icon icon="file-upload-outline" size="is-small" />
                 {{ $t('campaigns.addAttachments') }}
@@ -296,7 +304,7 @@
               <b-field :label="$t('campaigns.archiveEnable')" data-cy="btn-archive"
                 :message="$t('campaigns.archiveHelp')">
                 <div class="columns">
-                  <div class="column">
+                <div class="column">
                     <b-switch data-cy="btn-archive" v-model="form.archive" :disabled="!canArchive" />
                   </div>
                   <div class="column is-12">
@@ -310,7 +318,7 @@
             </div>
             <div class="column is-8">
               <b-field grouped position="is-right">
-                <b-field v-if="!canEdit && canArchive">
+                <b-field v-if="canArchive">
                   <b-button @click="onUpdateCampaignArchive" :loading="loading.campaigns" type="is-primary"
                     icon-left="content-save-outline" data-cy="btn-save">
                     {{ $t('globals.buttons.saveChanges') }}
@@ -437,6 +445,7 @@ export default Vue.extend({
         attribsStr: '{}',
         messenger: 'email',
         autoTrackLinks: false,
+        visibility: 'private',
         dailySendLimit: 300,
         dailyResumeTime: '09:00',
         lists: [],
@@ -670,6 +679,7 @@ export default Vue.extend({
         altbody: this.form.content.contentType !== 'plain' ? this.form.altbody : null,
         subscribers: this.form.testEmails,
         media: this.form.media.map((m) => m.id),
+        visibility: this.form.visibility,
       };
 
       this.$api.testCampaign(data).then(() => {
@@ -696,6 +706,7 @@ export default Vue.extend({
         headers: this.form.headers,
         attribs: this.form.attribs,
         media: this.form.media.map((m) => m.id),
+        visibility: this.form.visibility,
       };
 
       this.$api.createCampaign(data).then((d) => {
@@ -729,6 +740,7 @@ export default Vue.extend({
         archive_template_id: this.form.archiveTemplateId,
         archive_meta: this.form.archiveMeta,
         media: this.form.media.map((m) => m.id),
+        visibility: this.form.visibility,
       };
 
       let typMsg = 'globals.messages.updated';
@@ -754,7 +766,7 @@ export default Vue.extend({
     },
 
     onUpdateCampaignArchive() {
-      if (this.isEditing && this.canEdit) {
+      if (!this.canArchive) {
         return;
       }
 
@@ -807,18 +819,21 @@ export default Vue.extend({
   },
 
   computed: {
-    ...mapState(['serverConfig', 'loading', 'lists', 'templates']),
+    ...mapState(['serverConfig', 'loading', 'lists', 'templates', 'workspace']),
 
     canManage() {
-      return this.$can('campaigns:manage_all', 'campaigns:manage');
+      if (!this.$can('campaigns:manage_all', 'campaigns:manage')) {
+        return false;
+      }
+      return this.isNew || this.$canManageResource(this.data);
     },
 
     canEdit() {
-      return this.isNew
+      return this.canManage && (this.isNew
         || this.data.status === 'draft'
         || this.data.status === 'scheduled'
         || this.data.status === 'paused'
-        || this.data.status === 'deferred';
+        || this.data.status === 'deferred');
     },
 
     canSchedule() {
@@ -835,15 +850,22 @@ export default Vue.extend({
     },
 
     canArchive() {
-      return this.data.status !== 'cancelled' && this.data.type !== 'optin';
+      return this.canManage && this.data.status !== 'cancelled' && this.data.type !== 'optin';
+    },
+
+    availableLists() {
+      if (!this.lists.results) {
+        return [];
+      }
+      return this.lists.results.filter((list) => this.canManageList(list));
     },
 
     selectedLists() {
-      if (this.selListIDs.length === 0 || !this.lists.results) {
+      if (this.selListIDs.length === 0) {
         return [];
       }
 
-      return this.lists.results.filter((l) => this.selListIDs.indexOf(l.id) > -1);
+      return this.availableLists.filter((list) => this.selListIDs.indexOf(list.id) > -1);
     },
 
     emailMessengers() {
@@ -860,6 +882,11 @@ export default Vue.extend({
 
     isLimitedSMTPCampaign() {
       return this.isSMTPMessenger && this.data.type !== 'optin';
+    },
+
+    canManageList(list) {
+      return (this.$can('lists:manage_all', 'lists:manage') || this.$canList(list.id, 'list:manage'))
+        && this.$canManageResource(list);
     },
 
     listsLocked() {
@@ -945,7 +972,9 @@ export default Vue.extend({
       if (data.length > 0) {
         if (!this.form.templateId) {
           const tpl = data.find((i) => i.isDefault === true);
-          this.form.templateId = tpl.id;
+          if (tpl) {
+            this.form.templateId = tpl.id;
+          }
         }
       }
     });

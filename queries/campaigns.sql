@@ -19,14 +19,19 @@ WITH tpl AS (
             -- If a template ID is present, use it. If not, use the default template only if
             -- it's not a visual template.
             WHEN $16::INT IS NOT NULL THEN id = $16::INT
-            ELSE $8 != 'visual' AND is_default = TRUE
+            ELSE $8 != 'visual' AND is_default = TRUE AND (
+                (organization_id IS NOT DISTINCT FROM $25::BIGINT AND owner_user_id = $26)
+                OR (visibility = 'global' AND transfer_pending_at IS NULL)
+            )
         END
+    ORDER BY CASE WHEN organization_id IS NOT DISTINCT FROM $25::BIGINT AND owner_user_id = $26 THEN 0 ELSE 1 END, id
     LIMIT 1
 ),
 camp AS (
     INSERT INTO campaigns (uuid, type, name, subject, from_email, body, altbody,
         content_type, daily_send_limit, daily_resume_time, send_at, headers, attribs, tags, messenger, template_id, to_send,
-        max_subscriber_id, archive, archive_slug, archive_template_id, archive_meta, body_source, auto_track_links)
+        max_subscriber_id, archive, archive_slug, archive_template_id, archive_meta, body_source, auto_track_links,
+        organization_id, owner_user_id, original_owner_user_id, visibility)
         SELECT $1, $2, $3, $4, $5,
             -- body
             COALESCE(NULLIF($6, ''), (SELECT body FROM tpl), ''),
@@ -44,7 +49,8 @@ camp AS (
             $21,
             -- body_source
             COALESCE($23, (SELECT body_source FROM tpl)),
-            $24
+            $24,
+            $25, $26, $27, $28
         RETURNING id
 ),
 med AS (
@@ -106,7 +112,19 @@ SELECT campaigns.*,
         )
         ELSE GREATEST(campaigns.to_send - campaigns.sent, 0)
     END AS unsent_count,
-    COALESCE(templates.body, (SELECT body FROM templates WHERE is_default = true LIMIT 1), '') AS template_body
+    COALESCE(templates.body, (
+        SELECT fallback.body FROM templates fallback
+        WHERE fallback.is_default = true
+            AND fallback.transfer_pending_at IS NULL
+            AND (
+                (fallback.organization_id IS NOT DISTINCT FROM campaigns.organization_id
+                    AND fallback.owner_user_id = campaigns.owner_user_id)
+                OR fallback.visibility = 'global'
+            )
+        ORDER BY CASE WHEN fallback.organization_id IS NOT DISTINCT FROM campaigns.organization_id
+            AND fallback.owner_user_id = campaigns.owner_user_id THEN 0 ELSE 1 END, fallback.id
+        LIMIT 1
+    ), '') AS template_body
     FROM campaigns
     LEFT JOIN templates ON (
         CASE WHEN $4 = 'default' THEN templates.id = campaigns.template_id
@@ -126,7 +144,19 @@ SELECT COUNT(*) OVER () AS total, campaigns.*,
         )
         ELSE GREATEST(campaigns.to_send - campaigns.sent, 0)
     END AS unsent_count,
-    COALESCE(templates.body, (SELECT body FROM templates WHERE is_default = true LIMIT 1), '') AS template_body
+    COALESCE(templates.body, (
+        SELECT fallback.body FROM templates fallback
+        WHERE fallback.is_default = true
+            AND fallback.transfer_pending_at IS NULL
+            AND (
+                (fallback.organization_id IS NOT DISTINCT FROM campaigns.organization_id
+                    AND fallback.owner_user_id = campaigns.owner_user_id)
+                OR fallback.visibility = 'global'
+            )
+        ORDER BY CASE WHEN fallback.organization_id IS NOT DISTINCT FROM campaigns.organization_id
+            AND fallback.owner_user_id = campaigns.owner_user_id THEN 0 ELSE 1 END, fallback.id
+        LIMIT 1
+    ), '') AS template_body
     FROM campaigns
     LEFT JOIN templates ON (
         CASE WHEN $3 = 'default' THEN templates.id = campaigns.template_id
@@ -242,7 +272,19 @@ WITH camps AS (
             )
             ELSE GREATEST(campaigns.to_send - campaigns.sent, 0)
         END AS unsent_count,
-        COALESCE(templates.body, (SELECT body FROM templates WHERE is_default = true LIMIT 1), '') AS template_body
+        COALESCE(templates.body, (
+            SELECT fallback.body FROM templates fallback
+            WHERE fallback.is_default = TRUE
+                AND fallback.transfer_pending_at IS NULL
+                AND (
+                    (fallback.organization_id IS NOT DISTINCT FROM campaigns.organization_id
+                        AND fallback.owner_user_id = campaigns.owner_user_id)
+                    OR fallback.visibility = 'global'
+                )
+            ORDER BY CASE WHEN fallback.organization_id IS NOT DISTINCT FROM campaigns.organization_id
+                AND fallback.owner_user_id = campaigns.owner_user_id THEN 0 ELSE 1 END, fallback.id
+            LIMIT 1
+        ), '') AS template_body
     FROM campaigns
     LEFT JOIN templates ON (templates.id = campaigns.template_id)
     WHERE (
@@ -250,6 +292,7 @@ WITH camps AS (
         OR (status='scheduled' AND $2::TIMESTAMPTZ >= campaigns.send_at)
         OR (status='deferred' AND campaigns.next_resume_at IS NOT NULL AND $2::TIMESTAMPTZ >= campaigns.next_resume_at)
     )
+    AND campaigns.transfer_pending_at IS NULL
     AND NOT(campaigns.id = ANY($1::INT[]))
 ),
 campMedia AS (

@@ -33,7 +33,27 @@ router.afterEach((to) => {
 
 async function initConfig(app) {
   // Load logged in user profile, server side config, and the language file before mounting the app.
-  const [profile, cfg] = await Promise.all([api.getUserProfile(), api.getServerConfig()]);
+  const [profile, cfg, organizations] = await Promise.all([
+    api.getUserProfile(),
+    api.getServerConfig(),
+    api.getMyOrganizations(),
+  ]);
+
+  store.commit('setOrganizations', organizations);
+  const storedOrganizationID = Number(store.state.workspace.organizationId) || 0;
+  const savedOrganization = organizations.find((organization) => organization.id === storedOrganizationID);
+  store.commit('setWorkspace', savedOrganization || { organizationId: 0, personal: true });
+  let workspace;
+  try {
+    workspace = await api.getCurrentWorkspace({ disableToast: true });
+  } catch (err) {
+    // A manager can remove a member while that member still has the former
+    // organization persisted in localStorage. Fall back to personal space so
+    // revoking organization access never prevents access to personal data.
+    store.commit('setWorkspace', { organizationId: 0, personal: true });
+    workspace = await api.getCurrentWorkspace();
+  }
+  store.commit('setWorkspace', workspace);
 
   const lang = await api.getLang(cfg.lang);
   i18n.locale = cfg.lang;
@@ -75,6 +95,25 @@ async function initConfig(app) {
     }
 
     return profile.listRole.lists.some((list) => list.id === id && list.permissions.includes(perm));
+  };
+
+  // Resource rows include their owner and organization. This mirrors the
+  // server's write rule so organization managers see member resources as
+  // read-only rather than discovering the restriction only after a mutation.
+  Vue.prototype.$canManageResource = (resource) => {
+    if (!resource) {
+      return false;
+    }
+    if (profile.userRole.id === 1) {
+      return true;
+    }
+    const ownerID = Number(resource.ownerUserId || resource.owner_user_id) || 0;
+    const resourceOrganizationID = Number(resource.organizationId || resource.organization_id) || 0;
+    const activeOrganizationID = Number(store.state.workspace.organizationId) || 0;
+    return ownerID === profile.id
+      && resourceOrganizationID === activeOrganizationID
+      && !resource.transferPendingAt
+      && !resource.transfer_pending_at;
   };
 
   // Set the page title after i18n has loaded.

@@ -20,7 +20,8 @@
     <b-table :data="campaigns.results" :loading="loading.campaigns" :row-class="highlightedRow"
       @check-all="onTableCheck" @check="onTableCheck" :checked-rows.sync="bulk.checked" paginated backend-pagination
       pagination-position="both" @page-change="onPageChange" :current-page="queryParams.page"
-      :per-page="campaigns.perPage" :total="campaigns.total" hoverable checkable backend-sorting @sort="onSort">
+      :per-page="campaigns.perPage" :total="campaigns.total" hoverable :checkable="canManageCampaigns"
+      :is-row-checkable="canManageCampaign" backend-sorting @sort="onSort">
       <template #top-left>
         <div class="columns">
           <div class="column is-6">
@@ -38,13 +39,13 @@
           </div>
         </div>
 
-        <div class="actions" v-if="bulk.checked.length > 0">
+        <div class="actions" v-if="canManageCampaigns && bulk.checked.length > 0">
           <a class="a" href="#" @click.prevent="deleteCampaigns" data-cy="btn-delete-campaigns">
             <b-icon icon="trash-can-outline" size="is-small" /> Delete
           </a>
           <span class="a">
             {{ $tc('globals.messages.numSelected', numSelectedCampaigns, { num: numSelectedCampaigns }) }}
-            <span v-if="!bulk.all && campaigns.total > campaigns.perPage">
+            <span v-if="canSelectAllCampaigns && !bulk.all && campaigns.total > campaigns.perPage">
               &mdash;
               <a href="#" @click.prevent="onSelectAll" data-cy="select-all-campaigns">
                 {{ $tc('globals.messages.selectAll', campaigns.total, { num: campaigns.total }) }}
@@ -106,6 +107,10 @@
             </b-tag>
           </b-taglist>
         </div>
+      </b-table-column>
+      <b-table-column v-slot="props" field="ownerUsername" label="所属用户" width="12%">
+        <span>{{ ownerLabel(props.row) }}</span>
+        <b-tag size="is-small" class="is-light">{{ visibilityLabel(props.row.visibility) }}</b-tag>
       </b-table-column>
       <b-table-column v-slot="props" cell-class="lists" field="lists" :label="$t('globals.terms.lists')" width="15%">
         <ul>
@@ -194,7 +199,7 @@
       <b-table-column v-slot="props" cell-class="actions" width="15%" align="right">
         <div>
           <!-- start / pause / resume / scheduled -->
-          <template v-if="$can('campaigns:manage')">
+          <template v-if="canManageCampaign(props.row)">
             <a v-if="canStart(props.row)" href="#"
               @click.prevent="$utils.confirm(null, () => changeCampaignStatus(props.row, 'running'))"
               data-cy="btn-start" :aria-label="$t('campaigns.start')">
@@ -251,23 +256,19 @@
               <b-icon icon="file-find-outline" size="is-small" />
             </b-tooltip>
           </a>
-          <a v-if="$can('campaigns:manage')" href="#" @click.prevent="$utils.prompt($t('globals.buttons.clone'),
-            {
-              placeholder: $t('globals.fields.name'),
-              value: $t('campaigns.copyOf', { name: props.row.name }),
-            },
-            (name) => cloneCampaign(name, props.row))" data-cy="btn-clone" :aria-label="$t('globals.buttons.clone')">
+          <a href="#" @click.prevent="openCloneCampaign(props.row)" data-cy="btn-clone"
+            :aria-label="$t('globals.buttons.clone')">
             <b-tooltip :label="$t('globals.buttons.clone')" type="is-dark">
               <b-icon icon="file-multiple-outline" size="is-small" />
             </b-tooltip>
           </a>
-          <router-link v-if="$can('campaigns:get_analytics')"
+          <router-link
             :to="{ name: 'campaignAnalytics', query: { id: props.row.id } }">
             <b-tooltip :label="$t('globals.terms.analytics')" type="is-dark">
               <b-icon icon="chart-bar" size="is-small" />
             </b-tooltip>
           </router-link>
-          <a v-if="$can('campaigns:manage')" href="#"
+          <a v-if="canManageCampaign(props.row)" href="#"
             @click.prevent="$utils.confirm($t('campaigns.confirmDelete', { name: props.row.name }), () => deleteCampaign(props.row))"
             data-cy="btn-delete" :aria-label="$t('globals.buttons.delete')">
             <b-icon icon="trash-can-outline" size="is-small" />
@@ -282,11 +283,35 @@
 
     <campaign-preview v-if="previewItem" type="campaign" :id="previewItem.id" :title="previewItem.name"
       @close="closePreview" />
+
+    <b-modal scroll="keep" :aria-modal="true" :active.sync="isCloneFormVisible" :width="520">
+      <div class="modal-card content" style="width: auto">
+        <header class="modal-card-head"><h4>复制营销活动</h4></header>
+        <section class="modal-card-body">
+          <b-field :label="$t('globals.fields.name')" label-position="on-border">
+            <b-input v-model.trim="cloneForm.name" maxlength="200" required />
+          </b-field>
+          <b-field label="目标位置" label-position="on-border">
+            <b-select v-model.number="cloneForm.targetOrganizationID" expanded>
+              <option :value="0">个人空间</option>
+              <option v-for="organization in organizations" :key="organization.id" :value="organization.id">
+                {{ organization.name }}
+              </option>
+            </b-select>
+          </b-field>
+        </section>
+        <footer class="modal-card-foot has-text-right">
+          <b-button @click="isCloneFormVisible = false">{{ $t('globals.buttons.close') }}</b-button>
+          <b-button type="is-primary" :disabled="!cloneForm.name" :loading="loading.campaigns" @click="cloneCampaign">
+            {{ $t('globals.buttons.clone') }}
+          </b-button>
+        </footer>
+      </div>
+    </b-modal>
   </section>
 </template>
 
 <script>
-import dayjs from 'dayjs';
 import Vue from 'vue';
 import { mapState } from 'vuex';
 import CampaignPreview from '../components/CampaignPreview.vue';
@@ -303,6 +328,12 @@ export default Vue.extend({
   data() {
     return {
       previewItem: null,
+      isCloneFormVisible: false,
+      cloneItem: null,
+      cloneForm: {
+        name: '',
+        targetOrganizationID: 0,
+      },
       queryParams: {
         page: 1,
         query: '',
@@ -435,66 +466,45 @@ export default Vue.extend({
       });
     },
 
-    async cloneCampaign(name, c) {
-      // Fetch the template body from the server.
-      let body = '';
-      let bodySource = null;
-      await this.$api.getCampaign(c.id).then((data) => {
-        body = data.body;
-        bodySource = data.bodySource;
-      });
-
-      const now = this.$utils.getDate();
-      const sendLater = !!c.sendAt;
-      let sendAt = null;
-      if (sendLater) {
-        sendAt = dayjs(c.sendAt).isAfter(now) ? c.sendAt : now.add(7, 'day');
-      }
-
-      const isLimitedSMTPCampaign = c.type === 'regular'
-        && (c.messenger === 'email' || c.messenger?.startsWith('email-'));
-      const dailySendLimit = isLimitedSMTPCampaign && c.dailySendLimit > 0 ? c.dailySendLimit : 300;
-      const dailyResumeTime = isLimitedSMTPCampaign && c.dailyResumeTime ? c.dailyResumeTime : '09:00';
-
-      const data = {
-        name,
-        subject: c.subject,
-        lists: c.lists.map((l) => l.id),
-        type: c.type,
-        from_email: c.fromEmail,
-        content_type: c.contentType,
-        messenger: c.messenger,
-        auto_track_links: c.autoTrackLinks,
-        daily_send_limit: isLimitedSMTPCampaign ? dailySendLimit : 0,
-        daily_resume_time: isLimitedSMTPCampaign ? dailyResumeTime : '09:00',
-        tags: c.tags,
-        template_id: c.templateId,
-        body,
-        body_source: bodySource,
-        altbody: c.altbody,
-        headers: c.headers,
-        send_later: sendLater,
-        send_at: sendAt,
-        archive: c.archive,
-        archive_template_id: c.archiveTemplateId,
-        archive_meta: c.archiveMeta,
-        // Campaign list responses expose media as JSON objects, but older
-        // records or API clients may omit that field. Keep only valid IDs so
-        // the cloned campaign gets the campaign_media relationships needed to
-        // embed media-library images in outgoing e-mail.
-        media: (Array.isArray(c.media) ? c.media : [])
-          .map((m) => (m && typeof m === 'object' ? m.id : m))
-          .map((id) => Number(id))
-          .filter((id) => Number.isInteger(id) && id > 0),
+    openCloneCampaign(campaign) {
+      this.cloneItem = campaign;
+      this.cloneForm = {
+        name: this.$t('campaigns.copyOf', { name: campaign.name }),
+        targetOrganizationID: Number(this.workspace.organizationId) || 0,
       };
+      this.isCloneFormVisible = true;
+    },
 
-      if (c.archive) {
-        data.archive_slug = `${name.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${Date.now().toString().slice(-4)}`;
+    async cloneCampaign() {
+      if (!this.cloneItem || !this.cloneForm.name) {
+        return;
       }
+      const currentOrganizationID = Number(this.workspace.organizationId) || 0;
+      const targetOrganizationID = Number(this.cloneForm.targetOrganizationID) || 0;
+      const request = { name: this.cloneForm.name };
+      if (targetOrganizationID !== currentOrganizationID) {
+        request.target_organization_id = targetOrganizationID;
+      }
+      const campaign = await this.$api.cloneCampaign(this.cloneItem.id, request);
+      this.isCloneFormVisible = false;
+      this.$router.push({ name: 'campaign', params: { id: campaign.id } });
+    },
 
-      this.$api.createCampaign(data).then((d) => {
-        this.$router.push({ name: 'campaign', params: { id: d.id } });
-      });
+    canManageCampaign(campaign) {
+      return this.$can('campaigns:manage_all', 'campaigns:manage')
+        && this.$canManageResource(campaign);
+    },
+
+    ownerLabel(resource) {
+      return resource.ownerName || resource.ownerUsername || '-';
+    },
+
+    visibilityLabel(visibility) {
+      return {
+        private: '个人私有',
+        organization: '组织共享',
+        global: '全体共享',
+      }[visibility] || '个人私有';
     },
 
     deleteCampaign(c) {
@@ -550,7 +560,18 @@ export default Vue.extend({
   },
 
   computed: {
-    ...mapState(['campaigns', 'loading']),
+    ...mapState(['campaigns', 'loading', 'workspace', 'organizations', 'profile']),
+
+    canManageCampaigns() {
+      return this.$can('campaigns:manage_all', 'campaigns:manage');
+    },
+
+    // The page result can include read-only organization and global campaigns.
+    // Only a platform administrator can safely select every result across
+    // pages; other callers keep the row-level ownership controls.
+    canSelectAllCampaigns() {
+      return this.profile.userRole && this.profile.userRole.id === 1;
+    },
 
     numSelectedCampaigns() {
       return this.bulk.all ? this.campaigns.total : this.bulk.checked.length;

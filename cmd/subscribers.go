@@ -57,11 +57,12 @@ var (
 
 // GetSubscriber handles the retrieval of a single subscriber by ID.
 func (a *App) GetSubscriber(c echo.Context) error {
-	user := auth.GetUser(c)
-
-	// Check if the user has access to at least one of the lists on the subscriber.
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	id := getID(c)
-	if err := a.hasSubPerm(user, []int{id}); err != nil {
+	if _, err := a.core.RequireReadResource(access, resourceSubscribers, id); err != nil {
 		return err
 	}
 
@@ -76,11 +77,12 @@ func (a *App) GetSubscriber(c echo.Context) error {
 
 // GetSubscriberActivity handles the retrieval of a subscriber's campaign views and link clicks.
 func (a *App) GetSubscriberActivity(c echo.Context) error {
-	user := auth.GetUser(c)
-
-	// Check if the user has access to at least one of the lists on the subscriber.
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	id := getID(c)
-	if err := a.hasSubPerm(user, []int{id}); err != nil {
+	if _, err := a.core.RequireReadResource(access, resourceSubscribers, id); err != nil {
 		return err
 	}
 
@@ -95,22 +97,18 @@ func (a *App) GetSubscriberActivity(c echo.Context) error {
 
 // QuerySubscribers handles querying subscribers based on an arbitrary SQL expression.
 func (a *App) QuerySubscribers(c echo.Context) error {
-	// Get the authenticated user.
-	user := auth.GetUser(c)
-
-	// Filter list IDs by permission.
-	listIDs, err := a.filterListQueryByPerm("list_id", c.QueryParams(), user)
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
+	listIDs, err := a.workspaceListIDs(access, "list_id", c.QueryParams(), false)
 	if err != nil {
 		return err
 	}
 
-	// Does the user have the subscribers:sql_query permission?
 	query := formatSQLExp(c.FormValue("query"))
-	if query != "" {
-		if !user.HasPerm(auth.PermSubscribersSqlQuery) {
-			return echo.NewHTTPError(http.StatusForbidden,
-				a.i18n.Ts("globals.messages.permissionDenied", "name", auth.PermSubscribersSqlQuery))
-		}
+	if query != "" && !access.PlatformAdmin {
+		return echo.NewHTTPError(http.StatusForbidden, "raw subscriber queries are restricted to platform administrators")
 	}
 
 	var (
@@ -121,8 +119,17 @@ func (a *App) QuerySubscribers(c echo.Context) error {
 		pg        = a.pg.NewFromURL(c.Request().URL.Query())
 	)
 
-	// Query subscribers from the DB.
-	res, total, err := a.core.QuerySubscribers(searchStr, query, listIDs, subStatus, order, orderBy, pg.Offset, pg.Limit)
+	// Platform administrators retain the advanced raw-query facility. Every
+	// other caller uses a prepared workspace-scoped query.
+	var (
+		res   models.Subscribers
+		total int
+	)
+	if query != "" {
+		res, total, err = a.core.QuerySubscribers(searchStr, query, listIDs, subStatus, order, orderBy, pg.Offset, pg.Limit)
+	} else {
+		res, total, err = a.core.QueryWorkspaceSubscribers(access, searchStr, listIDs, subStatus, order, orderBy, pg.Offset, pg.Limit)
+	}
 	if err != nil {
 		return err
 	}
@@ -141,11 +148,11 @@ func (a *App) QuerySubscribers(c echo.Context) error {
 
 // ExportSubscribers handles querying subscribers based on an arbitrary SQL expression.
 func (a *App) ExportSubscribers(c echo.Context) error {
-	// Get the authenticated user.
-	user := auth.GetUser(c)
-
-	// Filter list IDs by permission.
-	listIDs, err := a.filterListQueryByPerm("list_id", c.QueryParams(), user)
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
+	listIDs, err := a.workspaceListIDs(access, "list_id", c.QueryParams(), true)
 	if err != nil {
 		return err
 	}
@@ -159,20 +166,34 @@ func (a *App) ExportSubscribers(c echo.Context) error {
 	// Filter by subscription status
 	subStatus := c.QueryParam("subscription_status")
 
-	// Does the user have the subscribers:sql_query permission?
 	var (
 		searchStr = strings.TrimSpace(c.FormValue("search"))
 		query     = formatSQLExp(c.FormValue("query"))
 	)
-	if query != "" {
-		if !user.HasPerm(auth.PermSubscribersSqlQuery) {
-			return echo.NewHTTPError(http.StatusForbidden,
-				a.i18n.Ts("globals.messages.permissionDenied", "name", auth.PermSubscribersSqlQuery))
-		}
+	if query != "" && !access.PlatformAdmin {
+		return echo.NewHTTPError(http.StatusForbidden, "raw subscriber queries are restricted to platform administrators")
 	}
 
-	// Get the batched export iterator.
-	exp, err := a.core.ExportSubscribers(searchStr, query, subIDs, listIDs, subStatus, a.cfg.DBBatchSize)
+	var exp func() ([]models.SubscriberExport, error)
+	if query != "" {
+		exp, err = a.core.ExportSubscribers(searchStr, query, subIDs, listIDs, subStatus, a.cfg.DBBatchSize)
+	} else {
+		if len(subIDs) > 0 {
+			if err := a.core.RequireManagedResources(access, resourceSubscribers, subIDs); err != nil {
+				return err
+			}
+		} else {
+			subIDs, err = a.core.ListManagedWorkspaceResources(access, resourceSubscribers)
+			if err != nil {
+				return err
+			}
+		}
+		// An empty explicit set must not mean "all" in the lower-level query.
+		if len(subIDs) == 0 {
+			subIDs = []int{-1}
+		}
+		exp, err = a.core.ExportWorkspaceSubscribers(access, searchStr, listIDs, subIDs, subStatus, a.cfg.DBBatchSize)
+	}
 	if err != nil {
 		return err
 	}
@@ -217,8 +238,10 @@ loop:
 
 // CreateSubscriber handles the creation of a new subscriber.
 func (a *App) CreateSubscriber(c echo.Context) error {
-	// Get the authenticated user.
-	user := auth.GetUser(c)
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 
 	// Get and validate fields.
 	var req subimporter.SubReq
@@ -227,21 +250,17 @@ func (a *App) CreateSubscriber(c echo.Context) error {
 	}
 
 	// Validate fields.
-	req, err := a.importer.ValidateFields(req)
+	req, err = a.importer.ValidateFields(req)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
-	// Filter lists against the current user's permitted lists.
-	listIDs := user.FilterListsByPerm(auth.PermTypeManage, req.Lists)
-
-	// Not a single permitted list?
-	if len(req.Lists) > 0 && len(listIDs) == 0 {
-		return echo.NewHTTPError(http.StatusForbidden, a.i18n.Ts("globals.messages.permissionDenied", "name", "lists"))
+	if err := a.requireWorkspaceListIDs(access, req.Lists, true); err != nil {
+		return err
 	}
 
-	// Insert the subscriber into the DB.
-	sub, _, err := a.core.InsertSubscriber(req.Subscriber, listIDs, nil, req.PreconfirmSubs, false)
+	// Insert the subscriber into the active user/workspace boundary.
+	sub, _, err := a.core.InsertWorkspaceSubscriber(access, req.Subscriber, req.Lists, req.PreconfirmSubs, false)
 	if err != nil {
 		return err
 	}
@@ -251,8 +270,14 @@ func (a *App) CreateSubscriber(c echo.Context) error {
 
 // UpdateSubscriber handles modification of a subscriber.
 func (a *App) UpdateSubscriber(c echo.Context) error {
-	// Get the authenticated user.
-	user := auth.GetUser(c)
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
+	id := getID(c)
+	if _, err := a.core.RequireManageResource(access, resourceSubscribers, id); err != nil {
+		return err
+	}
 
 	// Get and validate fields.
 	req := struct {
@@ -275,25 +300,17 @@ func (a *App) UpdateSubscriber(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("subscribers.invalidName"))
 	}
 
-	// Filter lists against the current user's permitted lists.
-	listIDs := user.FilterListsByPerm(auth.PermTypeManage, req.Lists)
-
-	// Not a single permitted list?
-	if len(req.Lists) > 0 && len(listIDs) == 0 {
-		return echo.NewHTTPError(http.StatusForbidden, a.i18n.Ts("globals.messages.permissionDenied", "name", "lists"))
+	if err := a.requireWorkspaceListIDs(access, req.Lists, true); err != nil {
+		return err
 	}
 
-	// Update the subscriber in the DB.
-	id := getID(c)
-
-	// Get the user's permitted lists to pass to the update query so that lists on the subscribers
-	// to which they don't have permissions are preserved/left as-is when deleteLists=true.
-	allPerm, permittedLists := user.GetPermittedLists(auth.PermTypeManage)
-	if allPerm {
-		permittedLists = []int{}
+	permittedLists, err := a.core.ListManagedWorkspaceResources(access, resourceLists)
+	if err != nil {
+		return err
 	}
+	req.Subscriber.ID = id
 
-	out, _, err := a.core.UpdateSubscriberWithLists(id, req.Subscriber, listIDs, nil, req.PreconfirmSubs, true, false, permittedLists)
+	out, _, err := a.core.UpdateSubscriberWithLists(id, req.Subscriber, req.Lists, nil, req.PreconfirmSubs, true, false, permittedLists)
 	if err != nil {
 		return err
 	}
@@ -303,8 +320,15 @@ func (a *App) UpdateSubscriber(c echo.Context) error {
 
 // SubscriberSendOptin sends an optin confirmation e-mail to a subscriber.
 func (a *App) SubscriberSendOptin(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	// Fetch the subscriber.
 	id := getID(c)
+	if _, err := a.core.RequireManageResource(access, resourceSubscribers, id); err != nil {
+		return err
+	}
 	out, err := a.core.GetSubscriber(id, "", "")
 	if err != nil {
 		return err
@@ -320,8 +344,14 @@ func (a *App) SubscriberSendOptin(c echo.Context) error {
 
 // BlocklistSubscriber handles the blocklisting of a given subscriber.
 func (a *App) BlocklistSubscriber(c echo.Context) error {
-	// Update the subscribers in the DB.
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	id := getID(c)
+	if _, err := a.core.RequireManageResource(access, resourceSubscribers, id); err != nil {
+		return err
+	}
 	if err := a.core.BlocklistSubscribers([]int{id}); err != nil {
 		return err
 	}
@@ -331,6 +361,10 @@ func (a *App) BlocklistSubscriber(c echo.Context) error {
 
 // BlocklistSubscribers handles the blocklisting of one or more subscribers.
 func (a *App) BlocklistSubscribers(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	var req subQueryReq
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest,
@@ -339,6 +373,9 @@ func (a *App) BlocklistSubscribers(c echo.Context) error {
 	if len(req.SubscriberIDs) == 0 {
 		return echo.NewHTTPError(http.StatusBadRequest,
 			a.i18n.Ts("globals.messages.errorInvalidIDs", "error", "ids"))
+	}
+	if err := a.core.RequireManagedResources(access, resourceSubscribers, req.SubscriberIDs); err != nil {
+		return err
 	}
 
 	// Update the subscribers in the DB.
@@ -353,8 +390,10 @@ func (a *App) BlocklistSubscribers(c echo.Context) error {
 // from or to one or more target lists.
 // It takes either an ID in the URI, or a list of IDs in the request body.
 func (a *App) ManageSubscriberLists(c echo.Context) error {
-	// Get the authenticated user.
-	user := auth.GetUser(c)
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 
 	// Is it an /:id call?
 	var (
@@ -374,7 +413,7 @@ func (a *App) ManageSubscriberLists(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest,
 			a.i18n.Ts("globals.messages.errorInvalidIDs", "error", err.Error()))
 	}
-	if len(req.SubscriberIDs) == 0 {
+	if len(req.SubscriberIDs) == 0 && len(subIDs) == 0 {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("subscribers.errorNoIDs"))
 	}
 	if len(subIDs) == 0 {
@@ -384,23 +423,21 @@ func (a *App) ManageSubscriberLists(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("subscribers.errorNoListsGiven"))
 	}
 
-	// Filter lists against the current user's permitted lists.
-	listIDs := user.FilterListsByPerm(auth.PermTypeGet|auth.PermTypeManage, req.TargetListIDs)
-
-	// User doesn't have the required list permissions.
-	if len(listIDs) == 0 {
-		return echo.NewHTTPError(http.StatusForbidden, a.i18n.Ts("globals.messages.permissionDenied", "name", "lists"))
+	if err := a.core.RequireManagedResources(access, resourceSubscribers, subIDs); err != nil {
+		return err
+	}
+	if err := a.requireWorkspaceListIDs(access, req.TargetListIDs, true); err != nil {
+		return err
 	}
 
 	// Run the action in the DB.
-	var err error
 	switch req.Action {
 	case "add":
-		err = a.core.AddSubscriptions(subIDs, listIDs, req.Status)
+		err = a.core.AddSubscriptions(subIDs, req.TargetListIDs, req.Status)
 	case "remove":
-		err = a.core.DeleteSubscriptions(subIDs, listIDs)
+		err = a.core.DeleteSubscriptions(subIDs, req.TargetListIDs)
 	case "unsubscribe":
-		err = a.core.UnsubscribeLists(subIDs, listIDs, nil)
+		err = a.core.UnsubscribeLists(subIDs, req.TargetListIDs, nil)
 	default:
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("subscribers.invalidAction"))
 	}
@@ -414,8 +451,14 @@ func (a *App) ManageSubscriberLists(c echo.Context) error {
 
 // DeleteSubscriber handles deletion of a single subscriber.
 func (a *App) DeleteSubscriber(c echo.Context) error {
-	// Delete the subscribers from the DB.
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	id := getID(c)
+	if _, err := a.core.RequireManageResource(access, resourceSubscribers, id); err != nil {
+		return err
+	}
 	if err := a.core.DeleteSubscribers([]int{id}, nil); err != nil {
 		return err
 	}
@@ -425,6 +468,10 @@ func (a *App) DeleteSubscriber(c echo.Context) error {
 
 // DeleteSubscribers handles bulk deletion of one or more subscribers.
 func (a *App) DeleteSubscribers(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	// Multiple IDs.
 	ids, err := parseStringIDs(c.Request().URL.Query()["id"])
 	if err != nil {
@@ -434,6 +481,9 @@ func (a *App) DeleteSubscribers(c echo.Context) error {
 	if len(ids) == 0 {
 		return echo.NewHTTPError(http.StatusBadRequest,
 			a.i18n.Ts("globals.messages.errorInvalidIDs", "error", "ids"))
+	}
+	if err := a.core.RequireManagedResources(access, resourceSubscribers, ids); err != nil {
+		return err
 	}
 
 	// Delete the subscribers from the DB.
@@ -447,8 +497,10 @@ func (a *App) DeleteSubscribers(c echo.Context) error {
 // DeleteSubscribersByQuery bulk deletes based on an
 // arbitrary SQL expression.
 func (a *App) DeleteSubscribersByQuery(c echo.Context) error {
-	// Get the authenticated user.
-	user := auth.GetUser(c)
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 
 	var req subQueryReq
 	if err := c.Bind(&req); err != nil {
@@ -465,16 +517,24 @@ func (a *App) DeleteSubscribersByQuery(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.Ts("globals.messages.invalidFields", "name", "query"))
 	}
 
-	// Does the user have the subscribers:sql_query permission?
+	if err := a.requireWorkspaceListIDs(access, req.ListIDs, true); err != nil {
+		return err
+	}
+	if req.Query != "" && !access.PlatformAdmin {
+		return echo.NewHTTPError(http.StatusForbidden, "raw subscriber queries are restricted to platform administrators")
+	}
 	if req.Query != "" {
-		if !user.HasPerm(auth.PermSubscribersSqlQuery) {
-			return echo.NewHTTPError(http.StatusForbidden,
-				a.i18n.Ts("globals.messages.permissionDenied", "name", auth.PermSubscribersSqlQuery))
+		if err := a.core.DeleteSubscribersByQuery(req.Search, req.Query, req.ListIDs, req.SubscriptionStatus); err != nil {
+			return err
 		}
+		return c.JSON(http.StatusOK, okResp{true})
 	}
 
-	// Delete the subscribers from the DB.
-	if err := a.core.DeleteSubscribersByQuery(req.Search, req.Query, req.ListIDs, req.SubscriptionStatus); err != nil {
+	ids, err := a.managedWorkspaceSubscriberIDs(access, req.Search, req.ListIDs, req.SubscriptionStatus)
+	if err != nil {
+		return err
+	}
+	if err := a.core.DeleteSubscribers(ids, nil); err != nil {
 		return err
 	}
 
@@ -484,8 +544,10 @@ func (a *App) DeleteSubscribersByQuery(c echo.Context) error {
 // BlocklistSubscribersByQuery bulk blocklists subscribers
 // based on an arbitrary SQL expression.
 func (a *App) BlocklistSubscribersByQuery(c echo.Context) error {
-	// Get the authenticated user.
-	user := auth.GetUser(c)
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 
 	var req subQueryReq
 	if err := c.Bind(&req); err != nil {
@@ -501,16 +563,24 @@ func (a *App) BlocklistSubscribersByQuery(c echo.Context) error {
 	} else if req.Search == "" && req.Query == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.Ts("globals.messages.invalidFields", "name", "query"))
 	}
-	// Does the user have the subscribers:sql_query permission?
+	if err := a.requireWorkspaceListIDs(access, req.ListIDs, true); err != nil {
+		return err
+	}
+	if req.Query != "" && !access.PlatformAdmin {
+		return echo.NewHTTPError(http.StatusForbidden, "raw subscriber queries are restricted to platform administrators")
+	}
 	if req.Query != "" {
-		if !user.HasPerm(auth.PermSubscribersSqlQuery) {
-			return echo.NewHTTPError(http.StatusForbidden,
-				a.i18n.Ts("globals.messages.permissionDenied", "name", auth.PermSubscribersSqlQuery))
+		if err := a.core.BlocklistSubscribersByQuery(req.Search, req.Query, req.ListIDs, req.SubscriptionStatus); err != nil {
+			return err
 		}
+		return c.JSON(http.StatusOK, okResp{true})
 	}
 
-	// Update the subscribers in the DB.
-	if err := a.core.BlocklistSubscribersByQuery(req.Search, req.Query, req.ListIDs, req.SubscriptionStatus); err != nil {
+	ids, err := a.managedWorkspaceSubscriberIDs(access, req.Search, req.ListIDs, req.SubscriptionStatus)
+	if err != nil {
+		return err
+	}
+	if err := a.core.BlocklistSubscribers(ids); err != nil {
 		return err
 	}
 
@@ -520,8 +590,10 @@ func (a *App) BlocklistSubscribersByQuery(c echo.Context) error {
 // ManageSubscriberListsByQuery bulk adds/removes/unsubscribes subscribers
 // from one or more lists based on an arbitrary SQL expression.
 func (a *App) ManageSubscriberListsByQuery(c echo.Context) error {
-	// Get the authenticated user.
-	user := auth.GetUser(c)
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 
 	var req subQueryReq
 	if err := c.Bind(&req); err != nil {
@@ -535,33 +607,53 @@ func (a *App) ManageSubscriberListsByQuery(c echo.Context) error {
 	req.Search = strings.TrimSpace(req.Search)
 	req.Query = formatSQLExp(req.Query)
 
-	// Does the user have the subscribers:sql_query permission?
+	if err := a.requireWorkspaceListIDs(access, req.ListIDs, true); err != nil {
+		return err
+	}
+	if err := a.requireWorkspaceListIDs(access, req.TargetListIDs, true); err != nil {
+		return err
+	}
+	if req.Query != "" && !access.PlatformAdmin {
+		return echo.NewHTTPError(http.StatusForbidden, "raw subscriber queries are restricted to platform administrators")
+	}
 	if req.Query != "" {
-		if !user.HasPerm(auth.PermSubscribersSqlQuery) {
-			return echo.NewHTTPError(http.StatusForbidden,
-				a.i18n.Ts("globals.messages.permissionDenied", "name", auth.PermSubscribersSqlQuery))
+		var runErr error
+		switch req.Action {
+		case "add":
+			runErr = a.core.AddSubscriptionsByQuery(req.Search, req.Query, req.ListIDs, req.TargetListIDs, req.Status, req.SubscriptionStatus)
+		case "remove":
+			runErr = a.core.DeleteSubscriptionsByQuery(req.Search, req.Query, req.ListIDs, req.TargetListIDs, req.SubscriptionStatus)
+		case "unsubscribe":
+			runErr = a.core.UnsubscribeListsByQuery(req.Search, req.Query, req.ListIDs, req.TargetListIDs, req.SubscriptionStatus)
+		default:
+			return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("subscribers.invalidAction"))
 		}
+		if runErr != nil {
+			return runErr
+		}
+		return c.JSON(http.StatusOK, okResp{true})
 	}
 
-	// Filter lists against the current user's permitted lists.
-	sourceListIDs := user.FilterListsByPerm(auth.PermTypeGet|auth.PermTypeManage, req.ListIDs)
-	targetListIDs := user.FilterListsByPerm(auth.PermTypeGet|auth.PermTypeManage, req.TargetListIDs)
+	subIDs, err := a.managedWorkspaceSubscriberIDs(access, req.Search, req.ListIDs, req.SubscriptionStatus)
+	if err != nil {
+		return err
+	}
 
 	// Run the action in the DB.
-	var err error
+	var runErr error
 	switch req.Action {
 	case "add":
-		err = a.core.AddSubscriptionsByQuery(req.Search, req.Query, sourceListIDs, targetListIDs, req.Status, req.SubscriptionStatus)
+		runErr = a.core.AddSubscriptions(subIDs, req.TargetListIDs, req.Status)
 	case "remove":
-		err = a.core.DeleteSubscriptionsByQuery(req.Search, req.Query, sourceListIDs, targetListIDs, req.SubscriptionStatus)
+		runErr = a.core.DeleteSubscriptions(subIDs, req.TargetListIDs)
 	case "unsubscribe":
-		err = a.core.UnsubscribeListsByQuery(req.Search, req.Query, sourceListIDs, targetListIDs, req.SubscriptionStatus)
+		runErr = a.core.UnsubscribeLists(subIDs, req.TargetListIDs, nil)
 	default:
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("subscribers.invalidAction"))
 	}
 
-	if err != nil {
-		return err
+	if runErr != nil {
+		return runErr
 	}
 
 	return c.JSON(http.StatusOK, okResp{true})
@@ -569,8 +661,15 @@ func (a *App) ManageSubscriberListsByQuery(c echo.Context) error {
 
 // DeleteSubscriberBounces deletes all the bounces on a subscriber.
 func (a *App) DeleteSubscriberBounces(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	// Delete the bounces from the DB.
 	id := getID(c)
+	if _, err := a.core.RequireManageResource(access, resourceSubscribers, id); err != nil {
+		return err
+	}
 	if err := a.core.DeleteSubscriberBounces(id, ""); err != nil {
 		return err
 	}
@@ -583,10 +682,17 @@ func (a *App) DeleteSubscriberBounces(c echo.Context) error {
 // a JSON report. This is a privacy feature and depends on the
 // configuration in a.Constants.Privacy.
 func (a *App) ExportSubscriberData(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	// Get the subscriber's data. A single query that gets the profile,
 	// list subscriptions, campaign views, and link clicks. Names of
 	// private lists are replaced with "Private list".
 	id := getID(c)
+	if _, err := a.core.RequireManageResource(access, resourceSubscribers, id); err != nil {
+		return err
+	}
 	_, b, err := a.exportSubscriberData(id, "", a.cfg.Privacy.Exportable)
 	if err != nil {
 		a.log.Printf("error exporting subscriber data: %s", err)
@@ -687,6 +793,65 @@ func (a *App) filterListQueryByPerm(param string, qp url.Values, user auth.User)
 	}
 
 	return listIDs, nil
+}
+
+// workspaceListIDs resolves optional list query parameters and verifies that
+// they belong to the selected workspace. List membership from the legacy role
+// system is intentionally not considered here: it must never cross an owner
+// or organization boundary.
+func (a *App) workspaceListIDs(access models.WorkspaceAccess, param string, qp url.Values, manage bool) ([]int, error) {
+	if !qp.Has(param) {
+		return []int{}, nil
+	}
+	ids, err := getQueryInts(param, qp)
+	if err != nil {
+		return nil, echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("globals.messages.invalidID"))
+	}
+	if err := a.requireWorkspaceListIDs(access, ids, manage); err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+func (a *App) requireWorkspaceListIDs(access models.WorkspaceAccess, ids []int, manage bool) error {
+	for _, id := range ids {
+		if id < 1 {
+			return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("globals.messages.invalidID"))
+		}
+		if manage {
+			if _, err := a.core.RequireManageResource(access, resourceLists, id); err != nil {
+				return err
+			}
+		} else if _, err := a.core.RequireReadResource(access, resourceLists, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// managedWorkspaceSubscriberIDs applies the writable owner boundary after a
+// workspace read query. This matters for organization managers, who may read
+// every member's records but must never change them through a bulk endpoint.
+func (a *App) managedWorkspaceSubscriberIDs(access models.WorkspaceAccess, search string, listIDs []int, status string) ([]int, error) {
+	ids, err := a.core.GetWorkspaceSubscriberIDs(access, search, listIDs, status)
+	if err != nil {
+		return nil, err
+	}
+	managed, err := a.core.ListManagedWorkspaceResources(access, resourceSubscribers)
+	if err != nil {
+		return nil, err
+	}
+	allowed := make(map[int]struct{}, len(managed))
+	for _, id := range managed {
+		allowed[id] = struct{}{}
+	}
+	out := make([]int, 0, len(ids))
+	for _, id := range ids {
+		if _, ok := allowed[id]; ok {
+			out = append(out, id)
+		}
+	}
+	return out, nil
 }
 
 // formatSQLExp does basic sanitisation on arbitrary

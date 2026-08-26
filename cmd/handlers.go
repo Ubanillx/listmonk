@@ -44,7 +44,7 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 	if len(a.cfg.Security.CorsOrigins) > 0 {
 		e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 			AllowOrigins: a.cfg.Security.CorsOrigins,
-			AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept},
+			AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, workspaceHeader},
 		}))
 	}
 
@@ -157,25 +157,29 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.DELETE("/api/lists", a.DeleteLists)
 		g.DELETE("/api/lists/:id", hasID(a.DeleteList))
 
-		g.GET("/api/campaigns", pm(a.GetCampaigns, "campaigns:get_all", "campaigns:get"))
-		g.GET("/api/campaigns/running/stats", pm(a.GetRunningCampaignStats, "campaigns:get_all", "campaigns:get"))
-		g.GET("/api/campaigns/report/summary", pm(a.GetCampaignsReportSummary, "campaigns:get_analytics"))
-		g.GET("/api/campaigns/report/timeseries", pm(a.GetCampaignsReportSeries, "campaigns:get_analytics"))
-		g.GET("/api/campaigns/report/links", pm(a.GetCampaignsReportLinks, "campaigns:get_analytics"))
+		// Read access is resolved in handlers using workspace scope. Do not put
+		// legacy global permissions in front of these routes: a logged-in user
+		// must be able to view a campaign published globally.
+		g.GET("/api/campaigns", a.GetCampaigns)
+		g.GET("/api/campaigns/running/stats", a.GetRunningCampaignStats)
+		g.GET("/api/campaigns/report/summary", a.GetCampaignsReportSummary)
+		g.GET("/api/campaigns/report/timeseries", a.GetCampaignsReportSeries)
+		g.GET("/api/campaigns/report/links", a.GetCampaignsReportLinks)
 		g.GET("/api/campaigns/report/recipients", pm(a.GetCampaignsReportRecipients, "campaigns:get_analytics"))
-		g.GET("/api/campaigns/:id", pm(hasID(a.GetCampaign), "campaigns:get_all", "campaigns:get"))
-		g.GET("/api/campaigns/analytics/:type", pm(a.GetCampaignViewAnalytics, "campaigns:get_analytics"))
-		g.GET("/api/campaigns/:id/report/summary", pm(hasID(a.GetCampaignReportSummary), "campaigns:get_analytics"))
-		g.GET("/api/campaigns/:id/report/timeseries", pm(hasID(a.GetCampaignReportSeries), "campaigns:get_analytics"))
-		g.GET("/api/campaigns/:id/report/links", pm(hasID(a.GetCampaignReportLinks), "campaigns:get_analytics"))
+		g.GET("/api/campaigns/:id", hasID(a.GetCampaign))
+		g.GET("/api/campaigns/analytics/:type", a.GetCampaignViewAnalytics)
+		g.GET("/api/campaigns/:id/report/summary", hasID(a.GetCampaignReportSummary))
+		g.GET("/api/campaigns/:id/report/timeseries", hasID(a.GetCampaignReportSeries))
+		g.GET("/api/campaigns/:id/report/links", hasID(a.GetCampaignReportLinks))
 		g.GET("/api/campaigns/:id/report/recipients", pm(hasID(a.GetCampaignReportRecipients), "campaigns:get_analytics"))
-		g.GET("/api/campaigns/:id/preview", pm(hasID(a.PreviewCampaign), "campaigns:get_all", "campaigns:get"))
-		g.POST("/api/campaigns/:id/preview/archive", pm(hasID(a.PreviewCampaignArchive), "campaigns:get_all", "campaigns:get"))
-		g.POST("/api/campaigns/:id/preview", pm(hasID(a.PreviewCampaign), "campaigns:get_all", "campaigns:get"))
+		g.GET("/api/campaigns/:id/preview", hasID(a.PreviewCampaign))
+		g.POST("/api/campaigns/:id/preview/archive", hasID(a.PreviewCampaignArchive))
+		g.POST("/api/campaigns/:id/preview", hasID(a.PreviewCampaign))
 		g.POST("/api/campaigns/:id/content", pm(hasID(a.CampaignContent), "campaigns:manage_all", "campaigns:manage"))
-		g.POST("/api/campaigns/:id/text", pm(hasID(a.PreviewCampaign), "campaigns:get"))
+		g.POST("/api/campaigns/:id/text", hasID(a.PreviewCampaign))
 		g.POST("/api/campaigns/:id/test", pm(hasID(a.TestCampaign), "campaigns:manage_all", "campaigns:manage"))
 		g.POST("/api/campaigns", pm(a.CreateCampaign, "campaigns:manage_all", "campaigns:manage"))
+		g.POST("/api/campaigns/:id/clone", hasID(a.CloneCampaign))
 		g.PUT("/api/campaigns/:id", pm(hasID(a.UpdateCampaign), "campaigns:manage_all", "campaigns:manage"))
 		g.PUT("/api/campaigns/:id/status", pm(hasID(a.UpdateCampaignStatus), "campaigns:manage_all", "campaigns:manage"))
 		g.PUT("/api/campaigns/:id/archive", pm(hasID(a.UpdateCampaignArchive), "campaigns:manage_all", "campaigns:manage"))
@@ -187,15 +191,20 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.POST("/api/media", pm(a.UploadMedia, "media:manage"))
 		g.DELETE("/api/media/:id", pm(hasID(a.DeleteMedia), "media:manage"))
 
-		g.GET("/api/templates", pm(a.GetTemplates, "templates:get"))
-		g.GET("/api/templates/:id", pm(hasID(a.GetTemplate), "templates:get"))
-		g.GET("/api/templates/:id/preview", pm(hasID(a.PreviewTemplate), "templates:get"))
-		g.POST("/api/templates/preview", pm(a.PreviewTemplateBody, "templates:get"))
-		g.POST("/api/templates", pm(a.CreateTemplate, "templates:manage"))
-		g.POST("/api/templates/:id/clone", pm(hasID(a.CloneTemplate), "templates:manage"))
-		g.PUT("/api/templates/:id", pm(hasID(a.UpdateTemplate), "templates:manage"))
-		g.PUT("/api/templates/:id/default", pm(hasID(a.TemplateSetDefault), "templates:manage"))
-		g.DELETE("/api/templates/:id", pm(hasID(a.DeleteTemplate), "templates:manage"))
+		// Global templates are intentionally usable and copyable by every
+		// authenticated user. The handlers still enforce scope for stored data.
+		g.GET("/api/templates", a.GetTemplates)
+		g.GET("/api/templates/:id", hasID(a.GetTemplate))
+		g.GET("/api/templates/:id/preview", hasID(a.PreviewTemplate))
+		g.POST("/api/templates/preview", a.PreviewTemplateBody)
+		g.POST("/api/templates", a.CreateTemplate)
+		g.POST("/api/templates/:id/clone", hasID(a.CloneTemplate))
+		// Every authenticated user may publish and maintain templates they own.
+		// The handlers enforce the workspace/owner boundary directly; legacy
+		// template roles must not prevent the documented global-template flow.
+		g.PUT("/api/templates/:id", hasID(a.UpdateTemplate))
+		g.PUT("/api/templates/:id/default", hasID(a.TemplateSetDefault))
+		g.DELETE("/api/templates/:id", hasID(a.DeleteTemplate))
 
 		g.DELETE("/api/maintenance/subscribers/:type", pm(a.GCSubscribers, "settings:maintain"))
 		g.DELETE("/api/maintenance/analytics/:type", pm(a.GCCampaignAnalytics, "settings:maintain"))
@@ -205,6 +214,31 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 
 		g.GET("/api/profile", a.GetUserProfile)
 		g.PUT("/api/profile", a.UpdateUserProfile)
+
+		// Organization workspaces. Workspace-scoped endpoints use the
+		// X-Listmonk-Organization-ID request header; a missing header selects
+		// the caller's personal workspace.
+		g.GET("/api/workspace", a.GetCurrentWorkspace)
+		g.GET("/api/organizations/me", a.GetMyOrganizations)
+		g.POST("/api/organizations/requests", a.CreateOrganizationRequest)
+		g.POST("/api/organizations/join", a.JoinOrganizationByInvite)
+		g.POST("/api/organizations/leave", a.LeaveOrganization)
+		g.POST("/api/organizations/resources/lists/migrate", a.MigratePersonalListsToOrganization)
+		g.GET("/api/organizations/members", a.GetOrganizationMembers)
+		g.POST("/api/organizations/members", a.AddOrganizationMember)
+		g.PUT("/api/organizations/members/:user_id", a.UpdateOrganizationMember)
+		g.DELETE("/api/organizations/members/:user_id", a.RemoveOrganizationMember)
+		g.POST("/api/organizations/resources/transfer", a.TransferPendingOrganizationResources)
+		g.POST("/api/organizations/templates/:id/transfer", hasID(a.TransferOrganizationTemplate))
+		g.POST("/api/organizations/templates/:id/unpublish", hasID(a.UnpublishOrganizationTemplate))
+		g.GET("/api/organizations/invites", a.GetOrganizationInvites)
+		g.POST("/api/organizations/invites", a.CreateOrganizationInvite)
+		g.DELETE("/api/organizations/invites/:id", hasID(a.RevokeOrganizationInvite))
+		g.GET("/api/organizations", pm(a.GetOrganizations, "users:manage"))
+		g.GET("/api/organizations/requests", pm(a.GetOrganizationRequests, "users:manage"))
+		g.PUT("/api/organizations/requests/:id", pm(hasID(a.ReviewOrganizationRequest), "users:manage"))
+		g.POST("/api/organizations/:id/archive", pm(hasID(a.ArchiveOrganization), "users:manage"))
+
 		g.GET("/api/users", pm(a.GetUsers, "users:get"))
 		g.GET("/api/users/:id/integration-tokens", pm(hasID(a.GetUserIntegrationTokens), "users:manage"))
 		g.POST("/api/users/:id/integration-tokens", pm(hasID(a.CreateUserIntegrationToken), "users:manage"))

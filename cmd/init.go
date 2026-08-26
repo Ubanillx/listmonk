@@ -618,11 +618,13 @@ func initTxTemplates(m *manager.Manager, co *core.Core) {
 func initImporter(q *models.Queries, db *sqlx.DB, core *core.Core, i *i18n.I18n, ko *koanf.Koanf) *subimporter.Importer {
 	return subimporter.New(
 		subimporter.Options{
-			DomainBlocklist:    ko.Strings("privacy.domain_blocklist"),
-			DomainAllowlist:    ko.Strings("privacy.domain_allowlist"),
-			UpsertStmt:         q.UpsertSubscriber.Stmt,
-			BlocklistStmt:      q.UpsertBlocklistSubscriber.Stmt,
-			UpdateListDateStmt: q.UpdateListsDate.Stmt,
+			DomainBlocklist:        ko.Strings("privacy.domain_blocklist"),
+			DomainAllowlist:        ko.Strings("privacy.domain_allowlist"),
+			UpsertStmt:             q.UpsertSubscriber.Stmt,
+			BlocklistStmt:          q.UpsertBlocklistSubscriber.Stmt,
+			WorkspaceUpsertStmt:    q.UpsertWorkspaceSubscriber.Stmt,
+			WorkspaceBlocklistStmt: q.UpsertWorkspaceBlocklistSubscriber.Stmt,
+			UpdateListDateStmt:     q.UpdateListsDate.Stmt,
 
 			// Hook for triggering admin notifications and refreshing stats materialized
 			// views after a successful import.

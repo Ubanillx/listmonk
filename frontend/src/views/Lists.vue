@@ -29,7 +29,7 @@
     <b-table :data="lists.results" :loading="loading.listsFull" @check-all="onTableCheck" @check="onTableCheck"
       :checked-rows.sync="bulk.checked" hoverable default-sort="createdAt" paginated backend-pagination
       pagination-position="both" @page-change="onPageChange" :current-page="queryParams.page" :per-page="lists.perPage"
-      :total="lists.total" checkable backend-sorting @sort="onSort">
+      :total="lists.total" :checkable="canManageLists" :is-row-checkable="canManageList" backend-sorting @sort="onSort">
       <template #top-left>
         <div class="columns">
           <div class="column is-6">
@@ -43,13 +43,13 @@
             </form>
           </div>
         </div>
-        <div class="actions" v-if="bulk.checked.length > 0">
+        <div class="actions" v-if="canManageLists && bulk.checked.length > 0">
           <a class="a" href="#" @click.prevent="deleteLists" data-cy="btn-delete-lists">
             <b-icon icon="trash-can-outline" size="is-small" /> {{ $t('globals.buttons.delete') }}
           </a>
           <span class="a">
             {{ $tc('globals.messages.numSelected', numSelectedLists, { num: numSelectedLists }) }}
-            <span v-if="!bulk.all && lists.total > lists.perPage">
+            <span v-if="canSelectAllLists && !bulk.all && lists.total > lists.perPage">
               &mdash;
               <a href="#" @click.prevent="onSelectAll" data-cy="select-all-lists">
                 {{ $tc('globals.messages.selectAll', lists.total, { num: lists.total }) }}
@@ -89,7 +89,7 @@
             {{ $t(`lists.optins.${props.row.optin}`) }}
           </b-tag>{{ ' ' }}
 
-          <a v-if="props.row.optin === 'double'" class="is-size-7 send-optin" href="#"
+          <a v-if="props.row.optin === 'double' && canManageList(props.row)" class="is-size-7 send-optin" href="#"
             @click="$utils.confirm(null, () => createOptinCampaign(props.row))" data-cy="btn-send-optin-campaign">
             <b-tooltip :label="$t('lists.sendOptinCampaign')" type="is-dark">
               <b-icon icon="rocket-launch-outline" size="is-small" />
@@ -97,6 +97,11 @@
             </b-tooltip>
           </a>
         </div>
+      </b-table-column>
+
+      <b-table-column v-slot="props" field="ownerUsername" label="所属用户">
+        {{ ownerLabel(props.row) }}
+        <b-tag size="is-small" class="is-light">{{ visibilityLabel(props.row.visibility) }}</b-tag>
       </b-table-column>
 
       <b-table-column v-slot="props" field="subscriber_count" :label="$t('globals.terms.subscribers')"
@@ -134,28 +139,30 @@
 
       <b-table-column v-slot="props" cell-class="actions" align="right">
         <div>
-          <router-link v-if="$can('campaigns:manage')" :to="`/campaigns/new?list_id=${props.row.id}`"
+          <router-link v-if="canManageList(props.row) && $can('campaigns:manage_all', 'campaigns:manage')"
+            :to="`/campaigns/new?list_id=${props.row.id}`"
             data-cy="btn-campaign">
             <b-tooltip :label="$t('lists.sendCampaign')" type="is-dark">
               <b-icon icon="rocket-launch-outline" size="is-small" />
             </b-tooltip>
           </router-link>
 
-          <a v-if="$can('lists:manage') || $canList(props.row.id, 'list:manage')" href="#"
+          <a v-if="canManageList(props.row)" href="#"
             @click.prevent="showEditForm(props.row)" data-cy="btn-edit" :aria-label="$t('globals.buttons.edit')">
             <b-tooltip :label="$t('globals.buttons.edit')" type="is-dark">
               <b-icon icon="pencil-outline" size="is-small" />
             </b-tooltip>
           </a>
 
-          <router-link v-if="$can('subscribers:import')" :to="{ name: 'import', query: { list_id: props.row.id } }"
+          <router-link v-if="canManageList(props.row) && $can('subscribers:import')"
+            :to="{ name: 'import', query: { list_id: props.row.id } }"
             data-cy="btn-import">
             <b-tooltip :label="$t('import.title')" type="is-dark">
               <b-icon icon="file-upload-outline" size="is-small" />
             </b-tooltip>
           </router-link>
 
-          <a v-if="$can('lists:manage') || $canList(props.row.id, 'list:manage')" href="#"
+          <a v-if="canManageList(props.row)" href="#"
             @click.prevent="deleteList(props.row)" data-cy="btn-delete" :aria-label="$t('globals.buttons.delete')">
             <b-tooltip :label="$t('globals.buttons.delete')" type="is-dark">
               <b-icon icon="trash-can-outline" size="is-small" />
@@ -353,10 +360,36 @@ export default Vue.extend({
       });
       return false;
     },
+
+    canManageList(list) {
+      return (this.$can('lists:manage_all', 'lists:manage') || this.$canList(list.id, 'list:manage'))
+        && this.$canManageResource(list);
+    },
+
+    ownerLabel(resource) {
+      return resource.ownerName || resource.ownerUsername || '-';
+    },
+
+    visibilityLabel(visibility) {
+      return {
+        private: '个人私有',
+        organization: '组织共享',
+      }[visibility] || '个人私有';
+    },
   },
 
   computed: {
-    ...mapState(['loading', 'settings']),
+    ...mapState(['loading', 'settings', 'profile']),
+
+    canManageLists() {
+      return Array.isArray(this.lists.results) && this.lists.results.some((list) => this.canManageList(list));
+    },
+
+    // Organization managers can inspect member lists but must never bulk
+    // select them. Cross-page selection is therefore platform-admin only.
+    canSelectAllLists() {
+      return this.profile.userRole && this.profile.userRole.id === 1;
+    },
 
     numSelectedLists() {
       return this.bulk.all ? this.lists.total : this.bulk.checked.length;

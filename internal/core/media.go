@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"net/http"
@@ -70,7 +71,7 @@ func (c *Core) GetMedia(id int, uuid, fileName string, s media.Store) (media.Med
 }
 
 // InsertMedia inserts a new media file into the DB.
-func (c *Core) InsertMedia(fileName, thumbName, contentType string, meta models.JSON, provider string, s media.Store) (media.Media, error) {
+func (c *Core) InsertMedia(fileName, thumbName, contentType string, meta models.JSON, provider string, scope models.ResourceScope, s media.Store) (media.Media, error) {
 	uu, err := uuid.NewV4()
 	if err != nil {
 		c.log.Printf("error generating UUID: %v", err)
@@ -80,7 +81,8 @@ func (c *Core) InsertMedia(fileName, thumbName, contentType string, meta models.
 
 	// Write to the DB.
 	var newID int
-	if err := c.q.InsertMedia.Get(&newID, uu, fileName, thumbName, contentType, provider, meta); err != nil {
+	if err := c.q.InsertMedia.Get(&newID, uu, fileName, thumbName, contentType, provider, meta,
+		scope.OrganizationID, scope.OwnerUserID, scope.OriginalOwnerUserID, scope.Visibility); err != nil {
 		c.log.Printf("error inserting uploaded file to db: %v", err)
 		return media.Media{}, echo.NewHTTPError(http.StatusInternalServerError,
 			c.i18n.Ts("globals.messages.errorCreating", "name", "{globals.terms.media}", "error", pqErrMsg(err)))
@@ -89,14 +91,61 @@ func (c *Core) InsertMedia(fileName, thumbName, contentType string, meta models.
 	return c.GetMedia(newID, "", "", s)
 }
 
-// DeleteMedia deletes a given media item and returns the filename of the deleted item.
-func (c *Core) DeleteMedia(id int) (string, error) {
-	var fname string
-	if err := c.q.DeleteMedia.Get(&fname, id); err != nil {
-		c.log.Printf("error inserting uploaded file to db: %v", err)
-		return "", echo.NewHTTPError(http.StatusInternalServerError,
+// MediaDeletion describes the physical objects that became unreferenced when
+// a media row was deleted. Campaign/template clones intentionally share the
+// same provider object, so removing one record must not delete a binary still
+// used by another media row.
+type MediaDeletion struct {
+	Filename       string
+	Thumb          string
+	DeleteFilename bool
+	DeleteThumb    bool
+}
+
+// DeleteMedia deletes a media row and reports only provider objects that no
+// remaining row references. The caller performs the actual store deletion
+// after this transaction commits.
+func (c *Core) DeleteMedia(id int) (MediaDeletion, error) {
+	var out MediaDeletion
+	tx, err := c.db.BeginTxx(context.Background(), nil)
+	if err != nil {
+		return out, echo.NewHTTPError(http.StatusInternalServerError,
+			c.i18n.Ts("globals.messages.errorCreating", "name", "{globals.terms.media}", "error", pqErrMsg(err)))
+	}
+	defer tx.Rollback()
+
+	var provider string
+	if err := tx.QueryRowx(`SELECT provider, filename, thumb FROM media WHERE id = $1 FOR UPDATE`, id).
+		Scan(&provider, &out.Filename, &out.Thumb); err != nil {
+		if err == sql.ErrNoRows {
+			return out, ErrNotFound
+		}
+		return out, echo.NewHTTPError(http.StatusInternalServerError,
+			c.i18n.Ts("globals.messages.errorCreating", "name", "{globals.terms.media}", "error", pqErrMsg(err)))
+	}
+	if _, err := tx.Exec(`DELETE FROM media WHERE id = $1`, id); err != nil {
+		return out, echo.NewHTTPError(http.StatusInternalServerError,
 			c.i18n.Ts("globals.messages.errorCreating", "name", "{globals.terms.media}", "error", pqErrMsg(err)))
 	}
 
-	return fname, nil
+	var filenameRefs, thumbRefs int
+	if err := tx.Get(&filenameRefs, `
+		SELECT COUNT(*) FROM media
+		WHERE provider = $1 AND (filename = $2 OR thumb = $2)`, provider, out.Filename); err != nil {
+		return out, echo.NewHTTPError(http.StatusInternalServerError, pqErrMsg(err))
+	}
+	if out.Thumb != "" && out.Thumb != out.Filename {
+		if err := tx.Get(&thumbRefs, `
+			SELECT COUNT(*) FROM media
+			WHERE provider = $1 AND (filename = $2 OR thumb = $2)`, provider, out.Thumb); err != nil {
+			return out, echo.NewHTTPError(http.StatusInternalServerError, pqErrMsg(err))
+		}
+	}
+	out.DeleteFilename = filenameRefs == 0
+	out.DeleteThumb = out.Thumb != "" && out.Thumb != out.Filename && thumbRefs == 0
+
+	if err := tx.Commit(); err != nil {
+		return out, echo.NewHTTPError(http.StatusInternalServerError, pqErrMsg(err))
+	}
+	return out, nil
 }

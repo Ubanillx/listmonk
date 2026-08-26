@@ -15,7 +15,7 @@
         </h1>
       </div>
       <div class="column has-text-right">
-        <b-field v-if="$can('subscribers:manage')" expanded>
+        <b-field v-if="canManageSubscribers" expanded>
           <b-button expanded type="is-primary" icon-left="plus" @click="showNewForm" data-cy="btn-new" class="btn-new">
             {{ $t('globals.buttons.new') }}
           </b-button>
@@ -75,14 +75,15 @@
     <b-table :data="subscribers.results ?? []" :loading="loading.subscribers" @check-all="onTableCheck"
       @check="onTableCheck" :checked-rows.sync="bulk.checked" paginated backend-pagination pagination-position="both"
       @page-change="onPageChange" :current-page="queryParams.page" :per-page="subscribers.perPage"
-      :total="subscribers.total" hoverable checkable backend-sorting @sort="onSort">
+      :total="subscribers.total" hoverable :checkable="canManageSubscribers"
+      :is-row-checkable="canManageSubscriber" backend-sorting @sort="onSort">
       <template #top-left>
         <div class="actions">
-          <a class="a" href="#" @click.prevent="exportSubscribers" data-cy="btn-export-subscribers">
+          <a v-if="canExportSubscribers" class="a" href="#" @click.prevent="exportSubscribers" data-cy="btn-export-subscribers">
             <b-icon icon="cloud-download-outline" size="is-small" />
             {{ $t('subscribers.export') }}
           </a>
-          <template v-if="bulk.checked.length > 0">
+          <template v-if="canManageSubscribers && bulk.checked.length > 0">
             <a class="a" href="#" @click.prevent="showBulkListForm" data-cy="btn-manage-lists">
               <b-icon icon="format-list-bulleted-square" size="is-small" /> Manage lists
             </a>
@@ -94,7 +95,7 @@
             </a>
             <span class="a">
               {{ $t('globals.messages.numSelected', { num: numSelectedSubscribers }) }}
-              <span v-if="!bulk.all && subscribers.total > subscribers.perPage">
+              <span v-if="canSelectAll && !bulk.all && subscribers.total > subscribers.perPage">
                 &mdash;
                 <a href="#" @click.prevent="selectAllSubscribers">
                   {{ $t('globals.messages.selectAll', { num: subscribers.total }) }}
@@ -141,6 +142,10 @@
         {{ listCount(props.row.lists) }}
       </b-table-column>
 
+      <b-table-column v-slot="props" field="ownerUsername" label="所属用户">
+        {{ ownerLabel(props.row) }}
+      </b-table-column>
+
       <b-table-column v-slot="props" field="created_at" :label="$t('globals.fields.createdAt')"
         header-class="cy-created_at" sortable>
         {{ $utils.niceDate(props.row.createdAt) }}
@@ -153,19 +158,19 @@
 
       <b-table-column v-slot="props" cell-class="actions" align="right">
         <div>
-          <a :href="`/api/subscribers/${props.row.id}/export`" data-cy="btn-download"
+          <a v-if="canManageSubscriber(props.row)" :href="subscriberExportURL(props.row.id)" data-cy="btn-download"
             :aria-label="$t('subscribers.downloadData')">
             <b-tooltip :label="$t('subscribers.downloadData')" type="is-dark">
               <b-icon icon="cloud-download-outline" size="is-small" />
             </b-tooltip>
           </a>
-          <a v-if="$can('subscribers:manage')" :href="`/subscribers/${props.row.id}`"
+          <a v-if="canManageSubscriber(props.row)" :href="`/subscribers/${props.row.id}`"
             @click.prevent="showEditForm(props.row)" data-cy="btn-edit" :aria-label="$t('globals.buttons.edit')">
             <b-tooltip :label="$t('globals.buttons.edit')" type="is-dark">
               <b-icon icon="pencil-outline" size="is-small" />
             </b-tooltip>
           </a>
-          <a v-if="$can('subscribers:manage')" href="#" @click.prevent="deleteSubscriber(props.row)"
+          <a v-if="canManageSubscriber(props.row)" href="#" @click.prevent="deleteSubscriber(props.row)"
             data-cy="btn-delete" :aria-label="$t('globals.buttons.delete')">
             <b-tooltip :label="$t('globals.buttons.delete')" type="is-dark">
               <b-icon icon="trash-can-outline" size="is-small" />
@@ -245,6 +250,20 @@ export default Vue.extend({
     // Count the lists from which a subscriber has not unsubscribed.
     listCount(lists) {
       return lists.reduce((defVal, item) => (defVal + (item.subscriptionStatus !== 'unsubscribed' ? 1 : 0)), 0);
+    },
+
+    canManageSubscriber(subscriber) {
+      return this.$can('subscribers:manage') && this.$canManageResource(subscriber);
+    },
+
+    ownerLabel(resource) {
+      return resource.ownerName || resource.ownerUsername || '-';
+    },
+
+    subscriberExportURL(id) {
+      const organizationID = Number(this.workspace.organizationId) || 0;
+      const suffix = organizationID > 0 ? `?organization_id=${organizationID}` : '';
+      return `/api/subscribers/${id}/export${suffix}`;
     },
 
     toggleAdvancedSearch() {
@@ -426,6 +445,10 @@ export default Vue.extend({
           q.append('subscription_status', this.queryParams.subStatus);
         }
 
+        if (this.workspace.organizationId) {
+          q.append('organization_id', this.workspace.organizationId);
+        }
+
         // Export selected subscribers.
         if (!this.bulk.all && this.bulk.checked.length > 0) {
           this.bulk.checked.map((s) => q.append('id', s.id));
@@ -506,7 +529,20 @@ export default Vue.extend({
   },
 
   computed: {
-    ...mapState(['subscribers', 'lists', 'loading']),
+    ...mapState(['subscribers', 'lists', 'loading', 'workspace']),
+
+    canManageSubscribers() {
+      return this.$can('subscribers:manage');
+    },
+
+    canSelectAll() {
+      return !(this.workspace.organizationId && this.workspace.role === 'manager');
+    },
+
+    canExportSubscribers() {
+      return this.$can('subscribers:get_all', 'subscribers:get')
+        && (!this.bulk.checked.length || this.bulk.checked.every((subscriber) => this.canManageSubscriber(subscriber)));
+    },
 
     numSelectedSubscribers() {
       if (this.bulk.all) {

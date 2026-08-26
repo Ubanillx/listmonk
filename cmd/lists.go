@@ -5,24 +5,23 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/knadh/listmonk/internal/auth"
+	"github.com/knadh/listmonk/internal/core"
 	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
 )
 
 // GetLists retrieves lists with additional metadata like subscriber counts.
 func (a *App) GetLists(c echo.Context) error {
-	// Get the authenticated user.
-	user := auth.GetUser(c)
-
-	// Get the list IDs (or blanket permission) the user has access to.
-	hasAllPerm, permittedIDs := user.GetPermittedLists(auth.PermTypeGet)
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 
 	// Minimal query simply returns the list of all lists without JOIN subscriber counts. This is fast.
 	minimal, _ := strconv.ParseBool(c.FormValue("minimal"))
 	if minimal {
 		status := c.FormValue("status")
-		res, err := a.core.GetLists("", status, hasAllPerm, permittedIDs)
+		res, err := a.core.GetWorkspaceLists(access, "", status)
 		if err != nil {
 			return err
 		}
@@ -54,7 +53,7 @@ func (a *App) GetLists(c echo.Context) error {
 
 		pg = a.pg.NewFromURL(c.Request().URL.Query())
 	)
-	res, total, err := a.core.QueryLists(query, typ, optin, status, tags, orderBy, order, hasAllPerm, permittedIDs, pg.Offset, pg.Limit)
+	res, total, err := a.core.QueryWorkspaceLists(access, query, typ, optin, status, tags, orderBy, order, pg.Offset, pg.Limit)
 	if err != nil {
 		return err
 	}
@@ -73,12 +72,12 @@ func (a *App) GetLists(c echo.Context) error {
 // GetList retrieves a single list by id.
 // It's permission checked by the listPerm middleware.
 func (a *App) GetList(c echo.Context) error {
-	// Get the authenticated user.
-	user := auth.GetUser(c)
-
-	// Check if the user has access to the list.
 	id := getID(c)
-	if err := user.HasListPerm(auth.PermTypeGet, id); err != nil {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
+	if _, err := a.core.RequireReadResource(access, "lists", id); err != nil {
 		return err
 	}
 
@@ -93,6 +92,10 @@ func (a *App) GetList(c echo.Context) error {
 
 // CreateList handles list creation.
 func (a *App) CreateList(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	l := models.List{}
 	if err := c.Bind(&l); err != nil {
 		return err
@@ -103,7 +106,11 @@ func (a *App) CreateList(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("lists.invalidName"))
 	}
 
-	out, err := a.core.CreateList(l)
+	visibility, err := normalizeResourceVisibility(access, resourceLists, l.Visibility)
+	if err != nil {
+		return err
+	}
+	out, err := a.core.CreateList(l, core.ApplyWorkspaceScope(access, visibility))
 	if err != nil {
 		return err
 	}
@@ -114,12 +121,12 @@ func (a *App) CreateList(c echo.Context) error {
 // UpdateList handles list modification.
 // It's permission checked by the listPerm middleware.
 func (a *App) UpdateList(c echo.Context) error {
-	// Get the authenticated user.
-	user := auth.GetUser(c)
-
-	// Check if the user has access to the list.
 	id := getID(c)
-	if err := user.HasListPerm(auth.PermTypeManage, id); err != nil {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
+	if _, err := a.core.RequireManageResource(access, "lists", id); err != nil {
 		return err
 	}
 
@@ -139,6 +146,16 @@ func (a *App) UpdateList(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	if l.Visibility != "" {
+		visibility, err := normalizeResourceVisibility(access, resourceLists, l.Visibility)
+		if err != nil {
+			return err
+		}
+		if err := a.core.SetResourceVisibility("lists", id, visibility); err != nil {
+			return err
+		}
+		out.Visibility = visibility
+	}
 
 	return c.JSON(http.StatusOK, okResp{out})
 }
@@ -146,10 +163,11 @@ func (a *App) UpdateList(c echo.Context) error {
 // DeleteList deletes a single list by ID.
 func (a *App) DeleteList(c echo.Context) error {
 	id := getID(c)
-
-	// Check if the user has manage permission for the list.
-	user := auth.GetUser(c)
-	if err := user.HasListPerm(auth.PermTypeManage, id); err != nil {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
+	if _, err := a.core.RequireManageResource(access, "lists", id); err != nil {
 		return err
 	}
 
@@ -164,7 +182,10 @@ func (a *App) DeleteList(c echo.Context) error {
 
 // DeleteLists deletes multiple lists by IDs or by query.
 func (a *App) DeleteLists(c echo.Context) error {
-	user := auth.GetUser(c)
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 
 	var (
 		ids   []int
@@ -192,9 +213,10 @@ func (a *App) DeleteLists(c echo.Context) error {
 			a.i18n.Ts("globals.messages.errorInvalidIDs", "error", "id or query required"))
 	}
 
-	// For ID deletion, check if the user has manage permission for the specific lists.
+	// The workspace ownership check applies before legacy list-role checks, so
+	// no per-list role can widen the active organization boundary.
 	if len(ids) > 0 {
-		if err := user.HasListPerm(auth.PermTypeManage, ids...); err != nil {
+		if err := a.core.RequireManagedResources(access, "lists", ids); err != nil {
 			return err
 		}
 
@@ -204,12 +226,32 @@ func (a *App) DeleteLists(c echo.Context) error {
 			return err
 		}
 	} else {
-		// For query deletion, get the list IDs the user has manage permission for.
-		hasAllPerm, permittedIDs := user.GetPermittedLists(auth.PermTypeManage)
-
-		// Delete the lists from the DB with permission filtering.
-		if err := a.core.DeleteLists(nil, query, hasAllPerm, permittedIDs); err != nil {
+		managed, err := a.core.ListManagedWorkspaceResources(access, "lists")
+		if err != nil {
 			return err
+		}
+		// Keep the page filter when all=true. Managed IDs are an ownership
+		// boundary, not a replacement for the user-selected result set.
+		visible, _, err := a.core.QueryWorkspaceLists(access, query, "", "", "", nil, "id", "asc", 0, 0)
+		if err != nil {
+			return err
+		}
+		allowed := make(map[int]struct{}, len(managed))
+		for _, id := range managed {
+			allowed[id] = struct{}{}
+		}
+		for _, list := range visible {
+			if _, ok := allowed[list.ID]; ok {
+				ids = append(ids, list.ID)
+			}
+		}
+		// DeleteLists' legacy query treats an empty ID array as an
+		// unrestricted search. A filter that finds no manageable lists must be
+		// a successful no-op, never a broad delete.
+		if len(ids) > 0 {
+			if err := a.core.DeleteLists(ids, "", true, nil); err != nil {
+				return err
+			}
 		}
 	}
 

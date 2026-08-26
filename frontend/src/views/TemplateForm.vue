@@ -22,12 +22,12 @@
             <div class="column is-9">
               <b-field :label="$t('globals.fields.name')" label-position="on-border">
                 <b-input :maxlength="200" :ref="'focus'" v-model="form.name" name="name"
-                  :placeholder="$t('globals.fields.name')" required />
+                  :placeholder="$t('globals.fields.name')" :disabled="!canSave" required />
               </b-field>
             </div>
             <div class="column is-3">
               <b-field :label="$t('globals.fields.type')" label-position="on-border">
-                <b-select v-model="form.type" :disabled="isEditing" expanded>
+                <b-select v-model="form.type" :disabled="isEditing || !canSave" expanded>
                   <option value="campaign">
                     {{ $tc('templates.typeCampaignHTML') }}
                   </option>
@@ -50,15 +50,23 @@
             </div>
           </div>
 
+          <b-field label="可见范围" label-position="on-border">
+            <b-select v-model="form.visibility" :disabled="!canSave" expanded>
+              <option value="private">个人私有</option>
+              <option v-if="workspace.organizationId" value="organization">当前组织共享</option>
+              <option value="global">全体共享</option>
+            </b-select>
+          </b-field>
+
           <div class="columns mb-2">
             <div class="column is-12">
-              <b-button @click="onOpenAttach" icon-left="file-upload-outline" data-cy="btn-template-attach">
+              <b-button @click="onOpenAttach" :disabled="!canSave" icon-left="file-upload-outline" data-cy="btn-template-attach">
                 {{ $t('campaigns.addAttachments') }}
               </b-button>
 
               <b-field v-if="form.media.length > 0" :label="$t('campaigns.attachments')"
                 label-position="on-border" expanded class="mt-4" data-cy="template-media">
-                <b-taginput v-model="form.media" name="media" ellipsis icon="tag-outline" field="filename"
+              <b-taginput v-model="form.media" name="media" ellipsis icon="tag-outline" field="filename" :disabled="!canSave"
                   @focus="onOpenAttach" />
               </b-field>
             </div>
@@ -66,12 +74,12 @@
 
           <template v-if="form.body !== null">
             <b-field v-if="form.type === 'campaign_visual'" label-position="on-border" class="mb-1">
-              <visual-editor v-if="form.type === 'campaign_visual'" name="body" :source="form.bodySource"
+              <visual-editor v-if="form.type === 'campaign_visual'" name="body" :source="form.bodySource" :disabled="!canSave"
                 @change="onChangeVisualEditor" @media-selected="onAttachSelect" height="70vh" />
             </b-field>
 
             <b-field v-else :label="$t('templates.rawHTML')" label-position="on-border">
-              <code-editor lang="html" v-model="form.body" name="body" />
+              <code-editor lang="html" v-model="form.body" name="body" :disabled="!canSave" />
             </b-field>
           </template>
 
@@ -88,7 +96,7 @@
           <b-button @click="$parent.close()">
             {{ $t('globals.buttons.close') }}
           </b-button>
-          <b-button v-if="$can('templates:manage')" native-type="submit" type="is-primary" :loading="loading.templates">
+          <b-button v-if="canSave" native-type="submit" type="is-primary" :loading="loading.templates">
             {{ $t('globals.buttons.save') }}
           </b-button>
         </footer>
@@ -140,6 +148,7 @@ export default Vue.extend({
         body: '',
         bodySource: null,
         media: [],
+        visibility: 'private',
       },
       previewItem: null,
       egPlaceholder: '{{ template "content" . }}',
@@ -188,6 +197,7 @@ export default Vue.extend({
         body: this.form.body,
         body_source: this.form.bodySource,
         media: this.form.media.filter((m) => m.id).map((m) => m.id),
+        visibility: this.form.visibility,
       };
 
       this.$api.createTemplate(data).then((d) => {
@@ -206,6 +216,7 @@ export default Vue.extend({
         body: this.form.body,
         body_source: this.form.bodySource,
         media: this.form.media.filter((m) => m.id).map((m) => m.id),
+        visibility: this.form.visibility,
       };
 
       this.$api.updateTemplate(data).then((d) => {
@@ -222,7 +233,11 @@ export default Vue.extend({
   },
 
   computed: {
-    ...mapState(['loading']),
+    ...mapState(['loading', 'workspace']),
+
+    canSave() {
+      return !this.isEditing || this.$canManageResource(this.data);
+    },
   },
 
   mounted() {

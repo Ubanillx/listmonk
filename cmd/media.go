@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/disintegration/imaging"
+	"github.com/knadh/listmonk/internal/core"
 	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
 )
@@ -24,6 +25,10 @@ var (
 
 // UploadMedia handles media file uploads.
 func (a *App) UploadMedia(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	file, err := c.FormFile("file")
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest,
@@ -130,7 +135,13 @@ func (a *App) UploadMedia(c echo.Context) error {
 	}
 
 	// Insert the media into the DB.
-	m, err := a.core.InsertMedia(fName, thumbfName, contentType, meta, a.cfg.MediaUpload.Provider, a.media)
+	visibility, err := normalizeResourceVisibility(access, resourceMedia, c.FormValue("visibility"))
+	if err != nil {
+		cleanUp = true
+		return err
+	}
+	scope := core.ApplyWorkspaceScope(access, visibility)
+	m, err := a.core.InsertMedia(fName, thumbfName, contentType, meta, a.cfg.MediaUpload.Provider, scope, a.media)
 	if err != nil {
 		cleanUp = true
 		return err
@@ -141,13 +152,17 @@ func (a *App) UploadMedia(c echo.Context) error {
 
 // GetAllMedia handles retrieval of uploaded media.
 func (a *App) GetAllMedia(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	var (
 		query = c.FormValue("query")
 
 		pg = a.pg.NewFromURL(c.Request().URL.Query())
 	)
 	// Fetch the media items from the DB.
-	res, total, err := a.core.QueryMedia(a.cfg.MediaUpload.Provider, a.media, query, pg.Offset, pg.Limit)
+	res, total, err := a.core.QueryWorkspaceMedia(access, a.cfg.MediaUpload.Provider, a.media, query, pg.Offset, pg.Limit)
 	if err != nil {
 		return err
 	}
@@ -164,8 +179,15 @@ func (a *App) GetAllMedia(c echo.Context) error {
 
 // GetMedia handles retrieval of a media item by ID.
 func (a *App) GetMedia(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	// Fetch the media item from the DB.
 	id := getID(c)
+	if _, err := a.core.RequireReadResource(access, "media", id); err != nil {
+		return err
+	}
 	out, err := a.core.GetMedia(id, "", "", a.media)
 	if err != nil {
 		return err
@@ -176,17 +198,30 @@ func (a *App) GetMedia(c echo.Context) error {
 
 // DeleteMedia handles deletion of uploaded media.
 func (a *App) DeleteMedia(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 
-	// Delete the media from the DB. The query returns the filename.
+	// Delete the media record first. Cloned campaign media can share its
+	// provider object, so DeleteMedia tells us whether each object is now safe
+	// to remove from storage.
 	id := getID(c)
-	fname, err := a.core.DeleteMedia(id)
+	if _, err := a.core.RequireManageResource(access, "media", id); err != nil {
+		return err
+	}
+	deleted, err := a.core.DeleteMedia(id)
 	if err != nil {
 		return err
 	}
 
 	// Delete the files from the media store.
-	a.media.Delete(fname)
-	a.media.Delete(thumbPrefix + fname)
+	if deleted.DeleteFilename {
+		a.media.Delete(deleted.Filename)
+	}
+	if deleted.DeleteThumb {
+		a.media.Delete(deleted.Thumb)
+	}
 
 	return c.JSON(http.StatusOK, okResp{true})
 }

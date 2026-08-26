@@ -13,9 +13,13 @@ import (
 
 // GetBounce handles retrieval of a specific bounce record by ID.
 func (a *App) GetBounce(c echo.Context) error {
-	// Fetch one bounce from the DB.
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
+	// Fetch one bounce from the active workspace.
 	id := getID(c)
-	out, err := a.core.GetBounce(id)
+	out, err := a.core.GetWorkspaceBounce(access, id)
 	if err != nil {
 		return err
 	}
@@ -25,6 +29,10 @@ func (a *App) GetBounce(c echo.Context) error {
 
 // GetBounces handles retrieval of bounce records.
 func (a *App) GetBounces(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	var (
 		campID, _ = strconv.Atoi(c.QueryParam("campaign_id"))
 		source    = c.FormValue("source")
@@ -33,9 +41,14 @@ func (a *App) GetBounces(c echo.Context) error {
 
 		pg = a.pg.NewFromURL(c.Request().URL.Query())
 	)
+	if campID > 0 {
+		if _, err := a.core.RequireReadResource(access, resourceCampaigns, campID); err != nil {
+			return err
+		}
+	}
 
 	// Query and fetch bounces from the DB.
-	res, total, err := a.core.QueryBounces(campID, 0, source, orderBy, order, pg.Offset, pg.Limit)
+	res, total, err := a.core.QueryWorkspaceBounces(access, 0, campID, 0, source, orderBy, order, pg.Offset, pg.Limit)
 	if err != nil {
 		return err
 	}
@@ -57,9 +70,16 @@ func (a *App) GetBounces(c echo.Context) error {
 
 // GetSubscriberBounces retrieves a subscriber's bounce records.
 func (a *App) GetSubscriberBounces(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	// Query and fetch bounces from the DB.
 	subID := getID(c)
-	out, _, err := a.core.QueryBounces(0, subID, "", "", "", 0, 1000)
+	if _, err := a.core.RequireReadResource(access, resourceSubscribers, subID); err != nil {
+		return err
+	}
+	out, _, err := a.core.QueryWorkspaceBounces(access, 0, 0, subID, "", "", "", 0, 1000)
 	if err != nil {
 		return err
 	}
@@ -69,6 +89,10 @@ func (a *App) GetSubscriberBounces(c echo.Context) error {
 
 // DeleteBounces handles bounce deletion of a list.
 func (a *App) DeleteBounces(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	all, _ := strconv.ParseBool(c.QueryParam("all"))
 
 	var ids []int
@@ -86,7 +110,7 @@ func (a *App) DeleteBounces(c echo.Context) error {
 	}
 
 	// Delete bounces from the DB.
-	if err := a.core.DeleteBounces(ids, all); err != nil {
+	if err := a.core.DeleteWorkspaceBounces(access, ids, all); err != nil {
 		return err
 	}
 
@@ -95,9 +119,13 @@ func (a *App) DeleteBounces(c echo.Context) error {
 
 // DeleteBounce handles bounce deletion of a single bounce record.
 func (a *App) DeleteBounce(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	// Delete bounces from the DB.
 	id := getID(c)
-	if err := a.core.DeleteBounces([]int{id}, false); err != nil {
+	if err := a.core.DeleteWorkspaceBounces(access, []int{id}, false); err != nil {
 		return err
 	}
 
@@ -106,7 +134,11 @@ func (a *App) DeleteBounce(c echo.Context) error {
 
 // BlocklistBouncedSubscribers handles blocklisting of all bounced subscribers.
 func (a *App) BlocklistBouncedSubscribers(c echo.Context) error {
-	if err := a.core.BlocklistBouncedSubscribers(); err != nil {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
+	if err := a.core.BlocklistWorkspaceBouncedSubscribers(access); err != nil {
 		return err
 	}
 

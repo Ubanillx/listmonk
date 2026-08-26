@@ -548,7 +548,11 @@ func (a *App) doFirstTimeSetup(c echo.Context) error {
 		UserRoleID:    auth.SuperAdminRoleID,
 		Status:        auth.UserStatusEnabled,
 	}
-	if _, err := a.core.CreateUser(u); err != nil {
+	created, err := a.core.CreateUser(u)
+	if err != nil {
+		return err
+	}
+	if err := a.core.ClaimUnownedResources(created.ID); err != nil {
 		return err
 	}
 

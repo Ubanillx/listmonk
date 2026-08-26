@@ -929,6 +929,12 @@ func (c *Core) lockOrganization(tx *sqlx.Tx, orgID int) error {
 }
 
 func (c *Core) mergeSubscriber(tx *sqlx.Tx, sourceID, targetID int) error {
+	if sourceID == targetID {
+		return nil
+	}
+	if err := c.mergeSubscriberProfile(tx, sourceID, targetID); err != nil {
+		return err
+	}
 	// Preserve the strongest subscription status when the same pair exists.
 	if _, err := tx.Exec(`
 		INSERT INTO subscriber_lists (subscriber_id, list_id, status, meta, created_at, updated_at)
@@ -958,6 +964,30 @@ func (c *Core) mergeSubscriber(tx *sqlx.Tx, sourceID, targetID int) error {
 	}
 	if _, err := tx.Exec(`DELETE FROM subscribers WHERE id = $1`, sourceID); err != nil {
 		return c.organizationDBErr("removing merged subscriber", err)
+	}
+	return nil
+}
+
+// mergeSubscriberProfile preserves the useful parts of a source profile before
+// its scoped subscriptions and history are merged into another record. The
+// target keeps explicit values, while a blocklist state always wins.
+func (c *Core) mergeSubscriberProfile(tx *sqlx.Tx, sourceID, targetID int) error {
+	if sourceID == targetID {
+		return nil
+	}
+	if _, err := tx.Exec(`
+		UPDATE subscribers AS target
+		SET status = CASE
+				WHEN target.status = 'blocklisted' OR source.status = 'blocklisted'
+					THEN 'blocklisted'::subscriber_status
+				ELSE target.status
+			END,
+			name = CASE WHEN target.name = '' AND source.name <> '' THEN source.name ELSE target.name END,
+			attribs = source.attribs || target.attribs,
+			updated_at = GREATEST(target.updated_at, source.updated_at)
+		FROM subscribers AS source
+		WHERE source.id = $1 AND target.id = $2`, sourceID, targetID); err != nil {
+		return c.organizationDBErr("merging subscriber profiles", err)
 	}
 	return nil
 }

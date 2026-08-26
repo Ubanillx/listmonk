@@ -263,6 +263,10 @@
           {{ props.row.archivedAt ? $utils.niceDate(props.row.archivedAt) : '-' }}
         </b-table-column>
         <b-table-column v-slot="props" label="操作" numeric>
+          <b-button v-if="props.row.status !== 'archived'" size="is-small" type="is-text" icon-left="login-variant"
+            @click="switchWorkspace(props.row)">
+            进入组织
+          </b-button>
           <b-button v-if="props.row.status !== 'archived'" size="is-small" type="is-text" icon-left="archive-outline"
             @click="archivePlatformOrganization(props.row)">
 归档

@@ -171,7 +171,12 @@ func (c *Core) MigratePersonalListsToOrganization(sourceUserID, targetOrganizati
 		if err := upsertMigratedSubscription(tx, targetSubscriberID, listMap[subscription.ListID], subscription); err != nil {
 			return nil, err
 		}
-		if move && targetSubscriberID != subscription.SubscriberID {
+		if move {
+			// The source subscriber may remain personal to preserve other links
+			// and delivery history, but it must never retain a link to the list
+			// that was moved into the organization. Keeping that stale link can
+			// duplicate list statistics and bypass the workspace association
+			// invariant.
 			if _, err := tx.Exec(`DELETE FROM subscriber_lists WHERE subscriber_id = $1 AND list_id = $2`, subscription.SubscriberID, subscription.ListID); err != nil {
 				return nil, workspaceQueryError("removing moved list subscription", err)
 			}
@@ -451,6 +456,9 @@ func (c *Core) findOrCopyMigratedSubscriber(tx *sqlx.Tx, source migratedListSubs
 			AND LOWER(email) = LOWER($3) AND transfer_pending_at IS NULL
 		LIMIT 1 FOR UPDATE`, organizationID, ownerUserID, source.Email)
 	if err == nil {
+		if err := c.mergeSubscriberProfile(tx, source.SubscriberID, targetID); err != nil {
+			return 0, err
+		}
 		return targetID, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {

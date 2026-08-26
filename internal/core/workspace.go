@@ -82,6 +82,36 @@ func (c *Core) CanReadResource(access models.WorkspaceAccess, scope models.Resou
 	return access.IsOrganizationManager()
 }
 
+// CanUseResource is the stricter access rule for a resource that will become
+// part of a sent message. Organization managers can inspect a member's private
+// resources, but that read-only oversight must never let them send with a
+// member's private template or media. Shared and global resources remain
+// usable by everyone who can access their workspace.
+func (c *Core) CanUseResource(access models.WorkspaceAccess, scope models.ResourceScope) bool {
+	if access.PlatformAdmin {
+		return true
+	}
+	if scope.TransferPendingAt.Valid {
+		return false
+	}
+	if scope.Visibility == models.ResourceVisibilityGlobal {
+		return true
+	}
+	if !scope.OwnerUserID.Valid {
+		return false
+	}
+	if !scope.OrganizationID.Valid {
+		return access.Personal && int(scope.OwnerUserID.Int) == access.UserID
+	}
+	if !access.IsOrganization() || int(scope.OrganizationID.Int) != access.OrganizationID {
+		return false
+	}
+	if int(scope.OwnerUserID.Int) == access.UserID {
+		return true
+	}
+	return scope.Visibility == models.ResourceVisibilityOrganization
+}
+
 // CanReadOwnerScopedResource is the access rule for lists and subscribers.
 // These resources deliberately do not honor organization/global visibility:
 // a member's audience remains private to that member, while organization
@@ -142,6 +172,20 @@ func (c *Core) RequireReadResource(access models.WorkspaceAccess, resource strin
 	}
 	if !canRead {
 		return scope, echo.NewHTTPError(http.StatusForbidden, "resource is outside the active workspace")
+	}
+	return scope, nil
+}
+
+// RequireUseResource enforces the boundary for resources attached to a
+// campaign or transactional message. It intentionally differs from read
+// access so a manager's inspection rights cannot become a send capability.
+func (c *Core) RequireUseResource(access models.WorkspaceAccess, resource string, id int) (models.ResourceScope, error) {
+	scope, err := c.GetResourceScope(resource, id)
+	if err != nil {
+		return scope, err
+	}
+	if !c.CanUseResource(access, scope) {
+		return scope, echo.NewHTTPError(http.StatusForbidden, "resource cannot be used for sending in the active workspace")
 	}
 	return scope, nil
 }

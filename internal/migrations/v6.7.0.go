@@ -140,27 +140,27 @@ func V6_7_0(db *sqlx.DB, fs stuffbin.FileSystem, ko *koanf.Koanf, lo *log.Logger
 			SELECT id FROM users WHERE user_role_id = 1 ORDER BY id LIMIT 1
 		)
 		UPDATE lists SET owner_user_id = (SELECT id FROM admin), original_owner_user_id = (SELECT id FROM admin)
-			WHERE owner_user_id IS NULL AND EXISTS (SELECT 1 FROM admin);
+			WHERE owner_user_id IS NULL AND organization_id IS NULL AND EXISTS (SELECT 1 FROM admin);
 		WITH admin AS (
 			SELECT id FROM users WHERE user_role_id = 1 ORDER BY id LIMIT 1
 		)
 		UPDATE subscribers SET owner_user_id = (SELECT id FROM admin), original_owner_user_id = (SELECT id FROM admin)
-			WHERE owner_user_id IS NULL AND EXISTS (SELECT 1 FROM admin);
+			WHERE owner_user_id IS NULL AND organization_id IS NULL AND EXISTS (SELECT 1 FROM admin);
 		WITH admin AS (
 			SELECT id FROM users WHERE user_role_id = 1 ORDER BY id LIMIT 1
 		)
 		UPDATE templates SET owner_user_id = (SELECT id FROM admin), original_owner_user_id = (SELECT id FROM admin)
-			WHERE owner_user_id IS NULL AND EXISTS (SELECT 1 FROM admin);
+			WHERE owner_user_id IS NULL AND organization_id IS NULL AND EXISTS (SELECT 1 FROM admin);
 		WITH admin AS (
 			SELECT id FROM users WHERE user_role_id = 1 ORDER BY id LIMIT 1
 		)
 		UPDATE campaigns SET owner_user_id = (SELECT id FROM admin), original_owner_user_id = (SELECT id FROM admin)
-			WHERE owner_user_id IS NULL AND EXISTS (SELECT 1 FROM admin);
+			WHERE owner_user_id IS NULL AND organization_id IS NULL AND EXISTS (SELECT 1 FROM admin);
 		WITH admin AS (
 			SELECT id FROM users WHERE user_role_id = 1 ORDER BY id LIMIT 1
 		)
 		UPDATE media SET owner_user_id = (SELECT id FROM admin), original_owner_user_id = (SELECT id FROM admin)
-			WHERE owner_user_id IS NULL AND EXISTS (SELECT 1 FROM admin);
+			WHERE owner_user_id IS NULL AND organization_id IS NULL AND EXISTS (SELECT 1 FROM admin);
 	`)
 	if err != nil {
 		return err

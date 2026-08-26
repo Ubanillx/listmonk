@@ -78,10 +78,10 @@ func (a *App) SendTxMessage(c echo.Context) error {
 		m = r
 	}
 
-	// Templates may be globally shared, but a transactional message must never
-	// use a private template outside the selected personal or organization
-	// workspace.
-	if _, err := a.core.RequireReadResource(access, resourceTemplates, m.TemplateID); err != nil {
+	// Templates may be organization or globally shared, but manager inspection
+	// rights must not let a transactional message use another member's private
+	// template.
+	if _, err := a.core.RequireUseResource(access, resourceTemplates, m.TemplateID); err != nil {
 		return err
 	}
 

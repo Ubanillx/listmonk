@@ -182,7 +182,7 @@ func (a *App) CreateTemplate(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := a.requireReadableMedia(access, req.MediaIDs); err != nil {
+	if err := a.requireUsableMedia(access, req.MediaIDs); err != nil {
 		return err
 	}
 	visibility, err := normalizeResourceVisibility(access, resourceTemplates, req.Visibility)
@@ -227,7 +227,7 @@ func (a *App) UpdateTemplate(c echo.Context) error {
 	if _, err := a.core.RequireManageResource(access, "templates", id); err != nil {
 		return err
 	}
-	if err := a.requireReadableMedia(access, req.MediaIDs); err != nil {
+	if err := a.requireUsableMedia(access, req.MediaIDs); err != nil {
 		return err
 	}
 	out, err := a.core.UpdateTemplate(id, o.Name, o.Subject, []byte(o.Body), o.BodySource, req.mediaIDs())
@@ -345,12 +345,12 @@ func (a *App) DeleteTemplate(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{true})
 }
 
-func (a *App) requireReadableMedia(access models.WorkspaceAccess, mediaIDs []int) error {
+func (a *App) requireUsableMedia(access models.WorkspaceAccess, mediaIDs []int) error {
 	for _, id := range mediaIDs {
 		if id < 1 {
 			continue
 		}
-		if _, err := a.core.RequireReadResource(access, "media", id); err != nil {
+		if _, err := a.core.RequireUseResource(access, "media", id); err != nil {
 			return err
 		}
 	}

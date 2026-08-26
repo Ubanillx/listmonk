@@ -309,7 +309,7 @@ func (a *App) CreateCampaign(c echo.Context) error {
 	if err := a.requireWorkspaceListIDs(access, o.ListIDs, true); err != nil {
 		return err
 	}
-	if err := a.requireReadableCampaignResources(access, o); err != nil {
+	if err := a.requireUsableCampaignResources(access, o); err != nil {
 		return err
 	}
 	visibility, err := normalizeResourceVisibility(access, resourceCampaigns, o.Visibility)
@@ -428,7 +428,7 @@ func (a *App) UpdateCampaign(c echo.Context) error {
 	if err := a.requireWorkspaceListIDs(access, o.ListIDs, true); err != nil {
 		return err
 	}
-	if err := a.requireReadableCampaignResources(access, o); err != nil {
+	if err := a.requireUsableCampaignResources(access, o); err != nil {
 		return err
 	}
 
@@ -533,7 +533,10 @@ func (a *App) UpdateCampaignArchive(c echo.Context) error {
 		return err
 	}
 	if req.TemplateID > 0 {
-		if _, err := a.core.RequireReadResource(access, resourceTemplates, req.TemplateID); err != nil {
+		// An archive template is rendered into a public page. Read-only
+		// organization-manager access must not allow attaching a member's
+		// private template to the caller's campaign.
+		if _, err := a.core.RequireUseResource(access, resourceTemplates, req.TemplateID); err != nil {
 			return err
 		}
 	}
@@ -728,7 +731,7 @@ func (a *App) TestCampaign(c echo.Context) error {
 	if err := a.requireWorkspaceListIDs(access, req.ListIDs, true); err != nil {
 		return err
 	}
-	if err := a.requireReadableCampaignResources(access, req); err != nil {
+	if err := a.requireUsableCampaignResources(access, req); err != nil {
 		return err
 	}
 	if len(req.SubscriberEmails) == 0 {
@@ -1161,14 +1164,14 @@ func (a *App) sendTestMessage(sub models.Subscriber, camp *models.Campaign) erro
 	return a.manager.PushCampaignMessage(msg)
 }
 
-func (a *App) requireReadableCampaignResources(access models.WorkspaceAccess, req campReq) error {
+func (a *App) requireUsableCampaignResources(access models.WorkspaceAccess, req campReq) error {
 	if req.TemplateID.Valid && req.TemplateID.Int > 0 {
-		if _, err := a.core.RequireReadResource(access, resourceTemplates, int(req.TemplateID.Int)); err != nil {
+		if _, err := a.core.RequireUseResource(access, resourceTemplates, int(req.TemplateID.Int)); err != nil {
 			return err
 		}
 	}
 	if req.ArchiveTemplateID.Valid && req.ArchiveTemplateID.Int > 0 {
-		if _, err := a.core.RequireReadResource(access, resourceTemplates, int(req.ArchiveTemplateID.Int)); err != nil {
+		if _, err := a.core.RequireUseResource(access, resourceTemplates, int(req.ArchiveTemplateID.Int)); err != nil {
 			return err
 		}
 	}
@@ -1176,7 +1179,7 @@ func (a *App) requireReadableCampaignResources(access models.WorkspaceAccess, re
 		if id < 1 {
 			continue
 		}
-		if _, err := a.core.RequireReadResource(access, resourceMedia, id); err != nil {
+		if _, err := a.core.RequireUseResource(access, resourceMedia, id); err != nil {
 			return err
 		}
 	}

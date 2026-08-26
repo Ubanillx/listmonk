@@ -214,6 +214,68 @@ func TestOwnerScopedResourceAccessBoundaries(t *testing.T) {
 	}
 }
 
+func TestWorkspaceResourceUseBoundaries(t *testing.T) {
+	c := &Core{}
+	member := models.WorkspaceAccess{
+		Workspace: models.Workspace{OrganizationID: 7},
+		UserID:    20,
+	}
+	manager := models.WorkspaceAccess{
+		Workspace: models.Workspace{OrganizationID: 7, Role: models.OrganizationMemberRoleManager},
+		UserID:    30,
+	}
+	personalUser := models.WorkspaceAccess{
+		Workspace: models.Workspace{Personal: true},
+		UserID:    40,
+	}
+
+	tests := []struct {
+		name   string
+		access models.WorkspaceAccess
+		scope  models.ResourceScope
+		want   bool
+	}{
+		{
+			name:   "member uses own private organization template",
+			access: member,
+			scope:  workspaceTestScope(7, 20, models.ResourceVisibilityPrivate, false),
+			want:   true,
+		},
+		{
+			name:   "member uses organization shared template",
+			access: member,
+			scope:  workspaceTestScope(7, 10, models.ResourceVisibilityOrganization, false),
+			want:   true,
+		},
+		{
+			name:   "manager cannot send with member private template",
+			access: manager,
+			scope:  workspaceTestScope(7, 10, models.ResourceVisibilityPrivate, false),
+			want:   false,
+		},
+		{
+			name:   "global template is usable in personal space",
+			access: personalUser,
+			scope:  workspaceTestScope(7, 10, models.ResourceVisibilityGlobal, false),
+			want:   true,
+		},
+		{
+			name:   "pending transfer resource cannot be sent",
+			access: manager,
+			scope:  workspaceTestScope(7, 10, models.ResourceVisibilityOrganization, true),
+			want:   false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := c.CanUseResource(test.access, test.scope); got != test.want {
+				t.Fatalf("CanUseResource() = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
 func TestApplyWorkspaceScope(t *testing.T) {
 	personal := ApplyWorkspaceScope(models.WorkspaceAccess{
 		Workspace: models.Workspace{Personal: true},

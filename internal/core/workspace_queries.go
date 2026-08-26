@@ -42,6 +42,31 @@ func workspaceReadPredicate(access models.WorkspaceAccess, alias string, firstAr
 		[]any{access.OrganizationID, access.UserID}
 }
 
+// workspaceOwnerScopedReadPredicate is used for lists and subscribers. An
+// owner audience cannot be shared with ordinary organization members; only an
+// organization manager can inspect another member's records in that org.
+func workspaceOwnerScopedReadPredicate(access models.WorkspaceAccess, alias string, firstArg int) (string, []any) {
+	field := func(name string) string {
+		if alias == "" {
+			return name
+		}
+		return alias + "." + name
+	}
+	arg := func(offset int) string { return fmt.Sprintf("$%d", firstArg+offset) }
+	if access.PlatformAdmin {
+		return "TRUE", nil
+	}
+	if !access.IsOrganization() {
+		return fmt.Sprintf("(%sorganization_id IS NULL AND %sowner_user_id = %s AND %stransfer_pending_at IS NULL)",
+			field(""), field(""), arg(0), field("")), []any{access.UserID}
+	}
+	if access.IsOrganizationManager() {
+		return fmt.Sprintf("%sorganization_id = %s", field(""), arg(0)), []any{access.OrganizationID}
+	}
+	return fmt.Sprintf("(%sorganization_id = %s AND %sowner_user_id = %s AND %stransfer_pending_at IS NULL)",
+		field(""), arg(0), field(""), arg(1), field("")), []any{access.OrganizationID, access.UserID}
+}
+
 func workspaceSort(orderBy, order string, fields map[string]string, fallback string) string {
 	field, ok := fields[orderBy]
 	if !ok {
@@ -60,7 +85,7 @@ func (c *Core) QueryWorkspaceLists(access models.WorkspaceAccess, search, typ, o
 	}
 	_ = c.refreshCache(matListSubStats, false)
 
-	scope, args := workspaceReadPredicate(access, "l", 1)
+	scope, args := workspaceOwnerScopedReadPredicate(access, "l", 1)
 	first := len(args) + 1
 	search = strings.TrimSpace(search)
 	stmt := fmt.Sprintf(`
@@ -299,20 +324,7 @@ func (c *Core) QueryWorkspaceMedia(access models.WorkspaceAccess, provider strin
 }
 
 func workspaceSubscriberReadPredicate(access models.WorkspaceAccess, alias string, firstArg int) (string, []any) {
-	field := func(name string) string { return alias + "." + name }
-	arg := func(offset int) string { return fmt.Sprintf("$%d", firstArg+offset) }
-	if access.PlatformAdmin {
-		return "TRUE", nil
-	}
-	if !access.IsOrganization() {
-		return fmt.Sprintf("(%sorganization_id IS NULL AND %sowner_user_id = %s AND %stransfer_pending_at IS NULL)",
-			field(""), field(""), arg(0), field("")), []any{access.UserID}
-	}
-	if access.IsOrganizationManager() {
-		return fmt.Sprintf("%sorganization_id = %s", field(""), arg(0)), []any{access.OrganizationID}
-	}
-	return fmt.Sprintf("(%sorganization_id = %s AND %sowner_user_id = %s AND %stransfer_pending_at IS NULL)",
-		field(""), arg(0), field(""), arg(1), field("")), []any{access.OrganizationID, access.UserID}
+	return workspaceOwnerScopedReadPredicate(access, alias, firstArg)
 }
 
 // QueryWorkspaceSubscribers keeps subscriber identifiers and personal data
@@ -656,11 +668,13 @@ func (c *Core) UpsertPublicWorkspaceSubscriber(access models.WorkspaceAccess, su
 	var inserted int
 	if err := tx.Get(&inserted, `
 		WITH lists_in_scope AS (
-			SELECT id FROM lists
-			WHERE id = ANY($1::INT[]) AND type = 'public' AND status = 'active'
-				AND transfer_pending_at IS NULL
-				AND organization_id IS NOT DISTINCT FROM $2::BIGINT
-				AND owner_user_id = $3
+			SELECT l.id FROM lists l
+			LEFT JOIN organizations organization ON organization.id = l.organization_id
+			WHERE l.id = ANY($1::INT[]) AND l.type = 'public' AND l.status = 'active'
+				AND l.transfer_pending_at IS NULL
+				AND l.organization_id IS NOT DISTINCT FROM $2::BIGINT
+				AND l.owner_user_id = $3
+				AND (l.organization_id IS NULL OR organization.status = 'active')
 		), subscriptions AS (
 			INSERT INTO subscriber_lists (subscriber_id, list_id, status)
 			SELECT $4, id,

@@ -210,6 +210,10 @@ export const revokeOrganizationInvite = (id) => http.delete(`/api/organizations/
 
 export const transferPendingOrganizationResources = (data) => http.post('/api/organizations/resources/transfer', data);
 
+export const getOrganizationMembersByID = (id) => http.get(`/api/organizations/${id}/members`);
+
+export const transferArchivedOrganizationResources = (id, data) => http.post(`/api/organizations/${id}/resources/transfer`, data);
+
 export const transferOrganizationTemplate = (id, data) => http.post(`/api/organizations/templates/${id}/transfer`, data);
 
 export const unpublishOrganizationTemplate = (id) => http.post(`/api/organizations/templates/${id}/unpublish`);
@@ -219,6 +223,14 @@ export const migratePersonalLists = (data) => http.post('/api/organizations/reso
 export const getOrganizationRequests = () => http.get('/api/organizations/requests');
 
 export const reviewOrganizationRequest = (id, data) => http.put(`/api/organizations/requests/${id}`, data);
+
+export const getOrganizations = (includeArchived = false) => http.get('/api/organizations', {
+  params: { include_archived: includeArchived },
+});
+
+export const archiveOrganization = (id) => http.post(`/api/organizations/${id}/archive`);
+
+export const purgeArchivedOrganization = (id) => http.delete(`/api/organizations/${id}`);
 
 // Subscribers.
 export const getSubscribers = async (params) => http.get(

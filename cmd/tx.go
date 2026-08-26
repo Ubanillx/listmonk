@@ -21,6 +21,9 @@ func (a *App) SendTxMessage(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := requireWritableWorkspace(access); err != nil {
+		return err
+	}
 	var m models.TxMessage
 
 	// If it's a multipart form, there may be file attachments.

@@ -111,6 +111,10 @@ type Workspace struct {
 	Role             string `json:"role,omitempty"`
 	Personal         bool   `json:"personal"`
 	PlatformAdmin    bool   `json:"platform_admin"`
+	// Archived is only surfaced to a platform administrator while it performs
+	// the constrained transfer and cleanup work required before a purge. It
+	// must never make an archived workspace writable through ordinary APIs.
+	Archived bool `json:"archived,omitempty"`
 }
 
 // WorkspaceAccess pairs a selected workspace with the authenticated user. It

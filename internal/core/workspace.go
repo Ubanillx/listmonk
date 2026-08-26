@@ -82,10 +82,36 @@ func (c *Core) CanReadResource(access models.WorkspaceAccess, scope models.Resou
 	return access.IsOrganizationManager()
 }
 
+// CanReadOwnerScopedResource is the access rule for lists and subscribers.
+// These resources deliberately do not honor organization/global visibility:
+// a member's audience remains private to that member, while organization
+// managers retain the documented read-only oversight access.
+func (c *Core) CanReadOwnerScopedResource(access models.WorkspaceAccess, scope models.ResourceScope) bool {
+	if access.PlatformAdmin {
+		return true
+	}
+	if !scope.OrganizationID.Valid {
+		return access.Personal && scope.OwnerUserID.Valid && int(scope.OwnerUserID.Int) == access.UserID && !scope.TransferPendingAt.Valid
+	}
+	if !access.IsOrganization() || int(scope.OrganizationID.Int) != access.OrganizationID {
+		return false
+	}
+	if scope.TransferPendingAt.Valid {
+		return access.IsOrganizationManager()
+	}
+	if scope.OwnerUserID.Valid && int(scope.OwnerUserID.Int) == access.UserID {
+		return true
+	}
+	return access.IsOrganizationManager()
+}
+
 // CanManageResource grants write access only to the owner in the selected
 // workspace, except platform administrators. Organization managers deliberately
 // never inherit write access to other members' resources.
 func (c *Core) CanManageResource(access models.WorkspaceAccess, scope models.ResourceScope) bool {
+	if access.Archived {
+		return false
+	}
 	if access.PlatformAdmin {
 		return true
 	}
@@ -110,7 +136,11 @@ func (c *Core) RequireReadResource(access models.WorkspaceAccess, resource strin
 	if err != nil {
 		return scope, err
 	}
-	if !c.CanReadResource(access, scope) {
+	canRead := c.CanReadResource(access, scope)
+	if resource == resourceLists || resource == resourceSubscribers {
+		canRead = c.CanReadOwnerScopedResource(access, scope)
+	}
+	if !canRead {
 		return scope, echo.NewHTTPError(http.StatusForbidden, "resource is outside the active workspace")
 	}
 	return scope, nil
@@ -185,7 +215,11 @@ func (c *Core) ListWorkspaceResources(access models.WorkspaceAccess, resource st
 
 	var q string
 	var args []any
-	if access.IsOrganization() {
+	if resource == resourceLists || resource == resourceSubscribers {
+		scope, scopeArgs := workspaceOwnerScopedReadPredicate(access, "", 1)
+		q = fmt.Sprintf("SELECT id FROM %s WHERE (%s)", table, scope)
+		args = scopeArgs
+	} else if access.IsOrganization() {
 		if access.IsOrganizationManager() {
 			q = fmt.Sprintf(`
 				SELECT id FROM %s
@@ -227,6 +261,9 @@ func (c *Core) SetResourceVisibility(resource string, id int, visibility string)
 		visibility != models.ResourceVisibilityGlobal {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid resource visibility")
 	}
+	if (resource == resourceLists || resource == resourceSubscribers) && visibility != models.ResourceVisibilityPrivate {
+		return echo.NewHTTPError(http.StatusBadRequest, "lists and subscribers must remain private to their owner")
+	}
 	if visibility == models.ResourceVisibilityGlobal &&
 		(resource == resourceLists || resource == resourceSubscribers || resource == resourceMedia) {
 		return echo.NewHTTPError(http.StatusBadRequest, "this resource cannot be globally visible")
@@ -250,6 +287,9 @@ func (c *Core) ListManagedWorkspaceResources(access models.WorkspaceAccess, reso
 		return nil, echo.NewHTTPError(http.StatusInternalServerError, "unknown workspace resource")
 	}
 
+	if access.Archived {
+		return []int{}, nil
+	}
 	if access.PlatformAdmin {
 		var ids []int
 		if err := c.db.Select(&ids, fmt.Sprintf(`SELECT id FROM %s`, table)); err != nil {

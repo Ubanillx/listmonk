@@ -101,7 +101,7 @@ func (c *Core) GetWorkspaceDashboardCounts(access models.WorkspaceAccess) (types
 		return c.GetDashboardCounts()
 	}
 
-	listScope, args := workspaceReadPredicate(access, "l", 1)
+	listScope, args := workspaceOwnerScopedReadPredicate(access, "l", 1)
 	subscriberScope, _ := workspaceSubscriberReadPredicate(access, "s", 1)
 	campaignScope, _ := workspaceReadPredicate(access, "c", 1)
 	stmt := fmt.Sprintf(`

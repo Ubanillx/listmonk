@@ -96,6 +96,9 @@ func (a *App) CreateList(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := requireWritableWorkspace(access); err != nil {
+		return err
+	}
 	l := models.List{}
 	if err := c.Bind(&l); err != nil {
 		return err

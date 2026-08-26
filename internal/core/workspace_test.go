@@ -43,6 +43,10 @@ func TestWorkspaceResourceAccessBoundaries(t *testing.T) {
 		Workspace: models.Workspace{Personal: true, PlatformAdmin: true},
 		UserID:    1,
 	}
+	archivedPlatformAdmin := models.WorkspaceAccess{
+		Workspace: models.Workspace{OrganizationID: 7, PlatformAdmin: true, Archived: true},
+		UserID:    1,
+	}
 
 	tests := []struct {
 		name       string
@@ -121,6 +125,13 @@ func TestWorkspaceResourceAccessBoundaries(t *testing.T) {
 			wantRead:   true,
 			wantManage: true,
 		},
+		{
+			name:       "archived workspace is readable but never writable",
+			access:     archivedPlatformAdmin,
+			scope:      workspaceTestScope(7, 10, models.ResourceVisibilityPrivate, false),
+			wantRead:   true,
+			wantManage: false,
+		},
 	}
 
 	for _, test := range tests {
@@ -130,6 +141,74 @@ func TestWorkspaceResourceAccessBoundaries(t *testing.T) {
 			}
 			if got := c.CanManageResource(test.access, test.scope); got != test.wantManage {
 				t.Fatalf("CanManageResource() = %v, want %v", got, test.wantManage)
+			}
+		})
+	}
+}
+
+func TestOwnerScopedResourceAccessBoundaries(t *testing.T) {
+	c := &Core{}
+	member := models.WorkspaceAccess{
+		Workspace: models.Workspace{OrganizationID: 7},
+		UserID:    20,
+	}
+	manager := models.WorkspaceAccess{
+		Workspace: models.Workspace{OrganizationID: 7, Role: models.OrganizationMemberRoleManager},
+		UserID:    30,
+	}
+	otherOrganizationMember := models.WorkspaceAccess{
+		Workspace: models.Workspace{OrganizationID: 8},
+		UserID:    20,
+	}
+
+	tests := []struct {
+		name   string
+		access models.WorkspaceAccess
+		scope  models.ResourceScope
+		want   bool
+	}{
+		{
+			name:   "member reads own organization list",
+			access: member,
+			scope:  workspaceTestScope(7, 20, models.ResourceVisibilityPrivate, false),
+			want:   true,
+		},
+		{
+			name:   "member cannot read another members old shared list",
+			access: member,
+			scope:  workspaceTestScope(7, 10, models.ResourceVisibilityOrganization, false),
+			want:   false,
+		},
+		{
+			name:   "manager can inspect another members list",
+			access: manager,
+			scope:  workspaceTestScope(7, 10, models.ResourceVisibilityPrivate, false),
+			want:   true,
+		},
+		{
+			name:   "member cannot inspect pending list",
+			access: member,
+			scope:  workspaceTestScope(7, 0, models.ResourceVisibilityPrivate, true),
+			want:   false,
+		},
+		{
+			name:   "manager can inspect pending list for transfer",
+			access: manager,
+			scope:  workspaceTestScope(7, 0, models.ResourceVisibilityPrivate, true),
+			want:   true,
+		},
+		{
+			name:   "same user cannot cross organization boundary",
+			access: otherOrganizationMember,
+			scope:  workspaceTestScope(7, 20, models.ResourceVisibilityPrivate, false),
+			want:   false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := c.CanReadOwnerScopedResource(test.access, test.scope); got != test.want {
+				t.Fatalf("CanReadOwnerScopedResource() = %v, want %v", got, test.want)
 			}
 		})
 	}

@@ -93,6 +93,9 @@ func (a *App) DeleteBounces(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := requireWritableWorkspace(access); err != nil {
+		return err
+	}
 	all, _ := strconv.ParseBool(c.QueryParam("all"))
 
 	var ids []int
@@ -123,6 +126,9 @@ func (a *App) DeleteBounce(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := requireWritableWorkspace(access); err != nil {
+		return err
+	}
 	// Delete bounces from the DB.
 	id := getID(c)
 	if err := a.core.DeleteWorkspaceBounces(access, []int{id}, false); err != nil {
@@ -136,6 +142,9 @@ func (a *App) DeleteBounce(c echo.Context) error {
 func (a *App) BlocklistBouncedSubscribers(c echo.Context) error {
 	access, err := a.workspaceAccess(c)
 	if err != nil {
+		return err
+	}
+	if err := requireWritableWorkspace(access); err != nil {
 		return err
 	}
 	if err := a.core.BlocklistWorkspaceBouncedSubscribers(access); err != nil {

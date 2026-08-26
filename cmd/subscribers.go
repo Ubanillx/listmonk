@@ -242,6 +242,9 @@ func (a *App) CreateSubscriber(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := requireWritableWorkspace(access); err != nil {
+		return err
+	}
 
 	// Get and validate fields.
 	var req subimporter.SubReq
@@ -501,6 +504,9 @@ func (a *App) DeleteSubscribersByQuery(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := requireWritableWorkspace(access); err != nil {
+		return err
+	}
 
 	var req subQueryReq
 	if err := c.Bind(&req); err != nil {
@@ -548,6 +554,9 @@ func (a *App) BlocklistSubscribersByQuery(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := requireWritableWorkspace(access); err != nil {
+		return err
+	}
 
 	var req subQueryReq
 	if err := c.Bind(&req); err != nil {
@@ -592,6 +601,9 @@ func (a *App) BlocklistSubscribersByQuery(c echo.Context) error {
 func (a *App) ManageSubscriberListsByQuery(c echo.Context) error {
 	access, err := a.workspaceAccess(c)
 	if err != nil {
+		return err
+	}
+	if err := requireWritableWorkspace(access); err != nil {
 		return err
 	}
 

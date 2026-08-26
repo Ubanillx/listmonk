@@ -229,6 +229,8 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.PUT("/api/organizations/members/:user_id", a.UpdateOrganizationMember)
 		g.DELETE("/api/organizations/members/:user_id", a.RemoveOrganizationMember)
 		g.POST("/api/organizations/resources/transfer", a.TransferPendingOrganizationResources)
+		g.GET("/api/organizations/:id/members", pm(hasID(a.GetOrganizationMembersForPlatform), "users:manage"))
+		g.POST("/api/organizations/:id/resources/transfer", pm(hasID(a.TransferArchivedOrganizationResources), "users:manage"))
 		g.POST("/api/organizations/templates/:id/transfer", hasID(a.TransferOrganizationTemplate))
 		g.POST("/api/organizations/templates/:id/unpublish", hasID(a.UnpublishOrganizationTemplate))
 		g.GET("/api/organizations/invites", a.GetOrganizationInvites)
@@ -238,6 +240,7 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.GET("/api/organizations/requests", pm(a.GetOrganizationRequests, "users:manage"))
 		g.PUT("/api/organizations/requests/:id", pm(hasID(a.ReviewOrganizationRequest), "users:manage"))
 		g.POST("/api/organizations/:id/archive", pm(hasID(a.ArchiveOrganization), "users:manage"))
+		g.DELETE("/api/organizations/:id", pm(hasID(a.PurgeArchivedOrganization), "users:manage"))
 
 		g.GET("/api/users", pm(a.GetUsers, "users:get"))
 		g.GET("/api/users/:id/integration-tokens", pm(hasID(a.GetUserIntegrationTokens), "users:manage"))

@@ -286,13 +286,15 @@ WITH camps AS (
             LIMIT 1
         ), '') AS template_body
     FROM campaigns
+    LEFT JOIN organizations organization ON organization.id = campaigns.organization_id
     LEFT JOIN templates ON (templates.id = campaigns.template_id)
     WHERE (
-        status='running'
-        OR (status='scheduled' AND $2::TIMESTAMPTZ >= campaigns.send_at)
-        OR (status='deferred' AND campaigns.next_resume_at IS NOT NULL AND $2::TIMESTAMPTZ >= campaigns.next_resume_at)
+        campaigns.status='running'
+        OR (campaigns.status='scheduled' AND $2::TIMESTAMPTZ >= campaigns.send_at)
+        OR (campaigns.status='deferred' AND campaigns.next_resume_at IS NOT NULL AND $2::TIMESTAMPTZ >= campaigns.next_resume_at)
     )
     AND campaigns.transfer_pending_at IS NULL
+	AND (campaigns.organization_id IS NULL OR organization.status = 'active')
     AND NOT(campaigns.id = ANY($1::INT[]))
 ),
 campMedia AS (
@@ -852,10 +854,15 @@ WHERE id = $1;
 
 -- name: queue-campaign-subscribers
 WITH picked AS (
-    SELECT subscriber_id
-    FROM campaign_recipients
-    WHERE campaign_id = $1
-      AND status = ANY($2::campaign_recipient_status[])
+    SELECT cr.subscriber_id
+    FROM campaign_recipients cr
+    JOIN campaigns c ON c.id = cr.campaign_id
+    LEFT JOIN organizations organization ON organization.id = c.organization_id
+    WHERE cr.campaign_id = $1
+      AND cr.status = ANY($2::campaign_recipient_status[])
+      AND c.status = 'running'
+      AND c.transfer_pending_at IS NULL
+      AND (c.organization_id IS NULL OR organization.status = 'active')
     ORDER BY subscriber_id
     FOR UPDATE SKIP LOCKED
     LIMIT $3

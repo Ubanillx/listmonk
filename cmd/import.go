@@ -19,8 +19,11 @@ func (a *App) ImportSubscribers(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := requireWritableWorkspace(access); err != nil {
+		return err
+	}
 	// Is an import already running?
-	if a.importer.GetStats().Status == subimporter.StatusImporting {
+	if status := a.importer.GetStats().Status; status == subimporter.StatusImporting || status == subimporter.StatusStopping {
 		if err := a.requireImportAccess(access); err != nil {
 			return err
 		}

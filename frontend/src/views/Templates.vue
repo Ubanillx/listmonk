@@ -75,9 +75,7 @@
               <b-icon icon="pencil-outline" size="is-small" />
             </b-tooltip>
           </a>
-          <a href="#" @click.prevent="$utils.prompt($t('globals.buttons.clone'),
-            { placeholder: $t('globals.fields.name'), value: $t('campaigns.copyOf', { name: props.row.name }) },
-            (name) => cloneTemplate(name, props.row))" data-cy="btn-clone" :aria-label="$t('globals.buttons.clone')">
+          <a href="#" @click.prevent="openCloneTemplate(props.row)" data-cy="btn-clone" :aria-label="$t('globals.buttons.clone')">
             <b-tooltip :label="$t('globals.buttons.clone')" type="is-dark">
               <b-icon icon="file-multiple-outline" size="is-small" />
             </b-tooltip>
@@ -124,6 +122,31 @@
 
     <campaign-preview v-if="previewItem" type="template" :id="previewItem.id" :template-type="previewItem.type"
       :title="previewItem.name" @close="closePreview" />
+
+    <b-modal scroll="keep" :aria-modal="true" :active.sync="isCloneFormVisible" :width="520">
+      <div class="modal-card content" style="width: auto">
+        <header class="modal-card-head"><h4>复制邮件模板</h4></header>
+        <section class="modal-card-body">
+          <b-field :label="$t('globals.fields.name')" label-position="on-border">
+            <b-input v-model.trim="cloneForm.name" maxlength="200" required />
+          </b-field>
+          <b-field label="目标位置" label-position="on-border">
+            <b-select v-model.number="cloneForm.targetOrganizationID" expanded>
+              <option :value="0">个人空间</option>
+              <option v-for="organization in organizations" :key="organization.id" :value="organization.id">
+                {{ organization.name }}
+              </option>
+            </b-select>
+          </b-field>
+        </section>
+        <footer class="modal-card-foot has-text-right">
+          <b-button @click="isCloneFormVisible = false">{{ $t('globals.buttons.close') }}</b-button>
+          <b-button type="is-primary" :disabled="!cloneForm.name" @click="cloneTemplate">
+复制
+</b-button>
+        </footer>
+      </div>
+    </b-modal>
 
     <b-modal scroll="keep" :aria-modal="true" :active.sync="isOrganizationTemplateActionsVisible" :width="520">
       <div class="modal-card content" style="width: auto">
@@ -175,6 +198,12 @@ export default Vue.extend({
       isEditing: false,
       isFormVisible: false,
       previewItem: null,
+      isCloneFormVisible: false,
+      cloneTemplateItem: null,
+      cloneForm: {
+        name: '',
+        targetOrganizationID: 0,
+      },
       isOrganizationTemplateActionsVisible: false,
       organizationTemplate: null,
       organizationTemplateTargetUserID: null,
@@ -213,12 +242,30 @@ export default Vue.extend({
       this.previewItem = null;
     },
 
-    cloneTemplate(name, t) {
-      this.$api.cloneTemplate(t.id, { name }).then((d) => {
-        this.$api.getTemplates();
-        this.$emit('finished');
-        this.$utils.toast(`'${d.name}' created`);
-      });
+    openCloneTemplate(template) {
+      this.cloneTemplateItem = template;
+      this.cloneForm = {
+        name: this.$t('campaigns.copyOf', { name: template.name }),
+        targetOrganizationID: Number(this.workspace.organizationId) || 0,
+      };
+      this.isCloneFormVisible = true;
+    },
+
+    async cloneTemplate() {
+      if (!this.cloneTemplateItem || !this.cloneForm.name) {
+        return;
+      }
+      const currentOrganizationID = Number(this.workspace.organizationId) || 0;
+      const targetOrganizationID = Number(this.cloneForm.targetOrganizationID) || 0;
+      const request = { name: this.cloneForm.name };
+      if (targetOrganizationID !== currentOrganizationID) {
+        request.target_organization_id = targetOrganizationID;
+      }
+      const template = await this.$api.cloneTemplate(this.cloneTemplateItem.id, request);
+      this.isCloneFormVisible = false;
+      this.cloneTemplateItem = null;
+      this.$utils.toast(`'${template.name}' created`);
+      this.$api.getTemplates();
     },
 
     canManageTemplate(template) {
@@ -286,7 +333,7 @@ export default Vue.extend({
   },
 
   computed: {
-    ...mapState(['templates', 'loading', 'workspace', 'profile']),
+    ...mapState(['templates', 'loading', 'workspace', 'organizations', 'profile']),
 
     isOrganizationManager() {
       return this.workspace.organizationId > 0

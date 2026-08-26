@@ -35,8 +35,9 @@ var (
 )
 
 type templateCloneReq struct {
-	Name    string `json:"name"`
-	Subject string `json:"subject"`
+	Name                 string `json:"name"`
+	Subject              string `json:"subject"`
+	TargetOrganizationID *int   `json:"target_organization_id"`
 }
 
 // templateReq keeps the API's write representation of media (a list of IDs)
@@ -170,6 +171,9 @@ func (a *App) CreateTemplate(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := requireWritableWorkspace(access); err != nil {
+		return err
+	}
 	var req templateReq
 	if err := c.Bind(&req); err != nil {
 		return err
@@ -272,13 +276,23 @@ func (a *App) CloneTemplate(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return err
 	}
+	target := access
+	if req.TargetOrganizationID != nil {
+		target, err = a.workspaceAccessForOrganization(c, *req.TargetOrganizationID)
+		if err != nil {
+			return err
+		}
+	}
+	if err := requireWritableWorkspace(target); err != nil {
+		return err
+	}
 
 	clone, err := a.prepareTemplate(src.Clone(req.Name, req.Subject))
 	if err != nil {
 		return err
 	}
 
-	out, err := a.core.CloneTemplateForWorkspace(id, access, clone.Name, clone.Subject)
+	out, err := a.core.CloneTemplateForWorkspace(id, target, clone.Name, clone.Subject)
 	if err != nil {
 		return err
 	}

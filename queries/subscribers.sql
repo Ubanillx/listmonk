@@ -154,11 +154,23 @@ UPDATE subscriber_lists SET status='unsubscribed', updated_at=NOW()
 -- name: upsert-workspace-subscriber
 -- Scoped importer variant. Legacy bootstrap records still use upsert-subscriber
 -- because they are created before the first administrator exists.
-WITH sub AS (
+WITH active_membership AS (
+    SELECT om.organization_id
+    FROM organization_members om
+    JOIN organizations o ON o.id = om.organization_id
+    WHERE $9::BIGINT IS NOT NULL AND om.organization_id = $9::BIGINT
+        AND om.user_id = $10 AND om.removed_at IS NULL AND o.status = 'active'
+    FOR SHARE OF o, om
+), active_workspace AS (
+    SELECT 1 WHERE $9::BIGINT IS NULL
+    UNION ALL
+    SELECT 1 FROM active_membership
+), sub AS (
     INSERT INTO subscribers AS s (
         uuid, email, name, attribs, status,
         organization_id, owner_user_id, original_owner_user_id, visibility
-    ) VALUES($1, $2, $3, $4, 'enabled', $9, $10, $11, 'private')
+    ) SELECT $1, $2, $3, $4, 'enabled', $9, $10, $11, 'private'
+    FROM active_workspace
     ON CONFLICT ((COALESCE(organization_id, 0)), owner_user_id, LOWER(email))
         WHERE owner_user_id IS NOT NULL
     DO UPDATE SET
@@ -184,11 +196,23 @@ subs AS (
 SELECT uuid, id FROM sub;
 
 -- name: upsert-workspace-blocklist-subscriber
-WITH sub AS (
+WITH active_membership AS (
+    SELECT om.organization_id
+    FROM organization_members om
+    JOIN organizations o ON o.id = om.organization_id
+    WHERE $5::BIGINT IS NOT NULL AND om.organization_id = $5::BIGINT
+        AND om.user_id = $6 AND om.removed_at IS NULL AND o.status = 'active'
+    FOR SHARE OF o, om
+), active_workspace AS (
+    SELECT 1 WHERE $5::BIGINT IS NULL
+    UNION ALL
+    SELECT 1 FROM active_membership
+), sub AS (
     INSERT INTO subscribers AS s (
         uuid, email, name, attribs, status,
         organization_id, owner_user_id, original_owner_user_id, visibility
-    ) VALUES($1, $2, $3, $4, 'blocklisted', $5, $6, $7, 'private')
+    ) SELECT $1, $2, $3, $4, 'blocklisted', $5, $6, $7, 'private'
+    FROM active_workspace
     ON CONFLICT ((COALESCE(organization_id, 0)), owner_user_id, LOWER(email))
         WHERE owner_user_id IS NOT NULL
     DO UPDATE SET status='blocklisted', updated_at=NOW()

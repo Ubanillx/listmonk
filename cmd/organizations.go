@@ -10,6 +10,7 @@ import (
 
 	"github.com/knadh/listmonk/internal/auth"
 	"github.com/knadh/listmonk/internal/core"
+	"github.com/knadh/listmonk/internal/subimporter"
 	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
 	null "gopkg.in/volatiletech/null.v6"
@@ -113,6 +114,7 @@ func (a *App) workspaceAccessForOrganization(c echo.Context, orgID int) (models.
 		OrganizationID:   orgID,
 		OrganizationName: org.Name,
 		PlatformAdmin:    user.UserRoleID == auth.SuperAdminRoleID,
+		Archived:         org.Status == models.OrganizationStatusArchived,
 	}
 	if ws.PlatformAdmin {
 		// Archived organizations are intentionally unavailable to members, but
@@ -147,12 +149,17 @@ func normalizeWorkspaceVisibility(access models.WorkspaceAccess, value string) (
 }
 
 // normalizeResourceVisibility additionally constrains the resource types that
-// may be published globally. Lists and media files can be shared inside an
-// organization, but are never standalone global resources.
+// can be published. Lists and subscribers are always owned by one user. An
+// organization manager can inspect them, but ordinary members must never gain
+// access through a visibility flag.
 func normalizeResourceVisibility(access models.WorkspaceAccess, resource, value string) (string, error) {
 	visibility, err := normalizeWorkspaceVisibility(access, value)
 	if err != nil {
 		return "", err
+	}
+	if (resource == resourceLists || resource == resourceSubscribers) &&
+		visibility != models.ResourceVisibilityPrivate {
+		return "", echo.NewHTTPError(http.StatusBadRequest, "lists and subscribers must remain private to their owner")
 	}
 	if visibility == models.ResourceVisibilityGlobal &&
 		(resource == resourceLists || resource == resourceSubscribers || resource == resourceMedia) {
@@ -169,10 +176,41 @@ func (a *App) requireOrganizationManager(c echo.Context) (models.Workspace, erro
 	if ws.OrganizationID == 0 {
 		return ws, echo.NewHTTPError(http.StatusBadRequest, "select an organization workspace")
 	}
+	if ws.Archived {
+		return ws, echo.NewHTTPError(http.StatusConflict, "organization is archived")
+	}
 	if !ws.PlatformAdmin && ws.Role != models.OrganizationMemberRoleManager {
 		return ws, echo.NewHTTPError(http.StatusForbidden, "organization manager permission required")
 	}
 	return ws, nil
+}
+
+// requireOrganizationTransferManager keeps former-member resource transfer
+// available to active organization managers. Once an organization is
+// archived, only a platform administrator may use this limited cleanup path;
+// all ordinary resource writes remain blocked.
+func (a *App) requireOrganizationTransferManager(c echo.Context) (models.Workspace, error) {
+	ws, err := a.workspaceFromRequest(c)
+	if err != nil {
+		return ws, err
+	}
+	if ws.OrganizationID == 0 {
+		return ws, echo.NewHTTPError(http.StatusBadRequest, "select an organization workspace")
+	}
+	if ws.Archived && !ws.PlatformAdmin {
+		return ws, echo.NewHTTPError(http.StatusConflict, "organization is archived")
+	}
+	if !ws.PlatformAdmin && ws.Role != models.OrganizationMemberRoleManager {
+		return ws, echo.NewHTTPError(http.StatusForbidden, "organization manager permission required")
+	}
+	return ws, nil
+}
+
+func requireWritableWorkspace(access models.WorkspaceAccess) error {
+	if access.Archived {
+		return echo.NewHTTPError(http.StatusConflict, "organization is archived; only resource transfer or cleanup is allowed")
+	}
+	return nil
 }
 
 func (a *App) requirePlatformAdmin(c echo.Context) error {
@@ -265,10 +303,23 @@ func (a *App) ArchiveOrganization(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	a.stopOrganizationImport(getID(c), 0)
 	for _, campaign := range stopped {
 		if campaign.Status == models.CampaignStatusPaused {
 			a.manager.StopCampaign(campaign.ID, models.CampaignStatusPaused)
 		}
+	}
+	return c.JSON(http.StatusOK, okResp{true})
+}
+
+// PurgeArchivedOrganization permanently removes organization metadata only
+// after all scoped resources have been transferred or cleaned up.
+func (a *App) PurgeArchivedOrganization(c echo.Context) error {
+	if err := a.requirePlatformAdmin(c); err != nil {
+		return err
+	}
+	if err := a.core.PurgeArchivedOrganization(getID(c)); err != nil {
+		return err
 	}
 	return c.JSON(http.StatusOK, okResp{true})
 }
@@ -358,6 +409,7 @@ func (a *App) RemoveOrganizationMember(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	a.stopOrganizationImport(ws.OrganizationID, userID)
 	// Stop manager goroutines after the transaction committed. The records are
 	// already paused in the DB, so they cannot be picked up by a new worker.
 	for _, campaign := range stopped {
@@ -376,10 +428,14 @@ func (a *App) LeaveOrganization(c echo.Context) error {
 	if ws.OrganizationID == 0 {
 		return echo.NewHTTPError(http.StatusBadRequest, "select an organization workspace")
 	}
+	if ws.Archived {
+		return echo.NewHTTPError(http.StatusConflict, "organization is archived")
+	}
 	stopped, err := a.core.RemoveOrganizationMember(ws.OrganizationID, auth.GetUser(c).ID, auth.GetUser(c).ID)
 	if err != nil {
 		return err
 	}
+	a.stopOrganizationImport(ws.OrganizationID, auth.GetUser(c).ID)
 	for _, campaign := range stopped {
 		if campaign.Status == models.CampaignStatusPaused {
 			a.manager.StopCampaign(campaign.ID, models.CampaignStatusPaused)
@@ -389,7 +445,7 @@ func (a *App) LeaveOrganization(c echo.Context) error {
 }
 
 func (a *App) TransferPendingOrganizationResources(c echo.Context) error {
-	ws, err := a.requireOrganizationManager(c)
+	ws, err := a.requireOrganizationTransferManager(c)
 	if err != nil {
 		return err
 	}
@@ -403,7 +459,47 @@ func (a *App) TransferPendingOrganizationResources(c echo.Context) error {
 	if err := a.core.TransferPendingOrganizationResources(ws.OrganizationID, req.TargetUserID); err != nil {
 		return err
 	}
+	a.core.RefreshMatViews(true)
 	return c.JSON(http.StatusOK, okResp{true})
+}
+
+// TransferArchivedOrganizationResources moves the complete pending resource
+// set out of an archived organization. This is intentionally a path-based
+// platform-admin operation because archived organizations cannot be selected
+// as ordinary workspaces.
+func (a *App) TransferArchivedOrganizationResources(c echo.Context) error {
+	if err := a.requirePlatformAdmin(c); err != nil {
+		return err
+	}
+	var req organizationTransferInput
+	if err := c.Bind(&req); err != nil {
+		return err
+	}
+	if req.TargetUserID < 1 {
+		return echo.NewHTTPError(http.StatusBadRequest, "target user is required")
+	}
+	if err := a.core.TransferArchivedOrganizationResourcesToPersonal(getID(c), req.TargetUserID); err != nil {
+		return err
+	}
+	a.core.RefreshMatViews(true)
+	return c.JSON(http.StatusOK, okResp{true})
+}
+
+// GetOrganizationMembersForPlatform exposes the transfer target list for an
+// archived organization only to platform administrators. Active organization
+// managers continue to use the workspace-scoped member endpoint.
+func (a *App) GetOrganizationMembersForPlatform(c echo.Context) error {
+	if err := a.requirePlatformAdmin(c); err != nil {
+		return err
+	}
+	if _, err := a.core.GetOrganization(getID(c)); err != nil {
+		return err
+	}
+	out, err := a.core.GetOrganizationMembers(getID(c))
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, okResp{out})
 }
 
 func (a *App) TransferOrganizationTemplate(c echo.Context) error {
@@ -464,6 +560,9 @@ func (a *App) MigratePersonalListsToOrganization(c echo.Context) error {
 	}
 	if !target.IsOrganization() {
 		return echo.NewHTTPError(http.StatusBadRequest, "select an organization destination")
+	}
+	if err := requireWritableWorkspace(target); err != nil {
+		return err
 	}
 	listIDs, err := a.core.MigratePersonalListsToOrganization(user.ID, target.OrganizationID, user.ID, req.ListIDs, req.Mode == "move")
 	if err != nil {
@@ -539,6 +638,23 @@ func (a *App) RevokeOrganizationInvite(c echo.Context) error {
 
 func (a *App) coreHashInvite(code string) string {
 	return core.HashOrganizationInviteCode(code)
+}
+
+// stopOrganizationImport terminates the singleton importer only when its
+// active session belongs to the organization (and, when supplied, the member)
+// whose access was just revoked.
+func (a *App) stopOrganizationImport(organizationID, ownerUserID int) {
+	if a.importer == nil {
+		return
+	}
+	status := a.importer.GetStats()
+	if status.Status != subimporter.StatusImporting || status.OrganizationID != organizationID {
+		return
+	}
+	if ownerUserID != 0 && status.OwnerUserID != ownerUserID {
+		return
+	}
+	a.importer.Stop()
 }
 
 func newOrganizationInviteCode() (string, error) {

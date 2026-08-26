@@ -43,6 +43,7 @@ const (
 	StatusNone      = "none"
 	StatusImporting = "importing"
 	StatusStopping  = "stopping"
+	StatusStopped   = "stopped"
 	StatusFinished  = "finished"
 	StatusFailed    = "failed"
 
@@ -139,7 +140,8 @@ type importStatusTpl struct {
 var (
 	// ErrIsImporting is thrown when an import request is made while an
 	// import is already running.
-	ErrIsImporting = errors.New("import is already running")
+	ErrIsImporting   = errors.New("import is already running")
+	errImportStopped = errors.New("import stopped")
 
 	csvHeaders = map[string]bool{
 		"email":      true,
@@ -195,6 +197,13 @@ func New(opt Options, db *sql.DB, i *i18n.I18n) *Importer {
 func (im *Importer) NewSession(opt SessionOpt) (*Session, error) {
 	if !im.isDone() {
 		return nil, errors.New("an import is already running")
+	}
+	// A stopped loader may leave the non-blocking signal buffered. Each new
+	// session starts cleanly and relies on the status transition for future
+	// cancellation checks.
+	select {
+	case <-im.stop:
+	default:
 	}
 
 	// For API backwards compatibility, if the old 'overwrite'
@@ -265,16 +274,14 @@ func (im *Importer) getStatus() string {
 	return status
 }
 
-// isDone returns true if the importer is working (importing|stopping).
+// isDone reports whether a new import session may start. Both importing and
+// stopping states are busy: accepting a new session while cancellation is
+// still draining can mix two workspaces in the singleton importer.
 func (im *Importer) isDone() bool {
-	s := true
 	im.RLock()
-	if im.getStatus() == StatusImporting || im.getStatus() == StatusStopping {
-		s = false
-	}
+	status := im.status.Status
 	im.RUnlock()
-
-	return s
+	return status != StatusImporting && status != StatusStopping
 }
 
 // incrementImportCount sets the Importer's "imported" counter.
@@ -315,6 +322,17 @@ func (s *Session) Start() {
 	copy(listIDs, s.opt.ListIDs)
 
 	for sub := range s.subQueue {
+		// Do not drain a stopped queue into the database. The loader will close
+		// the queue after observing the same status, while this goroutine keeps
+		// consuming pending rows so the loader can never block on a full buffer.
+		if s.im.getStatus() == StatusStopping {
+			if tx != nil {
+				_ = tx.Rollback()
+				tx = nil
+				cur = 0
+			}
+			continue
+		}
 		if cur == 0 {
 			// New transaction batch.
 			tx, err = s.im.db.Begin()
@@ -379,6 +397,15 @@ func (s *Session) Start() {
 
 			cur = 0
 		}
+	}
+	if s.im.getStatus() == StatusStopping {
+		if tx != nil {
+			_ = tx.Rollback()
+		}
+		s.im.setStatus(StatusStopped)
+		s.log.Printf("import stopped")
+		_ = s.im.sendNotif(StatusStopped)
+		return
 	}
 
 	// Queue's closed and there's nothing left to commit.
@@ -564,6 +591,12 @@ func (s *Session) LoadCSV(srcPath string, delim rune) error {
 	if !hasHeader {
 		i++
 		if err := s.enqueueRow(csvHdr, hdrKeys, i); err != nil {
+			if errors.Is(err, errImportStopped) {
+				failed = false
+				close(s.subQueue)
+				s.log.Println("stop request received")
+				return nil
+			}
 			s.log.Printf("skipping line %d: %v: %v", i, err, csvHdr)
 		}
 	}
@@ -571,14 +604,13 @@ func (s *Session) LoadCSV(srcPath string, delim rune) error {
 	for {
 		i++
 
-		// Check for the stop signal.
-		select {
-		case <-s.im.stop:
+		// Check for the stop signal before reading and before a potentially
+		// blocking enqueue below.
+		if s.im.getStatus() == StatusStopping {
 			failed = false
 			close(s.subQueue)
 			s.log.Println("stop request received")
 			return nil
-		default:
 		}
 
 		cols, err := rd.Read()
@@ -595,6 +627,12 @@ func (s *Session) LoadCSV(srcPath string, delim rune) error {
 		}
 
 		if err := s.enqueueRow(cols, hdrKeys, i); err != nil {
+			if errors.Is(err, errImportStopped) {
+				failed = false
+				close(s.subQueue)
+				s.log.Println("stop request received")
+				return nil
+			}
 			s.log.Printf("skipping line %d: %v: %v", i, err, cols)
 			continue
 		}
@@ -656,17 +694,21 @@ func (s *Session) LoadXLSX(srcPath string) error {
 	s.im.Unlock()
 
 	for i := start; i < len(rows); i++ {
-		// Check for the stop signal.
-		select {
-		case <-s.im.stop:
+		// Check for the stop signal before a potentially blocking enqueue.
+		if s.im.getStatus() == StatusStopping {
 			failed = false
 			close(s.subQueue)
 			s.log.Println("stop request received")
 			return nil
-		default:
 		}
 
 		if err := s.enqueueRow(rows[i], hdrKeys, i+1); err != nil {
+			if errors.Is(err, errImportStopped) {
+				failed = false
+				close(s.subQueue)
+				s.log.Println("stop request received")
+				return nil
+			}
 			s.log.Printf("skipping line %d: %v: %v", i+1, err, rows[i])
 		}
 	}
@@ -679,18 +721,26 @@ func (s *Session) LoadXLSX(srcPath string) error {
 
 // Stop sends a signal to stop the existing import.
 func (im *Importer) Stop() {
-	if im.getStatus() != StatusImporting {
-		im.Lock()
+	im.Lock()
+	status := im.status.Status
+	switch status {
+	case StatusStopping:
+		im.Unlock()
+		return
+	case StatusImporting:
+		// Publish the state before signalling the loader. Otherwise the loader
+		// can consume the signal, finish its queue, and see the old importing
+		// state before this method updates it.
+		im.status.Status = StatusStopping
+		im.Unlock()
+		select {
+		case im.stop <- true:
+		default:
+		}
+		return
+	default:
 		im.status = Status{Status: StatusNone}
 		im.Unlock()
-
-		return
-	}
-
-	select {
-	case im.stop <- true:
-		im.setStatus(StatusStopping)
-	default:
 	}
 }
 
@@ -946,8 +996,15 @@ func (s *Session) enqueueRow(cols []string, keyMap map[string]int, line int) err
 		}
 	}
 
-	s.subQueue <- sub
-	return nil
+	if s.im.getStatus() == StatusStopping {
+		return errImportStopped
+	}
+	select {
+	case s.subQueue <- sub:
+		return nil
+	case <-s.im.stop:
+		return errImportStopped
+	}
 }
 
 // countLines counts the number of line breaks in a file. This does not

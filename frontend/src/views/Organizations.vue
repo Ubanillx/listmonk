@@ -192,7 +192,59 @@
           <b-button size="is-small" type="is-text" @click="reviewRequest(props.row, false)">拒绝</b-button>
         </b-table-column>
       </b-table>
+
+      <h2 class="title is-5 mt-6">组织归档</h2>
+      <b-table :data="platformOrganizations" :mobile-cards="false" narrowed>
+        <b-table-column v-slot="props" field="name" label="组织">{{ props.row.name }}</b-table-column>
+        <b-table-column v-slot="props" field="memberCount" label="成员数">{{ props.row.memberCount }}</b-table-column>
+        <b-table-column v-slot="props" field="status" label="状态">
+          <b-tag :type="props.row.status === 'archived' ? 'is-warning' : 'is-success'">
+            {{ props.row.status === 'archived' ? '已归档' : '正常' }}
+          </b-tag>
+        </b-table-column>
+        <b-table-column v-slot="props" field="archivedAt" label="归档时间">
+          {{ props.row.archivedAt ? $utils.niceDate(props.row.archivedAt) : '-' }}
+        </b-table-column>
+        <b-table-column v-slot="props" label="操作" numeric>
+          <b-button v-if="props.row.status !== 'archived'" size="is-small" type="is-text" icon-left="archive-outline"
+            @click="archivePlatformOrganization(props.row)">
+归档
+</b-button>
+          <b-button v-if="props.row.status === 'archived'" size="is-small" type="is-text" icon-left="swap-horizontal"
+            @click="openArchiveTransfer(props.row)">
+转移资源
+</b-button>
+          <b-button v-if="props.row.status === 'archived'" size="is-small" type="is-text" icon-left="delete-forever-outline"
+            @click="purgePlatformOrganization(props.row)">
+永久删除
+</b-button>
+        </b-table-column>
+      </b-table>
     </section>
+
+    <b-modal scroll="keep" :aria-modal="true" :active.sync="isArchiveTransferVisible" :width="520">
+      <div class="modal-card content" style="width: auto">
+        <header class="modal-card-head"><h4>转移归档资源</h4></header>
+        <section class="modal-card-body">
+          <p v-if="archiveTransferOrganization" class="mb-4">{{ archiveTransferOrganization.name }}</p>
+          <b-field label="接收成员" label-position="on-border">
+            <b-select v-model.number="archiveTransferTargetUserID" expanded>
+              <option :value="null">请选择成员</option>
+              <option v-for="member in archiveTransferMembers" :key="member.userId" :value="member.userId">
+                {{ member.username }}
+              </option>
+            </b-select>
+          </b-field>
+          <p class="has-text-grey is-size-7">资源将转移到该成员的个人空间，组织共享资源会改为个人私有。</p>
+        </section>
+        <footer class="modal-card-foot has-text-right">
+          <b-button @click="isArchiveTransferVisible = false">{{ $t('globals.buttons.close') }}</b-button>
+          <b-button type="is-primary" :disabled="!archiveTransferTargetUserID" @click="transferArchivedResources">
+转移
+</b-button>
+        </footer>
+      </div>
+    </b-modal>
   </section>
 </template>
 
@@ -209,6 +261,11 @@ export default Vue.extend({
       members: [],
       invites: [],
       requests: [],
+      platformOrganizations: [],
+      isArchiveTransferVisible: false,
+      archiveTransferOrganization: null,
+      archiveTransferMembers: [],
+      archiveTransferTargetUserID: null,
       personalLists: [],
       personalListIDs: [],
       joinCode: '',
@@ -268,7 +325,15 @@ export default Vue.extend({
         this.personalListIDs = [];
       }
       if (this.isPlatformAdmin) {
-        this.requests = await this.$api.getOrganizationRequests();
+        const [requests, platformOrganizations] = await Promise.all([
+          this.$api.getOrganizationRequests(),
+          this.$api.getOrganizations(true),
+        ]);
+        this.requests = requests;
+        this.platformOrganizations = platformOrganizations;
+      } else {
+        this.requests = [];
+        this.platformOrganizations = [];
       }
     },
 
@@ -362,6 +427,42 @@ export default Vue.extend({
 
     async reviewRequest(request, approve) {
       await this.$api.reviewOrganizationRequest(request.id, { approve, note: '' });
+      await this.refresh();
+    },
+
+    archivePlatformOrganization(organization) {
+      this.$utils.confirm(`确认归档组织“${organization.name}”？排期活动会转为草稿，正在发送的活动会立即停止。`, async () => {
+        await this.$api.archiveOrganization(organization.id);
+        await this.refresh();
+      });
+    },
+
+    purgePlatformOrganization(organization) {
+      this.$utils.confirm(`确认永久删除组织“${organization.name}”？只有资源已全部转移或清理后才能完成。`, async () => {
+        await this.$api.purgeArchivedOrganization(organization.id);
+        await this.refresh();
+      });
+    },
+
+    async openArchiveTransfer(organization) {
+      this.archiveTransferOrganization = organization;
+      this.archiveTransferTargetUserID = null;
+      const members = await this.$api.getOrganizationMembersByID(organization.id);
+      this.archiveTransferMembers = members.filter((member) => !member.removedAt);
+      this.isArchiveTransferVisible = true;
+    },
+
+    async transferArchivedResources() {
+      if (!this.archiveTransferOrganization || !this.archiveTransferTargetUserID) {
+        return;
+      }
+      await this.$api.transferArchivedOrganizationResources(this.archiveTransferOrganization.id, {
+        target_user_id: this.archiveTransferTargetUserID,
+      });
+      this.isArchiveTransferVisible = false;
+      this.archiveTransferOrganization = null;
+      this.archiveTransferMembers = [];
+      this.archiveTransferTargetUserID = null;
       await this.refresh();
     },
   },

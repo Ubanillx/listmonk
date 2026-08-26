@@ -87,11 +87,12 @@ func (a *App) GetCampaigns(c echo.Context) error {
 	}
 
 	// Remove the body from the response if requested.
-	if noBody {
-		for i := range res {
+	for i := range res {
+		if noBody {
 			res[i].Body = ""
 			res[i].BodySource.Valid = false
 		}
+		a.redactCampaignSensitiveFields(access, &res[i])
 	}
 
 	// Paginate the response.
@@ -134,8 +135,21 @@ func (a *App) GetCampaign(c echo.Context) error {
 	if noBody {
 		out.Body = ""
 	}
+	a.redactCampaignSensitiveFields(access, &out)
 
 	return c.JSON(http.StatusOK, okResp{out})
+}
+
+// redactCampaignSensitiveFields keeps public and manager read-only views
+// useful for inspection and cloning without exposing a member's sender
+// identity, arbitrary delivery headers, or audience list names.
+func (a *App) redactCampaignSensitiveFields(access models.WorkspaceAccess, campaign *models.Campaign) {
+	if a.core.CanSeeSensitiveResource(access, campaign.ResourceScope) {
+		return
+	}
+	campaign.FromEmail = ""
+	campaign.Headers = nil
+	campaign.Lists = []byte("[]")
 }
 
 // PreviewCampaign renders the HTML preview of a campaign body.
@@ -284,6 +298,9 @@ func (a *App) CreateCampaign(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := requireWritableWorkspace(access); err != nil {
+		return err
+	}
 	var o campReq
 	if err := c.Bind(&o); err != nil {
 		return err
@@ -357,6 +374,9 @@ func (a *App) CloneCampaign(c echo.Context) error {
 		if err != nil {
 			return err
 		}
+	}
+	if err := requireWritableWorkspace(target); err != nil {
+		return err
 	}
 	if req.Name != "" && !strHasLen(strings.TrimSpace(req.Name), 1, stdInputMaxLen) {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("campaigns.fieldInvalidName"))

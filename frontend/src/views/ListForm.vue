@@ -44,13 +44,6 @@
           </b-select>
         </b-field>
 
-        <b-field label="可见范围" label-position="on-border">
-          <b-select v-model="form.visibility" :disabled="!canSave" expanded>
-            <option value="private">个人私有</option>
-            <option v-if="workspace.organizationId" value="organization">当前组织共享</option>
-          </b-select>
-        </b-field>
-
         <b-field :label="$t('globals.terms.tags')" label-position="on-border">
           <b-taginput v-model="form.tags" name="tags" :disabled="!canSave" ellipsis icon="tag-outline"
             :placeholder="$t('globals.terms.tags')" />
@@ -105,6 +98,7 @@ export default Vue.extend({
         optin: 'single',
         status: 'active',
         tags: [],
+        visibility: 'private',
       },
     };
   },
@@ -137,7 +131,7 @@ export default Vue.extend({
   },
 
   computed: {
-    ...mapState(['loading', 'profile', 'workspace']),
+    ...mapState(['loading', 'profile']),
 
     canSave() {
       if (!this.isEditing) {
@@ -158,7 +152,7 @@ export default Vue.extend({
   },
 
   mounted() {
-    this.form = { ...this.form, ...this.$props.data };
+    this.form = { ...this.form, ...this.$props.data, visibility: 'private' };
 
     this.$nextTick(() => {
       this.$refs.focus.focus();

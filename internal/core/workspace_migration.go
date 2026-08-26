@@ -69,12 +69,9 @@ func (c *Core) MigratePersonalListsToOrganization(sourceUserID, targetOrganizati
 	targetListIDs := make([]int, 0, len(lists))
 	for _, source := range lists {
 		targetID := source.ID
-		visibility := source.Visibility
-		if visibility == models.ResourceVisibilityGlobal {
-			// Lists are never global resources. This also repairs any legacy
-			// record that predates the server-side visibility validation.
-			visibility = models.ResourceVisibilityPrivate
-		}
+		// Lists are always owner-private. This also repairs records created
+		// before the server-side visibility validation was introduced.
+		visibility := models.ResourceVisibilityPrivate
 		if move {
 			if _, err := tx.Exec(`
 				UPDATE lists SET organization_id = $2, owner_user_id = $3,

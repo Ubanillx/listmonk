@@ -503,6 +503,13 @@ func (c *Core) TransferPendingOrganizationResources(orgID, targetUserID int) err
 	if err := c.lockOrganization(tx, orgID); err != nil {
 		return err
 	}
+	var organizationStatus string
+	if err := tx.Get(&organizationStatus, `SELECT status FROM organizations WHERE id = $1`, orgID); err != nil {
+		return c.organizationDBErr("checking organization transfer status", err)
+	}
+	if organizationStatus != models.OrganizationStatusActive {
+		return echo.NewHTTPError(http.StatusConflict, "archived organization resources must be transferred through the archive cleanup flow")
+	}
 
 	var role string
 	if err := tx.Get(&role, `SELECT role FROM organization_members WHERE organization_id = $1 AND user_id = $2 AND removed_at IS NULL`, orgID, targetUserID); err != nil {
@@ -566,6 +573,130 @@ func (c *Core) TransferPendingOrganizationResources(orgID, targetUserID int) err
 
 	if err := tx.Commit(); err != nil {
 		return c.organizationDBErr("committing organization resource transfer", err)
+	}
+	return nil
+}
+
+// TransferArchivedOrganizationResourcesToPersonal completes the archive
+// lifecycle by moving every remaining pending resource into one active
+// member's personal workspace. It intentionally preserves data relations
+// (lists, subscribers, campaigns, templates, media, and CID associations),
+// while converting organization-only visibility to private. Global templates
+// detached during archive remain globally shared and are not included here.
+func (c *Core) TransferArchivedOrganizationResourcesToPersonal(orgID, targetUserID int) error {
+	tx, err := c.db.BeginTxx(context.Background(), nil)
+	if err != nil {
+		return c.organizationDBErr("starting archived organization transfer", err)
+	}
+	defer tx.Rollback()
+	if err := c.lockOrganization(tx, orgID); err != nil {
+		return err
+	}
+
+	var status string
+	if err := tx.Get(&status, `SELECT status FROM organizations WHERE id = $1`, orgID); err != nil {
+		return c.organizationDBErr("checking archived organization status", err)
+	}
+	if status != models.OrganizationStatusArchived {
+		return echo.NewHTTPError(http.StatusConflict, "archive the organization before transferring its resources")
+	}
+
+	var memberExists bool
+	if err := tx.Get(&memberExists, `
+		SELECT EXISTS(
+			SELECT 1 FROM organization_members
+			WHERE organization_id = $1 AND user_id = $2 AND removed_at IS NULL
+		)`, orgID, targetUserID); err != nil {
+		return c.organizationDBErr("checking archived organization transfer target", err)
+	}
+	if !memberExists {
+		return ErrNotOrganizationMember
+	}
+
+	// Move lists before subscribers. If a scoped email collides with an
+	// existing personal subscriber, the merge below then points every retained
+	// subscription at the already moved list IDs.
+	if _, err := tx.Exec(`
+		UPDATE lists SET organization_id = NULL, owner_user_id = $2,
+			visibility = 'private', transfer_pending_at = NULL, updated_at = NOW()
+		WHERE organization_id = $1 AND transfer_pending_at IS NOT NULL`, orgID, targetUserID); err != nil {
+		return c.organizationDBErr("moving archived organization lists", err)
+	}
+	if _, err := tx.Exec(`
+		UPDATE campaigns SET organization_id = NULL, owner_user_id = $2,
+			visibility = CASE WHEN visibility = 'global' THEN 'global' ELSE 'private' END,
+			transfer_pending_at = NULL, updated_at = NOW()
+		WHERE organization_id = $1 AND transfer_pending_at IS NOT NULL`, orgID, targetUserID); err != nil {
+		return c.organizationDBErr("moving archived organization campaigns", err)
+	}
+	if _, err := tx.Exec(`
+		UPDATE templates SET organization_id = NULL, owner_user_id = $2,
+			visibility = CASE WHEN visibility = 'global' THEN 'global' ELSE 'private' END,
+			is_default = FALSE, transfer_pending_at = NULL, updated_at = NOW()
+		WHERE organization_id = $1 AND transfer_pending_at IS NOT NULL`, orgID, targetUserID); err != nil {
+		return c.organizationDBErr("moving archived organization templates", err)
+	}
+	if _, err := tx.Exec(`
+		UPDATE media SET organization_id = NULL, owner_user_id = $2,
+			visibility = 'private', transfer_pending_at = NULL, updated_at = NOW()
+		WHERE organization_id = $1 AND transfer_pending_at IS NOT NULL`, orgID, targetUserID); err != nil {
+		return c.organizationDBErr("moving archived organization media", err)
+	}
+
+	type pendingSubscriber struct {
+		ID    int    `db:"id"`
+		Email string `db:"email"`
+	}
+	var pending []pendingSubscriber
+	if err := tx.Select(&pending, `
+		SELECT id, email FROM subscribers
+		WHERE organization_id = $1 AND transfer_pending_at IS NOT NULL
+		ORDER BY id
+		FOR UPDATE`, orgID); err != nil {
+		return c.organizationDBErr("fetching archived organization subscribers", err)
+	}
+
+	// A single organization can contain the same address under several owners.
+	// Once all resources are moved to one personal owner, that address must be
+	// merged rather than bulk-updated or the personal scoped-email index would
+	// reject the transfer. Keep the first pending row for an address when no
+	// personal row already exists, then merge every later row into it.
+	targetsByEmail := make(map[string]int, len(pending))
+	for _, source := range pending {
+		email := strings.ToLower(strings.TrimSpace(source.Email))
+		targetID, ok := targetsByEmail[email]
+		if !ok {
+			err := tx.Get(&targetID, `
+				SELECT id FROM subscribers
+				WHERE organization_id IS NULL AND owner_user_id = $1
+					AND LOWER(email) = LOWER($2)
+				LIMIT 1 FOR UPDATE`, targetUserID, source.Email)
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return c.organizationDBErr("checking archived subscriber transfer conflict", err)
+			}
+			if errors.Is(err, sql.ErrNoRows) {
+				if _, err := tx.Exec(`
+					UPDATE subscribers SET organization_id = NULL, owner_user_id = $2,
+						visibility = 'private', transfer_pending_at = NULL, updated_at = NOW()
+					WHERE id = $1`, source.ID, targetUserID); err != nil {
+					return c.organizationDBErr("moving archived organization subscriber", err)
+				}
+				targetID = source.ID
+			} else if err := c.mergeSubscriber(tx, source.ID, targetID); err != nil {
+				return err
+			}
+			targetsByEmail[email] = targetID
+			continue
+		}
+		if source.ID != targetID {
+			if err := c.mergeSubscriber(tx, source.ID, targetID); err != nil {
+				return err
+			}
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return c.organizationDBErr("committing archived organization transfer", err)
 	}
 	return nil
 }
@@ -641,6 +772,23 @@ func (c *Core) ArchiveOrganization(orgID int) ([]models.Campaign, error) {
 		return nil, err
 	}
 
+	// Global templates are platform-wide assets. Keep them usable by their
+	// original creator even though the organization that once hosted them is
+	// being archived. Their inline media receives independent personal records
+	// so later archive cleanup cannot break CID/MIME rendering.
+	var globalTemplateOwners []int
+	if err := tx.Select(&globalTemplateOwners, `
+		SELECT DISTINCT owner_user_id FROM templates
+		WHERE organization_id = $1 AND visibility = 'global' AND owner_user_id IS NOT NULL
+		ORDER BY owner_user_id`, orgID); err != nil {
+		return nil, c.organizationDBErr("reading global template owners", err)
+	}
+	for _, ownerUserID := range globalTemplateOwners {
+		if err := c.detachGlobalTemplatesForFormerMember(tx, orgID, ownerUserID); err != nil {
+			return nil, err
+		}
+	}
+
 	res, err := tx.Exec(`
 		UPDATE organizations SET status = $2, archived_at = NOW(), updated_at = NOW()
 		WHERE id = $1 AND status != $2`, orgID, models.OrganizationStatusArchived)
@@ -651,15 +799,33 @@ func (c *Core) ArchiveOrganization(orgID int) ([]models.Campaign, error) {
 		return nil, echo.NewHTTPError(http.StatusConflict, "organization is already archived")
 	}
 
+	// Make every remaining organization resource an explicit cleanup item.
+	// Members can no longer select the workspace; platform administration later
+	// moves this coherent resource set to one member's personal workspace
+	// before the organization metadata can be permanently deleted.
+	for _, table := range []string{"lists", "subscribers", "templates", "media"} {
+		stmt := fmt.Sprintf(`
+			UPDATE %s SET owner_user_id = NULL,
+				original_owner_user_id = COALESCE(original_owner_user_id, owner_user_id),
+				transfer_pending_at = NOW(), updated_at = NOW()
+			WHERE organization_id = $1`, table)
+		if _, err := tx.Exec(stmt, orgID); err != nil {
+			return nil, c.organizationDBErr("preparing archived organization resources for transfer", err)
+		}
+	}
+
 	var stopped []models.Campaign
 	if err := tx.Select(&stopped, `
 		UPDATE campaigns SET
+			owner_user_id = NULL,
+			original_owner_user_id = COALESCE(original_owner_user_id, owner_user_id),
+			transfer_pending_at = NOW(),
 			send_at = CASE WHEN status IN ('scheduled', 'deferred') THEN NULL ELSE send_at END,
 			next_resume_at = CASE WHEN status = 'deferred' THEN NULL ELSE next_resume_at END,
 			status = CASE WHEN status IN ('scheduled', 'deferred') THEN 'draft'::campaign_status
 				WHEN status = 'running' THEN 'paused'::campaign_status ELSE status END,
 			updated_at = NOW()
-		WHERE organization_id = $1 AND status IN ('scheduled', 'deferred', 'running')
+		WHERE organization_id = $1
 		RETURNING *`, orgID); err != nil {
 		return nil, c.organizationDBErr("stopping organization campaigns", err)
 	}
@@ -667,6 +833,54 @@ func (c *Core) ArchiveOrganization(orgID int) ([]models.Campaign, error) {
 		return nil, c.organizationDBErr("committing organization archive", err)
 	}
 	return stopped, nil
+}
+
+// PurgeArchivedOrganization is the final step of the organization lifecycle.
+// It intentionally refuses an active organization and any archived
+// organization that still owns resources. The creation request remains as an
+// audit record, with its foreign key cleared by the schema's ON DELETE SET
+// NULL rule.
+func (c *Core) PurgeArchivedOrganization(orgID int) error {
+	tx, err := c.db.BeginTxx(context.Background(), nil)
+	if err != nil {
+		return c.organizationDBErr("starting organization purge", err)
+	}
+	defer tx.Rollback()
+	if err := c.lockOrganization(tx, orgID); err != nil {
+		return err
+	}
+
+	var status string
+	if err := tx.Get(&status, `SELECT status FROM organizations WHERE id = $1 FOR UPDATE`, orgID); err != nil {
+		return c.organizationDBErr("checking organization purge status", err)
+	}
+	if status != models.OrganizationStatusArchived {
+		return echo.NewHTTPError(http.StatusConflict, "archive the organization before permanently deleting it")
+	}
+
+	for _, table := range []string{"lists", "subscribers", "templates", "campaigns", "media"} {
+		var count int
+		if err := tx.Get(&count, fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE organization_id = $1", table), orgID); err != nil {
+			return c.organizationDBErr("checking organization resources", err)
+		}
+		if count > 0 {
+			return echo.NewHTTPError(http.StatusConflict, "transfer or clean all organization resources before permanently deleting it")
+		}
+	}
+
+	if _, err := tx.Exec(`DELETE FROM organization_invites WHERE organization_id = $1`, orgID); err != nil {
+		return c.organizationDBErr("removing organization invitations", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM organization_members WHERE organization_id = $1`, orgID); err != nil {
+		return c.organizationDBErr("removing organization members", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM organizations WHERE id = $1`, orgID); err != nil {
+		return c.organizationDBErr("permanently deleting organization", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return c.organizationDBErr("committing organization purge", err)
+	}
+	return nil
 }
 
 // ClaimUnownedResources assigns resources created during first-time setup to

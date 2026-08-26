@@ -138,6 +138,7 @@ CREATE TABLE campaigns (
     archive_template_id INTEGER REFERENCES templates(id) ON DELETE SET NULL,
     archive_meta        JSONB NOT NULL DEFAULT '{}',
     auto_track_links    BOOLEAN NOT NULL DEFAULT false,
+    tracking_links_mapped BOOLEAN NOT NULL DEFAULT true,
 
     started_at       TIMESTAMP WITH TIME ZONE,
     created_at       TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -259,6 +260,14 @@ CREATE TABLE links (
     url              TEXT NOT NULL UNIQUE,
     created_at       TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+DROP TABLE IF EXISTS campaign_links CASCADE;
+CREATE TABLE campaign_links (
+    campaign_id      INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    link_id          INTEGER NOT NULL REFERENCES links(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    PRIMARY KEY (campaign_id, link_id)
+);
+DROP INDEX IF EXISTS idx_campaign_links_link_id; CREATE INDEX idx_campaign_links_link_id ON campaign_links(link_id);
 
 DROP TABLE IF EXISTS link_clicks CASCADE;
 CREATE TABLE link_clicks (

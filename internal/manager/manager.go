@@ -48,7 +48,7 @@ type Store interface {
 	ResetCampaignQueuedRecipients(campID int, toStatus string) error
 	UpdateCampaignRecipientStatuses(campID int, toStatus string, fromStatuses []string) error
 	DeferCampaign(campID int, nextResumeAt time.Time) error
-	CreateLink(url string) (string, error)
+	CreateLink(campUUID, url string) (string, error)
 	BlocklistSubscriber(id int64) error
 	DeleteSubscriber(id int64) error
 }
@@ -84,9 +84,9 @@ type Manager struct {
 	tpls    map[int]*models.Template
 	tplsMut sync.RWMutex
 
-	// Links generated using Track() are cached here so as to not query
-	// the database for the link UUID for every message sent. This has to
-	// be locked as it may be used externally when previewing campaigns.
+	// Links generated using Track() are cached per campaign and URL so an
+	// association is persisted for every campaign that emits a shared URL. This
+	// has to be locked as it may be used externally when previewing campaigns.
 	links    map[string]string
 	linksMut sync.RWMutex
 
@@ -624,15 +624,16 @@ func (m *Manager) trackLink(url, campUUID, subUUID string) string {
 
 	url = strings.ReplaceAll(url, "&amp;", "&")
 
+	cacheKey := campUUID + "\x00" + url
 	m.linksMut.RLock()
-	if uu, ok := m.links[url]; ok {
+	if uu, ok := m.links[cacheKey]; ok {
 		m.linksMut.RUnlock()
 		return fmt.Sprintf(m.cfg.LinkTrackURL, uu, campUUID, subUUID)
 	}
 	m.linksMut.RUnlock()
 
 	// Register link.
-	uu, err := m.store.CreateLink(url)
+	uu, err := m.store.CreateLink(campUUID, url)
 	if err != nil {
 		m.log.Printf("error registering tracking for link '%s': %v", url, err)
 
@@ -641,7 +642,7 @@ func (m *Manager) trackLink(url, campUUID, subUUID string) string {
 	}
 
 	m.linksMut.Lock()
-	m.links[url] = uu
+	m.links[cacheKey] = uu
 	m.linksMut.Unlock()
 
 	return fmt.Sprintf(m.cfg.LinkTrackURL, uu, campUUID, subUUID)

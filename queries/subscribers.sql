@@ -322,14 +322,46 @@ UPDATE subscriber_lists SET status='unsubscribed', updated_at=NOW()
 -- Unsubscribes a subscriber given a campaign UUID (from all the lists in the campaign) and the subscriber UUID.
 -- If $3 is TRUE, then all subscriptions of the subscriber is blocklisted
 -- and all existing subscriptions, irrespective of lists, unsubscribed.
-WITH lists AS (
-    SELECT list_id FROM campaign_lists
-    LEFT JOIN campaigns ON (campaign_lists.campaign_id = campaigns.id)
-    WHERE campaigns.uuid = $1
+-- The campaign and subscriber UUIDs come from a bearer unsubscribe link. They
+-- must be linked by an actual campaign recipient before either the profile or
+-- its subscriptions can be changed. The legacy fallback is restricted to the
+-- same owner/workspace and only applies when no recipient snapshot exists.
+WITH campaign AS (
+    SELECT id, organization_id, owner_user_id
+    FROM campaigns WHERE uuid = $1::UUID
+),
+subscriber AS (
+    SELECT id, organization_id, owner_user_id
+    FROM subscribers WHERE uuid = $2::UUID
+),
+recipient AS (
+    SELECT c.id AS campaign_id, s.id AS subscriber_id
+    FROM campaign c
+    JOIN subscriber s ON TRUE
+    WHERE s.organization_id IS NOT DISTINCT FROM c.organization_id
+    AND s.owner_user_id IS NOT DISTINCT FROM c.owner_user_id
+    AND (EXISTS (
+        SELECT 1 FROM campaign_recipients cr
+        WHERE cr.campaign_id = c.id AND cr.subscriber_id = s.id
+    ) OR (
+        NOT EXISTS (SELECT 1 FROM campaign_recipients cr WHERE cr.campaign_id = c.id)
+        AND EXISTS (
+            SELECT 1 FROM campaign_lists cl
+            JOIN subscriber_lists sl ON sl.list_id = cl.list_id
+            WHERE cl.campaign_id = c.id AND sl.subscriber_id = s.id
+        )
+    ))
+),
+lists AS (
+    SELECT cl.list_id FROM campaign_lists cl
+    JOIN recipient r ON r.campaign_id = cl.campaign_id
 ),
 sub AS (
-    UPDATE subscribers SET status = (CASE WHEN $3 IS TRUE THEN 'blocklisted' ELSE status END)
-    WHERE uuid = $2 RETURNING id
+    UPDATE subscribers s
+    SET status = (CASE WHEN $3 IS TRUE THEN 'blocklisted' ELSE s.status END)
+    FROM recipient r
+    WHERE s.id = r.subscriber_id
+    RETURNING s.id
 )
 UPDATE subscriber_lists SET status = 'unsubscribed', updated_at=NOW() WHERE
     subscriber_id = (SELECT id FROM sub) AND status != 'unsubscribed' AND

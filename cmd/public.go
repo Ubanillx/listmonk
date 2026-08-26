@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"database/sql"
 	"fmt"
 	"html/template"
 	"image"
@@ -145,28 +144,16 @@ func (a *App) GetPublicLists(c echo.Context) error {
 // ViewCampaignMessage renders the HTML view of a campaign message.
 // This is the view the {{ MessageURL }} template tag links to in e-mail campaigns.
 func (a *App) ViewCampaignMessage(c echo.Context) error {
-	// Get the campaign.
-	campUUID := c.Param("campUUID")
-	camp, err := a.core.GetCampaign(0, campUUID, "")
+	// Resolve the bearer URL as a single campaign-recipient relation. Do not
+	// independently load two valid UUIDs, which would permit cross-workspace
+	// message rendering.
+	camp, sub, err := a.core.GetPublicCampaignMessage(c.Param("campUUID"), c.Param("subUUID"))
 	if err != nil {
 		if er, ok := err.(*echo.HTTPError); ok {
-			if er.Code == http.StatusBadRequest {
+			if er.Code == http.StatusBadRequest || er.Code == http.StatusNotFound {
 				return c.Render(http.StatusNotFound, tplMessage,
 					makeMsgTpl(a.i18n.T("public.notFoundTitle"), "", a.i18n.T("public.campaignNotFound")))
 			}
-		}
-
-		return c.Render(http.StatusInternalServerError, tplMessage,
-			makeMsgTpl(a.i18n.T("public.errorTitle"), "", a.i18n.Ts("public.errorFetchingCampaign")))
-	}
-
-	// Get the subscriber.
-	subUUID := c.Param("subUUID")
-	sub, err := a.core.GetSubscriber(0, subUUID, "")
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return c.Render(http.StatusNotFound, tplMessage,
-				makeMsgTpl(a.i18n.T("public.notFoundTitle"), "", a.i18n.T("public.errorFetchingEmail")))
 		}
 
 		return c.Render(http.StatusInternalServerError, tplMessage,
@@ -195,9 +182,20 @@ func (a *App) ViewCampaignMessage(c echo.Context) error {
 // This is the view that {{ UnsubscribeURL }} in campaigns link to.
 func (a *App) SubscriptionPage(c echo.Context) error {
 	var (
+		campUUID      = c.Param("campUUID")
 		subUUID       = c.Param("subUUID")
 		showManage, _ = strconv.ParseBool(c.FormValue("manage"))
 	)
+
+	if campUUID != dummyUUID {
+		if ok, err := a.core.IsPublicCampaignRecipient(campUUID, subUUID); err != nil {
+			return c.Render(http.StatusInternalServerError, tplMessage,
+				makeMsgTpl(a.i18n.T("public.errorTitle"), "", a.i18n.Ts("public.errorProcessingRequest")))
+		} else if !ok {
+			return c.Render(http.StatusNotFound, tplMessage,
+				makeMsgTpl(a.i18n.T("public.notFoundTitle"), "", a.i18n.T("public.campaignNotFound")))
+		}
+	}
 
 	// Get the subscriber from the DB.
 	s, err := a.core.GetSubscriber(0, subUUID, "")
@@ -268,7 +266,35 @@ func (a *App) SubscriptionPrefs(c echo.Context) error {
 		subUUID   = c.Param("subUUID")
 		blocklist = a.cfg.Privacy.AllowBlocklist && req.Blocklist
 	)
+	if campUUID != dummyUUID {
+		if ok, err := a.core.IsPublicCampaignRecipient(campUUID, subUUID); err != nil {
+			return c.Render(http.StatusInternalServerError, tplMessage,
+				makeMsgTpl(a.i18n.T("public.errorTitle"), "", a.i18n.T("public.errorProcessingRequest")))
+		} else if !ok {
+			return c.Render(http.StatusNotFound, tplMessage,
+				makeMsgTpl(a.i18n.T("public.notFoundTitle"), "", a.i18n.T("public.campaignNotFound")))
+		}
+	}
 	if !req.Manage || blocklist {
+		if campUUID == dummyUUID {
+			// Opt-in e-mails use the long-standing dummy campaign UUID because
+			// they are not sent by a campaign. Keep their self-service page
+			// available while applying campaign-recipient validation everywhere
+			// a real campaign UUID is supplied.
+			if blocklist {
+				sub, err := a.core.GetSubscriber(0, subUUID, "")
+				if err != nil {
+					return c.Render(http.StatusNotFound, tplMessage,
+						makeMsgTpl(a.i18n.T("public.notFoundTitle"), "", a.i18n.T("public.errorFetchingEmail")))
+				}
+				if err := a.core.BlocklistSubscribers([]int{sub.ID}); err != nil {
+					return c.Render(http.StatusInternalServerError, tplMessage,
+						makeMsgTpl(a.i18n.T("public.errorTitle"), "", a.i18n.T("public.errorProcessingRequest")))
+				}
+			}
+			return c.Render(http.StatusOK, tplMessage,
+				makeMsgTpl(a.i18n.T("public.unsubbedTitle"), "", a.i18n.T("public.unsubbedInfo")))
+		}
 		if err := a.core.UnsubscribeByCampaign(subUUID, campUUID, blocklist); err != nil {
 			return c.Render(http.StatusInternalServerError, tplMessage,
 				makeMsgTpl(a.i18n.T("public.errorTitle"), "", a.i18n.T("public.errorProcessingRequest")))

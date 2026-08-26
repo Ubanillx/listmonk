@@ -219,8 +219,9 @@ func (s *store) GetAttachment(mediaID int) (models.Attachment, error) {
 	}, nil
 }
 
-// CreateLink registers a URL with a UUID for tracking clicks and returns the UUID.
-func (s *store) CreateLink(url string) (string, error) {
+// CreateLink registers a URL with a UUID, associates it with the campaign
+// rendering it, and returns the UUID used in the tracking URL.
+func (s *store) CreateLink(campUUID, url string) (string, error) {
 	// Create a new UUID for the URL. If the URL already exists in the DB
 	// the UUID in the database is returned.
 	uu, err := uuid.NewV4()
@@ -229,7 +230,7 @@ func (s *store) CreateLink(url string) (string, error) {
 	}
 
 	var out string
-	if err := s.queries.CreateLink.Get(&out, uu, url); err != nil {
+	if err := s.queries.CreateLink.Get(&out, uu, url, campUUID); err != nil {
 		return "", err
 	}
 

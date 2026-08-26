@@ -319,8 +319,8 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		// Public subscriber facing views.
 		g.GET("/subscription/form", a.SubscriptionFormPage)
 		g.POST("/subscription/form", a.SubscriptionForm)
-		g.GET("/subscription/:campUUID/:subUUID", noIndex(a.hasUUID(a.hasSub(a.SubscriptionPage), "campUUID", "subUUID")))
-		g.POST("/subscription/:campUUID/:subUUID", a.hasUUID(a.hasSub(a.SubscriptionPrefs), "campUUID", "subUUID"))
+		g.GET("/subscription/:campUUID/:subUUID", noIndex(a.hasUUID(a.SubscriptionPage, "campUUID", "subUUID")))
+		g.POST("/subscription/:campUUID/:subUUID", a.hasUUID(a.SubscriptionPrefs, "campUUID", "subUUID"))
 		g.GET("/subscription/optin/:subUUID", noIndex(a.hasUUID(a.hasSub(a.OptinPage), "subUUID")))
 		g.POST("/subscription/optin/:subUUID", a.hasUUID(a.hasSub(a.OptinPage), "subUUID"))
 		g.POST("/subscription/export/:subUUID", a.hasUUID(a.hasSub(a.SelfExportSubscriberData), "subUUID"))

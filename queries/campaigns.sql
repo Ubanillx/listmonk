@@ -182,6 +182,38 @@ SELECT campaigns.*,
             ))
         ));
 
+-- name: get-public-campaign-recipient
+-- Public message, subscription, and tracking URLs are bearer links. Resolve
+-- both UUIDs through the immutable recipient snapshot rather than allowing a
+-- campaign UUID and a subscriber UUID to be combined independently. The
+-- snapshot deliberately remains valid after a permitted resource transfer so
+-- sent mail keeps working as historical data is retained. Legacy campaigns
+-- predating campaign_recipients fall back only when they have no snapshot, and
+-- then only through the same owner/workspace campaign-list relationship.
+SELECT c.id AS campaign_id, s.id AS subscriber_id
+FROM campaigns c
+JOIN subscribers s ON s.uuid = $2::UUID
+WHERE c.uuid = $1::UUID
+    AND s.organization_id IS NOT DISTINCT FROM c.organization_id
+    AND s.owner_user_id IS NOT DISTINCT FROM c.owner_user_id
+    AND (
+        EXISTS (
+            SELECT 1 FROM campaign_recipients cr
+            WHERE cr.campaign_id = c.id AND cr.subscriber_id = s.id
+        )
+        OR (
+            NOT EXISTS (SELECT 1 FROM campaign_recipients cr WHERE cr.campaign_id = c.id)
+            AND s.organization_id IS NOT DISTINCT FROM c.organization_id
+            AND s.owner_user_id IS NOT DISTINCT FROM c.owner_user_id
+            AND EXISTS (
+                SELECT 1 FROM campaign_lists cl
+                JOIN subscriber_lists sl ON sl.list_id = cl.list_id
+                WHERE cl.campaign_id = c.id AND sl.subscriber_id = s.id
+            )
+        )
+    )
+LIMIT 1;
+
 -- name: get-archived-campaigns
 SELECT COUNT(*) OVER () AS total, campaigns.*,
     CASE
@@ -1147,10 +1179,42 @@ AND (
 );
 
 -- name: register-campaign-view
-WITH view AS (
-    SELECT campaigns.id as campaign_id, subscribers.id AS subscriber_id FROM campaigns
-    LEFT JOIN subscribers ON (CASE WHEN $2::TEXT != '' THEN subscribers.uuid = $2::UUID ELSE FALSE END)
-    WHERE campaigns.uuid = $1
+-- When individual tracking is enabled, only record a view for a recipient
+-- relation belonging to this campaign. Without individual tracking, retain
+-- the aggregate campaign-level event with a NULL subscriber ID. The fallback
+-- covers historical campaigns created before recipient snapshots existed.
+WITH campaign AS (
+    SELECT id, organization_id, owner_user_id
+    FROM campaigns WHERE uuid = $1::UUID
+),
+subscriber AS (
+    SELECT id, organization_id, owner_user_id
+    FROM subscribers WHERE uuid = NULLIF($2::TEXT, '')::UUID
+),
+recipient AS (
+    SELECT c.id AS campaign_id, s.id AS subscriber_id
+    FROM campaign c
+    JOIN subscriber s ON TRUE
+    WHERE s.organization_id IS NOT DISTINCT FROM c.organization_id
+    AND s.owner_user_id IS NOT DISTINCT FROM c.owner_user_id
+    AND (EXISTS (
+        SELECT 1 FROM campaign_recipients cr
+        WHERE cr.campaign_id = c.id AND cr.subscriber_id = s.id
+    ) OR (
+        NOT EXISTS (SELECT 1 FROM campaign_recipients cr WHERE cr.campaign_id = c.id)
+        AND EXISTS (
+            SELECT 1 FROM campaign_lists cl
+            JOIN subscriber_lists sl ON sl.list_id = cl.list_id
+            WHERE cl.campaign_id = c.id AND sl.subscriber_id = s.id
+        )
+    ))
+),
+view AS (
+    SELECT c.id AS campaign_id,
+        CASE WHEN $2::TEXT = '' THEN NULL ELSE r.subscriber_id END AS subscriber_id
+    FROM campaign c
+    LEFT JOIN recipient r ON TRUE
+    WHERE $2::TEXT = '' OR r.subscriber_id IS NOT NULL
 )
 INSERT INTO campaign_views (campaign_id, subscriber_id)
-    VALUES((SELECT campaign_id FROM view), (SELECT subscriber_id FROM view));
+    SELECT campaign_id, subscriber_id FROM view;

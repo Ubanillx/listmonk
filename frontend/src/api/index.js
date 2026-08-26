@@ -24,9 +24,12 @@ http.interceptors.request.use((config) => {
 
   // All authenticated resource requests are scoped by the active workspace.
   // Public endpoints deliberately do not receive the header.
-  if (!requestConfig.skipWorkspace && requestConfig.url && requestConfig.url.startsWith('/api/')) {
-    const organizationId = Number(store.state.workspace && store.state.workspace.organizationId) || 0;
-    if (organizationId > 0) {
+  if (requestConfig.url && requestConfig.url.startsWith('/api/')) {
+    const hasExplicitWorkspace = Object.prototype.hasOwnProperty.call(requestConfig, 'workspaceOrganizationId');
+    const organizationId = hasExplicitWorkspace
+      ? Number(requestConfig.workspaceOrganizationId)
+      : Number(store.state.workspace && store.state.workspace.organizationId) || 0;
+    if ((hasExplicitWorkspace && Number.isInteger(organizationId) && organizationId >= 0) || organizationId > 0) {
       requestConfig.headers = {
         ...requestConfig.headers,
         [workspaceHeader]: String(organizationId),
@@ -145,27 +148,27 @@ export const queryLists = (params) => http.get(
   },
 );
 
-// Resource migration needs to show the caller's personal lists while an
-// organization workspace is active. Skipping the workspace header selects the
-// personal workspace on the server without changing the user's UI selection.
+// Resource migration needs to show the caller's personal resources while an
+// organization workspace is active. An explicit zero header takes precedence
+// over the browser's workspace cookie without changing the UI selection.
 export const getPersonalLists = () => http.get(
   '/api/lists',
   {
     params: { per_page: 'all', status: 'active' },
-    skipWorkspace: true,
+    workspaceOrganizationId: 0,
   },
 );
 
 export const getPersonalTemplates = () => http.get(
   '/api/templates',
-  { skipWorkspace: true },
+  { workspaceOrganizationId: 0 },
 );
 
 export const getPersonalCampaigns = () => http.get(
   '/api/campaigns',
   {
     params: { per_page: 'all', no_body: true },
-    skipWorkspace: true,
+    workspaceOrganizationId: 0,
   },
 );
 
@@ -173,7 +176,7 @@ export const getPersonalMedia = () => http.get(
   '/api/media',
   {
     params: { per_page: 'all' },
-    skipWorkspace: true,
+    workspaceOrganizationId: 0,
   },
 );
 

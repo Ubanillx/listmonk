@@ -89,6 +89,55 @@ func (c *Core) GetCampaign(id int, uuid, archiveSlug string) (models.Campaign, e
 	return c.getCampaign(id, uuid, archiveSlug, campaignTplDefault)
 }
 
+// GetPublicCampaignMessage resolves the bearer UUID pair used by a sent
+// campaign message. The recipient relation is checked before either record is
+// returned so one workspace's subscriber UUID cannot be combined with another
+// workspace's campaign UUID.
+func (c *Core) GetPublicCampaignMessage(campUUID, subUUID string) (models.Campaign, models.Subscriber, error) {
+	var recipient struct {
+		CampaignID   int `db:"campaign_id"`
+		SubscriberID int `db:"subscriber_id"`
+	}
+	if err := c.q.GetPublicCampaignRecipient.Get(&recipient, campUUID, subUUID); err != nil {
+		if err == sql.ErrNoRows {
+			return models.Campaign{}, models.Subscriber{}, echo.NewHTTPError(http.StatusNotFound,
+				c.i18n.Ts("globals.messages.notFound", "name", "{globals.terms.campaign}"))
+		}
+		c.log.Printf("error resolving public campaign recipient: %v", err)
+		return models.Campaign{}, models.Subscriber{}, echo.NewHTTPError(http.StatusInternalServerError,
+			c.i18n.Ts("public.errorProcessingRequest"))
+	}
+
+	campaign, err := c.GetCampaign(recipient.CampaignID, "", "")
+	if err != nil {
+		return models.Campaign{}, models.Subscriber{}, err
+	}
+	subscriber, err := c.GetSubscriber(recipient.SubscriberID, "", "")
+	if err != nil {
+		return models.Campaign{}, models.Subscriber{}, err
+	}
+	return campaign, subscriber, nil
+}
+
+// IsPublicCampaignRecipient reports whether a campaign/subscriber bearer pair
+// belongs together. It intentionally uses the same query as message rendering
+// so public subscription management cannot widen the relation.
+func (c *Core) IsPublicCampaignRecipient(campUUID, subUUID string) (bool, error) {
+	var recipient struct {
+		CampaignID   int `db:"campaign_id"`
+		SubscriberID int `db:"subscriber_id"`
+	}
+	if err := c.q.GetPublicCampaignRecipient.Get(&recipient, campUUID, subUUID); err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		c.log.Printf("error resolving public campaign recipient: %v", err)
+		return false, echo.NewHTTPError(http.StatusInternalServerError,
+			c.i18n.Ts("public.errorProcessingRequest"))
+	}
+	return true, nil
+}
+
 // GetArchivedCampaign retrieves a campaign with the archive template body.
 func (c *Core) GetArchivedCampaign(id int, uuid, archiveSlug string) (models.Campaign, error) {
 	out, err := c.getCampaign(id, uuid, archiveSlug, campaignTplArchive)
@@ -856,6 +905,9 @@ func (c *Core) GetLinkURL(linkUUID string) (string, error) {
 func (c *Core) RegisterCampaignLinkClick(linkUUID, campUUID, subUUID string) (string, error) {
 	var url string
 	if err := c.q.RegisterLinkClick.Get(&url, linkUUID, campUUID, subUUID); err != nil {
+		if err == sql.ErrNoRows {
+			return "", echo.NewHTTPError(http.StatusBadRequest, c.i18n.Ts("public.invalidLink"))
+		}
 		if pqErr, ok := err.(*pq.Error); ok && pqErr.Column == "link_id" {
 			return "", echo.NewHTTPError(http.StatusBadRequest, c.i18n.Ts("public.invalidLink"))
 		}

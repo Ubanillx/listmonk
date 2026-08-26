@@ -61,15 +61,16 @@ type Queries struct {
 	UpdateListsDate *sqlx.Stmt `query:"update-lists-date"`
 	DeleteLists     *sqlx.Stmt `query:"delete-lists"`
 
-	CreateCampaign        *sqlx.Stmt `query:"create-campaign"`
-	QueryCampaigns        string     `query:"query-campaigns"`
-	GetCampaign           *sqlx.Stmt `query:"get-campaign"`
-	GetCampaignForPreview *sqlx.Stmt `query:"get-campaign-for-preview"`
-	GetCampaignStats      *sqlx.Stmt `query:"get-campaign-stats"`
-	GetCampaignStatus     *sqlx.Stmt `query:"get-campaign-status"`
-	GetArchivedCampaigns  *sqlx.Stmt `query:"get-archived-campaigns"`
-	CampaignHasLists      *sqlx.Stmt `query:"campaign-has-lists"`
-	GetCampaignListIDs    *sqlx.Stmt `query:"get-campaign-list-ids"`
+	CreateCampaign             *sqlx.Stmt `query:"create-campaign"`
+	QueryCampaigns             string     `query:"query-campaigns"`
+	GetCampaign                *sqlx.Stmt `query:"get-campaign"`
+	GetPublicCampaignRecipient *sqlx.Stmt `query:"get-public-campaign-recipient"`
+	GetCampaignForPreview      *sqlx.Stmt `query:"get-campaign-for-preview"`
+	GetCampaignStats           *sqlx.Stmt `query:"get-campaign-stats"`
+	GetCampaignStatus          *sqlx.Stmt `query:"get-campaign-status"`
+	GetArchivedCampaigns       *sqlx.Stmt `query:"get-archived-campaigns"`
+	CampaignHasLists           *sqlx.Stmt `query:"campaign-has-lists"`
+	GetCampaignListIDs         *sqlx.Stmt `query:"get-campaign-list-ids"`
 
 	// These two queries are read as strings and based on settings.individual_tracking=on/off,
 	// are interpolated and copied to view and click counts. Same query, different tables.

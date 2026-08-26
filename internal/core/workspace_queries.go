@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/gofrs/uuid/v5"
+	"github.com/jmoiron/sqlx/types"
 	"github.com/knadh/listmonk/internal/media"
 	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
@@ -327,6 +328,63 @@ func workspaceSubscriberReadPredicate(access models.WorkspaceAccess, alias strin
 	return workspaceOwnerScopedReadPredicate(access, alias, firstArg)
 }
 
+type workspaceSubscriberLists struct {
+	SubscriberID int            `db:"subscriber_id"`
+	Lists        types.JSONText `db:"lists"`
+}
+
+// loadWorkspaceSubscriberLists deliberately does not use the legacy lazy
+// query. A malformed subscriber_lists row must not expose a list that belongs
+// to a different owner or organization just because the subscriber itself is
+// visible to an organization manager.
+func (c *Core) loadWorkspaceSubscriberLists(subscribers models.Subscribers) error {
+	if len(subscribers) == 0 {
+		return nil
+	}
+
+	var rows []workspaceSubscriberLists
+	if err := c.db.Select(&rows, `
+		WITH associated_lists AS (
+			SELECT sl.subscriber_id, JSON_AGG(
+				ROW_TO_JSON((SELECT list_row FROM (
+					SELECT
+						sl.status AS subscription_status,
+						sl.created_at AS subscription_created_at,
+						sl.updated_at AS subscription_updated_at,
+						sl.meta AS subscription_meta,
+						l.*
+				) list_row)) ORDER BY l.id
+			) AS lists
+			FROM subscriber_lists sl
+			JOIN subscribers s ON s.id = sl.subscriber_id
+			JOIN lists l ON l.id = sl.list_id
+			WHERE sl.subscriber_id = ANY($1::INT[])
+				AND l.organization_id IS NOT DISTINCT FROM s.organization_id
+				AND l.owner_user_id IS NOT DISTINCT FROM s.owner_user_id
+				AND l.transfer_pending_at IS NULL
+			GROUP BY sl.subscriber_id
+		)
+		SELECT requested.id AS subscriber_id, COALESCE(associated_lists.lists, '[]') AS lists
+		FROM UNNEST($1::INT[]) AS requested(id)
+		LEFT JOIN associated_lists ON associated_lists.subscriber_id = requested.id
+		ORDER BY ARRAY_POSITION($1::INT[], requested.id)`, pq.Array(subscribers.GetIDs())); err != nil {
+		return err
+	}
+
+	loaded := make(map[int]types.JSONText, len(rows))
+	for _, row := range rows {
+		loaded[row.SubscriberID] = row.Lists
+	}
+	for i := range subscribers {
+		if lists, ok := loaded[subscribers[i].ID]; ok {
+			subscribers[i].Lists = lists
+		} else {
+			subscribers[i].Lists = types.JSONText([]byte("[]"))
+		}
+	}
+	return nil
+}
+
 // QueryWorkspaceSubscribers keeps subscriber identifiers and personal data
 // inside the active owner/workspace boundary. Organization managers may read
 // member records but never gain a writable result set from this query.
@@ -355,7 +413,11 @@ func (c *Core) QueryWorkspaceSubscribers(access models.WorkspaceAccess, search s
 			AND ($%d = '' OR s.name ~* $%d OR s.email ~* $%d)
 			AND (CARDINALITY($%d::INT[]) = 0 OR EXISTS (
 				SELECT 1 FROM subscriber_lists sl
+				JOIN lists l ON l.id = sl.list_id
 				WHERE sl.subscriber_id = s.id AND sl.list_id = ANY($%d::INT[])
+					AND l.organization_id IS NOT DISTINCT FROM s.organization_id
+					AND l.owner_user_id IS NOT DISTINCT FROM s.owner_user_id
+					AND l.transfer_pending_at IS NULL
 					AND ($%d = '' OR sl.status = $%d::subscription_status)
 			))
 		ORDER BY %s OFFSET $%d LIMIT (CASE WHEN $%d < 1 THEN NULL ELSE $%d END)`,
@@ -369,7 +431,7 @@ func (c *Core) QueryWorkspaceSubscribers(access models.WorkspaceAccess, search s
 	if err := c.db.Select(&out, stmt, args...); err != nil {
 		return nil, 0, workspaceQueryError("fetching subscribers", err)
 	}
-	if err := out.LoadLists(c.q.GetSubscriberListsLazy); err != nil {
+	if err := c.loadWorkspaceSubscriberLists(out); err != nil {
 		return nil, 0, workspaceQueryError("fetching subscriber lists", err)
 	}
 	total := 0
@@ -393,8 +455,13 @@ func (c *Core) GetWorkspaceSubscriberIDs(access models.WorkspaceAccess, search s
 		WHERE (%s)
 			AND ($%d = '' OR s.name ~* $%d OR s.email ~* $%d)
 			AND (CARDINALITY($%d::INT[]) = 0 OR EXISTS (
-				SELECT 1 FROM subscriber_lists sl WHERE sl.subscriber_id = s.id
+				SELECT 1 FROM subscriber_lists sl
+				JOIN lists l ON l.id = sl.list_id
+				WHERE sl.subscriber_id = s.id
 					AND sl.list_id = ANY($%d::INT[])
+					AND l.organization_id IS NOT DISTINCT FROM s.organization_id
+					AND l.owner_user_id IS NOT DISTINCT FROM s.owner_user_id
+					AND l.transfer_pending_at IS NULL
 					AND ($%d = '' OR sl.status = $%d::subscription_status)
 			))`,
 		scope,
@@ -433,7 +500,7 @@ func (c *Core) GetWorkspaceSubscribersByEmails(access models.WorkspaceAccess, em
 	if len(out) == 0 {
 		return nil, echo.NewHTTPError(http.StatusBadRequest, c.i18n.T("campaigns.noKnownSubsToTest"))
 	}
-	if err := out.LoadLists(c.q.GetSubscriberListsLazy); err != nil {
+	if err := c.loadWorkspaceSubscriberLists(out); err != nil {
 		return nil, workspaceQueryError("fetching subscriber lists", err)
 	}
 	return out, nil
@@ -475,7 +542,7 @@ func (c *Core) GetManagedWorkspaceSubscribersByEmails(access models.WorkspaceAcc
 	if len(out) == 0 {
 		return nil, echo.NewHTTPError(http.StatusBadRequest, c.i18n.T("campaigns.noKnownSubsToTest"))
 	}
-	if err := out.LoadLists(c.q.GetSubscriberListsLazy); err != nil {
+	if err := c.loadWorkspaceSubscriberLists(out); err != nil {
 		return nil, workspaceQueryError("fetching subscriber lists", err)
 	}
 	return out, nil
@@ -503,8 +570,13 @@ func (c *Core) ExportWorkspaceSubscribers(access models.WorkspaceAccess, search 
 			AND s.id = ANY($%d::INT[])
 			AND ($%d = '' OR s.name ~* $%d OR s.email ~* $%d)
 			AND (CARDINALITY($%d::INT[]) = 0 OR EXISTS (
-				SELECT 1 FROM subscriber_lists sl WHERE sl.subscriber_id = s.id
+				SELECT 1 FROM subscriber_lists sl
+				JOIN lists l ON l.id = sl.list_id
+				WHERE sl.subscriber_id = s.id
 					AND sl.list_id = ANY($%d::INT[])
+					AND l.organization_id IS NOT DISTINCT FROM s.organization_id
+					AND l.owner_user_id IS NOT DISTINCT FROM s.owner_user_id
+					AND l.transfer_pending_at IS NULL
 					AND ($%d = '' OR sl.status = $%d::subscription_status)
 			))
 		ORDER BY s.id ASC LIMIT $%d`,

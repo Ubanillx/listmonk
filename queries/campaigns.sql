@@ -1,7 +1,25 @@
 -- campaigns
 -- name: create-campaign
 -- This creates the campaign and inserts campaign_lists relationships.
-WITH tpl AS (
+WITH requested_lists AS (
+    SELECT DISTINCT list_id FROM UNNEST($17::INT[]) AS requested(list_id)
+),
+scoped_lists AS (
+    SELECT l.id, l.name
+    FROM lists l
+    JOIN requested_lists requested ON requested.list_id = l.id
+    WHERE l.organization_id IS NOT DISTINCT FROM $25::BIGINT
+        AND l.owner_user_id = $26
+        AND l.transfer_pending_at IS NULL
+),
+valid_lists AS (
+    -- Draft campaigns may intentionally start without a sending list. Reject
+    -- only a non-empty request that contains a list outside the campaign
+    -- owner's current workspace.
+    SELECT COUNT(*) = (SELECT COUNT(*) FROM requested_lists) AS valid
+    FROM scoped_lists
+),
+tpl AS (
     -- Select the template for the given template ID or use the default template.
     SELECT
         -- If the template is a visual template, then use it's HTML body as the campaign
@@ -13,18 +31,26 @@ WITH tpl AS (
         (CASE WHEN type = 'campaign_visual' THEN body ELSE '' END) AS body,
         (CASE WHEN type = 'campaign_visual' THEN body_source ELSE NULL END) AS body_source,
         (CASE WHEN type = 'campaign_visual' THEN 'visual' ELSE 'richtext' END) AS content_type
-    FROM templates
+    FROM templates t
     WHERE
         CASE
             -- If a template ID is present, use it. If not, use the default template only if
             -- it's not a visual template.
-            WHEN $16::INT IS NOT NULL THEN id = $16::INT
-            ELSE $8 != 'visual' AND is_default = TRUE AND (
-                (organization_id IS NOT DISTINCT FROM $25::BIGINT AND owner_user_id = $26)
-                OR (visibility = 'global' AND transfer_pending_at IS NULL)
+            WHEN $16::INT IS NOT NULL THEN t.id = $16::INT
+                AND t.transfer_pending_at IS NULL
+                AND (
+                    t.visibility = 'global'
+                    OR (
+                        t.organization_id IS NOT DISTINCT FROM $25::BIGINT
+                        AND (t.owner_user_id = $26 OR t.visibility = 'organization')
+                    )
+                )
+            ELSE $8 != 'visual' AND t.is_default = TRUE AND (
+                (t.organization_id IS NOT DISTINCT FROM $25::BIGINT AND t.owner_user_id = $26)
+                OR (t.visibility = 'global' AND t.transfer_pending_at IS NULL)
             )
         END
-    ORDER BY CASE WHEN organization_id IS NOT DISTINCT FROM $25::BIGINT AND owner_user_id = $26 THEN 0 ELSE 1 END, id
+    ORDER BY CASE WHEN t.organization_id IS NOT DISTINCT FROM $25::BIGINT AND t.owner_user_id = $26 THEN 0 ELSE 1 END, t.id
     LIMIT 1
 ),
 camp AS (
@@ -51,11 +77,21 @@ camp AS (
             COALESCE($23, (SELECT body_source FROM tpl)),
             $24,
             $25, $26, $27, $28
+        WHERE (SELECT valid FROM valid_lists)
         RETURNING id
 ),
 med AS (
     INSERT INTO campaign_media (campaign_id, media_id, filename)
-        (SELECT (SELECT id FROM camp), id, filename FROM media WHERE id=ANY($22::INT[])
+        (SELECT (SELECT id FROM camp), m.id, m.filename FROM media m
+         WHERE m.id = ANY($22::INT[])
+            AND m.transfer_pending_at IS NULL
+            AND (
+                m.visibility = 'global'
+                OR (
+                    m.organization_id IS NOT DISTINCT FROM $25::BIGINT
+                    AND (m.owner_user_id = $26 OR m.visibility = 'organization')
+                )
+            )
          UNION
          SELECT (SELECT id FROM camp), m.id, m.filename
          FROM template_media tm JOIN media m ON (m.id = tm.media_id)
@@ -65,7 +101,7 @@ med AS (
 ),
 insLists AS (
     INSERT INTO campaign_lists (campaign_id, list_id, list_name)
-        SELECT (SELECT id FROM camp), id, name FROM lists WHERE id=ANY($17::INT[])
+        SELECT (SELECT id FROM camp), id, name FROM scoped_lists
 )
 SELECT id FROM camp;
 
@@ -795,18 +831,39 @@ WHERE campaigns.id = $1;
 SELECT EXISTS (SELECT 1 FROM campaign_recipients WHERE campaign_id = $1);
 
 -- name: ensure-campaign-recipients
-WITH campLists AS (
-    SELECT lists.id AS list_id, optin FROM lists
-    LEFT JOIN campaign_lists ON campaign_lists.list_id = lists.id
-    WHERE campaign_lists.campaign_id = $1
+-- Build a recipient snapshot only from lists and subscribers that still
+-- belong to the campaign owner in the same personal or organization space.
+-- This is deliberately independent of API validation: resources can move
+-- after a campaign is saved, and stale relationship rows must never cross a
+-- tenant boundary into a send.
+WITH campaign AS (
+    SELECT c.id, c.type, c.organization_id, c.owner_user_id
+    FROM campaigns c
+    LEFT JOIN organizations organization ON organization.id = c.organization_id
+    WHERE c.id = $1
+        AND c.owner_user_id IS NOT NULL
+        AND c.transfer_pending_at IS NULL
+        AND (c.organization_id IS NULL OR organization.status = 'active')
+),
+campLists AS (
+    SELECT l.id AS list_id, l.optin
+    FROM campaign_lists cl
+    JOIN campaign c ON c.id = cl.campaign_id
+    JOIN lists l ON l.id = cl.list_id
+    WHERE l.organization_id IS NOT DISTINCT FROM c.organization_id
+        AND l.owner_user_id = c.owner_user_id
+        AND l.transfer_pending_at IS NULL
 ),
 subs AS (
     SELECT DISTINCT s.id AS subscriber_id
     FROM subscriber_lists sl
     JOIN campLists ON sl.list_id = campLists.list_id
     JOIN subscribers s ON s.id = sl.subscriber_id
-    JOIN campaigns c ON c.id = $1
+    JOIN campaign c ON TRUE
     WHERE s.status != 'blocklisted'
+    AND s.organization_id IS NOT DISTINCT FROM c.organization_id
+    AND s.owner_user_id = c.owner_user_id
+    AND s.transfer_pending_at IS NULL
     AND (
         (c.type = 'optin' AND sl.status = 'unconfirmed' AND campLists.optin = 'double')
         OR (
@@ -853,16 +910,43 @@ SET status = 'deferred',
 WHERE id = $1;
 
 -- name: queue-campaign-subscribers
+-- Recheck every snapshot recipient immediately before queuing. This protects
+-- in-flight campaigns from a list/subscriber being moved or transferred after
+-- the recipient snapshot was first created.
 WITH picked AS (
     SELECT cr.subscriber_id
     FROM campaign_recipients cr
     JOIN campaigns c ON c.id = cr.campaign_id
+    JOIN subscribers s ON s.id = cr.subscriber_id
     LEFT JOIN organizations organization ON organization.id = c.organization_id
     WHERE cr.campaign_id = $1
       AND cr.status = ANY($2::campaign_recipient_status[])
       AND c.status = 'running'
+      AND c.owner_user_id IS NOT NULL
       AND c.transfer_pending_at IS NULL
       AND (c.organization_id IS NULL OR organization.status = 'active')
+      AND s.organization_id IS NOT DISTINCT FROM c.organization_id
+      AND s.owner_user_id = c.owner_user_id
+      AND s.transfer_pending_at IS NULL
+      AND EXISTS (
+          SELECT 1
+          FROM campaign_lists cl
+          JOIN lists l ON l.id = cl.list_id
+          JOIN subscriber_lists sl ON sl.list_id = l.id AND sl.subscriber_id = s.id
+          WHERE cl.campaign_id = c.id
+              AND l.organization_id IS NOT DISTINCT FROM c.organization_id
+              AND l.owner_user_id = c.owner_user_id
+              AND l.transfer_pending_at IS NULL
+              AND (
+                  (c.type = 'optin' AND sl.status = 'unconfirmed' AND l.optin = 'double')
+                  OR (
+                      c.type != 'optin' AND (
+                          (l.optin = 'double' AND sl.status = 'confirmed')
+                          OR (l.optin != 'double' AND sl.status != 'unsubscribed')
+                      )
+                  )
+              )
+      )
     ORDER BY subscriber_id
     FOR UPDATE SKIP LOCKED
     LIMIT $3
@@ -923,11 +1007,17 @@ DELETE FROM campaign_views WHERE created_at < $1;
 DELETE FROM link_clicks WHERE created_at < $1;
 
 -- name: get-one-campaign-subscriber
-SELECT * FROM subscribers
-LEFT JOIN subscriber_lists ON (subscribers.id = subscriber_lists.subscriber_id AND subscriber_lists.status != 'unsubscribed')
-WHERE subscriber_lists.list_id=ANY(
-    SELECT list_id FROM campaign_lists where campaign_id=$1 AND list_id IS NOT NULL
-)
+SELECT s.* FROM subscribers s
+JOIN campaigns c ON c.id = $1
+JOIN subscriber_lists sl ON sl.subscriber_id = s.id AND sl.status != 'unsubscribed'
+JOIN campaign_lists cl ON cl.list_id = sl.list_id AND cl.campaign_id = c.id
+JOIN lists l ON l.id = cl.list_id
+WHERE s.organization_id IS NOT DISTINCT FROM c.organization_id
+    AND s.owner_user_id = c.owner_user_id
+    AND s.transfer_pending_at IS NULL
+    AND l.organization_id IS NOT DISTINCT FROM c.organization_id
+    AND l.owner_user_id = c.owner_user_id
+    AND l.transfer_pending_at IS NULL
 ORDER BY RANDOM() LIMIT 1;
 
 -- name: update-campaign
@@ -973,11 +1063,28 @@ med AS (
 ),
 medi AS (
     INSERT INTO campaign_media (campaign_id, media_id, filename)
-        (SELECT $1 AS campaign_id, id, filename FROM media WHERE id=ANY($21::INT[]))
+        (SELECT $1 AS campaign_id, m.id, m.filename
+        FROM media m
+        JOIN campaigns c ON c.id = $1
+        WHERE m.id = ANY($21::INT[])
+            AND m.transfer_pending_at IS NULL
+            AND (
+                m.visibility = 'global'
+                OR (
+                    m.organization_id IS NOT DISTINCT FROM c.organization_id
+                    AND (m.owner_user_id = c.owner_user_id OR m.visibility = 'organization')
+                )
+            ))
         ON CONFLICT (campaign_id, media_id) DO NOTHING
 )
 INSERT INTO campaign_lists (campaign_id, list_id, list_name)
-    (SELECT $1 as campaign_id, id, name FROM lists WHERE id=ANY($16::INT[]))
+    (SELECT $1 AS campaign_id, l.id, l.name
+    FROM lists l
+    JOIN campaigns c ON c.id = $1
+    WHERE l.id = ANY($16::INT[])
+        AND l.organization_id IS NOT DISTINCT FROM c.organization_id
+        AND l.owner_user_id = c.owner_user_id
+        AND l.transfer_pending_at IS NULL)
     ON CONFLICT (campaign_id, list_id) DO UPDATE SET list_name = EXCLUDED.list_name;
 
 -- name: update-campaign-counts

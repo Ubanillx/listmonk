@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -28,6 +29,40 @@ type migratedListSubscription struct {
 	Meta               json.RawMessage `db:"meta"`
 	CreatedAt          time.Time       `db:"created_at"`
 	UpdatedAt          time.Time       `db:"updated_at"`
+}
+
+const (
+	personalMigrationResourceLists     = "lists"
+	personalMigrationResourceTemplates = "templates"
+	personalMigrationResourceCampaigns = "campaigns"
+	personalMigrationResourceMedia     = "media"
+)
+
+// MigratePersonalResourcesToOrganization is the common server-side entry
+// point for copying or moving personal resources into an organization. Lists
+// include their subscribers; templates and campaigns take binary-media
+// snapshots so CID/MIME images never keep a hidden dependency on a personal
+// workspace after migration.
+func (c *Core) MigratePersonalResourcesToOrganization(sourceUserID, targetOrganizationID, targetUserID int, resource string, sourceIDs []int, move bool) ([]int, error) {
+	if sourceUserID < 1 || targetOrganizationID < 1 || targetUserID < 1 {
+		return nil, echo.NewHTTPError(http.StatusBadRequest, "invalid personal resource migration workspace")
+	}
+	if sourceUserID != targetUserID {
+		return nil, echo.NewHTTPError(http.StatusForbidden, "personal resources can only be migrated by their owner")
+	}
+
+	switch resource {
+	case personalMigrationResourceLists:
+		return c.MigratePersonalListsToOrganization(sourceUserID, targetOrganizationID, targetUserID, sourceIDs, move)
+	case personalMigrationResourceTemplates:
+		return c.migratePersonalTemplatesToOrganization(sourceUserID, targetOrganizationID, targetUserID, sourceIDs, move)
+	case personalMigrationResourceCampaigns:
+		return c.migratePersonalCampaignsToOrganization(sourceUserID, targetOrganizationID, targetUserID, sourceIDs, move)
+	case personalMigrationResourceMedia:
+		return c.migratePersonalMediaToOrganization(sourceUserID, targetOrganizationID, targetUserID, sourceIDs, move)
+	default:
+		return nil, echo.NewHTTPError(http.StatusBadRequest, "unsupported personal resource type")
+	}
 }
 
 // MigratePersonalListsToOrganization copies or moves caller-owned personal
@@ -73,6 +108,21 @@ func (c *Core) MigratePersonalListsToOrganization(sourceUserID, targetOrganizati
 		// before the server-side visibility validation was introduced.
 		visibility := models.ResourceVisibilityPrivate
 		if move {
+			// campaign_lists deliberately retains list_name as history when a
+			// list changes workspace. Disconnect only relationships belonging
+			// to a different owner/workspace; otherwise a stale personal
+			// campaign could keep sending to a list after it was moved.
+			if _, err := tx.Exec(`
+				UPDATE campaign_lists cl SET list_id = NULL
+				FROM campaigns c
+				WHERE cl.list_id = $1 AND c.id = cl.campaign_id
+					AND (
+						c.organization_id IS DISTINCT FROM $2::BIGINT
+						OR c.owner_user_id IS DISTINCT FROM $3
+						OR c.transfer_pending_at IS NOT NULL
+					)`, source.ID, targetOrganizationID, targetUserID); err != nil {
+				return nil, workspaceQueryError("disconnecting migrated list from campaigns", err)
+			}
 			if _, err := tx.Exec(`
 				UPDATE lists SET organization_id = $2, owner_user_id = $3,
 					original_owner_user_id = COALESCE(original_owner_user_id, owner_user_id),
@@ -132,6 +182,265 @@ func (c *Core) MigratePersonalListsToOrganization(sourceUserID, targetOrganizati
 		return nil, workspaceQueryError("committing list migration", err)
 	}
 	return targetListIDs, nil
+}
+
+// lockPersonalMigrationResources verifies and locks a complete resource set
+// before it is copied or moved. Global resources are intentionally excluded:
+// they are platform-visible assets, not personal workspace resources, and a
+// migration must not silently change their publication contract.
+func (c *Core) lockPersonalMigrationResources(tx *sqlx.Tx, table string, sourceUserID int, sourceIDs []int) ([]int, error) {
+	if table != "templates" && table != "campaigns" && table != "media" {
+		return nil, echo.NewHTTPError(http.StatusInternalServerError, "unsupported migration resource table")
+	}
+	sourceIDs = uniquePositiveIDs(sourceIDs)
+	if len(sourceIDs) == 0 {
+		return nil, echo.NewHTTPError(http.StatusBadRequest, "at least one personal resource is required")
+	}
+
+	var locked []int
+	stmt := fmt.Sprintf(`
+		SELECT id FROM %s
+		WHERE id = ANY($1::INT[]) AND organization_id IS NULL
+			AND owner_user_id = $2 AND visibility = 'private'
+			AND transfer_pending_at IS NULL
+		FOR UPDATE`, table)
+	if err := tx.Select(&locked, stmt, pq.Array(sourceIDs), sourceUserID); err != nil {
+		return nil, workspaceQueryError("reading personal resources", err)
+	}
+	if len(locked) != len(sourceIDs) {
+		return nil, echo.NewHTTPError(http.StatusForbidden, "one or more resources are outside the personal workspace")
+	}
+	return sourceIDs, nil
+}
+
+func personalMigrationTargetScope(organizationID, userID int) models.ResourceScope {
+	return ApplyWorkspaceScope(models.WorkspaceAccess{
+		Workspace: models.Workspace{OrganizationID: organizationID},
+		UserID:    userID,
+	}, models.ResourceVisibilityPrivate)
+}
+
+func (c *Core) migratePersonalTemplatesToOrganization(sourceUserID, targetOrganizationID, targetUserID int, sourceIDs []int, move bool) ([]int, error) {
+	tx, err := c.db.BeginTxx(context.Background(), nil)
+	if err != nil {
+		return nil, workspaceQueryError("starting template migration", err)
+	}
+	defer tx.Rollback()
+
+	sourceIDs, err = c.lockPersonalMigrationResources(tx, "templates", sourceUserID, sourceIDs)
+	if err != nil {
+		return nil, err
+	}
+	if move {
+		var references int
+		if err := tx.Get(&references, `
+			SELECT COUNT(*) FROM campaigns
+			WHERE organization_id IS NULL AND owner_user_id = $2
+				AND (template_id = ANY($1::INT[]) OR archive_template_id = ANY($1::INT[]))`,
+			pq.Array(sourceIDs), sourceUserID); err != nil {
+			return nil, workspaceQueryError("checking template references", err)
+		}
+		if references > 0 {
+			return nil, echo.NewHTTPError(http.StatusConflict,
+				"a template used by a personal campaign cannot be moved; copy it or migrate the campaign instead")
+		}
+	}
+
+	target := personalMigrationTargetScope(targetOrganizationID, targetUserID)
+	mediaCopies := make(map[int]int)
+	result := make([]int, 0, len(sourceIDs))
+	for _, sourceID := range sourceIDs {
+		targetID := sourceID
+		if move {
+			if _, err := tx.Exec(`
+				UPDATE templates SET organization_id = $2, owner_user_id = $3,
+					original_owner_user_id = COALESCE(original_owner_user_id, owner_user_id),
+					visibility = 'private', is_default = FALSE, transfer_pending_at = NULL,
+					updated_at = NOW()
+				WHERE id = $1`, sourceID, targetOrganizationID, targetUserID); err != nil {
+				return nil, workspaceQueryError("moving template", err)
+			}
+		} else if err := tx.Get(&targetID, `
+			INSERT INTO templates (
+				name, type, subject, body, body_source, is_default,
+				organization_id, owner_user_id, original_owner_user_id, visibility
+			)
+			SELECT name, type, subject, body, body_source, FALSE,
+				$2, $3, $4, 'private'
+			FROM templates WHERE id = $1
+			RETURNING id`, sourceID, target.OrganizationID, target.OwnerUserID, target.OriginalOwnerUserID); err != nil {
+			return nil, workspaceQueryError("copying template", err)
+		}
+
+		if err := c.copyTemplateMigrationMedia(tx, sourceID, targetID, target, move, mediaCopies); err != nil {
+			return nil, err
+		}
+		result = append(result, targetID)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, workspaceQueryError("committing template migration", err)
+	}
+	return result, nil
+}
+
+func (c *Core) copyTemplateMigrationMedia(tx *sqlx.Tx, sourceTemplateID, targetTemplateID int, target models.ResourceScope, move bool, mediaCopies map[int]int) error {
+	var refs []mediaAssociation
+	if err := tx.Select(&refs, `
+		SELECT media_id, filename FROM template_media
+		WHERE template_id = $1`, sourceTemplateID); err != nil {
+		return workspaceQueryError("reading template media for migration", err)
+	}
+	for _, ref := range refs {
+		if !ref.MediaID.Valid {
+			if !move {
+				if err := insertMediaAssociation(tx, "template_media", "template_id", targetTemplateID, ref, mediaCopies); err != nil {
+					return err
+				}
+			}
+			continue
+		}
+
+		sourceMediaID := int(ref.MediaID.Int)
+		copyID, ok := mediaCopies[sourceMediaID]
+		if !ok {
+			var err error
+			copyID, err = cloneMediaRecord(tx, sourceMediaID, target)
+			if err != nil {
+				return err
+			}
+			mediaCopies[sourceMediaID] = copyID
+		}
+		if move {
+			if _, err := tx.Exec(`
+				UPDATE template_media SET media_id = $3
+				WHERE template_id = $1 AND media_id = $2`, targetTemplateID, sourceMediaID, copyID); err != nil {
+				return workspaceQueryError("moving template media", err)
+			}
+			continue
+		}
+		if err := insertMediaAssociation(tx, "template_media", "template_id", targetTemplateID, ref, mediaCopies); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Core) migratePersonalMediaToOrganization(sourceUserID, targetOrganizationID, targetUserID int, sourceIDs []int, move bool) ([]int, error) {
+	tx, err := c.db.BeginTxx(context.Background(), nil)
+	if err != nil {
+		return nil, workspaceQueryError("starting media migration", err)
+	}
+	defer tx.Rollback()
+
+	sourceIDs, err = c.lockPersonalMigrationResources(tx, "media", sourceUserID, sourceIDs)
+	if err != nil {
+		return nil, err
+	}
+	if move {
+		var referenced bool
+		if err := tx.Get(&referenced, `
+			SELECT EXISTS(
+				SELECT 1 FROM campaign_media WHERE media_id = ANY($1::INT[])
+				UNION ALL
+				SELECT 1 FROM template_media WHERE media_id = ANY($1::INT[])
+			)`, pq.Array(sourceIDs)); err != nil {
+			return nil, workspaceQueryError("checking media references", err)
+		}
+		if referenced {
+			return nil, echo.NewHTTPError(http.StatusConflict,
+				"media referenced by a template or campaign cannot be moved; copy it to preserve existing MIME/CID content")
+		}
+		if _, err := tx.Exec(`
+			UPDATE media SET organization_id = $2, owner_user_id = $3,
+				original_owner_user_id = COALESCE(original_owner_user_id, owner_user_id),
+				visibility = 'private', transfer_pending_at = NULL, updated_at = NOW()
+			WHERE id = ANY($1::INT[])`, pq.Array(sourceIDs), targetOrganizationID, targetUserID); err != nil {
+			return nil, workspaceQueryError("moving media", err)
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, workspaceQueryError("committing media migration", err)
+		}
+		return sourceIDs, nil
+	}
+
+	target := personalMigrationTargetScope(targetOrganizationID, targetUserID)
+	result := make([]int, 0, len(sourceIDs))
+	for _, sourceID := range sourceIDs {
+		copyID, err := cloneMediaRecord(tx, sourceID, target)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, copyID)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, workspaceQueryError("committing media migration", err)
+	}
+	return result, nil
+}
+
+func (c *Core) migratePersonalCampaignsToOrganization(sourceUserID, targetOrganizationID, targetUserID int, sourceIDs []int, move bool) ([]int, error) {
+	// CloneCampaignForWorkspace owns its own transaction so it can snapshot the
+	// template and binary media atomically. Validate all sources first, then
+	// delete only an untouched draft after its destination clone succeeds.
+	tx, err := c.db.BeginTxx(context.Background(), nil)
+	if err != nil {
+		return nil, workspaceQueryError("starting campaign migration", err)
+	}
+	sourceIDs, err = c.lockPersonalMigrationResources(tx, "campaigns", sourceUserID, sourceIDs)
+	if err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	if move {
+		var nonDraftOrStarted int
+		if err := tx.Get(&nonDraftOrStarted, `
+			SELECT COUNT(*) FROM campaigns c
+			WHERE c.id = ANY($1::INT[])
+				AND (c.status <> 'draft' OR EXISTS (
+					SELECT 1 FROM campaign_recipients cr WHERE cr.campaign_id = c.id
+				))`, pq.Array(sourceIDs)); err != nil {
+			tx.Rollback()
+			return nil, workspaceQueryError("checking campaign migration state", err)
+		}
+		if nonDraftOrStarted > 0 {
+			tx.Rollback()
+			return nil, echo.NewHTTPError(http.StatusConflict,
+				"only unsent draft campaigns can be moved; copy sent or scheduled campaigns instead")
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, workspaceQueryError("committing campaign migration validation", err)
+	}
+
+	target := models.WorkspaceAccess{
+		Workspace: models.Workspace{OrganizationID: targetOrganizationID},
+		UserID:    targetUserID,
+	}
+	result := make([]int, 0, len(sourceIDs))
+	for _, sourceID := range sourceIDs {
+		clone, err := c.CloneCampaignForWorkspace(sourceID, target, "")
+		if err != nil {
+			return nil, err
+		}
+		if move {
+			res, err := c.db.Exec(`
+				DELETE FROM campaigns c
+				WHERE c.id = $1 AND c.organization_id IS NULL
+					AND c.owner_user_id = $2 AND c.visibility = 'private'
+					AND c.status = 'draft'
+					AND NOT EXISTS (SELECT 1 FROM campaign_recipients cr WHERE cr.campaign_id = c.id)`, sourceID, sourceUserID)
+			if err != nil {
+				return nil, workspaceQueryError("moving campaign", err)
+			}
+			if n, _ := res.RowsAffected(); n != 1 {
+				return nil, echo.NewHTTPError(http.StatusConflict,
+					"the campaign changed while it was being moved; the destination copy was retained")
+			}
+		}
+		result = append(result, clone.ID)
+	}
+	return result, nil
 }
 
 func (c *Core) findOrCopyMigratedSubscriber(tx *sqlx.Tx, source migratedListSubscription, organizationID, ownerUserID int) (int, error) {

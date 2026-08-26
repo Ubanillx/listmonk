@@ -223,6 +223,7 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.POST("/api/organizations/requests", a.CreateOrganizationRequest)
 		g.POST("/api/organizations/join", a.JoinOrganizationByInvite)
 		g.POST("/api/organizations/leave", a.LeaveOrganization)
+		g.POST("/api/organizations/resources/migrate", a.MigratePersonalResourcesToOrganization)
 		g.POST("/api/organizations/resources/lists/migrate", a.MigratePersonalListsToOrganization)
 		g.GET("/api/organizations/members", a.GetOrganizationMembers)
 		g.POST("/api/organizations/members", a.AddOrganizationMember)

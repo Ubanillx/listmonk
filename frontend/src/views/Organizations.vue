@@ -77,6 +77,63 @@
           </div>
         </section>
 
+        <section class="mb-6">
+          <h2 class="title is-6">迁移个人资源</h2>
+          <p class="has-text-grey mb-3">仅显示可迁移的个人私有资源。复制会保留个人资源；移动后资源归入当前组织。</p>
+
+          <b-field label="个人邮件模板" label-position="on-border">
+            <b-select v-model="personalTemplateIDs" multiple expanded>
+              <option v-for="template in personalTemplates" :key="template.id" :value="template.id">
+                {{ template.name }}
+              </option>
+            </b-select>
+          </b-field>
+          <div class="buttons mb-5">
+            <b-button icon-left="content-copy" :disabled="personalTemplateIDs.length === 0"
+              @click="migratePersonalResource('templates', personalTemplateIDs, 'copy')">
+              复制到当前组织
+            </b-button>
+            <b-button type="is-primary" icon-left="folder-move" :disabled="personalTemplateIDs.length === 0"
+              @click="migratePersonalResource('templates', personalTemplateIDs, 'move')">
+              移动到当前组织
+            </b-button>
+          </div>
+
+          <b-field label="个人营销活动" label-position="on-border">
+            <b-select v-model="personalCampaignIDs" multiple expanded>
+              <option v-for="campaign in personalCampaigns" :key="campaign.id" :value="campaign.id">
+                {{ campaign.name }} ({{ campaign.status }})
+              </option>
+            </b-select>
+          </b-field>
+          <div class="buttons mb-5">
+            <b-button icon-left="content-copy" :disabled="personalCampaignIDs.length === 0"
+              @click="migratePersonalResource('campaigns', personalCampaignIDs, 'copy')">
+              复制到当前组织
+            </b-button>
+            <b-button type="is-primary" icon-left="folder-move" :disabled="personalCampaignIDs.length === 0"
+              @click="migratePersonalResource('campaigns', personalCampaignIDs, 'move')">
+              移动到当前组织
+            </b-button>
+          </div>
+
+          <b-field label="个人媒体文件" label-position="on-border">
+            <b-select v-model="personalMediaIDs" multiple expanded>
+              <option v-for="media in personalMedia" :key="media.id" :value="media.id">{{ media.filename }}</option>
+            </b-select>
+          </b-field>
+          <div class="buttons">
+            <b-button icon-left="content-copy" :disabled="personalMediaIDs.length === 0"
+              @click="migratePersonalResource('media', personalMediaIDs, 'copy')">
+              复制到当前组织
+            </b-button>
+            <b-button type="is-primary" icon-left="folder-move" :disabled="personalMediaIDs.length === 0"
+              @click="migratePersonalResource('media', personalMediaIDs, 'move')">
+              移动到当前组织
+            </b-button>
+          </div>
+        </section>
+
         <template v-if="isManager">
           <section class="mb-6">
             <h2 class="title is-6">成员</h2>
@@ -268,6 +325,12 @@ export default Vue.extend({
       archiveTransferTargetUserID: null,
       personalLists: [],
       personalListIDs: [],
+      personalTemplates: [],
+      personalTemplateIDs: [],
+      personalCampaigns: [],
+      personalCampaignIDs: [],
+      personalMedia: [],
+      personalMediaIDs: [],
       joinCode: '',
       newInviteCode: '',
       transferTargetUserID: null,
@@ -318,11 +381,25 @@ export default Vue.extend({
         this.invites = [];
       }
       if (this.workspace.organizationId) {
-        const personal = await this.$api.getPersonalLists();
-        this.personalLists = Array.isArray(personal.results) ? personal.results : [];
+        const [personalLists, personalTemplates, personalCampaigns, personalMedia] = await Promise.all([
+          this.$api.getPersonalLists(),
+          this.$api.getPersonalTemplates(),
+          this.$api.getPersonalCampaigns(),
+          this.$api.getPersonalMedia(),
+        ]);
+        this.personalLists = this.personalPrivateResources(personalLists.results);
+        this.personalTemplates = this.personalPrivateResources(personalTemplates);
+        this.personalCampaigns = this.personalPrivateResources(personalCampaigns.results);
+        this.personalMedia = this.personalPrivateResources(personalMedia.results);
       } else {
         this.personalLists = [];
         this.personalListIDs = [];
+        this.personalTemplates = [];
+        this.personalTemplateIDs = [];
+        this.personalCampaigns = [];
+        this.personalCampaignIDs = [];
+        this.personalMedia = [];
+        this.personalMediaIDs = [];
       }
       if (this.isPlatformAdmin) {
         const [requests, platformOrganizations] = await Promise.all([
@@ -420,6 +497,36 @@ export default Vue.extend({
           target_organization_id: this.workspace.organizationId,
         });
         this.personalListIDs = [];
+        await this.refresh();
+        this.$root.$emit('page.refresh');
+      });
+    },
+
+    personalPrivateResources(resources) {
+      return (Array.isArray(resources) ? resources : [])
+        .filter((resource) => resource.visibility === 'private');
+    },
+
+    migratePersonalResource(resource, ids, mode) {
+      const labels = {
+        templates: '邮件模板',
+        campaigns: '营销活动',
+        media: '媒体文件',
+      };
+      const selectedKey = {
+        templates: 'personalTemplateIDs',
+        campaigns: 'personalCampaignIDs',
+        media: 'personalMediaIDs',
+      }[resource];
+      const action = mode === 'move' ? '移动' : '复制';
+      this.$utils.confirm(`确认${action}所选${labels[resource]}到当前组织？`, async () => {
+        await this.$api.migratePersonalResources({
+          resource,
+          ids,
+          mode,
+          target_organization_id: this.workspace.organizationId,
+        });
+        this[selectedKey] = [];
         await this.refresh();
         this.$root.$emit('page.refresh');
       });

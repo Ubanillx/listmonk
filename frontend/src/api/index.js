@@ -156,6 +156,27 @@ export const getPersonalLists = () => http.get(
   },
 );
 
+export const getPersonalTemplates = () => http.get(
+  '/api/templates',
+  { skipWorkspace: true },
+);
+
+export const getPersonalCampaigns = () => http.get(
+  '/api/campaigns',
+  {
+    params: { per_page: 'all', no_body: true },
+    skipWorkspace: true,
+  },
+);
+
+export const getPersonalMedia = () => http.get(
+  '/api/media',
+  {
+    params: { per_page: 'all' },
+    skipWorkspace: true,
+  },
+);
+
 export const getList = async (id) => http.get(
   `/api/lists/${id}`,
   { loading: models.list },
@@ -219,6 +240,8 @@ export const transferOrganizationTemplate = (id, data) => http.post(`/api/organi
 export const unpublishOrganizationTemplate = (id) => http.post(`/api/organizations/templates/${id}/unpublish`);
 
 export const migratePersonalLists = (data) => http.post('/api/organizations/resources/lists/migrate', data);
+
+export const migratePersonalResources = (data) => http.post('/api/organizations/resources/migrate', data);
 
 export const getOrganizationRequests = () => http.get('/api/organizations/requests');
 

@@ -64,6 +64,13 @@ type organizationListMigrationInput struct {
 	TargetOrganizationID *int   `json:"target_organization_id"`
 }
 
+type organizationResourceMigrationInput struct {
+	Resource             string `json:"resource"`
+	IDs                  []int  `json:"ids"`
+	Mode                 string `json:"mode"`
+	TargetOrganizationID *int   `json:"target_organization_id"`
+}
+
 // workspaceFromRequest resolves an explicit request header first, then the
 // organization_id query parameter. API token clients must send the header on
 // every request; browser clients keep their active workspace in localStorage.
@@ -573,6 +580,77 @@ func (a *App) MigratePersonalListsToOrganization(c echo.Context) error {
 		ListIDs []int  `json:"list_ids"`
 		Mode    string `json:"mode"`
 	}{ListIDs: listIDs, Mode: req.Mode}})
+}
+
+// MigratePersonalResourcesToOrganization handles the common copy/move flow
+// for private templates, draft campaigns, and media files. Lists retain their
+// existing endpoint for API compatibility, but use the same core migration
+// implementation and subscription-merge guarantees.
+func (a *App) MigratePersonalResourcesToOrganization(c echo.Context) error {
+	user := auth.GetUser(c)
+	active, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
+	var req organizationResourceMigrationInput
+	if err := c.Bind(&req); err != nil {
+		return err
+	}
+	req.Resource = strings.ToLower(strings.TrimSpace(req.Resource))
+	if req.Resource != resourceLists && req.Resource != resourceTemplates &&
+		req.Resource != resourceCampaigns && req.Resource != resourceMedia {
+		return echo.NewHTTPError(http.StatusBadRequest, "unsupported personal resource type")
+	}
+	if len(req.IDs) == 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, "at least one resource is required")
+	}
+	if req.Mode != "copy" && req.Mode != "move" {
+		return echo.NewHTTPError(http.StatusBadRequest, "migration mode must be copy or move")
+	}
+
+	target := active
+	if req.TargetOrganizationID != nil {
+		target, err = a.workspaceAccessForOrganization(c, *req.TargetOrganizationID)
+		if err != nil {
+			return err
+		}
+	}
+	if !target.IsOrganization() {
+		return echo.NewHTTPError(http.StatusBadRequest, "select an organization destination")
+	}
+	if err := requireWritableWorkspace(target); err != nil {
+		return err
+	}
+
+	ids, err := a.core.MigratePersonalResourcesToOrganization(
+		user.ID, target.OrganizationID, user.ID, req.Resource, req.IDs, req.Mode == "move",
+	)
+	if err != nil {
+		return err
+	}
+	if req.Resource == resourceTemplates {
+		a.cacheMigratedTransactionalTemplates(ids)
+	}
+	a.core.RefreshMatViews(true)
+	return c.JSON(http.StatusOK, okResp{struct {
+		Resource string `json:"resource"`
+		IDs      []int  `json:"ids"`
+		Mode     string `json:"mode"`
+	}{Resource: req.Resource, IDs: ids, Mode: req.Mode}})
+}
+
+func (a *App) cacheMigratedTransactionalTemplates(ids []int) {
+	for _, id := range ids {
+		tpl, err := a.core.GetTemplate(id, false)
+		if err != nil || tpl.Type != models.TemplateTypeTx {
+			continue
+		}
+		if err := tpl.Compile(a.manager.GenericTemplateFuncs()); err != nil {
+			a.log.Printf("error compiling migrated transactional template %d: %v", id, err)
+			continue
+		}
+		a.manager.CacheTpl(id, &tpl)
+	}
 }
 
 func (a *App) GetOrganizationInvites(c echo.Context) error {

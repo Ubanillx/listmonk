@@ -100,6 +100,24 @@ func (a *App) workspaceAccess(c echo.Context) (models.WorkspaceAccess, error) {
 	return models.WorkspaceAccess{Workspace: ws, UserID: auth.GetUser(c).ID}, nil
 }
 
+// readPermOrOrganizationManager keeps legacy role permissions intact while
+// allowing an organization manager to inspect records in the organization
+// currently selected by the request. It is intentionally limited to read
+// routes: write, import, export, bulk, and sending handlers retain their
+// existing permission and owner checks.
+func (a *App) readPermOrOrganizationManager(next echo.HandlerFunc, perms ...string) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		access, err := a.workspaceAccess(c)
+		if err != nil {
+			return err
+		}
+		if access.IsOrganization() && access.IsOrganizationManager() {
+			return next(c)
+		}
+		return a.auth.Perm(next, perms...)(c)
+	}
+}
+
 // workspaceAccessForOrganization resolves an explicit clone or migration
 // target without trusting an organization ID from the client body.
 func (a *App) workspaceAccessForOrganization(c echo.Context, orgID int) (models.WorkspaceAccess, error) {

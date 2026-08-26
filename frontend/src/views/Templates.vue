@@ -34,6 +34,9 @@
       <b-table-column v-slot="props" field="ownerUsername" label="所属用户" sortable>
         {{ ownerLabel(props.row) }}
         <b-tag size="is-small" class="is-light">{{ visibilityLabel(props.row.visibility) }}</b-tag>
+        <b-tag v-if="transferPendingAt(props.row)" size="is-small" type="is-warning" class="is-light">
+          待转移 {{ $utils.niceDate(transferPendingAt(props.row), true) }}
+        </b-tag>
       </b-table-column>
 
       <b-table-column v-slot="props" field="type" :label="$t('globals.fields.type')" sortable>
@@ -307,6 +310,10 @@ export default Vue.extend({
 
     ownerLabel(resource) {
       return resource.ownerName || resource.ownerUsername || '-';
+    },
+
+    transferPendingAt(resource) {
+      return resource.transferPendingAt || resource.transfer_pending_at;
     },
 
     visibilityLabel(visibility) {

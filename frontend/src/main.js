@@ -116,6 +116,16 @@ async function initConfig(app) {
       && !resource.transfer_pending_at;
   };
 
+  // Organization managers receive a deliberately narrow, read-only view of
+  // member resources in the active organization. The API remains the source
+  // of truth, but this keeps navigation and analytics affordances aligned
+  // with that server-side policy.
+  Vue.prototype.$canInspectOrganization = () => {
+    const activeWorkspace = store.state.workspace || {};
+    return Number(activeWorkspace.organizationId) > 0
+      && (profile.userRole.id === 1 || activeWorkspace.role === 'manager');
+  };
+
   // Set the page title after i18n has loaded.
   const to = router.history.current;
   const title = to.meta.title ? `${i18n.tc(to.meta.title, 0)} /` : '';

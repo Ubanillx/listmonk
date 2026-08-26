@@ -81,7 +81,8 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 	{
 		var (
 			// Permission check middleware.
-			pm = a.auth.Perm
+			pm  = a.auth.Perm
+			rpm = a.readPermOrOrganizationManager
 
 			// Attach a middleware to the group that checks for auth.
 			g = e.Group("", a.auth.Middleware, func(next echo.HandlerFunc) echo.HandlerFunc {
@@ -114,11 +115,11 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.GET("/api/events", pm(a.EventStream, "settings:get"))
 		g.GET("/api/about", a.GetAboutInfo)
 
-		g.GET("/api/subscribers", pm(a.QuerySubscribers, "subscribers:get_all", "subscribers:get"))
-		g.GET("/api/subscribers/:id", pm(hasID(a.GetSubscriber), "subscribers:get_all", "subscribers:get"))
-		g.GET("/api/subscribers/:id/activity", pm(hasID(a.GetSubscriberActivity), "subscribers:get_all", "subscribers:get"))
+		g.GET("/api/subscribers", rpm(a.QuerySubscribers, "subscribers:get_all", "subscribers:get"))
+		g.GET("/api/subscribers/:id", rpm(hasID(a.GetSubscriber), "subscribers:get_all", "subscribers:get"))
+		g.GET("/api/subscribers/:id/activity", rpm(hasID(a.GetSubscriberActivity), "subscribers:get_all", "subscribers:get"))
 		g.GET("/api/subscribers/:id/export", pm(hasID(a.ExportSubscriberData), "subscribers:get_all", "subscribers:get"))
-		g.GET("/api/subscribers/:id/bounces", pm(hasID(a.GetSubscriberBounces), "bounces:get"))
+		g.GET("/api/subscribers/:id/bounces", rpm(hasID(a.GetSubscriberBounces), "bounces:get"))
 		g.DELETE("/api/subscribers/:id/bounces", pm(hasID(a.DeleteSubscriberBounces), "bounces:manage"))
 		g.POST("/api/subscribers", pm(a.CreateSubscriber, "subscribers:manage"))
 		g.PUT("/api/subscribers/:id", pm(hasID(a.UpdateSubscriber), "subscribers:manage"))
@@ -130,9 +131,9 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.DELETE("/api/subscribers/:id", pm(hasID(a.DeleteSubscriber), "subscribers:manage"))
 		g.DELETE("/api/subscribers", pm(a.DeleteSubscribers, "subscribers:manage"))
 
-		g.GET("/api/bounces", pm(a.GetBounces, "bounces:get"))
+		g.GET("/api/bounces", rpm(a.GetBounces, "bounces:get"))
 		g.PUT("/api/bounces/blocklist", pm(a.BlocklistBouncedSubscribers, "bounces:manage"))
-		g.GET("/api/bounces/:id", pm(hasID(a.GetBounce), "bounces:get"))
+		g.GET("/api/bounces/:id", rpm(hasID(a.GetBounce), "bounces:get"))
 		g.DELETE("/api/bounces", pm(a.DeleteBounces, "bounces:manage"))
 		g.DELETE("/api/bounces/:id", pm(hasID(a.DeleteBounce), "bounces:manage"))
 

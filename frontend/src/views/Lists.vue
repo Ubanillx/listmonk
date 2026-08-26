@@ -102,11 +102,14 @@
       <b-table-column v-slot="props" field="ownerUsername" label="所属用户">
         {{ ownerLabel(props.row) }}
         <b-tag size="is-small" class="is-light">{{ visibilityLabel(props.row.visibility) }}</b-tag>
+        <b-tag v-if="transferPendingAt(props.row)" size="is-small" type="is-warning" class="is-light">
+          待转移 {{ $utils.niceDate(transferPendingAt(props.row), true) }}
+        </b-tag>
       </b-table-column>
 
       <b-table-column v-slot="props" field="subscriber_count" :label="$t('globals.terms.subscribers')"
         header-class="cy-subscribers" numeric sortable centered>
-        <template v-if="$can('subscribers:get_all', 'subscribers:get')">
+        <template v-if="canInspectOrganization || $can('subscribers:get_all', 'subscribers:get')">
           <router-link :to="`/subscribers/lists/${props.row.id}`">
             {{ $utils.formatNumber(props.row.subscriberCount) }}
             <span class="is-size-7 view">{{ $t('globals.buttons.view') }}</span>
@@ -376,6 +379,10 @@ export default Vue.extend({
         organization: '组织共享',
       }[visibility] || '个人私有';
     },
+
+    transferPendingAt(resource) {
+      return resource.transferPendingAt || resource.transfer_pending_at;
+    },
   },
 
   computed: {
@@ -383,6 +390,10 @@ export default Vue.extend({
 
     canManageLists() {
       return Array.isArray(this.lists.results) && this.lists.results.some((list) => this.canManageList(list));
+    },
+
+    canInspectOrganization() {
+      return this.$canInspectOrganization();
     },
 
     // Organization managers can inspect member lists but must never bulk

@@ -9,14 +9,14 @@
       </div>
     </header>
 
-    <b-table :data="bounces.results" :hoverable="true" :loading="loading.bounces" default-sort="createdAt" checkable
+    <b-table :data="bounces.results" :hoverable="true" :loading="loading.bounces" default-sort="createdAt" :checkable="canManageBounces"
       @check-all="onTableCheck" @check="onTableCheck" :checked-rows.sync="bulk.checked" detailed show-detail-icon
       paginated backend-pagination pagination-position="both" @page-change="onPageChange"
       :current-page="queryParams.page" :per-page="bounces.perPage" :total="bounces.total" backend-sorting
       @sort="onSort">
       <template #top-left>
         <div class="actions">
-          <template v-if="bulk.checked.length > 0">
+          <template v-if="canManageBounces && bulk.checked.length > 0">
             <a class="a" href="#" @click.prevent="$utils.confirm(null, () => deleteBounces())" data-cy="btn-delete">
               <b-icon icon="trash-can-outline" size="is-small" /> {{ $t('globals.buttons.delete') }}
             </a>
@@ -72,7 +72,7 @@
 
       <b-table-column v-slot="props" cell-class="actions" align="right">
         <div>
-          <a v-if="!props.row.isDefault" href="#" @click.prevent="$utils.confirm(null, () => deleteBounce(props.row))"
+          <a v-if="canManageBounces && !props.row.isDefault" href="#" @click.prevent="$utils.confirm(null, () => deleteBounce(props.row))"
             data-cy="btn-delete" :aria-label="$t('globals.buttons.delete')">
             <b-tooltip :label="$t('globals.buttons.delete')" type="is-dark">
               <b-icon icon="trash-can-outline" size="is-small" />
@@ -205,6 +205,11 @@ export default Vue.extend({
 
   computed: {
     ...mapState(['templates', 'loading']),
+
+    canManageBounces() {
+      return this.$can('bounces:manage');
+    },
+
     numSelectedBounces() {
       if (this.bulk.all) {
         return this.bounces.total;

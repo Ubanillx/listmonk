@@ -111,6 +111,9 @@
       <b-table-column v-slot="props" field="ownerUsername" label="所属用户" width="12%">
         <span>{{ ownerLabel(props.row) }}</span>
         <b-tag size="is-small" class="is-light">{{ visibilityLabel(props.row.visibility) }}</b-tag>
+        <b-tag v-if="transferPendingAt(props.row)" size="is-small" type="is-warning" class="is-light">
+          待转移 {{ $utils.niceDate(transferPendingAt(props.row), true) }}
+        </b-tag>
       </b-table-column>
       <b-table-column v-slot="props" cell-class="lists" field="lists" :label="$t('globals.terms.lists')" width="15%">
         <ul>
@@ -505,6 +508,10 @@ export default Vue.extend({
         organization: '组织共享',
         global: '全体共享',
       }[visibility] || '个人私有';
+    },
+
+    transferPendingAt(resource) {
+      return resource.transferPendingAt || resource.transfer_pending_at;
     },
 
     deleteCampaign(c) {

@@ -288,7 +288,7 @@
       </b-tab-item><!-- attribs -->
 
       <b-tab-item
-        v-if="isEditing && $can('campaigns:get_analytics')"
+        v-if="isEditing && canViewAnalytics"
         :label="$t('globals.terms.analytics')"
         value="analytics"
       >
@@ -851,6 +851,10 @@ export default Vue.extend({
 
     canArchive() {
       return this.canManage && this.data.status !== 'cancelled' && this.data.type !== 'optin';
+    },
+
+    canViewAnalytics() {
+      return this.$can('campaigns:get_analytics') || this.$canInspectOrganization();
     },
 
     availableLists() {

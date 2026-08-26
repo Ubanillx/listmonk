@@ -12,15 +12,15 @@
         icon="newspaper-variant-outline" :label="$t('menu.forms')" />
     </b-menu-item><!-- lists -->
 
-    <b-menu-item v-if="$can('subscribers:*')" :expanded="activeGroup.subscribers" :active="activeGroup.subscribers"
+    <b-menu-item v-if="canInspectOrganization || $can('subscribers:*')" :expanded="activeGroup.subscribers" :active="activeGroup.subscribers"
       data-cy="subscribers" @update:active="(state) => toggleGroup('subscribers', state)" icon="account-multiple"
       :label="$t('globals.terms.subscribers')">
-      <b-menu-item v-if="$can('subscribers:get_all', 'subscribers:get')" :to="{ name: 'subscribers' }" tag="router-link"
+      <b-menu-item v-if="canInspectOrganization || $can('subscribers:get_all', 'subscribers:get')" :to="{ name: 'subscribers' }" tag="router-link"
         :active="activeItem.subscribers" data-cy="all-subscribers" icon="account-multiple"
         :label="$t('menu.allSubscribers')" />
       <b-menu-item v-if="$can('subscribers:import')" :to="{ name: 'import' }" tag="router-link"
         :active="activeItem.import" data-cy="import" icon="file-upload-outline" :label="$t('menu.import')" />
-      <b-menu-item v-if="$can('bounces:get')" :to="{ name: 'bounces' }" tag="router-link" :active="activeItem.bounces"
+      <b-menu-item v-if="canInspectOrganization || $can('bounces:get')" :to="{ name: 'bounces' }" tag="router-link" :active="activeItem.bounces"
         data-cy="bounces" icon="email-bounce" :label="$t('globals.terms.bounces')" />
     </b-menu-item><!-- subscribers -->
 
@@ -37,7 +37,7 @@
       <b-menu-item :to="{ name: 'templates' }" tag="router-link"
         :active="activeItem.templates" data-cy="templates" icon="file-image-outline"
         :label="$t('globals.terms.templates')" />
-      <b-menu-item v-if="$can('campaigns:get_analytics')" :to="{ name: 'campaignAnalytics' }" tag="router-link"
+      <b-menu-item v-if="canInspectOrganization || $can('campaigns:get_analytics')" :to="{ name: 'campaignAnalytics' }" tag="router-link"
         :active="activeItem.campaignAnalytics" data-cy="analytics" icon="chart-bar"
         :label="$t('globals.terms.analytics')" />
     </b-menu-item><!-- campaigns -->
@@ -92,7 +92,11 @@ export default {
   },
 
   computed: {
-    ...mapState(['profile']),
+    ...mapState(['profile', 'workspace']),
+
+    canInspectOrganization() {
+      return this.$canInspectOrganization();
+    },
   },
 
   mounted() {

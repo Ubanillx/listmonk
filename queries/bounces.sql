@@ -6,7 +6,13 @@ WITH camp AS (
 sub AS (
     SELECT s.id, s.status
     FROM subscribers s
-    WHERE (CASE WHEN $1 != '' THEN s.uuid = $1::UUID ELSE LOWER(s.email) = LOWER($2) END)
+    WHERE (
+        CASE WHEN $1 != '' THEN s.id IN (
+            SELECT id FROM subscribers WHERE uuid = $1::UUID
+            UNION
+            SELECT subscriber_id FROM subscriber_uuid_aliases WHERE uuid = $1::UUID
+        ) ELSE LOWER(s.email) = LOWER($2) END
+    )
         AND (
             CASE
                 -- A campaign-bound bounce must resolve to a subscriber in
@@ -76,7 +82,14 @@ DELETE FROM bounces WHERE $2 = TRUE OR id = ANY($1);
 
 -- name: delete-bounces-by-subscriber
 WITH sub AS (
-    SELECT id FROM subscribers WHERE CASE WHEN $1 > 0 THEN id = $1 ELSE uuid = $2 END
+    SELECT id FROM subscribers WHERE CASE
+        WHEN $1 > 0 THEN id = $1
+        ELSE id IN (
+            SELECT id FROM subscribers WHERE uuid = $2::UUID
+            UNION
+            SELECT subscriber_id FROM subscriber_uuid_aliases WHERE uuid = $2::UUID
+        )
+    END
 )
 DELETE FROM bounces WHERE subscriber_id = (SELECT id FROM sub);
 

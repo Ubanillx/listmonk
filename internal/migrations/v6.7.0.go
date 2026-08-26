@@ -79,6 +79,14 @@ func V6_7_0(db *sqlx.DB, fs stuffbin.FileSystem, ko *koanf.Koanf, lo *log.Logger
 		CREATE INDEX IF NOT EXISTS idx_organization_invites_org_active
 			ON organization_invites(organization_id, created_at DESC) WHERE revoked_at IS NULL;
 
+		CREATE TABLE IF NOT EXISTS subscriber_uuid_aliases (
+			uuid UUID PRIMARY KEY,
+			subscriber_id INTEGER NOT NULL REFERENCES subscribers(id) ON DELETE CASCADE ON UPDATE CASCADE,
+			created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+		);
+		CREATE INDEX IF NOT EXISTS idx_subscriber_uuid_aliases_subscriber_id
+			ON subscriber_uuid_aliases(subscriber_id);
+
 		ALTER TABLE lists ADD COLUMN IF NOT EXISTS organization_id BIGINT REFERENCES organizations(id) ON DELETE RESTRICT;
 		ALTER TABLE lists ADD COLUMN IF NOT EXISTS owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
 		ALTER TABLE lists ADD COLUMN IF NOT EXISTS original_owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
@@ -236,6 +244,9 @@ func mergeDuplicateScopedSubscribers(db *sqlx.DB) error {
 }
 
 func mergeScopedSubscriber(tx *sqlx.Tx, sourceID, targetID int) error {
+	if err := preserveMergedSubscriberUUIDAliases(tx, sourceID, targetID); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(`
 		UPDATE subscribers AS target
 		SET status = CASE
@@ -299,4 +310,25 @@ func mergeScopedSubscriber(tx *sqlx.Tx, sourceID, targetID int) error {
 		return err
 	}
 	return nil
+}
+
+// preserveMergedSubscriberUUIDAliases keeps every UUID that pointed to a
+// merged subscriber resolving to the retained row. Sent messages contain the
+// UUID at delivery time, so this is required for their view, tracking, and
+// unsubscribe URLs to remain valid after scoped duplicate reconciliation.
+func preserveMergedSubscriberUUIDAliases(tx *sqlx.Tx, sourceID, targetID int) error {
+	if sourceID == targetID {
+		return nil
+	}
+	if _, err := tx.Exec(`
+		UPDATE subscriber_uuid_aliases
+		SET subscriber_id = $2
+		WHERE subscriber_id = $1`, sourceID, targetID); err != nil {
+		return err
+	}
+	_, err := tx.Exec(`
+		INSERT INTO subscriber_uuid_aliases (uuid, subscriber_id)
+		SELECT uuid, $2 FROM subscribers WHERE id = $1
+		ON CONFLICT (uuid) DO UPDATE SET subscriber_id = EXCLUDED.subscriber_id`, sourceID, targetID)
+	return err
 }

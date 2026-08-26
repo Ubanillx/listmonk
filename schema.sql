@@ -24,6 +24,7 @@ DROP TABLE IF EXISTS organization_members CASCADE;
 DROP TABLE IF EXISTS organizations CASCADE;
 
 -- subscribers
+DROP TABLE IF EXISTS subscriber_uuid_aliases CASCADE;
 DROP TABLE IF EXISTS subscribers CASCADE;
 CREATE TABLE subscribers (
     id              SERIAL PRIMARY KEY,
@@ -41,6 +42,16 @@ DROP INDEX IF EXISTS idx_subs_status; CREATE INDEX idx_subs_status ON subscriber
 DROP INDEX IF EXISTS idx_subs_id_status; CREATE INDEX idx_subs_id_status ON subscribers(id, status);
 DROP INDEX IF EXISTS idx_subs_created_at; CREATE INDEX idx_subs_created_at ON subscribers(created_at);
 DROP INDEX IF EXISTS idx_subs_updated_at; CREATE INDEX idx_subs_updated_at ON subscribers(updated_at);
+
+-- A subscriber can be merged into another record when scoped e-mail
+-- duplicates are reconciled. Preserve previous UUIDs so delivered campaign
+-- URLs continue resolving to the retained subscriber.
+CREATE TABLE subscriber_uuid_aliases (
+    uuid          UUID PRIMARY KEY,
+    subscriber_id INTEGER NOT NULL REFERENCES subscribers(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    created_at    TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_subscriber_uuid_aliases_subscriber_id ON subscriber_uuid_aliases(subscriber_id);
 
 -- lists
 DROP TABLE IF EXISTS lists CASCADE;

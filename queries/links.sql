@@ -38,25 +38,39 @@ campaign AS (
 ),
 subscriber AS (
     SELECT id, organization_id, owner_user_id
-    FROM subscribers WHERE uuid = NULLIF($3::TEXT, '')::UUID
+    FROM subscribers
+    WHERE id IN (
+        SELECT id FROM subscribers WHERE uuid = NULLIF($3::TEXT, '')::UUID
+        UNION
+        SELECT subscriber_id FROM subscriber_uuid_aliases WHERE uuid = NULLIF($3::TEXT, '')::UUID
+    )
 ),
-recipient AS (
+snapshot_recipient AS (
     SELECT c.id AS campaign_id, s.id AS subscriber_id
     FROM campaign c
     JOIN subscriber s ON TRUE
-    WHERE s.organization_id IS NOT DISTINCT FROM c.organization_id
-    AND s.owner_user_id IS NOT DISTINCT FROM c.owner_user_id
-    AND (EXISTS (
+    WHERE EXISTS (
         SELECT 1 FROM campaign_recipients cr
         WHERE cr.campaign_id = c.id AND cr.subscriber_id = s.id
-    ) OR (
-        NOT EXISTS (SELECT 1 FROM campaign_recipients cr WHERE cr.campaign_id = c.id)
+    )
+),
+legacy_recipient AS (
+    SELECT c.id AS campaign_id, s.id AS subscriber_id
+    FROM campaign c
+    JOIN subscriber s ON TRUE
+    WHERE NOT EXISTS (SELECT 1 FROM campaign_recipients cr WHERE cr.campaign_id = c.id)
+        AND s.organization_id IS NOT DISTINCT FROM c.organization_id
+        AND s.owner_user_id IS NOT DISTINCT FROM c.owner_user_id
         AND EXISTS (
             SELECT 1 FROM campaign_lists cl
             JOIN subscriber_lists sl ON sl.list_id = cl.list_id
             WHERE cl.campaign_id = c.id AND sl.subscriber_id = s.id
         )
-    ))
+),
+recipient AS (
+    SELECT campaign_id, subscriber_id FROM snapshot_recipient
+    UNION ALL
+    SELECT campaign_id, subscriber_id FROM legacy_recipient
 )
 INSERT INTO link_clicks (campaign_id, subscriber_id, link_id)
     SELECT c.id,

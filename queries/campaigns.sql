@@ -183,35 +183,51 @@ SELECT campaigns.*,
         ));
 
 -- name: get-public-campaign-recipient
--- Public message, subscription, and tracking URLs are bearer links. Resolve
--- both UUIDs through the immutable recipient snapshot rather than allowing a
--- campaign UUID and a subscriber UUID to be combined independently. The
--- snapshot deliberately remains valid after a permitted resource transfer so
--- sent mail keeps working as historical data is retained. Legacy campaigns
--- predating campaign_recipients fall back only when they have no snapshot, and
--- then only through the same owner/workspace campaign-list relationship.
-SELECT c.id AS campaign_id, s.id AS subscriber_id
-FROM campaigns c
-JOIN subscribers s ON s.uuid = $2::UUID
-WHERE c.uuid = $1::UUID
-    AND s.organization_id IS NOT DISTINCT FROM c.organization_id
-    AND s.owner_user_id IS NOT DISTINCT FROM c.owner_user_id
-    AND (
-        EXISTS (
-            SELECT 1 FROM campaign_recipients cr
-            WHERE cr.campaign_id = c.id AND cr.subscriber_id = s.id
-        )
-        OR (
-            NOT EXISTS (SELECT 1 FROM campaign_recipients cr WHERE cr.campaign_id = c.id)
-            AND s.organization_id IS NOT DISTINCT FROM c.organization_id
-            AND s.owner_user_id IS NOT DISTINCT FROM c.owner_user_id
-            AND EXISTS (
-                SELECT 1 FROM campaign_lists cl
-                JOIN subscriber_lists sl ON sl.list_id = cl.list_id
-                WHERE cl.campaign_id = c.id AND sl.subscriber_id = s.id
-            )
-        )
+WITH campaign AS (
+    SELECT id, organization_id, owner_user_id
+    FROM campaigns WHERE uuid = $1::UUID
+),
+subscriber AS (
+    SELECT id, organization_id, owner_user_id
+    FROM subscribers
+    WHERE id IN (
+        SELECT id FROM subscribers WHERE uuid = $2::UUID
+        UNION
+        SELECT subscriber_id FROM subscriber_uuid_aliases WHERE uuid = $2::UUID
     )
+),
+snapshot_recipient AS (
+    -- A recipient snapshot is the authority for a sent message. Resource
+    -- ownership can legitimately change after delivery (for example, when a
+    -- departing member's resources are transferred), so do not bind this
+    -- branch to the current owner or organization fields.
+    SELECT c.id AS campaign_id, s.id AS subscriber_id
+    FROM campaign c
+    JOIN subscriber s ON TRUE
+    WHERE EXISTS (
+        SELECT 1 FROM campaign_recipients cr
+        WHERE cr.campaign_id = c.id AND cr.subscriber_id = s.id
+    )
+),
+legacy_recipient AS (
+    -- Old campaigns created before recipient snapshots existed can only use
+    -- the historical campaign-list relationship, which must remain in the
+    -- same current owner/workspace boundary.
+    SELECT c.id AS campaign_id, s.id AS subscriber_id
+    FROM campaign c
+    JOIN subscriber s ON TRUE
+    WHERE NOT EXISTS (SELECT 1 FROM campaign_recipients cr WHERE cr.campaign_id = c.id)
+        AND s.organization_id IS NOT DISTINCT FROM c.organization_id
+        AND s.owner_user_id IS NOT DISTINCT FROM c.owner_user_id
+        AND EXISTS (
+            SELECT 1 FROM campaign_lists cl
+            JOIN subscriber_lists sl ON sl.list_id = cl.list_id
+            WHERE cl.campaign_id = c.id AND sl.subscriber_id = s.id
+        )
+)
+SELECT campaign_id, subscriber_id FROM snapshot_recipient
+UNION ALL
+SELECT campaign_id, subscriber_id FROM legacy_recipient
 LIMIT 1;
 
 -- name: get-archived-campaigns
@@ -1189,31 +1205,45 @@ WITH campaign AS (
 ),
 subscriber AS (
     SELECT id, organization_id, owner_user_id
-    FROM subscribers WHERE uuid = NULLIF($2::TEXT, '')::UUID
+    FROM subscribers
+    WHERE id IN (
+        SELECT id FROM subscribers WHERE uuid = NULLIF($2::TEXT, '')::UUID
+        UNION
+        SELECT subscriber_id FROM subscriber_uuid_aliases WHERE uuid = NULLIF($2::TEXT, '')::UUID
+    )
 ),
-recipient AS (
+snapshot_recipient AS (
     SELECT c.id AS campaign_id, s.id AS subscriber_id
     FROM campaign c
     JOIN subscriber s ON TRUE
-    WHERE s.organization_id IS NOT DISTINCT FROM c.organization_id
-    AND s.owner_user_id IS NOT DISTINCT FROM c.owner_user_id
-    AND (EXISTS (
+    WHERE EXISTS (
         SELECT 1 FROM campaign_recipients cr
         WHERE cr.campaign_id = c.id AND cr.subscriber_id = s.id
-    ) OR (
-        NOT EXISTS (SELECT 1 FROM campaign_recipients cr WHERE cr.campaign_id = c.id)
+    )
+),
+legacy_recipient AS (
+    SELECT c.id AS campaign_id, s.id AS subscriber_id
+    FROM campaign c
+    JOIN subscriber s ON TRUE
+    WHERE NOT EXISTS (SELECT 1 FROM campaign_recipients cr WHERE cr.campaign_id = c.id)
+        AND s.organization_id IS NOT DISTINCT FROM c.organization_id
+        AND s.owner_user_id IS NOT DISTINCT FROM c.owner_user_id
         AND EXISTS (
             SELECT 1 FROM campaign_lists cl
             JOIN subscriber_lists sl ON sl.list_id = cl.list_id
             WHERE cl.campaign_id = c.id AND sl.subscriber_id = s.id
         )
-    ))
+),
+recipient AS (
+    SELECT campaign_id, subscriber_id FROM snapshot_recipient
+    UNION ALL
+    SELECT campaign_id, subscriber_id FROM legacy_recipient
 ),
 view AS (
     SELECT c.id AS campaign_id,
         CASE WHEN $2::TEXT = '' THEN NULL ELSE r.subscriber_id END AS subscriber_id
     FROM campaign c
-    LEFT JOIN recipient r ON TRUE
+    LEFT JOIN recipient r ON r.campaign_id = c.id
     WHERE $2::TEXT = '' OR r.subscriber_id IS NOT NULL
 )
 INSERT INTO campaign_views (campaign_id, subscriber_id)

@@ -4,7 +4,11 @@
 SELECT * FROM subscribers WHERE
     CASE
         WHEN $1 > 0 THEN id = $1
-        WHEN $2 != '' THEN uuid = $2::UUID
+        WHEN $2 != '' THEN id IN (
+            SELECT id FROM subscribers WHERE uuid = $2::UUID
+            UNION
+            SELECT subscriber_id FROM subscriber_uuid_aliases WHERE uuid = $2::UUID
+        )
         WHEN $3 != '' THEN email = $3
     END;
 
@@ -24,7 +28,14 @@ SELECT * FROM subscribers WHERE email=ANY($1);
 
 -- name: get-subscriber-lists
 WITH sub AS (
-    SELECT id FROM subscribers WHERE CASE WHEN $1 > 0 THEN id = $1 ELSE uuid = $2 END
+    SELECT id FROM subscribers WHERE CASE
+        WHEN $1 > 0 THEN id = $1
+        ELSE id IN (
+            SELECT id FROM subscribers WHERE uuid = $2::UUID
+            UNION
+            SELECT subscriber_id FROM subscriber_uuid_aliases WHERE uuid = $2::UUID
+        )
+    END
 )
 SELECT * FROM lists
     LEFT JOIN subscriber_lists ON (lists.id = subscriber_lists.list_id)
@@ -72,7 +83,14 @@ SELECT id as subscriber_id,
 -- if $3 is set to true, all lists are fetched including the subscriber's subscriptions.
 -- subscription_status, and subscription_created_at are null in that case.
 WITH sub AS (
-    SELECT id FROM subscribers WHERE CASE WHEN $1 > 0 THEN id = $1 ELSE uuid = $2 END
+    SELECT id FROM subscribers WHERE CASE
+        WHEN $1 > 0 THEN id = $1
+        ELSE id IN (
+            SELECT id FROM subscribers WHERE uuid = $2::UUID
+            UNION
+            SELECT subscriber_id FROM subscriber_uuid_aliases WHERE uuid = $2::UUID
+        )
+    END
 )
 SELECT lists.*,
     subscriber_lists.status as subscription_status,
@@ -272,7 +290,14 @@ INSERT INTO subscriber_lists (subscriber_id, list_id, status)
 
 -- name: delete-subscribers
 -- Delete one or more subscribers by ID or UUID.
-DELETE FROM subscribers WHERE CASE WHEN ARRAY_LENGTH($1::INT[], 1) > 0 THEN id = ANY($1) ELSE uuid = ANY($2::UUID[]) END;
+DELETE FROM subscribers WHERE CASE
+    WHEN ARRAY_LENGTH($1::INT[], 1) > 0 THEN id = ANY($1)
+    ELSE id IN (
+        SELECT id FROM subscribers WHERE uuid = ANY($2::UUID[])
+        UNION
+        SELECT subscriber_id FROM subscriber_uuid_aliases WHERE uuid = ANY($2::UUID[])
+    )
+END;
 
 -- name: delete-blocklisted-subscribers
 DELETE FROM subscribers WHERE status = 'blocklisted';
@@ -300,7 +325,12 @@ DELETE FROM subscriber_lists
 
 -- name: confirm-subscription-optin
 WITH subID AS (
-    SELECT id FROM subscribers WHERE uuid = $1::UUID
+    SELECT id FROM subscribers
+    WHERE id IN (
+        SELECT id FROM subscribers WHERE uuid = $1::UUID
+        UNION
+        SELECT subscriber_id FROM subscriber_uuid_aliases WHERE uuid = $1::UUID
+    )
 ),
 listIDs AS (
     SELECT id FROM lists WHERE uuid = ANY($2::UUID[])
@@ -332,25 +362,39 @@ WITH campaign AS (
 ),
 subscriber AS (
     SELECT id, organization_id, owner_user_id
-    FROM subscribers WHERE uuid = $2::UUID
+    FROM subscribers
+    WHERE id IN (
+        SELECT id FROM subscribers WHERE uuid = $2::UUID
+        UNION
+        SELECT subscriber_id FROM subscriber_uuid_aliases WHERE uuid = $2::UUID
+    )
 ),
-recipient AS (
+snapshot_recipient AS (
     SELECT c.id AS campaign_id, s.id AS subscriber_id
     FROM campaign c
     JOIN subscriber s ON TRUE
-    WHERE s.organization_id IS NOT DISTINCT FROM c.organization_id
-    AND s.owner_user_id IS NOT DISTINCT FROM c.owner_user_id
-    AND (EXISTS (
+    WHERE EXISTS (
         SELECT 1 FROM campaign_recipients cr
         WHERE cr.campaign_id = c.id AND cr.subscriber_id = s.id
-    ) OR (
-        NOT EXISTS (SELECT 1 FROM campaign_recipients cr WHERE cr.campaign_id = c.id)
+    )
+),
+legacy_recipient AS (
+    SELECT c.id AS campaign_id, s.id AS subscriber_id
+    FROM campaign c
+    JOIN subscriber s ON TRUE
+    WHERE NOT EXISTS (SELECT 1 FROM campaign_recipients cr WHERE cr.campaign_id = c.id)
+        AND s.organization_id IS NOT DISTINCT FROM c.organization_id
+        AND s.owner_user_id IS NOT DISTINCT FROM c.owner_user_id
         AND EXISTS (
             SELECT 1 FROM campaign_lists cl
             JOIN subscriber_lists sl ON sl.list_id = cl.list_id
             WHERE cl.campaign_id = c.id AND sl.subscriber_id = s.id
         )
-    ))
+),
+recipient AS (
+    SELECT campaign_id, subscriber_id FROM snapshot_recipient
+    UNION ALL
+    SELECT campaign_id, subscriber_id FROM legacy_recipient
 ),
 lists AS (
     SELECT cl.list_id FROM campaign_lists cl
@@ -506,7 +550,14 @@ UPDATE subscriber_lists SET status='unsubscribed', updated_at=NOW()
 -- name: export-subscriber-data
 WITH prof AS (
     SELECT id, uuid, email, name, attribs, status, created_at, updated_at FROM subscribers WHERE
-    CASE WHEN $1 > 0 THEN id = $1 ELSE uuid = $2 END
+    CASE
+        WHEN $1 > 0 THEN id = $1
+        ELSE id IN (
+            SELECT id FROM subscribers WHERE uuid = $2::UUID
+            UNION
+            SELECT subscriber_id FROM subscriber_uuid_aliases WHERE uuid = $2::UUID
+        )
+    END
 ),
 subs AS (
     SELECT subscriber_lists.status AS subscription_status,

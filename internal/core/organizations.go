@@ -932,6 +932,21 @@ func (c *Core) mergeSubscriber(tx *sqlx.Tx, sourceID, targetID int) error {
 	if sourceID == targetID {
 		return nil
 	}
+	// Campaign messages retain the UUID that was present when they were sent.
+	// Store the source UUID and any earlier aliases before deleting the source
+	// record so historical message, click, view, and unsubscribe links resolve.
+	if _, err := tx.Exec(`
+		UPDATE subscriber_uuid_aliases
+		SET subscriber_id = $2
+		WHERE subscriber_id = $1`, sourceID, targetID); err != nil {
+		return c.organizationDBErr("preserving subscriber UUID aliases", err)
+	}
+	if _, err := tx.Exec(`
+		INSERT INTO subscriber_uuid_aliases (uuid, subscriber_id)
+		SELECT uuid, $2 FROM subscribers WHERE id = $1
+		ON CONFLICT (uuid) DO UPDATE SET subscriber_id = EXCLUDED.subscriber_id`, sourceID, targetID); err != nil {
+		return c.organizationDBErr("preserving subscriber UUID alias", err)
+	}
 	if err := c.mergeSubscriberProfile(tx, sourceID, targetID); err != nil {
 		return err
 	}

@@ -20,7 +20,7 @@
         :label="$t('menu.allSubscribers')" />
       <b-menu-item v-if="$canCreateWorkspaceResource()" :to="{ name: 'import' }" tag="router-link"
         :active="activeItem.import" data-cy="import" icon="file-upload-outline" :label="$t('menu.import')" />
-      <b-menu-item v-if="canInspectOrganization || $can('bounces:get')" :to="{ name: 'bounces' }" tag="router-link" :active="activeItem.bounces"
+      <b-menu-item v-if="canViewBounces" :to="{ name: 'bounces' }" tag="router-link" :active="activeItem.bounces"
         data-cy="bounces" icon="email-bounce" :label="$t('globals.terms.bounces')" />
     </b-menu-item><!-- subscribers -->
 
@@ -92,10 +92,10 @@ export default {
   },
 
   computed: {
-    ...mapState(['profile', 'workspace']),
+    ...mapState(['workspace']),
 
-    canInspectOrganization() {
-      return this.$canInspectOrganization();
+    canViewBounces() {
+      return !this.workspace.archived;
     },
   },
 

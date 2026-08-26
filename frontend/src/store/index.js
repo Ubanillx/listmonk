@@ -5,6 +5,7 @@ import { models } from '../constants';
 Vue.use(Vuex);
 
 const workspaceStorageKey = 'listmonk.workspace.organizationId';
+const workspaceCookieKey = 'listmonk_workspace_organization_id';
 
 function initialWorkspace() {
   const raw = window.localStorage.getItem(workspaceStorageKey);
@@ -73,6 +74,10 @@ export default new Vuex.Store({
       } else {
         window.localStorage.removeItem(workspaceStorageKey);
       }
+      // <img> requests cannot attach the workspace header used by Axios.
+      // This is not an authorization token: the backend validates active
+      // membership before serving each protected media file.
+      document.cookie = `${workspaceCookieKey}=${organizationId}; Path=/; SameSite=Lax`;
     },
 
     setOrganizations(state, organizations) {

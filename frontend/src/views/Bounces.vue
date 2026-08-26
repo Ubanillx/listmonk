@@ -10,6 +10,7 @@
     </header>
 
     <b-table :data="bounces.results" :hoverable="true" :loading="loading.bounces" default-sort="createdAt" :checkable="canManageBounces"
+      :is-row-checkable="canManageBounce"
       @check-all="onTableCheck" @check="onTableCheck" :checked-rows.sync="bulk.checked" detailed show-detail-icon
       paginated backend-pagination pagination-position="both" @page-change="onPageChange"
       :current-page="queryParams.page" :per-page="bounces.perPage" :total="bounces.total" backend-sorting
@@ -26,7 +27,7 @@
             </a>
             <span>
               {{ $t('globals.messages.numSelected', { num: numSelectedBounces }) }}
-              <span v-if="!bulk.all && bounces.total > bounces.perPage">
+              <span v-if="canManageAllBounces && !bulk.all && bounces.total > bounces.perPage">
                 &mdash;
                 <a href="#" @click.prevent="selectAllBounces">
                   {{ $t('subscribers.selectAll', { num: bounces.total }) }}
@@ -72,7 +73,7 @@
 
       <b-table-column v-slot="props" cell-class="actions" align="right">
         <div>
-          <a v-if="canManageBounces && !props.row.isDefault" href="#" @click.prevent="$utils.confirm(null, () => deleteBounce(props.row))"
+          <a v-if="canManageBounce(props.row) && !props.row.isDefault" href="#" @click.prevent="$utils.confirm(null, () => deleteBounce(props.row))"
             data-cy="btn-delete" :aria-label="$t('globals.buttons.delete')">
             <b-tooltip :label="$t('globals.buttons.delete')" type="is-dark">
               <b-icon icon="trash-can-outline" size="is-small" />
@@ -127,6 +128,10 @@ export default Vue.extend({
   },
 
   methods: {
+    canManageBounce(bounce) {
+      return this.$canManageResource(bounce);
+    },
+
     onSort(field, direction) {
       this.queryParams.orderBy = field;
       this.queryParams.order = direction;
@@ -139,7 +144,9 @@ export default Vue.extend({
     },
     // Mark all bounces in the query as selected.
     selectAllBounces() {
-      this.bulk.all = true;
+      if (this.canManageAllBounces) {
+        this.bulk.all = true;
+      }
     },
     onTableCheck() {
       // Disable bulk.all selection if there are no rows checked in the table.
@@ -174,7 +181,7 @@ export default Vue.extend({
       const params = {};
       if (!this.bulk.all && this.bulk.checked.length > 0) {
         params.id = this.bulk.checked.map((s) => s.id);
-      } else if (this.bulk.all) {
+      } else if (this.bulk.all && this.canManageAllBounces) {
         params.all = true;
       }
 
@@ -199,15 +206,25 @@ export default Vue.extend({
         return;
       }
 
-      this.$api.blocklistBouncedSubscribers({ all: true }).then(cb);
+      if (this.bulk.all && this.canManageAllBounces) {
+        this.$api.blocklistBouncedSubscribers({ all: true }).then(cb);
+      }
     },
   },
 
   computed: {
-    ...mapState(['templates', 'loading']),
+    ...mapState(['templates', 'loading', 'profile']),
 
     canManageBounces() {
-      return this.$can('bounces:manage');
+      return this.$canCreateWorkspaceResource();
+    },
+
+    canManageAllBounces() {
+      return !this.$canInspectOrganization() || this.isPlatformAdmin;
+    },
+
+    isPlatformAdmin() {
+      return this.profile && this.profile.userRole && this.profile.userRole.id === 1;
     },
 
     numSelectedBounces() {

@@ -120,6 +120,14 @@ type User struct {
 	HasPassword        bool                        `db:"-" json:"-"`
 }
 
+// IsPlatformAdmin reports whether the user is the built-in platform
+// administrator. Retrieved users keep the database role ID in UserRole.ID so
+// it can be returned safely to clients, while users being created or updated
+// still carry it in UserRoleID. Accept both representations at the boundary.
+func (u User) IsPlatformAdmin() bool {
+	return u.UserRole.ID == SuperAdminRoleID || u.UserRoleID == SuperAdminRoleID
+}
+
 type IntegrationToken struct {
 	Base
 
@@ -172,7 +180,7 @@ type ListRole struct {
 // HasPerm checks if the user has a specific permission.
 func (u *User) HasPerm(perm string) bool {
 	// Short-circuit if the user is the primordial super admin.
-	if u.UserRoleID == SuperAdminRoleID {
+	if u.IsPlatformAdmin() {
 		return true
 	}
 
@@ -215,7 +223,7 @@ func (u *User) HasListPerm(types PermType, listIDs ...int) error {
 
 func (u *User) hasListPerm(perm string, listID int) bool {
 	// Short-circuit if the user is the primordial super admin.
-	if u.UserRoleID == SuperAdminRoleID {
+	if u.IsPlatformAdmin() {
 		return true
 	}
 
@@ -237,7 +245,7 @@ func (u *User) GetPermittedLists(types PermType) (bool, []int) {
 	}
 
 	// Short-circuit if the user is the primordial super admin.
-	if u.UserRoleID == SuperAdminRoleID {
+	if u.IsPlatformAdmin() {
 		return true, nil
 	}
 
@@ -283,6 +291,9 @@ func (u *User) GetPermittedLists(types PermType) (bool, []int) {
 func (u *User) FilterListsByPerm(types PermType, listIDs []int) []int {
 	if types == 0 {
 		return nil
+	}
+	if u.IsPlatformAdmin() {
+		return listIDs
 	}
 
 	var (

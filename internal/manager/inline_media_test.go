@@ -108,6 +108,27 @@ func TestInlineMediaImagesMatchesRelativeMediaSource(t *testing.T) {
 	}
 }
 
+func TestInlineMediaImagesMatchesProtectedMediaRoute(t *testing.T) {
+	image := models.Attachment{
+		Name:      "logo.png",
+		MediaID:   12,
+		SourceURL: "http://current-host:9173/uploads/logo.png",
+		Header:    MakeAttachmentHeader("logo.png", "base64", "image/png"),
+		Content:   []byte("image bytes"),
+	}
+
+	body, attachments := InlineMediaImages(
+		[]byte(`<img src="/api/media/file/logo.png?organization_id=7">`),
+		[]models.Attachment{image},
+	)
+	if !strings.Contains(string(body), `src="cid:media-12@listmonk"`) {
+		t.Fatalf("expected protected media source replacement, got %q", body)
+	}
+	if !attachments[0].Inline {
+		t.Fatal("protected media route should mark the image inline")
+	}
+}
+
 func TestInlineMediaImagesMatchesEscapedMediaFilename(t *testing.T) {
 	image := models.Attachment{
 		Name:      "image004(08-25-22-12-43).png",

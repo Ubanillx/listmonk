@@ -52,6 +52,7 @@ func (c *Core) QueryWorkspaceBounces(access models.WorkspaceAccess, bounceID, ca
 		SELECT COUNT(*) OVER () AS total,
 			b.id, b.type, b.source, b.meta, b.created_at, b.subscriber_id,
 			s.uuid AS subscriber_uuid, s.email, s.status AS subscriber_status,
+			s.organization_id, s.owner_user_id, s.transfer_pending_at,
 			CASE WHEN b.campaign_id IS NOT NULL
 				THEN JSON_BUILD_OBJECT('id', b.campaign_id, 'name', c.name)
 				ELSE NULL END AS campaign

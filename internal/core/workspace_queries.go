@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net/http"
 	"strings"
@@ -322,6 +323,90 @@ func (c *Core) QueryWorkspaceMedia(access models.WorkspaceAccess, provider strin
 		total = out[0].Total
 	}
 	return out, total, nil
+}
+
+// GetWorkspaceMediaByFilename resolves a stored media name through the active
+// workspace. Besides a directly visible media record, an image may be readable
+// because it is attached to a readable template or campaign. That derived
+// access is essential for organization/global templates whose media records
+// remain private to the template creator while the template itself is shared.
+func (c *Core) GetWorkspaceMediaByFilename(access models.WorkspaceAccess, filename string) (media.Media, error) {
+	filename = strings.TrimSpace(filename)
+	if filename == "" {
+		return media.Media{}, ErrNotFound
+	}
+	mediaScope, args := workspaceReadPredicate(access, "m", 1)
+	templateScope, templateArgs := workspaceReadPredicate(access, "t", len(args)+1)
+	args = append(args, templateArgs...)
+	campaignScope, campaignArgs := workspaceReadPredicate(access, "c", len(args)+1)
+	args = append(args, campaignArgs...)
+	first := len(args) + 1
+	var out media.Media
+	stmt := fmt.Sprintf(`
+		SELECT m.* FROM media m
+		WHERE (m.filename = $%d OR m.thumb = $%d)
+			AND ((%s)
+				OR EXISTS (
+					SELECT 1 FROM template_media tm
+					JOIN templates t ON t.id = tm.template_id
+					WHERE tm.media_id = m.id AND (%s)
+				)
+				OR EXISTS (
+					SELECT 1 FROM campaign_media cm
+					JOIN campaigns c ON c.id = cm.campaign_id
+					WHERE cm.media_id = m.id AND (%s)
+				))
+		ORDER BY (m.filename = $%d) DESC, m.id ASC
+		LIMIT 1`, first, first, mediaScope, templateScope, campaignScope, first)
+	args = append(args, filename)
+	if err := c.db.Get(&out, stmt, args...); err != nil {
+		if err == sql.ErrNoRows {
+			return out, ErrNotFound
+		}
+		return out, workspaceQueryError("fetching workspace media", err)
+	}
+	return out, nil
+}
+
+// IsPublicArchiveMedia reports whether a media binary is referenced by an
+// active public archive campaign. Public archives render stored HTML directly,
+// so this narrow exception preserves archive images without making the whole
+// upload directory readable to unauthenticated callers.
+func (c *Core) IsPublicArchiveMedia(filename string) (bool, error) {
+	filename = strings.TrimSpace(filename)
+	if filename == "" {
+		return false, nil
+	}
+	var exists bool
+	if err := c.db.Get(&exists, `
+		SELECT EXISTS(
+			SELECT 1
+			FROM media m
+			JOIN campaign_media cm ON cm.media_id = m.id
+			JOIN campaigns c ON c.id = cm.campaign_id
+			LEFT JOIN organizations o ON o.id = c.organization_id
+			WHERE (m.filename = $1 OR m.thumb = $1)
+				AND c.archive = TRUE
+				AND c.type = 'regular'
+				AND c.status = ANY('{running, paused, deferred, finished}'::campaign_status[])
+				AND c.transfer_pending_at IS NULL
+				AND (c.organization_id IS NULL OR o.status = 'active')
+			UNION ALL
+			SELECT 1
+			FROM media m
+			JOIN template_media tm ON tm.media_id = m.id
+			JOIN campaigns c ON c.template_id = tm.template_id OR c.archive_template_id = tm.template_id
+			LEFT JOIN organizations o ON o.id = c.organization_id
+			WHERE (m.filename = $1 OR m.thumb = $1)
+				AND c.archive = TRUE
+				AND c.type = 'regular'
+				AND c.status = ANY('{running, paused, deferred, finished}'::campaign_status[])
+				AND c.transfer_pending_at IS NULL
+				AND (c.organization_id IS NULL OR o.status = 'active')
+		)`, filename); err != nil {
+		return false, workspaceQueryError("checking public archive media", err)
+	}
+	return exists, nil
 }
 
 func workspaceSubscriberReadPredicate(access models.WorkspaceAccess, alias string, firstArg int) (string, []any) {

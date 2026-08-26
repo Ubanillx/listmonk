@@ -3,6 +3,8 @@ package models
 import (
 	"encoding/json"
 	"time"
+
+	null "gopkg.in/volatiletech/null.v6"
 )
 
 const (
@@ -24,6 +26,12 @@ type Bounce struct {
 	SubscriberUUID   string `db:"subscriber_uuid" json:"subscriber_uuid,omitempty"`
 	SubscriberID     int    `db:"subscriber_id" json:"subscriber_id,omitempty"`
 	SubscriberStatus string `db:"subscriber_status" json:"subscriber_status"`
+	// Bounce records inherit their access boundary from the subscriber. These
+	// fields let organization managers inspect a member's bounce history while
+	// the UI keeps destructive controls limited to records they own.
+	OrganizationID    null.Int  `db:"organization_id" json:"organization_id"`
+	OwnerUserID       null.Int  `db:"owner_user_id" json:"owner_user_id"`
+	TransferPendingAt null.Time `db:"transfer_pending_at" json:"transfer_pending_at"`
 
 	CampaignUUID string           `db:"campaign_uuid" json:"campaign_uuid,omitempty"`
 	Campaign     *json.RawMessage `db:"campaign" json:"campaign"`

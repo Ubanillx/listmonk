@@ -81,8 +81,7 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 	{
 		var (
 			// Permission check middleware.
-			pm  = a.auth.Perm
-			rpm = a.readPermOrOrganizationManager
+			pm = a.auth.Perm
 
 			// Attach a middleware to the group that checks for auth.
 			g = e.Group("", a.auth.Middleware, func(next echo.HandlerFunc) echo.HandlerFunc {
@@ -122,8 +121,8 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.GET("/api/subscribers/:id", hasID(a.GetSubscriber))
 		g.GET("/api/subscribers/:id/activity", hasID(a.GetSubscriberActivity))
 		g.GET("/api/subscribers/:id/export", hasID(a.ExportSubscriberData))
-		g.GET("/api/subscribers/:id/bounces", rpm(hasID(a.GetSubscriberBounces), "bounces:get"))
-		g.DELETE("/api/subscribers/:id/bounces", pm(hasID(a.DeleteSubscriberBounces), "bounces:manage"))
+		g.GET("/api/subscribers/:id/bounces", hasID(a.GetSubscriberBounces))
+		g.DELETE("/api/subscribers/:id/bounces", hasID(a.DeleteSubscriberBounces))
 		g.POST("/api/subscribers", a.CreateSubscriber)
 		g.PUT("/api/subscribers/:id", hasID(a.UpdateSubscriber))
 		g.POST("/api/subscribers/:id/optin", hasID(a.SubscriberSendOptin))
@@ -134,11 +133,11 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.DELETE("/api/subscribers/:id", hasID(a.DeleteSubscriber))
 		g.DELETE("/api/subscribers", a.DeleteSubscribers)
 
-		g.GET("/api/bounces", rpm(a.GetBounces, "bounces:get"))
-		g.PUT("/api/bounces/blocklist", pm(a.BlocklistBouncedSubscribers, "bounces:manage"))
-		g.GET("/api/bounces/:id", rpm(hasID(a.GetBounce), "bounces:get"))
-		g.DELETE("/api/bounces", pm(a.DeleteBounces, "bounces:manage"))
-		g.DELETE("/api/bounces/:id", pm(hasID(a.DeleteBounce), "bounces:manage"))
+		g.GET("/api/bounces", a.GetBounces)
+		g.PUT("/api/bounces/blocklist", a.BlocklistBouncedSubscribers)
+		g.GET("/api/bounces/:id", hasID(a.GetBounce))
+		g.DELETE("/api/bounces", a.DeleteBounces)
+		g.DELETE("/api/bounces/:id", hasID(a.DeleteBounce))
 
 		// Subscriber operations based on arbitrary SQL queries.
 		// These aren't very REST-like.
@@ -214,7 +213,7 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.DELETE("/api/maintenance/analytics/:type", pm(a.GCCampaignAnalytics, "settings:maintain"))
 		g.DELETE("/api/maintenance/subscriptions/unconfirmed", pm(a.GCSubscriptions, "settings:maintain"))
 
-		g.POST("/api/tx", pm(a.SendTxMessage, "tx:send"))
+		g.POST("/api/tx", a.SendTxMessage)
 
 		g.GET("/api/profile", a.GetUserProfile)
 		g.PUT("/api/profile", a.UpdateUserProfile)

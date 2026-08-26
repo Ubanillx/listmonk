@@ -170,7 +170,17 @@ SELECT campaigns.*,
             WHEN $1 > 0 THEN campaigns.id = $1
             WHEN $3 != '' THEN campaigns.archive_slug = $3
             ELSE uuid = $2
-          END;
+          END
+        AND ($4 <> 'archive' OR (
+            campaigns.archive = true
+            AND campaigns.type = 'regular'
+            AND campaigns.status = ANY('{running, paused, deferred, finished}'::campaign_status[])
+            AND campaigns.transfer_pending_at IS NULL
+            AND (campaigns.organization_id IS NULL OR EXISTS (
+                SELECT 1 FROM organizations organization
+                WHERE organization.id = campaigns.organization_id AND organization.status = 'active'
+            ))
+        ));
 
 -- name: get-archived-campaigns
 SELECT COUNT(*) OVER () AS total, campaigns.*,
@@ -194,11 +204,14 @@ SELECT COUNT(*) OVER () AS total, campaigns.*,
         LIMIT 1
     ), '') AS template_body
     FROM campaigns
+    LEFT JOIN organizations organization ON organization.id = campaigns.organization_id
     LEFT JOIN templates ON (
         CASE WHEN $3 = 'default' THEN templates.id = campaigns.template_id
         ELSE templates.id = campaigns.archive_template_id END
     )
     WHERE campaigns.archive=true AND campaigns.type='regular' AND campaigns.status=ANY('{running, paused, deferred, finished}')
+		AND campaigns.transfer_pending_at IS NULL
+		AND (campaigns.organization_id IS NULL OR organization.status = 'active')
     ORDER by campaigns.created_at DESC OFFSET $1 LIMIT $2;
 
 -- name: get-campaign-stats

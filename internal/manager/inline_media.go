@@ -26,9 +26,13 @@ func InlineMediaImages(body []byte, attachments []models.Attachment) ([]byte, []
 
 	byURL := make(map[string]int, len(attachments))
 	byPath := make(map[string]int, len(attachments))
+	byFilename := make(map[string]int, len(attachments))
 	for i, attachment := range attachments {
 		if attachment.MediaID < 1 || !isImageAttachment(attachment) {
 			continue
+		}
+		if filename := normalizeMediaFilename(attachment.Name); filename != "" {
+			byFilename[filename] = i
 		}
 
 		if sourceURL := normalizeImageSource(attachment.SourceURL); sourceURL != "" {
@@ -38,7 +42,7 @@ func InlineMediaImages(body []byte, attachments []models.Attachment) ([]byte, []
 			}
 		}
 	}
-	if len(byURL) == 0 && len(byPath) == 0 {
+	if len(byURL) == 0 && len(byPath) == 0 && len(byFilename) == 0 {
 		return body, attachments
 	}
 
@@ -72,6 +76,16 @@ func InlineMediaImages(body []byte, attachments []models.Attachment) ([]byte, []
 						attachmentIndex, ok = candidate, true
 					}
 				}
+			}
+		}
+		// New editor insertions use the protected /api/media/file/:filename
+		// route. That path stays stable when a campaign is copied, while the
+		// copied media record intentionally receives a new ID. Match only this
+		// controlled route by filename; legacy upload paths still use the more
+		// precise URL/path matching above.
+		if !ok && isProtectedMediaSource(rawSource) {
+			if candidate, found := byFilename[mediaFilenameFromSource(rawSource)]; found {
+				attachmentIndex, ok = candidate, true
 			}
 		}
 		if !ok {
@@ -144,6 +158,40 @@ func normalizeImageSource(source string) string {
 func isRelativeImageSource(source string) bool {
 	u, err := url.Parse(strings.TrimSpace(html.UnescapeString(source)))
 	return err == nil && u.Scheme == "" && u.Host == ""
+}
+
+func isProtectedMediaSource(source string) bool {
+	u, err := url.Parse(strings.TrimSpace(html.UnescapeString(source)))
+	if err != nil {
+		return false
+	}
+	if u.Host != "" && !isLocalMediaHost(u.Hostname()) {
+		return false
+	}
+	return strings.HasPrefix(path.Clean("/"+u.Path), "/api/media/file/")
+}
+
+func mediaFilenameFromSource(source string) string {
+	u, err := url.Parse(strings.TrimSpace(html.UnescapeString(source)))
+	if err != nil {
+		return ""
+	}
+	decodedPath, err := url.PathUnescape(u.EscapedPath())
+	if err != nil {
+		decodedPath = u.Path
+	}
+	return normalizeMediaFilename(decodedPath)
+}
+
+func normalizeMediaFilename(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if decoded, err := url.PathUnescape(value); err == nil {
+		value = decoded
+	}
+	return strings.ToLower(path.Base(value))
 }
 
 func isLikelyLocalMediaURL(source, mediaSource string) bool {

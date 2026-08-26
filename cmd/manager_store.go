@@ -208,10 +208,13 @@ func (s *store) GetAttachment(mediaID int) (models.Attachment, error) {
 	}
 
 	return models.Attachment{
-		Name:      m.Filename,
-		Content:   b,
-		Header:    manager.MakeAttachmentHeader(m.Filename, "base64", m.ContentType),
-		MediaID:   mediaID,
+		Name:    m.Filename,
+		Content: b,
+		Header:  manager.MakeAttachmentHeader(m.Filename, "base64", m.ContentType),
+		MediaID: mediaID,
+		// SourceURL is an internal matching key used while preparing HTML mail.
+		// Keep the backing URL for old absolute HTML bodies; relative protected
+		// media URLs are matched by filename in InlineMediaImages.
 		SourceURL: m.URL,
 	}, nil
 }

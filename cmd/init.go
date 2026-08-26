@@ -937,8 +937,15 @@ func initHTTPServer(cfg *Config, urlCfg *UrlConfig, i *i18n.I18n, fs stuffbin.Fi
 
 	// Admin (frontend) facing static files.
 	srv.GET("/admin/static/*", echo.WrapHandler(fSrv))
+	// New media URLs are deliberately outside the authenticated /api router so
+	// an active public archive can render its linked images. The handler still
+	// receives auth middleware and only permits an unauthenticated request for
+	// media referenced by a currently public archive campaign.
+	srv.GET("/api/media/file/:filename", app.ServeMediaFile, app.auth.Middleware)
 
-	// Public (subscriber) facing media upload files.
+	// Media binaries are never exposed as a raw static directory. Resource URLs
+	// are scoped by the active workspace, while legacy storage URLs are checked
+	// by the compatibility handler so old campaign/template HTML keeps working.
 	var (
 		uploadProvider = ko.String("upload.provider")
 		uploadFsURI    = ko.String("upload.filesystem.upload_uri")
@@ -946,9 +953,9 @@ func initHTTPServer(cfg *Config, urlCfg *UrlConfig, i *i18n.I18n, fs stuffbin.Fi
 	)
 	switch {
 	case uploadProvider == "filesystem" && uploadFsURI != "":
-		srv.Static(uploadFsURI, ko.String("upload.filesystem.upload_path"))
+		srv.GET(path.Join(uploadFsURI, "/*"), app.ServeLegacyMedia, app.auth.Middleware)
 	case uploadProvider == "s3" && strings.HasPrefix(publicURL, "/"):
-		srv.GET(path.Join(publicURL, "/:filepath"), app.ServeS3Media)
+		srv.GET(path.Join(publicURL, "/*"), app.ServeLegacyMedia, app.auth.Middleware)
 	}
 
 	// Register all HTTP handlers.

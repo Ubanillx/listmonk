@@ -18,6 +18,7 @@ import (
 
 const (
 	workspaceHeader = "X-Listmonk-Organization-ID"
+	workspaceCookie = "listmonk_workspace_organization_id"
 
 	// Resource identifiers are kept local to cmd so handlers do not need to
 	// depend on core's internal implementation constants.
@@ -76,8 +77,24 @@ type organizationResourceMigrationInput struct {
 // every request; browser clients keep their active workspace in localStorage.
 func (a *App) workspaceFromRequest(c echo.Context) (models.Workspace, error) {
 	raw := strings.TrimSpace(c.Request().Header.Get(workspaceHeader))
+	if raw == "" && strings.HasPrefix(c.Path(), "/api/media/file/") {
+		// A copied HTML body can retain an old query string. For the protected
+		// browser media endpoint, the current browser workspace is authoritative
+		// unless a caller explicitly supplied the request header.
+		if cookie, err := c.Cookie(workspaceCookie); err == nil {
+			raw = strings.TrimSpace(cookie.Value)
+		}
+	}
 	if raw == "" {
 		raw = strings.TrimSpace(c.QueryParam("organization_id"))
+	}
+	if raw == "" {
+		// Browser image requests do not include the workspace header. The
+		// frontend mirrors its selected organization in this non-sensitive
+		// cookie; membership is still resolved and enforced below.
+		if cookie, err := c.Cookie(workspaceCookie); err == nil {
+			raw = strings.TrimSpace(cookie.Value)
+		}
 	}
 	if raw == "" || raw == "0" || strings.EqualFold(raw, "personal") {
 		access, err := a.workspaceAccessForOrganization(c, 0)
@@ -100,31 +117,13 @@ func (a *App) workspaceAccess(c echo.Context) (models.WorkspaceAccess, error) {
 	return models.WorkspaceAccess{Workspace: ws, UserID: auth.GetUser(c).ID}, nil
 }
 
-// readPermOrOrganizationManager keeps legacy role permissions intact while
-// allowing an organization manager to inspect records in the organization
-// currently selected by the request. It is intentionally limited to read
-// routes: write, import, export, bulk, and sending handlers retain their
-// existing permission and owner checks.
-func (a *App) readPermOrOrganizationManager(next echo.HandlerFunc, perms ...string) echo.HandlerFunc {
-	return func(c echo.Context) error {
-		access, err := a.workspaceAccess(c)
-		if err != nil {
-			return err
-		}
-		if access.IsOrganization() && access.IsOrganizationManager() {
-			return next(c)
-		}
-		return a.auth.Perm(next, perms...)(c)
-	}
-}
-
 // workspaceAccessForOrganization resolves an explicit clone or migration
 // target without trusting an organization ID from the client body.
 func (a *App) workspaceAccessForOrganization(c echo.Context, orgID int) (models.WorkspaceAccess, error) {
 	user := auth.GetUser(c)
 	if orgID == 0 {
 		return models.WorkspaceAccess{
-			Workspace: models.Workspace{Personal: true, PlatformAdmin: user.UserRoleID == auth.SuperAdminRoleID},
+			Workspace: models.Workspace{Personal: true, PlatformAdmin: user.IsPlatformAdmin()},
 			UserID:    user.ID,
 		}, nil
 	}
@@ -138,7 +137,7 @@ func (a *App) workspaceAccessForOrganization(c echo.Context, orgID int) (models.
 	ws := models.Workspace{
 		OrganizationID:   orgID,
 		OrganizationName: org.Name,
-		PlatformAdmin:    user.UserRoleID == auth.SuperAdminRoleID,
+		PlatformAdmin:    user.IsPlatformAdmin(),
 		Archived:         org.Status == models.OrganizationStatusArchived,
 	}
 	if ws.PlatformAdmin {
@@ -239,7 +238,7 @@ func requireWritableWorkspace(access models.WorkspaceAccess) error {
 }
 
 func (a *App) requirePlatformAdmin(c echo.Context) error {
-	if auth.GetUser(c).UserRoleID != auth.SuperAdminRoleID {
+	if !auth.GetUser(c).IsPlatformAdmin() {
 		return echo.NewHTTPError(http.StatusForbidden, "platform administrator permission required")
 	}
 	return nil

@@ -135,10 +135,9 @@ export default Vue.extend({
 
     canSave() {
       if (!this.isEditing) {
-        return this.$can('lists:manage_all');
+        return this.$canCreateWorkspaceResource();
       }
-      return (this.$can('lists:manage_all', 'lists:manage') || this.$canList(this.data.id, 'list:manage'))
-        && this.$canManageResource(this.data);
+      return this.$canManageResource(this.data);
     },
 
     isArchived: {

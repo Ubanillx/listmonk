@@ -18,15 +18,16 @@ import (
 
 var (
 	allowedSubQueryTables = map[string]struct{}{
-		"subscribers":       {},
-		"lists":             {},
-		"subscribers_lists": {},
-		"campaigns":         {},
-		"campaign_lists":    {},
-		"campaign_views":    {},
-		"links":             {},
-		"link_clicks":       {},
-		"bounces":           {},
+		"subscribers":      {},
+		"subscriber_lists": {},
+		"lists":            {},
+		"users":            {},
+		"campaigns":        {},
+		"campaign_lists":   {},
+		"campaign_views":   {},
+		"links":            {},
+		"link_clicks":      {},
+		"bounces":          {},
 	}
 )
 
@@ -593,6 +594,15 @@ func (c *Core) getSubscriberCount(searchStr, queryExp, subStatus string, listIDs
 
 // validateQueryTables checks if the query accesses only allowed tables.
 func validateQueryTables(db *sqlx.DB, query string, allowedTables map[string]struct{}) error {
+	return validateQueryTablesWithArgs(db, query, allowedTables,
+		nil, models.SubscriberStatusEnabled, "", 0, 10)
+}
+
+// validateQueryTablesWithArgs is the parameter-aware counterpart used by
+// workspace-scoped raw subscriber queries. EXPLAIN lets PostgreSQL parse the
+// final statement before it is executed and exposes every relation in its
+// plan, including subqueries and CTEs.
+func validateQueryTablesWithArgs(db *sqlx.DB, query string, allowedTables map[string]struct{}, args ...any) error {
 	// Get the EXPLAIN (FORMAT JSON) output.
 	tx, err := db.BeginTxx(context.Background(), &sql.TxOptions{ReadOnly: true})
 	if err != nil {
@@ -601,7 +611,7 @@ func validateQueryTables(db *sqlx.DB, query string, allowedTables map[string]str
 	defer tx.Rollback()
 
 	var plan string
-	if err = tx.QueryRow("EXPLAIN (FORMAT JSON) "+query, nil, models.SubscriberStatusEnabled, "", 0, 10).Scan(&plan); err != nil {
+	if err = tx.QueryRow("EXPLAIN (FORMAT JSON) "+query, args...).Scan(&plan); err != nil {
 		return err
 	}
 

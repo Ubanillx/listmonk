@@ -336,8 +336,9 @@ export default Vue.extend({
     ...mapState(['lists', 'loading']),
 
     canEdit() {
-      return this.$can('subscribers:manage')
-        && (!this.isEditing || this.$canManageResource(this.data));
+      return !this.isEditing
+        ? this.$canCreateWorkspaceResource()
+        : this.$canManageResource(this.data);
     },
 
     hasOptinList() {

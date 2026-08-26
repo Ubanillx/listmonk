@@ -236,7 +236,9 @@ export default Vue.extend({
     ...mapState(['loading', 'workspace']),
 
     canSave() {
-      return !this.isEditing || this.$canManageResource(this.data);
+      return !this.isEditing
+        ? this.$canCreateWorkspaceResource()
+        : this.$canManageResource(this.data);
     },
   },
 

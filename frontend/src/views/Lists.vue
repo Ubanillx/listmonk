@@ -18,7 +18,7 @@
         </div>
       </div>
       <div class="column has-text-right">
-        <b-field v-if="$can('lists:manage_all')" expanded>
+        <b-field v-if="$canCreateWorkspaceResource()" expanded>
           <b-button expanded type="is-primary" icon-left="plus" class="btn-new" @click="showNewForm" data-cy="btn-new">
             {{ $t('globals.buttons.new') }}
           </b-button>
@@ -109,15 +109,10 @@
 
       <b-table-column v-slot="props" field="subscriber_count" :label="$t('globals.terms.subscribers')"
         header-class="cy-subscribers" numeric sortable centered>
-        <template v-if="canInspectOrganization || $can('subscribers:get_all', 'subscribers:get')">
-          <router-link :to="`/subscribers/lists/${props.row.id}`">
-            {{ $utils.formatNumber(props.row.subscriberCount) }}
-            <span class="is-size-7 view">{{ $t('globals.buttons.view') }}</span>
-          </router-link>
-        </template>
-        <template v-else>
+        <router-link :to="`/subscribers/lists/${props.row.id}`">
           {{ $utils.formatNumber(props.row.subscriberCount) }}
-        </template>
+          <span class="is-size-7 view">{{ $t('globals.buttons.view') }}</span>
+        </router-link>
       </b-table-column>
 
       <b-table-column v-slot="props" field="subscriber_counts" header-class="cy-subscribers" width="10%">
@@ -142,7 +137,7 @@
 
       <b-table-column v-slot="props" cell-class="actions" align="right">
         <div>
-          <router-link v-if="canManageList(props.row) && $can('campaigns:manage_all', 'campaigns:manage')"
+          <router-link v-if="canManageList(props.row)"
             :to="`/campaigns/new?list_id=${props.row.id}`"
             data-cy="btn-campaign">
             <b-tooltip :label="$t('lists.sendCampaign')" type="is-dark">
@@ -157,7 +152,7 @@
             </b-tooltip>
           </a>
 
-          <router-link v-if="canManageList(props.row) && $can('subscribers:import')"
+          <router-link v-if="canManageList(props.row)"
             :to="{ name: 'import', query: { list_id: props.row.id } }"
             data-cy="btn-import">
             <b-tooltip :label="$t('import.title')" type="is-dark">
@@ -365,8 +360,7 @@ export default Vue.extend({
     },
 
     canManageList(list) {
-      return (this.$can('lists:manage_all', 'lists:manage') || this.$canList(list.id, 'list:manage'))
-        && this.$canManageResource(list);
+      return this.$canManageResource(list);
     },
 
     ownerLabel(resource) {

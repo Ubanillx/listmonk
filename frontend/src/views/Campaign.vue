@@ -822,10 +822,9 @@ export default Vue.extend({
     ...mapState(['serverConfig', 'loading', 'lists', 'templates', 'workspace']),
 
     canManage() {
-      if (!this.$can('campaigns:manage_all', 'campaigns:manage')) {
-        return false;
-      }
-      return this.isNew || this.$canManageResource(this.data);
+      return this.isNew
+        ? this.$canCreateWorkspaceResource()
+        : this.$canManageResource(this.data);
     },
 
     canEdit() {
@@ -854,7 +853,7 @@ export default Vue.extend({
     },
 
     canViewAnalytics() {
-      return this.$can('campaigns:get_analytics') || this.$canInspectOrganization();
+      return this.canManage || this.$canInspectOrganization();
     },
 
     availableLists() {
@@ -889,8 +888,7 @@ export default Vue.extend({
     },
 
     canManageList(list) {
-      return (this.$can('lists:manage_all', 'lists:manage') || this.$canList(list.id, 'list:manage'))
-        && this.$canManageResource(list);
+      return this.$canManageResource(list);
     },
 
     listsLocked() {

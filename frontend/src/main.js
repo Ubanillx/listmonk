@@ -116,6 +116,39 @@ async function initConfig(app) {
       && !resource.transfer_pending_at;
   };
 
+  // All active workspace members can create resources for themselves. The
+  // API performs the authoritative membership and archive checks; this keeps
+  // the UI from hiding normal member workflows behind legacy global roles.
+  Vue.prototype.$canCreateWorkspaceResource = () => {
+    const activeWorkspace = store.state.workspace || {};
+    return !activeWorkspace.archived;
+  };
+
+  // A resource can be used in a campaign or template without necessarily
+  // being editable. This matters for organization-shared and global media,
+  // where a member may select the resource but cannot modify its source row.
+  Vue.prototype.$canUseResource = (resource) => {
+    if (!resource || resource.transferPendingAt || resource.transfer_pending_at) {
+      return false;
+    }
+    if (profile.userRole.id === 1) {
+      return true;
+    }
+    const ownerID = Number(resource.ownerUserId || resource.owner_user_id) || 0;
+    const resourceOrganizationID = Number(resource.organizationId || resource.organization_id) || 0;
+    const activeOrganizationID = Number(store.state.workspace.organizationId) || 0;
+    if (resource.visibility === 'global') {
+      return true;
+    }
+    if (resourceOrganizationID !== activeOrganizationID) {
+      return false;
+    }
+    if (ownerID === profile.id) {
+      return true;
+    }
+    return resourceOrganizationID > 0 && resource.visibility === 'organization';
+  };
+
   // Organization managers receive a deliberately narrow, read-only view of
   // member resources in the active organization. The API remains the source
   // of truth, but this keeps navigation and analytics affordances aligned

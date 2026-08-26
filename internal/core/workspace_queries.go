@@ -552,55 +552,7 @@ func (c *Core) GetManagedWorkspaceSubscribersByEmails(access models.WorkspaceAcc
 // unscoped query. Managers are rejected at the handler boundary before this
 // helper is called.
 func (c *Core) ExportWorkspaceSubscribers(access models.WorkspaceAccess, search string, listIDs, requestedIDs []int, subscriptionStatus string, batchSize int) (func() ([]models.SubscriberExport, error), error) {
-	if batchSize < 1 {
-		batchSize = 1000
-	}
-	if listIDs == nil {
-		listIDs = []int{}
-	}
-	if requestedIDs == nil {
-		requestedIDs = []int{-1}
-	}
-	scope, args := workspaceSubscriberReadPredicate(access, "s", 1)
-	first := len(args) + 1
-	stmt := fmt.Sprintf(`
-		SELECT s.id, s.uuid, s.email, s.name, s.attribs, s.status, s.created_at, s.updated_at
-		FROM subscribers s
-		WHERE (%s) AND s.id > $%d
-			AND s.id = ANY($%d::INT[])
-			AND ($%d = '' OR s.name ~* $%d OR s.email ~* $%d)
-			AND (CARDINALITY($%d::INT[]) = 0 OR EXISTS (
-				SELECT 1 FROM subscriber_lists sl
-				JOIN lists l ON l.id = sl.list_id
-				WHERE sl.subscriber_id = s.id
-					AND sl.list_id = ANY($%d::INT[])
-					AND l.organization_id IS NOT DISTINCT FROM s.organization_id
-					AND l.owner_user_id IS NOT DISTINCT FROM s.owner_user_id
-					AND l.transfer_pending_at IS NULL
-					AND ($%d = '' OR sl.status = $%d::subscription_status)
-			))
-		ORDER BY s.id ASC LIMIT $%d`,
-		scope,
-		first,
-		first+1,
-		first+2, first+2, first+2,
-		first+3, first+3, first+4, first+4,
-		first+5)
-	baseArgs := append([]any{}, args...)
-	baseArgs = append(baseArgs, 0, pq.Array(requestedIDs), strings.TrimSpace(search), pq.Array(listIDs), subscriptionStatus, batchSize)
-	lastID := 0
-	return func() ([]models.SubscriberExport, error) {
-		callArgs := append([]any{}, baseArgs...)
-		callArgs[len(args)] = lastID
-		var out []models.SubscriberExport
-		if err := c.db.Select(&out, stmt, callArgs...); err != nil {
-			return nil, workspaceQueryError("exporting subscribers", err)
-		}
-		if len(out) > 0 {
-			lastID = out[len(out)-1].ID
-		}
-		return out, nil
-	}, nil
+	return c.exportWorkspaceSubscribers(access, search, "", listIDs, requestedIDs, subscriptionStatus, batchSize)
 }
 
 // InsertWorkspaceSubscriber creates an owner-scoped subscriber and its list

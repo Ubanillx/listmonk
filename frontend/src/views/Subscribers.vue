@@ -256,7 +256,7 @@ export default Vue.extend({
     },
 
     canManageSubscriber(subscriber) {
-      return this.$can('subscribers:manage') && this.$canManageResource(subscriber);
+      return this.$canManageResource(subscriber);
     },
 
     ownerLabel(resource) {
@@ -539,7 +539,7 @@ export default Vue.extend({
     ...mapState(['subscribers', 'lists', 'loading', 'workspace']),
 
     canManageSubscribers() {
-      return this.$can('subscribers:manage');
+      return this.$canCreateWorkspaceResource();
     },
 
     canSelectAll() {
@@ -547,7 +547,7 @@ export default Vue.extend({
     },
 
     canExportSubscribers() {
-      return this.$can('subscribers:get_all', 'subscribers:get')
+      return this.$canCreateWorkspaceResource()
         && (!this.bulk.checked.length || this.bulk.checked.every((subscriber) => this.canManageSubscriber(subscriber)));
     },
 

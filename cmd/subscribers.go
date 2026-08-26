@@ -107,8 +107,10 @@ func (a *App) QuerySubscribers(c echo.Context) error {
 	}
 
 	query := formatSQLExp(c.FormValue("query"))
-	if query != "" && !access.PlatformAdmin {
-		return echo.NewHTTPError(http.StatusForbidden, "raw subscriber queries are restricted to platform administrators")
+	if query != "" {
+		if err := a.requireSubscriberSQLQuery(c); err != nil {
+			return err
+		}
 	}
 
 	var (
@@ -119,14 +121,14 @@ func (a *App) QuerySubscribers(c echo.Context) error {
 		pg        = a.pg.NewFromURL(c.Request().URL.Query())
 	)
 
-	// Platform administrators retain the advanced raw-query facility. Every
-	// other caller uses a prepared workspace-scoped query.
+	// Advanced expressions retain their dedicated permission but always run
+	// inside the selected workspace and owner boundary.
 	var (
 		res   models.Subscribers
 		total int
 	)
 	if query != "" {
-		res, total, err = a.core.QuerySubscribers(searchStr, query, listIDs, subStatus, order, orderBy, pg.Offset, pg.Limit)
+		res, total, err = a.core.QueryWorkspaceSubscribersWithSQL(access, searchStr, query, listIDs, subStatus, order, orderBy, pg.Offset, pg.Limit)
 	} else {
 		res, total, err = a.core.QueryWorkspaceSubscribers(access, searchStr, listIDs, subStatus, order, orderBy, pg.Offset, pg.Limit)
 	}
@@ -170,28 +172,30 @@ func (a *App) ExportSubscribers(c echo.Context) error {
 		searchStr = strings.TrimSpace(c.FormValue("search"))
 		query     = formatSQLExp(c.FormValue("query"))
 	)
-	if query != "" && !access.PlatformAdmin {
-		return echo.NewHTTPError(http.StatusForbidden, "raw subscriber queries are restricted to platform administrators")
+	if query != "" {
+		if err := a.requireSubscriberSQLQuery(c); err != nil {
+			return err
+		}
 	}
 
 	var exp func() ([]models.SubscriberExport, error)
-	if query != "" {
-		exp, err = a.core.ExportSubscribers(searchStr, query, subIDs, listIDs, subStatus, a.cfg.DBBatchSize)
+	if len(subIDs) > 0 {
+		if err := a.core.RequireManagedResources(access, resourceSubscribers, subIDs); err != nil {
+			return err
+		}
 	} else {
-		if len(subIDs) > 0 {
-			if err := a.core.RequireManagedResources(access, resourceSubscribers, subIDs); err != nil {
-				return err
-			}
-		} else {
-			subIDs, err = a.core.ListManagedWorkspaceResources(access, resourceSubscribers)
-			if err != nil {
-				return err
-			}
+		subIDs, err = a.core.ListManagedWorkspaceResources(access, resourceSubscribers)
+		if err != nil {
+			return err
 		}
-		// An empty explicit set must not mean "all" in the lower-level query.
-		if len(subIDs) == 0 {
-			subIDs = []int{-1}
-		}
+	}
+	// An empty explicit set must not mean "all" in the lower-level query.
+	if len(subIDs) == 0 {
+		subIDs = []int{-1}
+	}
+	if query != "" {
+		exp, err = a.core.ExportWorkspaceSubscribersWithSQL(access, searchStr, query, listIDs, subIDs, subStatus, a.cfg.DBBatchSize)
+	} else {
 		exp, err = a.core.ExportWorkspaceSubscribers(access, searchStr, listIDs, subIDs, subStatus, a.cfg.DBBatchSize)
 	}
 	if err != nil {
@@ -526,11 +530,15 @@ func (a *App) DeleteSubscribersByQuery(c echo.Context) error {
 	if err := a.requireWorkspaceListIDs(access, req.ListIDs, true); err != nil {
 		return err
 	}
-	if req.Query != "" && !access.PlatformAdmin {
-		return echo.NewHTTPError(http.StatusForbidden, "raw subscriber queries are restricted to platform administrators")
-	}
 	if req.Query != "" {
-		if err := a.core.DeleteSubscribersByQuery(req.Search, req.Query, req.ListIDs, req.SubscriptionStatus); err != nil {
+		if err := a.requireSubscriberSQLQuery(c); err != nil {
+			return err
+		}
+		ids, err := a.managedWorkspaceSubscriberIDsWithSQL(access, req.Search, req.Query, req.ListIDs, req.SubscriptionStatus)
+		if err != nil {
+			return err
+		}
+		if err := a.core.DeleteSubscribers(ids, nil); err != nil {
 			return err
 		}
 		return c.JSON(http.StatusOK, okResp{true})
@@ -575,11 +583,15 @@ func (a *App) BlocklistSubscribersByQuery(c echo.Context) error {
 	if err := a.requireWorkspaceListIDs(access, req.ListIDs, true); err != nil {
 		return err
 	}
-	if req.Query != "" && !access.PlatformAdmin {
-		return echo.NewHTTPError(http.StatusForbidden, "raw subscriber queries are restricted to platform administrators")
-	}
 	if req.Query != "" {
-		if err := a.core.BlocklistSubscribersByQuery(req.Search, req.Query, req.ListIDs, req.SubscriptionStatus); err != nil {
+		if err := a.requireSubscriberSQLQuery(c); err != nil {
+			return err
+		}
+		ids, err := a.managedWorkspaceSubscriberIDsWithSQL(access, req.Search, req.Query, req.ListIDs, req.SubscriptionStatus)
+		if err != nil {
+			return err
+		}
+		if err := a.core.BlocklistSubscribers(ids); err != nil {
 			return err
 		}
 		return c.JSON(http.StatusOK, okResp{true})
@@ -625,18 +637,22 @@ func (a *App) ManageSubscriberListsByQuery(c echo.Context) error {
 	if err := a.requireWorkspaceListIDs(access, req.TargetListIDs, true); err != nil {
 		return err
 	}
-	if req.Query != "" && !access.PlatformAdmin {
-		return echo.NewHTTPError(http.StatusForbidden, "raw subscriber queries are restricted to platform administrators")
-	}
 	if req.Query != "" {
+		if err := a.requireSubscriberSQLQuery(c); err != nil {
+			return err
+		}
+		subIDs, err := a.managedWorkspaceSubscriberIDsWithSQL(access, req.Search, req.Query, req.ListIDs, req.SubscriptionStatus)
+		if err != nil {
+			return err
+		}
 		var runErr error
 		switch req.Action {
 		case "add":
-			runErr = a.core.AddSubscriptionsByQuery(req.Search, req.Query, req.ListIDs, req.TargetListIDs, req.Status, req.SubscriptionStatus)
+			runErr = a.core.AddSubscriptions(subIDs, req.TargetListIDs, req.Status)
 		case "remove":
-			runErr = a.core.DeleteSubscriptionsByQuery(req.Search, req.Query, req.ListIDs, req.TargetListIDs, req.SubscriptionStatus)
+			runErr = a.core.DeleteSubscriptions(subIDs, req.TargetListIDs)
 		case "unsubscribe":
-			runErr = a.core.UnsubscribeListsByQuery(req.Search, req.Query, req.ListIDs, req.TargetListIDs, req.SubscriptionStatus)
+			runErr = a.core.UnsubscribeLists(subIDs, req.TargetListIDs, nil)
 		default:
 			return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("subscribers.invalidAction"))
 		}
@@ -866,19 +882,46 @@ func (a *App) managedWorkspaceSubscriberIDs(access models.WorkspaceAccess, searc
 	return out, nil
 }
 
-// formatSQLExp does basic sanitisation on arbitrary
-// SQL query expressions coming from the frontend.
-func formatSQLExp(q string) string {
-	q = strings.TrimSpace(q)
-	if len(q) == 0 {
-		return ""
+// managedWorkspaceSubscriberIDsWithSQL resolves a raw-expression result set
+// through the fixed workspace predicate first, then intersects it with the
+// caller's mutable resources. This keeps a permitted advanced query from
+// becoming a cross-owner bulk-write capability.
+func (a *App) managedWorkspaceSubscriberIDsWithSQL(access models.WorkspaceAccess, search, query string, listIDs []int, status string) ([]int, error) {
+	ids, err := a.core.GetWorkspaceSubscriberIDsWithSQL(access, search, query, listIDs, status)
+	if err != nil {
+		return nil, err
 	}
+	managed, err := a.core.ListManagedWorkspaceResources(access, resourceSubscribers)
+	if err != nil {
+		return nil, err
+	}
+	allowed := make(map[int]struct{}, len(managed))
+	for _, id := range managed {
+		allowed[id] = struct{}{}
+	}
+	out := make([]int, 0, len(ids))
+	for _, id := range ids {
+		if _, ok := allowed[id]; ok {
+			out = append(out, id)
+		}
+	}
+	return out, nil
+}
 
-	// Remove semicolon suffix.
-	if q[len(q)-1] == ';' {
-		q = q[:len(q)-1]
+func (a *App) requireSubscriberSQLQuery(c echo.Context) error {
+	user := auth.GetUser(c)
+	if user.HasPerm(auth.PermSubscribersSqlQuery) {
+		return nil
 	}
-	return q
+	return echo.NewHTTPError(http.StatusForbidden,
+		a.i18n.Ts("globals.messages.permissionDenied", "name", auth.PermSubscribersSqlQuery))
+}
+
+// formatSQLExp normalizes arbitrary SQL expressions before the workspace
+// validator handles them. It intentionally retains statement separators so
+// the validator can reject them rather than silently accepting a trailing one.
+func formatSQLExp(q string) string {
+	return strings.TrimSpace(q)
 }
 
 // makeOptinNotifyHook returns an enclosed callback that sends optin confirmation e-mails.

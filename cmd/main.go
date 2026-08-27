@@ -93,7 +93,11 @@ var (
 	frontendDir string = "frontend/dist"
 )
 
-func init() {
+// initApp performs the runtime-only initialization required before starting
+// the HTTP server. It must be called from main rather than package init so
+// focused unit tests in package main do not require a config file or a live
+// PostgreSQL connection merely to load their test binary.
+func initApp() {
 	// Initialize commandline flags.
 	initFlags(ko)
 
@@ -191,6 +195,8 @@ func init() {
 }
 
 func main() {
+	initApp()
+
 	var (
 		// Initialize static global config.
 		cfg = initConstConfig(ko)

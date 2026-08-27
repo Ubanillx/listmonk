@@ -88,19 +88,23 @@ async function initConfig(app) {
       return true;
     }
 
-    // If the user role has global list permissions, return true.
-    const can = Vue.prototype.$can('lists:get_all', 'lists:manage_all');
-    if (can) {
+    const canManage = perm === 'list:manage';
+    if (canManage
+      ? Vue.prototype.$can('lists:manage_all')
+      : Vue.prototype.$can('lists:get_all', 'lists:manage_all')) {
       return true;
     }
 
-    return profile.listRole.lists.some((list) => list.id === id && list.permissions.includes(perm));
+    return profile.listRole.lists.some((list) => list.id === id && (
+      list.permissions.includes(perm)
+      || (!canManage && list.permissions.includes('list:manage'))
+    ));
   };
 
   // Resource rows include their owner and organization. This mirrors the
   // server's write rule so organization managers see member resources as
   // read-only rather than discovering the restriction only after a mutation.
-  Vue.prototype.$canManageResource = (resource) => {
+  Vue.prototype.$canManageResource = (resource, ...perms) => {
     if (!resource) {
       return false;
     }
@@ -110,24 +114,48 @@ async function initConfig(app) {
     const ownerID = Number(resource.ownerUserId || resource.owner_user_id) || 0;
     const resourceOrganizationID = Number(resource.organizationId || resource.organization_id) || 0;
     const activeOrganizationID = Number(store.state.workspace.organizationId) || 0;
-    return ownerID === profile.id
+    const ownsResource = ownerID === profile.id
       && resourceOrganizationID === activeOrganizationID
       && !resource.transferPendingAt
       && !resource.transfer_pending_at;
+    return ownsResource && (!perms.length || Vue.prototype.$can(...perms));
   };
 
-  // All active workspace members can create resources for themselves. The
-  // API performs the authoritative membership and archive checks; this keeps
-  // the UI from hiding normal member workflows behind legacy global roles.
-  Vue.prototype.$canCreateWorkspaceResource = () => {
+  // Global template publication is intentionally open to every authenticated
+  // user. Its creator can maintain that shared template without receiving the
+  // broader templates:manage grant needed for private or organization work.
+  Vue.prototype.$canManageTemplate = (template) => (
+    Vue.prototype.$canManageResource(template)
+    && (template.visibility === 'global' || Vue.prototype.$can('templates:manage'))
+  );
+
+  // Recipient rows contain personal data. The server requires an owner-bound
+  // campaign plus both campaign analytics and subscriber-read capability.
+  Vue.prototype.$canReadCampaignRecipients = (campaign) => (
+    Vue.prototype.$canManageResource(campaign)
+    && Vue.prototype.$can('campaigns:get_analytics')
+    && Vue.prototype.$can('subscribers:get_all', 'subscribers:get')
+  );
+
+  // Creation and mutation controls mirror the legacy role model as well as
+  // the active-workspace archive state. The API remains authoritative, but
+  // this prevents an organization membership from making a disabled feature
+  // appear actionable in the UI.
+  Vue.prototype.$canCreateWorkspaceResource = (...perms) => {
     const activeWorkspace = store.state.workspace || {};
-    return !activeWorkspace.archived;
+    if (activeWorkspace.archived) {
+      return false;
+    }
+    if (!perms.length) {
+      return true;
+    }
+    return Vue.prototype.$can(...perms);
   };
 
   // A resource can be used in a campaign or template without necessarily
   // being editable. This matters for organization-shared and global media,
   // where a member may select the resource but cannot modify its source row.
-  Vue.prototype.$canUseResource = (resource) => {
+  Vue.prototype.$canUseResource = (resource, ...perms) => {
     if (!resource || resource.transferPendingAt || resource.transfer_pending_at) {
       return false;
     }
@@ -144,7 +172,7 @@ async function initConfig(app) {
       return false;
     }
     if (ownerID === profile.id) {
-      return true;
+      return !perms.length || Vue.prototype.$can(...perms);
     }
     return resourceOrganizationID > 0 && resource.visibility === 'organization';
   };

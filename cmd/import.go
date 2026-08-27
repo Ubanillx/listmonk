@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/knadh/listmonk/internal/auth"
 	"github.com/knadh/listmonk/internal/subimporter"
 	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
@@ -20,6 +21,9 @@ func (a *App) ImportSubscribers(c echo.Context) error {
 		return err
 	}
 	if err := requireWritableWorkspace(access); err != nil {
+		return err
+	}
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermSubscribersImport); err != nil {
 		return err
 	}
 	// Is an import already running?
@@ -57,7 +61,7 @@ func (a *App) ImportSubscribers(c echo.Context) error {
 		opt.SubStatus != models.SubscriptionStatusUnsubscribed {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("import.invalidSubStatus"))
 	}
-	if err := a.requireWorkspaceListIDs(access, opt.ListIDs, true); err != nil {
+	if err := a.requireWorkspaceListIDsForRequest(c, access, opt.ListIDs, true); err != nil {
 		return err
 	}
 	opt.OwnerUserID = access.UserID
@@ -144,6 +148,9 @@ func (a *App) GetImportSubscribers(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermSubscribersImport); err != nil {
+		return err
+	}
 	if err := a.requireImportAccess(access); err != nil {
 		return err
 	}
@@ -155,6 +162,9 @@ func (a *App) GetImportSubscribers(c echo.Context) error {
 func (a *App) GetImportSubscriberStats(c echo.Context) error {
 	access, err := a.workspaceAccess(c)
 	if err != nil {
+		return err
+	}
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermSubscribersImport); err != nil {
 		return err
 	}
 	if err := a.requireImportAccess(access); err != nil {
@@ -169,6 +179,9 @@ func (a *App) GetImportSubscriberStats(c echo.Context) error {
 func (a *App) StopImportSubscribers(c echo.Context) error {
 	access, err := a.workspaceAccess(c)
 	if err != nil {
+		return err
+	}
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermSubscribersImport); err != nil {
 		return err
 	}
 	if err := a.requireImportAccess(access); err != nil {

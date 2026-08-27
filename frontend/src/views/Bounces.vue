@@ -129,7 +129,7 @@ export default Vue.extend({
 
   methods: {
     canManageBounce(bounce) {
-      return this.$canManageResource(bounce);
+      return this.$canManageResource(bounce, 'bounces:manage');
     },
 
     onSort(field, direction) {
@@ -216,7 +216,7 @@ export default Vue.extend({
     ...mapState(['templates', 'loading', 'profile']),
 
     canManageBounces() {
-      return this.$canCreateWorkspaceResource();
+      return this.$canCreateWorkspaceResource('bounces:manage');
     },
 
     canManageAllBounces() {

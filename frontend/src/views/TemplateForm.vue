@@ -51,7 +51,7 @@
           </div>
 
           <b-field label="可见范围" label-position="on-border">
-            <b-select v-model="form.visibility" :disabled="!canSave" expanded>
+            <b-select v-model="form.visibility" :disabled="!canSave || !$can('templates:manage')" expanded>
               <option value="private">个人私有</option>
               <option v-if="workspace.organizationId" value="organization">当前组织共享</option>
               <option value="global">全体共享</option>
@@ -148,7 +148,7 @@ export default Vue.extend({
         body: '',
         bodySource: null,
         media: [],
-        visibility: 'private',
+        visibility: 'global',
       },
       previewItem: null,
       egPlaceholder: '{{ template "content" . }}',
@@ -236,9 +236,11 @@ export default Vue.extend({
     ...mapState(['loading', 'workspace']),
 
     canSave() {
-      return !this.isEditing
-        ? this.$canCreateWorkspaceResource()
-        : this.$canManageResource(this.data);
+      if (this.isEditing) {
+        return this.$canManageTemplate(this.data);
+      }
+      return this.$canCreateWorkspaceResource()
+        && (this.form.visibility === 'global' || this.$can('templates:manage'));
     },
   },
 

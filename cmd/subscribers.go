@@ -62,7 +62,7 @@ func (a *App) GetSubscriber(c echo.Context) error {
 		return err
 	}
 	id := getID(c)
-	if _, err := a.core.RequireReadResource(access, resourceSubscribers, id); err != nil {
+	if _, err := a.requireReadableWorkspaceSubscriber(c, access, id); err != nil {
 		return err
 	}
 
@@ -82,7 +82,7 @@ func (a *App) GetSubscriberActivity(c echo.Context) error {
 		return err
 	}
 	id := getID(c)
-	if _, err := a.core.RequireReadResource(access, resourceSubscribers, id); err != nil {
+	if _, err := a.requireReadableWorkspaceSubscriber(c, access, id); err != nil {
 		return err
 	}
 
@@ -101,7 +101,13 @@ func (a *App) QuerySubscribers(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	listIDs, err := a.workspaceListIDs(access, "list_id", c.QueryParams(), false)
+	user := auth.GetUser(c)
+	if !access.IsOrganizationManager() && !user.IsPlatformAdmin() {
+		if err := requireLegacyPermission(user, auth.PermSubscribersGetAll, auth.PermSubscribersGet); err != nil {
+			return err
+		}
+	}
+	listIDs, err := a.workspaceListIDsForRequest(c, access, "list_id", c.QueryParams(), false)
 	if err != nil {
 		return err
 	}
@@ -154,7 +160,10 @@ func (a *App) ExportSubscribers(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	listIDs, err := a.workspaceListIDs(access, "list_id", c.QueryParams(), true)
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermSubscribersGetAll, auth.PermSubscribersGet); err != nil {
+		return err
+	}
+	listIDs, err := a.workspaceExportListIDsForRequest(c, access, "list_id", c.QueryParams())
 	if err != nil {
 		return err
 	}
@@ -180,8 +189,10 @@ func (a *App) ExportSubscribers(c echo.Context) error {
 
 	var exp func() ([]models.SubscriberExport, error)
 	if len(subIDs) > 0 {
-		if err := a.core.RequireManagedResources(access, resourceSubscribers, subIDs); err != nil {
-			return err
+		for _, id := range subIDs {
+			if _, err := a.requireExportableWorkspaceSubscriber(c, access, id); err != nil {
+				return err
+			}
 		}
 	} else {
 		subIDs, err = a.core.ListManagedWorkspaceResources(access, resourceSubscribers)
@@ -249,6 +260,9 @@ func (a *App) CreateSubscriber(c echo.Context) error {
 	if err := requireWritableWorkspace(access); err != nil {
 		return err
 	}
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermSubscribersManage); err != nil {
+		return err
+	}
 
 	// Get and validate fields.
 	var req subimporter.SubReq
@@ -262,7 +276,7 @@ func (a *App) CreateSubscriber(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
-	if err := a.requireWorkspaceListIDs(access, req.Lists, true); err != nil {
+	if err := a.requireWorkspaceListIDsForRequest(c, access, req.Lists, true); err != nil {
 		return err
 	}
 
@@ -282,7 +296,7 @@ func (a *App) UpdateSubscriber(c echo.Context) error {
 		return err
 	}
 	id := getID(c)
-	if _, err := a.core.RequireManageResource(access, resourceSubscribers, id); err != nil {
+	if _, err := a.requireManagedWorkspaceSubscriber(c, access, id); err != nil {
 		return err
 	}
 
@@ -307,11 +321,11 @@ func (a *App) UpdateSubscriber(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("subscribers.invalidName"))
 	}
 
-	if err := a.requireWorkspaceListIDs(access, req.Lists, true); err != nil {
+	if err := a.requireWorkspaceListIDsForRequest(c, access, req.Lists, true); err != nil {
 		return err
 	}
 
-	permittedLists, err := a.core.ListManagedWorkspaceResources(access, resourceLists)
+	permittedLists, err := a.managedWorkspaceLegacyListIDs(c, access)
 	if err != nil {
 		return err
 	}
@@ -333,7 +347,7 @@ func (a *App) SubscriberSendOptin(c echo.Context) error {
 	}
 	// Fetch the subscriber.
 	id := getID(c)
-	if _, err := a.core.RequireManageResource(access, resourceSubscribers, id); err != nil {
+	if _, err := a.requireManagedWorkspaceSubscriber(c, access, id); err != nil {
 		return err
 	}
 	out, err := a.core.GetSubscriber(id, "", "")
@@ -356,7 +370,7 @@ func (a *App) BlocklistSubscriber(c echo.Context) error {
 		return err
 	}
 	id := getID(c)
-	if _, err := a.core.RequireManageResource(access, resourceSubscribers, id); err != nil {
+	if _, err := a.requireManagedWorkspaceSubscriber(c, access, id); err != nil {
 		return err
 	}
 	if err := a.core.BlocklistSubscribers([]int{id}); err != nil {
@@ -381,8 +395,10 @@ func (a *App) BlocklistSubscribers(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest,
 			a.i18n.Ts("globals.messages.errorInvalidIDs", "error", "ids"))
 	}
-	if err := a.core.RequireManagedResources(access, resourceSubscribers, req.SubscriberIDs); err != nil {
-		return err
+	for _, id := range req.SubscriberIDs {
+		if _, err := a.requireManagedWorkspaceSubscriber(c, access, id); err != nil {
+			return err
+		}
 	}
 
 	// Update the subscribers in the DB.
@@ -430,10 +446,12 @@ func (a *App) ManageSubscriberLists(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("subscribers.errorNoListsGiven"))
 	}
 
-	if err := a.core.RequireManagedResources(access, resourceSubscribers, subIDs); err != nil {
-		return err
+	for _, id := range subIDs {
+		if _, err := a.requireManagedWorkspaceSubscriber(c, access, id); err != nil {
+			return err
+		}
 	}
-	if err := a.requireWorkspaceListIDs(access, req.TargetListIDs, true); err != nil {
+	if err := a.requireWorkspaceListIDsForRequest(c, access, req.TargetListIDs, true); err != nil {
 		return err
 	}
 
@@ -463,7 +481,7 @@ func (a *App) DeleteSubscriber(c echo.Context) error {
 		return err
 	}
 	id := getID(c)
-	if _, err := a.core.RequireManageResource(access, resourceSubscribers, id); err != nil {
+	if _, err := a.requireManagedWorkspaceSubscriber(c, access, id); err != nil {
 		return err
 	}
 	if err := a.core.DeleteSubscribers([]int{id}, nil); err != nil {
@@ -489,8 +507,10 @@ func (a *App) DeleteSubscribers(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest,
 			a.i18n.Ts("globals.messages.errorInvalidIDs", "error", "ids"))
 	}
-	if err := a.core.RequireManagedResources(access, resourceSubscribers, ids); err != nil {
-		return err
+	for _, id := range ids {
+		if _, err := a.requireManagedWorkspaceSubscriber(c, access, id); err != nil {
+			return err
+		}
 	}
 
 	// Delete the subscribers from the DB.
@@ -511,6 +531,9 @@ func (a *App) DeleteSubscribersByQuery(c echo.Context) error {
 	if err := requireWritableWorkspace(access); err != nil {
 		return err
 	}
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermSubscribersManage); err != nil {
+		return err
+	}
 
 	var req subQueryReq
 	if err := c.Bind(&req); err != nil {
@@ -527,9 +550,11 @@ func (a *App) DeleteSubscribersByQuery(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.Ts("globals.messages.invalidFields", "name", "query"))
 	}
 
-	if err := a.requireWorkspaceListIDs(access, req.ListIDs, true); err != nil {
+	listIDs, err := a.workspaceManagedListIDsForRequest(c, access, req.ListIDs)
+	if err != nil {
 		return err
 	}
+	req.ListIDs = listIDs
 	if req.Query != "" {
 		if err := a.requireSubscriberSQLQuery(c); err != nil {
 			return err
@@ -565,6 +590,9 @@ func (a *App) BlocklistSubscribersByQuery(c echo.Context) error {
 	if err := requireWritableWorkspace(access); err != nil {
 		return err
 	}
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermSubscribersManage); err != nil {
+		return err
+	}
 
 	var req subQueryReq
 	if err := c.Bind(&req); err != nil {
@@ -580,9 +608,11 @@ func (a *App) BlocklistSubscribersByQuery(c echo.Context) error {
 	} else if req.Search == "" && req.Query == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.Ts("globals.messages.invalidFields", "name", "query"))
 	}
-	if err := a.requireWorkspaceListIDs(access, req.ListIDs, true); err != nil {
+	listIDs, err := a.workspaceManagedListIDsForRequest(c, access, req.ListIDs)
+	if err != nil {
 		return err
 	}
+	req.ListIDs = listIDs
 	if req.Query != "" {
 		if err := a.requireSubscriberSQLQuery(c); err != nil {
 			return err
@@ -618,6 +648,9 @@ func (a *App) ManageSubscriberListsByQuery(c echo.Context) error {
 	if err := requireWritableWorkspace(access); err != nil {
 		return err
 	}
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermSubscribersManage); err != nil {
+		return err
+	}
 
 	var req subQueryReq
 	if err := c.Bind(&req); err != nil {
@@ -631,10 +664,12 @@ func (a *App) ManageSubscriberListsByQuery(c echo.Context) error {
 	req.Search = strings.TrimSpace(req.Search)
 	req.Query = formatSQLExp(req.Query)
 
-	if err := a.requireWorkspaceListIDs(access, req.ListIDs, true); err != nil {
+	listIDs, err := a.workspaceManagedListIDsForRequest(c, access, req.ListIDs)
+	if err != nil {
 		return err
 	}
-	if err := a.requireWorkspaceListIDs(access, req.TargetListIDs, true); err != nil {
+	req.ListIDs = listIDs
+	if err := a.requireWorkspaceListIDsForRequest(c, access, req.TargetListIDs, true); err != nil {
 		return err
 	}
 	if req.Query != "" {
@@ -695,7 +730,7 @@ func (a *App) DeleteSubscriberBounces(c echo.Context) error {
 	}
 	// Delete the bounces from the DB.
 	id := getID(c)
-	if _, err := a.core.RequireManageResource(access, resourceSubscribers, id); err != nil {
+	if _, err := a.requireManagedWorkspaceSubscriber(c, access, id); err != nil {
 		return err
 	}
 	if err := a.core.DeleteSubscriberBounces(id, ""); err != nil {
@@ -718,7 +753,7 @@ func (a *App) ExportSubscriberData(c echo.Context) error {
 	// list subscriptions, campaign views, and link clicks. Names of
 	// private lists are replaced with "Private list".
 	id := getID(c)
-	if _, err := a.core.RequireManageResource(access, resourceSubscribers, id); err != nil {
+	if _, err := a.requireExportableWorkspaceSubscriber(c, access, id); err != nil {
 		return err
 	}
 	_, b, err := a.exportSubscriberData(id, "", a.cfg.Privacy.Exportable)
@@ -771,7 +806,7 @@ func (a *App) exportSubscriberData(id int, subUUID string, exportables map[strin
 // hasSubPerm checks whether the current user has permission to access the given list
 // of subscriber IDs.
 func (a *App) hasSubPerm(u auth.User, subIDs []int) error {
-	allPerm, listIDs := u.GetPermittedLists(auth.PermTypeGet | auth.PermTypeManage)
+	allPerm, listIDs := legacyReadableListIDs(u)
 
 	// User has blanket get_all|manage_all permission.
 	if allPerm {
@@ -790,6 +825,26 @@ func (a *App) hasSubPerm(u auth.User, subIDs []int) error {
 		}
 	}
 
+	return nil
+}
+
+func (a *App) hasManagedSubPerm(u auth.User, subIDs []int) error {
+	if u.IsPlatformAdmin() || u.HasPerm(auth.PermListManageAll) {
+		return nil
+	}
+	if len(u.ManageListIDs) == 0 {
+		return echo.NewHTTPError(http.StatusForbidden, "permission denied: list:manage")
+	}
+	res, err := a.core.HasSubscriberLists(subIDs, u.ManageListIDs)
+	if err != nil {
+		return err
+	}
+	for id, has := range res {
+		if !has {
+			return echo.NewHTTPError(http.StatusForbidden,
+				a.i18n.Ts("globals.messages.permissionDenied", "name", fmt.Sprintf("subscriber: %d", id)))
+		}
+	}
 	return nil
 }
 
@@ -828,23 +883,92 @@ func (a *App) filterListQueryByPerm(param string, qp url.Values, user auth.User)
 // system is intentionally not considered here: it must never cross an owner
 // or organization boundary.
 func (a *App) workspaceListIDs(access models.WorkspaceAccess, param string, qp url.Values, manage bool) ([]int, error) {
+	return a.workspaceListIDsForRequest(nil, access, param, qp, manage)
+}
+
+func (a *App) workspaceListIDsForRequest(c echo.Context, access models.WorkspaceAccess, param string, qp url.Values, manage bool) ([]int, error) {
 	if !qp.Has(param) {
-		return []int{}, nil
+		if c == nil {
+			return []int{}, nil
+		}
+		if manage {
+			return a.workspaceManagedListIDsForRequest(c, access, nil)
+		}
+		user := auth.GetUser(c)
+		if access.IsOrganizationManager() || user.IsPlatformAdmin() {
+			return []int{}, nil
+		}
+		hasAll, permitted := legacyReadableSubscriberListIDs(user)
+		if hasAll {
+			return []int{}, nil
+		}
+		if len(permitted) == 0 {
+			return []int{-1}, nil
+		}
+		return permitted, nil
 	}
 	ids, err := getQueryInts(param, qp)
 	if err != nil {
 		return nil, echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("globals.messages.invalidID"))
 	}
-	if err := a.requireWorkspaceListIDs(access, ids, manage); err != nil {
+	if err := a.requireWorkspaceListIDsForRequest(c, access, ids, manage); err != nil {
 		return nil, err
 	}
 	return ids, nil
 }
 
+// workspaceExportListIDsForRequest intentionally does not use the
+// organization-manager inspection exception. CSV export is sensitive data and
+// therefore remains subject to the caller's pre-existing list grants as well
+// as the owner boundary enforced by the export query.
+func (a *App) workspaceExportListIDsForRequest(c echo.Context, access models.WorkspaceAccess, param string, qp url.Values) ([]int, error) {
+	user := auth.GetUser(c)
+	if !qp.Has(param) {
+		hasAll, permitted := legacyReadableSubscriberListIDs(user)
+		if hasAll {
+			return []int{}, nil
+		}
+		if len(permitted) == 0 {
+			return []int{-1}, nil
+		}
+		return permitted, nil
+	}
+	ids, err := getQueryInts(param, qp)
+	if err != nil {
+		return nil, echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("globals.messages.invalidID"))
+	}
+	for _, id := range ids {
+		if id < 1 {
+			return nil, echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("globals.messages.invalidID"))
+		}
+		if _, err := a.core.RequireReadResource(access, resourceLists, id); err != nil {
+			return nil, err
+		}
+		if err := requireLegacyListPermission(user, id, false); err != nil {
+			return nil, err
+		}
+	}
+	return ids, nil
+}
+
 func (a *App) requireWorkspaceListIDs(access models.WorkspaceAccess, ids []int, manage bool) error {
+	return a.requireWorkspaceListIDsForRequest(nil, access, ids, manage)
+}
+
+func (a *App) requireWorkspaceListIDsForRequest(c echo.Context, access models.WorkspaceAccess, ids []int, manage bool) error {
 	for _, id := range ids {
 		if id < 1 {
 			return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("globals.messages.invalidID"))
+		}
+		if c != nil {
+			if manage {
+				if _, err := a.requireManagedWorkspaceList(c, access, id); err != nil {
+					return err
+				}
+			} else if _, err := a.requireReadableWorkspaceList(c, access, id); err != nil {
+				return err
+			}
+			continue
 		}
 		if manage {
 			if _, err := a.core.RequireManageResource(access, resourceLists, id); err != nil {
@@ -855,6 +979,26 @@ func (a *App) requireWorkspaceListIDs(access models.WorkspaceAccess, ids []int, 
 		}
 	}
 	return nil
+}
+
+// workspaceManagedListIDsForRequest supplies a restrictive list filter for
+// every bulk subscriber mutation. Empty request filters must never mean every
+// list when the caller only has per-list management grants.
+func (a *App) workspaceManagedListIDsForRequest(c echo.Context, access models.WorkspaceAccess, ids []int) ([]int, error) {
+	if len(ids) > 0 {
+		if err := a.requireWorkspaceListIDsForRequest(c, access, ids, true); err != nil {
+			return nil, err
+		}
+		return ids, nil
+	}
+	hasAll, permitted := legacyManageableListIDs(auth.GetUser(c))
+	if hasAll {
+		return []int{}, nil
+	}
+	if len(permitted) == 0 {
+		return []int{-1}, nil
+	}
+	return permitted, nil
 }
 
 // managedWorkspaceSubscriberIDs applies the writable owner boundary after a

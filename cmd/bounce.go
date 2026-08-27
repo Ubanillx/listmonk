@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/knadh/listmonk/internal/auth"
 	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
 )
@@ -15,6 +16,9 @@ import (
 func (a *App) GetBounce(c echo.Context) error {
 	access, err := a.workspaceAccess(c)
 	if err != nil {
+		return err
+	}
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermBouncesGet); err != nil {
 		return err
 	}
 	// Fetch one bounce from the active workspace.
@@ -33,6 +37,9 @@ func (a *App) GetBounces(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermBouncesGet); err != nil {
+		return err
+	}
 	var (
 		campID, _ = strconv.Atoi(c.QueryParam("campaign_id"))
 		source    = c.FormValue("source")
@@ -42,7 +49,7 @@ func (a *App) GetBounces(c echo.Context) error {
 		pg = a.pg.NewFromURL(c.Request().URL.Query())
 	)
 	if campID > 0 {
-		if _, err := a.core.RequireReadResource(access, resourceCampaigns, campID); err != nil {
+		if _, err := a.requireReadableWorkspaceCampaign(c, access, campID); err != nil {
 			return err
 		}
 	}
@@ -74,9 +81,12 @@ func (a *App) GetSubscriberBounces(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermBouncesGet); err != nil {
+		return err
+	}
 	// Query and fetch bounces from the DB.
 	subID := getID(c)
-	if _, err := a.core.RequireReadResource(access, resourceSubscribers, subID); err != nil {
+	if _, err := a.requireReadableWorkspaceSubscriber(c, access, subID); err != nil {
 		return err
 	}
 	out, _, err := a.core.QueryWorkspaceBounces(access, 0, 0, subID, "", "", "", 0, 1000)
@@ -94,6 +104,9 @@ func (a *App) DeleteBounces(c echo.Context) error {
 		return err
 	}
 	if err := requireWritableWorkspace(access); err != nil {
+		return err
+	}
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermBouncesManage); err != nil {
 		return err
 	}
 	all, _ := strconv.ParseBool(c.QueryParam("all"))
@@ -129,6 +142,9 @@ func (a *App) DeleteBounce(c echo.Context) error {
 	if err := requireWritableWorkspace(access); err != nil {
 		return err
 	}
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermBouncesManage); err != nil {
+		return err
+	}
 	// Delete bounces from the DB.
 	id := getID(c)
 	if err := a.core.DeleteWorkspaceBounces(access, []int{id}, false); err != nil {
@@ -145,6 +161,9 @@ func (a *App) BlocklistBouncedSubscribers(c echo.Context) error {
 		return err
 	}
 	if err := requireWritableWorkspace(access); err != nil {
+		return err
+	}
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermBouncesManage); err != nil {
 		return err
 	}
 	if err := a.core.BlocklistWorkspaceBouncedSubscribers(access); err != nil {

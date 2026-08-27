@@ -337,8 +337,8 @@ export default Vue.extend({
 
     canEdit() {
       return !this.isEditing
-        ? this.$canCreateWorkspaceResource()
-        : this.$canManageResource(this.data);
+        ? this.$canCreateWorkspaceResource('subscribers:manage')
+        : this.$canManageResource(this.data, 'subscribers:manage');
     },
 
     hasOptinList() {

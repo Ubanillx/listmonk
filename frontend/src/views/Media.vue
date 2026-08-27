@@ -22,14 +22,14 @@
             </div>
           </form>
         </div>
-        <div v-if="$canCreateWorkspaceResource()" class="column is-narrow">
+        <div v-if="$canCreateWorkspaceResource('media:manage')" class="column is-narrow">
           <b-button @click="onToggleForm" icon-left="file-upload-outline" data-cy="btn-toggle-upload">
             {{ $t('media.upload') }}
           </b-button>
         </div>
       </div>
 
-      <b-collapse v-if="$canCreateWorkspaceResource()" v-model="showUploadForm" animation="">
+      <b-collapse v-if="$canCreateWorkspaceResource('media:manage')" v-model="showUploadForm" animation="">
         <form @submit.prevent="onSubmit" class="mb-6" data-cy="upload">
           <div>
             <b-field :label="$t('media.upload')">
@@ -173,7 +173,7 @@ export default Vue.extend({
       // Otherwise, do nothing and let the image open like a normal link.
       if (this.isModal) {
         e.preventDefault();
-        if (!this.$canUseResource(m)) {
+        if (!this.$canUseResource(m, 'media:get')) {
           return;
         }
         this.$emit('selected', m);
@@ -203,7 +203,7 @@ export default Vue.extend({
     },
 
     canManageMedia(item) {
-      return this.$canManageResource(item);
+      return this.$canManageResource(item, 'media:manage');
     },
 
     ownerLabel(resource) {

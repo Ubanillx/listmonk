@@ -36,6 +36,9 @@ func (a *App) UploadMedia(c echo.Context) error {
 	if err := requireWritableWorkspace(access); err != nil {
 		return err
 	}
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermMediaManage); err != nil {
+		return err
+	}
 	file, err := c.FormFile("file")
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest,
@@ -167,6 +170,12 @@ func (a *App) GetAllMedia(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	user := auth.GetUser(c)
+	if !access.IsOrganizationManager() && !user.IsPlatformAdmin() {
+		if err := requireLegacyPermission(user, auth.PermMediaGet); err != nil {
+			return err
+		}
+	}
 	var (
 		query = c.FormValue("query")
 
@@ -199,7 +208,7 @@ func (a *App) GetMedia(c echo.Context) error {
 	}
 	// Fetch the media item from the DB.
 	id := getID(c)
-	if _, err := a.core.RequireReadResource(access, "media", id); err != nil {
+	if _, err := a.requireReadableWorkspaceResource(c, access, resourceMedia, id, auth.PermMediaGet); err != nil {
 		return err
 	}
 	out, err := a.core.GetMedia(id, "", "", a.media)
@@ -222,7 +231,7 @@ func (a *App) DeleteMedia(c echo.Context) error {
 	// provider object, so DeleteMedia tells us whether each object is now safe
 	// to remove from storage.
 	id := getID(c)
-	if _, err := a.core.RequireManageResource(access, "media", id); err != nil {
+	if _, err := a.requireManagedWorkspaceResource(c, access, resourceMedia, id, auth.PermMediaManage); err != nil {
 		return err
 	}
 	deleted, err := a.core.DeleteMedia(id)

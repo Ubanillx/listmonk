@@ -18,7 +18,7 @@
       <b-menu-item :to="{ name: 'subscribers' }" tag="router-link"
         :active="activeItem.subscribers" data-cy="all-subscribers" icon="account-multiple"
         :label="$t('menu.allSubscribers')" />
-      <b-menu-item v-if="$canCreateWorkspaceResource()" :to="{ name: 'import' }" tag="router-link"
+      <b-menu-item v-if="$canCreateWorkspaceResource('subscribers:import')" :to="{ name: 'import' }" tag="router-link"
         :active="activeItem.import" data-cy="import" icon="file-upload-outline" :label="$t('menu.import')" />
       <b-menu-item v-if="canViewBounces" :to="{ name: 'bounces' }" tag="router-link" :active="activeItem.bounces"
         data-cy="bounces" icon="email-bounce" :label="$t('globals.terms.bounces')" />
@@ -30,7 +30,7 @@
       <b-menu-item :to="{ name: 'campaigns' }" tag="router-link"
         :active="activeItem.campaigns" data-cy="all-campaigns" icon="rocket-launch-outline"
         :label="$t('menu.allCampaigns')" />
-      <b-menu-item v-if="$canCreateWorkspaceResource()" :to="{ name: 'campaign', params: { id: 'new' } }" tag="router-link"
+      <b-menu-item v-if="$canCreateWorkspaceResource('campaigns:manage_all', 'campaigns:manage')" :to="{ name: 'campaign', params: { id: 'new' } }" tag="router-link"
         :active="activeItem.campaign" data-cy="new-campaign" icon="plus" :label="$t('menu.newCampaign')" />
       <b-menu-item :to="{ name: 'media' }" tag="router-link" :active="activeItem.media"
         data-cy="media" icon="image-outline" :label="$t('menu.media')" />

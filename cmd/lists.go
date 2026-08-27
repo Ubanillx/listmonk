@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/knadh/listmonk/internal/auth"
 	"github.com/knadh/listmonk/internal/core"
 	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
@@ -16,12 +17,11 @@ func (a *App) GetLists(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-
 	// Minimal query simply returns the list of all lists without JOIN subscriber counts. This is fast.
 	minimal, _ := strconv.ParseBool(c.FormValue("minimal"))
 	if minimal {
 		status := c.FormValue("status")
-		res, err := a.core.GetWorkspaceLists(access, "", status)
+		res, _, err := a.queryReadableWorkspaceLists(c, access, "", "", "", status, nil, "name", core.SortAsc, 0, 0)
 		if err != nil {
 			return err
 		}
@@ -53,7 +53,7 @@ func (a *App) GetLists(c echo.Context) error {
 
 		pg = a.pg.NewFromURL(c.Request().URL.Query())
 	)
-	res, total, err := a.core.QueryWorkspaceLists(access, query, typ, optin, status, tags, orderBy, order, pg.Offset, pg.Limit)
+	res, total, err := a.queryReadableWorkspaceLists(c, access, query, typ, optin, status, tags, orderBy, order, pg.Offset, pg.Limit)
 	if err != nil {
 		return err
 	}
@@ -77,7 +77,7 @@ func (a *App) GetList(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if _, err := a.core.RequireReadResource(access, "lists", id); err != nil {
+	if _, err := a.requireReadableWorkspaceList(c, access, id); err != nil {
 		return err
 	}
 
@@ -97,6 +97,9 @@ func (a *App) CreateList(c echo.Context) error {
 		return err
 	}
 	if err := requireWritableWorkspace(access); err != nil {
+		return err
+	}
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermListManageAll); err != nil {
 		return err
 	}
 	l := models.List{}
@@ -129,7 +132,7 @@ func (a *App) UpdateList(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if _, err := a.core.RequireManageResource(access, "lists", id); err != nil {
+	if _, err := a.requireManagedWorkspaceList(c, access, id); err != nil {
 		return err
 	}
 
@@ -170,7 +173,7 @@ func (a *App) DeleteList(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if _, err := a.core.RequireManageResource(access, "lists", id); err != nil {
+	if _, err := a.requireManagedWorkspaceList(c, access, id); err != nil {
 		return err
 	}
 
@@ -219,8 +222,10 @@ func (a *App) DeleteLists(c echo.Context) error {
 	// The workspace ownership check applies before legacy list-role checks, so
 	// no per-list role can widen the active organization boundary.
 	if len(ids) > 0 {
-		if err := a.core.RequireManagedResources(access, "lists", ids); err != nil {
-			return err
+		for _, id := range ids {
+			if _, err := a.requireManagedWorkspaceList(c, access, id); err != nil {
+				return err
+			}
 		}
 
 		// Delete the lists from the DB.
@@ -229,6 +234,9 @@ func (a *App) DeleteLists(c echo.Context) error {
 			return err
 		}
 	} else {
+		if err := requireLegacyPermission(auth.GetUser(c), auth.PermListManageAll); err != nil {
+			return err
+		}
 		managed, err := a.core.ListManagedWorkspaceResources(access, "lists")
 		if err != nil {
 			return err

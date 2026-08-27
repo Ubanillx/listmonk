@@ -588,6 +588,18 @@ func (a *App) MigratePersonalListsToOrganization(c echo.Context) error {
 	if err := requireWritableWorkspace(target); err != nil {
 		return err
 	}
+	if err := requireLegacyPermission(user, auth.PermListManageAll); err != nil {
+		return err
+	}
+	personal, err := a.workspaceAccessForOrganization(c, 0)
+	if err != nil {
+		return err
+	}
+	for _, id := range req.ListIDs {
+		if _, err := a.requireManagedWorkspaceList(c, personal, id); err != nil {
+			return err
+		}
+	}
 	listIDs, err := a.core.MigratePersonalListsToOrganization(user.ID, target.OrganizationID, user.ID, req.ListIDs, req.Mode == "move")
 	if err != nil {
 		return err
@@ -636,6 +648,46 @@ func (a *App) MigratePersonalResourcesToOrganization(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "select an organization destination")
 	}
 	if err := requireWritableWorkspace(target); err != nil {
+		return err
+	}
+	personal, err := a.workspaceAccessForOrganization(c, 0)
+	if err != nil {
+		return err
+	}
+	for _, id := range req.IDs {
+		switch req.Resource {
+		case resourceLists:
+			if _, err := a.requireManagedWorkspaceList(c, personal, id); err != nil {
+				return err
+			}
+		case resourceTemplates:
+			if _, err := a.requireManagedWorkspaceTemplate(c, personal, id); err != nil {
+				return err
+			}
+		case resourceCampaigns:
+			if _, err := a.requireManagedWorkspaceCampaign(c, personal, id); err != nil {
+				return err
+			}
+		case resourceMedia:
+			if _, err := a.requireManagedWorkspaceResource(c, personal, resourceMedia, id, auth.PermMediaManage); err != nil {
+				return err
+			}
+		}
+	}
+
+	// A migration creates a resource in the target workspace, so the legacy
+	// creation capability applies in addition to ownership of the source.
+	switch req.Resource {
+	case resourceLists:
+		err = requireLegacyPermission(user, auth.PermListManageAll)
+	case resourceTemplates:
+		err = requireLegacyPermission(user, auth.PermTemplatesManage)
+	case resourceCampaigns:
+		err = requireLegacyPermission(user, auth.PermCampaignsManageAll, auth.PermCampaignsManage)
+	case resourceMedia:
+		err = requireLegacyPermission(user, auth.PermMediaManage)
+	}
+	if err != nil {
 		return err
 	}
 

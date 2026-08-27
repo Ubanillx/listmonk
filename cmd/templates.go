@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/knadh/listmonk/internal/auth"
 	"github.com/knadh/listmonk/internal/core"
 	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
@@ -85,7 +86,7 @@ func (a *App) GetTemplate(c echo.Context) error {
 
 	// Get the template from the DB.
 	id := getID(c)
-	if _, err := a.core.RequireReadResource(access, "templates", id); err != nil {
+	if _, err := a.requireReadableWorkspaceResource(c, access, resourceTemplates, id, auth.PermTemplatesGet); err != nil {
 		return err
 	}
 	out, err := a.core.GetTemplate(id, noBody)
@@ -104,7 +105,24 @@ func (a *App) GetTemplates(c echo.Context) error {
 	}
 	// If no_body is true, blank out the body of the template from the response.
 	noBody, _ := strconv.ParseBool(c.QueryParam("no_body"))
-
+	user := auth.GetUser(c)
+	if !access.IsOrganizationManager() && !user.IsPlatformAdmin() &&
+		!hasLegacyPermission(user, auth.PermTemplatesGet) {
+		// A globally published template is a documented read/copy exception.
+		// Filtered workspace retrieval still needs to avoid exposing private
+		// templates from the active workspace to a role with no template grant.
+		out, err := a.core.GetWorkspaceTemplates(access, "", noBody)
+		if err != nil {
+			return err
+		}
+		filtered := make([]models.Template, 0, len(out))
+		for _, tpl := range out {
+			if workspaceReadException(access, tpl.ResourceScope) {
+				filtered = append(filtered, tpl)
+			}
+		}
+		return c.JSON(http.StatusOK, okResp{filtered})
+	}
 	// Fetch templates from the DB.
 	out, err := a.core.GetWorkspaceTemplates(access, "", noBody)
 	if err != nil {
@@ -122,7 +140,7 @@ func (a *App) PreviewTemplate(c echo.Context) error {
 	}
 	// Fetch one template from the DB.
 	id := getID(c)
-	if _, err := a.core.RequireReadResource(access, "templates", id); err != nil {
+	if _, err := a.requireReadableWorkspaceResource(c, access, resourceTemplates, id, auth.PermTemplatesGet); err != nil {
 		return err
 	}
 	tpl, err := a.core.GetTemplate(id, false)
@@ -178,15 +196,22 @@ func (a *App) CreateTemplate(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return err
 	}
+	visibility, err := normalizeResourceVisibility(access, resourceTemplates, req.Visibility)
+	if err != nil {
+		return err
+	}
+	// Publishing a globally shared template is intentionally available to
+	// every authenticated user. Other template scopes retain the legacy role.
+	if visibility != models.ResourceVisibilityGlobal {
+		if err := requireLegacyPermission(auth.GetUser(c), auth.PermTemplatesManage); err != nil {
+			return err
+		}
+	}
 	o, err := a.prepareTemplate(req.template())
 	if err != nil {
 		return err
 	}
-	if err := a.requireUsableMedia(access, req.MediaIDs); err != nil {
-		return err
-	}
-	visibility, err := normalizeResourceVisibility(access, resourceTemplates, req.Visibility)
-	if err != nil {
+	if err := a.requireUsableMedia(c, access, req.MediaIDs); err != nil {
 		return err
 	}
 
@@ -224,21 +249,33 @@ func (a *App) UpdateTemplate(c echo.Context) error {
 
 	// Update the template in the DB.
 	id := getID(c)
-	if _, err := a.core.RequireManageResource(access, "templates", id); err != nil {
+	scope, err := a.requireManagedWorkspaceTemplate(c, access, id)
+	if err != nil {
 		return err
 	}
-	if err := a.requireUsableMedia(access, req.MediaIDs); err != nil {
+	if err := a.requireUsableMedia(c, access, req.MediaIDs); err != nil {
 		return err
+	}
+	visibility := ""
+	if req.Visibility != "" {
+		visibility, err = normalizeResourceVisibility(access, resourceTemplates, req.Visibility)
+		if err != nil {
+			return err
+		}
+		// Publishing is open, but changing a globally shared template into a
+		// private or organization asset would otherwise bypass templates:manage.
+		if scope.Visibility == models.ResourceVisibilityGlobal &&
+			visibility != models.ResourceVisibilityGlobal {
+			if err := requireLegacyPermission(auth.GetUser(c), auth.PermTemplatesManage); err != nil {
+				return err
+			}
+		}
 	}
 	out, err := a.core.UpdateTemplate(id, o.Name, o.Subject, []byte(o.Body), o.BodySource, req.mediaIDs())
 	if err != nil {
 		return err
 	}
-	if req.Visibility != "" {
-		visibility, err := normalizeResourceVisibility(access, resourceTemplates, req.Visibility)
-		if err != nil {
-			return err
-		}
+	if visibility != "" {
 		if err := a.core.SetResourceVisibility("templates", id, visibility); err != nil {
 			return err
 		}
@@ -263,8 +300,12 @@ func (a *App) CloneTemplate(c echo.Context) error {
 		return err
 	}
 	id := getID(c)
-	if _, err := a.core.RequireReadResource(access, "templates", id); err != nil {
+	scope, err := a.requireReadableWorkspaceResource(c, access, resourceTemplates, id, auth.PermTemplatesGet)
+	if err != nil {
 		return err
+	}
+	if !canCopyWorkspaceResource(access, scope) {
+		return echo.NewHTTPError(http.StatusForbidden, "template is not copyable in the active workspace")
 	}
 
 	src, err := a.core.GetTemplate(id, false)
@@ -285,6 +326,11 @@ func (a *App) CloneTemplate(c echo.Context) error {
 	}
 	if err := requireWritableWorkspace(target); err != nil {
 		return err
+	}
+	if !workspaceCopyException(access, scope) {
+		if err := requireLegacyPermission(auth.GetUser(c), auth.PermTemplatesManage); err != nil {
+			return err
+		}
 	}
 
 	clone, err := a.prepareTemplate(src.Clone(req.Name, req.Subject))
@@ -314,7 +360,7 @@ func (a *App) TemplateSetDefault(c echo.Context) error {
 	}
 	// Update the template in the DB.
 	id := getID(c)
-	if _, err := a.core.RequireManageResource(access, "templates", id); err != nil {
+	if _, err := a.requireManagedWorkspaceTemplate(c, access, id); err != nil {
 		return err
 	}
 	if err := a.core.SetWorkspaceDefaultTemplate(id, access); err != nil {
@@ -332,7 +378,7 @@ func (a *App) DeleteTemplate(c echo.Context) error {
 	}
 	// Delete the template from the DB.
 	id := getID(c)
-	if _, err := a.core.RequireManageResource(access, "templates", id); err != nil {
+	if _, err := a.requireManagedWorkspaceTemplate(c, access, id); err != nil {
 		return err
 	}
 	if err := a.core.DeleteTemplate(id); err != nil {
@@ -345,12 +391,12 @@ func (a *App) DeleteTemplate(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{true})
 }
 
-func (a *App) requireUsableMedia(access models.WorkspaceAccess, mediaIDs []int) error {
+func (a *App) requireUsableMedia(c echo.Context, access models.WorkspaceAccess, mediaIDs []int) error {
 	for _, id := range mediaIDs {
 		if id < 1 {
 			continue
 		}
-		if _, err := a.core.RequireUseResource(access, "media", id); err != nil {
+		if _, err := a.requireUsableWorkspaceResource(c, access, resourceMedia, id, auth.PermMediaGet); err != nil {
 			return err
 		}
 	}

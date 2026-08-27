@@ -18,7 +18,7 @@
         </div>
       </div>
       <div class="column has-text-right">
-        <b-field v-if="$canCreateWorkspaceResource()" expanded>
+        <b-field v-if="$canCreateWorkspaceResource('lists:manage_all')" expanded>
           <b-button expanded type="is-primary" icon-left="plus" class="btn-new" @click="showNewForm" data-cy="btn-new">
             {{ $t('globals.buttons.new') }}
           </b-button>
@@ -360,7 +360,7 @@ export default Vue.extend({
     },
 
     canManageList(list) {
-      return this.$canManageResource(list);
+      return this.$canManageResource(list) && this.$canList(list.id, 'list:manage');
     },
 
     ownerLabel(resource) {

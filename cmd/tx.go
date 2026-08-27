@@ -9,6 +9,7 @@ import (
 	"net/textproto"
 	"strings"
 
+	"github.com/knadh/listmonk/internal/auth"
 	"github.com/knadh/listmonk/internal/manager"
 	"github.com/knadh/listmonk/internal/messenger/email"
 	"github.com/knadh/listmonk/models"
@@ -22,6 +23,9 @@ func (a *App) SendTxMessage(c echo.Context) error {
 		return err
 	}
 	if err := requireWritableWorkspace(access); err != nil {
+		return err
+	}
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermTxSend); err != nil {
 		return err
 	}
 	var m models.TxMessage
@@ -81,7 +85,7 @@ func (a *App) SendTxMessage(c echo.Context) error {
 	// Templates may be organization or globally shared, but manager inspection
 	// rights must not let a transactional message use another member's private
 	// template.
-	if _, err := a.core.RequireUseResource(access, resourceTemplates, m.TemplateID); err != nil {
+	if _, err := a.requireUsableWorkspaceResource(c, access, resourceTemplates, m.TemplateID, auth.PermTemplatesGet); err != nil {
 		return err
 	}
 
@@ -135,7 +139,7 @@ func (a *App) SendTxMessage(c echo.Context) error {
 
 			var err error
 			if !isEmails {
-				if _, err = a.core.RequireManageResource(access, resourceSubscribers, subID); err == nil {
+				if _, err = a.requireManagedWorkspaceSubscriber(c, access, subID); err == nil {
 					sub, err = a.core.GetSubscriber(subID, "", "")
 				}
 			} else {

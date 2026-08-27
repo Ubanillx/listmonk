@@ -8,7 +8,7 @@
         </h1>
       </div>
       <div class="column has-text-right">
-        <b-field v-if="$canCreateWorkspaceResource()" expanded>
+        <b-field v-if="canCreateTemplate" expanded>
           <b-button expanded type="is-primary" icon-left="plus" class="btn-new" @click="showNewForm">
             {{ $t('globals.buttons.new') }}
           </b-button>
@@ -228,7 +228,10 @@ export default Vue.extend({
 
     // Show the new form.
     showNewForm() {
-      this.curItem = { type: 'campaign' };
+      this.curItem = {
+        type: 'campaign',
+        visibility: this.$can('templates:manage') ? 'private' : 'global',
+      };
       this.isFormVisible = true;
       this.isEditing = false;
     },
@@ -272,7 +275,7 @@ export default Vue.extend({
     },
 
     canManageTemplate(template) {
-      return this.$canManageResource(template);
+      return this.$canManageTemplate(template);
     },
 
     canManageOrganizationTemplate(template) {
@@ -345,6 +348,10 @@ export default Vue.extend({
     isOrganizationManager() {
       return this.workspace.organizationId > 0
         && (this.workspace.role === 'manager' || (this.profile.userRole && this.profile.userRole.id === 1));
+    },
+
+    canCreateTemplate() {
+      return this.$canCreateWorkspaceResource();
     },
 
     activeOrganizationMembers() {

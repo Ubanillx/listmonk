@@ -356,7 +356,7 @@ export default Vue.extend({
     },
 
     canReadSubscribers() {
-      return this.$canManageResource(this.campaign);
+      return this.$canReadCampaignRecipients(this.campaign);
     },
 
     canShowRecipients() {

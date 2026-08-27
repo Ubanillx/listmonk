@@ -8,7 +8,7 @@
         </h1>
       </div>
       <div class="column has-text-right">
-        <b-field v-if="$canCreateWorkspaceResource()" expanded>
+        <b-field v-if="$canCreateWorkspaceResource('campaigns:manage_all', 'campaigns:manage')" expanded>
           <b-button expanded :to="{ name: 'campaign', params: { id: 'new' } }" tag="router-link" class="btn-new"
             type="is-primary" icon-left="plus" data-cy="btn-new">
             {{ $t('globals.buttons.new') }}
@@ -494,7 +494,7 @@ export default Vue.extend({
     },
 
     canManageCampaign(campaign) {
-      return this.$canManageResource(campaign);
+      return this.$canManageResource(campaign, 'campaigns:manage_all', 'campaigns:manage');
     },
 
     ownerLabel(resource) {
@@ -569,7 +569,7 @@ export default Vue.extend({
     ...mapState(['campaigns', 'loading', 'workspace', 'organizations', 'profile']),
 
     canManageCampaigns() {
-      return this.$canCreateWorkspaceResource();
+      return this.$canCreateWorkspaceResource('campaigns:manage_all', 'campaigns:manage');
     },
 
     // The page result can include read-only organization and global campaigns.

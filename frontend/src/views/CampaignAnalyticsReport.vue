@@ -449,7 +449,8 @@ export default Vue.extend({
     },
 
     canReadSubscribers() {
-      return this.$canCreateWorkspaceResource()
+      return this.$can('campaigns:get_analytics')
+        && this.$can('subscribers:get_all', 'subscribers:get')
         && this.form.campaigns.every((campaign) => this.$canManageResource(campaign));
     },
 

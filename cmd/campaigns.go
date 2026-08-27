@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/knadh/listmonk/internal/auth"
 	"github.com/knadh/listmonk/internal/core"
 	"github.com/knadh/listmonk/internal/notifs"
 	"github.com/knadh/listmonk/models"
@@ -68,7 +69,6 @@ func (a *App) GetCampaigns(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-
 	var (
 		pg = a.pg.NewFromURL(c.Request().URL.Query())
 
@@ -80,8 +80,9 @@ func (a *App) GetCampaigns(c echo.Context) error {
 		noBody, _ = strconv.ParseBool(c.QueryParam("no_body"))
 	)
 
-	// Query and retrieve campaigns from the active workspace only.
-	res, total, err := a.core.QueryWorkspaceCampaigns(access, query, status, tags, orderBy, order, pg.Offset, pg.Limit)
+	// Query and retrieve campaigns from the active workspace only, then apply
+	// any legacy campaign/list grants before pagination is exposed.
+	res, total, err := a.queryReadableWorkspaceCampaigns(c, access, query, status, tags, orderBy, order, pg.Offset, pg.Limit)
 	if err != nil {
 		return err
 	}
@@ -120,7 +121,7 @@ func (a *App) GetCampaign(c echo.Context) error {
 	// Get the campaign ID.
 	id := getID(c)
 
-	if _, err := a.core.RequireReadResource(access, resourceCampaigns, id); err != nil {
+	if _, err := a.requireReadableWorkspaceCampaign(c, access, id); err != nil {
 		return err
 	}
 
@@ -161,7 +162,7 @@ func (a *App) PreviewCampaign(c echo.Context) error {
 	// Get the campaign ID.
 	id := getID(c)
 
-	if _, err := a.core.RequireReadResource(access, resourceCampaigns, id); err != nil {
+	if _, err := a.requireReadableWorkspaceCampaign(c, access, id); err != nil {
 		return err
 	}
 
@@ -173,7 +174,7 @@ func (a *App) PreviewCampaign(c echo.Context) error {
 	// For visual content, template ID for previewing is irrelevant.
 	if contentType == models.CampaignContentTypeVisual || tplID < 1 {
 		tplID = 0
-	} else if _, err := a.core.RequireReadResource(access, resourceTemplates, tplID); err != nil {
+	} else if _, err := a.requireReadableWorkspaceResource(c, access, resourceTemplates, tplID, auth.PermTemplatesGet); err != nil {
 		return err
 	}
 
@@ -231,14 +232,14 @@ func (a *App) PreviewCampaignArchive(c echo.Context) error {
 	// Get the campaign ID.
 	id := getID(c)
 
-	if _, err := a.core.RequireReadResource(access, resourceCampaigns, id); err != nil {
+	if _, err := a.requireReadableWorkspaceCampaign(c, access, id); err != nil {
 		return err
 	}
 
 	// Fetch the campaign body from the DB.
 	tplID, _ := strconv.Atoi(c.FormValue("template_id"))
 	if tplID > 0 {
-		if _, err := a.core.RequireReadResource(access, resourceTemplates, tplID); err != nil {
+		if _, err := a.requireReadableWorkspaceResource(c, access, resourceTemplates, tplID, auth.PermTemplatesGet); err != nil {
 			return err
 		}
 	}
@@ -274,7 +275,7 @@ func (a *App) CampaignContent(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if _, err := a.core.RequireManageResource(access, resourceCampaigns, getID(c)); err != nil {
+	if _, err := a.requireManagedWorkspaceCampaign(c, access, getID(c)); err != nil {
 		return err
 	}
 	var camp campContentReq
@@ -301,15 +302,18 @@ func (a *App) CreateCampaign(c echo.Context) error {
 	if err := requireWritableWorkspace(access); err != nil {
 		return err
 	}
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCampaignsManageAll, auth.PermCampaignsManage); err != nil {
+		return err
+	}
 	var o campReq
 	if err := c.Bind(&o); err != nil {
 		return err
 	}
 
-	if err := a.requireWorkspaceListIDs(access, o.ListIDs, true); err != nil {
+	if err := a.requireWorkspaceListIDsForRequest(c, access, o.ListIDs, true); err != nil {
 		return err
 	}
-	if err := a.requireUsableCampaignResources(access, o); err != nil {
+	if err := a.requireUsableCampaignResources(c, access, o); err != nil {
 		return err
 	}
 	visibility, err := normalizeResourceVisibility(access, resourceCampaigns, o.Visibility)
@@ -360,8 +364,12 @@ func (a *App) CloneCampaign(c echo.Context) error {
 		return err
 	}
 	sourceID := getID(c)
-	if _, err := a.core.RequireReadResource(access, resourceCampaigns, sourceID); err != nil {
+	scope, err := a.requireReadableWorkspaceCampaign(c, access, sourceID)
+	if err != nil {
 		return err
+	}
+	if !canCopyWorkspaceResource(access, scope) {
+		return echo.NewHTTPError(http.StatusForbidden, "campaign is not copyable in the active workspace")
 	}
 
 	var req campaignCloneReq
@@ -377,6 +385,11 @@ func (a *App) CloneCampaign(c echo.Context) error {
 	}
 	if err := requireWritableWorkspace(target); err != nil {
 		return err
+	}
+	if !workspaceCopyException(access, scope) {
+		if err := requireLegacyPermission(auth.GetUser(c), auth.PermCampaignsManageAll, auth.PermCampaignsManage); err != nil {
+			return err
+		}
 	}
 	if req.Name != "" && !strHasLen(strings.TrimSpace(req.Name), 1, stdInputMaxLen) {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("campaigns.fieldInvalidName"))
@@ -398,7 +411,7 @@ func (a *App) UpdateCampaign(c echo.Context) error {
 	// Get the campaign ID.
 	id := getID(c)
 
-	if _, err := a.core.RequireManageResource(access, resourceCampaigns, id); err != nil {
+	if _, err := a.requireManagedWorkspaceCampaign(c, access, id); err != nil {
 		return err
 	}
 
@@ -425,10 +438,10 @@ func (a *App) UpdateCampaign(c echo.Context) error {
 		return err
 	}
 
-	if err := a.requireWorkspaceListIDs(access, o.ListIDs, true); err != nil {
+	if err := a.requireWorkspaceListIDsForRequest(c, access, o.ListIDs, true); err != nil {
 		return err
 	}
-	if err := a.requireUsableCampaignResources(access, o); err != nil {
+	if err := a.requireUsableCampaignResources(c, access, o); err != nil {
 		return err
 	}
 
@@ -477,7 +490,7 @@ func (a *App) UpdateCampaignStatus(c echo.Context) error {
 	// Get the campaign ID.
 	id := getID(c)
 
-	if _, err := a.core.RequireManageResource(access, resourceCampaigns, id); err != nil {
+	if _, err := a.requireManagedWorkspaceCampaign(c, access, id); err != nil {
 		return err
 	}
 
@@ -519,7 +532,7 @@ func (a *App) UpdateCampaignArchive(c echo.Context) error {
 	}
 	id := getID(c)
 
-	if _, err := a.core.RequireManageResource(access, resourceCampaigns, id); err != nil {
+	if _, err := a.requireManagedWorkspaceCampaign(c, access, id); err != nil {
 		return err
 	}
 
@@ -536,7 +549,7 @@ func (a *App) UpdateCampaignArchive(c echo.Context) error {
 		// An archive template is rendered into a public page. Read-only
 		// organization-manager access must not allow attaching a member's
 		// private template to the caller's campaign.
-		if _, err := a.core.RequireUseResource(access, resourceTemplates, req.TemplateID); err != nil {
+		if _, err := a.requireUsableWorkspaceResource(c, access, resourceTemplates, req.TemplateID, auth.PermTemplatesGet); err != nil {
 			return err
 		}
 	}
@@ -566,7 +579,7 @@ func (a *App) DeleteCampaign(c echo.Context) error {
 	// Get the campaign ID.
 	id := getID(c)
 
-	if _, err := a.core.RequireManageResource(access, resourceCampaigns, id); err != nil {
+	if _, err := a.requireManagedWorkspaceCampaign(c, access, id); err != nil {
 		return err
 	}
 
@@ -612,10 +625,15 @@ func (a *App) DeleteCampaigns(c echo.Context) error {
 	}
 
 	if len(ids) > 0 {
-		if err := a.core.RequireManagedResources(access, resourceCampaigns, ids); err != nil {
-			return err
+		for _, id := range ids {
+			if _, err := a.requireManagedWorkspaceCampaign(c, access, id); err != nil {
+				return err
+			}
 		}
 	} else {
+		if err := requireLegacyPermission(auth.GetUser(c), auth.PermCampaignsManageAll, auth.PermCampaignsManage); err != nil {
+			return err
+		}
 		managed, err := a.core.ListManagedWorkspaceResources(access, resourceCampaigns)
 		if err != nil {
 			return err
@@ -624,7 +642,7 @@ func (a *App) DeleteCampaigns(c echo.Context) error {
 		// current filter. Intersect it with managed resources so an organization
 		// manager cannot delete a member's campaign and a forged all=true request
 		// cannot ignore the query.
-		visible, _, err := a.core.QueryWorkspaceCampaigns(access, query, nil, nil, "created_at", "DESC", 0, 0)
+		visible, _, err := a.queryReadableWorkspaceCampaigns(c, access, query, nil, nil, "created_at", "DESC", 0, 0)
 		if err != nil {
 			return err
 		}
@@ -661,13 +679,13 @@ func (a *App) GetRunningCampaignStats(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	visible, err := a.core.ListWorkspaceResources(access, resourceCampaigns)
+	visible, _, err := a.queryReadableWorkspaceCampaigns(c, access, "", []string{models.CampaignStatusRunning}, nil, "created_at", "DESC", 0, 0)
 	if err != nil {
 		return err
 	}
 	visibleSet := make(map[int]struct{}, len(visible))
-	for _, id := range visible {
-		visibleSet[id] = struct{}{}
+	for _, campaign := range visible {
+		visibleSet[campaign.ID] = struct{}{}
 	}
 	filtered := out[:0]
 	for _, stat := range out {
@@ -712,7 +730,7 @@ func (a *App) TestCampaign(c echo.Context) error {
 	// Get the campaign ID.
 	id := getID(c)
 
-	if _, err := a.core.RequireManageResource(access, resourceCampaigns, id); err != nil {
+	if _, err := a.requireManagedWorkspaceCampaign(c, access, id); err != nil {
 		return err
 	}
 
@@ -728,10 +746,10 @@ func (a *App) TestCampaign(c echo.Context) error {
 	} else {
 		req = c
 	}
-	if err := a.requireWorkspaceListIDs(access, req.ListIDs, true); err != nil {
+	if err := a.requireWorkspaceListIDsForRequest(c, access, req.ListIDs, true); err != nil {
 		return err
 	}
-	if err := a.requireUsableCampaignResources(access, req); err != nil {
+	if err := a.requireUsableCampaignResources(c, access, req); err != nil {
 		return err
 	}
 	if len(req.SubscriberEmails) == 0 {
@@ -808,7 +826,7 @@ func (a *App) GetCampaignViewAnalytics(c echo.Context) error {
 			a.i18n.Ts("globals.messages.missingFields", "name", "`id`"))
 	}
 	for _, id := range ids {
-		if _, err := a.core.RequireReadResource(access, resourceCampaigns, id); err != nil {
+		if err := a.requireCampaignAnalytics(c, access, id); err != nil {
 			return err
 		}
 	}
@@ -847,7 +865,7 @@ func (a *App) GetCampaignReportSummary(c echo.Context) error {
 		return err
 	}
 	id := getID(c)
-	if _, err := a.core.RequireReadResource(access, resourceCampaigns, id); err != nil {
+	if err := a.requireCampaignAnalytics(c, access, id); err != nil {
 		return err
 	}
 
@@ -889,7 +907,7 @@ func (a *App) GetCampaignReportSeries(c echo.Context) error {
 		return err
 	}
 	id := getID(c)
-	if _, err := a.core.RequireReadResource(access, resourceCampaigns, id); err != nil {
+	if err := a.requireCampaignAnalytics(c, access, id); err != nil {
 		return err
 	}
 
@@ -931,7 +949,7 @@ func (a *App) GetCampaignReportLinks(c echo.Context) error {
 		return err
 	}
 	id := getID(c)
-	if _, err := a.core.RequireReadResource(access, resourceCampaigns, id); err != nil {
+	if err := a.requireCampaignAnalytics(c, access, id); err != nil {
 		return err
 	}
 
@@ -976,7 +994,10 @@ func (a *App) GetCampaignReportRecipients(c echo.Context) error {
 
 	// This report includes recipient identities, so organization managers may
 	// not retrieve another member's data even though they may view aggregates.
-	if _, err := a.core.RequireManageResource(access, resourceCampaigns, id); err != nil {
+	if _, err := a.requireSensitiveWorkspaceCampaign(c, access, id); err != nil {
+		return err
+	}
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermSubscribersGetAll, auth.PermSubscribersGet); err != nil {
 		return err
 	}
 	if !a.cfg.Privacy.IndividualTracking {
@@ -1021,6 +1042,9 @@ func (a *App) GetCampaignReportRecipients(c echo.Context) error {
 func (a *App) GetCampaignsReportRecipients(c echo.Context) error {
 	access, err := a.workspaceAccess(c)
 	if err != nil {
+		return err
+	}
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermSubscribersGetAll, auth.PermSubscribersGet); err != nil {
 		return err
 	}
 	if !a.cfg.Privacy.IndividualTracking {
@@ -1094,7 +1118,7 @@ func (a *App) getAccessibleCampaignReportIDs(c echo.Context) ([]int, error) {
 			if id < 1 {
 				return nil, echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("globals.messages.invalidID"))
 			}
-			if _, err := a.core.RequireReadResource(access, resourceCampaigns, id); err != nil {
+			if err := a.requireCampaignAnalytics(c, access, id); err != nil {
 				return nil, err
 			}
 			if _, ok := seen[id]; ok {
@@ -1106,7 +1130,11 @@ func (a *App) getAccessibleCampaignReportIDs(c echo.Context) ([]int, error) {
 		return out, nil
 	}
 
-	camps, _, err := a.core.QueryWorkspaceCampaigns(access, "", nil, nil, "created_at", "DESC", 0, 0)
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCampaignsGetAnalytics); err != nil &&
+		!(access.IsOrganization() && access.IsOrganizationManager()) {
+		return nil, err
+	}
+	camps, _, err := a.queryReadableWorkspaceCampaigns(c, access, "", nil, nil, "created_at", "DESC", 0, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -1120,13 +1148,30 @@ func (a *App) getAccessibleCampaignReportIDs(c echo.Context) ([]int, error) {
 }
 
 func (a *App) getManagedCampaignReportIDs(c echo.Context, access models.WorkspaceAccess) ([]int, error) {
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCampaignsGetAnalytics); err != nil {
+		return nil, err
+	}
 	ids, err := getQueryInts("id", c.QueryParams())
 	if err != nil {
 		return nil, echo.NewHTTPError(http.StatusBadRequest,
 			a.i18n.Ts("globals.messages.errorInvalidIDs", "error", err.Error()))
 	}
 	if len(ids) == 0 {
-		return a.core.ListManagedWorkspaceResources(access, resourceCampaigns)
+		managed, err := a.core.ListManagedWorkspaceResources(access, resourceCampaigns)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]int, 0, len(managed))
+		for _, id := range managed {
+			if _, err := a.requireSensitiveWorkspaceCampaign(c, access, id); err != nil {
+				if httpErr, ok := err.(*echo.HTTPError); ok && httpErr.Code == http.StatusForbidden {
+					continue
+				}
+				return nil, err
+			}
+			out = append(out, id)
+		}
+		return out, nil
 	}
 	seen := make(map[int]struct{}, len(ids))
 	out := make([]int, 0, len(ids))
@@ -1134,7 +1179,7 @@ func (a *App) getManagedCampaignReportIDs(c echo.Context, access models.Workspac
 		if id < 1 {
 			return nil, echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("globals.messages.invalidID"))
 		}
-		if _, err := a.core.RequireManageResource(access, resourceCampaigns, id); err != nil {
+		if _, err := a.requireSensitiveWorkspaceCampaign(c, access, id); err != nil {
 			return nil, err
 		}
 		if _, ok := seen[id]; ok {
@@ -1164,14 +1209,14 @@ func (a *App) sendTestMessage(sub models.Subscriber, camp *models.Campaign) erro
 	return a.manager.PushCampaignMessage(msg)
 }
 
-func (a *App) requireUsableCampaignResources(access models.WorkspaceAccess, req campReq) error {
+func (a *App) requireUsableCampaignResources(c echo.Context, access models.WorkspaceAccess, req campReq) error {
 	if req.TemplateID.Valid && req.TemplateID.Int > 0 {
-		if _, err := a.core.RequireUseResource(access, resourceTemplates, int(req.TemplateID.Int)); err != nil {
+		if _, err := a.requireUsableWorkspaceResource(c, access, resourceTemplates, int(req.TemplateID.Int), auth.PermTemplatesGet); err != nil {
 			return err
 		}
 	}
 	if req.ArchiveTemplateID.Valid && req.ArchiveTemplateID.Int > 0 {
-		if _, err := a.core.RequireUseResource(access, resourceTemplates, int(req.ArchiveTemplateID.Int)); err != nil {
+		if _, err := a.requireUsableWorkspaceResource(c, access, resourceTemplates, int(req.ArchiveTemplateID.Int), auth.PermTemplatesGet); err != nil {
 			return err
 		}
 	}
@@ -1179,7 +1224,7 @@ func (a *App) requireUsableCampaignResources(access models.WorkspaceAccess, req 
 		if id < 1 {
 			continue
 		}
-		if _, err := a.core.RequireUseResource(access, resourceMedia, id); err != nil {
+		if _, err := a.requireUsableWorkspaceResource(c, access, resourceMedia, id, auth.PermMediaGet); err != nil {
 			return err
 		}
 	}

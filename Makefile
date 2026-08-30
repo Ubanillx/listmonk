@@ -59,12 +59,12 @@ $(FRONTEND_EMAIL_BUILDER_YARN_MODULES): frontend/package.json frontend/yarn.lock
 
 # Build the backend to ./listmonk.
 $(BIN): $(SRC) go.mod go.sum schema.sql $(SQL) permissions.json
-	CGO_ENABLED=0 go build -o ${BIN} -ldflags="-s -w -X 'main.buildString=${BUILDSTR}' -X 'main.versionString=${VERSION}'" cmd/*.go
+	CGO_ENABLED=0 go build -o ${BIN} -ldflags="-s -w -X 'main.buildString=${BUILDSTR}' -X 'main.versionString=${VERSION}'" ./cmd
 
 # Run the backend in dev mode. The frontend assets in dev mode are loaded from disk from frontend/dist.
 .PHONY: run
 run:
-	CGO_ENABLED=0 go run -ldflags="-s -w -X 'main.buildString=${BUILDSTR}' -X 'main.versionString=${VERSION}' -X 'main.frontendDir=frontend/dist'" cmd/*.go
+	CGO_ENABLED=0 go run -ldflags="-s -w -X 'main.buildString=${BUILDSTR}' -X 'main.versionString=${VERSION}' -X 'main.frontendDir=frontend/dist'" ./cmd
 
 # Build the JS frontend into frontend/dist.
 $(FRONTEND_DIST): $(FRONTEND_DEPS)

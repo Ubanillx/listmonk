@@ -18,7 +18,7 @@ ensure_frontend_dist() {
 run_listmonk() {
   CGO_ENABLED=0 go run \
     -ldflags="-s -w -X main.buildString=${BUILDSTR_VALUE} -X main.versionString=${VERSION_VALUE} -X main.frontendDir=${FRONTEND_DIR_VALUE}" \
-    cmd/*.go \
+    ./cmd \
     "$@"
 }
 

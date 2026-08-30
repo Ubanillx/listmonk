@@ -35,18 +35,22 @@ services:
     build:
       context: ../
       dockerfile: dev/app.Dockerfile
-    command: ["make", "run-frontend"]
+    command: ["sh", "dev/run-frontend.sh"]
     ports:
       - "8181:8080"
     environment:
       - LISTMONK_API_URL=http://backend:9173
       - LISTMONK_WATCH_POLLING=true
+      # Cypress is only used by the end-to-end test job, not by the Vite dev server.
+      - CYPRESS_INSTALL_BINARY=0
       - npm_config_registry=${NPM_CONFIG_REGISTRY:-https://registry.npmmirror.com}
       - YARN_REGISTRY=${YARN_REGISTRY:-https://registry.npmmirror.com}
     depends_on:
       - db
     volumes:
       - ../:/app
+      # Do not use Windows-installed native modules inside the Linux container.
+      - listmonk-dev-frontend-node-modules:/app/frontend/node_modules
     networks:
       - listmonk-dev
 
@@ -72,6 +76,7 @@ services:
 
 volumes:
   listmonk-dev-db:
+  listmonk-dev-frontend-node-modules:
 
 networks:
   listmonk-dev:

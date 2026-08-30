@@ -271,7 +271,7 @@ func installCampaign(campTplID, archiveTplID int, q *models.Queries) {
 		`,
 		nil,
 		models.CampaignContentTypeRichtext,
-		0,
+		300,
 		"09:00",
 		nil,
 		json.RawMessage("[]"),

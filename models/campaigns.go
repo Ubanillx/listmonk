@@ -42,6 +42,14 @@ type Campaign struct {
 	ResourceScope
 	CampaignMeta
 
+	// SchedulerStatus preserves the status that caused a scheduler claim. The
+	// claim itself changes scheduled/deferred rows to running before the
+	// manager resolves the account SMTP pool; retaining the prior value lets
+	// strict SMTP failure handling return a not-yet-started campaign to draft
+	// while a genuinely running campaign is paused. It is process-local state,
+	// never persisted or exposed in API responses.
+	SchedulerStatus string `db:"-" json:"-"`
+
 	UUID              string          `db:"uuid" json:"uuid"`
 	Type              string          `db:"type" json:"type"`
 	Name              string          `db:"name" json:"name"`
@@ -67,6 +75,8 @@ type Campaign struct {
 	ArchiveSlug       null.String     `db:"archive_slug" json:"archive_slug"`
 	ArchiveTemplateID null.Int        `db:"archive_template_id" json:"archive_template_id"`
 	ArchiveMeta       json.RawMessage `db:"archive_meta" json:"archive_meta"`
+	ReplyMailboxID    null.Int        `db:"reply_mailbox_id" json:"reply_mailbox_id"`
+	ReplyMailboxEmail string          `db:"reply_mailbox_email" json:"reply_mailbox_email"`
 
 	// TemplateBody is joined in from templates by the next-campaigns query.
 	TemplateBody        string             `db:"template_body" json:"-"`

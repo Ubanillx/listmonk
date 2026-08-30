@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/gofrs/uuid/v5"
+	"github.com/jmoiron/sqlx"
 	"github.com/knadh/listmonk/internal/media"
 	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
@@ -70,6 +71,29 @@ func (c *Core) GetMedia(id int, uuid, fileName string, s media.Store) (media.Med
 	return out, nil
 }
 
+// MediaFilenameExists checks for a provider object name without returning a
+// media row.  Provider storage is shared by all workspaces, so names must be
+// unique globally to prevent one upload from overwriting another workspace's
+// binary.  Keeping this as an existence-only query avoids using the legacy
+// ID/filename lookup as an accidental cross-workspace read during uploads.
+func (c *Core) MediaFilenameExists(provider, filename string) (bool, error) {
+	provider = strings.TrimSpace(provider)
+	filename = strings.TrimSpace(filename)
+	if provider == "" || filename == "" {
+		return false, nil
+	}
+	var exists bool
+	if err := c.db.Get(&exists, `
+		SELECT EXISTS (
+			SELECT 1 FROM media
+			WHERE provider = $1 AND (filename = $2 OR thumb = $2)
+		)`, provider, filename); err != nil {
+		return false, echo.NewHTTPError(http.StatusInternalServerError,
+			c.i18n.Ts("globals.messages.errorFetching", "name", "{globals.terms.media}", "error", pqErrMsg(err)))
+	}
+	return exists, nil
+}
+
 // InsertMedia inserts a new media file into the DB.
 func (c *Core) InsertMedia(fileName, thumbName, contentType string, meta models.JSON, provider string, scope models.ResourceScope, s media.Store) (media.Media, error) {
 	uu, err := uuid.NewV4()
@@ -89,6 +113,47 @@ func (c *Core) InsertMedia(fileName, thumbName, contentType string, meta models.
 	}
 
 	return c.GetMedia(newID, "", "", s)
+}
+
+// InsertMediaInWorkspace inserts a media row only while the selected
+// organization is locked and the caller's membership is still active. The
+// binary itself is written by the handler before this method; a failed insert
+// is reported so the handler can remove that unreferenced object.
+func (c *Core) InsertMediaInWorkspace(access models.WorkspaceAccess, fileName, thumbName, contentType string, meta models.JSON, provider string, scope models.ResourceScope, s media.Store) (media.Media, error) {
+	uu, err := uuid.NewV4()
+	if err != nil {
+		return media.Media{}, echo.NewHTTPError(http.StatusInternalServerError,
+			c.i18n.Ts("globals.messages.errorUUID", "error", err.Error()))
+	}
+	var out media.Media
+	err = c.withWorkspaceCreation(access, func(tx *sqlx.Tx) error {
+		var newID int
+		if err := tx.Stmtx(c.q.InsertMedia).Get(&newID, uu, fileName, thumbName, contentType, provider, meta,
+			scope.OrganizationID, scope.OwnerUserID, scope.OriginalOwnerUserID, scope.Visibility); err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError,
+				c.i18n.Ts("globals.messages.errorCreating", "name", "{globals.terms.media}", "error", pqErrMsg(err)))
+		}
+		// Read the row before committing the creation transaction.  A
+		// post-commit workspace-authorized lookup can fail if membership or
+		// organization state changes in the meantime, leaving the freshly
+		// uploaded binary paired with an orphaned database row.  The insert
+		// transaction already holds the organization lock, so this direct
+		// read is both race-free and guaranteed to roll back together with the
+		// insert on any error.
+		if err := tx.Get(&out, `SELECT * FROM media WHERE id = $1`, newID); err != nil {
+			return workspaceQueryError("fetching newly uploaded media", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return media.Media{}, err
+	}
+	// Preserve the provider URLs returned by the legacy insert path.
+	out.URL = s.GetURL(out.Filename)
+	if out.Thumb != "" {
+		out.ThumbURL = null.String{Valid: true, String: s.GetURL(out.Thumb)}
+	}
+	return out, nil
 }
 
 // MediaDeletion describes the physical objects that became unreferenced when
@@ -113,18 +178,40 @@ func (c *Core) DeleteMedia(id int) (MediaDeletion, error) {
 			c.i18n.Ts("globals.messages.errorCreating", "name", "{globals.terms.media}", "error", pqErrMsg(err)))
 	}
 	defer tx.Rollback()
+	if err := c.deleteMediaTx(tx, id, &out); err != nil {
+		return out, err
+	}
+	if err := tx.Commit(); err != nil {
+		return out, echo.NewHTTPError(http.StatusInternalServerError, pqErrMsg(err))
+	}
+	return out, nil
+}
+
+// DeleteMediaInWorkspace keeps media deletion behind the same ownership and
+// organization lifecycle locks as all other workspace mutations. This matters
+// for inline MIME media: a late deletion must not remove a record that was
+// transferred to a former member cleanup queue after the request was checked.
+func (c *Core) DeleteMediaInWorkspace(access models.WorkspaceAccess, id int) (MediaDeletion, error) {
+	var out MediaDeletion
+	err := c.withWorkspaceResourceMutation(access, resourceMedia, []int{id}, func(tx *sqlx.Tx) error {
+		return c.deleteMediaTx(tx, id, &out)
+	})
+	return out, err
+}
+
+func (c *Core) deleteMediaTx(tx *sqlx.Tx, id int, out *MediaDeletion) error {
 
 	var provider string
 	if err := tx.QueryRowx(`SELECT provider, filename, thumb FROM media WHERE id = $1 FOR UPDATE`, id).
 		Scan(&provider, &out.Filename, &out.Thumb); err != nil {
 		if err == sql.ErrNoRows {
-			return out, ErrNotFound
+			return ErrNotFound
 		}
-		return out, echo.NewHTTPError(http.StatusInternalServerError,
+		return echo.NewHTTPError(http.StatusInternalServerError,
 			c.i18n.Ts("globals.messages.errorCreating", "name", "{globals.terms.media}", "error", pqErrMsg(err)))
 	}
 	if _, err := tx.Exec(`DELETE FROM media WHERE id = $1`, id); err != nil {
-		return out, echo.NewHTTPError(http.StatusInternalServerError,
+		return echo.NewHTTPError(http.StatusInternalServerError,
 			c.i18n.Ts("globals.messages.errorCreating", "name", "{globals.terms.media}", "error", pqErrMsg(err)))
 	}
 
@@ -132,20 +219,16 @@ func (c *Core) DeleteMedia(id int) (MediaDeletion, error) {
 	if err := tx.Get(&filenameRefs, `
 		SELECT COUNT(*) FROM media
 		WHERE provider = $1 AND (filename = $2 OR thumb = $2)`, provider, out.Filename); err != nil {
-		return out, echo.NewHTTPError(http.StatusInternalServerError, pqErrMsg(err))
+		return echo.NewHTTPError(http.StatusInternalServerError, pqErrMsg(err))
 	}
 	if out.Thumb != "" && out.Thumb != out.Filename {
 		if err := tx.Get(&thumbRefs, `
 			SELECT COUNT(*) FROM media
 			WHERE provider = $1 AND (filename = $2 OR thumb = $2)`, provider, out.Thumb); err != nil {
-			return out, echo.NewHTTPError(http.StatusInternalServerError, pqErrMsg(err))
+			return echo.NewHTTPError(http.StatusInternalServerError, pqErrMsg(err))
 		}
 	}
 	out.DeleteFilename = filenameRefs == 0
 	out.DeleteThumb = out.Thumb != "" && out.Thumb != out.Filename && thumbRefs == 0
-
-	if err := tx.Commit(); err != nil {
-		return out, echo.NewHTTPError(http.StatusInternalServerError, pqErrMsg(err))
-	}
-	return out, nil
+	return nil
 }

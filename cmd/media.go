@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/disintegration/imaging"
@@ -70,15 +71,35 @@ func (a *App) UploadMedia(c echo.Context) error {
 	// Sanitize the filename.
 	fName := makeFilename(file.Filename)
 
-	// If the filename already exists in the DB, make it unique by adding a random suffix.
-	if _, err := a.core.GetMedia(0, "", fName, a.media); err == nil {
+	// Provider objects are shared by all workspaces.  Check names through the
+	// existence-only query rather than the legacy GetMedia lookup, which would
+	// read a row from another workspace just to detect a collision.  Check both
+	// the original object and the thumbnail namespace, and retry in the very
+	// unlikely event that a generated suffix is already present.
+	for attempt := 0; attempt < 5; attempt++ {
+		filenameExists, err := a.core.MediaFilenameExists(a.cfg.MediaUpload.Provider, fName)
+		if err != nil {
+			return err
+		}
+		thumbExists := false
+		if !filenameExists {
+			thumbExists, err = a.core.MediaFilenameExists(a.cfg.MediaUpload.Provider, thumbPrefix+fName)
+			if err != nil {
+				return err
+			}
+		}
+		if !filenameExists && !thumbExists {
+			break
+		}
 		suffix, err := generateRandomString(6)
 		if err != nil {
 			a.log.Printf("error generating random string: %v", err)
 			return echo.NewHTTPError(http.StatusInternalServerError, a.i18n.T("globals.messages.internalError"))
 		}
-
 		fName = appendSuffixToFilename(fName, suffix)
+		if attempt == 4 {
+			return echo.NewHTTPError(http.StatusConflict, "media filename is already in use")
+		}
 	}
 
 	// Upload the file to the media store.
@@ -151,7 +172,7 @@ func (a *App) UploadMedia(c echo.Context) error {
 		return err
 	}
 	scope := core.ApplyWorkspaceScope(access, visibility)
-	m, err := a.core.InsertMedia(fName, thumbfName, contentType, meta, a.cfg.MediaUpload.Provider, scope, a.media)
+	m, err := a.core.InsertMediaInWorkspace(access, fName, thumbfName, contentType, meta, a.cfg.MediaUpload.Provider, scope, a.media)
 	if err != nil {
 		cleanUp = true
 		return err
@@ -211,7 +232,7 @@ func (a *App) GetMedia(c echo.Context) error {
 	if _, err := a.requireReadableWorkspaceResource(c, access, resourceMedia, id, auth.PermMediaGet); err != nil {
 		return err
 	}
-	out, err := a.core.GetMedia(id, "", "", a.media)
+	out, err := a.core.GetWorkspaceMediaByID(access, id)
 	if err != nil {
 		return err
 	}
@@ -234,7 +255,7 @@ func (a *App) DeleteMedia(c echo.Context) error {
 	if _, err := a.requireManagedWorkspaceResource(c, access, resourceMedia, id, auth.PermMediaManage); err != nil {
 		return err
 	}
-	deleted, err := a.core.DeleteMedia(id)
+	deleted, err := a.core.DeleteMediaInWorkspace(access, id)
 	if err != nil {
 		return err
 	}
@@ -250,12 +271,21 @@ func (a *App) DeleteMedia(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{true})
 }
 
-// ServeMediaFile serves a media object by its stored filename. Browser image
-// requests cannot carry the workspace header, so the active workspace cookie
-// is resolved through the same predicate as the JSON API before a blob is
-// returned. A filename, rather than a media ID, keeps copied campaign/template
-// bodies compatible with their copied media records, which deliberately retain
-// the same binary filename.
+// ServeMediaFileByID serves a media object through its exact database ID. New
+// editor URLs use this route so cloned records that share a provider filename
+// cannot resolve to the wrong binary. The filename segment is retained as a
+// human-readable and tamper-evident check; the stored row remains authoritative.
+func (a *App) ServeMediaFileByID(c echo.Context) error {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id < 1 {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid media ID")
+	}
+	return a.serveWorkspaceOrPublicMediaByID(c, id, c.Param("filename"))
+}
+
+// ServeMediaFile serves a media object by its stored filename. It is kept for
+// backwards compatibility with historical editor content. New content should
+// use ServeMediaFileByID because filenames may be shared by cloned records.
 func (a *App) ServeMediaFile(c echo.Context) error {
 	return a.serveWorkspaceOrPublicMedia(c, c.Param("filename"))
 }
@@ -290,17 +320,52 @@ func (a *App) serveWorkspaceOrPublicMedia(c echo.Context, rawFilename string) er
 		return echo.NewHTTPError(http.StatusNotFound, "media file not found")
 	}
 
-	public, err := a.core.IsPublicArchiveMedia(filename)
-	if err != nil {
+	if _, err := a.core.GetPublicArchiveMediaByFilename(filename, nil); err != nil {
+		if err == core.ErrNotFound {
+			return echo.NewHTTPError(http.StatusNotFound, "media file not found")
+		}
 		return err
 	}
-	if !public {
-		return echo.NewHTTPError(http.StatusNotFound, "media file not found")
-	}
-	if _, err := a.core.GetMedia(0, "", filename, a.media); err != nil {
-		return echo.NewHTTPError(http.StatusNotFound, "media file not found")
-	}
+	// The row lookup above is authorization and existence in one statement.
+	// Stream the requested provider object only after that exact graph check.
 	return a.streamMediaBlob(c, filename)
+}
+
+func (a *App) serveWorkspaceOrPublicMediaByID(c echo.Context, id int, rawFilename string) error {
+	requested := mediaFilename(rawFilename)
+	if requested == "" || requested == "." || requested == "/" {
+		return echo.NewHTTPError(http.StatusBadRequest, "missing media file path")
+	}
+
+	// Authenticated browser/API requests are checked against the exact media
+	// row. The active workspace cookie/header is still required for private and
+	// organization resources; the ID never grants access on its own.
+	if _, ok := c.Get(auth.UserHTTPCtxKey).(auth.User); ok {
+		access, err := a.workspaceAccess(c)
+		if err != nil {
+			return err
+		}
+		if out, err := a.core.GetWorkspaceMediaByID(access, id); err == nil {
+			if requested != out.Filename && requested != out.Thumb {
+				return echo.NewHTTPError(http.StatusNotFound, "media file not found")
+			}
+			return a.streamMediaBlob(c, requested)
+		}
+	}
+
+	// Public archive pages are the only unauthenticated exception. Check the
+	// exact media row so a public filename cannot expose a different clone.
+	if !a.cfg.EnablePublicArchive {
+		return echo.NewHTTPError(http.StatusNotFound, "media file not found")
+	}
+	out, err := a.core.GetPublicArchiveMediaByID(id, a.media)
+	if err == core.ErrNotFound {
+		return echo.NewHTTPError(http.StatusNotFound, "media file not found")
+	}
+	if err != nil || (requested != out.Filename && requested != out.Thumb) {
+		return echo.NewHTTPError(http.StatusNotFound, "media file not found")
+	}
+	return a.streamMediaBlob(c, requested)
 }
 
 func mediaFilename(raw string) string {
@@ -326,13 +391,25 @@ func (a *App) setWorkspaceMediaURLs(m *media.Media) {
 	if m == nil {
 		return
 	}
-	m.URL = workspaceMediaFileURL(m.Filename)
+	m.URL = workspaceMediaIDFileURL(m.ID, m.Filename)
 	if m.Thumb != "" {
-		m.ThumbURL.String = workspaceMediaFileURL(m.Thumb)
+		m.ThumbURL.String = workspaceMediaIDFileURL(m.ID, m.Thumb)
 		m.ThumbURL.Valid = true
 	}
 }
 
+// workspaceMediaIDFileURL is the canonical URL for newly returned media.
+// Including the ID disambiguates cloned rows that intentionally share the
+// same provider filename.
+func workspaceMediaIDFileURL(id int, filename string) string {
+	if id > 0 {
+		return "/api/media/file/" + strconv.Itoa(id) + "/" + url.PathEscape(filename)
+	}
+	return workspaceMediaFileURL(filename)
+}
+
+// workspaceMediaFileURL is retained for callers/tests that need the legacy
+// filename-only route.
 func workspaceMediaFileURL(filename string) string {
 	return "/api/media/file/" + url.PathEscape(filename)
 }

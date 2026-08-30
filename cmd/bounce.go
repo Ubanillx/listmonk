@@ -18,7 +18,7 @@ func (a *App) GetBounce(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := requireLegacyPermission(auth.GetUser(c), auth.PermBouncesGet); err != nil {
+	if err := a.requireBounceReadPermission(c, access); err != nil {
 		return err
 	}
 	// Fetch one bounce from the active workspace.
@@ -27,6 +27,7 @@ func (a *App) GetBounce(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	a.redactWorkspaceBounceSensitiveFields(access, &out)
 
 	return c.JSON(http.StatusOK, okResp{out})
 }
@@ -37,7 +38,7 @@ func (a *App) GetBounces(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := requireLegacyPermission(auth.GetUser(c), auth.PermBouncesGet); err != nil {
+	if err := a.requireBounceReadPermission(c, access); err != nil {
 		return err
 	}
 	var (
@@ -64,6 +65,9 @@ func (a *App) GetBounces(c echo.Context) error {
 	if len(res) == 0 {
 		return c.JSON(http.StatusOK, okResp{models.PageResults{Results: []models.Bounce{}}})
 	}
+	for i := range res {
+		a.redactWorkspaceBounceSensitiveFields(access, &res[i])
+	}
 
 	out := models.PageResults{
 		Results: res,
@@ -81,7 +85,7 @@ func (a *App) GetSubscriberBounces(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := requireLegacyPermission(auth.GetUser(c), auth.PermBouncesGet); err != nil {
+	if err := a.requireBounceReadPermission(c, access); err != nil {
 		return err
 	}
 	// Query and fetch bounces from the DB.
@@ -93,8 +97,42 @@ func (a *App) GetSubscriberBounces(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	for i := range out {
+		a.redactWorkspaceBounceSensitiveFields(access, &out[i])
+	}
 
 	return c.JSON(http.StatusOK, okResp{out})
+}
+
+// redactWorkspaceBounceSensitiveFields keeps bounce type/source and aggregate
+// context available to an organization manager while hiding the recipient
+// identity and provider payload for another member's audience. Owners and
+// platform administrators retain the complete bounce record.
+func (a *App) redactWorkspaceBounceSensitiveFields(access models.WorkspaceAccess, bounce *models.Bounce) {
+	if bounce == nil {
+		return
+	}
+	scope := models.ResourceScope{
+		OrganizationID:      bounce.OrganizationID,
+		OwnerUserID:         bounce.OwnerUserID,
+		TransferPendingAt:   bounce.TransferPendingAt,
+	}
+	if a.core.CanSeeSensitiveResource(access, scope) {
+		return
+	}
+	bounce.Email = ""
+	bounce.SubscriberUUID = ""
+	bounce.Meta = nil
+}
+
+// Organization managers are explicitly allowed to inspect member details
+// and statistics. The legacy bounces:get role remains required for ordinary
+// members, while mutation handlers continue to require bounces:manage.
+func (a *App) requireBounceReadPermission(c echo.Context, access models.WorkspaceAccess) error {
+	if access.PlatformAdmin || (access.IsOrganization() && access.IsOrganizationManager()) {
+		return nil
+	}
+	return requireLegacyPermission(auth.GetUser(c), auth.PermBouncesGet)
 }
 
 // DeleteBounces handles bounce deletion of a list.

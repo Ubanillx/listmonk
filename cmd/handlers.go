@@ -217,6 +217,16 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 
 		g.GET("/api/profile", a.GetUserProfile)
 		g.PUT("/api/profile", a.UpdateUserProfile)
+		g.GET("/api/profile/smtp", a.GetPersonalSMTP)
+		g.PUT("/api/profile/smtp", a.UpdatePersonalSMTP)
+		g.DELETE("/api/profile/smtp/:id", hasID(a.DeletePersonalSMTP))
+		g.POST("/api/profile/smtp/test", a.TestPersonalSMTP)
+		g.GET("/api/users/:id/smtp", hasID(a.GetUserPersonalSMTP))
+		g.GET("/api/profile/reply-mailboxes", a.GetReplyMailboxes)
+		g.POST("/api/profile/reply-mailboxes", a.CreateReplyMailbox)
+		g.PUT("/api/profile/reply-mailboxes/:id", hasID(a.UpdateReplyMailbox))
+		g.DELETE("/api/profile/reply-mailboxes/:id", hasID(a.DisableReplyMailbox))
+		g.POST("/api/profile/reply-mailboxes/test", a.TestReplyMailbox)
 
 		// Organization workspaces. Workspace-scoped endpoints use the
 		// X-Listmonk-Organization-ID request header; a missing header selects
@@ -224,6 +234,8 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.GET("/api/workspace", a.GetCurrentWorkspace)
 		g.GET("/api/organizations/me", a.GetMyOrganizations)
 		g.POST("/api/organizations/requests", a.CreateOrganizationRequest)
+		g.GET("/api/organizations/requests/mine", a.GetMyOrganizationRequests)
+		g.DELETE("/api/organizations/requests/:id", hasID(a.WithdrawOrganizationRequest))
 		g.POST("/api/organizations/join", a.JoinOrganizationByInvite)
 		g.POST("/api/organizations/leave", a.LeaveOrganization)
 		g.POST("/api/organizations/resources/migrate", a.MigratePersonalResourcesToOrganization)
@@ -237,6 +249,9 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.POST("/api/organizations/:id/resources/transfer", pm(hasID(a.TransferArchivedOrganizationResources), "users:manage"))
 		g.POST("/api/organizations/templates/:id/transfer", hasID(a.TransferOrganizationTemplate))
 		g.POST("/api/organizations/templates/:id/unpublish", hasID(a.UnpublishOrganizationTemplate))
+		g.GET("/api/organizations/reply-forwarding", a.GetReplyForwardRules)
+		g.PUT("/api/organizations/reply-forwarding/:id", hasID(a.UpdateReplyForwardRule))
+		g.DELETE("/api/organizations/reply-forwarding/:id", hasID(a.DeleteReplyForwardRule))
 		g.GET("/api/organizations/invites", a.GetOrganizationInvites)
 		g.POST("/api/organizations/invites", a.CreateOrganizationInvite)
 		g.DELETE("/api/organizations/invites/:id", hasID(a.RevokeOrganizationInvite))

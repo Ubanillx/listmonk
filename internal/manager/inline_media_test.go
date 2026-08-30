@@ -129,6 +129,34 @@ func TestInlineMediaImagesMatchesProtectedMediaRoute(t *testing.T) {
 	}
 }
 
+func TestInlineMediaImagesMatchesProtectedMediaRouteByID(t *testing.T) {
+	first := models.Attachment{
+		Name:      "logo.png",
+		MediaID:   21,
+		SourceURL: "/api/media/file/21/logo.png",
+		Header:    MakeAttachmentHeader("logo.png", "base64", "image/png"),
+		Content:   []byte("first image"),
+	}
+	second := models.Attachment{
+		Name:      "logo.png",
+		MediaID:   22,
+		SourceURL: "/api/media/file/22/logo.png",
+		Header:    MakeAttachmentHeader("logo.png", "base64", "image/png"),
+		Content:   []byte("second image"),
+	}
+
+	body, attachments := InlineMediaImages(
+		[]byte(`<img src="/api/media/file/22/logo.png">`),
+		[]models.Attachment{first, second},
+	)
+	if !strings.Contains(string(body), `src="cid:media-22@listmonk"`) {
+		t.Fatalf("ID-qualified URL should select the matching clone, got %q", body)
+	}
+	if attachments[0].Inline || !attachments[1].Inline {
+		t.Fatalf("unexpected inline flags: %#v", attachments)
+	}
+}
+
 func TestInlineMediaImagesMatchesEscapedMediaFilename(t *testing.T) {
 	image := models.Attachment{
 		Name:      "image004(08-25-22-12-43).png",

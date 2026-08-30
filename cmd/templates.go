@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"html/template"
 	"net/http"
 	"regexp"
@@ -89,7 +88,7 @@ func (a *App) GetTemplate(c echo.Context) error {
 	if _, err := a.requireReadableWorkspaceResource(c, access, resourceTemplates, id, auth.PermTemplatesGet); err != nil {
 		return err
 	}
-	out, err := a.core.GetTemplate(id, noBody)
+	out, err := a.core.GetWorkspaceTemplate(access, id, noBody)
 	if err != nil {
 		return err
 	}
@@ -143,7 +142,7 @@ func (a *App) PreviewTemplate(c echo.Context) error {
 	if _, err := a.requireReadableWorkspaceResource(c, access, resourceTemplates, id, auth.PermTemplatesGet); err != nil {
 		return err
 	}
-	tpl, err := a.core.GetTemplate(id, false)
+	tpl, err := a.core.GetWorkspaceTemplate(access, id, false)
 	if err != nil {
 		return err
 	}
@@ -216,7 +215,7 @@ func (a *App) CreateTemplate(c echo.Context) error {
 	}
 
 	// Create the template the in the DB.
-	out, err := a.core.CreateTemplate(o.Name, o.Type, o.Subject, []byte(o.Body), o.BodySource, req.mediaIDs(), core.ApplyWorkspaceScope(access, visibility))
+	out, err := a.core.CreateTemplateInWorkspace(access, o.Name, o.Type, o.Subject, []byte(o.Body), o.BodySource, req.mediaIDs(), core.ApplyWorkspaceScope(access, visibility))
 	if err != nil {
 		return err
 	}
@@ -271,14 +270,11 @@ func (a *App) UpdateTemplate(c echo.Context) error {
 			}
 		}
 	}
-	out, err := a.core.UpdateTemplate(id, o.Name, o.Subject, []byte(o.Body), o.BodySource, req.mediaIDs())
+	out, err := a.core.UpdateTemplateInWorkspace(access, id, o.Name, o.Subject, []byte(o.Body), o.BodySource, req.mediaIDs(), visibility)
 	if err != nil {
 		return err
 	}
 	if visibility != "" {
-		if err := a.core.SetResourceVisibility("templates", id, visibility); err != nil {
-			return err
-		}
 		out.Visibility = visibility
 	}
 
@@ -308,7 +304,7 @@ func (a *App) CloneTemplate(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusForbidden, "template is not copyable in the active workspace")
 	}
 
-	src, err := a.core.GetTemplate(id, false)
+	src, err := a.core.GetWorkspaceTemplate(access, id, false)
 	if err != nil {
 		return err
 	}
@@ -338,14 +334,20 @@ func (a *App) CloneTemplate(c echo.Context) error {
 		return err
 	}
 
-	out, err := a.core.CloneTemplateForWorkspace(id, target, clone.Name, clone.Subject)
+	out, err := a.core.CloneTemplateForWorkspaceWithSource(id, access, target, clone.Name, clone.Subject)
 	if err != nil {
 		return err
 	}
 
 	if clone.Type == models.TemplateTypeTx {
-		out.Tpl = clone.Tpl
-		out.SubjectTpl = clone.SubjectTpl
+		// The core clone operation snapshots media and rewrites ID-qualified
+		// image references. Compile the committed destination body, rather than
+		// reusing the pre-clone source template compiled above; otherwise the
+		// in-memory transactional cache would still point at the source media
+		// rows and images could disappear when the source is deleted.
+		if err := out.Compile(a.manager.GenericTemplateFuncs()); err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+		}
 		a.manager.CacheTpl(out.ID, &out)
 	}
 
@@ -381,7 +383,7 @@ func (a *App) DeleteTemplate(c echo.Context) error {
 	if _, err := a.requireManagedWorkspaceTemplate(c, access, id); err != nil {
 		return err
 	}
-	if err := a.core.DeleteTemplate(id); err != nil {
+	if err := a.core.DeleteTemplateInWorkspace(access, id); err != nil {
 		return err
 	}
 
@@ -429,7 +431,10 @@ func (a *App) prepareTemplate(o models.Template) (models.Template, error) {
 // compileTemplate validates template fields.
 func (a *App) validateTemplate(o models.Template) error {
 	if !strHasLen(o.Name, 1, stdInputMaxLen) {
-		return errors.New(a.i18n.T("campaigns.fieldInvalidName"))
+		// Invalid input must remain a client error. Returning a plain Go error
+		// here makes Echo serialize a malformed template as HTTP 500, which is
+		// especially confusing for clone/create forms that require a name.
+		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("campaigns.fieldInvalidName"))
 	}
 
 	if o.Type == models.TemplateTypeCampaign && !regexpTplTag.MatchString(o.Body) {

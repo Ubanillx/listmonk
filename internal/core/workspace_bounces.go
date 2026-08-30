@@ -58,7 +58,14 @@ func (c *Core) QueryWorkspaceBounces(access models.WorkspaceAccess, bounceID, ca
 				ELSE NULL END AS campaign
 		FROM bounces b
 		JOIN subscribers s ON s.id = b.subscriber_id
+		-- A bounce row is keyed by subscriber, while campaign_id is supplied by
+		-- the delivery provider and may be stale or malformed.  Keep the optional
+		-- campaign label inside the subscriber's same workspace/owner boundary;
+		-- otherwise a forged historical relation could disclose another tenant's
+		-- campaign name to an organization manager.
 		LEFT JOIN campaigns c ON c.id = b.campaign_id
+			AND c.organization_id IS NOT DISTINCT FROM s.organization_id
+			AND c.owner_user_id IS NOT DISTINCT FROM s.owner_user_id
 		WHERE (%s)
 			AND ($%d = 0 OR b.id = $%d)
 			AND ($%d = 0 OR b.campaign_id = $%d)

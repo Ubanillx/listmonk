@@ -21,7 +21,23 @@ const (
 	hdrCc         = "Cc"
 )
 
+// IsMessengerName reports whether name identifies the built-in SMTP
+// messenger.  Older listmonk versions exposed one logical messenger per
+// platform SMTP server using the "email-<name>" convention.  Keep accepting
+// those persisted names for migration compatibility, but do not classify an
+// unrelated custom messenger such as "emailwebhook" (without the separator)
+// as SMTP.
+func IsMessengerName(name string) bool {
+	return name == MessengerName || strings.HasPrefix(name, MessengerName+"-")
+}
+
 var ErrSMTPQuotaExceeded = errors.New("smtp daily quota exhausted")
+
+// ErrSMTPUnavailable identifies a pool that has been closed while its
+// configuration is being replaced. Callers can stop an account-owned
+// campaign immediately instead of treating this as a transient delivery
+// failure and retrying against stale credentials.
+var ErrSMTPUnavailable = errors.New("smtp unavailable")
 
 type QuotaTracker interface {
 	HasServerQuota(uuid string, limit int) (bool, error)
@@ -58,6 +74,7 @@ type Emailer struct {
 	servers []*Server
 	name    string
 	next    atomic.Uint64
+	closed  atomic.Bool
 	tracker QuotaTracker
 }
 
@@ -137,12 +154,18 @@ func (e *Emailer) DefaultFromEmail() string {
 }
 
 func (e *Emailer) CanSend(m models.Message) error {
+	if e.closed.Load() {
+		return ErrSMTPUnavailable
+	}
 	_, _, err := e.pickServer(m, false)
 	return err
 }
 
 // Push pushes a message to the server.
-func (e *Emailer) Push(m models.Message) error {
+func (e *Emailer) Push(m models.Message) (err error) {
+	if e.closed.Load() {
+		return ErrSMTPUnavailable
+	}
 	srv, reserved, err := e.pickServer(m, true)
 	if err != nil {
 		return err
@@ -217,6 +240,9 @@ func (e *Emailer) Push(m models.Message) error {
 	}
 
 	err = srv.pool.Send(em)
+	if errors.Is(err, smtppool.ErrPoolClosed) {
+		return fmt.Errorf("%w: %v", ErrSMTPUnavailable, err)
+	}
 	return err
 }
 
@@ -267,6 +293,9 @@ func (e *Emailer) Flush() error {
 
 // Close closes the SMTP pools.
 func (e *Emailer) Close() error {
+	if !e.closed.CompareAndSwap(false, true) {
+		return nil
+	}
 	for _, s := range e.servers {
 		s.pool.Close()
 	}

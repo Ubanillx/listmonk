@@ -12,6 +12,7 @@ import (
 	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
 	"github.com/lib/pq"
+	null "gopkg.in/volatiletech/null.v6"
 )
 
 const (
@@ -284,6 +285,103 @@ func (c *Core) CreateCampaign(o models.Campaign, listIDs []int, mediaIDs []int, 
 	}
 
 	return out, nil
+}
+
+// CreateCampaignInWorkspace keeps campaign creation and all requested
+// list/media/template associations behind the active workspace lock. This is
+// the creation counterpart to UpdateCampaignInWorkspace; it prevents a stale
+// organization membership from creating a campaign after a leave/archive has
+// committed.
+func (c *Core) CreateCampaignInWorkspace(access models.WorkspaceAccess, o models.Campaign, listIDs, mediaIDs []int, scope models.ResourceScope) (models.Campaign, error) {
+	uuidValue, err := uuid.NewV4()
+	if err != nil {
+		c.log.Printf("error generating UUID: %v", err)
+		return models.Campaign{}, echo.NewHTTPError(http.StatusInternalServerError,
+			c.i18n.Ts("globals.messages.errorUUID", "error", err.Error()))
+	}
+	var newID int
+	err = c.withWorkspaceCreation(access, func(tx *sqlx.Tx) error {
+		// A visual template is imported into the campaign body and is not kept
+		// as campaigns.template_id. Snapshot its media before the INSERT so a
+		// shared template's private author images become independent, owned
+		// binaries in the new campaign workspace. The helper also rewrites the
+		// body/CID URLs and returns the copied media IDs.
+		if o.ContentType == models.CampaignContentTypeVisual && o.TemplateID.Valid && o.TemplateID.Int > 0 {
+			snapshot, err := c.snapshotVisualCampaignMedia(tx, access, scope, int(o.TemplateID.Int), mediaIDs,
+				o.Body, o.BodySource, o.AltBody)
+			if err != nil {
+				return err
+			}
+			o.Body = snapshot.Body
+			o.BodySource = snapshot.BodySource
+			o.AltBody = snapshot.AltBody
+			mediaIDs = snapshot.MediaIDs
+			// The prepared create query treats a visual template ID as an
+			// import source and would otherwise re-attach the original
+			// template_media rows. The source has already been snapshotted, so
+			// clear it before executing the normal INSERT.
+			o.TemplateID = null.Int{}
+		}
+		// Keep related-resource locks in the same order used by campaign
+		// updates (templates, media, lists). This prevents a campaign create
+		// racing a template update from acquiring media and template locks in
+		// opposite orders.
+		if o.TemplateID.Valid {
+			if err := c.lockWorkspaceUsableResources(tx, access, resourceTemplates, []int{int(o.TemplateID.Int)}); err != nil {
+				return err
+			}
+		}
+		if o.ArchiveTemplateID.Valid {
+			if err := c.lockWorkspaceUsableResources(tx, access, resourceTemplates, []int{int(o.ArchiveTemplateID.Int)}); err != nil {
+				return err
+			}
+		}
+		if err := c.lockWorkspaceUsableResources(tx, access, resourceMedia, mediaIDs); err != nil {
+			return err
+		}
+		if err := c.lockWorkspaceMutationResources(tx, access, resourceLists, listIDs); err != nil {
+			return err
+		}
+		if err := tx.Stmtx(c.q.CreateCampaign).Get(&newID,
+			uuidValue,
+			o.Type,
+			o.Name,
+			o.Subject,
+			o.FromEmail,
+			o.Body,
+			o.AltBody,
+			o.ContentType,
+			o.DailySendLimit,
+			o.DailyResumeTime,
+			o.SendAt,
+			o.Headers,
+			o.Attribs,
+			pq.StringArray(normalizeTags(o.Tags)),
+			o.Messenger,
+			o.TemplateID,
+			pq.Array(listIDs),
+			o.Archive,
+			o.ArchiveSlug,
+			o.ArchiveTemplateID,
+			o.ArchiveMeta,
+			pq.Array(mediaIDs),
+			o.BodySource,
+			o.AutoTrackLinks,
+			scope.OrganizationID,
+			scope.OwnerUserID,
+			scope.OriginalOwnerUserID,
+			scope.Visibility); err != nil {
+			if err == sql.ErrNoRows {
+				return echo.NewHTTPError(http.StatusBadRequest, c.i18n.T("campaigns.noSubs"))
+			}
+			return workspaceQueryError("creating campaign", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return models.Campaign{}, err
+	}
+	return c.GetWorkspaceCampaign(access, newID)
 }
 
 // UpdateCampaign updates a campaign.

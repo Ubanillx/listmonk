@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gofrs/uuid/v5"
+	"github.com/jmoiron/sqlx"
 	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
 	"github.com/lib/pq"
@@ -176,6 +177,41 @@ func (c *Core) CreateList(l models.List, scope models.ResourceScope) (models.Lis
 	}
 
 	return c.GetList(newID, "")
+}
+
+// CreateListInWorkspace validates that the target organization remains active
+// and that the caller still belongs to it while the list is inserted.
+func (c *Core) CreateListInWorkspace(access models.WorkspaceAccess, l models.List, scope models.ResourceScope) (models.List, error) {
+	uu, err := uuid.NewV4()
+	if err != nil {
+		c.log.Printf("error generating UUID: %v", err)
+		return models.List{}, echo.NewHTTPError(http.StatusInternalServerError,
+			c.i18n.Ts("globals.messages.errorUUID", "error", err.Error()))
+	}
+	if l.Type == "" {
+		l.Type = models.ListTypePrivate
+	}
+	if l.Optin == "" {
+		l.Optin = models.ListOptinSingle
+	}
+	if l.Status == "" {
+		l.Status = models.ListStatusActive
+	}
+
+	var newID int
+	err = c.withWorkspaceCreation(access, func(tx *sqlx.Tx) error {
+		if err := tx.Stmtx(c.q.CreateList).Get(&newID,
+			uu.String(), l.Name, l.Type, l.Optin, l.Status, pq.StringArray(normalizeTags(l.Tags)), l.Description,
+			scope.OrganizationID, scope.OwnerUserID, scope.OriginalOwnerUserID, scope.Visibility); err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError,
+				c.i18n.Ts("globals.messages.errorCreating", "name", "{globals.terms.list}", "error", pqErrMsg(err)))
+		}
+		return nil
+	})
+	if err != nil {
+		return models.List{}, err
+	}
+	return c.GetWorkspaceList(access, newID)
 }
 
 // UpdateList updates a given list.

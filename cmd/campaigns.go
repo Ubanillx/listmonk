@@ -16,6 +16,8 @@ import (
 
 	"github.com/knadh/listmonk/internal/auth"
 	"github.com/knadh/listmonk/internal/core"
+	"github.com/knadh/listmonk/internal/manager"
+	"github.com/knadh/listmonk/internal/messenger/email"
 	"github.com/knadh/listmonk/internal/notifs"
 	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
@@ -126,7 +128,7 @@ func (a *App) GetCampaign(c echo.Context) error {
 	}
 
 	// Get the campaign from the DB.
-	out, err := a.core.GetCampaign(id, "", "")
+	out, err := a.core.GetWorkspaceCampaign(access, id)
 	if err != nil {
 		return err
 	}
@@ -150,6 +152,8 @@ func (a *App) redactCampaignSensitiveFields(access models.WorkspaceAccess, campa
 	}
 	campaign.FromEmail = ""
 	campaign.Headers = nil
+	campaign.ReplyMailboxID = null.Int{}
+	campaign.ReplyMailboxEmail = ""
 	campaign.Lists = []byte("[]")
 }
 
@@ -179,7 +183,7 @@ func (a *App) PreviewCampaign(c echo.Context) error {
 	}
 
 	// Get the campaign from the DB for previewing with the `template_body` field.
-	camp, err := a.core.GetCampaignForPreview(id, tplID)
+	camp, err := a.core.GetWorkspaceCampaignForPreview(access, id, tplID)
 	if err != nil {
 		return err
 	}
@@ -243,7 +247,7 @@ func (a *App) PreviewCampaignArchive(c echo.Context) error {
 			return err
 		}
 	}
-	camp, err := a.core.GetCampaignForPreview(id, tplID)
+	camp, err := a.core.GetWorkspaceCampaignForPreview(access, id, tplID)
 	if err != nil {
 		return err
 	}
@@ -316,6 +320,9 @@ func (a *App) CreateCampaign(c echo.Context) error {
 	if err := a.requireUsableCampaignResources(c, access, o); err != nil {
 		return err
 	}
+	if err := a.validateCampaignReplyMailbox(access, &o.Campaign); err != nil {
+		return err
+	}
 	visibility, err := normalizeResourceVisibility(access, resourceCampaigns, o.Visibility)
 	if err != nil {
 		return err
@@ -324,7 +331,7 @@ func (a *App) CreateCampaign(c echo.Context) error {
 	// If the campaign's 'opt-in', prepare a default message.
 	switch o.Type {
 	case models.CampaignTypeOptin:
-		op, err := a.makeOptinCampaignMessage(o)
+		op, err := a.makeOptinCampaignMessage(access, o)
 		if err != nil {
 			return err
 		}
@@ -348,10 +355,14 @@ func (a *App) CreateCampaign(c echo.Context) error {
 		o.ArchiveTemplateID = o.TemplateID
 	}
 
-	out, err := a.core.CreateCampaign(o.Campaign, o.ListIDs, o.MediaIDs, core.ApplyWorkspaceScope(access, visibility))
+	out, err := a.core.CreateCampaignInWorkspace(access, o.Campaign, o.ListIDs, o.MediaIDs, core.ApplyWorkspaceScope(access, visibility))
 	if err != nil {
 		return err
 	}
+	if err := a.persistCampaignReplyMailbox(out.ID, access.UserID, o.ReplyMailboxID); err != nil {
+		return err
+	}
+	out.ReplyMailboxID = o.ReplyMailboxID
 
 	return c.JSON(http.StatusOK, okResp{out})
 }
@@ -368,7 +379,7 @@ func (a *App) CloneCampaign(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if !canCopyWorkspaceResource(access, scope) {
+	if !canCopyWorkspaceCampaign(access, scope) {
 		return echo.NewHTTPError(http.StatusForbidden, "campaign is not copyable in the active workspace")
 	}
 
@@ -386,7 +397,7 @@ func (a *App) CloneCampaign(c echo.Context) error {
 	if err := requireWritableWorkspace(target); err != nil {
 		return err
 	}
-	if !workspaceCopyException(access, scope) {
+	if !canCopyWorkspaceCampaign(access, scope) && !workspaceCopyException(access, scope) {
 		if err := requireLegacyPermission(auth.GetUser(c), auth.PermCampaignsManageAll, auth.PermCampaignsManage); err != nil {
 			return err
 		}
@@ -394,7 +405,7 @@ func (a *App) CloneCampaign(c echo.Context) error {
 	if req.Name != "" && !strHasLen(strings.TrimSpace(req.Name), 1, stdInputMaxLen) {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("campaigns.fieldInvalidName"))
 	}
-	out, err := a.core.CloneCampaignForWorkspace(sourceID, target, req.Name)
+	out, err := a.core.CloneCampaignForWorkspaceWithSource(sourceID, access, target, req.Name)
 	if err != nil {
 		return err
 	}
@@ -416,7 +427,7 @@ func (a *App) UpdateCampaign(c echo.Context) error {
 	}
 
 	// Retrieve the campaign from the DB.
-	cm, err := a.core.GetCampaign(id, "", "")
+	cm, err := a.core.GetWorkspaceCampaign(access, id)
 	if err != nil {
 		return err
 	}
@@ -444,6 +455,16 @@ func (a *App) UpdateCampaign(c echo.Context) error {
 	if err := a.requireUsableCampaignResources(c, access, o); err != nil {
 		return err
 	}
+	if err := a.validateCampaignReplyMailbox(access, &o.Campaign); err != nil {
+		return err
+	}
+	visibility := ""
+	if o.Visibility != "" {
+		visibility, err = normalizeResourceVisibility(access, resourceCampaigns, o.Visibility)
+		if err != nil {
+			return err
+		}
+	}
 
 	if c, err := a.validateCampaignFields(o); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
@@ -451,10 +472,10 @@ func (a *App) UpdateCampaign(c echo.Context) error {
 		o = c
 	}
 
-	if hasRecipients, err := a.core.HasCampaignRecipients(id); err != nil {
+	if hasRecipients, err := a.core.HasCampaignRecipientsInWorkspace(access, id); err != nil {
 		return err
 	} else if hasRecipients {
-		curListIDs, err := a.core.GetCampaignListIDs(id)
+		curListIDs, err := a.core.GetCampaignListIDsInWorkspace(access, id)
 		if err != nil {
 			return err
 		}
@@ -463,18 +484,15 @@ func (a *App) UpdateCampaign(c echo.Context) error {
 		}
 	}
 
-	out, err := a.core.UpdateCampaign(id, o.Campaign, o.ListIDs, o.MediaIDs)
+	out, err := a.core.UpdateCampaignInWorkspace(access, id, o.Campaign, o.ListIDs, o.MediaIDs, visibility)
 	if err != nil {
 		return err
 	}
-	if o.Visibility != "" {
-		visibility, err := normalizeResourceVisibility(access, resourceCampaigns, o.Visibility)
-		if err != nil {
-			return err
-		}
-		if err := a.core.SetResourceVisibility(resourceCampaigns, id, visibility); err != nil {
-			return err
-		}
+	if err := a.persistCampaignReplyMailbox(id, access.UserID, o.ReplyMailboxID); err != nil {
+		return err
+	}
+	out.ReplyMailboxID = o.ReplyMailboxID
+	if visibility != "" {
 		out.Visibility = visibility
 	}
 
@@ -500,9 +518,27 @@ func (a *App) UpdateCampaignStatus(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return err
 	}
+	current, err := a.core.GetWorkspaceCampaign(access, id)
+	if err != nil {
+		return err
+	}
+	if req.Status == models.CampaignStatusScheduled || req.Status == models.CampaignStatusRunning {
+		if err := requireCampaignSendOwnership(auth.GetUser(c), current); err != nil {
+			return err
+		}
+	}
+	if (req.Status == models.CampaignStatusScheduled || req.Status == models.CampaignStatusRunning) &&
+		email.IsMessengerName(current.Messenger) {
+		if !current.OwnerUserID.Valid || current.OwnerUserID.Int < 1 {
+			return echo.NewHTTPError(http.StatusConflict, "campaign owner has no personal SMTP configured")
+		}
+		if err := a.requirePersonalSMTPAvailable(int(current.OwnerUserID.Int)); err != nil {
+			return err
+		}
+	}
 
 	// Update the campaign status in the DB.
-	out, err := a.core.UpdateCampaignStatus(id, req.Status)
+	out, err := a.core.UpdateCampaignStatusInWorkspace(access, id, req.Status)
 	if err != nil {
 		return err
 	}
@@ -511,16 +547,6 @@ func (a *App) UpdateCampaignStatus(c echo.Context) error {
 	if req.Status == models.CampaignStatusPaused || req.Status == models.CampaignStatusCancelled {
 		a.manager.StopCampaign(id, req.Status)
 	}
-	if req.Status == models.CampaignStatusCancelled {
-		if err := a.core.UpdateCampaignRecipientStatuses(id, models.CampaignRecipientStatusCancelled, []string{
-			models.CampaignRecipientStatusPending,
-			models.CampaignRecipientStatusDeferred,
-			models.CampaignRecipientStatusQueued,
-		}); err != nil {
-			return err
-		}
-	}
-
 	return c.JSON(http.StatusOK, okResp{out})
 }
 
@@ -562,7 +588,7 @@ func (a *App) UpdateCampaignArchive(c echo.Context) error {
 		req.ArchiveSlug = s
 	}
 
-	if err := a.core.UpdateCampaignArchive(id, req.Archive, req.TemplateID, req.Meta, req.ArchiveSlug); err != nil {
+	if err := a.core.UpdateCampaignArchiveInWorkspace(access, id, req.Archive, req.TemplateID, req.Meta, req.ArchiveSlug); err != nil {
 		return err
 	}
 
@@ -584,7 +610,7 @@ func (a *App) DeleteCampaign(c echo.Context) error {
 	}
 
 	// Delete the campaign from the DB.
-	if err := a.core.DeleteCampaign(id); err != nil {
+	if err := a.core.DeleteCampaignInWorkspace(access, id); err != nil {
 		return err
 	}
 
@@ -660,7 +686,7 @@ func (a *App) DeleteCampaigns(c echo.Context) error {
 	// The legacy deletion query treats an empty ID array as an unrestricted
 	// search. Do not call it when no caller-owned workspace resources matched.
 	if len(ids) > 0 {
-		if err := a.core.DeleteCampaigns(ids, "", true, nil); err != nil {
+		if err := a.core.DeleteCampaignsInWorkspace(access, ids); err != nil {
 			return err
 		}
 	}
@@ -679,19 +705,24 @@ func (a *App) GetRunningCampaignStats(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	visible, _, err := a.queryReadableWorkspaceCampaigns(c, access, "", []string{models.CampaignStatusRunning}, nil, "created_at", "DESC", 0, 0)
-	if err != nil {
-		return err
-	}
-	visibleSet := make(map[int]struct{}, len(visible))
-	for _, campaign := range visible {
-		visibleSet[campaign.ID] = struct{}{}
-	}
+	// A running campaign can be readable without being reportable (for
+	// example, a public campaign viewed by an ordinary member).  Filter each
+	// row through the same analytics authorization used by the report
+	// endpoints instead of relying on the broad campaign read query.  This is
+	// intentionally done after loading the short-lived stats snapshot: a
+	// campaign may finish or be moved while this request is in flight.
 	filtered := out[:0]
 	for _, stat := range out {
-		if _, ok := visibleSet[stat.ID]; ok {
-			filtered = append(filtered, stat)
+		if err := a.requireCampaignAnalytics(c, access, stat.ID); err != nil {
+			if errors.Is(err, core.ErrNotFound) {
+				continue
+			}
+			if httpErr, ok := err.(*echo.HTTPError); ok && httpErr.Code == http.StatusForbidden {
+				continue
+			}
+			return err
 		}
+		filtered = append(filtered, stat)
 	}
 	out = filtered
 
@@ -739,6 +770,17 @@ func (a *App) TestCampaign(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return err
 	}
+	// The test form historically omitted messenger when it used the campaign's
+	// saved value. Resolve that value before validation and SMTP checks; an
+	// empty request must not accidentally bypass the account-SMTP guard (or be
+	// rejected as an unknown messenger).
+	if strings.TrimSpace(req.Messenger) == "" {
+		saved, err := a.core.GetWorkspaceCampaign(access, id)
+		if err != nil {
+			return err
+		}
+		req.Messenger = saved.Messenger
+	}
 
 	// Validate.
 	if c, err := a.validateCampaignFields(req); err != nil {
@@ -774,11 +816,25 @@ func (a *App) TestCampaign(c echo.Context) error {
 	if req.TemplateID.Valid {
 		tplID = int(req.TemplateID.Int)
 	}
-	camp, err := a.core.GetCampaignForPreview(id, tplID)
+	camp, err := a.core.GetWorkspaceCampaignForPreview(access, id, tplID)
 	if err != nil {
 		return err
 	}
-
+	// Platform administrators have global management visibility, but must not
+	// initiate delivery on behalf of another account. The campaign owner must
+	// explicitly perform both scheduling/running and test sends so the message
+	// can only resolve that owner's personal SMTP pool.
+	if err := requireCampaignSendOwnership(auth.GetUser(c), camp); err != nil {
+		return err
+	}
+	if email.IsMessengerName(req.Messenger) {
+		if !camp.OwnerUserID.Valid || camp.OwnerUserID.Int < 1 {
+			return echo.NewHTTPError(http.StatusConflict, "campaign owner has no personal SMTP configured")
+		}
+		if err := a.requirePersonalSMTPAvailable(int(camp.OwnerUserID.Int)); err != nil {
+			return err
+		}
+	}
 	// Override certain values from the DB with incoming values.
 	camp.Name = req.Name
 	camp.Subject = req.Subject
@@ -789,10 +845,32 @@ func (a *App) TestCampaign(c echo.Context) error {
 	camp.ContentType = req.ContentType
 	camp.Headers = req.Headers
 	camp.TemplateID = req.TemplateID
+	// For a test send the submitted media list is authoritative. The preview
+	// query also includes the campaign's saved associations, which would make a
+	// media item that the user just removed reappear in the test message. Start
+	// from the request and let preloadTestCampaignMedia append the selected
+	// template's own associations below.
+	camp.MediaIDs = camp.MediaIDs[:0]
+	seenMedia := make(map[int64]struct{}, len(req.MediaIDs))
 	for _, id := range req.MediaIDs {
-		if id > 0 {
-			camp.MediaIDs = append(camp.MediaIDs, int64(id))
+		if id < 1 {
+			continue
 		}
+		mid := int64(id)
+		if _, exists := seenMedia[mid]; exists {
+			continue
+		}
+		camp.MediaIDs = append(camp.MediaIDs, mid)
+		seenMedia[mid] = struct{}{}
+	}
+
+	// The preview query returns the campaign/template media IDs, but those IDs
+	// are only references. Test sends must re-check each association and load
+	// the binary through the active workspace boundary after applying request
+	// overrides, so newly selected media and an explicitly selected template are
+	// included in the materialized snapshot.
+	if err := a.preloadTestCampaignMedia(c, access, &camp, tplID); err != nil {
+		return err
 	}
 
 	// Send the test messages.
@@ -807,6 +885,17 @@ func (a *App) TestCampaign(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, okResp{true})
+}
+
+// requireCampaignSendOwnership prevents a platform administrator's global
+// read/manage access from becoming an ability to send through another user's
+// personal SMTP credentials. It is intentionally applied to every messenger,
+// not only e-mail, because a campaign send is an account-owned operation.
+func requireCampaignSendOwnership(user auth.User, camp models.Campaign) error {
+	if !camp.OwnerUserID.Valid || camp.OwnerUserID.Int != user.ID {
+		return echo.NewHTTPError(http.StatusForbidden, "only the campaign owner can send this campaign")
+	}
+	return nil
 }
 
 // GetCampaignViewAnalytics retrieves view counts for a campaign.
@@ -842,7 +931,7 @@ func (a *App) GetCampaignViewAnalytics(c echo.Context) error {
 
 	// Campaign link stats.
 	if typ == "links" {
-		out, err := a.core.GetCampaignAnalyticsLinks(ids, typ, from, to)
+		out, err := a.core.GetWorkspaceCampaignAnalyticsLinks(access, ids, from, to, a.cfg.Privacy.IndividualTracking)
 		if err != nil {
 			return err
 		}
@@ -851,7 +940,7 @@ func (a *App) GetCampaignViewAnalytics(c echo.Context) error {
 	}
 
 	// Get the analytics numbers from the DB for the campaigns.
-	out, err := a.core.GetCampaignAnalyticsCounts(ids, typ, from, to)
+	out, err := a.core.GetWorkspaceCampaignAnalyticsCounts(access, ids, typ, from, to)
 	if err != nil {
 		return err
 	}
@@ -874,7 +963,7 @@ func (a *App) GetCampaignReportSummary(c echo.Context) error {
 		return err
 	}
 
-	out, err := a.core.GetCampaignReportSummary(id, from, to, a.cfg.Privacy.IndividualTracking)
+	out, err := a.core.GetWorkspaceCampaignReportSummary(access, id, from, to, a.cfg.Privacy.IndividualTracking)
 	if err != nil {
 		return err
 	}
@@ -883,6 +972,10 @@ func (a *App) GetCampaignReportSummary(c echo.Context) error {
 }
 
 func (a *App) GetCampaignsReportSummary(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	ids, err := a.getAccessibleCampaignReportIDs(c)
 	if err != nil {
 		return err
@@ -893,7 +986,7 @@ func (a *App) GetCampaignsReportSummary(c echo.Context) error {
 		return err
 	}
 
-	out, err := a.core.GetCampaignsReportSummary(ids, from, to, a.cfg.Privacy.IndividualTracking)
+	out, err := a.core.GetWorkspaceCampaignsReportSummary(access, ids, from, to, a.cfg.Privacy.IndividualTracking)
 	if err != nil {
 		return err
 	}
@@ -916,7 +1009,7 @@ func (a *App) GetCampaignReportSeries(c echo.Context) error {
 		return err
 	}
 
-	out, err := a.core.GetCampaignReportSeries(id, from, to)
+	out, err := a.core.GetWorkspaceCampaignReportSeries(access, id, from, to)
 	if err != nil {
 		return err
 	}
@@ -925,6 +1018,10 @@ func (a *App) GetCampaignReportSeries(c echo.Context) error {
 }
 
 func (a *App) GetCampaignsReportSeries(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	ids, err := a.getAccessibleCampaignReportIDs(c)
 	if err != nil {
 		return err
@@ -935,7 +1032,7 @@ func (a *App) GetCampaignsReportSeries(c echo.Context) error {
 		return err
 	}
 
-	out, err := a.core.GetCampaignsReportSeries(ids, from, to)
+	out, err := a.core.GetWorkspaceCampaignsReportSeries(access, ids, from, to)
 	if err != nil {
 		return err
 	}
@@ -958,7 +1055,7 @@ func (a *App) GetCampaignReportLinks(c echo.Context) error {
 		return err
 	}
 
-	out, err := a.core.GetCampaignReportLinks(id, from, to, a.cfg.Privacy.IndividualTracking)
+	out, err := a.core.GetWorkspaceCampaignReportLinks(access, id, from, to, a.cfg.Privacy.IndividualTracking)
 	if err != nil {
 		return err
 	}
@@ -967,6 +1064,10 @@ func (a *App) GetCampaignReportLinks(c echo.Context) error {
 }
 
 func (a *App) GetCampaignsReportLinks(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
 	ids, err := a.getAccessibleCampaignReportIDs(c)
 	if err != nil {
 		return err
@@ -977,7 +1078,7 @@ func (a *App) GetCampaignsReportLinks(c echo.Context) error {
 		return err
 	}
 
-	out, err := a.core.GetCampaignsReportLinks(ids, from, to, a.cfg.Privacy.IndividualTracking)
+	out, err := a.core.GetWorkspaceCampaignsReportLinks(access, ids, from, to, a.cfg.Privacy.IndividualTracking)
 	if err != nil {
 		return err
 	}
@@ -1018,7 +1119,7 @@ func (a *App) GetCampaignReportRecipients(c echo.Context) error {
 	}
 
 	pg := a.pg.NewFromURL(c.Request().URL.Query())
-	out, total, err := a.core.QueryCampaignReportRecipients(id, from, to, models.CampaignReportRecipientFilters{
+	out, total, err := a.core.QueryWorkspaceCampaignReportRecipients(access, id, from, to, models.CampaignReportRecipientFilters{
 		Search:  c.QueryParam("search"),
 		Opened:  c.QueryParam("opened"),
 		Clicked: c.QueryParam("clicked"),
@@ -1070,7 +1171,7 @@ func (a *App) GetCampaignsReportRecipients(c echo.Context) error {
 	}
 
 	pg := a.pg.NewFromURL(c.Request().URL.Query())
-	out, total, err := a.core.QueryCampaignsReportRecipients(ids, from, to, models.CampaignReportRecipientFilters{
+	out, total, err := a.core.QueryWorkspaceCampaignsReportRecipients(access, ids, from, to, models.CampaignReportRecipientFilters{
 		Search:  c.QueryParam("search"),
 		Opened:  c.QueryParam("opened"),
 		Clicked: c.QueryParam("clicked"),
@@ -1130,17 +1231,25 @@ func (a *App) getAccessibleCampaignReportIDs(c echo.Context) ([]int, error) {
 		return out, nil
 	}
 
-	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCampaignsGetAnalytics); err != nil &&
-		!(access.IsOrganization() && access.IsOrganizationManager()) {
-		return nil, err
-	}
 	camps, _, err := a.queryReadableWorkspaceCampaigns(c, access, "", nil, nil, "created_at", "DESC", 0, 0)
 	if err != nil {
 		return nil, err
 	}
 
+	// The list endpoint intentionally contains campaigns that are merely
+	// readable (for example organization/global publications).  Analytics are
+	// narrower: ordinary users may report only on campaigns they own, while an
+	// organization manager may report on campaigns in the active organization.
+	// Re-run the same authorization for every row before constructing the ID
+	// set; otherwise a no-id report request would bypass the owner boundary.
 	out := make([]int, 0, len(camps))
 	for _, camp := range camps {
+		if err := a.requireCampaignAnalytics(c, access, camp.ID); err != nil {
+			if httpErr, ok := err.(*echo.HTTPError); ok && httpErr.Code == http.StatusForbidden {
+				continue
+			}
+			return nil, err
+		}
 		out = append(out, camp.ID)
 	}
 
@@ -1209,6 +1318,171 @@ func (a *App) sendTestMessage(sub models.Subscriber, camp *models.Campaign) erro
 	return a.manager.PushCampaignMessage(msg)
 }
 
+// preloadTestCampaignMedia validates and materializes every media reference
+// used by a test campaign.  Campaign-owned media must be directly usable in
+// the active workspace.  A private image owned by the author of a shared
+// template is the one deliberate exception: CanUseTemplateMedia grants that
+// image only when the association is real and the template itself is usable.
+// Once Attachments is populated, the manager will not perform an unscoped
+// media lookup while queuing the test message.
+func (a *App) preloadTestCampaignMedia(c echo.Context, access models.WorkspaceAccess, camp *models.Campaign, requestedTemplateID int) error {
+	if camp == nil {
+		return nil
+	}
+
+	templateID := requestedTemplateID
+	if templateID < 1 && camp.TemplateID.Valid && camp.TemplateID.Int > 0 {
+		templateID = int(camp.TemplateID.Int)
+	}
+
+	// A test request contains only explicitly selected campaign attachments.
+	// Template attachments are not normally included in that form field (the
+	// editor displays them separately), so discover the complete template
+	// association below and append it to the effective media set.
+	ids := make([]int, 0, len(camp.MediaIDs))
+	seen := make(map[int]struct{}, len(camp.MediaIDs))
+	for _, rawID := range camp.MediaIDs {
+		id := int(rawID)
+		if id < 1 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+
+	// Keep the source of each reference separate.  A template-only private
+	// image may use the shared-template exception, while a campaign association
+	// must always pass the direct resource check.
+	type mediaReference struct {
+		MediaID int    `db:"media_id"`
+		Source  string `db:"source"`
+	}
+	var refs []mediaReference
+	query := `
+		SELECT cm.media_id, 'campaign' AS source
+		FROM campaign_media cm
+		WHERE cm.campaign_id = $1 AND cm.media_id IS NOT NULL
+		UNION ALL
+		SELECT tm.media_id, 'template' AS source
+		FROM template_media tm
+		WHERE $2 > 0 AND tm.template_id = $2 AND tm.media_id IS NOT NULL
+		ORDER BY media_id, source`
+	if err := a.db.Select(&refs, query, camp.ID, templateID); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError,
+			a.i18n.Ts("globals.messages.errorFetching", "name", "{globals.terms.media}", "error", err.Error()))
+	}
+	campaignRefs := make(map[int]bool, len(refs))
+	templateRefs := make(map[int]bool, len(refs))
+	for _, ref := range refs {
+		id := ref.MediaID
+		if id < 1 {
+			continue
+		}
+		switch ref.Source {
+		case "campaign":
+			campaignRefs[id] = true
+		case "template":
+			templateRefs[id] = true
+			if _, exists := seen[id]; !exists {
+				seen[id] = struct{}{}
+				ids = append(ids, id)
+			}
+		}
+	}
+	if len(ids) == 0 {
+		camp.MediaIDs = nil
+		camp.Attachments = nil
+		return nil
+	}
+
+	// The selected template itself must still be usable. This is normally
+	// checked by requireUsableCampaignResources, but the saved campaign
+	// template path can be populated when the request omits template_id.
+	if templateID > 0 {
+		if _, err := a.requireUsableWorkspaceResource(c, access, resourceTemplates, templateID, auth.PermTemplatesGet); err != nil {
+			return err
+		}
+	}
+
+	// First authorize direct workspace media. A media ID that is already linked
+	// to the campaign is never allowed to use the template-private exception:
+	// otherwise a forged campaign_media row could turn a private binary into a
+	// sendable attachment merely by also linking it from a shared template.
+	directUsable := make(map[int]bool, len(ids))
+	directErrors := make(map[int]error, len(ids))
+	templateExceptionIDs := make([]int64, 0, len(templateRefs))
+	for _, id := range ids {
+		if _, err := a.requireUsableWorkspaceResource(c, access, resourceMedia, id, auth.PermMediaGet); err != nil {
+			directErrors[id] = err
+			if templateRefs[id] && !campaignRefs[id] && templateID > 0 {
+				templateExceptionIDs = append(templateExceptionIDs, int64(id))
+				continue
+			}
+			return err
+		}
+		directUsable[id] = true
+	}
+
+	// Resolve template-private binaries through the association-aware store.
+	// GetWorkspaceMediaByID intentionally enforces ordinary workspace visibility;
+	// it is therefore the wrong loader after CanUseTemplateMedia has granted the
+	// narrow published-template exception.
+	templateAttachments := make(map[int]models.Attachment, len(templateExceptionIDs))
+	if len(templateExceptionIDs) > 0 {
+		loaded, err := newManagerStore(a.queries, a.core, a.media, a.db).
+			GetTemplateAttachments(access, templateID, templateExceptionIDs)
+		if err != nil {
+			return err
+		}
+		for _, attachment := range loaded {
+			templateAttachments[attachment.MediaID] = attachment
+		}
+	}
+
+	attachments := make([]models.Attachment, 0, len(ids))
+	for _, id := range ids {
+		if !directUsable[id] {
+			if attachment, ok := templateAttachments[id]; ok {
+				attachments = append(attachments, attachment)
+				continue
+			}
+			if err := directErrors[id]; err != nil {
+				return err
+			}
+			return echo.NewHTTPError(http.StatusForbidden, "media is not usable in the active workspace")
+		}
+
+		m, err := a.core.GetWorkspaceMediaByID(access, id)
+		if err != nil {
+			return err
+		}
+		m.URL = a.media.GetURL(m.Filename)
+		content, err := a.media.GetBlob(m.URL)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError,
+				a.i18n.Ts("globals.messages.errorFetching", "name", "{globals.terms.media}", "error", err.Error()))
+		}
+		attachments = append(attachments, models.Attachment{
+			Name:      m.Filename,
+			Content:   content,
+			Header:    manager.MakeAttachmentHeader(m.Filename, "base64", m.ContentType),
+			MediaID:   m.ID,
+			SourceURL: workspaceMediaIDFileURL(m.ID, m.Filename),
+		})
+	}
+	// Keep the effective IDs on the campaign so the renderer's CID replacement
+	// can match both explicitly selected and template-provided images.
+	camp.MediaIDs = make(pq.Int64Array, 0, len(ids))
+	for _, id := range ids {
+		camp.MediaIDs = append(camp.MediaIDs, int64(id))
+	}
+	camp.Attachments = attachments
+	return nil
+}
+
 func (a *App) requireUsableCampaignResources(c echo.Context, access models.WorkspaceAccess, req campReq) error {
 	if req.TemplateID.Valid && req.TemplateID.Int > 0 {
 		if _, err := a.requireUsableWorkspaceResource(c, access, resourceTemplates, int(req.TemplateID.Int), auth.PermTemplatesGet); err != nil {
@@ -1224,7 +1498,22 @@ func (a *App) requireUsableCampaignResources(c echo.Context, access models.Works
 		if id < 1 {
 			continue
 		}
-		if _, err := a.requireUsableWorkspaceResource(c, access, resourceMedia, id, auth.PermMediaGet); err != nil {
+		if _, err := a.requireUsableWorkspaceResource(c, access, resourceMedia, id, auth.PermMediaGet); err == nil {
+			continue
+		} else {
+			// A shared/global template may deliberately carry a private image
+			// owned by its author. That image is usable only when this exact
+			// media ID is linked from the exact template ID; never widen this
+			// exception based solely on a client-provided media ID.
+			if req.TemplateID.Valid && req.TemplateID.Int > 0 {
+				allowed, templateErr := a.core.CanUseTemplateMedia(access, int(req.TemplateID.Int), id)
+				if templateErr != nil {
+					return templateErr
+				}
+				if allowed {
+					continue
+				}
+			}
 			return err
 		}
 	}
@@ -1274,20 +1563,19 @@ func (a *App) validateCampaignFields(c campReq) (campReq, error) {
 		return c, errors.New(a.i18n.T("campaigns.fieldInvalidListIDs"))
 	}
 
-	if !a.manager.HasMessenger(c.Messenger) {
-		// If it's a specific SMTP, but it's no longer available (removed/disabled), fall back to general email messenger.
-		if strings.HasPrefix(c.Messenger, "email-") {
-			c.Messenger = "email"
-		} else {
-			return c, errors.New(a.i18n.Ts("campaigns.fieldInvalidMessenger", "name", c.Messenger))
-		}
+	if email.IsMessengerName(c.Messenger) {
+		// Campaigns never select a specific SMTP server. The account-owned
+		// round-robin pool is resolved by the campaign owner at send time.
+		c.Messenger = emailMsgr
+	} else if !a.manager.HasMessenger(c.Messenger) {
+		return c, errors.New(a.i18n.Ts("campaigns.fieldInvalidMessenger", "name", c.Messenger))
 	}
 
 	if c.Type == "" {
 		c.Type = models.CampaignTypeRegular
 	}
 
-	if c.Type == models.CampaignTypeRegular && strings.HasPrefix(c.Messenger, emailMsgr) {
+	if c.Type == models.CampaignTypeRegular && email.IsMessengerName(c.Messenger) {
 		if c.DailySendLimit < 1 {
 			// Backward compatibility for legacy campaigns/clients created before
 			// daily SMTP limits became mandatory for regular email campaigns.
@@ -1346,13 +1634,13 @@ func (a *App) validateCampaignFields(c campReq) (campReq, error) {
 }
 
 // makeOptinCampaignMessage makes a default opt-in campaign message body.
-func (a *App) makeOptinCampaignMessage(o campReq) (campReq, error) {
+func (a *App) makeOptinCampaignMessage(access models.WorkspaceAccess, o campReq) (campReq, error) {
 	if len(o.ListIDs) == 0 {
 		return o, echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("campaigns.fieldInvalidListIDs"))
 	}
 
 	// Fetch double opt-in lists from the given list IDs from the DB.
-	lists, err := a.core.GetListsByOptin(o.ListIDs, models.ListOptinDouble)
+	lists, err := a.core.GetListsByOptinInWorkspace(access, o.ListIDs, models.ListOptinDouble)
 	if err != nil {
 		return o, err
 	}

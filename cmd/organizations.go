@@ -303,6 +303,24 @@ func (a *App) GetOrganizationRequests(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{out})
 }
 
+// GetMyOrganizationRequests exposes the current user's full creation-request
+// history without granting access to requests made by other accounts.
+func (a *App) GetMyOrganizationRequests(c echo.Context) error {
+	out, err := a.core.GetUserOrganizationRequests(auth.GetUser(c).ID)
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, okResp{out})
+}
+
+func (a *App) WithdrawOrganizationRequest(c echo.Context) error {
+	out, err := a.core.WithdrawOrganizationRequest(getID(c), auth.GetUser(c).ID)
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, okResp{out})
+}
+
 func (a *App) ReviewOrganizationRequest(c echo.Context) error {
 	if err := a.requirePlatformAdmin(c); err != nil {
 		return err
@@ -323,13 +341,34 @@ func (a *App) ArchiveOrganization(c echo.Context) error {
 	if err := a.requirePlatformAdmin(c); err != nil {
 		return err
 	}
-	stopped, err := a.core.ArchiveOrganization(getID(c))
+	orgID := getID(c)
+	stopped, err := a.core.ArchiveOrganization(orgID)
 	if err != nil {
 		return err
 	}
-	a.stopOrganizationImport(getID(c), 0)
+	// An archived organization has no interactive member workspace, but the
+	// former members' 263 inboxes must keep receiving customer replies. Retain
+	// every mailbox referenced by an organization campaign and create the same
+	// durable forwarding rule used when one member leaves.
+	var replyMailboxOwners []int
+	if err := a.db.Select(&replyMailboxOwners, `
+		SELECT DISTINCT m.user_id
+		FROM campaigns c
+		JOIN reply_mailboxes m ON m.id = c.reply_mailbox_id
+		WHERE c.organization_id = $1`, orgID); err != nil {
+		return err
+	}
+	for _, ownerID := range replyMailboxOwners {
+		if err := a.activateReplyForwardingForMember(orgID, ownerID); err != nil {
+			// Archiving has already committed. Keep the operation successful and
+			// surface a recoverable operational error rather than reporting a
+			// false rollback to the platform administrator.
+			a.log.Printf("unable to activate reply forwarding for archived organization %d, member %d: %v", orgID, ownerID, err)
+		}
+	}
+	a.stopOrganizationImport(orgID, 0)
 	for _, campaign := range stopped {
-		if campaign.Status == models.CampaignStatusPaused {
+		if campaign.Status == models.CampaignStatusPaused && a.manager != nil {
 			a.manager.StopCampaign(campaign.ID, models.CampaignStatusPaused)
 		}
 	}
@@ -434,10 +473,13 @@ func (a *App) RemoveOrganizationMember(c echo.Context) error {
 		return err
 	}
 	a.stopOrganizationImport(ws.OrganizationID, userID)
+	if err := a.activateReplyForwardingForMember(ws.OrganizationID, userID); err != nil {
+		return err
+	}
 	// Stop manager goroutines after the transaction committed. The records are
 	// already paused in the DB, so they cannot be picked up by a new worker.
 	for _, campaign := range stopped {
-		if campaign.Status == models.CampaignStatusPaused {
+		if campaign.Status == models.CampaignStatusPaused && a.manager != nil {
 			a.manager.StopCampaign(campaign.ID, models.CampaignStatusPaused)
 		}
 	}
@@ -460,8 +502,11 @@ func (a *App) LeaveOrganization(c echo.Context) error {
 		return err
 	}
 	a.stopOrganizationImport(ws.OrganizationID, auth.GetUser(c).ID)
+	if err := a.activateReplyForwardingForMember(ws.OrganizationID, auth.GetUser(c).ID); err != nil {
+		return err
+	}
 	for _, campaign := range stopped {
-		if campaign.Status == models.CampaignStatusPaused {
+		if campaign.Status == models.CampaignStatusPaused && a.manager != nil {
 			a.manager.StopCampaign(campaign.ID, models.CampaignStatusPaused)
 		}
 	}
@@ -698,7 +743,7 @@ func (a *App) MigratePersonalResourcesToOrganization(c echo.Context) error {
 		return err
 	}
 	if req.Resource == resourceTemplates {
-		a.cacheMigratedTransactionalTemplates(ids)
+		a.cacheMigratedTransactionalTemplates(target, ids)
 	}
 	a.core.RefreshMatViews(true)
 	return c.JSON(http.StatusOK, okResp{struct {
@@ -708,9 +753,12 @@ func (a *App) MigratePersonalResourcesToOrganization(c echo.Context) error {
 	}{Resource: req.Resource, IDs: ids, Mode: req.Mode}})
 }
 
-func (a *App) cacheMigratedTransactionalTemplates(ids []int) {
+func (a *App) cacheMigratedTransactionalTemplates(access models.WorkspaceAccess, ids []int) {
+	if a.manager == nil {
+		return
+	}
 	for _, id := range ids {
-		tpl, err := a.core.GetTemplate(id, false)
+		tpl, err := a.core.GetWorkspaceTemplate(access, id, false)
 		if err != nil || tpl.Type != models.TemplateTypeTx {
 			continue
 		}

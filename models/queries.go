@@ -125,11 +125,27 @@ type Queries struct {
 	GetLinkURL        *sqlx.Stmt `query:"get-link-url"`
 	RegisterLinkClick *sqlx.Stmt `query:"register-link-click"`
 
-	GetSettings             *sqlx.Stmt `query:"get-settings"`
-	UpdateSettings          *sqlx.Stmt `query:"update-settings"`
-	UpdateSettingsByKey     *sqlx.Stmt `query:"update-settings-by-key"`
-	GetSMTPDailyUsage       *sqlx.Stmt `query:"get-smtp-daily-usage"`
-	IncrementSMTPDailyUsage *sqlx.Stmt `query:"increment-smtp-daily-usage"`
+	GetSettings                 *sqlx.Stmt `query:"get-settings"`
+	UpdateSettings              *sqlx.Stmt `query:"update-settings"`
+	UpdateSettingsByKey         *sqlx.Stmt `query:"update-settings-by-key"`
+	GetSMTPDailyUsage           *sqlx.Stmt `query:"get-smtp-daily-usage"`
+	IncrementSMTPDailyUsage     *sqlx.Stmt `query:"increment-smtp-daily-usage"`
+	GetUserSMTPServers          *sqlx.Stmt `query:"get-user-smtp-servers"`
+	GetEnabledUserSMTPServers   *sqlx.Stmt `query:"get-enabled-user-smtp-servers"`
+	GetUserSMTPServer           *sqlx.Stmt `query:"get-user-smtp-server"`
+	CreateUserSMTPServer        *sqlx.Stmt `query:"create-user-smtp-server"`
+	UpdateUserSMTPServer        *sqlx.Stmt `query:"update-user-smtp-server"`
+	DeleteUserSMTPServer        *sqlx.Stmt `query:"delete-user-smtp-server"`
+	HasUserRunningCampaigns     *sqlx.Stmt `query:"has-user-running-campaigns"`
+	GetUserSMTPDailyUsage       *sqlx.Stmt `query:"get-user-smtp-daily-usage"`
+	IncrementUserSMTPDailyUsage *sqlx.Stmt `query:"increment-user-smtp-daily-usage"`
+	GetUserSMTPRemaining        *sqlx.Stmt `query:"get-user-smtp-remaining"`
+
+	GetReplyMailboxes      *sqlx.Stmt `query:"get-reply-mailboxes"`
+	GetReplyMailbox        *sqlx.Stmt `query:"get-reply-mailbox"`
+	CreateReplyMailbox     *sqlx.Stmt `query:"create-reply-mailbox"`
+	UpdateReplyMailbox     *sqlx.Stmt `query:"update-reply-mailbox"`
+	DisableReplyMailbox    *sqlx.Stmt `query:"disable-reply-mailbox"`
 
 	// GetStats *sqlx.Stmt `query:"get-stats"`
 	RecordBounce                *sqlx.Stmt `query:"record-bounce"`

@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/knadh/listmonk/models"
@@ -27,10 +28,12 @@ func InlineMediaImages(body []byte, attachments []models.Attachment) ([]byte, []
 	byURL := make(map[string]int, len(attachments))
 	byPath := make(map[string]int, len(attachments))
 	byFilename := make(map[string]int, len(attachments))
+	byID := make(map[int]int, len(attachments))
 	for i, attachment := range attachments {
 		if attachment.MediaID < 1 || !isImageAttachment(attachment) {
 			continue
 		}
+		byID[attachment.MediaID] = i
 		if filename := normalizeMediaFilename(attachment.Name); filename != "" {
 			byFilename[filename] = i
 		}
@@ -62,7 +65,16 @@ func InlineMediaImages(body []byte, attachments []models.Attachment) ([]byte, []
 
 		rawSource := string(body[start:end])
 		source := normalizeImageSource(rawSource)
-		attachmentIndex, ok := byURL[source]
+		// ID-qualified protected URLs are authoritative. This is what keeps
+		// cloned media rows with the same filename from being matched to the
+		// wrong attachment.
+		attachmentIndex, ok := -1, false
+		if mediaID, hasID := protectedMediaIDFromSource(rawSource); hasID {
+			attachmentIndex, ok = byID[mediaID]
+		}
+		if !ok {
+			attachmentIndex, ok = byURL[source]
+		}
 		// Relative image sources don't carry the app's host. Match them by
 		// path, but never use this fallback for an absolute external URL.
 		if !ok {
@@ -78,11 +90,9 @@ func InlineMediaImages(body []byte, attachments []models.Attachment) ([]byte, []
 				}
 			}
 		}
-		// New editor insertions use the protected /api/media/file/:filename
-		// route. That path stays stable when a campaign is copied, while the
-		// copied media record intentionally receives a new ID. Match only this
-		// controlled route by filename; legacy upload paths still use the more
-		// precise URL/path matching above.
+		// Historical editor insertions use the filename-only protected route.
+		// Match only this controlled route by filename; legacy upload paths still
+		// use the more precise URL/path matching above.
 		if !ok && isProtectedMediaSource(rawSource) {
 			if candidate, found := byFilename[mediaFilenameFromSource(rawSource)]; found {
 				attachmentIndex, ok = candidate, true
@@ -169,6 +179,36 @@ func isProtectedMediaSource(source string) bool {
 		return false
 	}
 	return strings.HasPrefix(path.Clean("/"+u.Path), "/api/media/file/")
+}
+
+// protectedMediaIDFromSource extracts the optional numeric media ID from the
+// canonical /api/media/file/:id/:filename route. Filename-only historical URLs
+// return (0, false). Hosts are restricted in the same way as
+// isProtectedMediaSource so an external image cannot be promoted to a CID just
+// because its path happens to contain this prefix.
+func protectedMediaIDFromSource(source string) (int, bool) {
+	u, err := url.Parse(strings.TrimSpace(html.UnescapeString(source)))
+	if err != nil {
+		return 0, false
+	}
+	if u.Host != "" && !isLocalMediaHost(u.Hostname()) {
+		return 0, false
+	}
+	cleanPath := path.Clean("/" + u.Path)
+	const prefix = "/api/media/file/"
+	if !strings.HasPrefix(cleanPath, prefix) {
+		return 0, false
+	}
+	remainder := strings.TrimPrefix(cleanPath, prefix)
+	idPart := remainder
+	if idx := strings.IndexByte(idPart, '/'); idx >= 0 {
+		idPart = idPart[:idx]
+	}
+	id, err := strconv.Atoi(idPart)
+	if err != nil || id < 1 {
+		return 0, false
+	}
+	return id, true
 }
 
 func mediaFilenameFromSource(source string) string {

@@ -38,8 +38,11 @@ func (c *Core) GetResourceScope(resource string, id int) (models.ResourceScope, 
 	var out models.ResourceScope
 	q := fmt.Sprintf(`
 		SELECT r.organization_id, r.owner_user_id, r.original_owner_user_id, r.visibility, r.transfer_pending_at,
+			(r.organization_id IS NOT NULL AND COALESCE(o.status, 'archived') <> 'active') AS organization_archived,
 			COALESCE(u.username, '') AS owner_username, COALESCE(u.name, '') AS owner_name
-		FROM %s r LEFT JOIN users u ON u.id = COALESCE(r.owner_user_id, r.original_owner_user_id)
+		FROM %s r
+		LEFT JOIN organizations o ON o.id = r.organization_id
+		LEFT JOIN users u ON u.id = COALESCE(r.owner_user_id, r.original_owner_user_id)
 		WHERE r.id = $1`, table)
 	if err := c.db.Get(&out, q, id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -57,8 +60,11 @@ func (c *Core) CanReadResource(access models.WorkspaceAccess, scope models.Resou
 	if access.PlatformAdmin {
 		return true
 	}
+	if scope.OrganizationArchived {
+		return false
+	}
 	if !scope.OrganizationID.Valid {
-		if scope.OwnerUserID.Valid && int(scope.OwnerUserID.Int) == access.UserID && access.Personal {
+		if scope.OwnerUserID.Valid && int(scope.OwnerUserID.Int) == access.UserID && access.Personal && !scope.TransferPendingAt.Valid {
 			return true
 		}
 		return scope.Visibility == models.ResourceVisibilityGlobal && !scope.TransferPendingAt.Valid
@@ -91,6 +97,9 @@ func (c *Core) CanUseResource(access models.WorkspaceAccess, scope models.Resour
 	if access.PlatformAdmin {
 		return true
 	}
+	if scope.OrganizationArchived {
+		return false
+	}
 	if scope.TransferPendingAt.Valid {
 		return false
 	}
@@ -112,6 +121,77 @@ func (c *Core) CanUseResource(access models.WorkspaceAccess, scope models.Resour
 	return scope.Visibility == models.ResourceVisibilityOrganization
 }
 
+// CanCopyResource applies the copy rules independently from read and manage
+// access. This is the generic rule used by resources such as templates and
+// media: organization managers may inspect another member's private resource
+// but must not duplicate it; only an owner, an explicitly shared resource, or
+// a global resource can be used as a copy source. The core clone operations use
+// this check again while holding database locks so a stale HTTP authorization
+// result cannot widen the copy boundary.
+func (c *Core) CanCopyResource(access models.WorkspaceAccess, scope models.ResourceScope) bool {
+	if access.PlatformAdmin {
+		return !scope.OrganizationArchived && !scope.TransferPendingAt.Valid
+	}
+	if scope.OrganizationArchived || scope.TransferPendingAt.Valid {
+		return false
+	}
+	if scope.Visibility == models.ResourceVisibilityGlobal {
+		return true
+	}
+	if !scope.OrganizationID.Valid {
+		// Personal resources can only be copied by their owner while the
+		// personal workspace is selected.
+		return access.Personal && scope.OwnerUserID.Valid && int(scope.OwnerUserID.Int) == access.UserID
+	}
+	if !access.IsOrganization() || int(scope.OrganizationID.Int) != access.OrganizationID {
+		return false
+	}
+	// Organization-published resources are explicitly copyable by every
+	// active member (including managers). Private resources remain owner-only;
+	// manager read-only inspection must never become a copy capability.
+	if scope.Visibility == models.ResourceVisibilityOrganization {
+		return true
+	}
+	return scope.OwnerUserID.Valid && int(scope.OwnerUserID.Int) == access.UserID
+}
+
+// CanCopyCampaign is the campaign-specific copy rule. Campaigns are the one
+// resource for which the product explicitly allows copying anything the caller
+// can inspect. In particular, an organization manager's read-only inspection
+// of a member's private campaign is sufficient to create an independent draft.
+// Pending-transfer rows remain transfer/cleanup records rather than copy
+// sources, and archived organizations are never valid sources.
+//
+// Keep this separate from CanCopyResource: templates, media, and other
+// resources retain their stricter owner/shared-copy semantics. Clone callers
+// invoke this again inside their transaction after locking the source row.
+func (c *Core) CanCopyCampaign(access models.WorkspaceAccess, scope models.ResourceScope) bool {
+	if access.PlatformAdmin {
+		return !scope.OrganizationArchived && !scope.TransferPendingAt.Valid
+	}
+	if scope.OrganizationArchived || scope.TransferPendingAt.Valid {
+		return false
+	}
+	if scope.Visibility == models.ResourceVisibilityGlobal {
+		return true
+	}
+	if !scope.OrganizationID.Valid {
+		// Personal campaigns remain private to their owner. A global campaign
+		// was handled above and may be copied from any signed-in workspace.
+		return access.Personal && scope.OwnerUserID.Valid && int(scope.OwnerUserID.Int) == access.UserID
+	}
+	if !access.IsOrganization() || int(scope.OrganizationID.Int) != access.OrganizationID {
+		return false
+	}
+	// Members can copy their own/private campaigns and published campaigns;
+	// managers additionally have copy capability for the private campaigns
+	// they are allowed to inspect.
+	if scope.OwnerUserID.Valid && int(scope.OwnerUserID.Int) == access.UserID {
+		return true
+	}
+	return access.IsOrganizationManager()
+}
+
 // CanReadOwnerScopedResource is the access rule for lists and subscribers.
 // These resources deliberately do not honor organization/global visibility:
 // a member's audience remains private to that member, while organization
@@ -119,6 +199,9 @@ func (c *Core) CanUseResource(access models.WorkspaceAccess, scope models.Resour
 func (c *Core) CanReadOwnerScopedResource(access models.WorkspaceAccess, scope models.ResourceScope) bool {
 	if access.PlatformAdmin {
 		return true
+	}
+	if scope.OrganizationArchived {
+		return false
 	}
 	if !scope.OrganizationID.Valid {
 		return access.Personal && scope.OwnerUserID.Valid && int(scope.OwnerUserID.Int) == access.UserID && !scope.TransferPendingAt.Valid
@@ -140,6 +223,12 @@ func (c *Core) CanReadOwnerScopedResource(access models.WorkspaceAccess, scope m
 // never inherit write access to other members' resources.
 func (c *Core) CanManageResource(access models.WorkspaceAccess, scope models.ResourceScope) bool {
 	if access.Archived {
+		return false
+	}
+	// An archived organization is a read/cleanup boundary.  A request may
+	// race with organization archival after its workspace membership was
+	// resolved, so do not let an owner mutate a row that is now archived.
+	if scope.OrganizationArchived {
 		return false
 	}
 	if access.PlatformAdmin {
@@ -188,6 +277,61 @@ func (c *Core) RequireUseResource(access models.WorkspaceAccess, resource string
 		return scope, echo.NewHTTPError(http.StatusForbidden, "resource cannot be used for sending in the active workspace")
 	}
 	return scope, nil
+}
+
+// CanUseTemplateMedia permits a media file to travel with a template whose
+// publication scope grants send access. Media rows normally must themselves
+// be usable in the active workspace; however, a shared/global template may
+// intentionally contain a private image owned by its author. That image is
+// part of the template's published payload and must remain sendable to the
+// template audience, while an arbitrary private media row must never become
+// usable merely because its ID was supplied by a client.
+func (c *Core) CanUseTemplateMedia(access models.WorkspaceAccess, templateID, mediaID int) (bool, error) {
+	if templateID < 1 || mediaID < 1 {
+		return false, nil
+	}
+	mediaScope, err := c.GetResourceScope(resourceMedia, mediaID)
+	if err != nil {
+		return false, err
+	}
+	if c.CanUseResource(access, mediaScope) {
+		return true, nil
+	}
+	// A transferred or archived binary must not be resurrected through a stale
+	// template association, even when the template itself remains readable.
+	if mediaScope.TransferPendingAt.Valid || mediaScope.OrganizationArchived {
+		return false, nil
+	}
+	templateScope, err := c.GetResourceScope(resourceTemplates, templateID)
+	if err != nil {
+		return false, err
+	}
+	if !c.CanUseResource(access, templateScope) || templateScope.TransferPendingAt.Valid || templateScope.OrganizationArchived {
+		return false, nil
+	}
+	// Keep the derived grant within the template's workspace and ownership
+	// graph. This allows an author's private media in a shared template, but
+	// rejects a forged cross-organization template_media row.
+	if mediaScope.OrganizationID.Valid != templateScope.OrganizationID.Valid {
+		return false, nil
+	}
+	if mediaScope.OrganizationID.Valid && mediaScope.OrganizationID.Int != templateScope.OrganizationID.Int {
+		return false, nil
+	}
+	if mediaScope.Visibility != models.ResourceVisibilityOrganization &&
+		(!mediaScope.OwnerUserID.Valid || !templateScope.OwnerUserID.Valid ||
+			mediaScope.OwnerUserID.Int != templateScope.OwnerUserID.Int) {
+		return false, nil
+	}
+	var linked bool
+	if err := c.db.Get(&linked, `
+		SELECT EXISTS(
+			SELECT 1 FROM template_media
+			WHERE template_id = $1 AND media_id = $2
+		)`, templateID, mediaID); err != nil {
+		return false, workspaceQueryError("checking template media", err)
+	}
+	return linked, nil
 }
 
 func (c *Core) RequireManageResource(access models.WorkspaceAccess, resource string, id int) (models.ResourceScope, error) {
@@ -263,29 +407,10 @@ func (c *Core) ListWorkspaceResources(access models.WorkspaceAccess, resource st
 		scope, scopeArgs := workspaceOwnerScopedReadPredicate(access, "", 1)
 		q = fmt.Sprintf("SELECT id FROM %s WHERE (%s)", table, scope)
 		args = scopeArgs
-	} else if access.IsOrganization() {
-		if access.IsOrganizationManager() {
-			q = fmt.Sprintf(`
-				SELECT id FROM %s
-				WHERE organization_id = $1
-					OR (visibility = 'global' AND transfer_pending_at IS NULL)`, table)
-			args = []any{access.OrganizationID}
-		} else {
-			q = fmt.Sprintf(`
-				SELECT id FROM %s
-				WHERE (
-					organization_id = $1 AND (
-						owner_user_id = $2 OR (transfer_pending_at IS NULL AND visibility IN ('organization', 'global'))
-					)
-				) OR (visibility = 'global' AND transfer_pending_at IS NULL)`, table)
-			args = []any{access.OrganizationID, access.UserID}
-		}
 	} else {
-		q = fmt.Sprintf(`
-			SELECT id FROM %s
-			WHERE (owner_user_id = $1 AND organization_id IS NULL)
-				OR (visibility = 'global' AND transfer_pending_at IS NULL)`, table)
-		args = []any{access.UserID}
+		scope, scopeArgs := workspaceReadPredicate(access, "", 1)
+		q = fmt.Sprintf("SELECT id FROM %s WHERE (%s)", table, scope)
+		args = scopeArgs
 	}
 	if err := c.db.Select(&ids, q, args...); err != nil {
 		return nil, echo.NewHTTPError(http.StatusInternalServerError, pqErrMsg(err))
@@ -300,6 +425,16 @@ func (c *Core) SetResourceVisibility(resource string, id int, visibility string)
 	if !ok {
 		return echo.NewHTTPError(http.StatusInternalServerError, "unknown workspace resource")
 	}
+	if err := validateResourceVisibility(resource, visibility); err != nil {
+		return err
+	}
+	if _, err := c.db.Exec(fmt.Sprintf(`UPDATE %s SET visibility = $2, updated_at = NOW() WHERE id = $1`, table), id, visibility); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, pqErrMsg(err))
+	}
+	return nil
+}
+
+func validateResourceVisibility(resource string, visibility string) error {
 	if visibility != models.ResourceVisibilityPrivate &&
 		visibility != models.ResourceVisibilityOrganization &&
 		visibility != models.ResourceVisibilityGlobal {
@@ -311,9 +446,6 @@ func (c *Core) SetResourceVisibility(resource string, id int, visibility string)
 	if visibility == models.ResourceVisibilityGlobal &&
 		(resource == resourceLists || resource == resourceSubscribers || resource == resourceMedia) {
 		return echo.NewHTTPError(http.StatusBadRequest, "this resource cannot be globally visible")
-	}
-	if _, err := c.db.Exec(fmt.Sprintf(`UPDATE %s SET visibility = $2, updated_at = NOW() WHERE id = $1`, table), id, visibility); err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, pqErrMsg(err))
 	}
 	return nil
 }

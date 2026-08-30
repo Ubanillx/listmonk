@@ -18,6 +18,9 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- Organization tenancy tables are declared after users below because they
 -- reference user IDs. Drop them explicitly on a destructive fresh install.
+DROP TABLE IF EXISTS reply_forward_messages CASCADE;
+DROP TABLE IF EXISTS reply_forward_rules CASCADE;
+DROP TABLE IF EXISTS reply_mailboxes CASCADE;
 DROP TABLE IF EXISTS organization_invites CASCADE;
 DROP TABLE IF EXISTS organization_join_requests CASCADE;
 DROP TABLE IF EXISTS organization_members CASCADE;
@@ -124,7 +127,9 @@ CREATE TABLE campaigns (
     headers          JSONB NOT NULL DEFAULT '[]',
     attribs          JSONB NOT NULL DEFAULT '{}',
     status           campaign_status NOT NULL DEFAULT 'draft',
-    daily_send_limit INT NOT NULL DEFAULT 0,
+    -- Regular e-mail campaigns are capped at 300 messages per local day by
+    -- default. SMTP server quotas may impose a lower effective limit.
+    daily_send_limit INT NOT NULL DEFAULT 300,
     daily_resume_time TEXT NOT NULL DEFAULT '09:00',
     next_resume_at   TIMESTAMP WITH TIME ZONE,
     tags             VARCHAR(100)[],
@@ -439,6 +444,48 @@ CREATE TABLE integration_tokens (
 CREATE INDEX idx_integration_tokens_user_id ON integration_tokens(user_id);
 CREATE INDEX idx_integration_tokens_active ON integration_tokens(user_id, revoked_at);
 
+-- personal SMTP servers
+-- These credentials permanently belong to the account that created them.
+-- They are deliberately separate from settings.smtp, which is the platform
+-- system SMTP used for password resets and other system notifications.
+DROP TABLE IF EXISTS user_smtp_daily_usage CASCADE;
+DROP TABLE IF EXISTS user_smtp_servers CASCADE;
+CREATE TABLE user_smtp_servers (
+    id               SERIAL PRIMARY KEY,
+    uuid             UUID NOT NULL UNIQUE,
+    user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    name             TEXT NOT NULL DEFAULT '',
+    enabled          BOOLEAN NOT NULL DEFAULT TRUE,
+    from_email       TEXT NOT NULL DEFAULT '',
+    daily_limit      INT NOT NULL DEFAULT 0 CHECK (daily_limit >= 0),
+    host             TEXT NOT NULL DEFAULT '',
+    hello_hostname   TEXT NOT NULL DEFAULT '',
+    port             INT NOT NULL DEFAULT 465 CHECK (port > 0 AND port <= 65535),
+    auth_protocol    TEXT NOT NULL DEFAULT 'plain' CHECK (auth_protocol IN ('plain', 'login', 'cram', 'none')),
+    username         TEXT NOT NULL DEFAULT '',
+    password         TEXT NOT NULL DEFAULT '',
+    email_headers    JSONB NOT NULL DEFAULT '[]',
+    max_conns        INT NOT NULL DEFAULT 10 CHECK (max_conns > 0),
+    max_msg_retries  INT NOT NULL DEFAULT 2 CHECK (max_msg_retries > 0),
+    idle_timeout     TEXT NOT NULL DEFAULT '15s',
+    wait_timeout     TEXT NOT NULL DEFAULT '5s',
+    tls_type         TEXT NOT NULL DEFAULT 'TLS' CHECK (tls_type IN ('none', 'TLS', 'STARTTLS')),
+    tls_skip_verify  BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at       TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at       TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+CREATE INDEX idx_user_smtp_servers_user_enabled ON user_smtp_servers(user_id, enabled);
+CREATE UNIQUE INDEX idx_user_smtp_servers_user_name ON user_smtp_servers(user_id, LOWER(name)) WHERE name <> '';
+
+CREATE TABLE user_smtp_daily_usage (
+    smtp_uuid    UUID NOT NULL REFERENCES user_smtp_servers(uuid) ON DELETE CASCADE ON UPDATE CASCADE,
+    usage_date   DATE NOT NULL,
+    sent_count   INT NOT NULL DEFAULT 0,
+    updated_at   TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    PRIMARY KEY (smtp_uuid, usage_date)
+);
+CREATE INDEX idx_user_smtp_daily_usage_date ON user_smtp_daily_usage(usage_date);
+
 -- organizations and membership
 CREATE TABLE organizations (
     id                 BIGSERIAL PRIMARY KEY,
@@ -469,7 +516,7 @@ CREATE TABLE organization_join_requests (
     id                   BIGSERIAL PRIMARY KEY,
     requested_name       TEXT NOT NULL,
     description          TEXT NOT NULL DEFAULT '',
-    status               TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+    status               TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'withdrawn')),
     requested_by_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
     reviewed_by_user_id  INTEGER REFERENCES users(id) ON DELETE SET NULL,
     reviewed_at          TIMESTAMP WITH TIME ZONE,
@@ -496,6 +543,76 @@ CREATE TABLE organization_invites (
     CHECK (max_uses IS NULL OR max_uses > 0)
 );
 CREATE INDEX idx_organization_invites_org_active ON organization_invites(organization_id, created_at DESC) WHERE revoked_at IS NULL;
+
+-- Dedicated 263 customer-reply mailboxes. They are receive-only credentials
+-- and intentionally stay separate from account SMTP servers used to send
+-- campaigns. A mailbox can be default in each of a user's workspaces.
+CREATE TABLE reply_mailboxes (
+    id               SERIAL PRIMARY KEY,
+    user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    organization_id  INTEGER NULL REFERENCES organizations(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    email            TEXT NOT NULL,
+    name             TEXT NOT NULL DEFAULT '',
+    username         TEXT NOT NULL DEFAULT '',
+    imap_host        TEXT NOT NULL DEFAULT 'imap.263.net',
+    imap_port        INTEGER NOT NULL DEFAULT 993 CHECK (imap_port > 0 AND imap_port <= 65535),
+    imap_tls         BOOLEAN NOT NULL DEFAULT TRUE,
+    folder           TEXT NOT NULL DEFAULT 'INBOX',
+    password         TEXT NOT NULL DEFAULT '',
+    status           TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','active','retained','disabled')),
+    verified_at      TIMESTAMP WITH TIME ZONE NULL,
+    is_default       BOOLEAN NOT NULL DEFAULT FALSE,
+    last_sync_at     TIMESTAMP WITH TIME ZONE NULL,
+    last_sync_error  TEXT NOT NULL DEFAULT '',
+    forward_count    INTEGER NOT NULL DEFAULT 0,
+    created_at       TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at       TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+CREATE UNIQUE INDEX idx_reply_mailboxes_user_email
+    ON reply_mailboxes(user_id, COALESCE(organization_id, 0), LOWER(email));
+CREATE INDEX idx_reply_mailboxes_user_status
+    ON reply_mailboxes(user_id, status);
+CREATE UNIQUE INDEX idx_reply_mailboxes_user_default
+    ON reply_mailboxes(user_id, COALESCE(organization_id, 0))
+    WHERE is_default = TRUE AND status IN ('pending','active','retained');
+
+ALTER TABLE campaigns
+    ADD COLUMN reply_mailbox_id INTEGER NULL REFERENCES reply_mailboxes(id) ON DELETE SET NULL;
+
+CREATE TABLE reply_forward_rules (
+    id                SERIAL PRIMARY KEY,
+    reply_mailbox_id  INTEGER NOT NULL REFERENCES reply_mailboxes(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    organization_id   INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    target_user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+    target_email      TEXT NOT NULL,
+    status            TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','disabled')),
+    disabled_at       TIMESTAMP WITH TIME ZONE NULL,
+    disabled_by       INTEGER NULL REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE,
+    last_error        TEXT NOT NULL DEFAULT '',
+    last_forward_at   TIMESTAMP WITH TIME ZONE NULL,
+    created_at        TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at        TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE (reply_mailbox_id, organization_id)
+);
+CREATE INDEX idx_reply_forward_rules_active ON reply_forward_rules(status, reply_mailbox_id);
+
+CREATE TABLE reply_forward_messages (
+    id                BIGSERIAL PRIMARY KEY,
+    rule_id           INTEGER NOT NULL REFERENCES reply_forward_rules(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    message_key       TEXT NOT NULL,
+    imap_uid          TEXT NOT NULL DEFAULT '',
+    from_email        TEXT NOT NULL DEFAULT '',
+    subject           TEXT NOT NULL DEFAULT '',
+    status            TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','forwarded','failed')),
+    attempts          INTEGER NOT NULL DEFAULT 0,
+    last_error        TEXT NOT NULL DEFAULT '',
+    received_at       TIMESTAMP WITH TIME ZONE NULL,
+    forwarded_at      TIMESTAMP WITH TIME ZONE NULL,
+    created_at        TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at        TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE (rule_id, message_key)
+);
+CREATE INDEX idx_reply_forward_messages_pending ON reply_forward_messages(status, created_at);
 
 -- All user-owned resources receive an explicit tenancy and ownership scope.
 -- organization_id is NULL for a personal workspace.

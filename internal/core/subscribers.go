@@ -438,6 +438,64 @@ func (c *Core) UpdateSubscriberWithLists(id int, sub models.Subscriber, listIDs 
 	return out, hasOptin, nil
 }
 
+// UpdateSubscriberWithListsInWorkspace is the owner-scoped mutation path used
+// by the HTTP API. It locks both the subscriber and every target list after
+// the organization membership has been revalidated, preventing a list move or
+// member removal from creating a cross-workspace subscription relation.
+func (c *Core) UpdateSubscriberWithListsInWorkspace(access models.WorkspaceAccess, id int, sub models.Subscriber, listIDs []int, preconfirm, deleteLists, assertOptin bool, permittedListIDs []int) (models.Subscriber, bool, error) {
+	subStatus := models.SubscriptionStatusUnconfirmed
+	if preconfirm {
+		subStatus = models.SubscriptionStatusConfirmed
+	}
+
+	attribs := []byte("{}")
+	if len(sub.Attribs) > 0 {
+		b, err := json.Marshal(sub.Attribs)
+		if err != nil {
+			return models.Subscriber{}, false, echo.NewHTTPError(http.StatusInternalServerError,
+				c.i18n.Ts("globals.messages.errorUpdating", "name", "{globals.terms.subscriber}", "error", err.Error()))
+		}
+		attribs = b
+	}
+
+	err := c.withWorkspaceResourceMutation(access, resourceSubscribers, []int{id}, func(tx *sqlx.Tx) error {
+		if err := c.lockWorkspaceMutationResources(tx, access, resourceLists, listIDs); err != nil {
+			return err
+		}
+		if _, err := tx.Stmtx(c.q.UpdateSubscriberWithLists).Exec(id,
+			sub.Email,
+			strings.TrimSpace(sub.Name),
+			sub.Status,
+			json.RawMessage(attribs),
+			pq.Array(listIDs),
+			pq.Array([]string{}),
+			subStatus,
+			deleteLists,
+			pq.Array(permittedListIDs)); err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError,
+				c.i18n.Ts("globals.messages.errorUpdating", "name", "{globals.terms.subscriber}", "error", pqErrMsg(err)))
+		}
+		return nil
+	})
+	if err != nil {
+		return models.Subscriber{}, false, err
+	}
+
+	out, err := c.GetWorkspaceSubscriber(access, id)
+	if err != nil {
+		return models.Subscriber{}, false, err
+	}
+	hasOptin := false
+	if !preconfirm && c.consts.SendOptinConfirmation {
+		num, err := c.h.SendOptinConfirmation(out, listIDs)
+		if assertOptin && err != nil {
+			return out, hasOptin, err
+		}
+		hasOptin = num > 0
+	}
+	return out, hasOptin, nil
+}
+
 // BlocklistSubscribers blocklists the given list of subscribers.
 func (c *Core) BlocklistSubscribers(subIDs []int) error {
 	if _, err := c.q.BlocklistSubscribers.Exec(pq.Array(subIDs)); err != nil {
@@ -447,6 +505,24 @@ func (c *Core) BlocklistSubscribers(subIDs []int) error {
 	}
 
 	return nil
+}
+
+// BlocklistSubscribersInWorkspace is the transactional workspace variant for
+// single and bulk actions. It deliberately does not reuse the unscoped legacy
+// method because the resource lock must remain held through both the subscriber
+// and subscription updates.
+func (c *Core) BlocklistSubscribersInWorkspace(access models.WorkspaceAccess, subIDs []int) error {
+	subIDs = uniqueMutationIDs(subIDs)
+	if len(subIDs) == 0 {
+		return nil
+	}
+	return c.withWorkspaceResourceMutation(access, resourceSubscribers, subIDs, func(tx *sqlx.Tx) error {
+		if _, err := tx.Stmtx(c.q.BlocklistSubscribers).Exec(pq.Array(subIDs)); err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError,
+				c.i18n.Ts("subscribers.errorBlocklisting", "error", pqErrMsg(err)))
+		}
+		return nil
+	})
 }
 
 // BlocklistSubscribersByQuery blocklists the given list of subscribers.
@@ -476,6 +552,20 @@ func (c *Core) DeleteSubscribers(subIDs []int, subUUIDs []string) error {
 	}
 
 	return nil
+}
+
+func (c *Core) DeleteSubscribersInWorkspace(access models.WorkspaceAccess, subIDs []int) error {
+	subIDs = uniqueMutationIDs(subIDs)
+	if len(subIDs) == 0 {
+		return nil
+	}
+	return c.withWorkspaceResourceMutation(access, resourceSubscribers, subIDs, func(tx *sqlx.Tx) error {
+		if _, err := tx.Stmtx(c.q.DeleteSubscribers).Exec(pq.Array(subIDs), pq.Array([]string{})); err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError,
+				c.i18n.Ts("globals.messages.errorDeleting", "name", "{globals.terms.subscribers}", "error", pqErrMsg(err)))
+		}
+		return nil
+	})
 }
 
 // DeleteSubscribersByQuery deletes subscribers by a given arbitrary query expression.
@@ -530,6 +620,16 @@ func (c *Core) DeleteSubscriberBounces(id int, uuid string) error {
 	}
 
 	return nil
+}
+
+func (c *Core) DeleteSubscriberBouncesInWorkspace(access models.WorkspaceAccess, id int) error {
+	return c.withWorkspaceResourceMutation(access, resourceSubscribers, []int{id}, func(tx *sqlx.Tx) error {
+		if _, err := tx.Stmtx(c.q.DeleteBouncesBySubscriber).Exec(id, nil); err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError,
+				c.i18n.Ts("globals.messages.errorDeleting", "name", "{globals.terms.bounces}", "error", pqErrMsg(err)))
+		}
+		return nil
+	})
 }
 
 // DeleteOrphanSubscribers deletes orphan subscriber records (subscribers without lists).

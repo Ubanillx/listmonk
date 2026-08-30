@@ -29,6 +29,11 @@ type Message struct {
 
 	// Messenger is the messenger backend to use: email|postback.
 	Messenger string
+
+	// OwnerUserID identifies the account whose personal SMTP pool must be used
+	// for user-originated campaign and transactional e-mail. A zero value is
+	// reserved for system messages, which use the platform SMTP.
+	OwnerUserID int
 }
 
 // Attachment represents a file or blob attachment that can be

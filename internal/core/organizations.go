@@ -8,12 +8,14 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
+	"github.com/lib/pq"
 	null "gopkg.in/volatiletech/null.v6"
 )
 
@@ -133,6 +135,9 @@ func (c *Core) CreateOrganizationRequest(userID int, name, description string) (
 		VALUES ($1, $2, $3)
 		RETURNING *`, name, description, userID)
 	if err != nil {
+		if conflict := organizationNameConflictError(err); conflict != nil {
+			return out, conflict
+		}
 		return out, c.organizationDBErr("creating organization request", err)
 	}
 	return out, nil
@@ -150,6 +155,59 @@ func (c *Core) GetOrganizationRequests(includeResolved bool) ([]models.Organizat
 		return nil, c.organizationDBErr("fetching organization requests", err)
 	}
 	return out, nil
+}
+
+// GetUserOrganizationRequests returns every organization-creation request
+// submitted by one account, including reviewed and withdrawn history.
+func (c *Core) GetUserOrganizationRequests(userID int) ([]models.OrganizationJoinRequest, error) {
+	out := []models.OrganizationJoinRequest{}
+	err := c.db.Select(&out, `
+		SELECT r.*, u.name AS requested_by_name
+		FROM organization_join_requests r
+		JOIN users u ON u.id = r.requested_by_user_id
+		WHERE r.requested_by_user_id = $1
+		ORDER BY r.created_at DESC`, userID)
+	if err != nil {
+		return nil, c.organizationDBErr("fetching user organization requests", err)
+	}
+	return out, nil
+}
+
+// WithdrawOrganizationRequest keeps a caller's pending request as history
+// while making it unavailable for platform review. The row lock serializes a
+// withdrawal with a concurrent platform review.
+func (c *Core) WithdrawOrganizationRequest(requestID, userID int) (models.OrganizationJoinRequest, error) {
+	tx, err := c.db.BeginTxx(context.Background(), nil)
+	if err != nil {
+		return models.OrganizationJoinRequest{}, c.organizationDBErr("starting organization request withdrawal", err)
+	}
+	defer tx.Rollback()
+
+	var req models.OrganizationJoinRequest
+	if err := tx.Get(&req, `SELECT * FROM organization_join_requests WHERE id = $1 FOR UPDATE`, requestID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return req, echo.NewHTTPError(http.StatusNotFound, "organization request not found")
+		}
+		return req, c.organizationDBErr("fetching organization request for withdrawal", err)
+	}
+	if req.RequestedByUserID != userID {
+		return req, echo.NewHTTPError(http.StatusNotFound, "organization request not found")
+	}
+	if req.Status != models.OrganizationRequestPending {
+		return req, echo.NewHTTPError(http.StatusBadRequest, "only pending organization requests can be withdrawn")
+	}
+
+	if err := tx.Get(&req, `
+		UPDATE organization_join_requests
+		SET status = $2, updated_at = NOW()
+		WHERE id = $1
+		RETURNING *`, requestID, models.OrganizationRequestWithdrawn); err != nil {
+		return req, c.organizationDBErr("withdrawing organization request", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return req, c.organizationDBErr("committing organization request withdrawal", err)
+	}
+	return req, nil
 }
 
 // ReviewOrganizationRequest approves or rejects a request. Approval creates
@@ -180,6 +238,9 @@ func (c *Core) ReviewOrganizationRequest(requestID, reviewerID int, approve bool
 		if err := tx.Get(&id, `
 			INSERT INTO organizations (name, description, created_by_user_id)
 			VALUES ($1, $2, $3) RETURNING id`, req.RequestedName, req.Description, req.RequestedByUserID); err != nil {
+			if conflict := organizationNameConflictError(err); conflict != nil {
+				return req, conflict
+			}
 			return req, c.organizationDBErr("creating organization", err)
 		}
 		if _, err := tx.Exec(`
@@ -204,13 +265,54 @@ func (c *Core) ReviewOrganizationRequest(requestID, reviewerID int, approve bool
 }
 
 func (c *Core) CreateOrganizationInvite(orgID, createdBy int, name, codeHash string, expiresAt null.Time, maxUses null.Int) (models.OrganizationInvite, error) {
-	var out models.OrganizationInvite
-	err := c.db.Get(&out, `
+	// The HTTP handler verifies manager access before entering this method, but
+	// the organization may be archived between that check and the INSERT. Lock
+	// and re-check the organization here so a stale request can never create a
+	// usable invite for an archived tenant.
+	tx, err := c.db.BeginTxx(context.Background(), nil)
+	if err != nil {
+		return models.OrganizationInvite{}, c.organizationDBErr("starting organization invitation", err)
+	}
+	defer tx.Rollback()
+	if err := c.lockActiveOrganization(tx, orgID); err != nil {
+		return models.OrganizationInvite{}, err
+	}
+	var canManage bool
+	if err := tx.Get(&canManage, `
+		SELECT EXISTS(
+			SELECT 1 FROM users u
+			WHERE u.id = $2 AND u.user_role_id = 1
+		) OR EXISTS(
+			SELECT 1 FROM organization_members om
+			WHERE om.organization_id = $1 AND om.user_id = $2
+			  AND om.role = $3 AND om.removed_at IS NULL
+		)`, orgID, createdBy, models.OrganizationMemberRoleManager); err != nil {
+		return models.OrganizationInvite{}, c.organizationDBErr("checking organization invitation manager", err)
+	}
+	if !canManage {
+		return models.OrganizationInvite{}, echo.NewHTTPError(http.StatusForbidden, "organization manager permission required")
+	}
+
+	// Insert first, then load the row through the same organization join used by
+	// the listing endpoint.  INSERT ... RETURNING * cannot populate the
+	// denormalized organization_name field on OrganizationInvite by itself.
+	var inviteID int
+	if err := tx.Get(&inviteID, `
 		INSERT INTO organization_invites (organization_id, name, code_hash, created_by_user_id, expires_at, max_uses)
 		VALUES ($1, $2, $3, $4, $5, $6)
-		RETURNING *`, orgID, strings.TrimSpace(name), codeHash, createdBy, expiresAt, maxUses)
-	if err != nil {
-		return out, c.organizationDBErr("creating organization invitation", err)
+		RETURNING id`, orgID, strings.TrimSpace(name), codeHash, createdBy, expiresAt, maxUses); err != nil {
+		return models.OrganizationInvite{}, c.organizationDBErr("creating organization invitation", err)
+	}
+	var out models.OrganizationInvite
+	if err := tx.Get(&out, `
+		SELECT i.*, o.name AS organization_name
+		FROM organization_invites i
+		JOIN organizations o ON o.id = i.organization_id
+		WHERE i.id = $1`, inviteID); err != nil {
+		return out, c.organizationDBErr("fetching created organization invitation", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return out, c.organizationDBErr("committing organization invitation", err)
 	}
 	return out, nil
 }
@@ -228,7 +330,15 @@ func (c *Core) GetOrganizationInvites(orgID int) ([]models.OrganizationInvite, e
 }
 
 func (c *Core) RevokeOrganizationInvite(orgID, inviteID int) error {
-	res, err := c.db.Exec(`
+	tx, err := c.db.BeginTxx(context.Background(), nil)
+	if err != nil {
+		return c.organizationDBErr("starting organization invitation revocation", err)
+	}
+	defer tx.Rollback()
+	if err := c.lockActiveOrganization(tx, orgID); err != nil {
+		return err
+	}
+	res, err := tx.Exec(`
 		UPDATE organization_invites SET revoked_at = NOW(), updated_at = NOW()
 		WHERE id = $1 AND organization_id = $2 AND revoked_at IS NULL`, inviteID, orgID)
 	if err != nil {
@@ -236,6 +346,9 @@ func (c *Core) RevokeOrganizationInvite(orgID, inviteID int) error {
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return echo.NewHTTPError(http.StatusNotFound, "active organization invitation not found")
+	}
+	if err := tx.Commit(); err != nil {
+		return c.organizationDBErr("committing organization invitation revocation", err)
 	}
 	return nil
 }
@@ -293,7 +406,12 @@ func (c *Core) JoinOrganizationByInvite(userID int, codeHash string) (models.Org
 	}
 
 	var org models.Organization
-	if err := tx.Get(&org, `SELECT *, $2::TEXT AS my_role, 0 AS member_count FROM organizations WHERE id = $1`, invite.OrganizationID, models.OrganizationMemberRoleMember); err != nil {
+	if err := tx.Get(&org, `
+		SELECT o.*, $2::TEXT AS my_role,
+			(SELECT COUNT(*) FROM organization_members om
+			 WHERE om.organization_id = o.id AND om.removed_at IS NULL) AS member_count
+		FROM organizations o
+		WHERE o.id = $1`, invite.OrganizationID, models.OrganizationMemberRoleMember); err != nil {
 		return org, c.organizationDBErr("fetching organization", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -313,7 +431,7 @@ func (c *Core) AddOrganizationMember(orgID, userID int, role string) (models.Org
 		return models.OrganizationMember{}, c.organizationDBErr("starting organization member add", err)
 	}
 	defer tx.Rollback()
-	if err := c.lockOrganization(tx, orgID); err != nil {
+	if err := c.lockActiveOrganization(tx, orgID); err != nil {
 		return models.OrganizationMember{}, err
 	}
 
@@ -385,7 +503,7 @@ func (c *Core) UpdateOrganizationMemberRole(orgID, userID int, role string) erro
 		return c.organizationDBErr("starting organization member update", err)
 	}
 	defer tx.Rollback()
-	if err := c.lockOrganization(tx, orgID); err != nil {
+	if err := c.lockActiveOrganization(tx, orgID); err != nil {
 		return err
 	}
 
@@ -423,7 +541,7 @@ func (c *Core) RemoveOrganizationMember(orgID, userID, removedBy int) ([]models.
 		return nil, c.organizationDBErr("starting organization member removal", err)
 	}
 	defer tx.Rollback()
-	if err := c.lockOrganization(tx, orgID); err != nil {
+	if err := c.lockActiveOrganization(tx, orgID); err != nil {
 		return nil, err
 	}
 
@@ -470,6 +588,24 @@ func (c *Core) RemoveOrganizationMember(orgID, userID, removedBy int) ([]models.
 		}
 	}
 
+	// A campaign pipe marks recipient rows queued while it is preparing a
+	// message.  The manager cleanup normally returns those rows to pending
+	// after StopCampaign, but a member can be removed when no in-process pipe
+	// exists (or while the pipe is between batches).  Reset them in the same
+	// transaction as the ownership transition so a later transfer/resume can
+	// never inherit a stranded queued row.
+	if _, err := tx.Exec(`
+		UPDATE campaign_recipients cr SET status = 'pending', updated_at = NOW()
+		WHERE cr.status = 'queued'
+		  AND EXISTS (
+			SELECT 1 FROM campaigns c
+			WHERE c.id = cr.campaign_id
+			  AND c.organization_id = $1
+			  AND c.owner_user_id = $2
+		  )`, orgID, userID); err != nil {
+		return nil, c.organizationDBErr("resetting member campaign recipients", err)
+	}
+
 	var stopped []models.Campaign
 	if err := tx.Select(&stopped, `
 		UPDATE campaigns SET
@@ -482,7 +618,7 @@ func (c *Core) RemoveOrganizationMember(orgID, userID, removedBy int) ([]models.
 				WHEN status = 'running' THEN 'paused'::campaign_status ELSE status END,
 			updated_at = NOW()
 		WHERE organization_id = $1 AND owner_user_id = $2
-		RETURNING *`, orgID, userID); err != nil {
+		RETURNING id, status`, orgID, userID); err != nil {
 		return nil, c.organizationDBErr("preparing member campaigns for transfer", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -713,6 +849,13 @@ func (c *Core) TransferOrganizationTemplate(orgID, templateID, targetUserID int)
 	if err := c.lockOrganization(tx, orgID); err != nil {
 		return err
 	}
+	var organizationStatus string
+	if err := tx.Get(&organizationStatus, `SELECT status FROM organizations WHERE id = $1`, orgID); err != nil {
+		return c.organizationDBErr("checking organization template transfer status", err)
+	}
+	if organizationStatus != models.OrganizationStatusActive {
+		return echo.NewHTTPError(http.StatusConflict, "archived organization templates must be handled through the archive cleanup flow")
+	}
 
 	var targetRole string
 	if err := tx.Get(&targetRole, `
@@ -722,6 +865,108 @@ func (c *Core) TransferOrganizationTemplate(orgID, templateID, targetUserID int)
 			return ErrNotOrganizationMember
 		}
 		return c.organizationDBErr("checking template transfer target", err)
+	}
+
+	var templateOwner null.Int
+	if err := tx.Get(&templateOwner, `
+		SELECT owner_user_id FROM templates
+		WHERE id = $2 AND organization_id = $1
+		  AND visibility = 'organization' AND transfer_pending_at IS NULL
+		FOR UPDATE`, orgID, templateID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return echo.NewHTTPError(http.StatusNotFound, "organization-shared template not found")
+		}
+		return c.organizationDBErr("locking organization template", err)
+	}
+
+	// A template transfer is a complete ownership hand-off. Private media
+	// referenced by the template must not remain owned by the departing author,
+	// otherwise the new owner could see the template but could neither send it
+	// nor edit its media references. Clone those binaries into the target
+	// workspace while retaining the source rows for any other resources that
+	// still use them. Organization-shared media can be reused directly.
+	var refs []mediaAssociation
+	if err := tx.Select(&refs, `
+		SELECT media_id, filename FROM template_media
+		WHERE template_id = $1 ORDER BY media_id NULLS LAST, filename
+		FOR UPDATE`, templateID); err != nil {
+		return c.organizationDBErr("locking organization template media", err)
+	}
+	mediaIDs := make([]int, 0, len(refs))
+	for _, ref := range refs {
+		if ref.MediaID.Valid {
+			mediaIDs = append(mediaIDs, int(ref.MediaID.Int))
+		}
+	}
+	mediaIDs = uniqueMutationIDs(mediaIDs)
+	sort.Ints(mediaIDs)
+	type mediaOwner struct {
+		ID             int       `db:"id"`
+		OrganizationID null.Int  `db:"organization_id"`
+		OwnerUserID    null.Int  `db:"owner_user_id"`
+		Visibility     string    `db:"visibility"`
+		Pending        null.Time `db:"transfer_pending_at"`
+	}
+	owners := make(map[int]mediaOwner, len(mediaIDs))
+	if len(mediaIDs) > 0 {
+		var rows []mediaOwner
+		if err := tx.Select(&rows, `
+			SELECT id, organization_id, owner_user_id, visibility, transfer_pending_at
+			FROM media WHERE id = ANY($1::INT[]) ORDER BY id FOR UPDATE`, pq.Array(mediaIDs)); err != nil {
+			return c.organizationDBErr("locking organization template media rows", err)
+		}
+		if len(rows) != len(mediaIDs) {
+			return workspaceMutationError()
+		}
+		for _, row := range rows {
+			owners[row.ID] = row
+		}
+	}
+	targetScope := ApplyWorkspaceScope(models.WorkspaceAccess{
+		Workspace: models.Workspace{OrganizationID: orgID},
+		UserID:    targetUserID,
+	}, models.ResourceVisibilityPrivate)
+	mediaCopies := make(map[int]int)
+	for _, ref := range refs {
+		if !ref.MediaID.Valid {
+			continue
+		}
+		sourceID := int(ref.MediaID.Int)
+		row, ok := owners[sourceID]
+		if !ok {
+			return workspaceMutationError()
+		}
+		// A shared organization binary is already usable by the target. A
+		// private binary is reusable only when it is owned by that target in
+		// this organization; all other cases receive an independent copy.
+		keep := row.Visibility == models.ResourceVisibilityOrganization &&
+			row.OrganizationID.Valid && row.OrganizationID.Int == orgID &&
+			!row.Pending.Valid
+		if row.OwnerUserID.Valid && row.OwnerUserID.Int == targetUserID &&
+			row.OrganizationID.Valid && row.OrganizationID.Int == orgID &&
+			!row.Pending.Valid {
+			keep = true
+		}
+		if keep {
+			continue
+		}
+		copyID, ok := mediaCopies[sourceID]
+		if !ok {
+			var copyErr error
+			copyID, copyErr = cloneMediaRecord(tx, sourceID, targetScope)
+			if copyErr != nil {
+				return copyErr
+			}
+			mediaCopies[sourceID] = copyID
+		}
+		if _, err := tx.Exec(`
+			UPDATE template_media SET media_id = $3
+			WHERE template_id = $1 AND media_id = $2`, templateID, sourceID, copyID); err != nil {
+			return c.organizationDBErr("copying organization template media", err)
+		}
+	}
+	if err := c.rewriteTemplateMediaReferencesTx(tx, templateID, mediaCopies); err != nil {
+		return err
 	}
 
 	res, err := tx.Exec(`
@@ -745,7 +990,22 @@ func (c *Core) TransferOrganizationTemplate(orgID, templateID, targetUserID int)
 // a shared template while leaving it with its current owner as a private
 // template. This is intentionally unavailable for global templates.
 func (c *Core) UnpublishOrganizationTemplate(orgID, templateID int) error {
-	res, err := c.db.Exec(`
+	tx, err := c.db.BeginTxx(context.Background(), nil)
+	if err != nil {
+		return c.organizationDBErr("starting organization template unpublish", err)
+	}
+	defer tx.Rollback()
+	if err := c.lockOrganization(tx, orgID); err != nil {
+		return err
+	}
+	var status string
+	if err := tx.Get(&status, `SELECT status FROM organizations WHERE id = $1`, orgID); err != nil {
+		return c.organizationDBErr("checking organization template unpublish status", err)
+	}
+	if status != models.OrganizationStatusActive {
+		return echo.NewHTTPError(http.StatusConflict, "archived organization templates cannot be unpublished here")
+	}
+	res, err := tx.Exec(`
 		UPDATE templates SET visibility = 'private', updated_at = NOW()
 		WHERE id = $2 AND organization_id = $1
 			AND visibility = 'organization' AND transfer_pending_at IS NULL`, orgID, templateID)
@@ -754,6 +1014,9 @@ func (c *Core) UnpublishOrganizationTemplate(orgID, templateID int) error {
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return echo.NewHTTPError(http.StatusNotFound, "organization-shared template not found")
+	}
+	if err := tx.Commit(); err != nil {
+		return c.organizationDBErr("committing organization template unpublish", err)
 	}
 	return nil
 }
@@ -813,6 +1076,16 @@ func (c *Core) ArchiveOrganization(orgID int) ([]models.Campaign, error) {
 			return nil, c.organizationDBErr("preparing archived organization resources for transfer", err)
 		}
 	}
+	if _, err := tx.Exec(`
+		UPDATE campaign_recipients cr SET status = 'pending', updated_at = NOW()
+		WHERE cr.status = 'queued'
+		  AND EXISTS (
+			SELECT 1 FROM campaigns c
+			WHERE c.id = cr.campaign_id
+			  AND c.organization_id = $1
+		  )`, orgID); err != nil {
+		return nil, c.organizationDBErr("resetting archived campaign recipients", err)
+	}
 
 	var stopped []models.Campaign
 	if err := tx.Select(&stopped, `
@@ -826,7 +1099,7 @@ func (c *Core) ArchiveOrganization(orgID int) ([]models.Campaign, error) {
 				WHEN status = 'running' THEN 'paused'::campaign_status ELSE status END,
 			updated_at = NOW()
 		WHERE organization_id = $1
-		RETURNING *`, orgID); err != nil {
+		RETURNING id, status`, orgID); err != nil {
 		return nil, c.organizationDBErr("stopping organization campaigns", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -924,6 +1197,24 @@ func (c *Core) lockOrganization(tx *sqlx.Tx, orgID int) error {
 			return ErrOrganizationNotFound
 		}
 		return c.organizationDBErr("locking organization", err)
+	}
+	return nil
+}
+
+// lockActiveOrganization is used by membership and invitation mutations.
+// The status check happens while the organization row is locked, closing the
+// race where an HTTP request is authorized against an active workspace and an
+// archive commits before its INSERT/UPDATE acquires the lock.
+func (c *Core) lockActiveOrganization(tx *sqlx.Tx, orgID int) error {
+	var status string
+	if err := tx.Get(&status, `SELECT status FROM organizations WHERE id = $1 FOR UPDATE`, orgID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrOrganizationNotFound
+		}
+		return c.organizationDBErr("locking active organization", err)
+	}
+	if status != models.OrganizationStatusActive {
+		return echo.NewHTTPError(http.StatusConflict, "organization is archived")
 	}
 	return nil
 }
@@ -1033,6 +1324,7 @@ func (c *Core) detachGlobalTemplatesForFormerMember(tx *sqlx.Tx, orgID, userID i
 		UserID:    userID,
 	}, models.ResourceVisibilityPrivate)
 	copies := make(map[int]int)
+	templateIDs := make(map[int]struct{})
 	for _, ref := range refs {
 		sourceID := int(ref.MediaID.Int)
 		copyID, ok := copies[sourceID]
@@ -1049,6 +1341,12 @@ func (c *Core) detachGlobalTemplatesForFormerMember(tx *sqlx.Tx, orgID, userID i
 			WHERE template_id = $1 AND media_id = $2`, ref.TemplateID, sourceID, copyID); err != nil {
 			return c.organizationDBErr("copying global template media", err)
 		}
+		templateIDs[ref.TemplateID] = struct{}{}
+	}
+	for templateID := range templateIDs {
+		if err := c.rewriteTemplateMediaReferencesTx(tx, templateID, copies); err != nil {
+			return err
+		}
 	}
 
 	if _, err := tx.Exec(`
@@ -1062,4 +1360,22 @@ func (c *Core) detachGlobalTemplatesForFormerMember(tx *sqlx.Tx, orgID, userID i
 
 func (c *Core) organizationDBErr(action string, err error) error {
 	return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("error %s: %s", action, pqErrMsg(err)))
+}
+
+// organizationNameConflictError converts the two case-insensitive name
+// uniqueness violations into a stable 409 response.  The preflight checks in
+// the request/review flows are useful for friendly errors, but they cannot
+// close the race with a concurrent request or approval; PostgreSQL remains
+// the final arbiter and must not leak that race as a generic HTTP 500.
+func organizationNameConflictError(err error) error {
+	var pqErr *pq.Error
+	if !errors.As(err, &pqErr) || pqErr.Code != "23505" {
+		return nil
+	}
+	switch pqErr.Constraint {
+	case "idx_organizations_name_lower", "idx_organization_join_requests_pending_name":
+		return echo.NewHTTPError(http.StatusConflict, "organization name is already in use")
+	default:
+		return nil
+	}
 }

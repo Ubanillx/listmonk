@@ -87,13 +87,16 @@ func (c *Core) MigratePersonalListsToOrganization(sourceUserID, targetOrganizati
 		return nil, workspaceQueryError("starting list migration", err)
 	}
 	defer tx.Rollback()
+	if err := c.lockPersonalMigrationTarget(tx, targetOrganizationID, targetUserID); err != nil {
+		return nil, err
+	}
 
 	var lists []models.List
 	if err := tx.Select(&lists, `
 		SELECT * FROM lists
 		WHERE id = ANY($1::INT[]) AND organization_id IS NULL
 			AND owner_user_id = $2 AND transfer_pending_at IS NULL
-		FOR UPDATE`, pq.Array(sourceListIDs), sourceUserID); err != nil {
+		ORDER BY id FOR UPDATE`, pq.Array(sourceListIDs), sourceUserID); err != nil {
 		return nil, workspaceQueryError("reading personal lists", err)
 	}
 	if len(lists) != len(sourceListIDs) {
@@ -159,6 +162,7 @@ func (c *Core) MigratePersonalListsToOrganization(sourceUserID, targetOrganizati
 		JOIN subscribers s ON s.id = sl.subscriber_id
 		WHERE sl.list_id = ANY($1::INT[]) AND s.organization_id IS NULL
 			AND s.owner_user_id = $2 AND s.transfer_pending_at IS NULL
+		ORDER BY sl.list_id, s.id
 		FOR UPDATE OF sl, s`, pq.Array(sourceListIDs), sourceUserID); err != nil {
 		return nil, workspaceQueryError("reading list subscribers", err)
 	}
@@ -208,7 +212,7 @@ func (c *Core) lockPersonalMigrationResources(tx *sqlx.Tx, table string, sourceU
 		WHERE id = ANY($1::INT[]) AND organization_id IS NULL
 			AND owner_user_id = $2 AND visibility = 'private'
 			AND transfer_pending_at IS NULL
-		FOR UPDATE`, table)
+		ORDER BY id FOR UPDATE`, table)
 	if err := tx.Select(&locked, stmt, pq.Array(sourceIDs), sourceUserID); err != nil {
 		return nil, workspaceQueryError("reading personal resources", err)
 	}
@@ -225,12 +229,34 @@ func personalMigrationTargetScope(organizationID, userID int) models.ResourceSco
 	}, models.ResourceVisibilityPrivate)
 }
 
+// lockPersonalMigrationTarget serializes a copy/move with organization
+// archival and membership removal. The HTTP layer performs the same check for
+// a friendly early response, but this transaction-level check is authoritative
+// for the actual INSERT/UPDATE.
+func (c *Core) lockPersonalMigrationTarget(tx *sqlx.Tx, organizationID, userID int) error {
+	if organizationID < 1 || userID < 1 {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid organization migration target")
+	}
+	statuses, err := c.lockWorkspaceOrganizations(tx, []int{organizationID})
+	if err != nil {
+		return err
+	}
+	if statuses[organizationID] != models.OrganizationStatusActive ||
+		!c.workspaceMembershipActive(tx, organizationID, userID) {
+		return workspaceMutationError()
+	}
+	return nil
+}
+
 func (c *Core) migratePersonalTemplatesToOrganization(sourceUserID, targetOrganizationID, targetUserID int, sourceIDs []int, move bool) ([]int, error) {
 	tx, err := c.db.BeginTxx(context.Background(), nil)
 	if err != nil {
 		return nil, workspaceQueryError("starting template migration", err)
 	}
 	defer tx.Rollback()
+	if err := c.lockPersonalMigrationTarget(tx, targetOrganizationID, targetUserID); err != nil {
+		return nil, err
+	}
 
 	sourceIDs, err = c.lockPersonalMigrationResources(tx, "templates", sourceUserID, sourceIDs)
 	if err != nil {
@@ -280,6 +306,9 @@ func (c *Core) migratePersonalTemplatesToOrganization(sourceUserID, targetOrgani
 		if err := c.copyTemplateMigrationMedia(tx, sourceID, targetID, target, move, mediaCopies); err != nil {
 			return nil, err
 		}
+		if err := c.rewriteTemplateMediaReferencesTx(tx, targetID, mediaCopies); err != nil {
+			return nil, err
+		}
 		result = append(result, targetID)
 	}
 
@@ -293,8 +322,13 @@ func (c *Core) copyTemplateMigrationMedia(tx *sqlx.Tx, sourceTemplateID, targetT
 	var refs []mediaAssociation
 	if err := tx.Select(&refs, `
 		SELECT media_id, filename FROM template_media
-		WHERE template_id = $1`, sourceTemplateID); err != nil {
+		WHERE template_id = $1
+		ORDER BY media_id NULLS LAST, filename
+		FOR UPDATE`, sourceTemplateID); err != nil {
 		return workspaceQueryError("reading template media for migration", err)
+	}
+	if err := c.lockCloneMediaRows(tx, refs); err != nil {
+		return err
 	}
 	for _, ref := range refs {
 		if !ref.MediaID.Valid {
@@ -337,6 +371,9 @@ func (c *Core) migratePersonalMediaToOrganization(sourceUserID, targetOrganizati
 		return nil, workspaceQueryError("starting media migration", err)
 	}
 	defer tx.Rollback()
+	if err := c.lockPersonalMigrationTarget(tx, targetOrganizationID, targetUserID); err != nil {
+		return nil, err
+	}
 
 	sourceIDs, err = c.lockPersonalMigrationResources(tx, "media", sourceUserID, sourceIDs)
 	if err != nil {
@@ -392,6 +429,10 @@ func (c *Core) migratePersonalCampaignsToOrganization(sourceUserID, targetOrgani
 	if err != nil {
 		return nil, workspaceQueryError("starting campaign migration", err)
 	}
+	if err := c.lockPersonalMigrationTarget(tx, targetOrganizationID, targetUserID); err != nil {
+		_ = tx.Rollback()
+		return nil, err
+	}
 	sourceIDs, err = c.lockPersonalMigrationResources(tx, "campaigns", sourceUserID, sourceIDs)
 	if err != nil {
 		tx.Rollback()
@@ -424,7 +465,11 @@ func (c *Core) migratePersonalCampaignsToOrganization(sourceUserID, targetOrgani
 	}
 	result := make([]int, 0, len(sourceIDs))
 	for _, sourceID := range sourceIDs {
-		clone, err := c.CloneCampaignForWorkspace(sourceID, target, "")
+		sourceAccess := models.WorkspaceAccess{
+			Workspace: models.Workspace{Personal: true},
+			UserID:    sourceUserID,
+		}
+		clone, err := c.CloneCampaignForWorkspaceWithSource(sourceID, sourceAccess, target, "")
 		if err != nil {
 			return nil, err
 		}

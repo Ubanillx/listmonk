@@ -18,7 +18,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/Masterminds/sprig/v3"
@@ -566,6 +565,12 @@ func initCampaignManager(msgrs []manager.Messenger, q *models.Queries, u *UrlCon
 		lo.Println("running in passive mode. won't process campaigns.")
 	}
 
+	store := newManagerStore(q, co, md, db)
+	// Keep one quota tracker for the lifetime of the manager. SMTP pools are
+	// rebuilt when a user edits their configuration; sharing this tracker keeps
+	// in-flight reservations visible across that rebuild and prevents a brief
+	// configuration change from resetting local quota accounting.
+	userSMTPQuota := newUserSMTPQuotaTracker(q)
 	mgr := manager.New(manager.Config{
 		BatchSize:             ko.Int("app.batch_size"),
 		Concurrency:           ko.Int("app.concurrency"),
@@ -587,7 +592,22 @@ func initCampaignManager(msgrs []manager.Messenger, q *models.Queries, u *UrlCon
 		SlidingWindowRate:     ko.Int("app.message_sliding_window_rate"),
 		ScanInterval:          time.Second * 5,
 		ScanCampaigns:         !ko.Bool("passive"),
-	}, newManagerStore(q, co, md), i, lo)
+		PersonalSMTP: func(userID int) (*email.Emailer, error) {
+			servers, err := store.GetUserSMTPServers(userID)
+			if err != nil {
+				return nil, err
+			}
+			if len(servers) == 0 {
+				return nil, fmt.Errorf("%w: no enabled personal SMTP configured", manager.ErrPersonalSMTPUnavailable)
+			}
+			msgr, err := email.New(email.MessengerName, servers...)
+			if err != nil {
+				return nil, fmt.Errorf("%w: %v", manager.ErrPersonalSMTPUnavailable, err)
+			}
+			msgr.SetQuotaTracker(userSMTPQuota)
+			return msgr, nil
+		},
+	}, store, i, lo)
 
 	// Attach all messengers to the campaign manager.
 	for _, m := range msgrs {
@@ -639,7 +659,12 @@ func initImporter(q *models.Queries, db *sqlx.DB, core *core.Core, i *i18n.I18n,
 		}, db.DB, i)
 }
 
-// initSMTPMessenger initializes the combined and individual SMTP messengers.
+// initSMTPMessengers initializes the platform SMTP messenger.  Platform SMTP
+// is reserved for system notifications (password resets, subscription
+// confirmations, and similar service mail).  User-originated campaigns and
+// transactional messages are resolved by the manager through the account's
+// personal SMTP pool, so individual platform SMTP servers must never be
+// registered as selectable messengers.
 func initSMTPMessengers() smtpMessengers {
 	var (
 		servers = []email.Server{}
@@ -673,16 +698,6 @@ func initSMTPMessengers() smtpMessengers {
 			primary = msgr
 		}
 
-		// If the server has a name, initialize it as a standalone e-mail messenger
-		// allowing campaigns to select individual SMTPs. In the UI and config, it'll appear as `email / $name`.
-		if s.Name != "" {
-			msgr, err := email.New(s.Name, s)
-			if err != nil {
-				lo.Fatalf("error initializing e-mail messenger: %v", err)
-			}
-			msgr.SetQuotaTracker(tracker)
-			out = append(out, msgr)
-		}
 	}
 
 	// Initialize the 'email' messenger with all SMTP servers.
@@ -695,14 +710,10 @@ func initSMTPMessengers() smtpMessengers {
 		lo.Fatal("no primary SMTP configured")
 	}
 
-	// If it's just one server, return the default "email" messenger.
-	if len(servers) == 1 {
-		return smtpMessengers{messengers: []manager.Messenger{msgr}, primary: primary}
-	}
-
-	// If there are multiple servers, prepend the group "email" to be the first one.
-	out = append([]manager.Messenger{msgr}, out...)
-
+	// Expose only the logical platform "email" messenger.  The individual
+	// server names remain configuration metadata for backwards compatibility,
+	// but are deliberately not routable by campaign/transaction APIs.
+	out = append(out, msgr)
 	return smtpMessengers{messengers: out, primary: primary}
 }
 
@@ -941,6 +952,9 @@ func initHTTPServer(cfg *Config, urlCfg *UrlConfig, i *i18n.I18n, fs stuffbin.Fi
 	// an active public archive can render its linked images. The handler still
 	// receives auth middleware and only permits an unauthenticated request for
 	// media referenced by a currently public archive campaign.
+	// The ID-qualified route is canonical for new media URLs. Keep the
+	// filename-only route below for historical campaign/template bodies.
+	srv.GET("/api/media/file/:id/:filename", app.ServeMediaFileByID, app.auth.Middleware)
 	srv.GET("/api/media/file/:filename", app.ServeMediaFile, app.auth.Middleware)
 
 	// Media binaries are never exposed as a raw static directory. Resource URLs
@@ -1037,7 +1051,7 @@ func awaitReload(sigChan chan os.Signal, closerWait chan bool, closer func()) ch
 
 	// Respawn a new process and exit the running one.
 	respawn := func() {
-		if err := syscall.Exec(os.Args[0], os.Args, os.Environ()); err != nil {
+		if err := respawnProcess(); err != nil {
 			lo.Fatalf("error spawning process: %v", err)
 		}
 		os.Exit(0)

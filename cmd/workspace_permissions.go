@@ -37,6 +37,12 @@ func hasLegacyPermission(user auth.User, permissions ...string) bool {
 // Neither exception is valid for mutations, exports, imports, bulk actions,
 // or sends.
 func workspaceReadException(access models.WorkspaceAccess, scope models.ResourceScope) bool {
+	// Archived organizations are only exposed through the platform cleanup
+	// workflow.  Keep this helper defensive because it is also called after a
+	// resource-level read check and may see a row changed concurrently.
+	if scope.OrganizationArchived {
+		return false
+	}
 	if access.PlatformAdmin {
 		return true
 	}
@@ -61,6 +67,9 @@ func workspaceReadException(access models.WorkspaceAccess, scope models.Resource
 // global resources may be copied by their audience, but pending-transfer rows
 // may only be inspected and transferred by an organization manager.
 func workspaceCopyException(access models.WorkspaceAccess, scope models.ResourceScope) bool {
+	if scope.OrganizationArchived {
+		return false
+	}
 	if scope.TransferPendingAt.Valid {
 		return false
 	}
@@ -74,8 +83,13 @@ func workspaceCopyException(access models.WorkspaceAccess, scope models.Resource
 
 // canCopyWorkspaceResource gives the resource owner the normal private-copy
 // path while preventing an organization manager's inspection-only access from
-// becoming a way to duplicate another member's private work.
+// becoming a way to duplicate another member's private work. Campaigns have a
+// deliberately broader rule (see canCopyWorkspaceCampaign) and are kept out
+// of this generic helper so template/media permissions do not widen with them.
 func canCopyWorkspaceResource(access models.WorkspaceAccess, scope models.ResourceScope) bool {
+	if scope.OrganizationArchived {
+		return false
+	}
 	if workspaceCopyException(access, scope) {
 		return true
 	}
@@ -89,6 +103,29 @@ func canCopyWorkspaceResource(access models.WorkspaceAccess, scope models.Resour
 		return access.Personal
 	}
 	return access.IsOrganization() && int(scope.OrganizationID.Int) == access.OrganizationID
+}
+
+// canCopyWorkspaceCampaign mirrors Core.CanCopyCampaign for the HTTP boundary.
+// Keeping an explicit helper here lets the handler decide whether the legacy
+// campaigns:manage role is still needed without changing the generic copy
+// policy used by other resources.
+func canCopyWorkspaceCampaign(access models.WorkspaceAccess, scope models.ResourceScope) bool {
+	if scope.OrganizationArchived || scope.TransferPendingAt.Valid {
+		return false
+	}
+	if access.PlatformAdmin || scope.Visibility == models.ResourceVisibilityGlobal {
+		return true
+	}
+	if !scope.OrganizationID.Valid {
+		return access.Personal && scope.OwnerUserID.Valid && int(scope.OwnerUserID.Int) == access.UserID
+	}
+	if !access.IsOrganization() || int(scope.OrganizationID.Int) != access.OrganizationID {
+		return false
+	}
+	if scope.OwnerUserID.Valid && int(scope.OwnerUserID.Int) == access.UserID {
+		return true
+	}
+	return access.IsOrganizationManager()
 }
 
 // legacyReadableListIDs returns every list that the caller may read under the
@@ -296,7 +333,7 @@ func (a *App) requireReadableWorkspaceSubscriber(c echo.Context, access models.W
 	if user.HasPerm(auth.PermSubscribersGetAll) {
 		return scope, nil
 	}
-	if err := a.hasSubPerm(user, []int{id}); err != nil {
+	if err := a.hasSubPerm(access, user, []int{id}); err != nil {
 		return scope, err
 	}
 	return scope, nil
@@ -307,7 +344,7 @@ func (a *App) requireManagedWorkspaceSubscriber(c echo.Context, access models.Wo
 	if err != nil {
 		return scope, err
 	}
-	if err := a.hasManagedSubPerm(auth.GetUser(c), []int{id}); err != nil {
+	if err := a.hasManagedSubPerm(access, auth.GetUser(c), []int{id}); err != nil {
 		return scope, err
 	}
 	return scope, nil
@@ -329,7 +366,7 @@ func (a *App) requireExportableWorkspaceSubscriber(c echo.Context, access models
 	if user.HasPerm(auth.PermSubscribersGetAll) {
 		return scope, nil
 	}
-	if err := a.hasSubPerm(user, []int{id}); err != nil {
+	if err := a.hasSubPerm(access, user, []int{id}); err != nil {
 		return scope, err
 	}
 	return scope, nil
@@ -339,8 +376,8 @@ func (a *App) requireExportableWorkspaceSubscriber(c echo.Context, access models
 // model after ownership has already been checked. Freshly cloned drafts have
 // no lists by design, and remain editable by their owner with campaign manage
 // permission so a recipient list can be selected afterwards.
-func (a *App) campaignHasLegacyListAccess(user auth.User, id int, manage bool) error {
-	ok, err := a.hasLegacyCampaignListAccess(user, id, manage)
+func (a *App) campaignHasLegacyListAccess(access models.WorkspaceAccess, user auth.User, id int, manage bool) error {
+	ok, err := a.hasLegacyCampaignListAccess(access, user, id, manage)
 	if err != nil {
 		return err
 	}
@@ -350,7 +387,7 @@ func (a *App) campaignHasLegacyListAccess(user auth.User, id int, manage bool) e
 	return nil
 }
 
-func (a *App) hasLegacyCampaignListAccess(user auth.User, id int, manage bool) (bool, error) {
+func (a *App) hasLegacyCampaignListAccess(access models.WorkspaceAccess, user auth.User, id int, manage bool) (bool, error) {
 	if manage && user.HasPerm(auth.PermCampaignsManageAll) {
 		return true, nil
 	}
@@ -361,14 +398,14 @@ func (a *App) hasLegacyCampaignListAccess(user auth.User, id int, manage bool) (
 	if hasAll {
 		return true, nil
 	}
-	campaignListIDs, err := a.core.GetCampaignListIDs(id)
+	campaignListIDs, err := a.core.GetCampaignListIDsInWorkspace(access, id)
 	if err != nil {
 		return false, err
 	}
 	if len(campaignListIDs) == 0 {
 		return true, nil
 	}
-	ok, err := a.core.CampaignHasLists(id, listIDs)
+	ok, err := a.core.CampaignHasListsInWorkspace(access, id, listIDs)
 	if err != nil {
 		return false, err
 	}
@@ -387,7 +424,7 @@ func (a *App) requireReadableWorkspaceCampaign(c echo.Context, access models.Wor
 	if err := requireLegacyPermission(user, auth.PermCampaignsGetAll, auth.PermCampaignsGet); err != nil {
 		return scope, err
 	}
-	if err := a.campaignHasLegacyListAccess(user, id, false); err != nil {
+	if err := a.campaignHasLegacyListAccess(access, user, id, false); err != nil {
 		return scope, err
 	}
 	return scope, nil
@@ -402,7 +439,7 @@ func (a *App) requireManagedWorkspaceCampaign(c echo.Context, access models.Work
 	if err := requireLegacyPermission(user, auth.PermCampaignsManageAll, auth.PermCampaignsManage); err != nil {
 		return scope, err
 	}
-	if err := a.campaignHasLegacyListAccess(user, id, true); err != nil {
+	if err := a.campaignHasLegacyListAccess(access, user, id, true); err != nil {
 		return scope, err
 	}
 	return scope, nil
@@ -421,7 +458,7 @@ func (a *App) requireSensitiveWorkspaceCampaign(c echo.Context, access models.Wo
 	if err := requireLegacyPermission(user, auth.PermCampaignsGetAnalytics); err != nil {
 		return scope, err
 	}
-	if err := a.campaignHasLegacyListAccess(user, id, false); err != nil {
+	if err := a.campaignHasLegacyListAccess(access, user, id, false); err != nil {
 		return scope, err
 	}
 	return scope, nil
@@ -432,14 +469,37 @@ func (a *App) requireCampaignAnalytics(c echo.Context, access models.WorkspaceAc
 	if err != nil {
 		return err
 	}
+
+	// Platform administrators retain their global oversight capability.  An
+	// organization manager may inspect aggregate statistics only for campaigns
+	// that belong to the currently selected organization (including a pending
+	// transfer row, which is intentionally kept visible for hand-off).  A
+	// public/global campaign being readable is not, by itself, an analytics
+	// grant for an ordinary member.
+	if access.PlatformAdmin {
+		return nil
+	}
 	if access.IsOrganization() && access.IsOrganizationManager() && scope.OrganizationID.Valid &&
 		int(scope.OrganizationID.Int) == access.OrganizationID {
 		return nil
 	}
-	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCampaignsGetAnalytics); err != nil {
+
+	// Outside the manager path, analytics are owner-scoped.  This check is
+	// deliberately made after RequireReadResource so a global campaign cannot
+	// turn an owner ID into a cross-workspace read, and a pending personal row
+	// cannot be resurrected by a stale request.
+	user := auth.GetUser(c)
+	// The owner check must also honor the selected workspace.  Without this
+	// second guard, a globally published campaign owned by the caller could be
+	// reported while an unrelated organization workspace is active, bypassing
+	// the organization + owner isolation used by every other mutation.
+	if !a.core.CanManageResource(access, scope) || !scope.OwnerUserID.Valid || int(scope.OwnerUserID.Int) != user.ID {
+		return echo.NewHTTPError(http.StatusForbidden, "campaign analytics are limited to the campaign owner")
+	}
+	if err := requireLegacyPermission(user, auth.PermCampaignsGetAnalytics); err != nil {
 		return err
 	}
-	return a.campaignHasLegacyListAccess(auth.GetUser(c), id, false)
+	return a.campaignHasLegacyListAccess(access, user, id, false)
 }
 
 // queryReadableWorkspaceLists filters legacy list grants before pagination.
@@ -502,7 +562,7 @@ func (a *App) queryReadableWorkspaceCampaigns(c echo.Context, access models.Work
 		if !canReadByRole {
 			continue
 		}
-		ok, err := a.hasLegacyCampaignListAccess(user, campaign.ID, false)
+		ok, err := a.hasLegacyCampaignListAccess(access, user, campaign.ID, false)
 		if err != nil {
 			return nil, 0, err
 		}

@@ -186,7 +186,11 @@ func (a *App) UpdateUser(c echo.Context) error {
 func (a *App) DeleteUser(c echo.Context) error {
 	// Delete the user(s) from the DB.
 	id := getID(c)
-	if err := a.core.DeleteUsers([]int{id}); err != nil {
+	// Serialize deletion with account-owned delivery. The manager closes all
+	// cached pools and holds its SMTP writer lock until the user row (and its
+	// cascaded SMTP credentials) has been removed, so an in-flight worker cannot
+	// send with credentials belonging to a deleted account.
+	if err := a.deleteUsersWithSMTP([]int{id}); err != nil {
 		return err
 	}
 
@@ -205,8 +209,10 @@ func (a *App) DeleteUsers(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("globals.messages.invalidID"))
 	}
 
-	// Delete the user(s) from the DB.
-	if err := a.core.DeleteUsers(ids); err != nil {
+	// Delete the user(s) from the DB while account-owned SMTP delivery is
+	// quiesced. This also covers bulk deletion where several account pools may
+	// be cached simultaneously.
+	if err := a.deleteUsersWithSMTP(ids); err != nil {
 		return err
 	}
 
@@ -216,6 +222,19 @@ func (a *App) DeleteUsers(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, okResp{true})
+}
+
+func (a *App) deleteUsersWithSMTP(ids []int) error {
+	deleteUsers := func() error {
+		return a.core.DeleteUsers(ids)
+	}
+	if a.manager == nil {
+		return deleteUsers()
+	}
+	// A non-positive user ID tells the manager to invalidate every cached pool;
+	// the delete operation may contain an arbitrary subset of accounts and the
+	// global lock is the only safe way to prevent a resolver race here.
+	return a.manager.WithPersonalSMTPUpdate(0, deleteUsers)
 }
 
 // GetUserIntegrationTokens retrieves integration bearer tokens for an API user.

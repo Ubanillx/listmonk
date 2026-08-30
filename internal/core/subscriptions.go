@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
 	"github.com/lib/pq"
@@ -31,6 +32,26 @@ func (c *Core) AddSubscriptions(subIDs, listIDs []int, status string) error {
 	}
 
 	return nil
+}
+
+// AddSubscriptionsInWorkspace applies a bulk subscription change while both
+// sides of every relation are locked inside the active workspace transaction.
+func (c *Core) AddSubscriptionsInWorkspace(access models.WorkspaceAccess, subIDs, listIDs []int, status string) error {
+	subIDs = uniqueMutationIDs(subIDs)
+	listIDs = uniqueMutationIDs(listIDs)
+	if len(subIDs) == 0 || len(listIDs) == 0 {
+		return nil
+	}
+	return c.withWorkspaceResourceMutation(access, resourceSubscribers, subIDs, func(tx *sqlx.Tx) error {
+		if err := c.lockWorkspaceMutationResources(tx, access, resourceLists, listIDs); err != nil {
+			return err
+		}
+		if _, err := tx.Stmtx(c.q.AddSubscribersToLists).Exec(pq.Array(subIDs), pq.Array(listIDs), status); err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError,
+				c.i18n.Ts("globals.messages.errorUpdating", "name", "{globals.terms.subscribers}", "error", pqErrMsg(err)))
+		}
+		return nil
+	})
 }
 
 // AddSubscriptionsByQuery adds list subscriptions to subscribers by a given arbitrary query expression.
@@ -62,6 +83,24 @@ func (c *Core) DeleteSubscriptions(subIDs, listIDs []int) error {
 	return nil
 }
 
+func (c *Core) DeleteSubscriptionsInWorkspace(access models.WorkspaceAccess, subIDs, listIDs []int) error {
+	subIDs = uniqueMutationIDs(subIDs)
+	listIDs = uniqueMutationIDs(listIDs)
+	if len(subIDs) == 0 || len(listIDs) == 0 {
+		return nil
+	}
+	return c.withWorkspaceResourceMutation(access, resourceSubscribers, subIDs, func(tx *sqlx.Tx) error {
+		if err := c.lockWorkspaceMutationResources(tx, access, resourceLists, listIDs); err != nil {
+			return err
+		}
+		if _, err := tx.Stmtx(c.q.DeleteSubscriptions).Exec(pq.Array(subIDs), pq.Array(listIDs)); err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError,
+				c.i18n.Ts("globals.messages.errorUpdating", "name", "{globals.terms.subscribers}", "error", pqErrMsg(err)))
+		}
+		return nil
+	})
+}
+
 // DeleteSubscriptionsByQuery deletes list subscriptions from subscribers by a given arbitrary query expression.
 // sourceListIDs is the list of list IDs to filter the subscriber query with.
 func (c *Core) DeleteSubscriptionsByQuery(searchStr, queryExp string, sourceListIDs, targetListIDs []int, subStatus string) error {
@@ -88,6 +127,24 @@ func (c *Core) UnsubscribeLists(subIDs, listIDs []int, listUUIDs []string) error
 	}
 
 	return nil
+}
+
+func (c *Core) UnsubscribeListsInWorkspace(access models.WorkspaceAccess, subIDs, listIDs []int) error {
+	subIDs = uniqueMutationIDs(subIDs)
+	listIDs = uniqueMutationIDs(listIDs)
+	if len(subIDs) == 0 || len(listIDs) == 0 {
+		return nil
+	}
+	return c.withWorkspaceResourceMutation(access, resourceSubscribers, subIDs, func(tx *sqlx.Tx) error {
+		if err := c.lockWorkspaceMutationResources(tx, access, resourceLists, listIDs); err != nil {
+			return err
+		}
+		if _, err := tx.Stmtx(c.q.UnsubscribeSubscribersFromLists).Exec(pq.Array(subIDs), pq.Array(listIDs), pq.Array([]string{})); err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError,
+				c.i18n.Ts("globals.messages.errorUpdating", "name", "{globals.terms.subscribers}", "error", pqErrMsg(err)))
+		}
+		return nil
+	})
 }
 
 // UnsubscribeListsByQuery sets list subscriptions to 'unsubscribed' by a given arbitrary query expression.

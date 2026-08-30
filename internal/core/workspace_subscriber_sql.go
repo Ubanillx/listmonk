@@ -67,7 +67,7 @@ func (c *Core) QueryWorkspaceSubscribersWithSQL(access models.WorkspaceAccess, s
 	if err := c.db.Select(&out, stmt, args...); err != nil {
 		return nil, 0, workspaceQueryError("fetching subscribers", err)
 	}
-	if err := c.loadWorkspaceSubscriberLists(out); err != nil {
+	if err := c.loadWorkspaceSubscriberLists(access, out); err != nil {
 		return nil, 0, workspaceQueryError("fetching subscriber lists", err)
 	}
 	total := 0
@@ -146,8 +146,10 @@ func (c *Core) exportWorkspaceSubscribers(access models.WorkspaceAccess, search,
 	// Keep the public table name stable in every raw-query operation. Existing
 	// advanced expressions often qualify fields as subscribers.email, and an
 	// internal alias would otherwise make exports behave differently from list
-	// and bulk-query operations.
-	scope, args := workspaceSubscriberReadPredicate(access, "subscribers", 1)
+	// and bulk-query operations. Exports deliberately use the immutable owner
+	// boundary: organization-manager inspection access must not serialize a
+	// member's recipient identities when this helper is called directly.
+	scope, args := workspaceSensitiveSubscriberPredicate(access, "subscribers", 1)
 	first := len(args) + 1
 	stmt := fmt.Sprintf(`
 		SELECT subscribers.id, subscribers.uuid, subscribers.email, subscribers.name, subscribers.attribs,

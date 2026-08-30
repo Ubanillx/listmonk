@@ -66,11 +66,20 @@ func (a *App) GetSubscriber(c echo.Context) error {
 		return err
 	}
 
-	// Fetch the subscriber from the DB.
-	out, err := a.core.GetSubscriber(id, "", "")
+	// Fetch the subscriber from the active workspace.  The legacy lookup also
+	// loads every list relation for the ID and could therefore leak a
+	// cross-workspace association to an organization manager.
+	out, err := a.core.GetWorkspaceSubscriber(access, id)
 	if err != nil {
 		return err
 	}
+	// Organization managers are explicitly allowed to inspect the complete
+	// subscriber and list relationship for members of the active organization.
+	// This is read-only at the HTTP/Core mutation boundary (edit/delete/import/
+	// export/bulk operations still require ownership), but the detail and list
+	// views must include the recipient identity and attributes so managers can
+	// administer the organization's audiences and understand ownership.
+	a.redactWorkspaceSubscriberSensitiveFields(access, &out)
 
 	return c.JSON(http.StatusOK, okResp{out})
 }
@@ -86,8 +95,10 @@ func (a *App) GetSubscriberActivity(c echo.Context) error {
 		return err
 	}
 
-	// Fetch the subscriber activity from the DB.
-	out, err := a.core.GetSubscriberActivity(id)
+	// Fetch activity through the workspace-scoped query.  Organization managers
+	// may inspect member statistics, but unrelated campaign rows must not be
+	// returned for a forged subscriber ID or relation.
+	out, err := a.core.GetWorkspaceSubscriberActivity(access, id)
 	if err != nil {
 		return err
 	}
@@ -141,6 +152,9 @@ func (a *App) QuerySubscribers(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	for i := range res {
+		a.redactWorkspaceSubscriberSensitiveFields(access, &res[i])
+	}
 
 	out := models.PageResults{
 		Query:   query,
@@ -152,6 +166,25 @@ func (a *App) QuerySubscribers(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, okResp{out})
+}
+
+// redactWorkspaceSubscriberSensitiveFields is retained for callers that may
+// fetch a subscriber through a non-workspace path. In the active organization,
+// managers have the documented read-only right to see member subscriber
+// details, including e-mail, attributes, and list memberships. They still
+// cannot mutate or export those rows: the corresponding handlers use the
+// stricter managed/export predicates before reaching this response layer.
+func (a *App) redactWorkspaceSubscriberSensitiveFields(access models.WorkspaceAccess, sub *models.Subscriber) {
+	if sub == nil || a.core.CanSeeSensitiveResource(access, sub.ResourceScope) ||
+		(access.IsOrganizationManager() && access.IsOrganization() &&
+			sub.OrganizationID.Valid && int(sub.OrganizationID.Int) == access.OrganizationID &&
+			!sub.OrganizationArchived) {
+		return
+	}
+	sub.Email = ""
+	sub.UUID = ""
+	sub.Attribs = models.JSON{}
+	sub.Lists = []byte("[]")
 }
 
 // ExportSubscribers handles querying subscribers based on an arbitrary SQL expression.
@@ -331,7 +364,7 @@ func (a *App) UpdateSubscriber(c echo.Context) error {
 	}
 	req.Subscriber.ID = id
 
-	out, _, err := a.core.UpdateSubscriberWithLists(id, req.Subscriber, req.Lists, nil, req.PreconfirmSubs, true, false, permittedLists)
+	out, _, err := a.core.UpdateSubscriberWithListsInWorkspace(access, id, req.Subscriber, req.Lists, req.PreconfirmSubs, true, false, permittedLists)
 	if err != nil {
 		return err
 	}
@@ -350,7 +383,7 @@ func (a *App) SubscriberSendOptin(c echo.Context) error {
 	if _, err := a.requireManagedWorkspaceSubscriber(c, access, id); err != nil {
 		return err
 	}
-	out, err := a.core.GetSubscriber(id, "", "")
+	out, err := a.core.GetWorkspaceSubscriber(access, id)
 	if err != nil {
 		return err
 	}
@@ -373,7 +406,7 @@ func (a *App) BlocklistSubscriber(c echo.Context) error {
 	if _, err := a.requireManagedWorkspaceSubscriber(c, access, id); err != nil {
 		return err
 	}
-	if err := a.core.BlocklistSubscribers([]int{id}); err != nil {
+	if err := a.core.BlocklistSubscribersInWorkspace(access, []int{id}); err != nil {
 		return err
 	}
 
@@ -402,7 +435,7 @@ func (a *App) BlocklistSubscribers(c echo.Context) error {
 	}
 
 	// Update the subscribers in the DB.
-	if err := a.core.BlocklistSubscribers(req.SubscriberIDs); err != nil {
+	if err := a.core.BlocklistSubscribersInWorkspace(access, req.SubscriberIDs); err != nil {
 		return err
 	}
 
@@ -458,11 +491,11 @@ func (a *App) ManageSubscriberLists(c echo.Context) error {
 	// Run the action in the DB.
 	switch req.Action {
 	case "add":
-		err = a.core.AddSubscriptions(subIDs, req.TargetListIDs, req.Status)
+		err = a.core.AddSubscriptionsInWorkspace(access, subIDs, req.TargetListIDs, req.Status)
 	case "remove":
-		err = a.core.DeleteSubscriptions(subIDs, req.TargetListIDs)
+		err = a.core.DeleteSubscriptionsInWorkspace(access, subIDs, req.TargetListIDs)
 	case "unsubscribe":
-		err = a.core.UnsubscribeLists(subIDs, req.TargetListIDs, nil)
+		err = a.core.UnsubscribeListsInWorkspace(access, subIDs, req.TargetListIDs)
 	default:
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("subscribers.invalidAction"))
 	}
@@ -484,7 +517,7 @@ func (a *App) DeleteSubscriber(c echo.Context) error {
 	if _, err := a.requireManagedWorkspaceSubscriber(c, access, id); err != nil {
 		return err
 	}
-	if err := a.core.DeleteSubscribers([]int{id}, nil); err != nil {
+	if err := a.core.DeleteSubscribersInWorkspace(access, []int{id}); err != nil {
 		return err
 	}
 
@@ -514,7 +547,7 @@ func (a *App) DeleteSubscribers(c echo.Context) error {
 	}
 
 	// Delete the subscribers from the DB.
-	if err := a.core.DeleteSubscribers(ids, nil); err != nil {
+	if err := a.core.DeleteSubscribersInWorkspace(access, ids); err != nil {
 		return err
 	}
 
@@ -563,7 +596,7 @@ func (a *App) DeleteSubscribersByQuery(c echo.Context) error {
 		if err != nil {
 			return err
 		}
-		if err := a.core.DeleteSubscribers(ids, nil); err != nil {
+		if err := a.core.DeleteSubscribersInWorkspace(access, ids); err != nil {
 			return err
 		}
 		return c.JSON(http.StatusOK, okResp{true})
@@ -573,7 +606,7 @@ func (a *App) DeleteSubscribersByQuery(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := a.core.DeleteSubscribers(ids, nil); err != nil {
+	if err := a.core.DeleteSubscribersInWorkspace(access, ids); err != nil {
 		return err
 	}
 
@@ -621,7 +654,7 @@ func (a *App) BlocklistSubscribersByQuery(c echo.Context) error {
 		if err != nil {
 			return err
 		}
-		if err := a.core.BlocklistSubscribers(ids); err != nil {
+		if err := a.core.BlocklistSubscribersInWorkspace(access, ids); err != nil {
 			return err
 		}
 		return c.JSON(http.StatusOK, okResp{true})
@@ -631,7 +664,7 @@ func (a *App) BlocklistSubscribersByQuery(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := a.core.BlocklistSubscribers(ids); err != nil {
+	if err := a.core.BlocklistSubscribersInWorkspace(access, ids); err != nil {
 		return err
 	}
 
@@ -683,11 +716,11 @@ func (a *App) ManageSubscriberListsByQuery(c echo.Context) error {
 		var runErr error
 		switch req.Action {
 		case "add":
-			runErr = a.core.AddSubscriptions(subIDs, req.TargetListIDs, req.Status)
+			runErr = a.core.AddSubscriptionsInWorkspace(access, subIDs, req.TargetListIDs, req.Status)
 		case "remove":
-			runErr = a.core.DeleteSubscriptions(subIDs, req.TargetListIDs)
+			runErr = a.core.DeleteSubscriptionsInWorkspace(access, subIDs, req.TargetListIDs)
 		case "unsubscribe":
-			runErr = a.core.UnsubscribeLists(subIDs, req.TargetListIDs, nil)
+			runErr = a.core.UnsubscribeListsInWorkspace(access, subIDs, req.TargetListIDs)
 		default:
 			return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("subscribers.invalidAction"))
 		}
@@ -706,11 +739,11 @@ func (a *App) ManageSubscriberListsByQuery(c echo.Context) error {
 	var runErr error
 	switch req.Action {
 	case "add":
-		runErr = a.core.AddSubscriptions(subIDs, req.TargetListIDs, req.Status)
+		runErr = a.core.AddSubscriptionsInWorkspace(access, subIDs, req.TargetListIDs, req.Status)
 	case "remove":
-		runErr = a.core.DeleteSubscriptions(subIDs, req.TargetListIDs)
+		runErr = a.core.DeleteSubscriptionsInWorkspace(access, subIDs, req.TargetListIDs)
 	case "unsubscribe":
-		runErr = a.core.UnsubscribeLists(subIDs, req.TargetListIDs, nil)
+		runErr = a.core.UnsubscribeListsInWorkspace(access, subIDs, req.TargetListIDs)
 	default:
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("subscribers.invalidAction"))
 	}
@@ -733,7 +766,7 @@ func (a *App) DeleteSubscriberBounces(c echo.Context) error {
 	if _, err := a.requireManagedWorkspaceSubscriber(c, access, id); err != nil {
 		return err
 	}
-	if err := a.core.DeleteSubscriberBounces(id, ""); err != nil {
+	if err := a.core.DeleteSubscriberBouncesInWorkspace(access, id); err != nil {
 		return err
 	}
 
@@ -756,7 +789,7 @@ func (a *App) ExportSubscriberData(c echo.Context) error {
 	if _, err := a.requireExportableWorkspaceSubscriber(c, access, id); err != nil {
 		return err
 	}
-	_, b, err := a.exportSubscriberData(id, "", a.cfg.Privacy.Exportable)
+	_, b, err := a.exportWorkspaceSubscriberData(access, id, a.cfg.Privacy.Exportable)
 	if err != nil {
 		a.log.Printf("error exporting subscriber data: %s", err)
 		return echo.NewHTTPError(http.StatusInternalServerError,
@@ -769,6 +802,26 @@ func (a *App) ExportSubscriberData(c echo.Context) error {
 	return c.Blob(http.StatusOK, "application/json", b)
 }
 
+// exportWorkspaceSubscriberData is the authenticated counterpart to the
+// bearer-token privacy export helper below.  It deliberately uses the
+// workspace-aware Core query so an organization manager (who may inspect a
+// member's record) cannot export that member's personal audience, while an
+// owner or platform administrator can still export the rows they manage.
+func (a *App) exportWorkspaceSubscriberData(access models.WorkspaceAccess, id int, exportables map[string]bool) (models.SubscriberExportProfile, []byte, error) {
+	data, err := a.core.GetWorkspaceSubscriberProfileForExport(access, id)
+	if err != nil {
+		return data, nil, err
+	}
+
+	filterSubscriberExportables(&data, exportables)
+	b, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		a.log.Printf("error marshalling subscriber export data: %v", err)
+		return data, nil, err
+	}
+	return data, b, nil
+}
+
 // exportSubscriberData collates the data of a subscriber including profile,
 // subscriptions, campaign_views, link_clicks (if they're enabled in the config)
 // and returns a formatted, indented JSON payload. Either takes a numeric id
@@ -779,7 +832,22 @@ func (a *App) exportSubscriberData(id int, subUUID string, exportables map[strin
 		return data, nil, err
 	}
 
-	// Filter out the non-exportable items.
+	filterSubscriberExportables(&data, exportables)
+
+	// Marshal the data into an indented payload.
+	b, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		a.log.Printf("error marshalling subscriber export data: %v", err)
+		return data, nil, err
+	}
+
+	return data, b, nil
+}
+
+func filterSubscriberExportables(data *models.SubscriberExportProfile, exportables map[string]bool) {
+	if data == nil {
+		return
+	}
 	if _, ok := exportables["profile"]; !ok {
 		data.Profile = nil
 	}
@@ -792,20 +860,11 @@ func (a *App) exportSubscriberData(id int, subUUID string, exportables map[strin
 	if _, ok := exportables["link_clicks"]; !ok {
 		data.LinkClicks = nil
 	}
-
-	// Marshal the data into an indented payload.
-	b, err := json.MarshalIndent(data, "", "  ")
-	if err != nil {
-		a.log.Printf("error marshalling subscriber export data: %v", err)
-		return data, nil, err
-	}
-
-	return data, b, nil
 }
 
 // hasSubPerm checks whether the current user has permission to access the given list
 // of subscriber IDs.
-func (a *App) hasSubPerm(u auth.User, subIDs []int) error {
+func (a *App) hasSubPerm(access models.WorkspaceAccess, u auth.User, subIDs []int) error {
 	allPerm, listIDs := legacyReadableListIDs(u)
 
 	// User has blanket get_all|manage_all permission.
@@ -814,7 +873,7 @@ func (a *App) hasSubPerm(u auth.User, subIDs []int) error {
 	}
 
 	// Check whether the subscribers have the list IDs permitted to the user.
-	res, err := a.core.HasSubscriberLists(subIDs, listIDs)
+	res, err := a.core.HasSubscriberListsInWorkspace(access, subIDs, listIDs)
 	if err != nil {
 		return err
 	}
@@ -828,14 +887,14 @@ func (a *App) hasSubPerm(u auth.User, subIDs []int) error {
 	return nil
 }
 
-func (a *App) hasManagedSubPerm(u auth.User, subIDs []int) error {
+func (a *App) hasManagedSubPerm(access models.WorkspaceAccess, u auth.User, subIDs []int) error {
 	if u.IsPlatformAdmin() || u.HasPerm(auth.PermListManageAll) {
 		return nil
 	}
 	if len(u.ManageListIDs) == 0 {
 		return echo.NewHTTPError(http.StatusForbidden, "permission denied: list:manage")
 	}
-	res, err := a.core.HasSubscriberLists(subIDs, u.ManageListIDs)
+	res, err := a.core.HasSubscriberListsInWorkspace(access, subIDs, u.ManageListIDs)
 	if err != nil {
 		return err
 	}

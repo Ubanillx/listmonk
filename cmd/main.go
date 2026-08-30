@@ -298,6 +298,11 @@ func main() {
 		needsUserSetup: !hasUsers,
 	}
 
+	// Retained 263 customer-reply mailboxes are polled independently from the
+	// bounce mailbox. The worker never deletes source messages and forwards
+	// them through the platform system SMTP.
+	go runReplyForwarder(app)
+
 	// Star the update checker.
 	if ko.Bool("app.check_updates") {
 		go app.checkUpdates(versionString, time.Hour*24)

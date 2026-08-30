@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/knadh/listmonk/internal/messenger/email"
 	"github.com/knadh/listmonk/internal/schedule"
 	"github.com/knadh/listmonk/models"
 	"github.com/paulbellamy/ratecounter"
@@ -17,10 +18,12 @@ const (
 	stopReasonPause
 	stopReasonDeferred
 	stopReasonCancelled
+	stopReasonPersonalSMTP
 )
 
 type pipe struct {
 	camp       *models.Campaign
+	messenger  Messenger
 	rate       *ratecounter.RateCounter
 	wg         *sync.WaitGroup
 	sent       atomic.Int64
@@ -35,27 +38,66 @@ type pipe struct {
 // newPipe adds a campaign to the process queue.
 func (m *Manager) newPipe(c *models.Campaign) (*pipe, error) {
 	// Validate messenger.
-	if _, ok := m.messengers[c.Messenger]; !ok {
+	if _, ok := m.messengers[c.Messenger]; !ok && !email.IsMessengerName(c.Messenger) {
 		m.store.UpdateCampaignStatus(c.ID, models.CampaignStatusCancelled)
 		return nil, fmt.Errorf("unknown messenger %s on campaign %s", c.Messenger, c.Name)
+	}
+	// Every e-mail campaign is account-owned. Reject malformed/legacy rows
+	// without an owner before resolving a messenger so they can never probe or
+	// borrow the platform system SMTP pool.
+	if email.IsMessengerName(c.Messenger) &&
+		(!c.OwnerUserID.Valid || c.OwnerUserID.Int < 1) {
+		m.markCampaignSMTPUnavailable(c)
+		return nil, fmt.Errorf("campaign %s cannot send: %w: campaign has no account owner", c.Name, ErrPersonalSMTPUnavailable)
+	}
+	msg := models.Message{Messenger: c.Messenger, OwnerUserID: c.OwnerUserID.Int}
+	msgr, err := m.resolveMessenger(msg)
+	if err != nil {
+		// A campaign without an account SMTP must never silently use the platform
+		// SMTP. Preserve the prior scheduler state when the store supports the
+		// atomic strict transition; this pauses an already-running campaign while
+		// returning a scheduled/deferred claim to draft.
+		if errors.Is(err, ErrPersonalSMTPUnavailable) {
+			m.markCampaignSMTPUnavailable(c)
+		} else {
+			m.markCampaignStartFailure(c)
+		}
+		return nil, fmt.Errorf("campaign %s cannot send: %w", c.Name, err)
 	}
 
 	// Load the template.
 	if err := c.CompileTemplate(m.TemplateFuncs(c)); err != nil {
+		// The scheduler may already have changed a scheduled/deferred campaign to
+		// running before template compilation.  Always leave a failed claim in a
+		// retryable state instead of allowing it to remain running forever.
+		m.markCampaignStartFailure(c)
 		return nil, err
 	}
 
 	// Load any media/attachments.
 	if err := m.attachMedia(c); err != nil {
+		// A campaign can remain in the scheduler's result set while one of its
+		// media/template rows is transferred or removed.  Do not leave a running
+		// row retrying forever with an invalid attachment graph; pause it so the
+		// owner can repair the content, while a not-yet-started campaign returns
+		// to draft as it does for missing personal SMTP.
+		m.markCampaignStartFailure(c)
 		return nil, err
 	}
 
 	// Add the campaign to the active map.
 	p := &pipe{
 		camp: c,
-		rate: ratecounter.NewRateCounter(time.Minute),
-		wg:   &sync.WaitGroup{},
-		m:    m,
+		// Personal SMTP is resolved for every campaign message so a running
+		// campaign observes account configuration changes immediately. Other
+		// messengers are immutable for the lifetime of the pipe.
+		messenger: msgr,
+		rate:      ratecounter.NewRateCounter(time.Minute),
+		wg:        &sync.WaitGroup{},
+		m:         m,
+	}
+	if email.IsMessengerName(c.Messenger) {
+		p.messenger = nil
 	}
 
 	// Increment the waitgroup so that Wait() blocks immediately. This is necessary
@@ -83,6 +125,13 @@ func (m *Manager) newPipe(c *models.Campaign) (*pipe, error) {
 // in the current batch or not. A false indicates that all subscribers
 // have been processed, or that a campaign has been paused or cancelled.
 func (p *pipe) NextSubscribers() (bool, error) {
+	// A worker can discover an unavailable personal SMTP pool while this
+	// goroutine is fetching subscribers. Do not claim another batch after the
+	// pipe has been stopped; cleanup will reset any already queued recipients.
+	if p.stopped.Load() {
+		return false, nil
+	}
+
 	// Fetch the next batch of subscribers from a 'running' campaign.
 	subs, err := p.m.store.NextSubscribers(p.camp.ID, p.m.cfg.BatchSize)
 	if errors.Is(err, ErrCampaignDeferred) {
@@ -106,15 +155,34 @@ func (p *pipe) NextSubscribers() (bool, error) {
 
 	// Push messages.
 	for _, s := range subs {
+		if p.stopped.Load() {
+			return false, nil
+		}
+
 		msg, err := p.newMessage(s)
 		if err != nil {
 			p.m.log.Printf("error rendering message (%s) (%s): %v", p.camp.Name, s.Email, err)
 			continue
 		}
+		// Stop may race with rendering. The message has already incremented the
+		// pipe wait group, so release that increment when it is intentionally not
+		// handed to a worker.
+		if p.stopped.Load() {
+			p.wg.Done()
+			return false, nil
+		}
 
 		// Push the message to the queue while blocking and waiting until
-		// the queue is drained.
-		p.m.campMsgQ <- msg
+		// the queue is drained. During a reload the manager's done signal can
+		// race with this send; select on it so the producer cannot remain stuck
+		// (or write into a queue whose workers have already exited).
+		select {
+		case p.m.campMsgQ <- msg:
+		case <-p.m.done:
+			p.Stop(stopReasonPause, false)
+			p.wg.Done()
+			return false, nil
+		}
 
 		// Check if the sliding window is active.
 		if hasSliding {
@@ -240,6 +308,32 @@ func (p *pipe) cleanup() {
 		case stopReasonPause:
 			if err := p.m.store.ResetCampaignQueuedRecipients(p.camp.ID, models.CampaignRecipientStatusPending); err != nil {
 				p.m.log.Printf("error resetting queued recipients (%s): %v", p.camp.Name, err)
+			}
+		case stopReasonPersonalSMTP:
+			// Persist the stop atomically with recipient reset and scheduling
+			// timestamp cleanup when the database store supports it. This closes
+			// the race in which a scanner could observe a still-running row after
+			// the account SMTP pool was disabled. Lightweight test stores retain
+			// the historical two-call fallback below.
+			if strict, ok := p.m.store.(PersonalSMTPUnavailableStore); ok {
+				if err := strict.MarkCampaignSMTPUnavailable(p.camp.ID, models.CampaignStatusRunning); err != nil {
+					p.m.log.Printf("error marking campaign (%s) SMTP unavailable: %v", p.camp.Name, err)
+				}
+			} else {
+				if err := p.m.store.ResetCampaignQueuedRecipients(p.camp.ID, models.CampaignRecipientStatusPending); err != nil {
+					p.m.log.Printf("error resetting queued recipients (%s): %v", p.camp.Name, err)
+				}
+				if err := p.m.store.UpdateCampaignStatus(p.camp.ID, models.CampaignStatusPaused); err != nil {
+					p.m.log.Printf("error pausing campaign (%s) after personal SMTP failure: %v", p.camp.Name, err)
+				}
+			}
+			// Do not overwrite a concurrent manual pause/cancel. Fetch the final
+			// state only for logging/notification after the atomic transition.
+			if current, err := p.m.store.GetCampaign(p.camp.ID); err != nil {
+				p.m.log.Printf("error fetching campaign (%s) after personal SMTP failure: %v", p.camp.Name, err)
+			} else if current.Status == models.CampaignStatusPaused {
+				p.m.log.Printf("paused campaign (%s): personal SMTP unavailable", p.camp.Name)
+				_ = p.m.sendNotif(current, models.CampaignStatusPaused, "Personal SMTP unavailable")
 			}
 		case stopReasonDeferred:
 			if err := p.m.store.ResetCampaignQueuedRecipients(p.camp.ID, models.CampaignRecipientStatusDeferred); err != nil {

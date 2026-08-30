@@ -132,6 +132,21 @@ func TestWorkspaceResourceAccessBoundaries(t *testing.T) {
 			wantRead:   true,
 			wantManage: false,
 		},
+		{
+			name: "archived resource cannot be managed after concurrent archive",
+			access: models.WorkspaceAccess{
+				Workspace: models.Workspace{OrganizationID: 7},
+				UserID:    10,
+			},
+			scope: models.ResourceScope{
+				OrganizationID:       null.Int{Int: 7, Valid: true},
+				OwnerUserID:          null.Int{Int: 10, Valid: true},
+				Visibility:           models.ResourceVisibilityPrivate,
+				OrganizationArchived: true,
+			},
+			wantRead:   false,
+			wantManage: false,
+		},
 	}
 
 	for _, test := range tests {
@@ -271,6 +286,96 @@ func TestWorkspaceResourceUseBoundaries(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			if got := c.CanUseResource(test.access, test.scope); got != test.want {
 				t.Fatalf("CanUseResource() = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestWorkspaceCopyBoundaries(t *testing.T) {
+	member := models.WorkspaceAccess{
+		Workspace: models.Workspace{OrganizationID: 7},
+		UserID:    20,
+	}
+	manager := models.WorkspaceAccess{
+		Workspace: models.Workspace{OrganizationID: 7, Role: models.OrganizationMemberRoleManager},
+		UserID:    30,
+	}
+
+	tests := []struct {
+		name   string
+		access models.WorkspaceAccess
+		scope  models.ResourceScope
+		want   bool
+	}{
+		{
+			name:   "member can copy another member organization-shared resource",
+			access: member,
+			scope:  workspaceTestScope(7, 10, models.ResourceVisibilityOrganization, false),
+			want:   true,
+		},
+		{
+			name:   "manager can copy organization-shared resource",
+			access: manager,
+			scope:  workspaceTestScope(7, 10, models.ResourceVisibilityOrganization, false),
+			want:   true,
+		},
+		{
+			name:   "manager cannot copy another member private resource",
+			access: manager,
+			scope:  workspaceTestScope(7, 10, models.ResourceVisibilityPrivate, false),
+			want:   false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := (&Core{}).CanCopyResource(test.access, test.scope); got != test.want {
+				t.Fatalf("CanCopyResource() = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestCampaignCopyBoundaries(t *testing.T) {
+	member := models.WorkspaceAccess{
+		Workspace: models.Workspace{OrganizationID: 7},
+		UserID:    20,
+	}
+	manager := models.WorkspaceAccess{
+		Workspace: models.Workspace{OrganizationID: 7, Role: models.OrganizationMemberRoleManager},
+		UserID:    30,
+	}
+
+	tests := []struct {
+		name   string
+		access models.WorkspaceAccess
+		scope  models.ResourceScope
+		want   bool
+	}{
+		{
+			name:   "manager can copy member private campaign they can inspect",
+			access: manager,
+			scope:  workspaceTestScope(7, 20, models.ResourceVisibilityPrivate, false),
+			want:   true,
+		},
+		{
+			name:   "ordinary member cannot copy another member private campaign",
+			access: member,
+			scope:  workspaceTestScope(7, 30, models.ResourceVisibilityPrivate, false),
+			want:   false,
+		},
+		{
+			name:   "manager cannot copy pending transfer campaign",
+			access: manager,
+			scope:  workspaceTestScope(7, 0, models.ResourceVisibilityOrganization, true),
+			want:   false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := (&Core{}).CanCopyCampaign(test.access, test.scope); got != test.want {
+				t.Fatalf("CanCopyCampaign() = %v, want %v", got, test.want)
 			}
 		})
 	}

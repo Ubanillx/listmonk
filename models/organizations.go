@@ -10,9 +10,10 @@ const (
 	OrganizationStatusActive   = "active"
 	OrganizationStatusArchived = "archived"
 
-	OrganizationRequestPending  = "pending"
-	OrganizationRequestApproved = "approved"
-	OrganizationRequestRejected = "rejected"
+	OrganizationRequestPending   = "pending"
+	OrganizationRequestApproved  = "approved"
+	OrganizationRequestRejected  = "rejected"
+	OrganizationRequestWithdrawn = "withdrawn"
 
 	OrganizationMemberRoleMember  = "member"
 	OrganizationMemberRoleManager = "manager"
@@ -98,6 +99,10 @@ type ResourceScope struct {
 	OriginalOwnerUserID null.Int  `db:"original_owner_user_id" json:"original_owner_user_id"`
 	Visibility          string    `db:"visibility" json:"visibility"`
 	TransferPendingAt   null.Time `db:"transfer_pending_at" json:"transfer_pending_at"`
+	// OrganizationArchived is loaded for single-resource authorization checks.
+	// It is intentionally omitted from API responses; list queries enforce the
+	// same condition directly in SQL.
+	OrganizationArchived bool `db:"organization_archived" json:"-"`
 
 	OwnerUsername string `db:"owner_username" json:"owner_username"`
 	OwnerName     string `db:"owner_name" json:"owner_name"`

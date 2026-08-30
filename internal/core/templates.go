@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"net/http"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
 	"github.com/lib/pq"
@@ -49,6 +50,27 @@ func (c *Core) CreateTemplate(name, typ, subject string, body []byte, bodySource
 	return c.GetTemplate(newID, false)
 }
 
+// CreateTemplateInWorkspace keeps template creation and media association
+// inside the active workspace mutation transaction.
+func (c *Core) CreateTemplateInWorkspace(access models.WorkspaceAccess, name, typ, subject string, body []byte, bodySource null.String, mediaIDs pq.Int64Array, scope models.ResourceScope) (models.Template, error) {
+	var newID int
+	err := c.withWorkspaceCreation(access, func(tx *sqlx.Tx) error {
+		if err := c.lockWorkspaceUsableResources(tx, access, resourceMedia, int64IDs(mediaIDs)); err != nil {
+			return err
+		}
+		if err := tx.Stmtx(c.q.CreateTemplate).Get(&newID, name, typ, subject, body, bodySource,
+			pq.Array(mediaIDs), scope.OrganizationID, scope.OwnerUserID, scope.OriginalOwnerUserID, scope.Visibility); err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError,
+				c.i18n.Ts("globals.messages.errorCreating", "name", "{globals.terms.template}", "error", pqErrMsg(err)))
+		}
+		return nil
+	})
+	if err != nil {
+		return models.Template{}, err
+	}
+	return c.GetWorkspaceTemplate(access, newID, false)
+}
+
 // UpdateTemplate updates a given template.
 func (c *Core) UpdateTemplate(id int, name, subject string, body []byte, bodySource null.String, mediaIDs pq.Int64Array) (models.Template, error) {
 	var updatedID int
@@ -66,16 +88,52 @@ func (c *Core) UpdateTemplate(id int, name, subject string, body []byte, bodySou
 	return c.GetTemplate(id, false)
 }
 
+// UpdateTemplateInWorkspace keeps a template update and its media references
+// behind the workspace mutation lock. The caller may use organization-shared
+// media, but a private media row belonging to another member is rejected again
+// inside the write transaction.
+func (c *Core) UpdateTemplateInWorkspace(access models.WorkspaceAccess, id int, name, subject string, body []byte, bodySource null.String, mediaIDs pq.Int64Array, visibility string) (models.Template, error) {
+	err := c.withWorkspaceResourceMutation(access, resourceTemplates, []int{id}, func(tx *sqlx.Tx) error {
+		if visibility != "" {
+			if err := validateResourceVisibility(resourceTemplates, visibility); err != nil {
+				return err
+			}
+		}
+		if err := c.lockWorkspaceUsableResources(tx, access, resourceMedia, int64IDs(mediaIDs)); err != nil {
+			return err
+		}
+		var updatedID int
+		if err := tx.Stmtx(c.q.UpdateTemplate).Get(&updatedID, id, name, subject, body, bodySource, pq.Array(mediaIDs)); err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError,
+				c.i18n.Ts("globals.messages.errorUpdating", "name", "{globals.terms.template}", "error", pqErrMsg(err)))
+		}
+		if updatedID == 0 {
+			return workspaceMutationError()
+		}
+		if visibility != "" {
+			if _, err := tx.Exec("UPDATE templates SET visibility = $2, updated_at = NOW() WHERE id = $1", id, visibility); err != nil {
+				return workspaceQueryError("updating template visibility", err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return models.Template{}, err
+	}
+	return c.GetWorkspaceTemplate(access, id, false)
+}
+
 // SetWorkspaceDefaultTemplate sets one caller-owned campaign template as the
 // default within its own personal or organization workspace. Defaults must
 // never be reset across another owner's resources.
 func (c *Core) SetWorkspaceDefaultTemplate(id int, access models.WorkspaceAccess) error {
+	return c.withWorkspaceResourceMutation(access, resourceTemplates, []int{id}, func(tx *sqlx.Tx) error {
+		return c.setWorkspaceDefaultTemplateTx(tx, id, access)
+	})
+}
+
+func (c *Core) setWorkspaceDefaultTemplateTx(tx *sqlx.Tx, id int, access models.WorkspaceAccess) error {
 	scope := ApplyWorkspaceScope(access, models.ResourceVisibilityPrivate)
-	tx, err := c.db.Beginx()
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, pqErrMsg(err))
-	}
-	defer tx.Rollback()
 
 	var exists int
 	if err := tx.QueryRow(`
@@ -109,9 +167,6 @@ func (c *Core) SetWorkspaceDefaultTemplate(id int, access models.WorkspaceAccess
 	if _, err := tx.Exec(`UPDATE templates SET is_default = TRUE, updated_at = NOW() WHERE id = $1`, exists); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, pqErrMsg(err))
 	}
-	if err := tx.Commit(); err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, pqErrMsg(err))
-	}
 	return nil
 }
 
@@ -124,7 +179,25 @@ func (c *Core) DeleteTemplate(id int) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, pqErrMsg(err))
 	}
 	defer tx.Rollback()
+	if err := c.deleteTemplateTx(tx, id); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, pqErrMsg(err))
+	}
+	return nil
+}
 
+// DeleteTemplateInWorkspace executes the same fallback reassignment logic as
+// the legacy deletion method, but only after the current ownership and active
+// organization membership have been locked and rechecked.
+func (c *Core) DeleteTemplateInWorkspace(access models.WorkspaceAccess, id int) error {
+	return c.withWorkspaceResourceMutation(access, resourceTemplates, []int{id}, func(tx *sqlx.Tx) error {
+		return c.deleteTemplateTx(tx, id)
+	})
+}
+
+func (c *Core) deleteTemplateTx(tx *sqlx.Tx, id int) error {
 	var tpl struct {
 		Type      string `db:"type"`
 		IsDefault bool   `db:"is_default"`
@@ -145,6 +218,11 @@ func (c *Core) DeleteTemplate(id int) error {
 			SELECT fallback.id FROM templates fallback
 			WHERE fallback.is_default = TRUE AND fallback.type = 'campaign'
 				AND fallback.transfer_pending_at IS NULL
+				AND (fallback.organization_id IS NULL OR EXISTS (
+					SELECT 1 FROM organizations fallback_organization
+					WHERE fallback_organization.id = fallback.organization_id
+						AND fallback_organization.status = 'active'
+				))
 				AND (
 					(fallback.organization_id IS NOT DISTINCT FROM c.organization_id
 						AND fallback.owner_user_id = c.owner_user_id)
@@ -160,9 +238,6 @@ func (c *Core) DeleteTemplate(id int) error {
 	if _, err := tx.Exec(`DELETE FROM templates WHERE id = $1`, id); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError,
 			c.i18n.Ts("globals.messages.errorDeleting", "name", "{globals.terms.template}", "error", pqErrMsg(err)))
-	}
-	if err := tx.Commit(); err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, pqErrMsg(err))
 	}
 	return nil
 }

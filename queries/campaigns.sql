@@ -38,6 +38,11 @@ tpl AS (
             -- it's not a visual template.
             WHEN $16::INT IS NOT NULL THEN t.id = $16::INT
                 AND t.transfer_pending_at IS NULL
+                AND (t.organization_id IS NULL OR EXISTS (
+                    SELECT 1 FROM organizations template_organization
+                    WHERE template_organization.id = t.organization_id
+                        AND template_organization.status = 'active'
+                ))
                 AND (
                     t.visibility = 'global'
                     OR (
@@ -113,9 +118,25 @@ SELECT id FROM camp;
 -- for pagination in the frontend, albeit being a field that'll repeat
 -- with every resultant row.
 SELECT  c.*,
+        COALESCE((SELECT rm.email FROM reply_mailboxes rm WHERE rm.id = c.reply_mailbox_id), '') AS reply_mailbox_email,
         CASE
-            WHEN EXISTS (SELECT 1 FROM campaign_recipients crx WHERE crx.campaign_id = c.id) THEN (
-                SELECT COUNT(*) FROM campaign_recipients cr WHERE cr.campaign_id = c.id AND cr.status = ANY('{pending,queued,deferred}'::campaign_recipient_status[])
+            WHEN EXISTS (
+                SELECT 1
+                FROM campaign_recipients crx
+                JOIN subscribers sx ON sx.id = crx.subscriber_id
+                WHERE crx.campaign_id = c.id
+                    AND sx.organization_id IS NOT DISTINCT FROM c.organization_id
+                    AND sx.owner_user_id = c.owner_user_id
+                    AND sx.transfer_pending_at IS NULL
+            ) THEN (
+                SELECT COUNT(*)
+                FROM campaign_recipients cr
+                JOIN subscribers sr ON sr.id = cr.subscriber_id
+                WHERE cr.campaign_id = c.id
+                    AND cr.status = ANY('{pending,queued,deferred}'::campaign_recipient_status[])
+                    AND sr.organization_id IS NOT DISTINCT FROM c.organization_id
+                    AND sr.owner_user_id = c.owner_user_id
+                    AND sr.transfer_pending_at IS NULL
             )
             ELSE GREATEST(c.to_send - c.sent, 0)
         END AS unsent_count,
@@ -142,19 +163,41 @@ ORDER BY %order% OFFSET $7 LIMIT (CASE WHEN $8 < 1 THEN NULL ELSE $8 END);
 
 -- name: get-campaign
 SELECT campaigns.*,
+    COALESCE((SELECT rm.email FROM reply_mailboxes rm WHERE rm.id = campaigns.reply_mailbox_id), '') AS reply_mailbox_email,
     CASE
-        WHEN EXISTS (SELECT 1 FROM campaign_recipients crx WHERE crx.campaign_id = campaigns.id) THEN (
-            SELECT COUNT(*) FROM campaign_recipients cr WHERE cr.campaign_id = campaigns.id AND cr.status = ANY('{pending,queued,deferred}'::campaign_recipient_status[])
+        WHEN EXISTS (
+            SELECT 1
+            FROM campaign_recipients crx
+            JOIN subscribers sx ON sx.id = crx.subscriber_id
+            WHERE crx.campaign_id = campaigns.id
+                AND sx.organization_id IS NOT DISTINCT FROM campaigns.organization_id
+                AND sx.owner_user_id = campaigns.owner_user_id
+                AND sx.transfer_pending_at IS NULL
+        ) THEN (
+            SELECT COUNT(*)
+            FROM campaign_recipients cr
+            JOIN subscribers sr ON sr.id = cr.subscriber_id
+            WHERE cr.campaign_id = campaigns.id
+                AND cr.status = ANY('{pending,queued,deferred}'::campaign_recipient_status[])
+                AND sr.organization_id IS NOT DISTINCT FROM campaigns.organization_id
+                AND sr.owner_user_id = campaigns.owner_user_id
+                AND sr.transfer_pending_at IS NULL
         )
         ELSE GREATEST(campaigns.to_send - campaigns.sent, 0)
     END AS unsent_count,
     COALESCE(templates.body, (
         SELECT fallback.body FROM templates fallback
-        WHERE fallback.is_default = true
+            WHERE fallback.is_default = true
             AND fallback.transfer_pending_at IS NULL
+            AND (fallback.organization_id IS NULL OR EXISTS (
+                SELECT 1 FROM organizations fallback_organization
+                WHERE fallback_organization.id = fallback.organization_id
+                    AND fallback_organization.status = 'active'
+            ))
             AND (
                 (fallback.organization_id IS NOT DISTINCT FROM campaigns.organization_id
-                    AND fallback.owner_user_id = campaigns.owner_user_id)
+                    AND (fallback.owner_user_id = campaigns.owner_user_id
+                        OR fallback.visibility = 'organization'))
                 OR fallback.visibility = 'global'
             )
         ORDER BY CASE WHEN fallback.organization_id IS NOT DISTINCT FROM campaigns.organization_id
@@ -166,6 +209,20 @@ SELECT campaigns.*,
         CASE WHEN $4 = 'default' THEN templates.id = campaigns.template_id
         ELSE templates.id = campaigns.archive_template_id END
     )
+        AND templates.transfer_pending_at IS NULL
+        AND (templates.organization_id IS NULL OR EXISTS (
+            SELECT 1 FROM organizations template_organization
+            WHERE template_organization.id = templates.organization_id
+                AND template_organization.status = 'active'
+        ))
+        AND (
+            templates.visibility = 'global'
+            OR (
+                templates.organization_id IS NOT DISTINCT FROM campaigns.organization_id
+                AND (templates.owner_user_id = campaigns.owner_user_id
+                    OR templates.visibility = 'organization')
+            )
+        )
     WHERE CASE
             WHEN $1 > 0 THEN campaigns.id = $1
             WHEN $3 != '' THEN campaigns.archive_slug = $3
@@ -233,18 +290,39 @@ LIMIT 1;
 -- name: get-archived-campaigns
 SELECT COUNT(*) OVER () AS total, campaigns.*,
     CASE
-        WHEN EXISTS (SELECT 1 FROM campaign_recipients crx WHERE crx.campaign_id = campaigns.id) THEN (
-            SELECT COUNT(*) FROM campaign_recipients cr WHERE cr.campaign_id = campaigns.id AND cr.status = ANY('{pending,queued,deferred}'::campaign_recipient_status[])
+        WHEN EXISTS (
+            SELECT 1
+            FROM campaign_recipients crx
+            JOIN subscribers sx ON sx.id = crx.subscriber_id
+            WHERE crx.campaign_id = campaigns.id
+                AND sx.organization_id IS NOT DISTINCT FROM campaigns.organization_id
+                AND sx.owner_user_id = campaigns.owner_user_id
+                AND sx.transfer_pending_at IS NULL
+        ) THEN (
+            SELECT COUNT(*)
+            FROM campaign_recipients cr
+            JOIN subscribers sr ON sr.id = cr.subscriber_id
+            WHERE cr.campaign_id = campaigns.id
+                AND cr.status = ANY('{pending,queued,deferred}'::campaign_recipient_status[])
+                AND sr.organization_id IS NOT DISTINCT FROM campaigns.organization_id
+                AND sr.owner_user_id = campaigns.owner_user_id
+                AND sr.transfer_pending_at IS NULL
         )
         ELSE GREATEST(campaigns.to_send - campaigns.sent, 0)
     END AS unsent_count,
     COALESCE(templates.body, (
         SELECT fallback.body FROM templates fallback
-        WHERE fallback.is_default = true
+            WHERE fallback.is_default = true
             AND fallback.transfer_pending_at IS NULL
+            AND (fallback.organization_id IS NULL OR EXISTS (
+                SELECT 1 FROM organizations fallback_organization
+                WHERE fallback_organization.id = fallback.organization_id
+                    AND fallback_organization.status = 'active'
+            ))
             AND (
                 (fallback.organization_id IS NOT DISTINCT FROM campaigns.organization_id
-                    AND fallback.owner_user_id = campaigns.owner_user_id)
+                    AND (fallback.owner_user_id = campaigns.owner_user_id
+                        OR fallback.visibility = 'organization'))
                 OR fallback.visibility = 'global'
             )
         ORDER BY CASE WHEN fallback.organization_id IS NOT DISTINCT FROM campaigns.organization_id
@@ -257,9 +335,24 @@ SELECT COUNT(*) OVER () AS total, campaigns.*,
         CASE WHEN $3 = 'default' THEN templates.id = campaigns.template_id
         ELSE templates.id = campaigns.archive_template_id END
     )
+        AND templates.transfer_pending_at IS NULL
+        AND (templates.organization_id IS NULL OR EXISTS (
+            SELECT 1 FROM organizations template_organization
+            WHERE template_organization.id = templates.organization_id
+                AND template_organization.status = 'active'
+        ))
+        AND (
+            templates.visibility = 'global'
+            OR (
+                templates.organization_id IS NOT DISTINCT FROM campaigns.organization_id
+                AND (templates.owner_user_id = campaigns.owner_user_id
+                    OR templates.visibility = 'organization')
+            )
+        )
     WHERE campaigns.archive=true AND campaigns.type='regular' AND campaigns.status=ANY('{running, paused, deferred, finished}')
 		AND campaigns.transfer_pending_at IS NULL
 		AND (campaigns.organization_id IS NULL OR organization.status = 'active')
+		AND campaigns.visibility = 'global'
     ORDER by campaigns.created_at DESC OFFSET $1 LIMIT $2;
 
 -- name: get-campaign-stats
@@ -307,8 +400,23 @@ ORDER BY ARRAY_POSITION($1, id);
 -- name: get-campaign-for-preview
 SELECT campaigns.*,
 CASE
-    WHEN EXISTS (SELECT 1 FROM campaign_recipients crx WHERE crx.campaign_id = campaigns.id) THEN (
-        SELECT COUNT(*) FROM campaign_recipients cr WHERE cr.campaign_id = campaigns.id AND cr.status = ANY('{pending,queued,deferred}'::campaign_recipient_status[])
+    WHEN EXISTS (
+        SELECT 1
+        FROM campaign_recipients crx
+        JOIN subscribers sx ON sx.id = crx.subscriber_id
+        WHERE crx.campaign_id = campaigns.id
+            AND sx.organization_id IS NOT DISTINCT FROM campaigns.organization_id
+            AND sx.owner_user_id = campaigns.owner_user_id
+            AND sx.transfer_pending_at IS NULL
+    ) THEN (
+        SELECT COUNT(*)
+        FROM campaign_recipients cr
+        JOIN subscribers sr ON sr.id = cr.subscriber_id
+        WHERE cr.campaign_id = campaigns.id
+            AND cr.status = ANY('{pending,queued,deferred}'::campaign_recipient_status[])
+            AND sr.organization_id IS NOT DISTINCT FROM campaigns.organization_id
+            AND sr.owner_user_id = campaigns.owner_user_id
+            AND sr.transfer_pending_at IS NULL
     )
     ELSE GREATEST(campaigns.to_send - campaigns.sent, 0)
 END AS unsent_count,
@@ -338,8 +446,23 @@ WHERE campaigns.id = $1;
 -- name: get-campaign-status
 SELECT id, status, to_send, sent,
     CASE
-        WHEN EXISTS (SELECT 1 FROM campaign_recipients crx WHERE crx.campaign_id = campaigns.id) THEN (
-            SELECT COUNT(*) FROM campaign_recipients cr WHERE cr.campaign_id = campaigns.id AND cr.status = ANY('{pending,queued,deferred}'::campaign_recipient_status[])
+        WHEN EXISTS (
+            SELECT 1
+            FROM campaign_recipients crx
+            JOIN subscribers sx ON sx.id = crx.subscriber_id
+            WHERE crx.campaign_id = campaigns.id
+                AND sx.organization_id IS NOT DISTINCT FROM campaigns.organization_id
+                AND sx.owner_user_id = campaigns.owner_user_id
+                AND sx.transfer_pending_at IS NULL
+        ) THEN (
+            SELECT COUNT(*)
+            FROM campaign_recipients cr
+            JOIN subscribers sr ON sr.id = cr.subscriber_id
+            WHERE cr.campaign_id = campaigns.id
+                AND cr.status = ANY('{pending,queued,deferred}'::campaign_recipient_status[])
+                AND sr.organization_id IS NOT DISTINCT FROM campaigns.organization_id
+                AND sr.owner_user_id = campaigns.owner_user_id
+                AND sr.transfer_pending_at IS NULL
         )
         ELSE GREATEST(to_send - sent, 0)
     END AS unsent_count,
@@ -363,9 +486,25 @@ SELECT EXISTS (
 -- a campaign. This is used to fetch and slice subscribers for the campaign in next-campaign-subscribers.
 WITH camps AS (
     SELECT campaigns.*,
+        COALESCE((SELECT rm.email FROM reply_mailboxes rm WHERE rm.id = campaigns.reply_mailbox_id), '') AS reply_mailbox_email,
         CASE
-            WHEN EXISTS (SELECT 1 FROM campaign_recipients crx WHERE crx.campaign_id = campaigns.id) THEN (
-                SELECT COUNT(*) FROM campaign_recipients cr WHERE cr.campaign_id = campaigns.id AND cr.status = ANY('{pending,queued,deferred}'::campaign_recipient_status[])
+            WHEN EXISTS (
+                SELECT 1
+                FROM campaign_recipients crx
+                JOIN subscribers sx ON sx.id = crx.subscriber_id
+                WHERE crx.campaign_id = campaigns.id
+                    AND sx.organization_id IS NOT DISTINCT FROM campaigns.organization_id
+                    AND sx.owner_user_id = campaigns.owner_user_id
+                    AND sx.transfer_pending_at IS NULL
+            ) THEN (
+                SELECT COUNT(*)
+                FROM campaign_recipients cr
+                JOIN subscribers sr ON sr.id = cr.subscriber_id
+                WHERE cr.campaign_id = campaigns.id
+                    AND cr.status = ANY('{pending,queued,deferred}'::campaign_recipient_status[])
+                    AND sr.organization_id IS NOT DISTINCT FROM campaigns.organization_id
+                    AND sr.owner_user_id = campaigns.owner_user_id
+                    AND sr.transfer_pending_at IS NULL
             )
             ELSE GREATEST(campaigns.to_send - campaigns.sent, 0)
         END AS unsent_count,
@@ -373,23 +512,55 @@ WITH camps AS (
             SELECT fallback.body FROM templates fallback
             WHERE fallback.is_default = TRUE
                 AND fallback.transfer_pending_at IS NULL
+                AND (fallback.organization_id IS NULL OR EXISTS (
+                    SELECT 1 FROM organizations fallback_organization
+                    WHERE fallback_organization.id = fallback.organization_id
+                        AND fallback_organization.status = 'active'
+                ))
                 AND (
                     (fallback.organization_id IS NOT DISTINCT FROM campaigns.organization_id
-                        AND fallback.owner_user_id = campaigns.owner_user_id)
+                        AND (fallback.owner_user_id = campaigns.owner_user_id
+                            OR fallback.visibility = 'organization'))
                     OR fallback.visibility = 'global'
                 )
             ORDER BY CASE WHEN fallback.organization_id IS NOT DISTINCT FROM campaigns.organization_id
-                AND fallback.owner_user_id = campaigns.owner_user_id THEN 0 ELSE 1 END, fallback.id
+                AND fallback.owner_user_id = campaigns.owner_user_id THEN 0
+                WHEN fallback.organization_id IS NOT DISTINCT FROM campaigns.organization_id
+                    AND fallback.visibility = 'organization' THEN 1
+                ELSE 2 END, fallback.id
             LIMIT 1
         ), '') AS template_body
     FROM campaigns
     LEFT JOIN organizations organization ON organization.id = campaigns.organization_id
-    LEFT JOIN templates ON (templates.id = campaigns.template_id)
+    -- Never hydrate a campaign with a template that is outside the campaign's
+    -- active workspace.  The scheduler is global, so an ID-only join here
+    -- could otherwise send another user's private template body when a
+    -- campaign row is public or organization-shared.
+    LEFT JOIN templates ON (
+        templates.id = campaigns.template_id
+        AND templates.transfer_pending_at IS NULL
+        AND (templates.organization_id IS NULL OR EXISTS (
+            SELECT 1 FROM organizations template_organization
+            WHERE template_organization.id = templates.organization_id
+                AND template_organization.status = 'active'
+        ))
+        AND (
+            templates.visibility = 'global'
+            OR (
+                templates.organization_id IS NOT DISTINCT FROM campaigns.organization_id
+                AND (
+                    templates.owner_user_id = campaigns.owner_user_id
+                    OR templates.visibility = 'organization'
+                )
+            )
+        )
+    )
     WHERE (
         campaigns.status='running'
         OR (campaigns.status='scheduled' AND $2::TIMESTAMPTZ >= campaigns.send_at)
         OR (campaigns.status='deferred' AND campaigns.next_resume_at IS NOT NULL AND $2::TIMESTAMPTZ >= campaigns.next_resume_at)
     )
+    AND campaigns.owner_user_id IS NOT NULL
     AND campaigns.transfer_pending_at IS NULL
 	AND (campaigns.organization_id IS NULL OR organization.status = 'active')
     AND NOT(campaigns.id = ANY($1::INT[]))
@@ -398,11 +569,56 @@ campMedia AS (
     SELECT c.id AS campaign_id, ARRAY_AGG(DISTINCT x.media_id ORDER BY x.media_id)::INT[] AS media_id
     FROM camps c
     JOIN LATERAL (
-        SELECT cm.media_id FROM campaign_media cm
+        SELECT cm.media_id
+        FROM campaign_media cm
+        JOIN media m ON m.id = cm.media_id
         WHERE cm.campaign_id = c.id AND cm.media_id IS NOT NULL
+            AND m.transfer_pending_at IS NULL
+            AND (
+                m.visibility = 'global'
+                OR (
+                    m.organization_id IS NOT DISTINCT FROM c.organization_id
+                    AND m.owner_user_id = c.owner_user_id
+                )
+                OR (
+                    m.organization_id IS NOT DISTINCT FROM c.organization_id
+                    AND m.visibility = 'organization'
+                )
+            )
         UNION
         SELECT tm.media_id FROM template_media tm
+        JOIN templates t ON t.id = tm.template_id
+        LEFT JOIN organizations template_organization ON template_organization.id = t.organization_id
+        JOIN media m ON m.id = tm.media_id
         WHERE tm.template_id = c.template_id AND tm.media_id IS NOT NULL
+            AND t.transfer_pending_at IS NULL
+            AND (t.organization_id IS NULL OR template_organization.status = 'active')
+            AND (
+                t.visibility = 'global'
+                OR (
+                    t.organization_id IS NOT DISTINCT FROM c.organization_id
+                    AND (t.owner_user_id = c.owner_user_id OR t.visibility = 'organization')
+                )
+            )
+            AND m.transfer_pending_at IS NULL
+            AND (
+                m.visibility = 'global'
+                OR (
+                    m.organization_id IS NOT DISTINCT FROM c.organization_id
+                    AND m.owner_user_id = c.owner_user_id
+                )
+                OR (
+                    m.organization_id IS NOT DISTINCT FROM c.organization_id
+                    AND m.visibility = 'organization'
+                )
+                OR (
+                    m.organization_id IS NOT DISTINCT FROM t.organization_id
+                    AND m.owner_user_id IS NOT NULL
+                    AND t.owner_user_id IS NOT NULL
+                    AND m.owner_user_id = t.owner_user_id
+                    AND m.visibility <> 'organization'
+                )
+            )
     ) x ON TRUE
     GROUP BY c.id
 )
@@ -866,11 +1082,28 @@ ORDER BY %order%, email ASC
 OFFSET $9 LIMIT (CASE WHEN $10 < 1 THEN NULL ELSE $10 END);
 
 -- name: get-campaign-send-state
+WITH valid_recipients AS (
+    SELECT cr.*
+    FROM campaign_recipients cr
+    JOIN campaigns c ON c.id = cr.campaign_id
+    JOIN subscribers s ON s.id = cr.subscriber_id
+    WHERE c.id = $1
+        AND s.organization_id IS NOT DISTINCT FROM c.organization_id
+        AND s.owner_user_id = c.owner_user_id
+        AND s.transfer_pending_at IS NULL
+)
 SELECT campaigns.id AS campaign_id,
     campaigns.type AS campaign_type,
     campaigns.status,
     campaigns.messenger,
-    campaigns.daily_send_limit,
+    campaigns.owner_user_id,
+    CASE
+        WHEN campaigns.type = 'regular'
+             AND (campaigns.messenger = 'email' OR campaigns.messenger LIKE 'email-%')
+             AND campaigns.daily_send_limit < 1
+        THEN 300
+        ELSE campaigns.daily_send_limit
+    END AS daily_send_limit,
     campaigns.daily_resume_time,
     campaigns.next_resume_at,
     COALESCE((
@@ -878,18 +1111,27 @@ SELECT campaigns.id AS campaign_id,
         WHERE campaign_id = campaigns.id AND usage_date = $2::DATE
     ), 0) AS daily_sent_count,
     COALESCE((
-        SELECT COUNT(*) FROM campaign_recipients
-        WHERE campaign_id = campaigns.id AND status = 'queued'
+        SELECT COUNT(*) FROM valid_recipients
+        WHERE status = 'queued'
     ), 0) AS queued_count,
     COALESCE((
-        SELECT COUNT(*) FROM campaign_recipients
-        WHERE campaign_id = campaigns.id AND status = ANY('{pending,queued,deferred}'::campaign_recipient_status[])
+        SELECT COUNT(*) FROM valid_recipients
+        WHERE status = ANY('{pending,queued,deferred}'::campaign_recipient_status[])
     ), 0) AS unsent_count
 FROM campaigns
 WHERE campaigns.id = $1;
 
 -- name: has-campaign-recipients
-SELECT EXISTS (SELECT 1 FROM campaign_recipients WHERE campaign_id = $1);
+SELECT EXISTS (
+    SELECT 1
+    FROM campaign_recipients cr
+    JOIN campaigns c ON c.id = cr.campaign_id
+    JOIN subscribers s ON s.id = cr.subscriber_id
+    WHERE cr.campaign_id = $1
+        AND s.organization_id IS NOT DISTINCT FROM c.organization_id
+        AND s.owner_user_id = c.owner_user_id
+        AND s.transfer_pending_at IS NULL
+);
 
 -- name: ensure-campaign-recipients
 -- Build a recipient snapshot only from lists and subscribers that still
@@ -943,9 +1185,14 @@ ON CONFLICT (campaign_id, subscriber_id) DO NOTHING;
 WITH counts AS (
     SELECT
         COUNT(*) AS total,
-        COUNT(*) FILTER (WHERE status = 'sent') AS sent
-    FROM campaign_recipients
-    WHERE campaign_id = $1
+        COUNT(*) FILTER (WHERE cr.status = 'sent') AS sent
+    FROM campaign_recipients cr
+    JOIN campaigns c ON c.id = cr.campaign_id
+    JOIN subscribers s ON s.id = cr.subscriber_id
+    WHERE cr.campaign_id = $1
+        AND s.organization_id IS NOT DISTINCT FROM c.organization_id
+        AND s.owner_user_id = c.owner_user_id
+        AND s.transfer_pending_at IS NULL
 )
 UPDATE campaigns
 SET to_send = COALESCE((SELECT total FROM counts), 0),
@@ -961,7 +1208,15 @@ SET status = 'running',
     next_resume_at = NULL,
     started_at = CASE WHEN started_at IS NULL THEN NOW() ELSE started_at END,
     updated_at = NOW()
-WHERE id = $1;
+WHERE id = $1
+    AND status = ANY('{scheduled,deferred}'::campaign_status[])
+    AND owner_user_id IS NOT NULL
+    AND transfer_pending_at IS NULL
+    AND (organization_id IS NULL OR EXISTS (
+        SELECT 1 FROM organizations organization
+        WHERE organization.id = campaigns.organization_id
+            AND organization.status = 'active'
+    ));
 
 -- name: set-campaign-deferred
 UPDATE campaigns
@@ -979,13 +1234,19 @@ WITH picked AS (
     FROM campaign_recipients cr
     JOIN campaigns c ON c.id = cr.campaign_id
     JOIN subscribers s ON s.id = cr.subscriber_id
-    LEFT JOIN organizations organization ON organization.id = c.organization_id
     WHERE cr.campaign_id = $1
       AND cr.status = ANY($2::campaign_recipient_status[])
       AND c.status = 'running'
       AND c.owner_user_id IS NOT NULL
       AND c.transfer_pending_at IS NULL
-      AND (c.organization_id IS NULL OR organization.status = 'active')
+      -- Use EXISTS instead of an outer join here. PostgreSQL rejects FOR
+      -- UPDATE on a query whose nullable side participates in the join,
+      -- even when the lock is explicitly restricted to campaign_recipients.
+      AND (c.organization_id IS NULL OR EXISTS (
+          SELECT 1 FROM organizations organization
+          WHERE organization.id = c.organization_id
+            AND organization.status = 'active'
+      ))
       AND s.organization_id IS NOT DISTINCT FROM c.organization_id
       AND s.owner_user_id = c.owner_user_id
       AND s.transfer_pending_at IS NULL
@@ -1009,7 +1270,8 @@ WITH picked AS (
               )
       )
     ORDER BY subscriber_id
-    FOR UPDATE SKIP LOCKED
+    -- Lock only the recipient rows that are about to be marked queued.
+    FOR UPDATE OF cr SKIP LOCKED
     LIMIT $3
 ),
 u AS (
@@ -1165,7 +1427,13 @@ UPDATE campaigns SET
         END
     ),
     updated_at=NOW()
-WHERE id = $1;
+WHERE id = $1
+    AND transfer_pending_at IS NULL
+    AND (organization_id IS NULL OR EXISTS (
+        SELECT 1 FROM organizations organization
+        WHERE organization.id = campaigns.organization_id
+            AND organization.status = 'active'
+    ));
 
 -- name: update-campaign-archive
 UPDATE campaigns SET

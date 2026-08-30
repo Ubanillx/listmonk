@@ -97,9 +97,47 @@ func (a *App) SendTxMessage(c echo.Context) error {
 	}
 
 	// Template attachments are stored as media-library references and loaded
-	// only when a message is sent. Request-level multipart attachments are
+	// only when a message is sent. Do not trust the cached template's media ID
+	// slice for authorization: a template can be edited or a media row can be
+	// moved between workspaces after the cache was populated. Read the current
+	// association set, validate every media row against the active workspace,
+	// then load the binary blobs. Request-level multipart attachments are
 	// appended below, so callers can add one-off files to a reusable template.
-	templateAttachments, err := a.manager.GetMediaAttachments([]int64(tpl.MediaIDs))
+	var templateMediaIDs []int
+	if err := a.db.Select(&templateMediaIDs, `
+		SELECT media_id FROM template_media
+		WHERE template_id = $1 AND media_id IS NOT NULL
+		ORDER BY media_id`, m.TemplateID); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError,
+			a.i18n.Ts("globals.messages.errorFetching", "name", err.Error()))
+	}
+	for _, mediaID := range templateMediaIDs {
+		if _, err := a.requireUsableWorkspaceResource(c, access, resourceMedia, mediaID, auth.PermMediaGet); err != nil {
+			// A shared/global template can deliberately carry a private image
+			// owned by its author. Treat that association as part of the
+			// template's published payload, but do not broaden access to an
+			// unrelated private media ID.
+			allowed, mediaErr := a.core.CanUseTemplateMedia(access, m.TemplateID, mediaID)
+			if mediaErr != nil {
+				return mediaErr
+			}
+			if !allowed {
+				return err
+			}
+		}
+	}
+	mediaIDs := make([]int64, 0, len(templateMediaIDs))
+	for _, mediaID := range templateMediaIDs {
+		mediaIDs = append(mediaIDs, int64(mediaID))
+	}
+	// Resolve the binary through the database-backed store's workspace-aware
+	// template path. The manager's historical ID-only loader is intentionally
+	// not used here: a cached template can outlive a media transfer/deletion,
+	// and a shared template may legitimately carry a private image owned by its
+	// author. The store rechecks the exact template association and ownership
+	// boundary before reading each blob.
+	templateAttachments, err := newManagerStore(a.queries, a.core, a.media, a.db).
+		GetTemplateAttachments(access, m.TemplateID, mediaIDs)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError,
 			a.i18n.Ts("globals.messages.errorFetching", "name", err.Error()))
@@ -140,7 +178,11 @@ func (a *App) SendTxMessage(c echo.Context) error {
 			var err error
 			if !isEmails {
 				if _, err = a.requireManagedWorkspaceSubscriber(c, access, subID); err == nil {
-					sub, err = a.core.GetSubscriber(subID, "", "")
+					// Resolve the row through the same workspace predicate that
+					// authorized it. A member can be removed or a resource can be
+					// transferred between these two operations; the legacy global
+					// lookup would otherwise turn that check into a stale read.
+					sub, err = a.core.GetWorkspaceSubscriber(access, subID)
 				}
 			} else {
 				var subs models.Subscribers
@@ -186,8 +228,15 @@ func (a *App) SendTxMessage(c echo.Context) error {
 		msg.Subject = rendered.Subject
 		msg.ContentType = rendered.ContentType
 		msg.Messenger = rendered.Messenger
-		msg.UseSMTPQuota = strings.HasPrefix(rendered.Messenger, emailMsgr)
-		msg.UseSMTPFrom = strings.HasPrefix(rendered.Messenger, emailMsgr)
+		if email.IsMessengerName(msg.Messenger) {
+			msg.Messenger = emailMsgr
+			msg.OwnerUserID = access.UserID
+			if err := a.requirePersonalSMTPAvailable(access.UserID); err != nil {
+				return err
+			}
+		}
+		msg.UseSMTPQuota = email.IsMessengerName(rendered.Messenger)
+		msg.UseSMTPFrom = email.IsMessengerName(rendered.Messenger)
 		msg.Body = rendered.Body
 		msg.AltBody = []byte(rendered.AltBody)
 		for _, a := range templateAttachments {
@@ -206,7 +255,7 @@ func (a *App) SendTxMessage(c echo.Context) error {
 				Content: a.Content,
 			})
 		}
-		if msg.ContentType != models.CampaignContentTypePlain && strings.HasPrefix(msg.Messenger, emailMsgr) {
+		if msg.ContentType != models.CampaignContentTypePlain && email.IsMessengerName(msg.Messenger) {
 			msg.Body, msg.Attachments = manager.InlineMediaImages(msg.Body, msg.Attachments)
 		}
 
@@ -301,6 +350,11 @@ func (a *App) validateTxMessage(m models.TxMessage) (models.TxMessage, error) {
 	}
 
 	if m.Messenger == "" {
+		m.Messenger = emailMsgr
+	} else if email.IsMessengerName(m.Messenger) {
+		// Account-owned SMTP is always a single logical messenger backed by the
+		// caller's complete enabled pool. Never allow a transaction request to
+		// select a platform SMTP (including legacy email-* names).
 		m.Messenger = emailMsgr
 	} else if !a.manager.HasMessenger(m.Messenger) {
 		return m, echo.NewHTTPError(http.StatusBadRequest, a.i18n.Ts("campaigns.fieldInvalidMessenger", "name", m.Messenger))

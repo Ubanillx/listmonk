@@ -82,7 +82,7 @@ func (a *App) GetList(c echo.Context) error {
 	}
 
 	// Get the list from the DB.
-	out, err := a.core.GetList(id, "")
+	out, err := a.core.GetWorkspaceList(access, id)
 	if err != nil {
 		return err
 	}
@@ -116,7 +116,7 @@ func (a *App) CreateList(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	out, err := a.core.CreateList(l, core.ApplyWorkspaceScope(access, visibility))
+	out, err := a.core.CreateListInWorkspace(access, l, core.ApplyWorkspaceScope(access, visibility))
 	if err != nil {
 		return err
 	}
@@ -146,20 +146,20 @@ func (a *App) UpdateList(c echo.Context) error {
 	if !strHasLen(l.Name, 1, stdInputMaxLen) {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("lists.invalidName"))
 	}
-
-	// Update the list in the DB.
-	out, err := a.core.UpdateList(id, l)
-	if err != nil {
-		return err
-	}
+	visibility := ""
 	if l.Visibility != "" {
-		visibility, err := normalizeResourceVisibility(access, resourceLists, l.Visibility)
+		visibility, err = normalizeResourceVisibility(access, resourceLists, l.Visibility)
 		if err != nil {
 			return err
 		}
-		if err := a.core.SetResourceVisibility("lists", id, visibility); err != nil {
-			return err
-		}
+	}
+
+	// Update the list in the DB.
+	out, err := a.core.UpdateListInWorkspace(access, id, l, visibility)
+	if err != nil {
+		return err
+	}
+	if visibility != "" {
 		out.Visibility = visibility
 	}
 
@@ -179,7 +179,7 @@ func (a *App) DeleteList(c echo.Context) error {
 
 	// Delete the list from the DB.
 	// Pass getAll=true since we've already verified permissions above.
-	if err := a.core.DeleteLists([]int{id}, "", true, nil); err != nil {
+	if err := a.core.DeleteListsInWorkspace(access, []int{id}); err != nil {
 		return err
 	}
 
@@ -230,7 +230,7 @@ func (a *App) DeleteLists(c echo.Context) error {
 
 		// Delete the lists from the DB.
 		// Pass getAll=true since we've already verified permissions above.
-		if err := a.core.DeleteLists(ids, "", true, nil); err != nil {
+		if err := a.core.DeleteListsInWorkspace(access, ids); err != nil {
 			return err
 		}
 	} else {
@@ -260,7 +260,7 @@ func (a *App) DeleteLists(c echo.Context) error {
 		// unrestricted search. A filter that finds no manageable lists must be
 		// a successful no-op, never a broad delete.
 		if len(ids) > 0 {
-			if err := a.core.DeleteLists(ids, "", true, nil); err != nil {
+			if err := a.core.DeleteListsInWorkspace(access, ids); err != nil {
 				return err
 			}
 		}

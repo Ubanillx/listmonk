@@ -2,6 +2,42 @@ package models
 
 import "gopkg.in/volatiletech/null.v6"
 
+// SMTPServer is the persisted shape shared by platform and personal SMTP
+// configuration. Personal SMTP records additionally expose an owner and usage
+// summary through dedicated API responses; passwords are always redacted
+// before a response is sent.
+type SMTPServer struct {
+	Name          string  `json:"name" db:"name"`
+	UUID          string  `json:"uuid" db:"uuid"`
+	Enabled       bool    `json:"enabled" db:"enabled"`
+	IsPrimary     bool    `json:"is_primary" db:"is_primary"`
+	FromEmail     string  `json:"from_email" db:"from_email"`
+	DailyLimit    int     `json:"daily_limit" db:"daily_limit"`
+	Host          string  `json:"host" db:"host"`
+	HelloHostname string  `json:"hello_hostname" db:"hello_hostname"`
+	Port          int     `json:"port" db:"port"`
+	AuthProtocol  string  `json:"auth_protocol" db:"auth_protocol"`
+	Username      string  `json:"username" db:"username"`
+	Password      string  `json:"password,omitempty" db:"password"`
+	EmailHeaders  Headers `json:"email_headers" db:"email_headers"`
+	MaxConns      int     `json:"max_conns" db:"max_conns"`
+	MaxMsgRetries int     `json:"max_msg_retries" db:"max_msg_retries"`
+	IdleTimeout   string  `json:"idle_timeout" db:"idle_timeout"`
+	WaitTimeout   string  `json:"wait_timeout" db:"wait_timeout"`
+	TLSType       string  `json:"tls_type" db:"tls_type"`
+	TLSSkipVerify bool    `json:"tls_skip_verify" db:"tls_skip_verify"`
+}
+
+// PersonalSMTPServer is the API representation of a user-owned SMTP server.
+// SentToday is populated from the account-scoped usage table and is safe to
+// expose because it contains no credentials.
+type PersonalSMTPServer struct {
+	Base
+	SMTPServer
+	UserID    int `json:"user_id" db:"user_id"`
+	SentToday int `json:"sent_today" db:"sent_today"`
+}
+
 // Settings represents the app settings stored in the DB.
 type Settings struct {
 	AppSiteName                   string   `json:"app.site_name"`
@@ -80,27 +116,7 @@ type Settings struct {
 	UploadS3BucketType         string   `json:"upload.s3.bucket_type"`
 	UploadS3Expiry             string   `json:"upload.s3.expiry"`
 
-	SMTP []struct {
-		Name          string              `json:"name"`
-		UUID          string              `json:"uuid"`
-		Enabled       bool                `json:"enabled"`
-		IsPrimary     bool                `json:"is_primary"`
-		FromEmail     string              `json:"from_email"`
-		DailyLimit    int                 `json:"daily_limit"`
-		Host          string              `json:"host"`
-		HelloHostname string              `json:"hello_hostname"`
-		Port          int                 `json:"port"`
-		AuthProtocol  string              `json:"auth_protocol"`
-		Username      string              `json:"username"`
-		Password      string              `json:"password,omitempty"`
-		EmailHeaders  []map[string]string `json:"email_headers"`
-		MaxConns      int                 `json:"max_conns"`
-		MaxMsgRetries int                 `json:"max_msg_retries"`
-		IdleTimeout   string              `json:"idle_timeout"`
-		WaitTimeout   string              `json:"wait_timeout"`
-		TLSType       string              `json:"tls_type"`
-		TLSSkipVerify bool                `json:"tls_skip_verify"`
-	} `json:"smtp"`
+	SMTP []SMTPServer `json:"smtp"`
 
 	Messengers []struct {
 		UUID          string `json:"uuid"`

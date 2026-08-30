@@ -3,19 +3,31 @@ package main
 import (
 	"sync"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/knadh/listmonk/models"
+	"github.com/lib/pq"
 )
 
 type smtpQuotaTracker struct {
-	queries  *models.Queries
-	mu       sync.Mutex
-	reserved map[string]int
+	getUsageStmt  *sqlx.Stmt
+	incrementStmt *sqlx.Stmt
+	mu            sync.Mutex
+	reserved      map[string]int
 }
 
 func newSMTPQuotaTracker(q *models.Queries) *smtpQuotaTracker {
 	return &smtpQuotaTracker{
-		queries:  q,
-		reserved: make(map[string]int),
+		getUsageStmt:  q.GetSMTPDailyUsage,
+		incrementStmt: q.IncrementSMTPDailyUsage,
+		reserved:      make(map[string]int),
+	}
+}
+
+func newUserSMTPQuotaTracker(q *models.Queries) *smtpQuotaTracker {
+	return &smtpQuotaTracker{
+		getUsageStmt:  q.GetUserSMTPDailyUsage,
+		incrementStmt: q.IncrementUserSMTPDailyUsage,
+		reserved:      make(map[string]int),
 	}
 }
 
@@ -63,7 +75,18 @@ func (t *smtpQuotaTracker) CommitServer(uuid string) error {
 		t.reserved[uuid]--
 	}
 
-	_, err := t.queries.IncrementSMTPDailyUsage.Exec(uuid, currentLocalDate())
+	_, err := t.incrementStmt.Exec(uuid, currentLocalDate())
+	if err != nil {
+		// A server may be deleted immediately after a delivery starts. The
+		// manager serializes normal configuration changes with sends, but this
+		// guard also protects integrations that remove rows directly: the SMTP
+		// message was already accepted by the remote server, and a missing usage
+		// row is no reason to report a delivery failure (which would retry and
+		// duplicate the message).
+		if pgErr, ok := err.(*pq.Error); ok && pgErr.Code == "23503" {
+			return nil
+		}
+	}
 	return err
 }
 
@@ -78,7 +101,7 @@ func (t *smtpQuotaTracker) ReleaseServer(uuid string) {
 
 func (t *smtpQuotaTracker) getUsage(uuid string) (int, error) {
 	var sent int
-	if err := t.queries.GetSMTPDailyUsage.Get(&sent, uuid, currentLocalDate()); err != nil {
+	if err := t.getUsageStmt.Get(&sent, uuid, currentLocalDate()); err != nil {
 		return 0, err
 	}
 	return sent, nil

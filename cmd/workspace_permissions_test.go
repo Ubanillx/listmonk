@@ -79,6 +79,18 @@ func TestWorkspaceShareAndCopyExceptions(t *testing.T) {
 			wantRead: true,
 			wantCopy: false,
 		},
+		{
+			name:   "archived organization resource is not a copy source",
+			access: manager,
+			scope: models.ResourceScope{
+				OrganizationID:       null.Int{Int: 7, Valid: true},
+				OwnerUserID:          null.Int{Int: 10, Valid: true},
+				Visibility:           models.ResourceVisibilityGlobal,
+				OrganizationArchived: true,
+			},
+			wantRead: false,
+			wantCopy: false,
+		},
 	}
 
 	for _, test := range tests {
@@ -90,6 +102,20 @@ func TestWorkspaceShareAndCopyExceptions(t *testing.T) {
 				t.Fatalf("canCopyWorkspaceResource() = %v, want %v", got, test.wantCopy)
 			}
 		})
+	}
+}
+
+func TestCampaignCopyAllowsManagerInspection(t *testing.T) {
+	manager := models.WorkspaceAccess{
+		Workspace: models.Workspace{OrganizationID: 7, Role: models.OrganizationMemberRoleManager},
+		UserID:    30,
+	}
+	scope := permissionTestScope(7, 20, models.ResourceVisibilityPrivate, false)
+	if !canCopyWorkspaceCampaign(manager, scope) {
+		t.Fatal("organization manager should be able to copy a readable member campaign")
+	}
+	if canCopyWorkspaceResource(manager, scope) {
+		t.Fatal("generic resource copy rule unexpectedly widened")
 	}
 }
 

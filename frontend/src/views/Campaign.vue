@@ -90,6 +90,23 @@
                   <b-input :value="smtpFromPreview" disabled />
                 </b-field>
 
+                <b-field v-if="isSMTPMessenger" label="客户回信邮箱" label-position="on-border"
+                  message="客户回复会直接进入所选企业邮箱；未验证邮箱时不能排期或发送">
+                  <b-select v-model="form.replyMailboxId" :disabled="!canEdit || activeReplyMailboxes.length === 0" expanded>
+                    <option :value="null">不设置回信邮箱</option>
+                    <option v-if="form.replyMailboxId && !activeReplyMailboxes.some((mailbox) => mailbox.id === Number(form.replyMailboxId))"
+                      :value="form.replyMailboxId" disabled>
+                      {{ form.replyMailboxEmail || data.replyMailboxEmail || '历史回信邮箱' }}（当前不可选择）
+                    </option>
+                    <option v-for="mailbox in activeReplyMailboxes" :key="mailbox.id" :value="mailbox.id">
+                      {{ mailbox.name || mailbox.email }}{{ mailbox.isDefault ? '（默认）' : '' }}
+                    </option>
+                  </b-select>
+                </b-field>
+                <p v-if="isSMTPMessenger && replyMailboxesLoaded && activeReplyMailboxes.length === 0" class="help is-warning mb-4">
+                  尚未配置已验证的回信邮箱；如需让客户直接回复到工作邮箱，请先在个人资料中完成配置。
+                </p>
+
                 <list-selector v-model="form.lists" :selected="form.lists" :all="availableLists" :disabled="!canEdit || listsLocked"
                   :label="$t('globals.terms.lists')" :placeholder="$t('campaigns.sendToLists')" />
 
@@ -213,11 +230,16 @@
                     icon="email-outline" :placeholder="$t('campaigns.testEmails')" />
                 </b-field>
                 <b-field>
-                  <b-button @click="() => onSubmit('test')" :loading="loading.campaigns" :disabled="isNew"
+                  <b-button @click="() => onSubmit('test')" :loading="loading.campaigns"
+                    :disabled="isNew || !canSendCampaign || (isSMTPMessenger && !personalSMTPAvailable)"
                     type="is-primary" icon-left="email-outline">
                     {{ $t('campaigns.send') }}
                   </b-button>
                 </b-field>
+                <b-notification v-if="isSMTPMessenger && canManage && personalSMTPLoaded && !personalSMTPAvailable"
+                  type="is-warning" :closable="false" class="mt-4">
+                  {{ $t('settings.personalSMTP.empty') }}
+                </b-notification>
               </div>
             </div>
           </div>
@@ -428,6 +450,10 @@ export default Vue.extend({
       isPreviewingArchive: false,
       activeTab: 'campaign',
       templateMedia: [],
+      personalSMTPAvailable: false,
+      personalSMTPLoaded: false,
+      replyMailboxes: [],
+      replyMailboxesLoaded: false,
 
       data: {},
 
@@ -440,6 +466,7 @@ export default Vue.extend({
         name: '',
         subject: '',
         fromEmail: '',
+        replyMailboxId: null,
         headersStr: '[]',
         headers: [],
         attribsStr: '{}',
@@ -567,6 +594,17 @@ export default Vue.extend({
     },
 
     onSubmit(typ) {
+      if (typ === 'test') {
+        if (!this.canSendCampaign) {
+          this.$utils.toast(this.$t('campaigns.onlyOwnerCanSend'), 'is-danger');
+          return;
+        }
+        if (this.isSMTPMessenger && !this.personalSMTPAvailable) {
+          this.$utils.toast(this.$t('settings.personalSMTP.empty'), 'is-danger');
+          return;
+        }
+      }
+
       if (this.isLimitedSMTPCampaign) {
         const normalized = this.normalizeSMTPDailyFields(this.form.dailySendLimit, this.form.dailyResumeTime);
         this.form.dailySendLimit = normalized.dailySendLimit;
@@ -632,9 +670,14 @@ export default Vue.extend({
           : { dailySendLimit: data.dailySendLimit, dailyResumeTime: data.dailyResumeTime };
 
         this.data = data;
+        const normalizedMessenger = data.messenger?.startsWith('email-') ? 'email' : (data.messenger || 'email');
         this.form = {
           ...this.form,
           ...data,
+          // Legacy installations stored one selectable messenger per SMTP
+          // server (email-<name>). Strict account SMTP now exposes a single
+          // logical `email` messenger backed by the user's enabled pool.
+          messenger: normalizedMessenger,
           ...normalizedSMTP,
           headersStr: JSON.stringify(data.headers, null, 4),
           archiveMetaStr: data.archiveMeta ? JSON.stringify(data.archiveMeta, null, 4) : '{}',
@@ -651,7 +694,7 @@ export default Vue.extend({
         this.isAttachFieldVisible = this.form.media.length > 0;
 
         this.form.media = this.form.media.map((f) => {
-          if (!f.id) {
+          if (!f.id && !f.filename?.startsWith('❌ ')) {
             return { ...f, filename: `❌ ${f.filename}` };
           }
           return f;
@@ -680,6 +723,7 @@ export default Vue.extend({
         subscribers: this.form.testEmails,
         media: this.form.media.map((m) => m.id),
         visibility: this.form.visibility,
+        reply_mailbox_id: this.form.replyMailboxId || null,
       };
 
       this.$api.testCampaign(data).then(() => {
@@ -707,6 +751,7 @@ export default Vue.extend({
         attribs: this.form.attribs,
         media: this.form.media.map((m) => m.id),
         visibility: this.form.visibility,
+        reply_mailbox_id: this.form.replyMailboxId || null,
       };
 
       this.$api.createCampaign(data).then((d) => {
@@ -741,6 +786,7 @@ export default Vue.extend({
         archive_meta: this.form.archiveMeta,
         media: this.form.media.map((m) => m.id),
         visibility: this.form.visibility,
+        reply_mailbox_id: this.form.replyMailboxId || null,
       };
 
       let typMsg = 'globals.messages.updated';
@@ -756,8 +802,26 @@ export default Vue.extend({
       return new Promise((resolve) => {
         this.$api.updateCampaign(this.data.id, data).then((d) => {
           this.data = d;
+          if (d.messenger) {
+            this.form.messenger = d.messenger.startsWith('email-') ? 'email' : d.messenger;
+          }
           this.form.archiveSlug = d.archiveSlug;
           this.form.attribsStr = d.attribs ? JSON.stringify(d.attribs, null, 4) : '{}';
+
+          // The server may snapshot media when a visual template is imported
+          // (and clears the transient template_id). Sync the returned
+          // campaign state back into the form so a second save does not keep
+          // submitting the source template/media IDs or create orphan copies.
+          if (Array.isArray(d.media)) {
+            this.form.media = d.media.map((item) => ({
+              ...item,
+              ...(item.id || item.filename?.startsWith('❌ ') ? {} : { filename: `❌ ${item.filename}` }),
+            }));
+            this.isAttachFieldVisible = this.form.media.length > 0;
+          }
+          this.form.content.templateId = d.templateId || null;
+          this.form.content.body = d.body;
+          this.form.content.bodySource = d.bodySource;
 
           this.$utils.toast(this.$t(typMsg, { name: d.name }));
           resolve();
@@ -816,10 +880,41 @@ export default Vue.extend({
         this.data = d;
       });
     },
+
+    loadPersonalSMTPStatus() {
+      this.personalSMTPLoaded = false;
+      return this.$api.getPersonalSMTP().then((data) => {
+        const rows = Array.isArray(data) ? data : data && data.smtp;
+        this.personalSMTPAvailable = (rows || []).some((server) => server.enabled === true);
+      }).catch(() => {
+        // A failed status check must remain fail-closed in strict SMTP mode.
+        this.personalSMTPAvailable = false;
+      }).finally(() => {
+        this.personalSMTPLoaded = true;
+      });
+    },
+
+    loadReplyMailboxes() {
+      this.replyMailboxesLoaded = false;
+      return this.$api.getReplyMailboxes().then((data) => {
+        this.replyMailboxes = (Array.isArray(data) ? data : []).map((mailbox) => ({
+          ...mailbox,
+          id: Number(mailbox.id),
+        }));
+        if (this.isNew && !this.form.replyMailboxId) {
+          const defaultMailbox = this.activeReplyMailboxes.find((mailbox) => mailbox.isDefault);
+          if (defaultMailbox) this.form.replyMailboxId = defaultMailbox.id;
+        }
+      }).catch(() => {
+        this.replyMailboxes = [];
+      }).finally(() => {
+        this.replyMailboxesLoaded = true;
+      });
+    },
   },
 
   computed: {
-    ...mapState(['serverConfig', 'loading', 'lists', 'templates', 'workspace']),
+    ...mapState(['serverConfig', 'loading', 'lists', 'templates', 'workspace', 'profile']),
 
     canManage() {
       return this.isNew
@@ -835,8 +930,21 @@ export default Vue.extend({
         || this.data.status === 'deferred');
     },
 
+    canSendCampaign() {
+      if (!this.canManage) {
+        return false;
+      }
+      if (this.isNew) {
+        return true;
+      }
+      const ownerID = Number(this.data.ownerUserId || this.data.owner_user_id) || 0;
+      return ownerID > 0 && ownerID === Number(this.profile && this.profile.id);
+    },
+
     canSchedule() {
-      return (this.data.status === 'draft' || this.data.status === 'paused' || this.data.status === 'deferred')
+      return this.canSendCampaign
+        && (!this.isSMTPMessenger || this.personalSMTPAvailable)
+        && (this.data.status === 'draft' || this.data.status === 'paused' || this.data.status === 'deferred')
         && (this.form.sendLater && this.form.sendAtDate);
     },
 
@@ -845,7 +953,10 @@ export default Vue.extend({
     },
 
     canStart() {
-      return (this.data.status === 'draft' || this.data.status === 'paused' || this.data.status === 'deferred') && !this.form.sendLater;
+      return this.canSendCampaign
+        && (!this.isSMTPMessenger || this.personalSMTPAvailable)
+        && (this.data.status === 'draft' || this.data.status === 'paused' || this.data.status === 'deferred')
+        && !this.form.sendLater;
     },
 
     canArchive() {
@@ -853,8 +964,7 @@ export default Vue.extend({
     },
 
     canViewAnalytics() {
-      return this.$canInspectOrganization()
-        || (this.$canManageResource(this.data) && this.$can('campaigns:get_analytics'));
+      return this.$canViewCampaignAnalytics(this.data);
     },
 
     availableLists() {
@@ -873,7 +983,7 @@ export default Vue.extend({
     },
 
     emailMessengers() {
-      return ['email', ...this.serverConfig.messengers.filter((m) => m.startsWith('email-'))];
+      return ['email'];
     },
 
     otherMessengers() {
@@ -897,19 +1007,15 @@ export default Vue.extend({
     },
 
     smtpFromHint() {
-      if (this.form.messenger === 'email') {
-        return this.$t('campaigns.smtpFromHintPooled');
-      }
-
-      return this.$t('campaigns.smtpFromHintNamed', { messenger: this.form.messenger });
+      return this.$t('campaigns.smtpFromHintPooled');
     },
 
     smtpFromPreview() {
-      if (this.form.messenger === 'email') {
-        return this.$t('campaigns.smtpFromPreviewPooled');
-      }
+      return this.$t('campaigns.smtpFromPreviewPooled');
+    },
 
-      return this.$t('campaigns.smtpFromPreviewNamed', { messenger: this.form.messenger });
+    activeReplyMailboxes() {
+      return this.replyMailboxes.filter((mailbox) => mailbox.status === 'active');
     },
   },
 
@@ -943,6 +1049,8 @@ export default Vue.extend({
 
     // Fill default form fields.
     this.form.fromEmail = this.serverConfig.from_email;
+    this.loadPersonalSMTPStatus();
+    this.loadReplyMailboxes();
 
     // New campaign.
     const { id } = this.$route.params;

@@ -1,5 +1,5 @@
 <template>
-  <section class="user-profile section-mini">
+  <section class="user-profile">
     <b-loading v-if="loading.users" :active="loading.users" :is-full-page="false" />
 
     <h1 class="title">
@@ -27,7 +27,8 @@
         </div>
         <div class="column is-6">
           <b-field :label="$t('users.passwordRepeat')" label-position="on-border">
-            <b-input minlength="8" :maxlength="200" v-model="form.password2" type="password" name="password2" />
+            <b-input minlength="8" :maxlength="200" v-model="form.password2" type="password" name="password2"
+              :placeholder="$t('users.passwordRepeat')" />
           </b-field>
         </div>
       </div>
@@ -38,6 +39,10 @@
         </b-button>
       </b-field>
     </form>
+
+    <personal-s-m-t-p-settings />
+
+    <reply-mailbox-settings />
 
     <br /><br />
 
@@ -107,7 +112,8 @@
         <!-- Disable TOTP Flow -->
         <form v-if="showDisableTOTP" class="disable-totp mt-5" @submit.prevent="confirmDisableTOTP">
           <b-field :label="$t('users.password')" label-position="on-border">
-            <b-input ref="disablePasswordInput" v-model="disableTOTPPassword" type="password" minlength="8" required />
+            <b-input ref="disablePasswordInput" v-model="disableTOTPPassword" type="password" minlength="8"
+              :placeholder="$t('users.password')" required />
           </b-field>
           <div class="buttons">
             <b-button type="is-danger" native-type="submit">
@@ -127,12 +133,16 @@
 import Vue from 'vue';
 import { mapState } from 'vuex';
 import CopyText from '../components/CopyText.vue';
+import PersonalSMTPSettings from '../components/PersonalSMTPSettings.vue';
+import ReplyMailboxSettings from '../components/ReplyMailboxSettings.vue';
 
 export default Vue.extend({
   name: 'UserProfile',
 
   components: {
     CopyText,
+    PersonalSMTPSettings,
+    ReplyMailboxSettings,
   },
 
   data() {
@@ -276,3 +286,33 @@ export default Vue.extend({
 
 });
 </script>
+
+<style lang="scss" scoped>
+.user-profile {
+  width: 100%;
+  max-width: 1400px;
+}
+
+// Keep the account form and 2FA panel readable while allowing the SMTP
+// configuration cards to use the full profile content width.
+.user-profile > form,
+.user-profile > .twofa-section {
+  width: 100%;
+  max-width: 760px;
+}
+
+.user-profile .personal-smtp {
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .user-profile {
+    max-width: none;
+  }
+
+  .user-profile > form,
+  .user-profile > .twofa-section {
+    max-width: none;
+  }
+}
+</style>

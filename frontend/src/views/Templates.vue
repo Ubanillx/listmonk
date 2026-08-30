@@ -347,7 +347,7 @@ export default Vue.extend({
 
     isOrganizationManager() {
       return this.workspace.organizationId > 0
-        && (this.workspace.role === 'manager' || (this.profile.userRole && this.profile.userRole.id === 1));
+        && (this.workspace.role === 'manager' || (this.profile.userRole && Number(this.profile.userRole.id) === 1));
     },
 
     canCreateTemplate() {

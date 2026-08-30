@@ -214,25 +214,85 @@ export const getMyOrganizations = () => http.get('/api/organizations/me');
 
 export const createOrganizationRequest = (data) => http.post('/api/organizations/requests', data);
 
+export const getMyOrganizationRequests = () => http.get('/api/organizations/requests/mine');
+
+export const withdrawOrganizationRequest = (id) => http.delete(`/api/organizations/requests/${id}`);
+
 export const joinOrganization = (data) => http.post('/api/organizations/join', data);
 
-export const leaveOrganization = () => http.post('/api/organizations/leave');
+// Management screens select an organization independently of the active
+// workspace. Keep calls without an ID backward-compatible with the current
+// workspace used elsewhere in the app.
+const organizationWorkspaceConfig = (organizationID) => {
+  const id = Number(organizationID);
+  return Number.isInteger(id) && id >= 0 ? { workspaceOrganizationId: id } : {};
+};
 
-export const getOrganizationMembers = () => http.get('/api/organizations/members');
+export const leaveOrganization = (organizationID) => http.post(
+  '/api/organizations/leave',
+  {},
+  organizationWorkspaceConfig(organizationID),
+);
 
-export const addOrganizationMember = (data) => http.post('/api/organizations/members', data);
+export const getOrganizationMembers = (organizationID) => http.get(
+  '/api/organizations/members',
+  organizationWorkspaceConfig(organizationID),
+);
 
-export const updateOrganizationMember = (userID, data) => http.put(`/api/organizations/members/${userID}`, data);
+export const addOrganizationMember = (data, organizationID) => http.post(
+  '/api/organizations/members',
+  data,
+  organizationWorkspaceConfig(organizationID),
+);
 
-export const removeOrganizationMember = (userID) => http.delete(`/api/organizations/members/${userID}`);
+export const updateOrganizationMember = (userID, data, organizationID) => http.put(
+  `/api/organizations/members/${userID}`,
+  data,
+  organizationWorkspaceConfig(organizationID),
+);
 
-export const getOrganizationInvites = () => http.get('/api/organizations/invites');
+export const removeOrganizationMember = (userID, organizationID) => http.delete(
+  `/api/organizations/members/${userID}`,
+  organizationWorkspaceConfig(organizationID),
+);
 
-export const createOrganizationInvite = (data) => http.post('/api/organizations/invites', data);
+export const getOrganizationInvites = (organizationID) => http.get(
+  '/api/organizations/invites',
+  organizationWorkspaceConfig(organizationID),
+);
 
-export const revokeOrganizationInvite = (id) => http.delete(`/api/organizations/invites/${id}`);
+export const createOrganizationInvite = (data, organizationID) => http.post(
+  '/api/organizations/invites',
+  data,
+  organizationWorkspaceConfig(organizationID),
+);
 
-export const transferPendingOrganizationResources = (data) => http.post('/api/organizations/resources/transfer', data);
+export const revokeOrganizationInvite = (id, organizationID) => http.delete(
+  `/api/organizations/invites/${id}`,
+  organizationWorkspaceConfig(organizationID),
+);
+
+export const getReplyForwardRules = (organizationID) => http.get(
+  '/api/organizations/reply-forwarding',
+  organizationWorkspaceConfig(organizationID),
+);
+
+export const updateReplyForwardRule = (id, data, organizationID) => http.put(
+  `/api/organizations/reply-forwarding/${id}`,
+  data,
+  organizationWorkspaceConfig(organizationID),
+);
+
+export const deleteReplyForwardRule = (id, organizationID) => http.delete(
+  `/api/organizations/reply-forwarding/${id}`,
+  organizationWorkspaceConfig(organizationID),
+);
+
+export const transferPendingOrganizationResources = (data, organizationID) => http.post(
+  '/api/organizations/resources/transfer',
+  data,
+  organizationWorkspaceConfig(organizationID),
+);
 
 export const getOrganizationMembersByID = (id) => http.get(`/api/organizations/${id}/members`);
 
@@ -686,6 +746,63 @@ export const updateUserProfile = (data) => http.put(
   '/api/profile',
   data,
   { loading: models.users, store: models.profile },
+);
+
+export const getPersonalSMTP = () => http.get(
+  '/api/profile/smtp',
+  { loading: models.users },
+);
+
+export const updatePersonalSMTP = (data) => http.put(
+  '/api/profile/smtp',
+  data,
+  { loading: models.users },
+);
+
+export const deletePersonalSMTP = (id) => http.delete(
+  `/api/profile/smtp/${id}`,
+  { loading: models.users },
+);
+
+export const testPersonalSMTP = (data) => http.post(
+  '/api/profile/smtp/test',
+  data,
+  { loading: models.users, disableToast: true },
+);
+
+// Dedicated 263 customer-reply mailboxes. Credentials are accepted only on
+// create/update/test and are never returned by the API.
+export const getReplyMailboxes = () => http.get(
+  '/api/profile/reply-mailboxes',
+  { loading: models.users },
+);
+
+export const createReplyMailbox = (data) => http.post(
+  '/api/profile/reply-mailboxes',
+  data,
+  { loading: models.users },
+);
+
+export const updateReplyMailbox = (id, data) => http.put(
+  `/api/profile/reply-mailboxes/${id}`,
+  data,
+  { loading: models.users },
+);
+
+export const deleteReplyMailbox = (id) => http.delete(
+  `/api/profile/reply-mailboxes/${id}`,
+  { loading: models.users },
+);
+
+export const testReplyMailbox = (data) => http.post(
+  '/api/profile/reply-mailboxes/test',
+  data,
+  { loading: models.users, disableToast: true },
+);
+
+export const getUserPersonalSMTP = (id) => http.get(
+  `/api/users/${id}/smtp`,
+  { loading: models.users },
 );
 
 export const getUserRoles = async () => http.get(

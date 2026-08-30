@@ -393,7 +393,7 @@ export default Vue.extend({
     // Organization managers can inspect member lists but must never bulk
     // select them. Cross-page selection is therefore platform-admin only.
     canSelectAllLists() {
-      return this.profile.userRole && this.profile.userRole.id === 1;
+      return this.profile.userRole && Number(this.profile.userRole.id) === 1;
     },
 
     numSelectedLists() {

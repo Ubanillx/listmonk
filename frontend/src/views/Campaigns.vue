@@ -266,6 +266,7 @@
             </b-tooltip>
           </a>
           <router-link
+            v-if="$canViewCampaignAnalytics(props.row)"
             :to="{ name: 'campaignAnalytics', query: { id: props.row.id } }">
             <b-tooltip :label="$t('globals.terms.analytics')" type="is-dark">
               <b-icon icon="chart-bar" size="is-small" />
@@ -576,7 +577,7 @@ export default Vue.extend({
     // Only a platform administrator can safely select every result across
     // pages; other callers keep the row-level ownership controls.
     canSelectAllCampaigns() {
-      return this.profile.userRole && this.profile.userRole.id === 1;
+      return this.profile.userRole && Number(this.profile.userRole.id) === 1;
     },
 
     numSelectedCampaigns() {

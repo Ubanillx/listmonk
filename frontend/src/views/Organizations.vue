@@ -2,7 +2,7 @@
   <section class="organizations">
     <header class="columns page-header">
       <div class="column">
-        <h1 class="title is-4">组织</h1>
+        <h1 class="title is-4"><b-icon icon="office-building-outline" size="is-small" />组织</h1>
         <p class="has-text-grey">{{ workspaceLabel }}</p>
       </div>
     </header>
@@ -10,7 +10,7 @@
     <div class="columns is-variable is-6">
       <div class="column is-5">
         <section class="mb-6">
-          <h2 class="title is-6">我的组织</h2>
+          <h2 class="title is-6"><b-icon icon="office-building-outline" size="is-small" />我的组织</h2>
           <b-table :data="organizations" :mobile-cards="false" narrowed>
             <b-table-column v-slot="props" field="name" label="组织">
               <a href="#" @click.prevent="switchWorkspace(props.row)">{{ props.row.name }}</a>
@@ -23,17 +23,17 @@
         </section>
 
         <section class="mb-6">
-          <h2 class="title is-6">加入组织</h2>
+          <h2 class="title is-6"><b-icon icon="key-outline" size="is-small" />加入组织</h2>
           <form @submit.prevent="joinOrganization">
             <b-field label="邀请码" label-position="on-border">
-              <b-input v-model.trim="joinCode" required />
+              <b-input v-model.trim="joinCode" icon="key-outline" required />
             </b-field>
             <b-button native-type="submit" type="is-primary" icon-left="account-plus-outline">加入</b-button>
           </form>
         </section>
 
         <section>
-          <h2 class="title is-6">申请创建组织</h2>
+          <h2 class="title is-6"><b-icon icon="file-document-edit-outline" size="is-small" />申请创建组织</h2>
           <form @submit.prevent="submitOrganizationRequest">
             <b-field label="组织名称" label-position="on-border">
               <b-input v-model.trim="requestForm.name" maxlength="200" required />
@@ -41,7 +41,7 @@
             <b-field label="说明" label-position="on-border">
               <b-input v-model.trim="requestForm.description" type="textarea" maxlength="2000" />
             </b-field>
-            <b-button native-type="submit" icon-left="send-outline">提交申请</b-button>
+            <b-button native-type="submit" icon-left="file-send-outline">提交申请</b-button>
           </form>
         </section>
       </div>
@@ -49,7 +49,9 @@
       <div class="column" v-if="workspace.organizationId">
         <section class="mb-6">
           <div class="level mb-3">
-            <div class="level-left"><h2 class="title is-6 mb-0">{{ workspace.organizationName }}</h2></div>
+            <div class="level-left">
+              <h2 class="title is-6 mb-0"><b-icon icon="office-building-outline" size="is-small" />{{ workspace.organizationName }}</h2>
+            </div>
             <div class="level-right">
               <b-button type="is-text" @click="leaveCurrentOrganization" icon-left="logout-variant">离开组织</b-button>
             </div>
@@ -136,7 +138,7 @@
 
         <template v-if="isManager">
           <section class="mb-6">
-            <h2 class="title is-6">成员</h2>
+            <h2 class="title is-6"><b-icon icon="account-group-outline" size="is-small" />成员</h2>
             <form class="columns is-multiline" @submit.prevent="addMember">
               <div class="column is-6">
                 <b-field label="已注册账号或邮箱" label-position="on-border">
@@ -176,7 +178,7 @@
           </section>
 
           <section class="mb-6">
-            <h2 class="title is-6">邀请码</h2>
+            <h2 class="title is-6"><b-icon icon="key-outline" size="is-small" />邀请码</h2>
             <form class="columns is-multiline" @submit.prevent="createInvite">
               <div class="column is-4">
                 <b-field label="名称" label-position="on-border"><b-input v-model.trim="inviteForm.name" /></b-field>
@@ -217,7 +219,7 @@
           </section>
 
           <section>
-            <h2 class="title is-6">待转移资源</h2>
+            <h2 class="title is-6"><b-icon icon="swap-horizontal" size="is-small" />待转移资源</h2>
             <div class="columns is-vcentered">
               <div class="column is-7">
                 <b-select v-model.number="transferTargetUserID" placeholder="选择接收成员" expanded>
@@ -239,18 +241,18 @@
     </div>
 
     <section v-if="isPlatformAdmin" class="mt-6">
-      <h2 class="title is-5">组织创建申请</h2>
+      <h2 class="title is-5"><b-icon icon="file-document-edit-outline" size="is-small" />组织创建申请</h2>
       <b-table :data="requests" :mobile-cards="false" narrowed>
         <b-table-column v-slot="props" field="requestedName" label="组织">{{ props.row.requestedName }}</b-table-column>
         <b-table-column v-slot="props" field="requestedByName" label="申请人">{{ props.row.requestedByName }}</b-table-column>
         <b-table-column v-slot="props" field="description" label="说明">{{ props.row.description }}</b-table-column>
         <b-table-column v-slot="props" label="操作" numeric>
-          <b-button size="is-small" type="is-primary" @click="reviewRequest(props.row, true)">确认</b-button>
-          <b-button size="is-small" type="is-text" @click="reviewRequest(props.row, false)">拒绝</b-button>
+          <b-button size="is-small" type="is-primary" icon-left="check" @click="reviewRequest(props.row, true)">确认</b-button>
+          <b-button size="is-small" type="is-text" icon-left="close" @click="reviewRequest(props.row, false)">拒绝</b-button>
         </b-table-column>
       </b-table>
 
-      <h2 class="title is-5 mt-6">组织归档</h2>
+      <h2 class="title is-5 mt-6"><b-icon icon="archive-outline" size="is-small" />组织归档</h2>
       <b-table :data="platformOrganizations" :mobile-cards="false" narrowed>
         <b-table-column v-slot="props" field="name" label="组织">{{ props.row.name }}</b-table-column>
         <b-table-column v-slot="props" field="memberCount" label="成员数">{{ props.row.memberCount }}</b-table-column>
@@ -285,7 +287,7 @@
 
     <b-modal scroll="keep" :aria-modal="true" :active.sync="isArchiveTransferVisible" :width="520">
       <div class="modal-card content" style="width: auto">
-        <header class="modal-card-head"><h4>转移归档资源</h4></header>
+        <header class="modal-card-head"><h4><b-icon icon="swap-horizontal" size="is-small" />转移归档资源</h4></header>
         <section class="modal-card-body">
           <p v-if="archiveTransferOrganization" class="mb-4">{{ archiveTransferOrganization.name }}</p>
           <b-field label="接收成员" label-position="on-border">
@@ -300,7 +302,7 @@
         </section>
         <footer class="modal-card-foot has-text-right">
           <b-button @click="isArchiveTransferVisible = false">{{ $t('globals.buttons.close') }}</b-button>
-          <b-button type="is-primary" :disabled="!archiveTransferTargetUserID" @click="transferArchivedResources">
+          <b-button type="is-primary" icon-left="swap-horizontal" :disabled="!archiveTransferTargetUserID" @click="transferArchivedResources">
 转移
 </b-button>
         </footer>
@@ -352,7 +354,7 @@ export default Vue.extend({
     },
 
     isPlatformAdmin() {
-      return this.profile.userRole && this.profile.userRole.id === 1;
+      return this.profile.userRole && Number(this.profile.userRole.id) === 1;
     },
 
     isManager() {

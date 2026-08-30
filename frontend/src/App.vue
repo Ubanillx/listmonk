@@ -15,21 +15,21 @@
 
         <b-navbar-dropdown class="workspace" tag="div" right>
           <template #label>
-            <b-icon icon="domain" size="is-small" />
+            <b-icon :icon="workspaceIcon" size="is-small" />
             <span class="workspace-label">{{ workspaceLabel }}</span>
           </template>
           <b-navbar-item tag="a" href="#" @click.prevent="switchWorkspace({ organizationId: 0, personal: true })">
-            <b-icon icon="account-outline" />
+            <b-icon icon="account-circle-outline" />
             <span>个人空间</span>
           </b-navbar-item>
           <b-navbar-item v-for="organization in organizations" :key="organization.id" tag="a" href="#"
             @click.prevent="switchWorkspace(organization)">
-            <b-icon icon="domain" />
+            <b-icon icon="office-building-outline" />
             <span>{{ organization.name }}</span>
           </b-navbar-item>
-          <b-navbar-item tag="router-link" to="/organizations">
+          <b-navbar-item tag="router-link" to="/organizations/mine">
             <b-icon icon="account-group-outline" />
-            <span>组织管理</span>
+            <span>组织</span>
           </b-navbar-item>
         </b-navbar-dropdown>
 
@@ -235,6 +235,10 @@ export default Vue.extend({
       return this.workspace.organizationId ? this.workspace.organizationName : '个人空间';
     },
 
+    workspaceIcon() {
+      return this.workspace.organizationId ? 'office-building-outline' : 'account-circle-outline';
+    },
+
     isGlobalNotices() {
       return (this.serverConfig.needs_restart
         || this.serverConfig.has_legacy_user
@@ -268,5 +272,4 @@ export default Vue.extend({
 
 <style lang="scss">
 @import "assets/style.scss";
-@import "assets/icons/fontello.css";
 </style>

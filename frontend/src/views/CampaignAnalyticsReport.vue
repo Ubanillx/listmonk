@@ -451,7 +451,8 @@ export default Vue.extend({
     canReadSubscribers() {
       return this.$can('campaigns:get_analytics')
         && this.$can('subscribers:get_all', 'subscribers:get')
-        && this.form.campaigns.every((campaign) => this.$canManageResource(campaign));
+        && this.form.campaigns.every((campaign) => this.$canViewCampaignAnalytics(campaign)
+          && this.$canManageResource(campaign));
     },
 
     canShowRecipients() {
@@ -636,7 +637,8 @@ export default Vue.extend({
       }
 
       this.form.campaigns = data
-        .filter((item) => item.status === 'fulfilled')
+        .filter((item) => item.status === 'fulfilled'
+          && this.$canViewCampaignAnalytics(item.value))
         .map((item) => this.normalizeCampaign(item.value));
       this.isSearchLoading = false;
       this.refreshReport();
@@ -723,7 +725,9 @@ export default Vue.extend({
           order: 'DESC',
           per_page: 20,
         });
-        this.queriedCampaigns = data.results.map(this.normalizeCampaign);
+        this.queriedCampaigns = data.results
+          .filter((campaign) => this.$canViewCampaignAnalytics(campaign))
+          .map(this.normalizeCampaign);
       } finally {
         this.isSearchLoading = false;
       }
@@ -736,7 +740,8 @@ export default Vue.extend({
     },
 
     selectCampaign(campaign) {
-      if (!campaign || this.form.campaigns.find(({ id }) => id === campaign.id)) {
+      if (!campaign || !this.$canViewCampaignAnalytics(campaign)
+        || this.form.campaigns.find(({ id }) => id === campaign.id)) {
         return;
       }
 

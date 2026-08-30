@@ -57,7 +57,7 @@
       <b-table-column v-slot="props" field="status" :label="$tc('users.role')" header-class="cy-status" sortable
         :td-attrs="$utils.tdID">
         <router-link :to="{ name: 'userRoles' }">
-          <b-tag :class="props.row.userRole.id === 1 ? 'enabled' : 'primary'">
+          <b-tag :class="Number(props.row.userRole.id) === 1 ? 'enabled' : 'primary'">
             <b-icon icon="account-outline" />
             {{ props.row.userRole.name }}
           </b-tag>
@@ -113,6 +113,12 @@
               <b-icon icon="trash-can-outline" size="is-small" />
             </b-tooltip>
           </a>
+          <a v-if="isPlatformAdmin" href="#" @click.prevent="showSMTPStatus(props.row)" data-cy="btn-smtp-status"
+            :aria-label="$t('settings.personalSMTP.viewStatus')">
+            <b-tooltip :label="$t('settings.personalSMTP.viewStatus')" type="is-dark">
+              <b-icon icon="email-outline" size="is-small" />
+            </b-tooltip>
+          </a>
         </div>
       </b-table-column>
 
@@ -124,6 +130,44 @@
     <!-- Add / edit form modal -->
     <b-modal scroll="keep" :aria-modal="true" :active.sync="isFormVisible" :width="600" @close="onFormClose">
       <user-form :data="curItem" :is-editing="isEditing" @finished="formFinished" />
+    </b-modal>
+
+    <b-modal scroll="keep" :aria-modal="true" :active.sync="isSMTPStatusVisible" :width="720">
+      <div class="modal-card content" style="width: auto">
+        <header class="modal-card-head">
+          <h4><b-icon icon="email-outline" size="is-small" /> {{ $t('settings.personalSMTP.statusTitle') }}</h4>
+        </header>
+        <section class="modal-card-body">
+          <p v-if="smtpStatusUser" class="mb-4">
+            <strong>{{ smtpStatusUser.username }}</strong>
+            <span v-if="smtpStatusUser.email" class="has-text-grey"> {{ smtpStatusUser.email }}</span>
+          </p>
+          <b-table :data="smtpStatus" :loading="smtpStatusLoading" :mobile-cards="false" narrowed>
+            <b-table-column v-slot="props" field="name" :label="$t('globals.fields.name')">
+              {{ props.row.name || $t('settings.smtp.name') }}
+            </b-table-column>
+            <b-table-column v-slot="props" field="enabled" :label="$t('settings.smtp.enabled')">
+              <b-tag :type="props.row.enabled ? 'is-success' : 'is-light'">
+                {{ props.row.enabled ? $t('globals.states.on') : $t('globals.states.off') }}
+              </b-tag>
+            </b-table-column>
+            <b-table-column v-slot="props" field="dailyLimit" :label="$t('settings.smtp.dailyLimit')" numeric>
+              {{ props.row.dailyLimit || 0 }}
+            </b-table-column>
+            <b-table-column v-slot="props" field="sentToday" :label="$t('settings.personalSMTP.sentTodayShort')" numeric>
+              {{ props.row.sentToday || 0 }}
+            </b-table-column>
+            <b-table-column v-slot="props" field="updatedAt" :label="$t('globals.fields.updatedAt')">
+              {{ props.row.updatedAt ? $utils.niceDate(props.row.updatedAt, true) : '-' }}
+            </b-table-column>
+            <template #empty><span class="has-text-grey">{{ $t('settings.personalSMTP.empty') }}</span></template>
+          </b-table>
+          <p class="help mt-4">{{ $t('settings.personalSMTP.statusReadOnly') }}</p>
+        </section>
+        <footer class="modal-card-foot has-text-right">
+          <b-button @click="isSMTPStatusVisible = false">{{ $t('globals.buttons.close') }}</b-button>
+        </footer>
+      </div>
     </b-modal>
   </section>
 </template>
@@ -146,6 +190,10 @@ export default Vue.extend({
       curItem: null,
       isEditing: false,
       isFormVisible: false,
+      isSMTPStatusVisible: false,
+      smtpStatusLoading: false,
+      smtpStatus: [],
+      smtpStatusUser: null,
       users: [],
       checked: [],
       queryParams: {
@@ -158,16 +206,30 @@ export default Vue.extend({
   },
 
   methods: {
+    showSMTPStatus(user) {
+      this.smtpStatusUser = user;
+      this.smtpStatus = [];
+      this.isSMTPStatusVisible = true;
+      this.smtpStatusLoading = true;
+      this.$api.getUserPersonalSMTP(user.id).then((data) => {
+        this.smtpStatus = (data && data.smtp) || [];
+      }).finally(() => {
+        this.smtpStatusLoading = false;
+      });
+    },
+
     onSort(field, direction) {
       this.queryParams.orderBy = field;
       this.queryParams.order = direction;
       this.getUsers();
     },
 
-    onTableCheck() {
-      // Disable bulk.all selection if there are no rows checked in the table.
-      if (this.bulk.checked.length !== this.subscribers.total) {
-        this.bulk.all = false;
+    onTableCheck(rows) {
+      // Users currently have no bulk action toolbar. Keep the callback safe
+      // for Buefy's check/check-all events while the selection is synced by
+      // checked-rows.sync.
+      if (Array.isArray(rows)) {
+        this.checked = rows;
       }
     },
 
@@ -220,7 +282,11 @@ export default Vue.extend({
   },
 
   computed: {
-    ...mapState(['loading', 'settings']),
+    ...mapState(['loading', 'settings', 'profile']),
+
+    isPlatformAdmin() {
+      return this.profile && this.profile.userRole && Number(this.profile.userRole.id) === 1;
+    },
   },
 
   created() {

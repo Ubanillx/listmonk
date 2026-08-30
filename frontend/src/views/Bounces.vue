@@ -224,7 +224,7 @@ export default Vue.extend({
     },
 
     isPlatformAdmin() {
-      return this.profile && this.profile.userRole && this.profile.userRole.id === 1;
+      return this.profile && this.profile.userRole && Number(this.profile.userRole.id) === 1;
     },
 
     numSelectedBounces() {

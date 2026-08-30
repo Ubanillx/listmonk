@@ -1,6 +1,7 @@
 import Vue from 'vue';
 import Buefy from 'buefy';
 import VueI18n from 'vue-i18n';
+import '@mdi/font/css/materialdesignicons.css';
 
 import App from './App.vue';
 import router from './router';
@@ -15,10 +16,34 @@ const i18n = new VueI18n();
 Vue.use(Buefy, {});
 Vue.config.productionTip = false;
 
+// Return null until the authenticated profile has been loaded. This keeps the
+// initial router transition from denying a manager before memberships arrive,
+// while still allowing the route to be checked on every later transition.
+function organizationManagerAccess() {
+  const { profile } = store.state;
+  if (!profile || !profile.userRole) {
+    return null;
+  }
+
+  if (Number(profile.userRole.id) === 1) {
+    return true;
+  }
+
+  const organizations = Array.isArray(store.state.organizations)
+    ? store.state.organizations
+    : [];
+  return organizations.some((organization) => organization.myRole === 'manager');
+}
+
 // Setup the router.
 router.beforeEach((to, from, next) => {
   if (to.matched.length === 0) {
     next('/404');
+  } else if (to.matched.some((route) => route.meta && route.meta.organizationManager)
+    && organizationManagerAccess() === false) {
+    // Keep the management screen out of direct URL access for members and
+    // users who do not belong to an organization.
+    next({ name: 'organizationMine' });
   } else {
     next();
   }
@@ -55,6 +80,15 @@ async function initConfig(app) {
   }
   store.commit('setWorkspace', workspace);
 
+  // The first router transition happens before the async profile request. If
+  // it landed on the management URL, enforce the now-known membership after
+  // initialization as well.
+  if (router.currentRoute
+    && router.currentRoute.matched.some((route) => route.meta && route.meta.organizationManager)
+    && organizationManagerAccess() === false) {
+    await router.replace({ name: 'organizationMine' });
+  }
+
   const lang = await api.getLang(cfg.lang);
   i18n.locale = cfg.lang;
   i18n.setLocaleMessage(i18n.locale, lang);
@@ -66,7 +100,7 @@ async function initConfig(app) {
   // $can('permission:name') is used in the UI to check whether the logged in user
   // has a certain permission to toggle visibility of UI objects and UI functionality.
   Vue.prototype.$can = (...perms) => {
-    if (profile.userRole.id === 1) {
+    if (Number(profile.userRole.id) === 1) {
       return true;
     }
 
@@ -84,7 +118,7 @@ async function initConfig(app) {
   };
 
   Vue.prototype.$canList = (id, perm) => {
-    if (profile.userRole.id === 1) {
+    if (Number(profile.userRole.id) === 1) {
       return true;
     }
 
@@ -108,7 +142,7 @@ async function initConfig(app) {
     if (!resource) {
       return false;
     }
-    if (profile.userRole.id === 1) {
+    if (Number(profile.userRole.id) === 1) {
       return true;
     }
     const ownerID = Number(resource.ownerUserId || resource.owner_user_id) || 0;
@@ -159,7 +193,7 @@ async function initConfig(app) {
     if (!resource || resource.transferPendingAt || resource.transfer_pending_at) {
       return false;
     }
-    if (profile.userRole.id === 1) {
+    if (Number(profile.userRole.id) === 1) {
       return true;
     }
     const ownerID = Number(resource.ownerUserId || resource.owner_user_id) || 0;
@@ -184,7 +218,45 @@ async function initConfig(app) {
   Vue.prototype.$canInspectOrganization = () => {
     const activeWorkspace = store.state.workspace || {};
     return Number(activeWorkspace.organizationId) > 0
-      && (profile.userRole.id === 1 || activeWorkspace.role === 'manager');
+      && (Number(profile.userRole.id) === 1 || activeWorkspace.role === 'manager');
+  };
+
+  // Aggregate campaign analytics are narrower than campaign visibility. A
+  // public campaign may be opened or copied by any signed-in user, but only
+  // its owner, an organization manager in that campaign's organization, or a
+  // platform administrator may inspect its statistics. Keep this helper in
+  // sync with requireCampaignAnalytics on the server so read-only rows do not
+  // render a link that is guaranteed to return 403.
+  Vue.prototype.$canViewCampaignAnalytics = (campaign) => {
+    if (!campaign) {
+      return false;
+    }
+    if (Number(profile.userRole.id) === 1) {
+      return true;
+    }
+
+    const activeWorkspace = store.state.workspace || {};
+    const activeOrganizationID = Number(activeWorkspace.organizationId) || 0;
+    const resourceOrganizationID = Number(campaign.organizationId || campaign.organization_id) || 0;
+    const ownerID = Number(campaign.ownerUserId || campaign.owner_user_id) || 0;
+    const transferPending = !!(campaign.transferPendingAt || campaign.transfer_pending_at);
+
+    // Managers may inspect aggregate statistics for every campaign in the
+    // selected organization, including rows pending transfer. A global
+    // campaign from another organization remains outside that grant.
+    if (activeOrganizationID > 0
+      && activeWorkspace.role === 'manager'
+      && resourceOrganizationID === activeOrganizationID) {
+      return true;
+    }
+
+    // Owners must still be in the matching workspace and the legacy analytics
+    // permission remains a narrowing guard. Pending-transfer rows are no
+    // longer owned by the departing user and therefore cannot be reported.
+    return !transferPending
+      && ownerID === profile.id
+      && resourceOrganizationID === activeOrganizationID
+      && Vue.prototype.$can('campaigns:get_analytics');
   };
 
   // Set the page title after i18n has loaded.

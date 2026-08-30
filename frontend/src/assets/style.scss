@@ -265,9 +265,23 @@ section {
       border-radius: 0;
     }
     .icon {
+      width: 20px;
+      height: 20px;
       margin-right: 8px;
+      color: $grey;
+    }
+    a:hover .icon,
+    a.is-active .icon,
+    .router-link-exact-active .icon {
+      color: $primary;
     }
   }
+}
+
+.organizations .title .icon {
+  margin-right: 6px;
+  color: $primary;
+  vertical-align: -0.08em;
 }
 
 /* Fix for sidebar jumping on modals */

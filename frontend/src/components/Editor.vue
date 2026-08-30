@@ -313,6 +313,12 @@ export default {
           this.$api.getTemplate(this.visualTemplateId).then((data) => {
             this.self.body = data.body;
             this.self.bodySource = data.bodySource;
+            // Keep the source visual-template ID in the transient campaign
+            // form. The server uses it only to validate and snapshot the
+            // template's media (including private author media); visual
+            // campaigns still clear template_id after the import is saved.
+            this.templateId = this.visualTemplateId;
+            this.self.templateId = this.visualTemplateId;
             this.isVisualTplDisabled = true;
 
             // Visual templates are copied into a campaign rather than linked

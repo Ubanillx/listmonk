@@ -99,6 +99,7 @@ const LANGS = {
   'pt-BR': 'pt_BR',
   ro: 'ro',
   tr: 'tr',
+  'zh-CN': 'zh_CN',
 };
 
 export default {
@@ -141,10 +142,10 @@ export default {
         urlconverter_callback: this.onEditorURLConvert,
 
         setup: (editor) => {
-          editor.addShortcut('ctrl+s', 'Save content', () => {
+          editor.addShortcut('ctrl+s', this.$t('campaigns.editor.saveContent'), () => {
             this.$events.$emit('campaign.update', {});
           });
-          editor.addShortcut('f9', 'Preview', () => {
+          editor.addShortcut('f9', this.$t('campaigns.editor.preview'), () => {
             this.$events.$emit('campaign.preview', {});
           });
 
@@ -156,13 +157,13 @@ export default {
           // Custom HTML editor.
           editor.ui.registry.addButton('html', {
             icon: 'sourcecode',
-            tooltip: 'Source code',
+            tooltip: this.$t('campaigns.editor.sourceCode'),
             onAction: this.onRichtextViewSource,
           });
 
           editor.ui.registry.addButton('insert-html', {
             icon: 'code-sample',
-            tooltip: 'Insert HTML',
+            tooltip: this.$t('campaigns.editor.insertHTML'),
             onAction: this.onOpenInsertHTML,
           });
 
@@ -203,9 +204,9 @@ export default {
 
         image_advtab: true,
         image_class_list: [
-          { title: 'None', value: '' },
-          { title: 'Float left', value: 'img-float-left' },
-          { title: 'Float right', value: 'img-float-right' },
+          { title: this.$t('campaigns.editor.imageNone'), value: '' },
+          { title: this.$t('campaigns.editor.imageFloatLeft'), value: 'img-float-left' },
+          { title: this.$t('campaigns.editor.imageFloatRight'), value: 'img-float-right' },
         ],
 
         file_picker_types: 'image',

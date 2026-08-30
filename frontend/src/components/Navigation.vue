@@ -40,6 +40,9 @@
       <b-menu-item :to="{ name: 'templates' }" tag="router-link"
         :active="activeItem.templates" data-cy="templates" icon="email-outline"
         :label="$t('globals.terms.templates')" />
+      <b-menu-item :to="{ name: 'customFields' }" tag="router-link"
+        :active="activeItem.customFields" data-cy="custom-fields" icon="form-textbox"
+        :label="$t('customFields.title')" />
       <b-menu-item :to="{ name: 'campaignAnalytics' }" tag="router-link"
         :active="activeItem.campaignAnalytics" data-cy="analytics" icon="chart-box-outline"
         :label="$t('globals.terms.analytics')" />

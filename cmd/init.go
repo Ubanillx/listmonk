@@ -656,6 +656,9 @@ func initImporter(q *models.Queries, db *sqlx.DB, core *core.Core, i *i18n.I18n,
 				notifs.NotifySystem(subject, notifs.TplImport, data, nil)
 				return nil
 			},
+			ValidateAttribs: func(values models.JSON) error {
+				return core.ValidateCustomFieldValues(values)
+			},
 		}, db.DB, i)
 }
 

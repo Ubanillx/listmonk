@@ -84,6 +84,12 @@ const routes = [
     component: () => import('../views/Templates.vue'),
   },
   {
+    path: '/campaigns/custom-fields',
+    name: 'customFields',
+    meta: { title: 'customFields.title', group: 'campaigns' },
+    component: () => import('../views/CustomFields.vue'),
+  },
+  {
     path: '/campaigns/analytics',
     name: 'campaignAnalytics',
     meta: { title: 'analytics.title', group: 'campaigns' },

@@ -186,6 +186,9 @@ CREATE TABLE campaign_recipients (
     campaign_id    INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE ON UPDATE CASCADE,
     subscriber_id  INTEGER NOT NULL REFERENCES subscribers(id) ON DELETE CASCADE ON UPDATE CASCADE,
     status         campaign_recipient_status NOT NULL DEFAULT 'pending',
+    email_snapshot TEXT,
+    name_snapshot  TEXT,
+    attribs_snapshot JSONB,
     sent_at        TIMESTAMP WITH TIME ZONE,
     created_at     TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at     TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -309,6 +312,7 @@ CREATE TABLE settings (
 );
 DROP INDEX IF EXISTS idx_settings_key; CREATE INDEX idx_settings_key ON settings(key);
 INSERT INTO settings (key, value) VALUES
+	('subscriber.custom_fields', '[]'),
     ('app.site_name', '"Mailing list"'),
     ('app.root_url', '"http://localhost:9000"'),
     ('app.favicon_url', '""'),
@@ -329,7 +333,7 @@ INSERT INTO settings (key, value) VALUES
     ('app.send_optin_confirmation', 'true'),
     ('app.check_updates', 'true'),
     ('app.notify_emails', '[]'),
-    ('app.lang', '"en"'),
+    ('app.lang', '"zh-CN"'),
     ('privacy.individual_tracking', 'false'),
     ('privacy.disable_tracking', 'false'),
     ('privacy.unsubscribe_header', 'true'),

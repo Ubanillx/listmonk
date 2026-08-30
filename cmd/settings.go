@@ -95,6 +95,9 @@ func (a *App) UpdateSettings(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	// Subscriber field definitions have their own administrator-only endpoint.
+	// Do not let a broad settings payload overwrite them accidentally.
+	set.CustomFields = cur.CustomFields
 
 	// Validate and sanitize postback Messenger names along with SMTP names
 	// (where each SMTP is also considered as a standalone messenger).
@@ -331,6 +334,9 @@ func (a *App) UpdateSettingsByKey(c echo.Context) error {
 	key := c.Param("key")
 	if key == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("globals.messages.invalidData"))
+	}
+	if key == customFieldsSettingKey {
+		return echo.NewHTTPError(http.StatusForbidden, "use the custom fields endpoint")
 	}
 
 	// Read the raw JSON body as the value.

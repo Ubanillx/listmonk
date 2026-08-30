@@ -113,6 +113,10 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.GET("/api/logs", pm(a.GetLogs, "settings:get"))
 		g.GET("/api/events", pm(a.EventStream, "settings:get"))
 		g.GET("/api/about", a.GetAboutInfo)
+		g.GET("/api/custom-fields", a.GetCustomFields)
+		g.POST("/api/custom-fields", a.CreateCustomField)
+		g.PUT("/api/custom-fields/:key", a.UpdateCustomField)
+		g.DELETE("/api/custom-fields/:key", a.DeleteCustomField)
 
 		// Workspace-scoped subscriber handlers enforce owner and organization
 		// boundaries themselves. Global role middleware here would reject a

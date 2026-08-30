@@ -162,6 +162,9 @@ func (s *store) NextCampaigns(currentIDs []int64) ([]*models.Campaign, error) {
 				return nil, err
 			}
 		}
+		if _, err := s.queries.SnapshotCampaignRecipients.Exec(c.ID); err != nil {
+			return nil, err
+		}
 
 		if _, err := s.queries.ResetCampaignQueuedRecipients.Exec(c.ID, models.CampaignRecipientStatusPending); err != nil {
 			return nil, err

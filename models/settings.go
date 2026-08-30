@@ -40,18 +40,22 @@ type PersonalSMTPServer struct {
 
 // Settings represents the app settings stored in the DB.
 type Settings struct {
-	AppSiteName                   string   `json:"app.site_name"`
-	AppRootURL                    string   `json:"app.root_url"`
-	AppLogoURL                    string   `json:"app.logo_url"`
-	AppFaviconURL                 string   `json:"app.favicon_url"`
-	AppFromEmail                  string   `json:"app.from_email"`
-	AppNotifyEmails               []string `json:"app.notify_emails"`
-	EnablePublicSubPage           bool     `json:"app.enable_public_subscription_page"`
-	EnablePublicArchive           bool     `json:"app.enable_public_archive"`
-	EnablePublicArchiveRSSContent bool     `json:"app.enable_public_archive_rss_content"`
-	SendOptinConfirmation         bool     `json:"app.send_optin_confirmation"`
-	CheckUpdates                  bool     `json:"app.check_updates"`
-	AppLang                       string   `json:"app.lang"`
+	// CustomFields contains the globally defined subscriber fields. The
+	// definitions are managed by the platform administrator and the values
+	// themselves are stored on each subscriber in attribs.
+	CustomFields                  []CustomFieldDefinition `json:"subscriber.custom_fields,omitempty"`
+	AppSiteName                   string                  `json:"app.site_name"`
+	AppRootURL                    string                  `json:"app.root_url"`
+	AppLogoURL                    string                  `json:"app.logo_url"`
+	AppFaviconURL                 string                  `json:"app.favicon_url"`
+	AppFromEmail                  string                  `json:"app.from_email"`
+	AppNotifyEmails               []string                `json:"app.notify_emails"`
+	EnablePublicSubPage           bool                    `json:"app.enable_public_subscription_page"`
+	EnablePublicArchive           bool                    `json:"app.enable_public_archive"`
+	EnablePublicArchiveRSSContent bool                    `json:"app.enable_public_archive_rss_content"`
+	SendOptinConfirmation         bool                    `json:"app.send_optin_confirmation"`
+	CheckUpdates                  bool                    `json:"app.check_updates"`
+	AppLang                       string                  `json:"app.lang"`
 
 	AppBatchSize             int    `json:"app.batch_size"`
 	AppConcurrency           int    `json:"app.concurrency"`
@@ -172,4 +176,16 @@ type Settings struct {
 	AdminCustomJS   string `json:"appearance.admin.custom_js"`
 	PublicCustomCSS string `json:"appearance.public.custom_css"`
 	PublicCustomJS  string `json:"appearance.public.custom_js"`
+}
+
+// CustomFieldDefinition describes a subscriber field exposed in forms,
+// imports and campaign templates.
+type CustomFieldDefinition struct {
+	Key         string   `json:"key"`
+	Label       string   `json:"label"`
+	Type        string   `json:"type"`
+	Required    bool     `json:"required"`
+	Options     []string `json:"options,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Active      bool     `json:"active"`
 }

@@ -40,6 +40,25 @@ func (a *App) ImportSubscribers(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest,
 			a.i18n.Ts("import.invalidParams", "error", err.Error()))
 	}
+	// Reject mappings for fields that have not been defined by the platform
+	// administrator. Built-in email/name/attributes are always allowed.
+	if len(opt.FieldMap) > 0 {
+		set, err := a.core.GetSettings()
+		if err != nil {
+			return err
+		}
+		allowed := map[string]bool{"email": true, "name": true, "attributes": true}
+		for _, f := range set.CustomFields {
+			if f.Active {
+				allowed[f.Key] = true
+			}
+		}
+		for key := range opt.FieldMap {
+			if !allowed[strings.ToLower(strings.TrimSpace(key))] {
+				return echo.NewHTTPError(http.StatusBadRequest, "unknown custom field: "+key)
+			}
+		}
+	}
 
 	// Validate mode.
 	if opt.Mode != subimporter.ModeSubscribe && opt.Mode != subimporter.ModeBlocklist {

@@ -1177,8 +1177,10 @@ subs AS (
         )
     )
 )
-INSERT INTO campaign_recipients (campaign_id, subscriber_id, status)
-SELECT $1, subscriber_id, 'pending'::campaign_recipient_status FROM subs
+INSERT INTO campaign_recipients (campaign_id, subscriber_id, status, email_snapshot, name_snapshot, attribs_snapshot)
+SELECT $1, s.id, 'pending'::campaign_recipient_status, s.email, s.name, s.attribs
+FROM subs
+JOIN subscribers s ON s.id = subs.subscriber_id
 ON CONFLICT (campaign_id, subscriber_id) DO NOTHING;
 
 -- name: sync-campaign-progress
@@ -1201,6 +1203,18 @@ SET to_send = COALESCE((SELECT total FROM counts), 0),
     updated_at = NOW()
 WHERE id = $1
 RETURNING to_send, sent, started_at;
+
+-- name: snapshot-campaign-recipients
+-- Backfill snapshots for campaigns created before recipient snapshots existed.
+UPDATE campaign_recipients cr
+SET email_snapshot = s.email,
+    name_snapshot = s.name,
+    attribs_snapshot = s.attribs,
+    updated_at = NOW()
+FROM subscribers s
+WHERE cr.campaign_id = $1
+  AND cr.subscriber_id = s.id
+  AND cr.email_snapshot IS NULL;
 
 -- name: set-campaign-running
 UPDATE campaigns
@@ -1283,9 +1297,17 @@ u AS (
       AND cr.subscriber_id = picked.subscriber_id
     RETURNING cr.subscriber_id, cr.status AS recipient_status, cr.sent_at
 )
-SELECT s.*, u.recipient_status, u.sent_at
+SELECT s.id, s.uuid,
+    COALESCE(cr.email_snapshot, s.email) AS email,
+    COALESCE(cr.name_snapshot, s.name) AS name,
+    COALESCE(cr.attribs_snapshot, s.attribs) AS attribs,
+    s.status, s.created_at, s.updated_at,
+    s.organization_id, s.owner_user_id, s.original_owner_user_id, s.visibility,
+    s.transfer_pending_at,
+    u.recipient_status, u.sent_at
 FROM u
 JOIN subscribers s ON s.id = u.subscriber_id
+JOIN campaign_recipients cr ON cr.campaign_id = $1 AND cr.subscriber_id = s.id
 ORDER BY s.id;
 
 -- name: mark-campaign-recipient-sent

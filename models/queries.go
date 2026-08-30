@@ -93,6 +93,7 @@ type Queries struct {
 	HasCampaignRecipients           *sqlx.Stmt `query:"has-campaign-recipients"`
 	EnsureCampaignRecipients        *sqlx.Stmt `query:"ensure-campaign-recipients"`
 	SyncCampaignProgress            *sqlx.Stmt `query:"sync-campaign-progress"`
+	SnapshotCampaignRecipients      *sqlx.Stmt `query:"snapshot-campaign-recipients"`
 	SetCampaignRunning              *sqlx.Stmt `query:"set-campaign-running"`
 	SetCampaignDeferred             *sqlx.Stmt `query:"set-campaign-deferred"`
 	NextCampaignSubscribers         *sqlx.Stmt `query:"queue-campaign-subscribers"`
@@ -141,11 +142,11 @@ type Queries struct {
 	IncrementUserSMTPDailyUsage *sqlx.Stmt `query:"increment-user-smtp-daily-usage"`
 	GetUserSMTPRemaining        *sqlx.Stmt `query:"get-user-smtp-remaining"`
 
-	GetReplyMailboxes      *sqlx.Stmt `query:"get-reply-mailboxes"`
-	GetReplyMailbox        *sqlx.Stmt `query:"get-reply-mailbox"`
-	CreateReplyMailbox     *sqlx.Stmt `query:"create-reply-mailbox"`
-	UpdateReplyMailbox     *sqlx.Stmt `query:"update-reply-mailbox"`
-	DisableReplyMailbox    *sqlx.Stmt `query:"disable-reply-mailbox"`
+	GetReplyMailboxes   *sqlx.Stmt `query:"get-reply-mailboxes"`
+	GetReplyMailbox     *sqlx.Stmt `query:"get-reply-mailbox"`
+	CreateReplyMailbox  *sqlx.Stmt `query:"create-reply-mailbox"`
+	UpdateReplyMailbox  *sqlx.Stmt `query:"update-reply-mailbox"`
+	DisableReplyMailbox *sqlx.Stmt `query:"disable-reply-mailbox"`
 
 	// GetStats *sqlx.Stmt `query:"get-stats"`
 	RecordBounce                *sqlx.Stmt `query:"record-bounce"`

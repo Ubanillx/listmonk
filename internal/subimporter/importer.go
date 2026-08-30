@@ -78,6 +78,7 @@ type Options struct {
 	WorkspaceBlocklistStmt *sql.Stmt
 	UpdateListDateStmt     *sql.Stmt
 	PostCB                 func(subject string, data any) error
+	ValidateAttribs        func(models.JSON) error
 
 	DomainBlocklist []string
 	DomainAllowlist []string
@@ -888,11 +889,10 @@ func (s *Session) resolveMappings(firstRow []string) (map[string]int, bool, erro
 		}
 	}
 
-	out := make(map[string]int, 3)
+	out := make(map[string]int, len(fieldMap))
 	headerMatched := false
-	for _, key := range []string{"email", "name", "attributes"} {
-		ref, ok := fieldMap[key]
-		if !ok {
+	for key, ref := range fieldMap {
+		if key == "" {
 			continue
 		}
 
@@ -993,6 +993,22 @@ func (s *Session) enqueueRow(cols []string, keyMap map[string]int, line int) err
 			s.log.Printf("skipping invalid attributes JSON on line %d for '%s': %v", line, sub.Email, err)
 		} else {
 			sub.Attribs = attribs
+		}
+	}
+	if sub.Attribs == nil {
+		sub.Attribs = models.JSON{}
+	}
+	for key := range keyMap {
+		if key == "email" || key == "name" || key == "attributes" {
+			continue
+		}
+		if value := getMappedValue(cols, keyMap, key); value != "" {
+			sub.Attribs[key] = value
+		}
+	}
+	if s.im.opt.ValidateAttribs != nil {
+		if err := s.im.opt.ValidateAttribs(sub.Attribs); err != nil {
+			return err
 		}
 	}
 

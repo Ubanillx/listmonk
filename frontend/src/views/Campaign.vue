@@ -283,6 +283,10 @@
             <a href="https://listmonk.app/docs/templating/#template-expressions" target="_blank"
               rel="noopener noreferer">
               <b-icon icon="code" /> {{ $t('campaigns.templatingRef') }}</a>
+            <div v-if="customFields.length" class="is-size-7 has-text-grey mt-2">
+              {{ $t('customFields.placeholder') }}:
+              <code v-for="field in customFields" :key="field.key" class="ml-2">{{ field.placeholder }}</code>
+            </div>
             <span v-if="canEdit && form.content.contentType !== 'plain'" class="is-size-6 has-text-grey ml-6">
               <a v-if="form.altbody === null" href="#" @click.prevent="onAddAltBody">
                 <b-icon icon="text" size="is-small" /> {{ $t('campaigns.addAltText') }}
@@ -454,6 +458,7 @@ export default Vue.extend({
       personalSMTPLoaded: false,
       replyMailboxes: [],
       replyMailboxesLoaded: false,
+      customFields: [],
 
       data: {},
 
@@ -911,6 +916,10 @@ export default Vue.extend({
         this.replyMailboxesLoaded = true;
       });
     },
+
+    canManageList(list) {
+      return this.$canManageResource(list) && this.$canList(list.id, 'list:manage');
+    },
   },
 
   computed: {
@@ -998,10 +1007,6 @@ export default Vue.extend({
       return this.isSMTPMessenger && this.data.type !== 'optin';
     },
 
-    canManageList(list) {
-      return this.$canManageResource(list) && this.$canList(list.id, 'list:manage');
-    },
-
     listsLocked() {
       return this.isEditing && this.data.toSend > 0;
     },
@@ -1051,6 +1056,9 @@ export default Vue.extend({
     this.form.fromEmail = this.serverConfig.from_email;
     this.loadPersonalSMTPStatus();
     this.loadReplyMailboxes();
+    this.$api.getCustomFields().then((fields) => {
+      this.customFields = (fields || []).filter((field) => field.active !== false);
+    });
 
     // New campaign.
     const { id } = this.$route.params;

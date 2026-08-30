@@ -376,6 +376,12 @@ export const updateSubscriber = (data) => http.put(
   { loading: models.subscribers },
 );
 
+// Subscriber custom field definitions.
+export const getCustomFields = async () => http.get('/api/custom-fields', { loading: models.customFields });
+export const createCustomField = async (data) => http.post('/api/custom-fields', data, { loading: models.customFields });
+export const updateCustomField = async (key, data) => http.put(`/api/custom-fields/${encodeURIComponent(key)}`, data, { loading: models.customFields });
+export const deleteCustomField = async (key) => http.delete(`/api/custom-fields/${encodeURIComponent(key)}`, { loading: models.customFields });
+
 export const sendSubscriberOptin = (id) => http.post(
   `/api/subscribers/${id}/optin`,
   {},

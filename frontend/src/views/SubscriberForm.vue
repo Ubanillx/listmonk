@@ -46,6 +46,28 @@
           </div>
         </div>
 
+        <section v-if="customFields.length" class="custom-subscriber-fields mb-5">
+          <h5>{{ $t('customFields.title') }}</h5>
+          <div class="columns is-multiline">
+            <div v-for="field in customFields" :key="field.key" class="column is-6">
+              <b-field :label="field.label" label-position="on-border" :message="field.description">
+                <b-select v-if="field.type === 'select'" v-model="customValues[field.key]" expanded :disabled="!canEdit" :required="field.required">
+                  <option value="">{{ $t('globals.terms.none') }}</option>
+                  <option v-for="option in field.options" :key="option" :value="option">{{ option }}</option>
+                </b-select>
+                <b-select v-else-if="field.type === 'multi_select'" v-model="customValues[field.key]" expanded multiple :disabled="!canEdit" :required="field.required">
+                  <option v-for="option in field.options" :key="option" :value="option">{{ option }}</option>
+                </b-select>
+                <b-checkbox v-else-if="field.type === 'checkbox'" v-model="customValues[field.key]" :disabled="!canEdit">{{ field.label }}</b-checkbox>
+                <b-input v-else-if="field.type === 'textarea'" v-model="customValues[field.key]" type="textarea" :disabled="!canEdit" :required="field.required" />
+                <b-input v-else v-model="customValues[field.key]"
+                  :type="field.type === 'number' ? 'number' : (field.type === 'date' ? 'date' : (field.type === 'url' ? 'url' : 'text'))"
+                  :disabled="!canEdit" :required="field.required" />
+              </b-field>
+            </div>
+          </div>
+        </section>
+
         <b-tabs type="is-boxed" :animated="false">
           <b-tab-item :label="$t('globals.terms.lists')" label-position="on-border">
             <list-selector :label="$t('subscribers.lists')" :placeholder="$t('subscribers.listsPlaceholder')"
@@ -205,6 +227,8 @@ export default Vue.extend({
       visibleMeta: {},
 
       egAttribs: '{"job": "developer", "location": "Mars", "has_rocket": true}',
+      customFields: [],
+      customValues: {},
     };
   },
 
@@ -256,6 +280,11 @@ export default Vue.extend({
           return;
         }
       }
+      Object.keys(this.customValues).forEach((key) => {
+        if (this.customValues[key] !== '' && this.customValues[key] !== null
+          && typeof this.customValues[key] !== 'undefined') attribs[key] = this.customValues[key];
+        else delete attribs[key];
+      });
 
       const data = {
         email: this.form.email,
@@ -283,6 +312,11 @@ export default Vue.extend({
           return;
         }
       }
+      Object.keys(this.customValues).forEach((key) => {
+        if (this.customValues[key] !== '' && this.customValues[key] !== null
+          && typeof this.customValues[key] !== 'undefined') attribs[key] = this.customValues[key];
+        else delete attribs[key];
+      });
 
       const data = {
         id: this.form.id,
@@ -347,6 +381,18 @@ export default Vue.extend({
   },
 
   mounted() {
+    this.$api.getCustomFields().then((fields) => {
+      this.customFields = (fields || []).filter((f) => !f.system && f.active !== false);
+      this.customFields.forEach((f) => {
+        let value = this.$props.data.attribs && this.$props.data.attribs[f.key];
+        let fallback = '';
+        if (f.type === 'multi_select') fallback = [];
+        if (f.type === 'checkbox') fallback = false;
+        if (f.type === 'multi_select' && value && !Array.isArray(value)) value = String(value).split(/[,;]/).map((v) => v.trim()).filter(Boolean);
+        if (f.type === 'checkbox' && typeof value === 'string') value = ['true', '1', 'yes'].includes(value.toLowerCase());
+        this.$set(this.customValues, f.key, value !== undefined ? value : fallback);
+      });
+    });
     if (this.$props.isEditing) {
       this.form = {
         ...this.$props.data,

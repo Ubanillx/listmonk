@@ -75,14 +75,20 @@ pipeline {
         // The job SCM supplies the repository URL and Jenkinsfile. Fetch the
         // selected branch explicitly so the build always uses its current tip.
         checkout scm
+        script {
+          // Explicitly export the parameter before the shell step. This also
+          // handles the first run after adding the parameter to an existing job.
+          env.SOURCE_BRANCH = (params.SOURCE_BRANCH ?: 'master').trim()
+        }
         sh '''#!/usr/bin/env bash
 set -euo pipefail
 
-git check-ref-format --branch "$SOURCE_BRANCH" >/dev/null
+source_branch="${SOURCE_BRANCH:-master}"
+git check-ref-format --branch "$source_branch" >/dev/null
 git fetch --prune --tags origin \
-  "+refs/heads/${SOURCE_BRANCH}:refs/remotes/origin/${SOURCE_BRANCH}"
-git checkout -B "$SOURCE_BRANCH" "origin/$SOURCE_BRANCH"
-git reset --hard "origin/$SOURCE_BRANCH"
+  "+refs/heads/${source_branch}:refs/remotes/origin/${source_branch}"
+git checkout -B "$source_branch" "origin/$source_branch"
+git reset --hard "origin/$source_branch"
 git clean -fdx
 '''
         script {

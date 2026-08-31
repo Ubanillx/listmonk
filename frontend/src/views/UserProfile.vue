@@ -307,6 +307,7 @@ export default Vue.extend({
       this.data = { ...data };
       this.form = { name: data.name, email: data.email };
       this.customFields = (fields || []).filter((f) => !f.system && f.active !== false);
+      this.customValues = { ...(data.attribs || {}) };
       this.customFields.forEach((field) => {
         let value = data.attribs && data.attribs[field.key];
         if (field.type === 'multi_select' && value && !Array.isArray(value)) {

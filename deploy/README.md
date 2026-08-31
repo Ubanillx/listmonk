@@ -31,32 +31,58 @@ The resulting tarball can be copied to a server and deployed in one of two modes
 
 Both modes share the same bundled postgres image tar and compose file.
 
+## Binary deployment server initialization
+
+The current Jenkins systemd deployment expects PostgreSQL to run locally on the
+target server. On Debian/Ubuntu, install it with:
+
+```bash
+apt-get update
+apt-get install -y postgresql postgresql-client
+systemctl enable --now postgresql
+```
+
+Create a PostgreSQL login and database named `listmonk`, then create
+`/opt/listmonk/config.toml` with the database connection settings. The Jenkins
+deployment does not copy this file, so database credentials remain on the
+server. PostgreSQL should remain bound to `127.0.0.1` (and `::1`) unless a
+separate remote database is intentionally used.
+
 ## Jenkins pipeline
 
-The repository root contains a `Jenkinsfile` for the same build and
-distribution flow. Every run:
+The repository root contains a `Jenkinsfile` for the binary deployment flow.
+Every run fetches the selected branch, runs the Go test suite, executes
+`make dist`, and archives:
 
-1. runs the Go test suite;
-2. runs `deploy/package_bundle.sh`, which builds the self-contained binary,
-   Docker image, and portable deployment tarball;
-3. archives the tarball, its SHA-256 checksum, and manifest as Jenkins build
-   artifacts.
+- the Go binary;
+- a `frontend/dist` tarball; and
+- a SHA-256 checksum file.
 
 The pipeline uses the `linux-docker` agent label. The selected agent needs
 Linux/x86_64, Go 1.26.1 or later, Node.js 22 or later, Yarn 1 or Corepack,
-Docker, Bash, Git, OpenSSH client tools, `tar`, `gzip`, and `sha256sum`.
+Bash, Git, OpenSSH client tools, `tar`, `gzip`, `sha256sum`, and `curl`.
 
-To enable the optional deployment stage, create these Jenkins credentials:
+Set `DEPLOY_TO_SERVER` to true to upload the two release artifacts over SSH.
+The remote stage verifies the checksum, installs the files under
+`<DEPLOY_DIR>/releases/<release-id>`, atomically updates `<DEPLOY_DIR>/current`,
+creates/updates a systemd unit, runs database install/upgrade, and waits for
+`/admin/login` to respond. A failed health check restores the previous
+`current` release.
 
-- `listmonk-ubuntu-ssh`: an **SSH Username with private key** credential for
-  the `ubuntu` account on the deployment server.
-- `listmonk-ubuntu-known-hosts`: a **Secret file** containing the deployment
+Create these Jenkins credentials before enabling deployment:
+
+- `listmonk-root-ssh`: an **SSH Username with private key** credential for
+  the `root` account on the deployment server.
+- `listmonk-root-known-hosts`: a **Secret file** containing the deployment
   server's verified `known_hosts` entry.
 
-The deployment account must be able to run `sudo -n docker ...` on the server;
-the pipeline deliberately does not use a stored server password. On a manual
-build, set `DEPLOY_TO_9173` to true to load the bundled local image and update
-the app on port 9173. The server's `env/runtime.env`, database volume, and
-`uploads` directory are preserved. Before changing `APP_IMAGE`, the pipeline
-backs up `env/local.env` and restores it automatically if the health check
-fails.
+The pipeline deliberately does not use a stored server password. When using
+`root`, no sudo setup is required. If you later switch to a dedicated deploy
+account, it needs passwordless sudo for `install`, `rm`, `tar`, `chown`,
+`chmod`, `ln`, `mv`, `tee`, `systemctl`, and `journalctl` (or an equivalent
+narrowly scoped sudoers rule). Prepare the
+remote `<DEPLOY_DIR>/config.toml` first; it contains the database settings and
+is never copied from Jenkins. The default health-check port is `9173` and can
+be changed with the `APP_PORT` parameter. The current Jenkinsfile defaults to
+`83.229.120.50` and `root`; using a dedicated non-root deploy account is
+recommended for production.

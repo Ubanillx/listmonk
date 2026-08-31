@@ -1,18 +1,18 @@
 /*
- * Jenkins prerequisites
+ * listmonk CI/CD pipeline
+ *
+ * The Jenkins agent builds the Go binary and frontend assets locally. When
+ * DEPLOY_TO_SERVER is enabled, the release is copied over SSH and activated
+ * through a systemd service on the target host.
  *
  * Agent label: linux-docker
- *   - Linux/x86_64, Go 1.26.1+, Node.js 22+, Yarn 1 (or Corepack), Docker,
- *     Bash, Git, OpenSSH client, tar, gzip, and sha256sum.
- *   - The Jenkins agent user must be allowed to use Docker.
+ * Required tools: Go 1.26.1+, Node.js 22+, Yarn 1.x (or Corepack), Make,
+ * Git, Bash, OpenSSH client, tar, gzip, sha256sum and curl.
  *
- * Credentials
- *   - listmonk-ubuntu-ssh: "SSH Username with private key" for ubuntu.
- *   - listmonk-ubuntu-known-hosts: Secret file containing the target's
- *     known_hosts entry. Do not disable SSH host-key verification.
- *
- * The deployment user must be able to run `sudo -n docker ...` on the target.
- * This pipeline never stores a server, database, or SMTP password in source.
+ * Credentials:
+ *   listmonk-root-ssh: SSH Username with private key for root
+ *   listmonk-root-known-hosts: Secret file containing the verified
+ *                              known_hosts entry for the deployment host
  */
 pipeline {
   agent {
@@ -27,32 +27,69 @@ pipeline {
   }
 
   parameters {
+    string(
+      name: 'SOURCE_BRANCH',
+      defaultValue: 'master',
+      description: 'Branch to fetch and build from origin.'
+    )
     booleanParam(
-      name: 'DEPLOY_TO_9173',
+      name: 'DEPLOY_TO_SERVER',
       defaultValue: false,
-      description: 'Deploy the packaged local image to the configured Ubuntu server on port 9173.'
+      description: 'Upload this build and activate it as a systemd service on the deployment host.'
+    )
+    string(
+      name: 'DEPLOY_HOST',
+      defaultValue: '83.229.120.50',
+      description: 'Deployment server hostname or IP address.'
+    )
+    string(
+      name: 'DEPLOY_USER',
+      defaultValue: 'root',
+      description: 'SSH and systemd service user on the deployment server.'
+    )
+    string(
+      name: 'DEPLOY_DIR',
+      defaultValue: '/opt/listmonk',
+      description: 'Directory containing releases, current symlink and config.toml.'
+    )
+    string(
+      name: 'SERVICE_NAME',
+      defaultValue: 'listmonk',
+      description: 'systemd unit name without the .service suffix.'
+    )
+    string(
+      name: 'APP_PORT',
+      defaultValue: '9173',
+      description: 'HTTP port used for the post-deploy health check.'
     )
   }
 
   environment {
-    APP_IMAGE_NAME = 'listmonk-app'
-    DEPLOY_USER = 'ubuntu'
-    DEPLOY_HOST = '192.168.1.67'
-    DEPLOY_DIR = '/home/ubuntu/listmonk-deploy'
-    APP_PORT = '9173'
-    DEPLOY_SSH_CREDENTIALS_ID = 'listmonk-ubuntu-ssh'
-    DEPLOY_KNOWN_HOSTS_CREDENTIALS_ID = 'listmonk-ubuntu-known-hosts'
+    DEPLOY_SSH_CREDENTIALS_ID = 'listmonk-root-ssh'
+    DEPLOY_KNOWN_HOSTS_CREDENTIALS_ID = 'listmonk-root-known-hosts'
   }
 
   stages {
-    stage('Checkout') {
+    stage('Fetch latest source') {
       steps {
+        // The job SCM supplies the repository URL and Jenkinsfile. Fetch the
+        // selected branch explicitly so the build always uses its current tip.
         checkout scm
+        sh '''#!/usr/bin/env bash
+set -euo pipefail
+
+git check-ref-format --branch "$SOURCE_BRANCH" >/dev/null
+git fetch --prune --tags origin \
+  "+refs/heads/${SOURCE_BRANCH}:refs/remotes/origin/${SOURCE_BRANCH}"
+git checkout -B "$SOURCE_BRANCH" "origin/$SOURCE_BRANCH"
+git reset --hard "origin/$SOURCE_BRANCH"
+git clean -fdx
+'''
         script {
           env.GIT_SHA = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
           env.RELEASE_ID = "jenkins-${env.BUILD_NUMBER}-${env.GIT_SHA}"
-          env.IMAGE_REF = "${env.APP_IMAGE_NAME}:${env.GIT_SHA}"
-          env.BUNDLE_NAME = "listmonk-deploy-bundle-${env.GIT_SHA}-${env.BUILD_NUMBER}"
+          env.BINARY_NAME = "listmonk-${env.RELEASE_ID}"
+          env.FRONTEND_ARCHIVE_NAME = "frontend-dist-${env.RELEASE_ID}.tar.gz"
           currentBuild.displayName = "#${env.BUILD_NUMBER} ${env.GIT_SHA}"
         }
       }
@@ -63,21 +100,40 @@ pipeline {
         sh '''#!/usr/bin/env bash
 set -euo pipefail
 
-for command in go node docker make git bash tar gzip sha256sum ssh scp; do
+for command in go node make git bash tar gzip sha256sum ssh scp curl sort head awk sed; do
   command -v "$command" >/dev/null 2>&1 || {
     echo "Required command is not available on this Jenkins agent: $command" >&2
     exit 1
   }
 done
 
+require_version() {
+  local tool="$1"
+  local actual="$2"
+  local minimum="$3"
+  if [ "$(printf '%s\\n' "$minimum" "$actual" | sort -V | head -n1)" != "$minimum" ]; then
+    echo "$tool $actual is too old; require at least $minimum" >&2
+    exit 1
+  fi
+}
+
 if ! command -v yarn >/dev/null 2>&1 && ! command -v corepack >/dev/null 2>&1; then
   echo 'Install Yarn 1 or enable Corepack on the Jenkins agent.' >&2
   exit 1
 fi
 
+go_version=$(go version | awk '{sub(/^go/, "", $3); print $3}')
+node_version=$(node --version | sed 's/^v//')
+require_version go "$go_version" '1.26.1'
+require_version node "$node_version" '22.0.0'
+
 go version
 node --version
-docker version --format '{{.Server.Version}}'
+if command -v yarn >/dev/null 2>&1; then
+  yarn --version
+else
+  corepack yarn --version
+fi
 '''
       }
     }
@@ -91,62 +147,70 @@ make test
       }
     }
 
-    stage('Package distribution bundle') {
+    stage('Build release') {
       steps {
         sh '''#!/usr/bin/env bash
 set -euo pipefail
 
-# The Makefile accepts YARN as an override. Corepack keeps the build pinned to
-# the packageManager version when Yarn is not installed globally on the agent.
+rm -rf dist
+mkdir -p dist
+
+# Makefile's YARN variable is overridable. Use the pinned Yarn 1 installation
+# when present, otherwise let Corepack select the packageManager version.
 if command -v yarn >/dev/null 2>&1; then
   export YARN=yarn
 else
   export YARN='corepack yarn'
 fi
 
-bash deploy/package_bundle.sh \
-  --bundle-name "$BUNDLE_NAME" \
-  --output-dir "$WORKSPACE/dist" \
-  --local-image-tag "$IMAGE_REF"
+make dist
+test -s listmonk
+test -f frontend/dist/index.html
 
-bundle_tar="$WORKSPACE/dist/$BUNDLE_NAME.tar.gz"
-bundle_manifest="$WORKSPACE/dist/$BUNDLE_NAME/manifest.json"
-local_image_tar="$WORKSPACE/dist/$BUNDLE_NAME/images/listmonk-local.tar"
+cp -p listmonk "dist/$BINARY_NAME"
+tar -C frontend/dist -czf "dist/$FRONTEND_ARCHIVE_NAME" .
+sha256sum \
+  "dist/$BINARY_NAME" \
+  "dist/$FRONTEND_ARCHIVE_NAME" \
+  | sed 's#  dist/#  #' > "dist/$RELEASE_ID.sha256"
 
-test -s "$bundle_tar"
-test -s "$bundle_manifest"
-test -s "$local_image_tar"
-sha256sum "$bundle_tar" > "$bundle_tar.sha256"
+test -s "dist/$BINARY_NAME"
+test -s "dist/$FRONTEND_ARCHIVE_NAME"
+test -s "dist/$RELEASE_ID.sha256"
 '''
       }
     }
 
-    stage('Archive distribution bundle') {
+    stage('Archive release') {
       steps {
         archiveArtifacts(
-          artifacts: 'dist/listmonk-deploy-bundle-*.tar.gz,dist/listmonk-deploy-bundle-*.tar.gz.sha256,dist/listmonk-deploy-bundle-*/manifest.json',
+          artifacts: 'dist/listmonk-jenkins-*,dist/frontend-dist-jenkins-*.tar.gz,dist/jenkins-*.sha256',
           fingerprint: true
         )
       }
     }
 
-    stage('Deploy to 9173') {
+    stage('Deploy release') {
       when {
-        expression { params.DEPLOY_TO_9173 }
+        expression { params.DEPLOY_TO_SERVER }
       }
       steps {
         withCredentials([
-          file(credentialsId: env.DEPLOY_KNOWN_HOSTS_CREDENTIALS_ID, variable: 'SSH_KNOWN_HOSTS'),
+          file(credentialsId: env.DEPLOY_KNOWN_HOSTS_CREDENTIALS_ID, variable: 'SSH_KNOWN_HOSTS')
         ]) {
           sshagent(credentials: [env.DEPLOY_SSH_CREDENTIALS_ID]) {
             sh '''#!/usr/bin/env bash
 set -euo pipefail
 
-image_archive="$WORKSPACE/dist/$BUNDLE_NAME/images/listmonk-local.tar"
+binary_archive="$WORKSPACE/dist/$BINARY_NAME"
+frontend_archive="$WORKSPACE/dist/$FRONTEND_ARCHIVE_NAME"
+checksum_file="$WORKSPACE/dist/$RELEASE_ID.sha256"
 remote="${DEPLOY_USER}@${DEPLOY_HOST}"
-remote_archive="/tmp/${RELEASE_ID}-listmonk-local.tar"
+remote_stage="/tmp/${RELEASE_ID}"
 
-test -s "$image_archive"
+test -s "$binary_archive"
+test -s "$frontend_archive"
+test -s "$checksum_file"
 test -s "$SSH_KNOWN_HOSTS"
 
 ssh_options=(
@@ -156,81 +220,156 @@ ssh_options=(
   -o UserKnownHostsFile="$SSH_KNOWN_HOSTS"
 )
 
-scp "${ssh_options[@]}" "$image_archive" "$remote:$remote_archive"
+ssh "${ssh_options[@]}" "$remote" \
+  "rm -rf '$remote_stage' && mkdir -m 700 -p '$remote_stage'"
+scp "${ssh_options[@]}" \
+  "$binary_archive" "$frontend_archive" "$checksum_file" \
+  "$remote:$remote_stage/"
 
-remote_command=$(printf 'DEPLOY_DIR=%q APP_IMAGE=%q APP_PORT=%q IMAGE_ARCHIVE=%q RELEASE_ID=%q bash -s' \
-  "$DEPLOY_DIR" "$IMAGE_REF" "$APP_PORT" "$remote_archive" "$RELEASE_ID")
+remote_command=$(printf 'DEPLOY_DIR=%q SERVICE_NAME=%q APP_PORT=%q DEPLOY_USER=%q RELEASE_ID=%q REMOTE_STAGE=%q BINARY_NAME=%q FRONTEND_ARCHIVE_NAME=%q bash -s' \
+  "$DEPLOY_DIR" "$SERVICE_NAME" "$APP_PORT" "$DEPLOY_USER" "$RELEASE_ID" "$remote_stage" "$BINARY_NAME" "$FRONTEND_ARCHIVE_NAME")
 
 ssh "${ssh_options[@]}" "$remote" "$remote_command" <<'REMOTE_SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
 
 deploy_dir="${DEPLOY_DIR:?}"
-app_image="${APP_IMAGE:?}"
+service_name="${SERVICE_NAME:?}"
 app_port="${APP_PORT:?}"
-image_archive="${IMAGE_ARCHIVE:?}"
+deploy_user="${DEPLOY_USER:?}"
 release_id="${RELEASE_ID:?}"
-compose_file="$deploy_dir/docker-compose.bundle.yml"
-local_env="$deploy_dir/env/local.env"
-runtime_env="$deploy_dir/env/runtime.env"
-backup=''
+stage_dir="${REMOTE_STAGE:?}"
+binary_name="${BINARY_NAME:?}"
+frontend_archive_name="${FRONTEND_ARCHIVE_NAME:?}"
+release_dir="$deploy_dir/releases/$release_id"
+current_link="$deploy_dir/current"
+service_file="/etc/systemd/system/${service_name}.service"
+config_file="$deploy_dir/config.toml"
+old_target=''
+new_link="${current_link}.new-${release_id}"
+
+as_root() {
+  if [ "$(id -u)" -eq 0 ]; then
+    "$@"
+  else
+    sudo -n "$@"
+  fi
+}
+
+case "$service_name" in
+  (*[!A-Za-z0-9_.@-]*) echo "Invalid SERVICE_NAME" >&2; exit 1 ;;
+esac
+if [[ ! "$app_port" =~ ^[0-9]+$ ]] || (( app_port < 1 || app_port > 65535 )); then
+  echo "Invalid APP_PORT: $app_port" >&2
+  exit 1
+fi
 
 rollback() {
-  status=$?
+  local status=$?
   trap - EXIT
-  if [ "$status" -ne 0 ] && [ -n "$backup" ] && [ -f "$backup" ]; then
-    echo "Deployment failed; restoring $backup" >&2
-    cp -p "$backup" "$local_env" || true
-    sudo -n docker compose --env-file "$local_env" --env-file "$runtime_env" \
-      -f "$compose_file" up -d app || true
+  if [ "$status" -ne 0 ]; then
+    echo "Deployment failed; attempting rollback." >&2
+    if [ -n "$old_target" ]; then
+      restore_link="${current_link}.rollback-${release_id}"
+      as_root ln -s "$old_target" "$restore_link" || true
+      as_root mv -Tf "$restore_link" "$current_link" || true
+      as_root systemctl restart "$service_name" || true
+    else
+      as_root systemctl stop "$service_name" || true
+      as_root rm -f "$current_link" || true
+    fi
   fi
-  rm -f "$image_archive" || true
+  as_root rm -f "$new_link" || true
+  as_root rm -rf "$release_dir" "$stage_dir" || true
   exit "$status"
 }
 trap rollback EXIT
 
-command -v docker >/dev/null
+command -v sha256sum >/dev/null
+command -v tar >/dev/null
 command -v curl >/dev/null
-sudo -n docker info >/dev/null
-test -f "$compose_file"
-test -f "$local_env"
-test -f "$runtime_env"
-test -f "$image_archive"
+command -v systemctl >/dev/null
+test -d "$stage_dir"
+test -s "$stage_dir/$binary_name"
+test -s "$stage_dir/$frontend_archive_name"
+(
+  cd "$stage_dir"
+  sha256sum -c "$release_id.sha256"
+)
 
-sudo -n docker load --input "$image_archive"
-backup="${local_env}.before-${release_id}"
-cp -p "$local_env" "$backup"
+if [ ! -r "$config_file" ]; then
+  echo "Missing $config_file; create and configure it before deploying." >&2
+  exit 1
+fi
 
-temp_env=$(mktemp "$deploy_dir/env/.local.env.XXXXXX")
-awk -v image="$app_image" '
-  BEGIN { replaced = 0 }
-  /^APP_IMAGE=/ { print "APP_IMAGE=" image; replaced = 1; next }
-  { print }
-  END { if (!replaced) print "APP_IMAGE=" image }
-' "$local_env" > "$temp_env"
-chmod --reference="$local_env" "$temp_env" 2>/dev/null || true
-mv "$temp_env" "$local_env"
+if [ -L "$current_link" ]; then
+  old_target=$(readlink "$current_link")
+fi
 
-sudo -n docker compose --env-file "$local_env" --env-file "$runtime_env" \
-  -f "$compose_file" config -q
-sudo -n docker compose --env-file "$local_env" --env-file "$runtime_env" \
-  -f "$compose_file" up -d app
+deploy_group=$(id -gn "$deploy_user")
+as_root install -d -o "$deploy_user" -g "$deploy_group" -m 0755 \
+  "$deploy_dir" "$deploy_dir/releases"
+as_root rm -rf "$release_dir"
+as_root install -d -o "$deploy_user" -g "$deploy_group" -m 0755 \
+  "$release_dir" "$release_dir/frontend"
+as_root install -o "$deploy_user" -g "$deploy_group" -m 0755 \
+  "$stage_dir/$binary_name" "$release_dir/listmonk"
+as_root tar -xzf "$stage_dir/$frontend_archive_name" -C "$release_dir/frontend"
+as_root chown -R "$deploy_user:$deploy_group" "$release_dir"
+
+as_root rm -f "$new_link"
+as_root ln -s "$release_dir" "$new_link"
+as_root mv -Tf "$new_link" "$current_link"
+
+as_root tee "$release_dir/run-listmonk.sh" >/dev/null <<RUN_SCRIPT
+#!/usr/bin/env bash
+set -euo pipefail
+
+"$deploy_dir/current/listmonk" --install --idempotent --yes --config "$config_file"
+"$deploy_dir/current/listmonk" --upgrade --yes --config "$config_file"
+exec "$deploy_dir/current/listmonk" --config "$config_file" --static-dir "$deploy_dir/current/frontend"
+RUN_SCRIPT
+as_root chmod 0755 "$release_dir/run-listmonk.sh"
+as_root chown "$deploy_user:$deploy_group" "$release_dir/run-listmonk.sh"
+
+as_root tee "$service_file" >/dev/null <<UNIT
+[Unit]
+Description=listmonk newsletter manager
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=$deploy_user
+WorkingDirectory=$deploy_dir/current
+ExecStart=$deploy_dir/current/run-listmonk.sh
+Restart=on-failure
+RestartSec=5
+Environment=LISTMONK_app__address=0.0.0.0:$app_port
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+as_root systemctl daemon-reload
+as_root systemctl enable "$service_name"
+as_root systemctl restart "$service_name"
 
 for attempt in {1..30}; do
   if curl --fail --silent --show-error --location --max-time 5 \
     --output /dev/null "http://127.0.0.1:${app_port}/admin/login"; then
-    deployed_image=$(sudo -n docker inspect --format '{{.Config.Image}}' listmonk_app)
-    if [ "$deployed_image" = "$app_image" ]; then
-      echo "Deployment is healthy: $deployed_image"
-      rm -f "$image_archive"
+    if [ "$(as_root systemctl is-active "$service_name")" = 'active' ]; then
+      echo "Deployment is healthy: $release_id"
       trap - EXIT
+      as_root rm -rf "$stage_dir"
       exit 0
     fi
   fi
   sleep 2
 done
 
-echo "Application did not become healthy on port ${app_port}." >&2
+echo "${service_name} did not become healthy on port ${app_port}." >&2
+as_root journalctl -u "$service_name" --no-pager -n 80 || true
 exit 1
 REMOTE_SCRIPT
 '''
@@ -242,7 +381,7 @@ REMOTE_SCRIPT
 
   post {
     success {
-      echo "Built ${env.IMAGE_REF}; the portable bundle is available in this Jenkins build's artifacts."
+      echo "Built ${env.RELEASE_ID}; release artifacts are archived in this Jenkins build."
     }
     always {
       deleteDir()

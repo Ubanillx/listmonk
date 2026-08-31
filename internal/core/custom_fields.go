@@ -10,7 +10,7 @@ import (
 	"github.com/knadh/listmonk/models"
 )
 
-// ValidateCustomFieldValues validates configured subscriber attributes while
+// ValidateCustomFieldValues validates configured account attributes while
 // preserving unknown legacy attributes.
 func (c *Core) ValidateCustomFieldValues(values models.JSON) error {
 	s, err := c.GetSettings()

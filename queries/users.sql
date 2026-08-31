@@ -175,7 +175,8 @@ UPDATE users SET loggedin_at = NOW() WHERE id = (SELECT id FROM u) RETURNING *;
 
 -- name: update-user-profile
 UPDATE users SET name=$2, email=(CASE WHEN password_login THEN $3 ELSE email END),
-    password=(CASE WHEN $4 = TRUE THEN (CASE WHEN $5 != '' THEN CRYPT($5, GEN_SALT('bf')) ELSE password END) ELSE NULL END)
+    password=(CASE WHEN $4 = TRUE THEN (CASE WHEN $5 != '' THEN CRYPT($5, GEN_SALT('bf')) ELSE password END) ELSE NULL END),
+    attribs=$6
     WHERE id=$1;
 
 -- name: update-user-login

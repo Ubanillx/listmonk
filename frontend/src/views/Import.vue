@@ -48,17 +48,6 @@
               </b-field>
             </div>
           </div>
-          <div v-if="customFields.length" class="columns is-multiline">
-            <div v-for="field in customFields" :key="`map-${field.key}`" class="column is-4">
-              <b-field :label="`${$t('customFields.label')}: ${field.label}`">
-                <b-select v-model="form.fieldMap[field.key]" expanded>
-                  <option value="">{{ $t('globals.terms.none') }}</option>
-                  <option v-for="col in preview.columns" :key="`${field.key}-${col.value}`" :value="col.value">{{ col.label }}</option>
-                </b-select>
-              </b-field>
-            </div>
-          </div>
-
           <div class="columns">
             <div class="column is-4">
               <b-field v-if="form.mode === 'subscribe'" :label="$t('import.overwriteUserInfo')"
@@ -273,7 +262,6 @@ export default Vue.extend({
       isLoading: true,
 
       isProcessing: false,
-      customFields: [],
       status: { status: '' },
       logs: [],
       pollID: null,
@@ -410,11 +398,6 @@ export default Vue.extend({
         if (col) {
           this.form.fieldMap[target] = col.value;
         }
-      });
-      this.customFields.forEach((field) => {
-        if (this.form.fieldMap[field.key]) return;
-        const col = this.preview.columns.find((c) => this.normalizeFieldName(c.header || c.value) === field.key);
-        if (col) this.$set(this.form.fieldMap, field.key, col.value);
       });
     },
 
@@ -611,7 +594,6 @@ export default Vue.extend({
         name: '',
         attributes: '',
       };
-      this.customFields.forEach((f) => { this.form.fieldMap[f.key] = ''; });
       this.clearPreview();
     },
 
@@ -640,7 +622,6 @@ export default Vue.extend({
           email: this.form.fieldMap.email,
           name: this.form.fieldMap.name,
           attributes: this.form.fieldMap.attributes,
-          ...this.customFields.reduce((out, f) => ({ ...out, [f.key]: this.form.fieldMap[f.key] || '' }), {}),
         },
       }));
       params.set('file', this.form.file);
@@ -672,10 +653,6 @@ export default Vue.extend({
   },
 
   mounted() {
-    this.$api.getCustomFields().then((fields) => {
-      this.customFields = (fields || []).filter((f) => !f.system && f.active !== false);
-      this.customFields.forEach((f) => { this.$set(this.form.fieldMap, f.key, ''); });
-    });
     this.renderExample();
     this.pollStatus();
 

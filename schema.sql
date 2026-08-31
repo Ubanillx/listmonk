@@ -423,6 +423,7 @@ CREATE TABLE users (
     password         TEXT NULL,
     email            TEXT NOT NULL UNIQUE,
     name             TEXT NOT NULL,
+    attribs          JSONB NOT NULL DEFAULT '{}',
     avatar           TEXT NULL,
     type             user_type NOT NULL DEFAULT 'user',
     user_role_id     INTEGER NOT NULL REFERENCES roles(id) ON DELETE RESTRICT,

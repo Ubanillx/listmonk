@@ -11,6 +11,19 @@ import (
 // to message templates while they're compiled. It represents a message from
 // a campaign that's bound to a single Subscriber.
 func (m *Manager) NewCampaignMessage(c *models.Campaign, s models.Subscriber) (CampaignMessage, error) {
+	// Account custom fields are scoped to the campaign owner. Merge them into
+	// the subscriber view exposed to templates, with account values taking
+	// precedence if a legacy subscriber attribute uses the same key.
+	if len(c.OwnerUserAttribs) > 0 {
+		merged := make(models.JSON, len(s.Attribs)+len(c.OwnerUserAttribs))
+		for key, value := range s.Attribs {
+			merged[key] = value
+		}
+		for key, value := range c.OwnerUserAttribs {
+			merged[key] = value
+		}
+		s.Attribs = merged
+	}
 	msg := CampaignMessage{
 		Campaign:   c,
 		Subscriber: s,

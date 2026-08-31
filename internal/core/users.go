@@ -187,7 +187,7 @@ func (c *Core) DeleteIntegrationToken(userID int, tokenID int) error {
 
 // UpdateUserProfile updates the basic fields of a given uesr (name, email, password).
 func (c *Core) UpdateUserProfile(id int, u auth.User) (auth.User, error) {
-	res, err := c.q.UpdateUserProfile.Exec(id, u.Name, u.Email, u.PasswordLogin, u.Password)
+	res, err := c.q.UpdateUserProfile.Exec(id, u.Name, u.Email, u.PasswordLogin, u.Password, u.Attribs)
 	if err != nil {
 		return auth.User{}, echo.NewHTTPError(http.StatusInternalServerError,
 			c.i18n.Ts("globals.messages.errorUpdating", "name", "{globals.terms.user}", "error", pqErrMsg(err)))

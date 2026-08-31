@@ -40,9 +40,9 @@ type PersonalSMTPServer struct {
 
 // Settings represents the app settings stored in the DB.
 type Settings struct {
-	// CustomFields contains the globally defined subscriber fields. The
-	// definitions are managed by the platform administrator and the values
-	// themselves are stored on each subscriber in attribs.
+	// CustomFields contains globally defined account fields. The definitions
+	// are managed by the platform administrator and values are stored on each
+	// user's attribs.
 	CustomFields                  []CustomFieldDefinition `json:"subscriber.custom_fields,omitempty"`
 	AppSiteName                   string                  `json:"app.site_name"`
 	AppRootURL                    string                  `json:"app.root_url"`

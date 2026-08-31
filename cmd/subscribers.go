@@ -308,9 +308,6 @@ func (a *App) CreateSubscriber(c echo.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
-	if err := a.validateCustomFieldValues(req.Attribs); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
-	}
 
 	if err := a.requireWorkspaceListIDsForRequest(c, access, req.Lists, true); err != nil {
 		return err
@@ -355,9 +352,6 @@ func (a *App) UpdateSubscriber(c echo.Context) error {
 
 	if req.Name != "" && !strHasLen(req.Name, 1, stdInputMaxLen) {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("subscribers.invalidName"))
-	}
-	if err := a.validateCustomFieldValues(req.Attribs); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
 	if err := a.requireWorkspaceListIDsForRequest(c, access, req.Lists, true); err != nil {

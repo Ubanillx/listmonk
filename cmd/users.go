@@ -328,6 +328,15 @@ func (a *App) UpdateUserProfile(c echo.Context) error {
 		return err
 	}
 	u.PasswordLogin = user.PasswordLogin
+	if u.Attribs == nil {
+		u.Attribs = user.Attribs
+		if u.Attribs == nil {
+			u.Attribs = models.JSON{}
+		}
+	}
+	if err := a.core.ValidateCustomFieldValues(u.Attribs); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
 	u.Name = strings.TrimSpace(u.Name)
 	email := strings.TrimSpace(u.Email.String)
 

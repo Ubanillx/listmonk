@@ -18,6 +18,28 @@
         <b-input :maxlength="200" v-model="form.name" name="name" :placeholder="$t('globals.fields.name')" />
       </b-field>
 
+      <section v-if="customFields.length" class="account-custom-fields mb-5">
+        <h3 class="title is-5">{{ $t('customFields.title') }}</h3>
+        <div class="columns is-multiline">
+          <div v-for="field in customFields" :key="field.key" class="column is-6">
+            <b-field :label="field.label" label-position="on-border" :message="field.description">
+              <b-select v-if="field.type === 'select'" v-model="customValues[field.key]" expanded :required="field.required">
+                <option value="">{{ $t('globals.terms.none') }}</option>
+                <option v-for="option in field.options" :key="option" :value="option">{{ option }}</option>
+              </b-select>
+              <b-select v-else-if="field.type === 'multi_select'" v-model="customValues[field.key]" expanded multiple :required="field.required">
+                <option v-for="option in field.options" :key="option" :value="option">{{ option }}</option>
+              </b-select>
+              <b-checkbox v-else-if="field.type === 'checkbox'" v-model="customValues[field.key]">{{ field.label }}</b-checkbox>
+              <b-input v-else-if="field.type === 'textarea'" v-model="customValues[field.key]" type="textarea" :required="field.required" />
+              <b-input v-else v-model="customValues[field.key]"
+                :type="fieldInputType(field.type)"
+                :required="field.required" />
+            </b-field>
+          </div>
+        </div>
+      </section>
+
       <div v-if="data.passwordLogin" class="columns">
         <div class="column is-6">
           <b-field :label="$t('users.password')" label-position="on-border">
@@ -156,14 +178,22 @@ export default Vue.extend({
       showDisableTOTP: false,
       disableTOTPPassword: '',
       twofaEnabled: false,
+      customFields: [],
+      customValues: {},
     };
   },
 
   methods: {
+    fieldInputType(type) {
+      if (type === 'number' || type === 'date' || type === 'url') return type;
+      return 'text';
+    },
+
     onSubmit() {
       const params = {
         name: this.form.name,
         email: this.form.email,
+        attribs: this.customValues,
       };
 
       if (this.data.passwordLogin && this.form.password) {
@@ -273,9 +303,25 @@ export default Vue.extend({
   },
 
   mounted() {
-    this.$api.getUserProfile().then((data) => {
+    Promise.all([this.$api.getUserProfile(), this.$api.getCustomFields()]).then(([data, fields]) => {
       this.data = { ...data };
       this.form = { name: data.name, email: data.email };
+      this.customFields = (fields || []).filter((f) => !f.system && f.active !== false);
+      this.customFields.forEach((field) => {
+        let value = data.attribs && data.attribs[field.key];
+        if (field.type === 'multi_select' && value && !Array.isArray(value)) {
+          value = String(value).split(/[,;]/).map((v) => v.trim()).filter(Boolean);
+        }
+        if (field.type === 'checkbox' && typeof value === 'string') {
+          value = ['true', '1', 'yes'].includes(value.toLowerCase());
+        }
+        if (typeof value === 'undefined' || value === null) {
+          if (field.type === 'multi_select') value = [];
+          else if (field.type === 'checkbox') value = false;
+          else value = '';
+        }
+        this.$set(this.customValues, field.key, value);
+      });
       this.twofaEnabled = data.twofaType === 'totp';
     });
   },

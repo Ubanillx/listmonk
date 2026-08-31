@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
 	"github.com/lib/pq"
 	null "gopkg.in/volatiletech/null.v6"
@@ -89,9 +90,13 @@ type User struct {
 	// For API users, this is the plaintext API token.
 	Password null.String `db:"password" json:"password,omitempty"`
 
-	PasswordLogin bool             `db:"password_login" json:"password_login"`
-	Email         null.String      `db:"email" json:"email"`
-	Name          string           `db:"name" json:"name"`
+	PasswordLogin bool        `db:"password_login" json:"password_login"`
+	Email         null.String `db:"email" json:"email"`
+	Name          string      `db:"name" json:"name"`
+	// Attribs stores values for administrator-defined account fields. These
+	// values belong to the sending account and are injected into campaign
+	// templates at render time.
+	Attribs       models.JSON      `db:"attribs" json:"attribs"`
 	Type          string           `db:"type" json:"type"`
 	Status        string           `db:"status" json:"status"`
 	Avatar        null.String      `db:"avatar" json:"avatar"`

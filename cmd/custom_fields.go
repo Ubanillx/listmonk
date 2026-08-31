@@ -34,9 +34,8 @@ type customFieldResponse struct {
 	Locked      bool     `json:"locked"`
 }
 
-// GetCustomFields returns system subscriber fields and the administrator's
-// globally configured fields. It is intentionally available to every logged-in
-// user so subscriber forms, imports and campaign editors can show mappings.
+// GetCustomFields returns system identity fields and administrator-defined
+// account fields for profile forms and campaign template placeholders.
 func (a *App) GetCustomFields(c echo.Context) error {
 	s, err := a.core.GetSettings()
 	if err != nil {

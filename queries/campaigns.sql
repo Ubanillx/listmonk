@@ -163,6 +163,7 @@ ORDER BY %order% OFFSET $7 LIMIT (CASE WHEN $8 < 1 THEN NULL ELSE $8 END);
 
 -- name: get-campaign
 SELECT campaigns.*,
+    COALESCE(owner_user.attribs, '{}'::jsonb) AS owner_user_attribs,
     COALESCE((SELECT rm.email FROM reply_mailboxes rm WHERE rm.id = campaigns.reply_mailbox_id), '') AS reply_mailbox_email,
     CASE
         WHEN EXISTS (
@@ -205,6 +206,7 @@ SELECT campaigns.*,
         LIMIT 1
     ), '') AS template_body
     FROM campaigns
+    LEFT JOIN users owner_user ON owner_user.id = campaigns.owner_user_id
     LEFT JOIN templates ON (
         CASE WHEN $4 = 'default' THEN templates.id = campaigns.template_id
         ELSE templates.id = campaigns.archive_template_id END
@@ -399,6 +401,7 @@ ORDER BY ARRAY_POSITION($1, id);
 
 -- name: get-campaign-for-preview
 SELECT campaigns.*,
+COALESCE(owner_user.attribs, '{}'::jsonb) AS owner_user_attribs,
 CASE
     WHEN EXISTS (
         SELECT 1
@@ -440,6 +443,7 @@ COALESCE((
 	) l
 ) AS lists
 FROM campaigns
+LEFT JOIN users owner_user ON owner_user.id = campaigns.owner_user_id
 LEFT JOIN templates ON (templates.id = (CASE WHEN $2=0 THEN campaigns.template_id ELSE $2 END))
 WHERE campaigns.id = $1;
 
@@ -486,6 +490,7 @@ SELECT EXISTS (
 -- a campaign. This is used to fetch and slice subscribers for the campaign in next-campaign-subscribers.
 WITH camps AS (
     SELECT campaigns.*,
+        COALESCE(owner_user.attribs, '{}'::jsonb) AS owner_user_attribs,
         COALESCE((SELECT rm.email FROM reply_mailboxes rm WHERE rm.id = campaigns.reply_mailbox_id), '') AS reply_mailbox_email,
         CASE
             WHEN EXISTS (
@@ -531,6 +536,7 @@ WITH camps AS (
             LIMIT 1
         ), '') AS template_body
     FROM campaigns
+    LEFT JOIN users owner_user ON owner_user.id = campaigns.owner_user_id
     LEFT JOIN organizations organization ON organization.id = campaigns.organization_id
     -- Never hydrate a campaign with a template that is outside the campaign's
     -- active workspace.  The scheduler is global, so an ID-only join here

@@ -77,6 +77,8 @@ type Campaign struct {
 	ArchiveMeta       json.RawMessage `db:"archive_meta" json:"archive_meta"`
 	ReplyMailboxID    null.Int        `db:"reply_mailbox_id" json:"reply_mailbox_id"`
 	ReplyMailboxEmail string          `db:"reply_mailbox_email" json:"reply_mailbox_email"`
+	// OwnerUserAttribs is loaded for rendering and omitted from API responses.
+	OwnerUserAttribs JSON `db:"owner_user_attribs" json:"-"`
 
 	// TemplateBody is joined in from templates by the next-campaigns query.
 	TemplateBody        string             `db:"template_body" json:"-"`

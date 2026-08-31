@@ -397,6 +397,8 @@
     "customFields.title": "Custom fields",
     "customFields.add": "Add field",
     "customFields.edit": "Edit field",
+    "customFields.fillValues": "Fill in my values",
+    "customFields.accountValues": "Account field values",
     "customFields.help": "Define account fields once. Each user fills in their own values, which are automatically available in campaign messages through the shown placeholder.",
     "customFields.locked": "Fields cannot be changed while a campaign is running.",
     "customFields.key": "Key",

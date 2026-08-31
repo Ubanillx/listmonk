@@ -6,10 +6,16 @@
           <h1 class="title is-4 mb-2">{{ $t('customFields.title') }}</h1>
           <p class="subtitle is-6 mb-0">{{ $t('customFields.help') }}</p>
         </div>
-        <div v-if="isAdmin" class="column is-narrow">
-          <b-button type="is-primary" icon-left="plus" :disabled="locked" @click="openForm()">
-            {{ $t('customFields.add') }}
-          </b-button>
+        <div class="column is-narrow">
+          <div class="buttons">
+            <router-link class="button is-light" :to="{ name: 'userProfile' }">
+              <b-icon icon="account-edit-outline" />
+              <span>{{ $t('customFields.fillValues') }}</span>
+            </router-link>
+            <b-button v-if="isAdmin" type="is-primary" icon-left="plus" :disabled="locked" @click="openForm()">
+              {{ $t('customFields.add') }}
+            </b-button>
+          </div>
         </div>
       </header>
 

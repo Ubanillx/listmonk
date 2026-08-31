@@ -406,6 +406,8 @@
     "customFields.title": "自定义字段",
     "customFields.add": "新增字段",
     "customFields.edit": "编辑字段",
+    "customFields.fillValues": "填写我的字段值",
+    "customFields.accountValues": "账号字段值",
     "customFields.help": "由超级管理员统一定义账号字段。每个用户填写自己的字段值，营销邮件发送时会自动使用下方占位符。",
     "customFields.locked": "有营销活动正在运行，暂时不能修改字段定义。",
     "customFields.key": "字段键",

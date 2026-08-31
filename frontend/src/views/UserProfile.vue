@@ -19,7 +19,7 @@
       </b-field>
 
       <section v-if="customFields.length" class="account-custom-fields mb-5">
-        <h3 class="title is-5">{{ $t('customFields.title') }}</h3>
+        <h3 class="title is-5">{{ $t('customFields.accountValues') }}</h3>
         <div class="columns is-multiline">
           <div v-for="field in customFields" :key="field.key" class="column is-6">
             <b-field :label="field.label" label-position="on-border" :message="field.description">

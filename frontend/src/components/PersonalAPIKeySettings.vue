@@ -88,13 +88,23 @@
     </b-modal>
 
     <b-modal :active.sync="showToken" has-modal-card :can-cancel="false">
-      <section class="modal-card">
+      <section class="modal-card api-key-secret-modal">
         <header class="modal-card-head"><p class="modal-card-title">{{ $t('apiKeys.secretTitle') }}</p></header>
-        <section class="modal-card-body">
+        <section class="modal-card-body api-key-secret-body">
           <b-message type="is-warning" :closable="false">{{ $t('apiKeys.secretWarning') }}</b-message>
-          <b-input :value="createdToken" readonly type="textarea" rows="3" />
+          <b-input class="api-key-secret-token" :value="createdToken" readonly type="textarea" rows="3" />
         </section>
-        <footer class="modal-card-foot api-key-secret-actions"><copy-text :text="createdToken" /><b-button type="is-primary" @click="closeSecret">{{ $t('globals.buttons.done') }}</b-button></footer>
+        <footer class="modal-card-foot api-key-secret-actions">
+          <b-tooltip :label="$t('globals.buttons.copy')" type="is-dark">
+            <copy-text
+              :text="createdToken"
+              hide-text
+              class="api-key-copy-control"
+              :aria-label="$t('globals.buttons.copy')"
+              :title="$t('globals.buttons.copy')" />
+          </b-tooltip>
+          <b-button type="is-primary" @click="closeSecret">{{ $t('globals.messages.done') }}</b-button>
+        </footer>
       </section>
     </b-modal>
   </section>
@@ -271,9 +281,21 @@ export default Vue.extend({
 .api-key-table-wrap .table { margin: 0; }
 .api-key-scopes { padding: .85rem; border: 1px solid #e5e9f0; border-radius: 6px; }
 .api-key-scope-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: .75rem 1rem; }
-.api-key-secret-actions { align-items: center; justify-content: space-between; }
+.api-key-secret-modal { width: 640px; max-width: calc(100vw - 40px); }
+.api-key-secret-body { min-width: 0; }
+.api-key-secret-token,
+.api-key-secret-token .control,
+.api-key-secret-token textarea { width: 100%; max-width: 100%; }
+.api-key-secret-token textarea { overflow-x: auto; white-space: pre; word-break: normal; }
+.api-key-secret-actions { align-items: center; gap: .75rem; justify-content: flex-end; flex-wrap: wrap; background: #fff; border-top: 1px solid #e5e9f0; }
+.api-key-secret-actions .api-key-copy-control { display: inline-flex; flex: 0 0 auto; align-items: center; }
+.api-key-secret-actions .api-key-copy-control .icon { visibility: visible; }
+.api-key-secret-actions .button { flex-grow: 0; }
 @media (max-width: 768px) {
   .api-key-header { display: block; }
   .api-key-header .button { width: 100%; margin-top: .75rem; }
+  .api-key-secret-modal { width: calc(100vw - 40px); max-width: none; }
+  .api-key-secret-actions { align-items: stretch; }
+  .api-key-secret-actions .button { width: 100%; }
 }
 </style>

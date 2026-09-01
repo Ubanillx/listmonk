@@ -316,6 +316,7 @@
       <b-tab-item
         v-if="isEditing && canViewAnalytics"
         :label="$t('globals.terms.analytics')"
+        icon="chart-box-outline"
         value="analytics"
       >
         <section class="wrap">

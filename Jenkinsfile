@@ -11,8 +11,8 @@
  *
  * Credentials:
  *   listmonk-root-ssh: SSH Username with private key for root
- *   listmonk-root-known-hosts: Secret file containing the verified
- *                              known_hosts entry for the deployment host
+ * The deployment host's ED25519 host key is pinned below in the deployment
+ * step, so no separate known_hosts credential is required.
  */
 pipeline {
   agent {
@@ -66,7 +66,6 @@ pipeline {
 
   environment {
     DEPLOY_SSH_CREDENTIALS_ID = 'listmonk-root-ssh'
-    DEPLOY_KNOWN_HOSTS_CREDENTIALS_ID = 'listmonk-root-known-hosts'
   }
 
   stages {
@@ -201,11 +200,8 @@ test -s "dist/$RELEASE_ID.sha256"
         expression { !params.SKIP_DEPLOY }
       }
       steps {
-        withCredentials([
-          file(credentialsId: env.DEPLOY_KNOWN_HOSTS_CREDENTIALS_ID, variable: 'SSH_KNOWN_HOSTS')
-        ]) {
-          sshagent(credentials: [env.DEPLOY_SSH_CREDENTIALS_ID]) {
-            sh '''#!/usr/bin/env bash
+        sshagent(credentials: [env.DEPLOY_SSH_CREDENTIALS_ID]) {
+          sh '''#!/usr/bin/env bash
 set -euo pipefail
 
 binary_archive="$WORKSPACE/dist/$BINARY_NAME"
@@ -217,13 +213,20 @@ remote_stage="/tmp/${RELEASE_ID}"
 test -s "$binary_archive"
 test -s "$frontend_archive"
 test -s "$checksum_file"
-test -s "$SSH_KNOWN_HOSTS"
+
+# Pin the verified ED25519 host key for the production deployment host.
+known_hosts_file=$(mktemp)
+cleanup_known_hosts() {
+  rm -f "$known_hosts_file"
+}
+trap cleanup_known_hosts EXIT
+printf '%s\\n' '83.229.120.50 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPbEM19XAEjlkR1GbbwrTXZ3py6EHnIhbwtRrbfpSrV0' > "$known_hosts_file"
 
 ssh_options=(
   -o BatchMode=yes
   -o ConnectTimeout=15
   -o StrictHostKeyChecking=yes
-  -o UserKnownHostsFile="$SSH_KNOWN_HOSTS"
+  -o UserKnownHostsFile="$known_hosts_file"
 )
 
 ssh "${ssh_options[@]}" "$remote" \
@@ -379,7 +382,6 @@ as_root journalctl -u "$service_name" --no-pager -n 80 || true
 exit 1
 REMOTE_SCRIPT
 '''
-          }
         }
       }
     }

@@ -9,10 +9,9 @@
  * Required tools: Go 1.26.1+, Node.js 22+, Yarn 1.x (or Corepack), Make,
  * Git, Bash, OpenSSH client, tar, gzip, sha256sum and curl.
  *
- * Credentials:
- *   listmonk-root-ssh: SSH Username with private key for root
- * The deployment host's ED25519 host key is pinned below in the deployment
- * step, so no separate known_hosts credential is required.
+ * Deployment SSH key: /var/lib/jenkins/.ssh/listmonk_deploy_ed25519
+ * The private key must be readable only by the Jenkins service account. The
+ * deployment host's ED25519 host key is pinned below in the deployment step.
  */
 pipeline {
   agent {
@@ -62,10 +61,6 @@ pipeline {
       defaultValue: '9173',
       description: 'HTTP port used for the post-deploy health check.'
     )
-  }
-
-  environment {
-    DEPLOY_SSH_CREDENTIALS_ID = 'listmonk-root-ssh'
   }
 
   stages {
@@ -200,8 +195,7 @@ test -s "dist/$RELEASE_ID.sha256"
         expression { !params.SKIP_DEPLOY }
       }
       steps {
-        sshagent(credentials: [env.DEPLOY_SSH_CREDENTIALS_ID]) {
-          sh '''#!/usr/bin/env bash
+        sh '''#!/usr/bin/env bash
 set -euo pipefail
 
 binary_archive="$WORKSPACE/dist/$BINARY_NAME"
@@ -209,10 +203,12 @@ frontend_archive="$WORKSPACE/dist/$FRONTEND_ARCHIVE_NAME"
 checksum_file="$WORKSPACE/dist/$RELEASE_ID.sha256"
 remote="${DEPLOY_USER}@${DEPLOY_HOST}"
 remote_stage="/tmp/${RELEASE_ID}"
+deployment_key='/var/lib/jenkins/.ssh/listmonk_deploy_ed25519'
 
 test -s "$binary_archive"
 test -s "$frontend_archive"
 test -s "$checksum_file"
+test -r "$deployment_key"
 
 # Pin the verified ED25519 host key for the production deployment host.
 known_hosts_file=$(mktemp)
@@ -223,6 +219,8 @@ trap cleanup_known_hosts EXIT
 printf '%s\\n' '83.229.120.50 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPbEM19XAEjlkR1GbbwrTXZ3py6EHnIhbwtRrbfpSrV0' > "$known_hosts_file"
 
 ssh_options=(
+  -i "$deployment_key"
+  -o IdentitiesOnly=yes
   -o BatchMode=yes
   -o ConnectTimeout=15
   -o StrictHostKeyChecking=yes
@@ -382,7 +380,6 @@ as_root journalctl -u "$service_name" --no-pager -n 80 || true
 exit 1
 REMOTE_SCRIPT
 '''
-        }
       }
     }
   }

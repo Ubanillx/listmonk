@@ -19,6 +19,31 @@ var (
 	reUsername = regexp.MustCompile(`^[a-zA-Z0-9_\-\.@]+$`)
 )
 
+type bulkUserImportRequest struct {
+	Users []bulkUserImportRow `json:"users"`
+}
+
+type bulkUserImportRow struct {
+	Username string `json:"username"`
+	Name     string `json:"name"`
+	Password string `json:"password"`
+	Email    string `json:"email"`
+	UserRole string `json:"user_role"`
+	ListRole string `json:"list_role"`
+	Status   string `json:"status"`
+}
+
+type bulkUserImportIssue struct {
+	Row   int    `json:"row"`
+	Field string `json:"field"`
+	Code  string `json:"code"`
+}
+
+type bulkUserImportResponse struct {
+	Created int                   `json:"created"`
+	Errors  []bulkUserImportIssue `json:"errors"`
+}
+
 // GetUser retrieves a single user by ID.
 func (a *App) GetUser(c echo.Context) error {
 	// Get the user from the DB.
@@ -102,6 +127,195 @@ func (a *App) CreateUser(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, okResp{user})
+}
+
+// CreateUsers validates and atomically creates regular password-login users
+// uploaded from the bulk user import form.
+func (a *App) CreateUsers(c echo.Context) error {
+	var req bulkUserImportRequest
+	if err := c.Bind(&req); err != nil {
+		return err
+	}
+	if len(req.Users) == 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.Ts("globals.messages.invalidFields", "name", "users"))
+	}
+
+	userRoles, err := a.core.GetRoles()
+	if err != nil {
+		return err
+	}
+	listRoles, err := a.core.GetListRoles()
+	if err != nil {
+		return err
+	}
+	existing, err := a.core.GetUsers()
+	if err != nil {
+		return err
+	}
+
+	users, issues := validateBulkUserImport(req.Users, userRoles, listRoles, existing)
+	if len(issues) > 0 {
+		return c.JSON(http.StatusOK, okResp{bulkUserImportResponse{Errors: issues}})
+	}
+
+	if err := a.core.CreateUsers(users); err != nil {
+		return err
+	}
+
+	if _, err := cacheUsers(a.core, a.auth); err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, okResp{bulkUserImportResponse{Created: len(users), Errors: []bulkUserImportIssue{}}})
+}
+
+func validateBulkUserImport(rows []bulkUserImportRow, userRoles []auth.Role, listRoles []auth.ListRole, existing []auth.User) ([]auth.User, []bulkUserImportIssue) {
+	var (
+		out    = make([]auth.User, 0, len(rows))
+		issues []bulkUserImportIssue
+	)
+
+	userRoleNames := make(map[string]int, len(userRoles))
+	userRoleIDs := make(map[int]struct{}, len(userRoles))
+	for _, role := range userRoles {
+		userRoleNames[strings.ToLower(strings.TrimSpace(role.Name.String))] = role.ID
+		userRoleIDs[role.ID] = struct{}{}
+	}
+	listRoleNames := make(map[string]int, len(listRoles))
+	listRoleIDs := make(map[int]struct{}, len(listRoles))
+	for _, role := range listRoles {
+		listRoleNames[strings.ToLower(strings.TrimSpace(role.Name.String))] = role.ID
+		listRoleIDs[role.ID] = struct{}{}
+	}
+
+	existingUsernames := make(map[string]struct{}, len(existing))
+	existingEmails := make(map[string]struct{}, len(existing))
+	for _, user := range existing {
+		existingUsernames[user.Username] = struct{}{}
+		if user.Email.Valid {
+			existingEmails[strings.ToLower(user.Email.String)] = struct{}{}
+		}
+	}
+	seenUsernames := make(map[string]struct{}, len(rows))
+	seenEmails := make(map[string]struct{}, len(rows))
+
+	addIssue := func(row int, field, code string) {
+		issues = append(issues, bulkUserImportIssue{Row: row, Field: field, Code: code})
+	}
+
+	for i, row := range rows {
+		rowNum := i + 2
+		username := strings.TrimSpace(row.Username)
+		name := strings.TrimSpace(row.Name)
+		password := row.Password
+		email := strings.ToLower(strings.TrimSpace(row.Email))
+		status := strings.ToLower(strings.TrimSpace(row.Status))
+		if status == "" {
+			status = auth.UserStatusEnabled
+		}
+
+		valid := true
+		if !strHasLen(username, 3, stdInputMaxLen) || !reUsername.MatchString(username) {
+			addIssue(rowNum, "username", "invalid_username")
+			valid = false
+		} else if _, ok := existingUsernames[username]; ok {
+			addIssue(rowNum, "username", "username_exists")
+			valid = false
+		} else if _, ok := seenUsernames[username]; ok {
+			addIssue(rowNum, "username", "duplicate_username")
+			valid = false
+		}
+		seenUsernames[username] = struct{}{}
+
+		if len(name) > stdInputMaxLen {
+			addIssue(rowNum, "name", "invalid_name")
+			valid = false
+		}
+		if !strHasLen(password, 8, stdInputMaxLen) {
+			addIssue(rowNum, "password", "invalid_password")
+			valid = false
+		}
+		if !utils.ValidateEmail(email) {
+			addIssue(rowNum, "email", "invalid_email")
+			valid = false
+		} else if _, ok := existingEmails[email]; ok {
+			addIssue(rowNum, "email", "email_exists")
+			valid = false
+		} else if _, ok := seenEmails[email]; ok {
+			addIssue(rowNum, "email", "duplicate_email")
+			valid = false
+		}
+		seenEmails[email] = struct{}{}
+
+		userRoleID, ok := bulkUserRoleID(row.UserRole, userRoleNames, userRoleIDs)
+		if strings.TrimSpace(row.UserRole) == "" {
+			addIssue(rowNum, "user_role", "missing_user_role")
+			valid = false
+		} else if !ok {
+			addIssue(rowNum, "user_role", "invalid_user_role")
+			valid = false
+		} else if userRoleID == auth.SuperAdminRoleID {
+			addIssue(rowNum, "user_role", "super_admin_role")
+			valid = false
+		}
+
+		listRoleID, listRoleOK := bulkListRoleID(row.ListRole, listRoleNames, listRoleIDs)
+		if strings.TrimSpace(row.ListRole) != "" && !listRoleOK {
+			addIssue(rowNum, "list_role", "invalid_list_role")
+			valid = false
+		}
+		if status != auth.UserStatusEnabled && status != auth.UserStatusDisabled {
+			addIssue(rowNum, "status", "invalid_status")
+			valid = false
+		}
+
+		if !valid {
+			continue
+		}
+		if name == "" {
+			name = username
+		}
+
+		user := auth.User{
+			Username:      username,
+			Password:      null.String{String: password, Valid: true},
+			PasswordLogin: true,
+			Email:         null.String{String: email, Valid: true},
+			Name:          name,
+			Type:          auth.UserTypeUser,
+			Status:        status,
+			UserRoleID:    userRoleID,
+		}
+		if listRoleOK {
+			user.ListRoleID = &listRoleID
+		}
+		out = append(out, user)
+	}
+
+	return out, issues
+}
+
+func bulkUserRoleID(value string, roleNames map[string]int, roleIDs map[int]struct{}) (int, bool) {
+	value = strings.TrimSpace(value)
+	if id, err := strconv.Atoi(value); err == nil {
+		_, ok := roleIDs[id]
+		return id, ok
+	}
+	id, ok := roleNames[strings.ToLower(value)]
+	return id, ok
+}
+
+func bulkListRoleID(value string, roleNames map[string]int, roleIDs map[int]struct{}) (int, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0, false
+	}
+	if id, err := strconv.Atoi(value); err == nil {
+		_, ok := roleIDs[id]
+		return id, ok
+	}
+	id, ok := roleNames[strings.ToLower(value)]
+	return id, ok
 }
 
 // UpdateUser handles user modification.

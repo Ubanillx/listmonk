@@ -266,6 +266,7 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.DELETE("/api/organizations/:id", pm(hasID(a.PurgeArchivedOrganization), "users:manage"))
 
 		g.GET("/api/users", pm(a.GetUsers, "users:get"))
+		g.POST("/api/users/bulk", pm(a.CreateUsers, "users:manage"))
 		g.GET("/api/users/:id/integration-tokens", pm(hasID(a.GetUserIntegrationTokens), "users:manage"))
 		g.POST("/api/users/:id/integration-tokens", pm(hasID(a.CreateUserIntegrationToken), "users:manage"))
 		g.DELETE("/api/users/:id/integration-tokens/:token_id", pm(hasID(a.DeleteUserIntegrationToken), "users:manage"))

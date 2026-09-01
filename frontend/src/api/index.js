@@ -716,6 +716,12 @@ export const createUser = (data) => http.post(
   { loading: models.users },
 );
 
+export const createUsers = (data) => http.post(
+  '/api/users/bulk',
+  data,
+  { loading: models.users },
+);
+
 export const updateUser = (data) => http.put(
   `/api/users/${data.id}`,
   data,

@@ -8,11 +8,14 @@
         </h1>
       </div>
       <div class="column has-text-right">
-        <b-field v-if="$can('users:manage')" expanded>
-          <b-button expanded type="is-primary" icon-left="plus" class="btn-new" @click="showNewForm" data-cy="btn-new">
+        <div v-if="$can('users:manage')" class="buttons is-justify-content-flex-end">
+          <b-button icon-left="file-upload-outline" type="is-light" @click="showBulkImport" data-cy="btn-user-bulk-import">
+            {{ $t('users.bulkImport') }}
+          </b-button>
+          <b-button type="is-primary" icon-left="plus" class="btn-new" @click="showNewForm" data-cy="btn-new">
             {{ $t('globals.buttons.new') }}
           </b-button>
-        </b-field>
+        </div>
       </div>
     </header>
 
@@ -132,6 +135,10 @@
       <user-form :data="curItem" :is-editing="isEditing" @finished="formFinished" />
     </b-modal>
 
+    <b-modal scroll="keep" :aria-modal="true" :active.sync="isBulkImportVisible" :width="1200">
+      <user-bulk-import @finished="formFinished" />
+    </b-modal>
+
     <b-modal scroll="keep" :aria-modal="true" :active.sync="isSMTPStatusVisible" :width="720">
       <div class="modal-card content" style="width: auto">
         <header class="modal-card-head">
@@ -178,11 +185,13 @@ import { mapState } from 'vuex';
 import EmptyPlaceholder from '../components/EmptyPlaceholder.vue';
 
 import UserForm from './UserForm.vue';
+import UserBulkImport from './UserBulkImport.vue';
 
 export default Vue.extend({
   components: {
     EmptyPlaceholder,
     UserForm,
+    UserBulkImport,
   },
 
   data() {
@@ -190,6 +199,7 @@ export default Vue.extend({
       curItem: null,
       isEditing: false,
       isFormVisible: false,
+      isBulkImportVisible: false,
       isSMTPStatusVisible: false,
       smtpStatusLoading: false,
       smtpStatus: [],
@@ -245,6 +255,10 @@ export default Vue.extend({
       this.curItem = {};
       this.isFormVisible = true;
       this.isEditing = false;
+    },
+
+    showBulkImport() {
+      this.isBulkImportVisible = true;
     },
 
     formFinished() {

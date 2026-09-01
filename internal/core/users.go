@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"net/http"
@@ -70,6 +71,32 @@ func (c *Core) CreateUser(u auth.User) (auth.User, error) {
 
 	out, err := c.GetUser(id, "", "")
 	return out, err
+}
+
+// CreateUsers creates a batch of regular users atomically. Callers are
+// responsible for validating the incoming user records before calling this.
+func (c *Core) CreateUsers(users []auth.User) error {
+	tx, err := c.db.BeginTxx(context.Background(), nil)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError,
+			c.i18n.Ts("globals.messages.errorCreating", "name", "{globals.terms.users}", "error", pqErrMsg(err)))
+	}
+	defer tx.Rollback()
+
+	for _, u := range users {
+		var id int
+		if err := tx.Stmtx(c.q.CreateUser).Get(&id, u.Username, u.PasswordLogin, u.Password, u.Email, u.Name, u.Type, u.UserRoleID, u.ListRoleID, u.Status); err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError,
+				c.i18n.Ts("globals.messages.errorCreating", "name", "{globals.terms.user}", "error", pqErrMsg(err)))
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError,
+			c.i18n.Ts("globals.messages.errorCreating", "name", "{globals.terms.users}", "error", pqErrMsg(err)))
+	}
+
+	return nil
 }
 
 // CreateIntegrationToken creates a new bearer integration token for an API user.

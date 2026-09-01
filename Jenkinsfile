@@ -1,9 +1,9 @@
 /*
  * listmonk CI/CD pipeline
  *
- * The Jenkins agent builds the Go binary and frontend assets locally. When
- * DEPLOY_TO_SERVER is enabled, the release is copied over SSH and activated
- * through a systemd service on the target host.
+ * The Jenkins agent builds the Go binary and frontend assets locally, then
+ * deploys the release over SSH unless SKIP_DEPLOY is selected. The remote
+ * systemd service is activated after a successful upload.
  *
  * Agent label: linux-docker
  * Required tools: Go 1.26.1+, Node.js 22+, Yarn 1.x (or Corepack), Make,
@@ -33,9 +33,9 @@ pipeline {
       description: 'Branch to fetch and build from origin.'
     )
     booleanParam(
-      name: 'DEPLOY_TO_SERVER',
+      name: 'SKIP_DEPLOY',
       defaultValue: false,
-      description: 'Upload this build and activate it as a systemd service on the deployment host.'
+      description: 'Skip deployment for an artifact-only build. Normal CI/CD builds deploy automatically.'
     )
     string(
       name: 'DEPLOY_HOST',
@@ -198,7 +198,7 @@ test -s "dist/$RELEASE_ID.sha256"
 
     stage('Deploy release') {
       when {
-        expression { params.DEPLOY_TO_SERVER }
+        expression { !params.SKIP_DEPLOY }
       }
       steps {
         withCredentials([

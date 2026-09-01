@@ -810,6 +810,7 @@
     "users.bulkImportError.invalid_list_role": "列表角色不存在",
     "users.bulkImportError.invalid_status": "状态只能是 enabled 或 disabled",
     "users.cantDeleteRole": "无法删除正在使用的角色。",
+    "users.cantDeleteReferenced": "无法删除用户，因为关联数据已发生变化。请刷新后重试。",
     "users.firstTime": "首次安装。请为超级管理员账户设置用户名和密码。",
     "users.forgotPassword": "忘记密码？",
     "users.invalidLogin": "用户名或密码错误。",

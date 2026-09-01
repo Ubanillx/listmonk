@@ -4,9 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/knadh/listmonk/internal/auth"
 	"github.com/knadh/listmonk/internal/utils"
 	"github.com/labstack/echo/v4"
@@ -411,18 +414,171 @@ func (c *Core) SetTwoFA(id int, twofaType, twofaKey string) error {
 	return nil
 }
 
-// DeleteUsers deletes a given user.
+// DeleteUsers permanently deletes users and their account-scoped data. Organization
+// memberships are stored as soft-deleted audit records, so they and other explicit
+// organization references must be handled before the users row can be removed.
 func (c *Core) DeleteUsers(ids []int) error {
-	res, err := c.q.DeleteUsers.Exec(pq.Array(ids))
+	if len(ids) == 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, c.i18n.T("globals.messages.invalidID"))
+	}
+
+	tx, err := c.db.BeginTxx(context.Background(), nil)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError,
-			c.i18n.Ts("globals.messages.errorDeleting", "name", "{globals.terms.user}", "error", pqErrMsg(err)))
+		return c.userDeletionDBErr(err)
+	}
+	defer tx.Rollback()
+
+	// Serializes account deletion with role changes and other account writes so
+	// two concurrent requests can never remove the final enabled Super Admin.
+	if _, err := tx.Exec(`LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE`); err != nil {
+		return c.userDeletionDBErr(err)
+	}
+
+	var remainingSuperAdmins int
+	if err := tx.Get(&remainingSuperAdmins, `
+		SELECT COUNT(*) FROM users
+		WHERE id != ALL($1)
+			AND user_role_id = 1 AND type = 'user' AND status = 'enabled'`, pq.Array(ids)); err != nil {
+		return c.userDeletionDBErr(err)
+	}
+	if remainingSuperAdmins == 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, c.i18n.T("users.needSuper"))
+	}
+
+	if err := c.prepareUsersForDeletion(tx, ids); err != nil {
+		return err
+	}
+
+	res, err := tx.Stmtx(c.q.DeleteUsers).Exec(pq.Array(ids))
+	if err != nil {
+		return c.userDeletionDBErr(err)
 	}
 	if num, err := res.RowsAffected(); err != nil || num == 0 {
 		return echo.NewHTTPError(http.StatusBadRequest, c.i18n.T("users.needSuper"))
 	}
+	if err := tx.Commit(); err != nil {
+		return c.userDeletionDBErr(err)
+	}
 
 	return nil
+}
+
+// prepareUsersForDeletion removes relationships that cannot survive a physical
+// account deletion. Account-owned organization resources are left pending for
+// transfer, matching the ownership guarantees used when a member leaves.
+func (c *Core) prepareUsersForDeletion(tx *sqlx.Tx, ids []int) error {
+	userIDs := pq.Array(ids)
+	exec := func(query string) error {
+		if _, err := tx.Exec(query, userIDs); err != nil {
+			return c.userDeletionDBErr(err)
+		}
+		return nil
+	}
+
+	// Organization membership, transfer, and archive flows lock this same row.
+	// Locking all affected organizations keeps an account deletion from racing a
+	// resource transfer or a member removal in the same workspace.
+	var organizationIDs []int
+	if err := tx.Select(&organizationIDs, `
+		SELECT o.id FROM organizations o
+		WHERE o.created_by_user_id = ANY($1)
+			OR EXISTS (
+				SELECT 1 FROM organization_members om
+				WHERE om.organization_id = o.id AND om.user_id = ANY($1)
+			)
+		ORDER BY o.id
+		FOR UPDATE`, userIDs); err != nil {
+		return c.userDeletionDBErr(err)
+	}
+
+	// Do this before clearing campaign ownership so no recipient remains queued
+	// after the campaign is handed over for transfer.
+	if err := exec(`
+		UPDATE campaign_recipients cr SET status = 'pending', updated_at = NOW()
+		WHERE cr.status = 'queued'
+			AND EXISTS (
+				SELECT 1 FROM campaigns c
+				WHERE c.id = cr.campaign_id
+					AND c.organization_id IS NOT NULL
+					AND c.owner_user_id = ANY($1)
+			)`); err != nil {
+		return err
+	}
+
+	for _, table := range []string{"lists", "subscribers", "templates", "media"} {
+		query := fmt.Sprintf(`
+			UPDATE %s SET owner_user_id = NULL,
+				original_owner_user_id = COALESCE(original_owner_user_id, owner_user_id),
+				transfer_pending_at = NOW(), updated_at = NOW()
+			WHERE organization_id IS NOT NULL AND owner_user_id = ANY($1)`, table)
+		if err := exec(query); err != nil {
+			return err
+		}
+	}
+
+	if err := exec(`
+		UPDATE campaigns SET
+			owner_user_id = NULL,
+			original_owner_user_id = COALESCE(original_owner_user_id, owner_user_id),
+			transfer_pending_at = NOW(),
+			send_at = CASE WHEN status IN ('scheduled', 'deferred') THEN NULL ELSE send_at END,
+			next_resume_at = CASE WHEN status = 'deferred' THEN NULL ELSE next_resume_at END,
+			status = CASE WHEN status IN ('scheduled', 'deferred') THEN 'draft'::campaign_status
+				WHEN status = 'running' THEN 'paused'::campaign_status ELSE status END,
+			updated_at = NOW()
+		WHERE organization_id IS NOT NULL AND owner_user_id = ANY($1)`); err != nil {
+		return err
+	}
+
+	// An organization itself must stay available after its creator is deleted.
+	// Prefer a remaining active manager, then fall back to a remaining Super Admin.
+	if err := exec(`
+		UPDATE organizations o SET created_by_user_id = COALESCE(
+			(
+				SELECT om.user_id FROM organization_members om
+				WHERE om.organization_id = o.id
+					AND om.removed_at IS NULL
+					AND om.user_id != ALL($1)
+				ORDER BY (om.role = 'manager') DESC, om.joined_at, om.user_id
+				LIMIT 1
+			),
+			(
+				SELECT u.id FROM users u
+				WHERE u.id != ALL($1)
+					AND u.user_role_id = 1 AND u.type = 'user' AND u.status = 'enabled'
+				ORDER BY u.id
+				LIMIT 1
+			)
+		)
+		WHERE o.created_by_user_id = ANY($1)`); err != nil {
+		return err
+	}
+
+	// These records have no valid principal after an account is deleted. Removing
+	// them also revokes invitations and forwarding destinations tied to the user.
+	for _, query := range []string{
+		`DELETE FROM reply_forward_rules WHERE target_user_id = ANY($1)`,
+		`DELETE FROM organization_join_requests WHERE requested_by_user_id = ANY($1)`,
+		`DELETE FROM organization_invites WHERE created_by_user_id = ANY($1)`,
+		`DELETE FROM organization_members WHERE user_id = ANY($1)`,
+	} {
+		if err := exec(query); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (c *Core) userDeletionDBErr(err error) error {
+	var pgErr *pq.Error
+	if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+		return echo.NewHTTPError(http.StatusConflict,
+			c.i18n.T("users.cantDeleteReferenced")).SetInternal(err)
+	}
+
+	return echo.NewHTTPError(http.StatusInternalServerError,
+		c.i18n.Ts("globals.messages.errorDeleting", "name", "{globals.terms.user}", "error", pqErrMsg(err))).SetInternal(err)
 }
 
 // LoginUser attempts to log the given user_id in by matching the password.

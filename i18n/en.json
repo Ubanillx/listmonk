@@ -800,6 +800,7 @@
     "users.bulkImportError.invalid_list_role": "Unknown list role",
     "users.bulkImportError.invalid_status": "Status must be enabled or disabled",
     "users.cantDeleteRole": "Cannot delete role that is in use.",
+    "users.cantDeleteReferenced": "Couldn't delete the user because related data changed. Refresh and try again.",
     "users.firstTime": "This is a fresh install. Pick a username and password for the Super Admin account.",
     "users.invalidLogin": "Invalid login or password",
     "users.invalidRequest": "Invalid auth request",

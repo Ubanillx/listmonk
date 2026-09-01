@@ -304,7 +304,7 @@
         </div>
       </b-tab-item><!-- content -->
 
-      <b-tab-item :label="$t('globals.terms.attribs')" icon="code" value="attribs" :disabled="isNew">
+      <b-tab-item :label="$t('globals.terms.attribs')" icon="code-json" value="attribs" :disabled="isNew">
         <section class="wrap">
           <b-field :label="$t('globals.terms.attribs')" :message="$t('campaigns.attribsHelp')"
             label-position="on-border">

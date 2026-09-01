@@ -199,7 +199,7 @@
         </div>
       </b-table-column>
 
-      <b-table-column v-slot="props" cell-class="actions" width="15%" align="right">
+      <b-table-column v-slot="props" cell-class="actions" width="260" align="right">
         <div>
           <!-- start / pause / resume / scheduled -->
           <template v-if="canManageCampaign(props.row)">

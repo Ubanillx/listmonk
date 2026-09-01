@@ -242,6 +242,7 @@
     "globals.months.8": "八月",
     "globals.months.9": "九月",
     "globals.states.off": "關閉",
+    "globals.states.on": "啟用",
     "globals.terms.all": "全部",
     "globals.terms.analytics": "分析",
     "globals.terms.attribs": "屬性",

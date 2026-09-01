@@ -285,6 +285,7 @@
     "globals.months.8": "八月",
     "globals.months.9": "九月",
     "globals.states.off": "关闭",
+    "globals.states.on": "启用",
     "globals.terms.all": "所有",
     "globals.terms.analytics": "营销统计",
     "globals.terms.attribs": "属性",

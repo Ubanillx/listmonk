@@ -10,17 +10,14 @@ func CurrentLocalDate() string {
 
 func NextDailyResumeAt(hhmm string, now time.Time) time.Time {
 	base := now.In(time.Local)
+	nextDay := base.AddDate(0, 0, 1)
 	t, err := time.ParseInLocation(DailyResumeLayout, hhmm, time.Local)
 	if err != nil {
-		nextDay := base.AddDate(0, 0, 1)
 		return time.Date(nextDay.Year(), nextDay.Month(), nextDay.Day(), base.Hour(), base.Minute(), 0, 0, time.Local)
 	}
 
-	next := time.Date(base.Year(), base.Month(), base.Day(), t.Hour(), t.Minute(), 0, 0, time.Local)
-	if !next.After(base) {
-		nextDay := base.AddDate(0, 0, 1)
-		next = time.Date(nextDay.Year(), nextDay.Month(), nextDay.Day(), t.Hour(), t.Minute(), 0, 0, time.Local)
-	}
-
-	return next
+	// Daily usage is partitioned by local calendar date. A campaign that has
+	// exhausted today's allowance must always wait for tomorrow's configured
+	// resume time, even if that time has not occurred yet today.
+	return time.Date(nextDay.Year(), nextDay.Month(), nextDay.Day(), t.Hour(), t.Minute(), 0, 0, time.Local)
 }

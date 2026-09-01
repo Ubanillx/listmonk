@@ -915,6 +915,20 @@ section.campaigns {
     }
 
     td {
+      &.actions {
+        // Keep the campaign controls in one row. The action count can grow
+        // beyond the space left by the percentage-based data columns.
+        min-width: 260px;
+        white-space: nowrap;
+
+        > div {
+          display: flex;
+          align-items: center;
+          justify-content: flex-end;
+          flex-wrap: nowrap;
+        }
+      }
+
       .tags {
         margin-top: 5px;
       }

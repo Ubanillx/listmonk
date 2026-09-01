@@ -971,7 +971,7 @@ func (m *Manager) worker() {
 						msg.Campaign.Name,
 						msg.Campaign.ID,
 					)
-					msg.pipe.Defer()
+					msg.pipe.DeferImmediately()
 				} else if err != nil {
 					if uErr := m.store.MarkCampaignRecipientStatus(msg.Campaign.ID, msg.Subscriber.ID, models.CampaignRecipientStatusPending); uErr != nil {
 						m.log.Printf("error resetting campaign recipient (%s:%d): %v", msg.Campaign.Name, msg.Subscriber.ID, uErr)

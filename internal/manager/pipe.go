@@ -29,6 +29,8 @@ type pipe struct {
 	sent       atomic.Int64
 	errors     atomic.Uint64
 	stopped    atomic.Bool
+	deferred   atomic.Bool
+	deferMut   sync.Mutex
 	withErrors atomic.Bool
 	stopReason atomic.Int32
 
@@ -232,17 +234,37 @@ func (p *pipe) OnError() {
 }
 
 func (p *pipe) Defer() {
+	p.deferCampaign(false)
+}
+
+// DeferImmediately prevents further queued messages from being delivered.
+// It is used when the SMTP pool rejects a message for its own daily quota.
+// In contrast, a campaign-level cap has already reserved its final batch, so
+// Defer lets that batch drain before the campaign is resumed the next day.
+func (p *pipe) DeferImmediately() {
+	p.deferCampaign(true)
+}
+
+func (p *pipe) deferCampaign(stopQueuedMessages bool) {
 	if p.stopped.Load() {
 		return
 	}
 
-	next := schedule.NextDailyResumeAt(p.camp.DailyResumeTime, time.Now())
-	if err := p.m.store.DeferCampaign(p.camp.ID, next); err != nil {
-		p.m.log.Printf("error deferring campaign (%s): %v", p.camp.Name, err)
-		return
+	p.deferMut.Lock()
+	if !p.deferred.Load() {
+		next := schedule.NextDailyResumeAt(p.camp.DailyResumeTime, time.Now())
+		if err := p.m.store.DeferCampaign(p.camp.ID, next); err != nil {
+			p.deferMut.Unlock()
+			p.m.log.Printf("error deferring campaign (%s): %v", p.camp.Name, err)
+			return
+		}
+		p.deferred.Store(true)
 	}
+	p.deferMut.Unlock()
 
-	p.Stop(stopReasonDeferred, false)
+	if stopQueuedMessages {
+		p.Stop(stopReasonDeferred, false)
+	}
 }
 
 // Stop "marks" a campaign as stopped. It doesn't actually stop the processing
@@ -349,6 +371,17 @@ func (p *pipe) cleanup() {
 			}
 		}
 		p.m.log.Printf("stop processing campaign (%s)", p.camp.Name)
+		return
+	}
+
+	// The final batch is allowed to drain when the campaign cap is reached.
+	// The campaign remains deferred and all unsent recipients are already in
+	// deferred state, ready for the next scheduler claim.
+	if p.deferred.Load() {
+		if err := p.m.store.ResetCampaignQueuedRecipients(p.camp.ID, models.CampaignRecipientStatusDeferred); err != nil {
+			p.m.log.Printf("error deferring queued recipients (%s): %v", p.camp.Name, err)
+		}
+		p.m.log.Printf("deferred campaign (%s) until the next daily resume time", p.camp.Name)
 		return
 	}
 

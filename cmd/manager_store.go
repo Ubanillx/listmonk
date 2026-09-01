@@ -207,44 +207,38 @@ func (s *store) NextSubscribers(campID, limit int) ([]models.CampaignSubscriber,
 		limit = 1
 	}
 
-	// The database query normalizes legacy zero values to 300, but keep the
-	// invariant here as well.  NextSubscribers is also exercised by maintenance
-	// workers/tests with hand-built send-state rows, and a direct SQL write must
-	// never turn a zero into an unlimited campaign.
-	dailyLimit := st.DailySendLimit
-	if st.CampaignType == models.CampaignTypeRegular && email.IsMessengerName(st.Messenger) && dailyLimit < 1 {
-		dailyLimit = 300
-	}
-	if st.CampaignType == models.CampaignTypeRegular && email.IsMessengerName(st.Messenger) {
-		remaining := dailyLimit - st.DailySentCount - st.QueuedCount
-		// The campaign cap and the account's enabled SMTP pool are independent
-		// daily limits. Restrict each fetched batch to the smaller effective
-		// remainder so a campaign cannot queue hundreds of recipients after the
-		// account's finite SMTP capacity has already been consumed by another
-		// campaign. The SMTP messenger still performs an atomic per-server
-		// reservation at send time for concurrent workers.
-		if st.OwnerUserID.Valid && st.OwnerUserID.Int > 0 {
-			smtpRemaining, err := s.userSMTPRemaining(st.OwnerUserID.Int)
-			if err != nil {
-				return nil, err
-			}
-			if smtpRemaining >= 0 && smtpRemaining < remaining {
-				remaining = smtpRemaining
-			}
+	// Keep the same cap in the SQL projection and the batch decision. This is
+	// also defensive for legacy rows whose stored limit is still zero.
+	smtpRemaining := -1
+	if st.CampaignType == models.CampaignTypeRegular && email.IsMessengerName(st.Messenger) &&
+		st.OwnerUserID.Valid && st.OwnerUserID.Int > 0 {
+		var err error
+		smtpRemaining, err = s.userSMTPRemaining(st.OwnerUserID.Int)
+		if err != nil {
+			return nil, err
 		}
-		if remaining <= 0 {
+	}
+	batchLimit, deferred := campaignBatchLimit(
+		st.CampaignType,
+		st.Messenger,
+		st.DailySendLimit,
+		st.DailySentCount,
+		st.QueuedCount,
+		limit,
+		smtpRemaining,
+	)
+	if st.CampaignType == models.CampaignTypeRegular && email.IsMessengerName(st.Messenger) {
+		if deferred {
 			lo.Printf("campaign %d deferred due to daily limit: limit=%d sent_today=%d queued=%d local_date=%s",
 				campID,
-				dailyLimit,
+				normalizedCampaignDailySendLimit(st.DailySendLimit),
 				st.DailySentCount,
 				st.QueuedCount,
 				currentLocalDate(),
 			)
 			return nil, manager.ErrCampaignDeferred
 		}
-		if remaining < limit {
-			limit = remaining
-		}
+		limit = batchLimit
 	}
 
 	var out []models.CampaignSubscriber

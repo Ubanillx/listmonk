@@ -20,13 +20,13 @@ func setLocalTZ(t *testing.T, tz string) func() {
 	}
 }
 
-func TestNextDailyResumeAtSameDay(t *testing.T) {
+func TestNextDailyResumeAtAlwaysUsesNextDay(t *testing.T) {
 	restore := setLocalTZ(t, "UTC")
 	defer restore()
 
 	now := time.Date(2026, 3, 23, 8, 30, 0, 0, time.Local)
 	got := NextDailyResumeAt("09:00", now)
-	want := time.Date(2026, 3, 23, 9, 0, 0, 0, time.Local)
+	want := time.Date(2026, 3, 24, 9, 0, 0, 0, time.Local)
 
 	if !got.Equal(want) {
 		t.Fatalf("expected %s, got %s", want, got)

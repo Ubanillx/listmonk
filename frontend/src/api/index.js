@@ -167,7 +167,7 @@ export const getPersonalTemplates = () => http.get(
 export const getPersonalCampaigns = () => http.get(
   '/api/campaigns',
   {
-    params: { per_page: 'all', no_body: true },
+    params: { per_page: 'all' },
     workspaceOrganizationId: 0,
   },
 );

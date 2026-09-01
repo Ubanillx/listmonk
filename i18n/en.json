@@ -57,7 +57,7 @@
     "campaigns.archiveSlug": "URL Slug",
     "campaigns.archiveSlugHelp": "A short name for the page to be used in the public URL. eg: my-newsletter-edition-2",
     "campaigns.autoTrackLinks": "Auto-track links",
-    "campaigns.autoTrackLinksHelp": "When enabled, regular HTTP(S) links in the campaign body are automatically converted to tracked redirect links before sending.",
+    "campaigns.autoTrackLinksHelp": "When enabled, HTTP(S) links in the campaign body, custom fields, and email template are converted to tracked redirect links before sending.",
     "globals.terms.attribs": "Attributes",
     "campaigns.attribsHelp": "Custom JSON object {} attributes for this campaign. Use in template with {{ .Campaign.Attribs.$key }}",
     "campaigns.attachments": "Attachments",

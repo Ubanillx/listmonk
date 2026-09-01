@@ -59,7 +59,7 @@
     "campaigns.archiveSlug": "URL 别名",
     "campaigns.archiveSlugHelp": "公共 URL 中用于页面的简短名称。例如：my-newsletter-edition-2",
     "campaigns.autoTrackLinks": "自动追踪链接",
-    "campaigns.autoTrackLinksHelp": "开启后，活动正文中的普通 HTTP(S) 链接会在发送前自动转换为带追踪记录的跳转链接。",
+    "campaigns.autoTrackLinksHelp": "开启后，活动正文、自定义字段和邮件模板中的 HTTP(S) 链接会在发送前自动转换为带追踪记录的跳转链接。",
     "campaigns.attachments": "附件",
     "campaigns.campaignAttachments": "活动附件",
     "campaigns.attribsHelp": "营销活动自定义 JSON 对象属性（{}）。可在邮件模板中使用 {{ .Campaign.Attribs.$key }}",

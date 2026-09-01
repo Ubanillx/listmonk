@@ -699,12 +699,7 @@ func (m *Manager) TemplateFuncs(c *models.Campaign) template.FuncMap {
 				return url
 			}
 
-			subUUID := msg.Subscriber.UUID
-			if !m.cfg.IndividualTracking {
-				subUUID = dummyUUID
-			}
-
-			return m.trackLink(url, msg.Campaign.UUID, subUUID)
+			return m.trackLink(url, msg.Campaign.UUID, m.trackingSubscriberUUID(msg.Subscriber.UUID))
 		},
 		"TrackView": func(msg *CampaignMessage) template.HTML {
 			if m.cfg.DisableTracking {

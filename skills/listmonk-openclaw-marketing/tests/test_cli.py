@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 import unittest
@@ -13,7 +14,7 @@ SCRIPTS_DIR = ROOT / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-from listmonk_marketing.cli import add_auth_arguments
+from listmonk_marketing.cli import add_auth_arguments, load_env_file
 
 SCRIPTS = [
     "run_marketing_flow.py",
@@ -57,6 +58,7 @@ class CLITests(unittest.TestCase):
             {
                 "LISTMONK_BASE_URL": "https://listmonk.bid-gun.com",
                 "LISTMONK_BEARER_TOKEN": "env-token",
+                "LISTMONK_ORGANIZATION_ID": "42",
             },
             clear=False,
         ):
@@ -65,6 +67,18 @@ class CLITests(unittest.TestCase):
 
         self.assertEqual(args.base_url, "https://listmonk.bid-gun.com")
         self.assertEqual(args.bearer_token, "env-token")
+        self.assertEqual(args.organization_id, 42)
+
+    def test_dotenv_values_do_not_override_process_environment(self) -> None:
+        with patch.dict("os.environ", {"LISTMONK_BEARER_TOKEN": "process-token"}, clear=True):
+            with patch(
+                "listmonk_marketing.cli.Path.read_text",
+                return_value="LISTMONK_BEARER_TOKEN=file-token\nLISTMONK_BASE_URL='https://from-file.example'\n",
+            ):
+                load_env_file()
+
+            self.assertEqual(os.environ["LISTMONK_BEARER_TOKEN"], "process-token")
+            self.assertEqual(os.environ["LISTMONK_BASE_URL"], "https://from-file.example")
 
 
 if __name__ == "__main__":

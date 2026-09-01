@@ -162,16 +162,17 @@ func (o *Auth) GetAPIToken(user string, token string) (User, bool) {
 	return t, true
 }
 
-// GetIntegrationToken validates an integration bearer token.
-func (o *Auth) GetIntegrationToken(token string) (User, int, bool) {
+// GetIntegrationToken validates an integration bearer token and returns its
+// metadata so callers can enforce personal-key scope and workspace limits.
+func (o *Auth) GetIntegrationToken(token string) (User, IntegrationToken, bool) {
 	o.RLock()
 	t, ok := o.integrationTokens[HashIntegrationToken(token)]
 	o.RUnlock()
-	if !ok {
-		return User{}, 0, false
+	if !ok || t.RevokedAt.Valid || (t.ExpiresAt.Valid && !t.ExpiresAt.Time.After(time.Now())) {
+		return User{}, IntegrationToken{}, false
 	}
 
-	return t.User, t.ID, true
+	return t.User, t, true
 }
 
 // HashIntegrationToken returns the stable SHA-256 hash of an integration token.
@@ -337,18 +338,19 @@ func (o *Auth) Middleware(next echo.HandlerFunc) echo.HandlerFunc {
 		if len(hdr) > 0 {
 			if strings.HasPrefix(hdr, "Bearer ") {
 				token := strings.TrimSpace(strings.TrimPrefix(hdr, "Bearer "))
-				user, tokenID, ok := o.GetIntegrationToken(token)
+				user, integrationToken, ok := o.GetIntegrationToken(token)
 				if !ok {
 					c.Set(UserHTTPCtxKey, echo.NewHTTPError(http.StatusForbidden, "invalid integration token"))
 					return next(c)
 				}
 
 				if o.cb != nil && o.cb.TouchIntegrationToken != nil {
-					if err := o.cb.TouchIntegrationToken(tokenID); err != nil {
+					if err := o.cb.TouchIntegrationToken(integrationToken.ID); err != nil {
 						o.log.Printf("error updating integration token usage: %v", err)
 					}
 				}
 
+				c.Set(IntegrationTokenHTTPCtxKey, integrationToken)
 				c.Set(UserHTTPCtxKey, user)
 				return next(c)
 			}
@@ -469,6 +471,35 @@ func (o *Auth) validateSession(c echo.Context) (*simplesessions.Session, User, e
 // HTTP handler request.
 func GetUser(c echo.Context) User {
 	return c.Get(UserHTTPCtxKey).(User)
+}
+
+// GetIntegrationTokenContext returns bearer-token metadata attached to a
+// request. Cookie and legacy BasicAuth requests have no integration token.
+func GetIntegrationTokenContext(c echo.Context) (IntegrationToken, bool) {
+	token, ok := c.Get(IntegrationTokenHTTPCtxKey).(IntegrationToken)
+	return token, ok
+}
+
+// IsPersonalIntegrationToken reports whether a request uses a self-service
+// personal API key rather than a legacy API-user token or browser session.
+func IsPersonalIntegrationToken(c echo.Context) bool {
+	token, ok := GetIntegrationTokenContext(c)
+	return ok && token.Kind == IntegrationTokenKindPersonal
+}
+
+// HasIntegrationTokenScope grants legacy service tokens their historical
+// behavior. Personal keys must contain the requested API scope explicitly.
+func HasIntegrationTokenScope(c echo.Context, scope string) bool {
+	token, ok := GetIntegrationTokenContext(c)
+	if !ok || token.Kind != IntegrationTokenKindPersonal {
+		return true
+	}
+	for _, candidate := range token.Scopes {
+		if candidate == scope {
+			return true
+		}
+	}
+	return false
 }
 
 // parseAuthHeader parses the Authorization header and returns the api_key and access_token.

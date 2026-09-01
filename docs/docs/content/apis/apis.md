@@ -7,7 +7,7 @@ All features that are available on the listmonk dashboard are also available as 
 
 
 ## Auth
-HTTP API requests support BasicAuth, Authorization `token` headers, and Bearer integration tokens. API users and tokens with the required permissions can be created and managed on the admin UI (Admin -> Users).
+HTTP API requests support BasicAuth, Authorization `token` headers, and Bearer tokens. Regular users create self-service personal API keys at `Profile -> API Keys`; each key is bound to either the user's personal workspace or one organization workspace, has selected business scopes, and expires at the end of a selected month. Existing API-user tokens remain available under `Admin -> Users` for internal service accounts.
 
 ##### BasicAuth example
 ```shell
@@ -24,7 +24,7 @@ curl -H "Authorization: token api_user:token" http://localhost:9000/api/lists
 curl -H "Authorization: Bearer lmit_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" http://localhost:9000/api/lists
 ```
 
-Bearer integration tokens are linked to an API user account and inherit that account's user role and list role permissions. They are intended for external service integrations such as OpenClaw.
+Personal Bearer API keys run as their creator inside their bound workspace. They are narrowed by the key's selected scopes and still pass the user's existing role, organization membership, list, and owner checks. They cannot access user, role, global settings, SMTP, profile, or organization-management endpoints. Legacy Bearer service tokens are linked to API-user accounts and retain the existing role/list-permission behavior.
 
 ## Permissions
 **User role**: Permissions allowed for a user are defined as a *User role* (Admin -> User roles) and then attached to a user. 

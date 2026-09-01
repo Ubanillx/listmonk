@@ -10,7 +10,7 @@ from listmonk_marketing.common import emit_error, emit_json, log
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Create a listmonk campaign with a Bearer token.")
+    parser = argparse.ArgumentParser(description="Create a listmonk campaign with a Bearer personal API key.")
     add_auth_arguments(parser)
     add_campaign_arguments(parser)
     add_verbose_argument(parser)
@@ -19,7 +19,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    client = ListmonkClient(args.base_url, args.bearer_token)
+    client = ListmonkClient(args.base_url, args.bearer_token, organization_id=args.organization_id)
     try:
         source_campaign = get_source_campaign(
             client,

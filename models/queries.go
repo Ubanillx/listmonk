@@ -156,21 +156,26 @@ type Queries struct {
 	DeleteBouncesBySubscriber   *sqlx.Stmt `query:"delete-bounces-by-subscriber"`
 	GetDBInfo                   string     `query:"get-db-info"`
 
-	CreateUser                  *sqlx.Stmt `query:"create-user"`
-	UpdateUser                  *sqlx.Stmt `query:"update-user"`
-	UpdateUserProfile           *sqlx.Stmt `query:"update-user-profile"`
-	UpdateUserLogin             *sqlx.Stmt `query:"update-user-login"`
-	SetUserTwoFA                *sqlx.Stmt `query:"set-user-twofa"`
-	DeleteUsers                 *sqlx.Stmt `query:"delete-users"`
-	GetUsers                    *sqlx.Stmt `query:"get-users"`
-	GetUser                     *sqlx.Stmt `query:"get-user"`
-	GetAPITokens                *sqlx.Stmt `query:"get-api-tokens"`
-	CreateIntegrationToken      *sqlx.Stmt `query:"create-integration-token"`
-	GetIntegrationTokens        *sqlx.Stmt `query:"get-integration-tokens"`
-	GetActiveIntegrationTokens  *sqlx.Stmt `query:"get-active-integration-tokens"`
-	DeleteIntegrationToken      *sqlx.Stmt `query:"delete-integration-token"`
-	UpdateIntegrationTokenUsage *sqlx.Stmt `query:"update-integration-token-usage"`
-	LoginUser                   *sqlx.Stmt `query:"login-user"`
+	CreateUser                           *sqlx.Stmt `query:"create-user"`
+	UpdateUser                           *sqlx.Stmt `query:"update-user"`
+	UpdateUserProfile                    *sqlx.Stmt `query:"update-user-profile"`
+	UpdateUserLogin                      *sqlx.Stmt `query:"update-user-login"`
+	SetUserTwoFA                         *sqlx.Stmt `query:"set-user-twofa"`
+	DeleteUsers                          *sqlx.Stmt `query:"delete-users"`
+	GetUsers                             *sqlx.Stmt `query:"get-users"`
+	GetUser                              *sqlx.Stmt `query:"get-user"`
+	GetAPITokens                         *sqlx.Stmt `query:"get-api-tokens"`
+	CreateIntegrationToken               *sqlx.Stmt `query:"create-integration-token"`
+	GetIntegrationTokens                 *sqlx.Stmt `query:"get-integration-tokens"`
+	GetPersonalIntegrationTokens         *sqlx.Stmt `query:"get-personal-integration-tokens"`
+	GetActiveIntegrationTokens           *sqlx.Stmt `query:"get-active-integration-tokens"`
+	CreatePersonalIntegrationToken       *sqlx.Stmt `query:"create-personal-integration-token"`
+	CountActivePersonalIntegrationTokens *sqlx.Stmt `query:"count-active-personal-integration-tokens"`
+	UpdatePersonalIntegrationToken       *sqlx.Stmt `query:"update-personal-integration-token"`
+	DeleteIntegrationToken               *sqlx.Stmt `query:"delete-integration-token"`
+	DeletePersonalIntegrationToken       *sqlx.Stmt `query:"delete-personal-integration-token"`
+	UpdateIntegrationTokenUsage          *sqlx.Stmt `query:"update-integration-token-usage"`
+	LoginUser                            *sqlx.Stmt `query:"login-user"`
 
 	CreateRole            *sqlx.Stmt `query:"create-role"`
 	GetUserRoles          *sqlx.Stmt `query:"get-user-roles"`

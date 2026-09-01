@@ -10,7 +10,7 @@ from listmonk_marketing.templates import clone_template
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Clone a listmonk template with a Bearer token.")
+    parser = argparse.ArgumentParser(description="Clone a listmonk template with a Bearer personal API key.")
     add_auth_arguments(parser)
     add_template_clone_arguments(parser)
     add_verbose_argument(parser)
@@ -19,7 +19,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    client = ListmonkClient(args.base_url, args.bearer_token)
+    client = ListmonkClient(args.base_url, args.bearer_token, organization_id=args.organization_id)
     try:
         log("Cloning template", enabled=args.verbose)
         template = clone_template(
@@ -36,4 +36,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

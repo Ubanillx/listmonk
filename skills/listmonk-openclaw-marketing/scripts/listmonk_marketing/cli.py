@@ -2,13 +2,45 @@ from __future__ import annotations
 
 import argparse
 import os
+from pathlib import Path
 
 
 BASE_URL_ENV = "LISTMONK_BASE_URL"
 BEARER_TOKEN_ENV = "LISTMONK_BEARER_TOKEN"
+ORGANIZATION_ID_ENV = "LISTMONK_ORGANIZATION_ID"
+ENV_FILE_ENV = "LISTMONK_ENV_FILE"
+
+
+def load_env_file() -> None:
+    """Load skill-local dotenv values without overriding process variables."""
+    skill_env = Path(__file__).resolve().parents[2] / ".env"
+    configured_env = os.getenv(ENV_FILE_ENV)
+    candidates = [Path(configured_env)] if configured_env else [skill_env, Path.cwd() / ".env"]
+
+    for env_path in candidates:
+        try:
+            lines = env_path.read_text(encoding="utf-8").splitlines()
+        except (FileNotFoundError, OSError):
+            continue
+
+        for line in lines:
+            raw = line.strip()
+            if not raw or raw.startswith("#"):
+                continue
+            if raw.startswith("export "):
+                raw = raw[7:].lstrip()
+            key, separator, value = raw.partition("=")
+            key = key.strip()
+            if not separator or not key or not key.replace("_", "").isalnum():
+                continue
+            value = value.strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+                value = value[1:-1]
+            os.environ.setdefault(key, value)
 
 
 def add_auth_arguments(parser: argparse.ArgumentParser) -> None:
+    load_env_file()
     base_url = os.getenv(BASE_URL_ENV)
     bearer_token = os.getenv(BEARER_TOKEN_ENV)
     parser.add_argument(
@@ -21,7 +53,17 @@ def add_auth_arguments(parser: argparse.ArgumentParser) -> None:
         "--bearer-token",
         default=bearer_token,
         required=bearer_token is None,
-        help=f"listmonk integration Bearer token, defaults to ${BEARER_TOKEN_ENV} when set",
+        help=f"listmonk personal API key, defaults to ${BEARER_TOKEN_ENV} when set",
+    )
+    organization_id = os.getenv(ORGANIZATION_ID_ENV)
+    parser.add_argument(
+        "--organization-id",
+        type=int,
+        default=int(organization_id) if organization_id else None,
+        help=(
+            "Organization workspace ID. Omit for a personal API key because its workspace is bound server-side; "
+            f"defaults to ${ORGANIZATION_ID_ENV} when set"
+        ),
     )
 
 

@@ -17,18 +17,17 @@ OpenClaw can integrate directly against listmonk's standard `/api/*` endpoints. 
 5. Start the campaign with `PUT /api/campaigns/{id}/status`.
 6. Fetch delivery and engagement analytics with the campaign report endpoints.
 
-For service-to-service access, prefer Bearer integration tokens bound to a dedicated API user. The token inherits that user's role and list permissions, making it easy to constrain OpenClaw to specific lists or campaign capabilities.
+For OpenClaw, create a personal API key in `Profile -> API Keys` for the user who owns the target workspace and SMTP account. Bind the key to the intended personal or organization workspace, select its scopes, and set its expiry month. A personal key cannot switch workspaces. Legacy API-user Bearer tokens remain appropriate for administrator-managed internal service accounts.
 
 The recommended minimum permissions for a marketing automation service account are:
 
-- `templates:get`
-- `templates:manage`
-- `campaigns:get`
-- `campaigns:manage`
-- `campaigns:get_analytics`
-- `subscribers:get`
-- `subscribers:manage`
-- list-level `get` and `manage` permissions for the lists OpenClaw should control
+- `lists:read` and `lists:write`
+- `subscribers:write` and `subscribers:import`
+- `templates:read` and `templates:write`
+- `campaigns:read`, `campaigns:write`, and `campaigns:analytics`
+- `campaigns:send` when OpenClaw may start or schedule a campaign
+
+Add `subscribers:read` and `campaigns:recipients` only when recipient-level data is required. Add media scopes only when the automation uploads or reads media.
 
 ## Interacting directly with the DB
 

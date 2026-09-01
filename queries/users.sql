@@ -140,22 +140,57 @@ SELECT id, $2, $3 FROM api_user
 RETURNING id;
 
 -- name: get-integration-tokens
-SELECT id, user_id, name, token_hash, last_used_at, revoked_at, created_at, updated_at
+SELECT id, user_id, kind, workspace_organization_id, name, token_hash, scopes, expires_at, last_used_at, revoked_at, created_at, updated_at
 FROM integration_tokens
-WHERE ($1 = 0 OR user_id = $1)
+WHERE ($1 = 0 OR user_id = $1) AND kind = 'service'
+ORDER BY created_at DESC, id DESC;
+
+-- name: get-personal-integration-tokens
+SELECT id, user_id, kind, workspace_organization_id, name, token_hash, scopes, expires_at, last_used_at, revoked_at, created_at, updated_at
+FROM integration_tokens
+WHERE user_id = $1 AND kind = 'personal'
 ORDER BY created_at DESC, id DESC;
 
 -- name: get-active-integration-tokens
-SELECT id, user_id, name, token_hash, last_used_at, revoked_at, created_at, updated_at
+SELECT id, user_id, kind, workspace_organization_id, name, token_hash, scopes, expires_at, last_used_at, revoked_at, created_at, updated_at
 FROM integration_tokens
-WHERE revoked_at IS NULL
+WHERE revoked_at IS NULL AND (expires_at IS NULL OR expires_at > NOW())
 ORDER BY id;
+
+-- name: create-personal-integration-token
+INSERT INTO integration_tokens (user_id, kind, workspace_organization_id, name, token_hash, scopes, expires_at)
+SELECT id, 'personal', $2, $3, $4, $5, $6
+FROM users
+WHERE id = $1 AND type = 'user' AND status = 'enabled'
+RETURNING id;
+
+-- name: count-active-personal-integration-tokens
+SELECT COUNT(*)
+FROM integration_tokens
+WHERE user_id = $1
+    AND kind = 'personal'
+    AND workspace_organization_id IS NOT DISTINCT FROM $2::BIGINT
+    AND revoked_at IS NULL
+    AND expires_at > NOW();
+
+-- name: update-personal-integration-token
+UPDATE integration_tokens
+SET name = $3, scopes = $4, expires_at = $5, updated_at = NOW()
+WHERE id = $1 AND user_id = $2 AND kind = 'personal' AND revoked_at IS NULL AND expires_at > NOW()
+RETURNING id;
 
 -- name: delete-integration-token
 UPDATE integration_tokens
 SET revoked_at = NOW(),
     updated_at = NOW()
-WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL
+WHERE id = $1 AND user_id = $2 AND kind = 'service' AND revoked_at IS NULL
+RETURNING id;
+
+-- name: delete-personal-integration-token
+UPDATE integration_tokens
+SET revoked_at = NOW(),
+    updated_at = NOW()
+WHERE id = $1 AND user_id = $2 AND kind = 'personal' AND revoked_at IS NULL
 RETURNING id;
 
 -- name: update-integration-token-usage

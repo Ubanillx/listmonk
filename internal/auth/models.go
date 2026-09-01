@@ -22,8 +22,9 @@ const (
 
 const (
 	// UserHTTPCtxKey is the key on which the User profile is set on echo handlers.
-	UserHTTPCtxKey = "auth_user"
-	SessionKey     = "auth_session"
+	UserHTTPCtxKey             = "auth_user"
+	SessionKey                 = "auth_session"
+	IntegrationTokenHTTPCtxKey = "auth_integration_token"
 )
 
 const (
@@ -39,6 +40,11 @@ const (
 	// Role.
 	RoleTypeUser = "user"
 	RoleTypeList = "list"
+)
+
+const (
+	IntegrationTokenKindService  = "service"
+	IntegrationTokenKindPersonal = "personal"
 )
 
 // List of all granular permissions.
@@ -136,11 +142,15 @@ func (u User) IsPlatformAdmin() bool {
 type IntegrationToken struct {
 	Base
 
-	UserID     int       `db:"user_id" json:"user_id"`
-	Name       string    `db:"name" json:"name"`
-	TokenHash  string    `db:"token_hash" json:"-"`
-	LastUsedAt null.Time `db:"last_used_at" json:"last_used_at"`
-	RevokedAt  null.Time `db:"revoked_at" json:"revoked_at"`
+	UserID                  int            `db:"user_id" json:"user_id"`
+	Kind                    string         `db:"kind" json:"kind"`
+	WorkspaceOrganizationID null.Int       `db:"workspace_organization_id" json:"workspace_organization_id"`
+	Name                    string         `db:"name" json:"name"`
+	TokenHash               string         `db:"token_hash" json:"-"`
+	Scopes                  pq.StringArray `db:"scopes" json:"scopes"`
+	ExpiresAt               null.Time      `db:"expires_at" json:"expires_at"`
+	LastUsedAt              null.Time      `db:"last_used_at" json:"last_used_at"`
+	RevokedAt               null.Time      `db:"revoked_at" json:"revoked_at"`
 
 	// Non-DB field filled post-retrieval for auth cache lookups.
 	User User `db:"-" json:"-"`

@@ -17,7 +17,7 @@ from listmonk_marketing.subscribers import create_subscribers_if_needed
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Import subscribers into listmonk with a Bearer token.")
+    parser = argparse.ArgumentParser(description="Import subscribers into listmonk with a Bearer personal API key.")
     add_auth_arguments(parser)
     add_list_target_arguments(parser, required=True)
     add_list_create_arguments(parser)
@@ -28,7 +28,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    client = ListmonkClient(args.base_url, args.bearer_token)
+    client = ListmonkClient(args.base_url, args.bearer_token, organization_id=args.organization_id)
     progress: dict[str, object] = {}
     try:
         log("Resolving target list", enabled=args.verbose)
@@ -71,4 +71,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

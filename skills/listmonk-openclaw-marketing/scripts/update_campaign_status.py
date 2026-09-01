@@ -10,7 +10,7 @@ from listmonk_marketing.common import emit_error, emit_json, log
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Update a listmonk campaign status with a Bearer token.")
+    parser = argparse.ArgumentParser(description="Update a listmonk campaign status with a Bearer personal API key.")
     add_auth_arguments(parser)
     parser.add_argument("--campaign-id", type=int, required=True, help="Campaign ID to update")
     parser.add_argument("--status", default="running", help="Target status, defaults to running")
@@ -20,7 +20,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    client = ListmonkClient(args.base_url, args.bearer_token)
+    client = ListmonkClient(args.base_url, args.bearer_token, organization_id=args.organization_id)
     try:
         log("Updating campaign status", enabled=args.verbose)
         campaign = update_campaign_status(client, campaign_id=args.campaign_id, status=args.status)
@@ -32,4 +32,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

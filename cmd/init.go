@@ -954,8 +954,11 @@ func initHTTPServer(cfg *Config, urlCfg *UrlConfig, i *i18n.I18n, fs stuffbin.Fi
 	// media referenced by a currently public archive campaign.
 	// The ID-qualified route is canonical for new media URLs. Keep the
 	// filename-only route below for historical campaign/template bodies.
-	srv.GET("/api/media/file/:id/:filename", app.ServeMediaFileByID, app.auth.Middleware)
-	srv.GET("/api/media/file/:filename", app.ServeMediaFile, app.auth.Middleware)
+	mediaFileAuth := func(next echo.HandlerFunc) echo.HandlerFunc {
+		return app.auth.Middleware(apiKeyScope(next, apiKeyScopeMediaRead))
+	}
+	srv.GET("/api/media/file/:id/:filename", app.ServeMediaFileByID, mediaFileAuth)
+	srv.GET("/api/media/file/:filename", app.ServeMediaFile, mediaFileAuth)
 
 	// Media binaries are never exposed as a raw static directory. Resource URLs
 	// are scoped by the active workspace, while legacy storage URLs are checked
@@ -967,9 +970,9 @@ func initHTTPServer(cfg *Config, urlCfg *UrlConfig, i *i18n.I18n, fs stuffbin.Fi
 	)
 	switch {
 	case uploadProvider == "filesystem" && uploadFsURI != "":
-		srv.GET(path.Join(uploadFsURI, "/*"), app.ServeLegacyMedia, app.auth.Middleware)
+		srv.GET(path.Join(uploadFsURI, "/*"), app.ServeLegacyMedia, mediaFileAuth)
 	case uploadProvider == "s3" && strings.HasPrefix(publicURL, "/"):
-		srv.GET(path.Join(publicURL, "/*"), app.ServeLegacyMedia, app.auth.Middleware)
+		srv.GET(path.Join(publicURL, "/*"), app.ServeLegacyMedia, mediaFileAuth)
 	}
 
 	// Register all HTTP handlers.
@@ -1157,7 +1160,7 @@ func initAuth(co *core.Core, db *sql.DB, ko *koanf.Koanf) (bool, *auth.Auth) {
 		lo.Fatalf("error initializing auth: %v", err)
 	}
 
-	// Cache all API users in-memory for token auth.
+	// Cache legacy API users and personal-key owners for token auth.
 	hasUsers, err := cacheUsers(co, a)
 	if err != nil {
 		lo.Fatalf("error loading API users to cache: %v", err)

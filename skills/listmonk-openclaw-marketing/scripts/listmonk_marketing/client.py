@@ -19,7 +19,13 @@ class APIError(RuntimeError):
 
 
 class ListmonkClient:
-    def __init__(self, base_url: str, bearer_token: str, timeout: int = 30) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        bearer_token: str,
+        timeout: int = 30,
+        organization_id: int | None = None,
+    ) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.headers = {
@@ -27,6 +33,8 @@ class ListmonkClient:
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
+        if organization_id is not None:
+            self.headers["X-Listmonk-Organization-ID"] = str(organization_id)
 
     def request(
         self,

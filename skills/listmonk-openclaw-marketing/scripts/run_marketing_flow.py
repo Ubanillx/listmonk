@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Drive a listmonk marketing workflow with a Bearer integration token."""
+"""Drive a listmonk marketing workflow with a Bearer personal API key."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ from listmonk_marketing.templates import clone_template
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run a listmonk marketing flow with a Bearer token.")
+    parser = argparse.ArgumentParser(description="Run a listmonk marketing flow with a Bearer personal API key.")
     add_auth_arguments(parser)
     add_list_target_arguments(parser, required=True)
     add_list_create_arguments(parser)
@@ -58,9 +58,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def run_workflow(args: argparse.Namespace, *, client: ListmonkClient | None = None) -> dict[str, Any]:
-    client = client or ListmonkClient(args.base_url, args.bearer_token)
+    client = client or ListmonkClient(
+        args.base_url,
+        args.bearer_token,
+        organization_id=getattr(args, "organization_id", None),
+    )
     progress: dict[str, Any] = {}
-    log("Validating Bearer token", enabled=args.verbose)
+    log("Validating Bearer personal API key", enabled=args.verbose)
     client.validate_token()
 
     log("Resolving target list", enabled=args.verbose)

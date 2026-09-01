@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/knadh/listmonk/internal/auth"
 	"github.com/knadh/listmonk/internal/utils"
@@ -12,6 +13,8 @@ import (
 	"github.com/lib/pq"
 	"gopkg.in/volatiletech/null.v6"
 )
+
+const MaxPersonalIntegrationTokensPerWorkspace = 10
 
 func (c *Core) GetUsers() ([]auth.User, error) {
 	out := []auth.User{}
@@ -99,7 +102,7 @@ func (c *Core) CreateUsers(users []auth.User) error {
 	return nil
 }
 
-// CreateIntegrationToken creates a new bearer integration token for an API user.
+// CreateIntegrationToken creates a new service bearer token for an API user.
 func (c *Core) CreateIntegrationToken(userID int, name string) (auth.IntegrationToken, string, error) {
 	user, err := c.GetUser(userID, "", "")
 	if err != nil {
@@ -133,6 +136,53 @@ func (c *Core) CreateIntegrationToken(userID int, name string) (auth.Integration
 	return out, token, nil
 }
 
+// CreatePersonalIntegrationToken creates a workspace-bound bearer token for a
+// regular user. The token is returned once; only its hash is persisted.
+func (c *Core) CreatePersonalIntegrationToken(userID, organizationID int, name string, scopes []string, expiresAt time.Time) (auth.IntegrationToken, string, error) {
+	organizationIDValue := nullableOrganizationID(organizationID)
+	token, err := utils.GenerateRandomString(48)
+	if err != nil {
+		return auth.IntegrationToken{}, "", echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	token = "lmpk_" + token
+
+	tx, err := c.db.BeginTxx(context.Background(), nil)
+	if err != nil {
+		return auth.IntegrationToken{}, "", echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	defer tx.Rollback()
+
+	// Serialize key creation for this exact owner/workspace pair so concurrent
+	// requests cannot exceed the active-key limit.
+	if _, err := tx.Exec("SELECT pg_advisory_xact_lock($1, $2)", userID, organizationID); err != nil {
+		return auth.IntegrationToken{}, "", echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+
+	var activeCount int
+	if err := tx.Stmtx(c.q.CountActivePersonalIntegrationTokens).Get(&activeCount, userID, organizationIDValue); err != nil {
+		return auth.IntegrationToken{}, "", echo.NewHTTPError(http.StatusInternalServerError,
+			c.i18n.Ts("globals.messages.errorFetching", "name", "integration tokens", "error", pqErrMsg(err)))
+	}
+	if activeCount >= MaxPersonalIntegrationTokensPerWorkspace {
+		return auth.IntegrationToken{}, "", echo.NewHTTPError(http.StatusBadRequest, "maximum active API keys reached for this workspace")
+	}
+
+	var id int
+	if err := tx.Stmtx(c.q.CreatePersonalIntegrationToken).Get(&id, userID, organizationIDValue, name, auth.HashIntegrationToken(token), pq.StringArray(scopes), expiresAt); err != nil {
+		if err == sql.ErrNoRows {
+			return auth.IntegrationToken{}, "", echo.NewHTTPError(http.StatusBadRequest, "personal API keys require an enabled regular user")
+		}
+		return auth.IntegrationToken{}, "", echo.NewHTTPError(http.StatusInternalServerError,
+			c.i18n.Ts("globals.messages.errorCreating", "name", "API key", "error", pqErrMsg(err)))
+	}
+	if err := tx.Commit(); err != nil {
+		return auth.IntegrationToken{}, "", echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+
+	out, err := c.GetPersonalIntegrationToken(userID, id)
+	return out, token, err
+}
+
 // UpdateUser updates a given user.
 func (c *Core) UpdateUser(id int, u auth.User) (auth.User, error) {
 	listRoleID := 0
@@ -157,7 +207,7 @@ func (c *Core) UpdateUser(id int, u auth.User) (auth.User, error) {
 	return out, err
 }
 
-// GetIntegrationTokens retrieves integration tokens, optionally for a single user.
+// GetIntegrationTokens retrieves service integration tokens, optionally for a single API user.
 func (c *Core) GetIntegrationTokens(userID int) ([]auth.IntegrationToken, error) {
 	out := []auth.IntegrationToken{}
 	if err := c.q.GetIntegrationTokens.Select(&out, userID); err != nil {
@@ -165,6 +215,16 @@ func (c *Core) GetIntegrationTokens(userID int) ([]auth.IntegrationToken, error)
 			c.i18n.Ts("globals.messages.errorFetching", "name", "{globals.terms.user}", "error", pqErrMsg(err)))
 	}
 
+	return out, nil
+}
+
+// GetPersonalIntegrationTokens retrieves a regular user's self-service API keys.
+func (c *Core) GetPersonalIntegrationTokens(userID int) ([]auth.IntegrationToken, error) {
+	out := []auth.IntegrationToken{}
+	if err := c.q.GetPersonalIntegrationTokens.Select(&out, userID); err != nil {
+		return nil, echo.NewHTTPError(http.StatusInternalServerError,
+			c.i18n.Ts("globals.messages.errorFetching", "name", "API keys", "error", pqErrMsg(err)))
+	}
 	return out, nil
 }
 
@@ -179,7 +239,7 @@ func (c *Core) GetActiveIntegrationTokens() ([]auth.IntegrationToken, error) {
 	return out, nil
 }
 
-// GetIntegrationToken retrieves a specific integration token by ID for a user.
+// GetIntegrationToken retrieves a specific service integration token by ID for an API user.
 func (c *Core) GetIntegrationToken(userID int, tokenID int) (auth.IntegrationToken, error) {
 	out, err := c.GetIntegrationTokens(userID)
 	if err != nil {
@@ -196,6 +256,21 @@ func (c *Core) GetIntegrationToken(userID int, tokenID int) (auth.IntegrationTok
 		c.i18n.Ts("globals.messages.notFound", "name", "integration token"))
 }
 
+// GetPersonalIntegrationToken retrieves a specific personal API key for its owner.
+func (c *Core) GetPersonalIntegrationToken(userID int, tokenID int) (auth.IntegrationToken, error) {
+	out, err := c.GetPersonalIntegrationTokens(userID)
+	if err != nil {
+		return auth.IntegrationToken{}, err
+	}
+	for _, token := range out {
+		if token.ID == tokenID {
+			return token, nil
+		}
+	}
+	return auth.IntegrationToken{}, echo.NewHTTPError(http.StatusNotFound,
+		c.i18n.Ts("globals.messages.notFound", "name", "API key"))
+}
+
 // DeleteIntegrationToken revokes an integration token for a user.
 func (c *Core) DeleteIntegrationToken(userID int, tokenID int) error {
 	var id int
@@ -210,6 +285,84 @@ func (c *Core) DeleteIntegrationToken(userID int, tokenID int) error {
 	}
 
 	return nil
+}
+
+// UpdatePersonalIntegrationToken changes a personal API key's display name,
+// scopes, and expiry without exposing or replacing its secret.
+func (c *Core) UpdatePersonalIntegrationToken(userID, tokenID int, name string, scopes []string, expiresAt time.Time) (auth.IntegrationToken, error) {
+	var id int
+	if err := c.q.UpdatePersonalIntegrationToken.Get(&id, tokenID, userID, name, pq.StringArray(scopes), expiresAt); err != nil {
+		if err == sql.ErrNoRows {
+			return auth.IntegrationToken{}, echo.NewHTTPError(http.StatusNotFound,
+				c.i18n.Ts("globals.messages.notFound", "name", "API key"))
+		}
+		return auth.IntegrationToken{}, echo.NewHTTPError(http.StatusInternalServerError,
+			c.i18n.Ts("globals.messages.errorUpdating", "name", "API key", "error", pqErrMsg(err)))
+	}
+	return c.GetPersonalIntegrationToken(userID, id)
+}
+
+// DeletePersonalIntegrationToken revokes a personal API key.
+func (c *Core) DeletePersonalIntegrationToken(userID, tokenID int) error {
+	var id int
+	if err := c.q.DeletePersonalIntegrationToken.Get(&id, tokenID, userID); err != nil {
+		if err == sql.ErrNoRows {
+			return echo.NewHTTPError(http.StatusNotFound,
+				c.i18n.Ts("globals.messages.notFound", "name", "API key"))
+		}
+		return echo.NewHTTPError(http.StatusInternalServerError,
+			c.i18n.Ts("globals.messages.errorDeleting", "name", "API key", "error", pqErrMsg(err)))
+	}
+	return nil
+}
+
+// RotatePersonalIntegrationToken immediately revokes the old key and creates
+// a replacement with the same workspace and scopes in one transaction.
+func (c *Core) RotatePersonalIntegrationToken(userID, tokenID int, expiresAt time.Time) (auth.IntegrationToken, string, error) {
+	old, err := c.GetPersonalIntegrationToken(userID, tokenID)
+	if err != nil {
+		return auth.IntegrationToken{}, "", err
+	}
+	if old.RevokedAt.Valid || !old.ExpiresAt.Valid || !old.ExpiresAt.Time.After(time.Now()) {
+		return auth.IntegrationToken{}, "", echo.NewHTTPError(http.StatusBadRequest, "API key is not active")
+	}
+
+	token, err := utils.GenerateRandomString(48)
+	if err != nil {
+		return auth.IntegrationToken{}, "", echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	token = "lmpk_" + token
+
+	tx, err := c.db.BeginTxx(context.Background(), nil)
+	if err != nil {
+		return auth.IntegrationToken{}, "", echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	defer tx.Rollback()
+
+	var revokedID int
+	if err := tx.Stmtx(c.q.DeletePersonalIntegrationToken).Get(&revokedID, tokenID, userID); err != nil {
+		return auth.IntegrationToken{}, "", echo.NewHTTPError(http.StatusConflict, "API key is no longer active")
+	}
+
+	var id int
+	if err := tx.Stmtx(c.q.CreatePersonalIntegrationToken).Get(&id, userID, nullableOrganizationID(int(old.WorkspaceOrganizationID.Int)), old.Name, auth.HashIntegrationToken(token), pq.StringArray(old.Scopes), expiresAt); err != nil {
+		return auth.IntegrationToken{}, "", echo.NewHTTPError(http.StatusInternalServerError,
+			c.i18n.Ts("globals.messages.errorCreating", "name", "API key", "error", pqErrMsg(err)))
+	}
+
+	if err := tx.Commit(); err != nil {
+		return auth.IntegrationToken{}, "", echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+
+	out, err := c.GetPersonalIntegrationToken(userID, id)
+	return out, token, err
+}
+
+func nullableOrganizationID(organizationID int) any {
+	if organizationID < 1 {
+		return nil
+	}
+	return organizationID
 }
 
 // UpdateUserProfile updates the basic fields of a given uesr (name, email, password).

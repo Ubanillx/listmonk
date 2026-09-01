@@ -1,6 +1,6 @@
 ---
 name: listmonk-openclaw-marketing
-description: Use when OpenClaw needs to operate listmonk for marketing automation with listmonk's REST APIs and Bearer integration tokens. Supports modular steps such as finding or creating lists, importing subscribers, cloning templates, creating campaigns, reusing existing campaign blueprints, updating campaign status, and fetching analytics, as well as an end-to-end workflow runner.
+description: Use when OpenClaw needs to operate listmonk for marketing automation with listmonk's REST APIs and workspace-bound personal API keys. Supports modular steps such as finding or creating lists, importing subscribers, cloning templates, creating campaigns, reusing existing campaign blueprints, updating campaign status, and fetching analytics, as well as an end-to-end workflow runner.
 ---
 
 # listmonk OpenClaw Marketing
@@ -13,7 +13,8 @@ Use this skill when an agent needs to drive listmonk directly for outbound marke
 ## Required inputs
 
 - `base_url`: listmonk base URL, for example `https://listmonk.example.com`
-- `bearer_token`: integration token created for a dedicated listmonk API user
+- `bearer_token`: personal API key created in listmonk at `Profile -> API Keys`
+- optional `organization_id`: only for a legacy service token; a personal key is already bound to one workspace
 - One of `list_id` or `list_name`
 - One subscriber input source:
   - `subscribers_file`: JSON array of subscribers
@@ -24,6 +25,25 @@ Use this skill when an agent needs to drive listmonk directly for outbound marke
   - or `source_campaign_name`
 - `campaign_name`
 - `auto_start`
+
+## Configuration file
+
+The scripts automatically load `.env` from this skill directory. Start with
+`.env.example`, copy it to `.env`, and set the personal key value returned by
+`Profile -> API Keys`:
+
+```dotenv
+LISTMONK_BASE_URL=https://listmonk.example.com
+LISTMONK_BEARER_TOKEN=lmpk_your_personal_api_key
+```
+
+The key is shown only once after creation or rotation, so keep it in this
+`.env` file or an equivalent secret store and do not paste it into prompts,
+committed files, or logs. The repository ignores the skill-local `.env` file.
+`LISTMONK_ORGANIZATION_ID` is only for legacy service tokens; never set it for
+a personal key unless it matches the key's server-bound workspace. Command-line
+flags override process environment variables, which override `.env` values.
+Set `LISTMONK_ENV_FILE` when the file must live at a different path.
 
 ## Script layout
 
@@ -80,12 +100,25 @@ The shared implementation lives under `scripts/listmonk_marketing/`. When updati
 Use this header on all authenticated requests:
 
 ```http
-Authorization: Bearer <integration_token>
+Authorization: Bearer <personal_api_key>
 ```
 
-The Bearer token inherits the permissions of the API user it is bound to. If a request fails with `403`, report which permission is missing rather than retrying blindly.
+Personal API keys are bound to one personal or organization workspace, expire at
+the end of a configured month, and can be revoked or rotated by their owner.
+They can only call the selected business APIs and must include the scope needed
+by each request. If a request fails with `403`, report the missing API key scope
+or workspace mismatch rather than retrying blindly.
 
-For local smoke tests only, BasicAuth may be used once to bootstrap a Bearer integration token from an admin API user. After that, prefer Bearer auth for all workflow scripts.
+The existing API-user tokens remain supported for internal service accounts and
+retain their legacy role/list-permission behavior. They may supply
+`--organization-id` (or `LISTMONK_ORGANIZATION_ID`) when they need to select an
+organization workspace. Do not send a different organization ID with a personal
+key: the server rejects it.
+
+For local smoke tests only, BasicAuth may be used once to bootstrap a legacy
+service token from an admin API user. Production OpenClaw integrations should
+use a personal API key from the owner whose workspace and SMTP account will send
+the campaign.
 
 ## Excel mode
 
@@ -106,7 +139,8 @@ For local smoke tests only, BasicAuth may be used once to bootstrap a Bearer int
 - If recipient analytics fail with a privacy or tracking error, fall back to summary, timeseries, and link analytics.
 - Do not use subscriber SQL query APIs unless the caller explicitly needs them and the service account is trusted for `subscribers:sql_query`.
 - If `openpyxl` is missing and Excel mode is requested, fail fast with an installation hint.
-- If bulk import fails with `403`, report that the token is missing `subscribers:import`.
+- If bulk import fails with `403`, report that the key is missing `subscribers:import`.
+- If campaign start or scheduling fails with `403`, report that the key is missing `campaigns:send`.
 
 ## Response contract
 

@@ -439,15 +439,23 @@ CREATE TABLE users (
 CREATE TABLE integration_tokens (
     id               SERIAL PRIMARY KEY,
     user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    kind             TEXT NOT NULL DEFAULT 'service' CHECK (kind IN ('service', 'personal')),
+    workspace_organization_id BIGINT NULL,
     name             TEXT NOT NULL,
     token_hash       TEXT NOT NULL UNIQUE,
+    scopes           TEXT[] NOT NULL DEFAULT '{}',
+    expires_at       TIMESTAMP WITH TIME ZONE NULL,
     last_used_at     TIMESTAMP WITH TIME ZONE NULL,
     revoked_at       TIMESTAMP WITH TIME ZONE NULL,
     created_at       TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at       TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    updated_at       TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    CHECK (kind = 'service' OR expires_at IS NOT NULL)
 );
 CREATE INDEX idx_integration_tokens_user_id ON integration_tokens(user_id);
 CREATE INDEX idx_integration_tokens_active ON integration_tokens(user_id, revoked_at);
+CREATE INDEX idx_integration_tokens_personal_workspace
+    ON integration_tokens(user_id, workspace_organization_id, expires_at)
+    WHERE kind = 'personal' AND revoked_at IS NULL;
 
 -- personal SMTP servers
 -- These credentials permanently belong to the account that created them.

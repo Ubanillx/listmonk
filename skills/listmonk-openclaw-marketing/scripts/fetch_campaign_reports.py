@@ -10,7 +10,7 @@ from listmonk_marketing.reports import fetch_campaign_reports
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Fetch listmonk campaign reports with a Bearer token.")
+    parser = argparse.ArgumentParser(description="Fetch listmonk campaign reports with a Bearer personal API key.")
     add_auth_arguments(parser)
     parser.add_argument("--campaign-id", type=int, required=True, help="Campaign ID to report on")
     parser.add_argument("--report-from", required=True, help="Start date/time for report fetch")
@@ -22,7 +22,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    client = ListmonkClient(args.base_url, args.bearer_token)
+    client = ListmonkClient(args.base_url, args.bearer_token, organization_id=args.organization_id)
     try:
         log("Fetching reports", enabled=args.verbose)
         reports = fetch_campaign_reports(

@@ -760,6 +760,39 @@ export const updateUserProfile = (data) => http.put(
   { loading: models.users, store: models.profile },
 );
 
+export const getPersonalAPIKeyScopes = () => http.get(
+  '/api/profile/api-key-scopes',
+  { loading: models.users },
+);
+
+export const getPersonalAPIKeys = () => http.get(
+  '/api/profile/api-keys',
+  { loading: models.users },
+);
+
+export const createPersonalAPIKey = (data) => http.post(
+  '/api/profile/api-keys',
+  data,
+  { loading: models.users },
+);
+
+export const updatePersonalAPIKey = (id, data) => http.put(
+  `/api/profile/api-keys/${id}`,
+  data,
+  { loading: models.users },
+);
+
+export const rotatePersonalAPIKey = (id, data) => http.post(
+  `/api/profile/api-keys/${id}/rotate`,
+  data,
+  { loading: models.users },
+);
+
+export const deletePersonalAPIKey = (id) => http.delete(
+  `/api/profile/api-keys/${id}`,
+  { loading: models.users },
+);
+
 export const getPersonalSMTP = () => http.get(
   '/api/profile/smtp',
   { loading: models.users },

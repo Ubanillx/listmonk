@@ -77,6 +77,13 @@ type organizationResourceMigrationInput struct {
 // every request; browser clients keep their active workspace in localStorage.
 func (a *App) workspaceFromRequest(c echo.Context) (models.Workspace, error) {
 	raw := strings.TrimSpace(c.Request().Header.Get(workspaceHeader))
+	if token, ok := auth.GetIntegrationTokenContext(c); ok && token.Kind == auth.IntegrationTokenKindPersonal && raw == "" {
+		if token.WorkspaceOrganizationID.Valid {
+			raw = strconv.Itoa(token.WorkspaceOrganizationID.Int)
+		} else {
+			raw = "0"
+		}
+	}
 	if raw == "" && strings.HasPrefix(c.Path(), "/api/media/file/") {
 		// A copied HTML body can retain an old query string. For the protected
 		// browser media endpoint, the current browser workspace is authoritative
@@ -97,6 +104,9 @@ func (a *App) workspaceFromRequest(c echo.Context) (models.Workspace, error) {
 		}
 	}
 	if raw == "" || raw == "0" || strings.EqualFold(raw, "personal") {
+		if !personalAPIKeyWorkspaceMatches(c, 0) {
+			return models.Workspace{}, personalAPIKeyWorkspaceError()
+		}
 		access, err := a.workspaceAccessForOrganization(c, 0)
 		return access.Workspace, err
 	}
@@ -104,6 +114,9 @@ func (a *App) workspaceFromRequest(c echo.Context) (models.Workspace, error) {
 	orgID, err := strconv.Atoi(raw)
 	if err != nil || orgID < 1 {
 		return models.Workspace{}, echo.NewHTTPError(http.StatusBadRequest, "invalid organization workspace")
+	}
+	if !personalAPIKeyWorkspaceMatches(c, orgID) {
+		return models.Workspace{}, personalAPIKeyWorkspaceError()
 	}
 	access, err := a.workspaceAccessForOrganization(c, orgID)
 	return access.Workspace, err
@@ -120,6 +133,9 @@ func (a *App) workspaceAccess(c echo.Context) (models.WorkspaceAccess, error) {
 // workspaceAccessForOrganization resolves an explicit clone or migration
 // target without trusting an organization ID from the client body.
 func (a *App) workspaceAccessForOrganization(c echo.Context, orgID int) (models.WorkspaceAccess, error) {
+	if !personalAPIKeyWorkspaceMatches(c, orgID) {
+		return models.WorkspaceAccess{}, personalAPIKeyWorkspaceError()
+	}
 	user := auth.GetUser(c)
 	if orgID == 0 {
 		return models.WorkspaceAccess{

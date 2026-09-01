@@ -523,6 +523,9 @@ func (a *App) UpdateCampaignStatus(c echo.Context) error {
 		return err
 	}
 	if req.Status == models.CampaignStatusScheduled || req.Status == models.CampaignStatusRunning {
+		if err := requireAPIKeyScope(c, apiKeyScopeCampaignsSend); err != nil {
+			return err
+		}
 		if err := requireCampaignSendOwnership(auth.GetUser(c), current); err != nil {
 			return err
 		}

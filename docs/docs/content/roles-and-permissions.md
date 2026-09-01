@@ -39,7 +39,9 @@ A list role is a collection of permissions assigned per list. Each list can be a
 
 ## API users
 
-A user account can be of two types, a regular user or an API user. API users are meant for intertacting with the listmonk APIs programmatically. Unlike regular user accounts that have custom passwords or OIDC for authentication, API users get an automatically generated secret token.
+Regular users can create personal API keys from `Profile -> API Keys`. Each key is restricted to one personal or organization workspace, must expire within 24 months, and can be narrowed with business API scopes. The key never changes the user's role, list role, organization membership, or resource ownership.
+
+A user account can also be of type API. API users are administrator-managed internal service accounts. Unlike regular user accounts that have custom passwords or OIDC for authentication, API users get an automatically generated secret token and can retain the legacy API-token behavior.
 
 ## `subscribers:sql_query`
 

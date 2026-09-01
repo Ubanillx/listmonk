@@ -646,7 +646,7 @@ func (a *App) DisableTOTP(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{true})
 }
 
-// cacheUsers fetches (API) users and caches them in the auth module.
+// cacheUsers fetches API users and personal-key owners for bearer token auth.
 // It also returns a bool indicating whether there are any actual users in the DB at all,
 // which if there aren't, the first time user setup needs to be run.
 func cacheUsers(co *core.Core, a *auth.Auth) (bool, error) {
@@ -679,7 +679,13 @@ func cacheUsers(co *core.Core, a *auth.Auth) (bool, error) {
 	activeTokens := make([]auth.IntegrationToken, 0, len(tokens))
 	for _, t := range tokens {
 		u, ok := userByID[t.UserID]
-		if !ok || u.Type != auth.UserTypeAPI || u.Status != auth.UserStatusEnabled {
+		if !ok || u.Status != auth.UserStatusEnabled {
+			continue
+		}
+		if t.Kind == auth.IntegrationTokenKindService && u.Type != auth.UserTypeAPI {
+			continue
+		}
+		if t.Kind == auth.IntegrationTokenKindPersonal && u.Type != auth.UserTypeUser {
 			continue
 		}
 

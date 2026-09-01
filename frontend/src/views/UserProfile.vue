@@ -64,6 +64,8 @@
 
     <personal-s-m-t-p-settings />
 
+    <personal-a-p-i-key-settings v-if="data.type === 'user'" />
+
     <reply-mailbox-settings />
 
     <br /><br />
@@ -155,6 +157,7 @@
 import Vue from 'vue';
 import { mapState } from 'vuex';
 import CopyText from '../components/CopyText.vue';
+import PersonalAPIKeySettings from '../components/PersonalAPIKeySettings.vue';
 import PersonalSMTPSettings from '../components/PersonalSMTPSettings.vue';
 import ReplyMailboxSettings from '../components/ReplyMailboxSettings.vue';
 
@@ -163,6 +166,7 @@ export default Vue.extend({
 
   components: {
     CopyText,
+    PersonalAPIKeySettings,
     PersonalSMTPSettings,
     ReplyMailboxSettings,
   },

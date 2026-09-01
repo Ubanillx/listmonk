@@ -24,6 +24,23 @@ Then inspect the end-to-end runner:
 python3 scripts/run_marketing_flow.py --help
 ```
 
+Create a personal key in `Profile -> API Keys` before running the scripts. Pick
+the personal or organization workspace that OpenClaw should use, select the
+needed scopes, and copy the value shown once into the skill-local `.env` file
+(see `.env.example`):
+
+```dotenv
+LISTMONK_BASE_URL=https://listmonk.example.com
+LISTMONK_BEARER_TOKEN=lmpk_your_personal_api_key
+```
+
+A personal key already selects its bound workspace; do not pass a different
+`--organization-id`. The scripts use CLI flags first, then process environment
+variables, then `.env` values.
+
+Legacy internal service tokens remain supported. They may select an organization
+workspace with `--organization-id 42` or `LISTMONK_ORGANIZATION_ID=42`.
+
 End-to-end JSON input example:
 
 ```shell
@@ -172,8 +189,8 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 Expected outcome:
 
-- `200` means the token is valid and the service account has at least list read access.
-- `403` usually means the token is invalid or the service account lacks permission.
+- `200` means the key is valid and has `lists:read` access in its bound workspace.
+- `403` means the key is invalid, expired, bound to another workspace, or missing a scope.
 
 ## 2. Find or create the target list
 
@@ -224,7 +241,7 @@ curl -H "Authorization: Bearer $TOKEN" \
   "$BASE_URL/api/import/subscribers/logs"
 ```
 
-The token used by this step needs the `subscribers:import` permission.
+The key used by this step needs the `subscribers:import` scope.
 
 ## 4. Choose the campaign blueprint
 
@@ -291,7 +308,7 @@ curl -X PUT -H "Authorization: Bearer $TOKEN" \
   -d '{"status":"running"}'
 ```
 
-If `send_at` was set during campaign creation, the same status call keeps the campaign scheduled in listmonk.
+If `send_at` was set during campaign creation, the same status call keeps the campaign scheduled in listmonk. Starting or scheduling requires the `campaigns:send` scope.
 
 ## 7. Fetch analytics
 

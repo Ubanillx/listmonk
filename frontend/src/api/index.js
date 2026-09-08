@@ -845,6 +845,12 @@ export const testPersonalSMTP = (data) => http.post(
   { loading: models.users, disableToast: true },
 );
 
+export const testBounceMailbox = (data) => http.post(
+  '/api/settings/bounce/mailbox/test',
+  data,
+  { disableToast: true },
+);
+
 // Dedicated 263 customer-reply mailboxes. Credentials are accepted only on
 // create/update/test and are never returned by the API.
 export const getReplyMailboxes = () => http.get(

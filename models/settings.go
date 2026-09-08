@@ -160,6 +160,7 @@ type Settings struct {
 		Port          int    `json:"port"`
 		AuthProtocol  string `json:"auth_protocol"`
 		ReturnPath    string `json:"return_path"`
+		StartTLS      bool   `json:"starttls"`
 		Username      string `json:"username"`
 		Password      string `json:"password,omitempty"`
 		TLSEnabled    bool   `json:"tls_enabled"`

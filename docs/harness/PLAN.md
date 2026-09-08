@@ -58,3 +58,13 @@
 - 明确是否影响 `cmd/`、`internal/core/`、`internal/auth/`、`frontend/` 或数据库迁移。
 - 先更新 [TECH_ARCHITECTURE.md](TECH_ARCHITECTURE.md) 和 [BUSINESS_LOGIC.md](BUSINESS_LOGIC.md) 中受影响的边界，再实现代码。
 - 运行 `make test`、受影响的前端测试和部署脚本校验，并把结果写入 [STATUS.md](STATUS.md)。
+
+## 退信邮箱 POP 检测（2026-09-08）
+
+来源：用户已确认按推荐方案实施。范围：只读最后一封邮件、标准 DSN/MIME 解析、三种连接模式、四步检测结果；沿用已有设置权限与凭据行为。
+
+- [x] 独立只读检测接口和标准退信摘要解析。
+- [x] POP3 / SSL/TLS / STARTTLS，旧配置兼容和后台 STLS 适配。
+- [x] 设置页检测按钮、结果卡片及 en/zh-CN/zh-TW 文案。
+- [x] POP 模拟服务器、解析与配置校验测试，浏览器用例。
+- [x] 最终浏览器回归、Docker 健康验证与状态记录。结果见 STATUS.md。

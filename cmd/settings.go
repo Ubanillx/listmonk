@@ -192,6 +192,9 @@ func (a *App) UpdateSettings(c echo.Context) error {
 
 	// Bounce boxes.
 	for i, s := range set.BounceBoxes {
+		if s.StartTLS && s.TLSEnabled {
+			return echo.NewHTTPError(http.StatusBadRequest, "Choose either SSL/TLS or STARTTLS for the bounce mailbox")
+		}
 		// Assign a UUID. The frontend only sends a password when the user explicitly
 		// changes the password. In other cases, the existing password in the DB
 		// is copied while updating the settings and the UUID is used to match

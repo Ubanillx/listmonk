@@ -75,6 +75,8 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 
 ## AI 入站回信处理
 
+退信设置的 `POST /api/settings/bounce/mailbox/test` 复用 `settings:manage`，对未保存表单执行连接/登录/读取/解析四步只读检测，最多读取当前 POP 会话最高序号的一封邮件（30 秒、5 MiB 上限），不调用 `Scan`、不删除邮件、不入队或改变客户状态。`internal/bounce/mailbox/test.go` 负责连接诊断，`preview.go` 负责外层摘要与 DSN 失败收件人解析。`bounce.mailboxes[].starttls` 默认 false，与 `tls_enabled` 互斥；后台扫描也支持 STLS，旧配置保持原行为，无数据库迁移。接口和日期/识别语义见 `docs/docs/content/bounces.md`。
+
 全局 `reply_ai` 设置保存 OpenAI 兼容接口的端点、模型、密钥、超时和最低置信度；密钥在读取设置时打码，更新时空值表示保留。每个客户回信邮箱还必须显式启用 AI 处理，避免将未选择的邮箱内容发送到第三方模型。
 
 后台 worker 使用 POP3 非破坏性轮询已验证且已启用的回信邮箱；每轮通过 LIST 先获取邮件大小，仅处理最新的有限批次并跳过超大邮件，按邮箱并发执行且单邮箱有超时，把邮件按“邮箱 + Message-ID/内容哈希”写入持久化队列。只会在发件人地址能唯一匹配到该邮箱所属工作区、所有者的客户时调用模型；自动回复、未匹配地址、低置信度和非明确意图都只留下审计记录，不修改客户。模型返回固定结构的 `unsubscribe`、`complaint` 或 `other` 意图，邮件正文被视为不可信数据，终态记录会清除可发送给模型的正文，仅保留哈希和最小化审计字段。

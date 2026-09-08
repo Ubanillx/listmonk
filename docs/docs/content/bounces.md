@@ -131,3 +131,19 @@ FROM bounces
 LEFT JOIN customers ON (customers.id = bounces.customer_id)
 ORDER BY bounces.created_at DESC LIMIT 1000;
 ```
+
+## Test a POP bounce mailbox
+
+In **Settings → Bounces**, select POP3 (plain), SSL/TLS (usually port 995), or STARTTLS (usually port 110), then click **Test mailbox**. The test uses the current form without saving it. An empty or masked password reuses the saved mailbox password by UUID; a new mailbox needs its password. Existing configurations keep their original TLS behavior. The optional `starttls` setting defaults to false and cannot be combined with `tls_enabled=true`.
+
+The result lists connection (including TLS), login, retrieval and parsing outcomes, mailbox count, the outer notification sender/decoded subject, timestamp, failed recipients, SMTP status and diagnostic reason. Multiple DSN recipients retain their individual reasons. Standard recipient fields take priority over inferred body addresses; `body_inferred` identifies a heuristic result. Sender and ordinary To addresses are not treated as failed recipients.
+
+Only the highest message number in the current POP session is retrieved. POP cannot sort by received time, so this is a last-message preview, not a search for the latest bounce. An ordinary message reports successful retrieval without an identified bounce. The timestamp uses Received when available, otherwise Date (labelled as a fallback), otherwise remains unknown.
+
+Testing has a 30-second deadline and a 5 MiB message limit. It never deletes mail, saves settings or records bounce events. Existing background processing still runs independently and may consume mail; retry if the server reports that the mailbox is locked or a message is unavailable.
+
+### Diagnostic API
+
+`POST /api/settings/bounce/mailbox/test` requires the existing `settings:manage` permission. JSON fields: `uuid` (optional saved mailbox reference), `type` (`pop`), `host`, `port`, `auth_protocol` (`userpass` or `none`), `username`, `password`, `tls_enabled`, `starttls`, and `tls_skip_verify`. Extra persisted form fields such as `scan_interval` are ignored by the test.
+
+Valid requests return the normal `{ "data": ... }` envelope, including `status` (`success`, `empty`, `not_bounce`, or `failed`), `count`, four `steps` (`name`, `status`, optional `detail`), and an optional `message` containing `from`, `subject`, `date`, `date_source`, `message_id`, `is_bounce`, `bounce_type`, `reason`, and `recipients` (`address`, `source`, `status`, `reason`). Operational failures stay in this result so completed steps remain visible; invalid configuration returns HTTP 400. No database migration is required.

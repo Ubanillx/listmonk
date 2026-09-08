@@ -23,6 +23,7 @@ type Opt struct {
 
 	// Optional TLS settings.
 	TLSEnabled    bool `json:"tls_enabled"`
+	StartTLS      bool `json:"starttls"`
 	TLSSkipVerify bool `json:"tls_skip_verify"`
 
 	ScanInterval time.Duration `json:"scan_interval"`

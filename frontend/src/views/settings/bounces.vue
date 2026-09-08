@@ -193,11 +193,15 @@
               <div class="column is-6">
                 <b-field grouped>
                   <b-field :label="$t('settings.mailserver.tls')" expanded :message="$t('settings.mailserver.tlsHelp')">
-                    <b-switch v-model="item.tls_enabled" name="item.tls_enabled" />
+                    <b-select :value="item.starttls ? 'starttls' : (item.tls_enabled ? 'tls' : 'none')" @input="setTLS(item, $event)">
+                      <option value="none">POP3</option>
+                      <option value="tls">SSL/TLS</option>
+                      <option value="starttls">STARTTLS</option>
+                    </b-select>
                   </b-field>
                   <b-field :label="$t('settings.mailserver.skipTLS')" expanded
                     :message="$t('settings.mailserver.skipTLSHelp')">
-                    <b-switch v-model="item.tls_skip_verify" :disabled="!item.tls_enabled"
+                    <b-switch v-model="item.tls_skip_verify" :disabled="!item.tls_enabled && !item.starttls"
                       name="item.tls_skip_verify" />
                   </b-field>
                 </b-field>
@@ -211,6 +215,39 @@
                 </b-field>
               </div>
             </div><!-- TLS -->
+            <b-button type="is-info" :loading="testing === n" :disabled="testing !== null || !item.host || !item.port"
+              data-cy="test-bounce-mailbox" @click="testMailbox(item, n)">
+{{ $t('settings.bounces.testMailbox') }}
+</b-button>
+            <p class="help">{{ $t('settings.bounces.testHelp') }}</p>
+            <div v-if="testResults[n]" class="box mt-3" data-cy="bounce-test-result" aria-live="polite">
+              <b-notification :type="resultType(testResults[n].status)" :closable="false">
+                {{ $t(`settings.bounces.testStatus.${testResults[n].status}`) }}
+                <p v-if="testResults[n].error">{{ testResults[n].error }}</p>
+              </b-notification>
+              <p v-for="step in testResults[n].steps" :key="step.name" class="mb-2">
+                <strong>{{ $t(`settings.bounces.testStep.${step.name}`) }}</strong>：
+                {{ $t(`settings.bounces.testStatus.${step.status}`) }}
+                <span v-if="step.detail"> — {{ step.detail }}</span>
+              </p>
+              <p>{{ $t('settings.bounces.testCount') }}：{{ testResults[n].count }}</p>
+              <template v-if="testResults[n].message">
+                <p>{{ $t('settings.bounces.testFrom') }}：{{ testResults[n].message.from || '—' }}</p>
+                <p>{{ $t('settings.bounces.testSubject') }}：{{ testResults[n].message.subject || '—' }}</p>
+                <p>
+{{ $t('settings.bounces.testDate') }}：{{ testResults[n].message.date || '—' }}
+                  <small v-if="testResults[n].message.dateSource === 'date'">({{ $t('settings.bounces.testDateFallback') }})</small>
+                </p>
+                <p v-if="testResults[n].message.bounceType">{{ $t('settings.bounces.testType') }}：{{ testResults[n].message.bounceType }}</p>
+                <p v-if="testResults[n].message.reason">{{ $t('settings.bounces.testReason') }}：{{ testResults[n].message.reason }}</p>
+                <b-table :data="testResults[n].message.recipients" :mobile-cards="true">
+                  <b-table-column v-slot="props" :label="$t('settings.bounces.testRecipient')">{{ props.row.address }}</b-table-column>
+                  <b-table-column v-slot="props" :label="$t('settings.bounces.testSource')">{{ props.row.source }}</b-table-column>
+                  <b-table-column v-slot="props" label="SMTP">{{ props.row.status || '—' }}</b-table-column>
+                  <b-table-column v-slot="props" :label="$t('settings.bounces.testReason')">{{ props.row.reason || '—' }}</b-table-column>
+                </b-table>
+              </template>
+            </div>
           </div>
         </div><!-- second container column -->
       </div><!-- block -->
@@ -234,12 +271,37 @@ export default Vue.extend({
       bounceTypes: ['soft', 'hard', 'complaint'],
       data: this.form,
       regDuration,
+      testing: null,
+      testResults: {},
     };
   },
 
   methods: {
     removeBounceBox(i) {
       this.data['bounce.mailboxes'].splice(i, 1);
+    },
+    async testMailbox(item, index) {
+      this.testing = index;
+      this.$delete(this.testResults, index);
+      try {
+        const data = await this.$api.testBounceMailbox({ ...item });
+        this.$set(this.testResults, index, data);
+      } catch (e) {
+        this.$set(this.testResults, index, {
+          status: 'failed', error: e.response?.data?.message || e.message, steps: [], count: '—',
+        });
+      } finally {
+        this.testing = null;
+      }
+    },
+    setTLS(item, mode) {
+      this.$set(item, 'starttls', mode === 'starttls');
+      this.$set(item, 'tls_enabled', mode === 'tls');
+    },
+    resultType(status) {
+      if (status === 'success') return 'is-success';
+      if (status === 'failed') return 'is-danger';
+      return 'is-warning';
     },
   },
 });

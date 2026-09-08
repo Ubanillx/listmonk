@@ -61,15 +61,15 @@ var (
 
 // NewPOP returns a new instance of the POP mailbox client.
 func NewPOP(opt Opt, lo *log.Logger) *POP {
+	clientOpt := pop3.Opt{Host: opt.Host, Port: opt.Port, TLSEnabled: opt.TLSEnabled, TLSSkipVerify: opt.TLSSkipVerify}
+	if opt.StartTLS {
+		clientOpt.TLSEnabled = false
+		clientOpt.Dialer = startTLSDialer{opt: opt}
+	}
 	return &POP{
-		opt: opt,
-		client: pop3.New(pop3.Opt{
-			Host:          opt.Host,
-			Port:          opt.Port,
-			TLSEnabled:    opt.TLSEnabled,
-			TLSSkipVerify: opt.TLSSkipVerify,
-		}),
-		lo: lo,
+		opt:    opt,
+		client: pop3.New(clientOpt),
+		lo:     lo,
 	}
 }
 
@@ -186,12 +186,12 @@ func (p *POP) Scan(limit int, ch chan models.Bounce) error {
 
 		select {
 		case ch <- models.Bounce{
-			Type:           bounceType,
-			CampaignUUID:   hdr[models.EmailHeaderCampaignUUID],
+			Type:         bounceType,
+			CampaignUUID: hdr[models.EmailHeaderCampaignUUID],
 			CustomerUUID: hdr[models.EmailHeaderCustomerUUID],
-			Source:         p.opt.Host,
-			CreatedAt:      date,
-			Meta:           meta,
+			Source:       p.opt.Host,
+			CreatedAt:    date,
+			Meta:         meta,
 		}:
 		default:
 		}

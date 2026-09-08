@@ -6,6 +6,11 @@
 
 ## 已完成
 
+- 退信邮箱只读 POP 检测已完成（2026-09-08）：新增 `POST /api/settings/bounce/mailbox/test`，复用当前表单与已保存密码，连接/登录/读取/解析四步，仅读取当前会话最后一封且不删除、不入队；支持 SSL/TLS、STARTTLS 和普通 POP3，STARTTLS 保存后也适用于后台扫描。解析外层发件人、编码主题、Received/Date、标准 DSN 多收件人和对应 SMTP 原因；普通邮件与空邮箱分别提示。前端按钮、结果卡片及 en/zh-CN/zh-TW 文案已交付。
+  - 验证：`go test ./...` 通过；后续补充的 `go test ./cmd ./internal/bounce/mailbox` 通过，覆盖三种连接模式、STLS 后台兼容、HTTP 响应包裹、MIME/字段优先级、无 DELE、异常/超时。首次 STLS 兼容回归发现适配器关闭时取消顺序导致重复关闭，已修正并通过回归。
+  - `cd frontend && yarn build`（含 ESLint）通过；`bounce-mailbox.cy.js` 两项浏览器用例通过（模拟检测响应、不保存现有设置；临时 QA 用户/角色已清理）。首次截图钩子超时，移除截图钩子后业务断言全通过。
+  - `python -m mkdocs build --strict --clean` 通过；生产管理端已构建并重启 `dev-backend-1`，9173 返回 200，日志显示 no upgrades to run 且正常监听。未连接用户真实 POP 邮箱；协议使用本地模拟服务器验证。
+
 - 修复 v6.23.0 旧库升级：物化视图改名后显式将 `list_id/subscriber_count` 改为 `customer_list_id/customer_count`，再创建索引，保留原数据。真实 PostgreSQL 回归覆盖旧名、过渡名、目标名和无视图四种情况，以及重复执行和并发刷新（`internal/migrations/v6.23.0_test.go`，使用 `MIGRATION_TEST_DSN`）。
 
 - 用户列表 API 标签改用已安装 MDI 图标库中的 `code-tags`，修复原 `code` 图标名无对应字形导致的空白（`frontend/src/views/Users.vue`，2026-09-07）。验证：`yarn lint`、`yarn build` 通过；后端容器已重启，9173 与最新 Users 脚本均返回 HTTP 200，脚本包含 `code-tags`。

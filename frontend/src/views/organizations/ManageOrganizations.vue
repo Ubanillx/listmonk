@@ -379,7 +379,7 @@ export default Vue.extend({
     },
 
     transferPendingResources() {
-      this.$utils.confirm('待转移资源及关联订阅者将转移给所选成员。', async () => {
+      this.$utils.confirm('待转移资源及关联客户将转移给所选成员。', async () => {
         await this.$api.transferPendingOrganizationResources({ target_user_id: this.transferTargetUserID }, this.selectedOrganizationID);
         this.transferTargetUserID = null;
         await this.refreshSelectedOrganization();

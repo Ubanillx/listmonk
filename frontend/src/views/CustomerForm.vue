@@ -3,13 +3,13 @@
     <div class="modal-card content" style="width: auto">
       <header class="modal-card-head">
         <b-tag v-if="isEditing" :class="[data.status, 'is-pulled-right']">
-          {{ $t(`subscribers.status.${data.status}`) }}
+          {{ $t(`customers.status.${data.status}`) }}
         </b-tag>
         <h4 v-if="isEditing">
           {{ data.name }}
         </h4>
         <h4 v-else>
-          {{ $t('subscribers.newSubscriber') }}
+          {{ $t('customers.newCustomer') }}
         </h4>
 
         <p v-if="isEditing" class="has-text-grey is-size-7">
@@ -19,27 +19,33 @@
       </header>
 
       <section expanded class="modal-card-body">
-        <b-field :label="$t('subscribers.email')" label-position="on-border">
-          <b-input :maxlength="200" v-model="form.email" name="email" :ref="'focus'" :disabled="!canEdit"
-            :placeholder="$t('subscribers.email')" required />
+        <b-field :label="$t('customers.customerCode')" label-position="on-border">
+          <b-input :maxlength="200" v-model="form.customerCode" name="customer_code" :ref="'focus'" :disabled="!canEdit"
+            :placeholder="$t('customers.customerCode')" required />
+        </b-field>
+
+        <b-field :label="$t('customers.email')" label-position="on-border">
+          <b-input :maxlength="200" v-model="form.email" name="email" :disabled="!canEdit"
+            :placeholder="$t('customers.email')" required />
         </b-field>
 
         <div class="columns">
           <div class="column is-8">
-            <b-field :label="$t('globals.fields.name')" label-position="on-border">
-              <b-input :maxlength="200" v-model="form.name" name="name" :disabled="!canEdit" :placeholder="$t('globals.fields.name')" />
+            <b-field :label="$t('customers.salutation')" label-position="on-border">
+              <b-input :maxlength="200" v-model="form.name" name="name" :disabled="!canEdit"
+                :placeholder="$t('customers.salutation')" />
             </b-field>
           </div>
           <div class="column is-4">
             <b-field :label="$t('globals.fields.status')" label-position="on-border"
-              :message="$t('subscribers.blocklistedHelp')">
+              :message="$t('customers.blocklistedHelp')">
               <b-select v-model="form.status" name="status" :placeholder="$t('globals.fields.status')" :disabled="!canEdit" required
                 expanded>
                 <option value="enabled">
-                  {{ $t('subscribers.status.enabled') }}
+                  {{ $t('customers.status.enabled') }}
                 </option>
                 <option value="blocklisted">
-                  {{ $t('subscribers.status.blocklisted') }}
+                  {{ $t('customers.status.blocklisted') }}
                 </option>
               </b-select>
             </b-field>
@@ -47,33 +53,33 @@
         </div>
 
         <b-tabs type="is-boxed" :animated="false">
-          <b-tab-item :label="$t('globals.terms.lists')" label-position="on-border">
-            <list-selector :label="$t('subscribers.lists')" :placeholder="$t('subscribers.listsPlaceholder')"
-              :message="$t('subscribers.listsHelp')" v-model="form.lists" :selected="form.lists" :all="lists.results"
+          <b-tab-item :label="$t('globals.terms.customer_lists')" label-position="on-border">
+            <customer-list-selector :label="$t('customers.customer_lists')" :placeholder="$t('customers.listsPlaceholder')"
+              :message="$t('customers.listsHelp')" v-model="form.customer_lists" :selected="form.customer_lists" :all="customer_lists.results"
               :disabled="!canEdit" />
             <div class="columns">
               <div class="column is-7">
-                <b-field :message="$t('subscribers.preconfirmHelp')">
+                <b-field :message="$t('customers.preconfirmHelp')">
                   <b-checkbox v-model="form.preconfirm" :native-value="true" :disabled="!canEdit || !hasOptinList">
-                    {{ $t('subscribers.preconfirm') }}
+                    {{ $t('customers.preconfirm') }}
                   </b-checkbox>
                 </b-field>
               </div>
               <div v-if="canEdit && isEditing" class="column is-5 has-text-right">
                 <a href="#" @click.prevent="sendOptinConfirmation" :class="{ 'is-disabled': !hasOptinList }">
                   <b-icon icon="email-outline" size="is-small" />
-                  {{ $t('subscribers.sendOptinConfirm') }}</a>
+                  {{ $t('customers.sendOptinConfirm') }}</a>
               </div>
             </div>
-          </b-tab-item><!-- lists -->
+          </b-tab-item><!-- customer_lists -->
 
-          <b-tab-item :label="`${$tc('globals.terms.subscriptions', 2)} (${data.lists ? data.lists.length : 0})`"
-            label-position="on-border" :disabled="!data.lists || data.lists.length === 0">
-            <template v-if="data.lists">
-              <b-table :data="data.lists" hoverable default-sort="createdAt" class="subscriptions">
-                <b-table-column v-slot="props" field="name" :label="$tc('globals.terms.list', 1)">
+          <b-tab-item :label="`${$tc('globals.terms.subscriptions', 2)} (${data.customerLists ? data.customerLists.length : 0})`"
+            label-position="on-border" :disabled="!data.customerLists || data.customerLists.length === 0">
+            <template v-if="data.customerLists">
+              <b-table :data="data.customerLists" hoverable default-sort="createdAt" class="subscriptions">
+                <b-table-column v-slot="props" field="name" :label="$tc('globals.terms.customer_list', 1)">
                   <div>
-                    <router-link :to="`/lists/${props.row.id}`">
+                    <router-link :to="`/customer-lists/${props.row.id}`">
                       {{ props.row.name }}
                     </router-link>
                     <br />
@@ -81,14 +87,14 @@
                       <b-icon :icon="props.row.optin === 'double' ? 'account-check-outline' : 'account-off-outline'"
                         size="is-small" />
                       {{ ' ' }}
-                      {{ $t(`lists.optins.${props.row.optin}`) }}
+                      {{ $t(`customer_lists.optins.${props.row.optin}`) }}
                     </b-tag>{{ ' ' }}
                   </div>
                 </b-table-column>
 
                 <b-table-column v-slot="props" field="status" cell-class="status" :label="$t('globals.fields.status')">
                   <b-tag :class="`status-${props.row.subscriptionStatus}`">
-                    {{ $t(`subscribers.status.${props.row.subscriptionStatus}`) }}
+                    {{ $t(`customers.status.${props.row.subscriptionStatus}`) }}
                   </b-tag>
                   <template v-if="props.row.optin === 'double' && props.row.subscriptionMeta.optinIp">
                     <br /><span class="is-size-7">{{ props.row.subscriptionMeta.optinIp }}</span>
@@ -140,12 +146,12 @@
             </b-table>
           </b-tab-item><!-- bounces -->
 
-          <b-tab-item :label="$t('subscribers.activity')" class="activity" :disabled="!isEditing">
-            <subscriber-activity v-if="isEditing && data.id" :subscriber-id="data.id" />
+          <b-tab-item :label="$t('customers.activity')" class="activity" :disabled="!isEditing">
+            <customer-activity v-if="isEditing && data.id" :customer-id="data.id" />
           </b-tab-item><!-- activity -->
         </b-tabs>
 
-        <b-field :message="$t('subscribers.attribsHelp') + ' ' + egAttribs" class="mt-6">
+        <b-field :message="$t('customers.attribsHelp') + ' ' + egAttribs" class="mt-6">
           <div>
             <h5>{{ $t('globals.terms.attribs') }}</h5>
             <b-input v-model="form.strAttribs" name="attribs" type="textarea" :disabled="!canEdit" />
@@ -160,7 +166,7 @@
           {{ $t('globals.buttons.close') }}
         </b-button>
         <b-button v-if="canEdit" native-type="submit" type="is-primary"
-          :loading="loading.subscribers">
+          :loading="loading.customers">
           {{ $t('globals.buttons.save') }}
         </b-button>
       </footer>
@@ -171,31 +177,31 @@
 <script>
 import Vue from 'vue';
 import { mapState } from 'vuex';
-import ListSelector from '../components/ListSelector.vue';
+import CustomerListSelector from '../components/CustomerListSelector.vue';
 import CopyText from '../components/CopyText.vue';
-import SubscriberActivity from '../components/SubscriberActivity.vue';
+import CustomerActivity from '../components/CustomerActivity.vue';
 
 export default Vue.extend({
   components: {
-    ListSelector,
+    CustomerListSelector,
     CopyText,
-    SubscriberActivity,
+    CustomerActivity,
   },
 
   props: {
     data: {
       type: Object,
-      default: () => ({ lists: [] }),
+      default: () => ({ customerLists: [] }),
     },
     isEditing: Boolean,
   },
 
   data() {
     return {
-      // Binds form input values. This is populated by subscriber props passed
+      // Binds form input values. This is populated by customer props passed
       // from the parent component in mounted().
       form: {
-        lists: [],
+        customer_lists: [],
         strAttribs: '{}',
         status: 'enabled',
         preconfirm: false,
@@ -225,7 +231,7 @@ export default Vue.extend({
       this.$utils.confirm(
         null,
         () => {
-          this.$api.deleteSubscriberBounces(this.form.id).then(() => {
+          this.$api.deleteCustomerBounces(this.form.id).then(() => {
             this.getBounces();
             this.$utils.toast(this.$t('globals.messages.deleted', { name: sub.name }));
           });
@@ -234,21 +240,21 @@ export default Vue.extend({
     },
 
     getBounces() {
-      this.$api.getSubscriberBounces(this.form.id).then((data) => {
+      this.$api.getCustomerBounces(this.form.id).then((data) => {
         this.bounces = data;
       });
     },
 
     onSubmit() {
       if (this.isEditing) {
-        this.updateSubscriber();
+        this.updateCustomer();
         return;
       }
 
-      this.createSubscriber();
+      this.createCustomer();
     },
 
-    createSubscriber() {
+    createCustomer() {
       let attribs = {};
       if (this.form.strAttribs) {
         attribs = this.validateAttribs(this.form.strAttribs);
@@ -260,21 +266,22 @@ export default Vue.extend({
         email: this.form.email,
         name: this.form.name,
         status: this.form.status,
+        customer_code: this.form.customerCode,
         attribs,
         preconfirm_subscriptions: this.form.preconfirm,
 
-        // List IDs.
-        lists: this.form.lists.map((l) => l.id),
+        // CustomerList IDs.
+        customer_list_ids: this.form.customer_lists.map((l) => l.id),
       };
 
-      this.$api.createSubscriber(data).then((d) => {
+      this.$api.createCustomer(data).then((d) => {
         this.$emit('finished');
         this.$parent.close();
         this.$utils.toast(this.$t('globals.messages.created', { name: d.name }));
       });
     },
 
-    updateSubscriber() {
+    updateCustomer() {
       let attribs = {};
       if (this.form.strAttribs) {
         attribs = this.validateAttribs(this.form.strAttribs);
@@ -287,14 +294,15 @@ export default Vue.extend({
         email: this.form.email,
         name: this.form.name,
         status: this.form.status,
+        customer_code: this.form.customerCode,
         preconfirm_subscriptions: this.form.preconfirm,
         attribs,
 
-        // List IDs.
-        lists: this.form.lists.map((l) => l.id),
+        // CustomerList IDs.
+        customer_list_ids: this.form.customer_lists.map((l) => l.id),
       };
 
-      this.$api.updateSubscriber(data).then((d) => {
+      this.$api.updateCustomer(data).then((d) => {
         this.$emit('finished');
         this.$parent.close();
         this.$utils.toast(this.$t('globals.messages.updated', { name: d.name }));
@@ -302,8 +310,8 @@ export default Vue.extend({
     },
 
     sendOptinConfirmation() {
-      this.$api.sendSubscriberOptin(this.form.id).then(() => {
-        this.$utils.toast(this.$t('subscribers.sentOptinConfirm'));
+      this.$api.sendCustomerOptin(this.form.id).then(() => {
+        this.$utils.toast(this.$t('customers.sentOptinConfirm'));
       });
     },
 
@@ -314,7 +322,7 @@ export default Vue.extend({
         attribs = JSON.parse(str);
       } catch (e) {
         this.$utils.toast(
-          `${this.$t('subscribers.invalidJSON')}: ${e.toString()}`,
+          `${this.$t('customers.invalidJSON')}: ${e.toString()}`,
           'is-danger',
 
           3000,
@@ -331,16 +339,16 @@ export default Vue.extend({
   },
 
   computed: {
-    ...mapState(['lists', 'loading']),
+    ...mapState(['customer_lists', 'loading']),
 
     canEdit() {
       return !this.isEditing
-        ? this.$canCreateWorkspaceResource('subscribers:manage')
-        : this.$canManageResource(this.data, 'subscribers:manage');
+        ? this.$canCreateWorkspaceResource('customers:manage')
+        : this.$canManageResource(this.data, 'customers:manage');
     },
 
     hasOptinList() {
-      return this.form.lists.some((l) => l.optin === 'double');
+      return this.form.customer_lists.some((l) => l.optin === 'double');
     },
   },
 
@@ -349,7 +357,10 @@ export default Vue.extend({
       this.form = {
         ...this.$props.data,
 
-        // Deep-copy the lists array on to the form.
+        // Keep form state separate from the camel-cased API response.
+        customer_lists: this.$props.data.customerLists || [],
+
+        // Deep-copy the customer_lists array on to the form.
         strAttribs: JSON.stringify(this.$props.data.attribs, null, 4),
       };
     }

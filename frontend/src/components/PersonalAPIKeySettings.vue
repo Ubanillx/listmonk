@@ -228,11 +228,11 @@ export default Vue.extend({
     },
     scopeLabel(scope) {
       const keys = {
-        'lists:read': 'apiKeys.scope.listsRead',
-        'lists:write': 'apiKeys.scope.listsWrite',
-        'subscribers:read': 'apiKeys.scope.subscribersRead',
-        'subscribers:write': 'apiKeys.scope.subscribersWrite',
-        'subscribers:import': 'apiKeys.scope.subscribersImport',
+        'customer_lists:read': 'apiKeys.scope.listsRead',
+        'customer_lists:write': 'apiKeys.scope.listsWrite',
+        'customers:read': 'apiKeys.scope.customersRead',
+        'customers:write': 'apiKeys.scope.customersWrite',
+        'customers:import': 'apiKeys.scope.customersImport',
         'templates:read': 'apiKeys.scope.templatesRead',
         'templates:write': 'apiKeys.scope.templatesWrite',
         'media:read': 'apiKeys.scope.mediaRead',

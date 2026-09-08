@@ -159,7 +159,7 @@
       <div v-else-if="trackingDisabled" class="notification is-light">
         {{ $t('analytics.recipientDetailsUnavailable') }}
       </div>
-      <div v-else-if="!canReadSubscribers" class="notification is-light">
+      <div v-else-if="!canReadCustomers" class="notification is-light">
         {{ $t('analytics.recipientPermission') }}
       </div>
       <div v-else>
@@ -219,8 +219,8 @@
           :per-page="recipients.perPage || recipientQuery.perPage"
           :total="recipients.total || 0"
         >
-          <b-table-column v-slot="props" field="email" :label="$t('subscribers.email')" sortable>
-            <router-link :to="{ name: 'subscriber', params: { id: props.row.subscriberId } }">
+          <b-table-column v-slot="props" field="email" :label="$t('customers.email')" sortable>
+            <router-link :to="{ name: 'customer', params: { id: props.row.customerId } }">
               {{ props.row.email }}
             </router-link>
             <p class="is-size-7 has-text-grey">{{ props.row.name }}</p>
@@ -355,12 +355,12 @@ export default Vue.extend({
       return this.serverConfig.privacy.disable_tracking;
     },
 
-    canReadSubscribers() {
+    canReadCustomers() {
       return this.$canReadCampaignRecipients(this.campaign);
     },
 
     canShowRecipients() {
-      return !this.trackingDisabled && this.serverConfig.privacy.individual_tracking && this.canReadSubscribers;
+      return !this.trackingDisabled && this.serverConfig.privacy.individual_tracking && this.canReadCustomers;
     },
 
     summaryCards() {

@@ -1,10 +1,10 @@
 describe('Import', () => {
   it('Opens import page', () => {
     cy.resetDB();
-    cy.loginAndVisit('/admin/subscribers/import');
+    cy.loginAndVisit('/admin/customers/import');
   });
 
-  it('Imports subscribers', () => {
+  it('Imports customers', () => {
     const cases = [
       {
         chkMode: 'subscribe', status: 'enabled', chkSubStatus: 'unconfirmed', subStatus: 'unconfirmed', overwrite: true, count: 102,
@@ -30,8 +30,8 @@ describe('Import', () => {
       }
 
       if (c.status === 'enabled') {
-        cy.get('.list-selector input').click();
-        cy.get('.list-selector .autocomplete a').first().click();
+        cy.get('.customer-list-selector input').click();
+        cy.get('.customer-list-selector .autocomplete a').first().click();
       }
 
       cy.fixture('subs.csv').then((data) => {
@@ -41,6 +41,9 @@ describe('Import', () => {
           mimeType: 'text/csv',
         });
       });
+
+      // Wait for the preview (and its automatic field mapping) to render.
+      cy.get('.preview-table', { timeout: 10000 });
 
       cy.get('button.is-primary').click();
 
@@ -54,7 +57,7 @@ describe('Import', () => {
       cy.wait(100);
 
       // Verify that 100 (+2 default) subs are imported.
-      cy.loginAndVisit('/admin/subscribers');
+      cy.loginAndVisit('/admin/customers');
       cy.wait(100);
       cy.get('[data-cy=count]').then(($el) => {
         cy.expect(parseInt($el.text().trim())).to.equal(c.count);
@@ -65,19 +68,20 @@ describe('Import', () => {
       // cy.wrap($el).find(`.tag.${c.subStatus}`);
       // });
 
-      cy.loginAndVisit('/admin/subscribers/import');
+      cy.loginAndVisit('/admin/customers/import');
       cy.wait(100);
     });
   });
 
-  it('Imports subscribers incorrectly', () => {
+  it('Imports customers incorrectly', () => {
     cy.wait(1000);
     cy.resetDB();
     cy.wait(1000);
-    cy.loginAndVisit('/admin/subscribers/import');
+    cy.loginAndVisit('/admin/customers/import');
 
-    cy.get('.list-selector input').click();
-    cy.get('.list-selector .autocomplete a').first().click();
+    // Use the blocklist mode: it has no customer-code requirement, so the
+    // deliberately wrong delimiter is what trips the server-side parse error.
+    cy.get('[data-cy=check-blocklist] .check').click();
     cy.get('input[name=delim]').clear().type('|');
 
     cy.fixture('subs.csv').then((data) => {

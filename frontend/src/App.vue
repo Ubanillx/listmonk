@@ -18,7 +18,7 @@
             <b-icon :icon="workspaceIcon" size="is-small" />
             <span class="workspace-label">{{ workspaceLabel }}</span>
           </template>
-          <b-navbar-item tag="a" href="#" @click.prevent="switchWorkspace({ organizationId: 0, personal: true })">
+          <b-navbar-item v-if="canPersonalWorkspace" tag="a" href="#" @click.prevent="switchWorkspace({ organizationId: 0, personal: true })">
             <b-icon icon="account-circle-outline" />
             <span>个人空间</span>
           </b-navbar-item>
@@ -231,6 +231,21 @@ export default Vue.extend({
   computed: {
     ...mapState(['serverConfig', 'profile', 'workspace', 'organizations']),
 
+    // The personal workspace is only available to platform administrators and
+    // roles carrying the workspaces:personal capability. The server enforces
+    // this on every personal-workspace request; the UI mirrors it here so a
+    // denied account cannot see an entry that would fail with 403.
+    canPersonalWorkspace() {
+      const role = this.profile && this.profile.userRole;
+      if (!role) {
+        return false;
+      }
+      if (Number(role.id) === 1) {
+        return true;
+      }
+      return (role.permissions || []).includes('workspaces:personal');
+    },
+
     workspaceLabel() {
       return this.workspace.organizationId ? this.workspace.organizationName : '个人空间';
     },
@@ -257,7 +272,7 @@ export default Vue.extend({
   },
 
   mounted() {
-    // Lists is required across different views. On app load, fetch the lists
+    // CustomerLists is required across different views. On app load, fetch the customer_lists
     // and have them in the store.
     this.$api.getLists({ minimal: true, per_page: 'all', status: 'active' });
 

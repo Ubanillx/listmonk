@@ -9,8 +9,8 @@
 
     <br /><br /><br />
     <form @submit.prevent="onSubmit">
-      <b-field v-if="data.type !== 'api'" :label="$t('subscribers.email')" label-position="on-border">
-        <b-input :maxlength="200" v-model="form.email" name="email" :placeholder="$t('subscribers.email')"
+      <b-field v-if="data.type !== 'api'" :label="$t('customers.email')" label-position="on-border">
+        <b-input :maxlength="200" v-model="form.email" name="email" :placeholder="$t('customers.email')"
           :disabled="!data.passwordLogin" required autofocus />
       </b-field>
 

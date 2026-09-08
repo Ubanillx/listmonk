@@ -25,7 +25,7 @@ describe('User roles', () => {
   });
 
   it('Adds new roles', () => {
-    // first - no global list perms.
+    // first - no global customer_list perms.
     cy.get('[data-cy=btn-new]').click();
     cy.get('input[name=name]').type('first');
     cy.get('[data-cy=btn-save]').click();
@@ -58,9 +58,9 @@ describe('User roles', () => {
   });
 });
 
-describe('List roles', () => {
+describe('CustomerList roles', () => {
   it('Opens roles page', () => {
-    cy.loginAndVisit('/admin/users/roles/lists');
+    cy.loginAndVisit('/admin/users/roles/customer-lists');
   });
 
   it('Adds new roles', () => {
@@ -148,26 +148,26 @@ describe('Users ', () => {
 
 describe('Login ', () => {
   it('Logs in as first', () => {
-    cy.visit('/admin/login?next=/admin/lists');
+    cy.visit('/admin/login?next=/admin/customer-lists');
     cy.get('input[name=username]').invoke('val', 'first');
     cy.get('input[name=password]').invoke('val', 'first000000');
     cy.get('button').click();
 
-    // first=only default list.
+    // first=only default customer_list.
     cy.get('tbody tr').should('have.length', 1);
-    cy.get('tbody td[data-label=Name]').contains('Default list');
+    cy.get('tbody td[data-label=Name]').contains('Default customer_list');
     cy.get('[data-cy=btn-new]').should('not.exist');
     cy.get('[data-cy=btn-edit]').should('exist');
     cy.get('[data-cy=btn-delete]').should('exist');
   });
 
   it('Logs in as second', () => {
-    cy.visit('/admin/login?next=/admin/lists');
+    cy.visit('/admin/login?next=/admin/customer-lists');
     cy.get('input[name=username]').invoke('val', 'second');
     cy.get('input[name=password]').invoke('val', 'second000000');
     cy.get('button').click();
 
-    // first=only default list.
+    // first=only default customer_list.
     cy.get('tbody tr').should('have.length', 2);
     cy.get('tbody tr:nth-child(1) [data-cy=btn-edit]').should('exist');
     cy.get('tbody tr:nth-child(1) [data-cy=btn-delete]').should('exist');

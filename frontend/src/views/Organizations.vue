@@ -60,19 +60,19 @@
         </section>
 
         <section class="mb-6">
-          <h2 class="title is-6">迁移个人列表</h2>
-          <p class="has-text-grey mb-3">可将本人个人空间中的列表复制或移动到当前组织；关联订阅者会按当前组织和所属用户合并。</p>
-          <b-field label="个人列表" label-position="on-border">
-            <b-select v-model="personalListIDs" multiple expanded>
-              <option v-for="list in personalLists" :key="list.id" :value="list.id">{{ list.name }}</option>
+          <h2 class="title is-6">迁移个人客户列表</h2>
+          <p class="has-text-grey mb-3">可将本人个人空间中的客户列表复制或移动到当前组织；关联客户会按当前组织和所属用户合并。</p>
+          <b-field label="个人客户列表" label-position="on-border">
+            <b-select v-model="personalCustomerListIDs" multiple expanded>
+              <option v-for="customerList in personalLists" :key="customerList.id" :value="customerList.id">{{ customerList.name }}</option>
             </b-select>
           </b-field>
           <div class="buttons">
-            <b-button icon-left="content-copy" :disabled="personalListIDs.length === 0"
+            <b-button icon-left="content-copy" :disabled="personalCustomerListIDs.length === 0"
               @click="migratePersonalLists('copy')">
 复制到当前组织
 </b-button>
-            <b-button type="is-primary" icon-left="folder-move" :disabled="personalListIDs.length === 0"
+            <b-button type="is-primary" icon-left="folder-move" :disabled="personalCustomerListIDs.length === 0"
               @click="migratePersonalLists('move')">
 移动到当前组织
 </b-button>
@@ -330,7 +330,7 @@ export default Vue.extend({
       archiveTransferMembers: [],
       archiveTransferTargetUserID: null,
       personalLists: [],
-      personalListIDs: [],
+      personalCustomerListIDs: [],
       personalTemplates: [],
       personalTemplateIDs: [],
       personalCampaigns: [],
@@ -399,7 +399,7 @@ export default Vue.extend({
         this.personalMedia = this.personalPrivateResources(personalMedia.results);
       } else {
         this.personalLists = [];
-        this.personalListIDs = [];
+        this.personalCustomerListIDs = [];
         this.personalTemplates = [];
         this.personalTemplateIDs = [];
         this.personalCampaigns = [];
@@ -487,7 +487,7 @@ export default Vue.extend({
     },
 
     transferPendingResources() {
-      this.$utils.confirm('待转移资源及关联订阅者将转移给所选成员。', async () => {
+      this.$utils.confirm('待转移资源及关联客户将转移给所选成员。', async () => {
         await this.$api.transferPendingOrganizationResources({ target_user_id: this.transferTargetUserID });
         this.transferTargetUserID = null;
         await this.refresh();
@@ -496,13 +496,13 @@ export default Vue.extend({
 
     migratePersonalLists(mode) {
       const action = mode === 'move' ? '移动' : '复制';
-      this.$utils.confirm(`确认${action}所选个人列表到当前组织？`, async () => {
+      this.$utils.confirm(`确认${action}所选个人客户列表到当前组织？`, async () => {
         await this.$api.migratePersonalLists({
-          list_ids: this.personalListIDs,
+          customer_list_ids: this.personalCustomerListIDs,
           mode,
           target_organization_id: this.workspace.organizationId,
         });
-        this.personalListIDs = [];
+        this.personalCustomerListIDs = [];
         await this.refresh();
         this.$root.$emit('page.refresh');
       });

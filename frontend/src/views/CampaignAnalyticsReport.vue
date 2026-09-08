@@ -245,7 +245,7 @@
       <div v-else-if="trackingDisabled" class="notification is-light">
         {{ $t('analytics.recipientDetailsUnavailable') }}
       </div>
-      <div v-else-if="!canReadSubscribers" class="notification is-light">
+      <div v-else-if="!canReadCustomers" class="notification is-light">
         {{ $t('analytics.recipientPermission') }}
       </div>
       <div v-else>
@@ -317,8 +317,8 @@
             <p class="is-size-7 has-text-grey">{{ props.row.campaignName }}</p>
           </b-table-column>
 
-          <b-table-column v-slot="props" field="email" :label="$t('subscribers.email')" sortable>
-            <router-link :to="{ name: 'subscriber', params: { id: props.row.subscriberId } }">
+          <b-table-column v-slot="props" field="email" :label="$t('customers.email')" sortable>
+            <router-link :to="{ name: 'customer', params: { id: props.row.customerId } }">
               {{ props.row.email }}
             </router-link>
             <p class="is-size-7 has-text-grey">{{ props.row.name }}</p>
@@ -448,15 +448,15 @@ export default Vue.extend({
       return this.serverConfig.privacy.disable_tracking;
     },
 
-    canReadSubscribers() {
+    canReadCustomers() {
       return this.$can('campaigns:get_analytics')
-        && this.$can('subscribers:get_all', 'subscribers:get')
+        && this.$can('customers:get_all', 'customers:get')
         && this.form.campaigns.every((campaign) => this.$canViewCampaignAnalytics(campaign)
           && this.$canManageResource(campaign));
     },
 
     canShowRecipients() {
-      return !this.trackingDisabled && this.serverConfig.privacy.individual_tracking && this.canReadSubscribers;
+      return !this.trackingDisabled && this.serverConfig.privacy.individual_tracking && this.canReadCustomers;
     },
 
     singleCampaign() {

@@ -19,8 +19,8 @@ describe('Campaigns', () => {
     cy.get('input[name=name]').clear().type('new-attach');
     cy.get('input[name=subject]').clear().type('new-subject');
     cy.get('input[name=from_email]').should('not.exist');
-    cy.get('.list-selector input').click();
-    cy.get('.list-selector .autocomplete a').eq(0).click();
+    cy.get('.customer-list-selector input').click();
+    cy.get('.customer-list-selector .autocomplete a').eq(0).click();
 
     cy.get('button[data-cy=btn-continue]').click();
     cy.wait(500);
@@ -61,10 +61,10 @@ describe('Campaigns', () => {
     cy.get('input[name=subject]').clear().type('new-subject');
     cy.get('input[name=from_email]').should('not.exist');
 
-    // Change the list.
-    cy.get('.list-selector a.delete').click();
-    cy.get('.list-selector input').click();
-    cy.get('.list-selector .autocomplete a').eq(0).click();
+    // Change the customer_list.
+    cy.get('.customer-list-selector a.delete').click();
+    cy.get('.customer-list-selector input').click();
+    cy.get('.customer-list-selector .autocomplete a').eq(0).click();
 
     // Clear and redo tags.
     cy.get('input[name=tags]').type('{backspace}new-tag{enter}');
@@ -112,8 +112,8 @@ describe('Campaigns', () => {
       expect(data.send_at).to.not.equal(null);
       expect(data.body).to.equal('new-content');
 
-      expect(data.lists.length).to.equal(1);
-      expect(data.lists[0].id).to.equal(1);
+      expect(data.customer_lists.length).to.equal(1);
+      expect(data.customer_lists[0].id).to.equal(1);
       expect(data.tags.length).to.equal(1);
       expect(data.tags[0]).to.equal('new-tag');
       expect(data.headers[0]['X-Custom']).to.equal('Custom-Value');
@@ -138,8 +138,8 @@ describe('Campaigns', () => {
     cy.resetDB();
     cy.loginAndVisit('/admin/campaigns');
     const formats = ['html', 'markdown', 'plain'];
-    const htmlBody = '<strong>hello</strong> \{\{ .Subscriber.Name \}\} from {\{ .Subscriber.Attribs.city \}\}';
-    const plainBody = 'hello Demo Subscriber from Bengaluru';
+    const htmlBody = '<strong>hello</strong> \{\{ .Customer.Name \}\} from {\{ .Customer.Attribs.city \}\}';
+    const plainBody = 'hello Demo Customer from Bengaluru';
 
     // Set test content the first time.
     cy.get('td[data-label=Status] a').click();
@@ -200,7 +200,7 @@ describe('Campaigns', () => {
 
   it('Deletes campaigns', () => {
     cy.wait(1000);
-    // Delete all visible lists.
+    // Delete all visible customer_lists.
     cy.get('tbody tr').each(() => {
       cy.get('tbody a[data-cy=btn-delete]').first().click();
       cy.get('.modal button.is-primary:eq(0)').click();
@@ -211,12 +211,12 @@ describe('Campaigns', () => {
   });
 
   it('Adds new campaigns', () => {
-    const lists = [[1], [1, 2]];
+    const customer_lists = [[1], [1, 2]];
     const cTypes = ['richtext', 'html', 'markdown', 'plain', 'visual'];
 
     let n = 0;
     cTypes.forEach((c) => {
-      lists.forEach((l) => {
+      customer_lists.forEach((l) => {
         // Click the 'new button'
         cy.get('[data-cy=btn-new]').click();
         cy.wait(100);
@@ -226,8 +226,8 @@ describe('Campaigns', () => {
         cy.get('input[name=subject]').clear().type(`subject${n}`);
 
         l.forEach(() => {
-          cy.get('.list-selector input').click();
-          cy.get('.list-selector .autocomplete a').first().click();
+          cy.get('.customer-list-selector input').click();
+          cy.get('.customer-list-selector .autocomplete a').first().click();
         });
 
         // Add tags.
@@ -263,9 +263,9 @@ describe('Campaigns', () => {
         cy.get('select[name=content_type]').select(c);
 
         // Insert content.
-        const htmlBody = `<strong>hello${n}</strong> \{\{ .Subscriber.Name \}\} from {\{ .Subscriber.Attribs.city \}\}`;
-        const plainBody = `hello${n} Demo Subscriber from Bengaluru`;
-        const markdownBody = `**hello${n}** Demo Subscriber from Bengaluru`;
+        const htmlBody = `<strong>hello${n}</strong> \{\{ .Customer.Name \}\} from {\{ .Customer.Attribs.city \}\}`;
+        const plainBody = `hello${n} Demo Customer from Bengaluru`;
+        const markdownBody = `**hello${n}** Demo Customer from Bengaluru`;
 
         cy.log(`format = ${c}`);
         if (c === 'richtext') {
@@ -327,7 +327,7 @@ describe('Campaigns', () => {
         // Verify the newly created campaign in the table.
         cy.get('tbody td[data-label="Name"]').first().contains(`name${n}`);
         cy.get('tbody td[data-label="Name"]').first().contains(`subject${n}`);
-        cy.get('tbody td[data-label="Lists"]').first().then(($el) => {
+        cy.get('tbody td[data-label="CustomerLists"]').first().then(($el) => {
           cy.wrap($el).find('li').should('have.length', l.length);
         });
 
@@ -338,13 +338,13 @@ describe('Campaigns', () => {
     // Fetch the campaigns API and verfiy the values that couldn't be verified on the table UI.
     cy.request(`${apiUrl}/api/campaigns?order=asc&order_by=created_at`).should((response) => {
       const { data } = response.body;
-      expect(data.total).to.equal(lists.length * cTypes.length);
+      expect(data.total).to.equal(customer_lists.length * cTypes.length);
 
       let n = 0;
       cTypes.forEach((c) => {
-        lists.forEach((l) => {
+        customer_lists.forEach((l) => {
           expect(data.results[n].content_type).to.equal(c);
-          expect(data.results[n].lists.map((ls) => ls.id)).to.deep.equal(l);
+          expect(data.results[n].customer_lists.map((ls) => ls.id)).to.deep.equal(l);
           n++;
         });
       });
@@ -389,7 +389,7 @@ describe('Campaigns', () => {
       type: 'regular',
       content_type: 'richtext',
       template_id: 1,
-      lists: [1],
+      customer_lists: [1],
     };
 
     // Create 30 in a loop.

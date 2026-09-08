@@ -75,7 +75,7 @@
                 :disabled="!data['security.oidc']['enabled'] || !data['security.oidc']['auto_create_users']"
                 name="oidc.default_list_role_id" expanded>
                 <option :value="null">&mdash; {{ $t("globals.terms.none") }} &mdash;</option>
-                <option v-for="role in listRoles" :key="role.id" :value="role.id">
+                <option v-for="role in customerListRoles" :key="role.id" :value="role.id">
                   {{ role.name }}
                 </option>
               </b-select>
@@ -173,7 +173,7 @@ export default Vue.extend({
   },
 
   computed: {
-    ...mapState(['serverConfig', 'userRoles', 'listRoles']),
+    ...mapState(['serverConfig', 'userRoles', 'customerListRoles']),
 
     corsDomains: {
       get() {

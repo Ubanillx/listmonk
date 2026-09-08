@@ -50,6 +50,10 @@
             <bounce-settings :form="form" :key="key" />
           </b-tab-item><!-- bounces -->
 
+          <b-tab-item :label="$t('settings.inboundReplies.name')">
+            <inbound-replies-settings :form="form" :key="key" />
+          </b-tab-item><!-- inbound replies -->
+
           <b-tab-item :label="$t('settings.messengers.name')">
             <messenger-settings :form="form" :key="key" />
           </b-tab-item><!-- messengers -->
@@ -69,6 +73,7 @@ import { mapState } from 'vuex';
 import AppearanceSettings from './settings/appearance.vue';
 import BounceSettings from './settings/bounces.vue';
 import GeneralSettings from './settings/general.vue';
+import InboundRepliesSettings from './settings/inbound-replies.vue';
 import MediaSettings from './settings/media.vue';
 import MessengerSettings from './settings/messengers.vue';
 import PerformanceSettings from './settings/performance.vue';
@@ -85,6 +90,7 @@ export default Vue.extend({
     MediaSettings,
     SmtpSettings,
     BounceSettings,
+    InboundRepliesSettings,
     MessengerSettings,
     AppearanceSettings,
   },
@@ -188,6 +194,12 @@ export default Vue.extend({
         }
       }
 
+      if (this.isDummy(form.reply_ai.api_key)) {
+        form.reply_ai.api_key = '';
+      } else if (this.hasDummy(form.reply_ai.api_key)) {
+        hasDummy = 'reply AI';
+      }
+
       if (hasDummy) {
         this.$utils.toast(this.$t('globals.messages.passwordChangeFull', { name: hasDummy }), 'is-danger');
         return false;
@@ -228,6 +240,12 @@ export default Vue.extend({
         // Domain blocklist array to multi-line string.
         d['privacy.domain_blocklist'] = d['privacy.domain_blocklist'].join('\n');
         d['privacy.domain_allowlist'] = d['privacy.domain_allowlist'].join('\n');
+
+        // Guard the reply AI block for deployments where the settings row
+        // predates the feature (a migration normally inserts the default).
+        d.reply_ai = d.reply_ai || {
+          enabled: false, base_url: '', api_key: '', model: '', timeout: '15s', min_confidence: 0.98,
+        };
 
         this.key += 1;
         this.form = d;

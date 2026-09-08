@@ -18,14 +18,14 @@ function initialWorkspace() {
 
 export default new Vuex.Store({
   state: {
-    // Data from API responses for different models, eg: lists, campaigns.
+    // Data from API responses for different models, eg: customer_lists, campaigns.
     // The API responses are stored in this map as-is. This is invoked by
-    // API requests in `http`. This initialises lists: {}, campaigns: {}
+    // API requests in `http`. This initialises customer_lists: {}, campaigns: {}
     // etc. on state.
     ...Object.keys(models).reduce((obj, cur) => ({ ...obj, [cur]: [] }), {}),
 
     // Map of loading status (true, false) indicators for different model keys
-    // like lists, campaigns etc. loading: {lists: true, campaigns: true ...}.
+    // like customer_lists, campaigns etc. loading: {customer_lists: true, campaigns: true ...}.
     // The Axios API global request interceptor marks a model as loading=true
     // and the response interceptor marks it as false. The model keys are being
     // pre-initialised here to fix "reactivity" issues on first loads.
@@ -39,7 +39,7 @@ export default new Vuex.Store({
   },
 
   mutations: {
-    // Set data from API responses. `model` is 'lists', 'campaigns' etc.
+    // Set data from API responses. `model` is 'customer_lists', 'campaigns' etc.
     setModelResponse(state, { model, data }) {
       state[model] = data;
     },
@@ -53,7 +53,7 @@ export default new Vuex.Store({
     },
 
     setWorkspace(state, workspace) {
-      // Workspace API responses use organization_id, while organization list
+      // Workspace API responses use organization_id, while organization customer_list
       // rows use the regular id/name fields. Normalize both shapes here so
       // selecting an organization from the switcher cannot silently fall
       // back to the personal workspace.
@@ -93,15 +93,15 @@ export default new Vuex.Store({
   },
 
   getters: {
-    [models.lists]: (state) => state[models.lists],
-    [models.subscribers]: (state) => state[models.subscribers],
+    [models.customer_lists]: (state) => state[models.customer_lists],
+    [models.customers]: (state) => state[models.customers],
     [models.campaigns]: (state) => state[models.campaigns],
     [models.media]: (state) => state[models.media],
     [models.templates]: (state) => state[models.templates],
     [models.users]: (state) => state[models.users],
     [models.profile]: (state) => state[models.profile],
     [models.userRoles]: (state) => state[models.userRoles],
-    [models.listRoles]: (state) => state[models.listRoles],
+    [models.customerListRoles]: (state) => state[models.customerListRoles],
     [models.settings]: (state) => state[models.settings],
     [models.serverConfig]: (state) => state[models.serverConfig],
     [models.logs]: (state) => state[models.logs],

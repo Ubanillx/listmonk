@@ -1,16 +1,19 @@
 const apiUrl = Cypress.env('apiUrl');
 
-describe('Subscribers', () => {
-  it('Opens subscribers page', () => {
+describe('Customers', () => {
+  it('Opens customers page', () => {
     cy.resetDB();
-    cy.loginAndVisit('/admin/subscribers');
+    cy.loginAndVisit('/admin/customers');
   });
 
-  it('Counts subscribers', () => {
+  it('Counts customers', () => {
     cy.get('tbody td[data-label=E-mail]').its('length').should('eq', 2);
+    cy.get('thead th').eq(1).should('have.class', 'cy-customer_code');
+    cy.get('tbody td[data-label=CustomerLists] a').first()
+      .should('have.attr', 'href').and('match', /\/customers\/customer_lists\/\d+$/);
   });
 
-  it('Searches subscribers', () => {
+  it('Searches customers', () => {
     const cases = [
       { value: 'john{enter}', count: 1, contains: 'john@example.com' },
       { value: 'anon{enter}', count: 1, contains: 'anon@example.com' },
@@ -26,34 +29,34 @@ describe('Subscribers', () => {
     });
   });
 
-  it('Exports subscribers', () => {
+  it('Exports customers', () => {
     const cases = [
       {
-        listIDs: [], ids: [], query: '', length: 3,
+        customerCustomerListIDs: [], ids: [], query: '', length: 3,
       },
       {
-        listIDs: [], ids: [], query: "name ILIKE '%anon%'", length: 2,
+        customerCustomerListIDs: [], ids: [], query: "name ILIKE '%anon%'", length: 2,
       },
       {
-        listIDs: [], ids: [], query: "name like 'nope'", length: 1,
+        customerCustomerListIDs: [], ids: [], query: "name like 'nope'", length: 1,
       },
     ];
 
-    // listIDs[] and ids[] are unused for now as Cypress doesn't support encoding of arrays in `qs`.
+    // customerCustomerListIDs[] and ids[] are unused for now as Cypress doesn't support encoding of arrays in `qs`.
     cases.forEach((c) => {
-      cy.request({ url: `${apiUrl}/api/subscribers/export`, qs: { query: c.query, list_id: c.listIDs, id: c.ids } }).then((resp) => {
+      cy.request({ url: `${apiUrl}/api/customers/export`, qs: { query: c.query, customer_list_id: c.customerCustomerListIDs, id: c.ids } }).then((resp) => {
         cy.expect(resp.body.trim().split('\n')).to.have.lengthOf(c.length);
       });
     });
   });
 
-  it('Advanced searches subscribers', () => {
+  it('Advanced searches customers', () => {
     cy.get('[data-cy=btn-advanced-search]').click();
 
     const cases = [
-      { value: 'subscribers.attribs->>\'city\'=\'Bengaluru\'', count: 2 },
-      { value: 'subscribers.attribs->>\'city\'=\'Bengaluru\' AND id=1', count: 1 },
-      { value: '(subscribers.attribs->>\'good\')::BOOLEAN = true AND name like \'Anon%\'', count: 1 },
+      { value: 'customers.attribs->>\'city\'=\'Bengaluru\'', count: 2 },
+      { value: 'customers.attribs->>\'city\'=\'Bengaluru\' AND id=1', count: 1 },
+      { value: '(customers.attribs->>\'good\')::BOOLEAN = true AND name like \'Anon%\'', count: 1 },
     ];
 
     cases.forEach((c) => {
@@ -67,30 +70,30 @@ describe('Subscribers', () => {
     cy.get('tbody td[data-label=E-mail]').its('length').should('eq', 2);
   });
 
-  it('Does bulk subscriber list add and remove', () => {
+  it('Does bulk customer customer_list add and remove', () => {
     const cases = [
       // radio: action to perform, rows: table rows to select and perform on: [expected statuses of those rows after thea action]
-      { radio: 'check-list-add', lists: [0, 1], rows: { 0: ['confirmed', 'confirmed'] } },
-      { radio: 'check-list-unsubscribe', lists: [0, 1], rows: { 0: ['unsubscribed', 'unsubscribed'], 1: ['unsubscribed'] } },
-      { radio: 'check-list-remove', lists: [0, 1], rows: { 1: [] } },
-      { radio: 'check-list-add', lists: [0, 1], rows: { 0: ['unsubscribed', 'unsubscribed'], 1: ['unconfirmed', 'unconfirmed'] } },
-      { radio: 'check-list-remove', lists: [0], rows: { 0: ['unsubscribed'] } },
-      { radio: 'check-list-add', lists: [0], rows: { 0: ['unconfirmed', 'unsubscribed'] } },
+      { radio: 'check-customer_list-add', customer_lists: [0, 1], rows: { 0: ['confirmed', 'confirmed'] } },
+      { radio: 'check-customer_list-unsubscribe', customer_lists: [0, 1], rows: { 0: ['unsubscribed', 'unsubscribed'], 1: ['unsubscribed'] } },
+      { radio: 'check-customer_list-remove', customer_lists: [0, 1], rows: { 1: [] } },
+      { radio: 'check-customer_list-add', customer_lists: [0, 1], rows: { 0: ['unsubscribed', 'unsubscribed'], 1: ['unconfirmed', 'unconfirmed'] } },
+      { radio: 'check-customer_list-remove', customer_lists: [0], rows: { 0: ['unsubscribed'] } },
+      { radio: 'check-customer_list-add', customer_lists: [0], rows: { 0: ['unconfirmed', 'unsubscribed'] } },
     ];
 
     cases.forEach((c, n) => {
-      // Select one of the 2 subscribers in the table.
+      // Select one of the 2 customers in the table.
       Object.keys(c.rows).forEach((r) => {
         cy.get('tbody td.checkbox-cell .checkbox').eq(r).click();
       });
 
-      // Open the 'manage lists' modal.
-      cy.get('[data-cy=btn-manage-lists]').click();
+      // Open the 'manage customer_lists' modal.
+      cy.get('[data-cy=btn-manage-customer_lists]').click();
 
-      // Check both lists in the modal.
-      c.lists.forEach((l) => {
-        cy.get('.list-selector input').click();
-        cy.get('.list-selector .autocomplete a').first().click();
+      // Check both customer_lists in the modal.
+      c.customer_lists.forEach((l) => {
+        cy.get('.customer_list-selector input').click();
+        cy.get('.customer_list-selector .autocomplete a').first().click();
       });
 
       // Select the radio option in the modal.
@@ -104,25 +107,19 @@ describe('Subscribers', () => {
       // Save.
       cy.get('.modal button.is-primary').click();
 
-      // Check the status of the lists on the subscriber.
+      // Check that each customer_list is displayed as a link in the CustomerLists column.
       Object.keys(c.rows).forEach((r) => {
-        cy.get('tbody td[data-label=E-mail]').eq(r).find('.tags').then(($el) => {
-          cy.wrap($el).find('.tag').should('have.length', c.rows[r].length);
-          c.rows[r].forEach((status, n) => {
-            // eg: .tag(n).unconfirmed
-            cy.wrap($el).find('.tag').eq(n).should('have.class', status);
-          });
-        });
+        cy.get('tbody td[data-label=CustomerLists]').eq(r).find('a').should('have.length', c.rows[r].length);
       });
     });
   });
 
-  it('Resets subscribers page', () => {
+  it('Resets customers page', () => {
     cy.resetDB();
-    cy.loginAndVisit('/admin/subscribers');
+    cy.loginAndVisit('/admin/customers');
   });
 
-  it('Edits subscribers', () => {
+  it('Edits customers', () => {
     const status = ['enabled', 'blocklisted'];
     const json = '{"string": "hello", "ints": [1,2,3], "null": null, "sub": {"bool": true}}';
 
@@ -130,7 +127,7 @@ describe('Subscribers', () => {
     // index by their ID shown in the modal.
     const rows = {};
 
-    // Open the edit popup and edit the default lists.
+    // Open the edit popup and edit the default customer_lists.
     cy.get('[data-cy=btn-edit]').each(($el, n) => {
       const email = `email-${n}@EMAIL.com`;
       const name = `name-${n}`;
@@ -144,13 +141,14 @@ describe('Subscribers', () => {
         id = parseInt($el.text());
 
         cy.get('input[name=email]').clear().type(email);
+        cy.get('input[name=customer_code]').clear().type(`CUST-EDIT-${n}`);
         cy.get('input[name=name]').clear().type(name);
 
         if (status[n] === 'blocklisted') {
           cy.get('select[name=status]').select(status[n]);
         }
-        cy.get('.list-selector input').click();
-        cy.get('.list-selector .autocomplete a').first().click();
+        cy.get('.customer_list-selector input').click();
+        cy.get('.customer_list-selector .autocomplete a').first().click();
         cy.get('textarea[name=attribs]').clear().type(json, { parseSpecialCharSequences: false, delay: 0 });
         cy.get('.modal-card-foot button[type=submit]').click();
 
@@ -165,24 +163,19 @@ describe('Subscribers', () => {
       cy.wrap($el).find('td[data-id]').invoke('attr', 'data-id').then((idStr) => {
         const id = parseInt(idStr);
         cy.wrap($el).find('td[data-label=E-mail]').contains(rows[id].email.toLowerCase());
-        cy.wrap($el).find('td[data-label=Name]').contains(rows[id].name);
+        cy.wrap($el).find('td[data-label=Salutation]').contains(rows[id].name);
 
         if (rows[id].status === 'blocklisted') {
           cy.wrap($el).find('[data-cy=blocklisted]');
         }
 
-        // Both lists on the enabled sub should be 'unconfirmed' and the blocklisted one, 'unsubscribed.'
-        cy.wrap($el).find(`.tags .${rows[id].status === 'enabled' ? 'unconfirmed' : 'unsubscribed'}`)
-          .its('length').should('eq', 2);
-        cy.wrap($el).find('td[data-label=Lists]').then((l) => {
-          cy.expect(parseInt(l.text().trim())).to.equal(rows[id].status === 'blocklisted' ? 0 : 2);
-        });
+        cy.wrap($el).find('td[data-label=CustomerLists] a').its('length').should('eq', 2);
       });
     });
   });
 
-  it('Deletes subscribers', () => {
-    // Delete all visible lists.
+  it('Deletes customers', () => {
+    // Delete all visible customer_lists.
     cy.get('tbody tr').each(() => {
       cy.get('tbody a[data-cy=btn-delete]').first().click();
       cy.get('.modal button.is-primary').click();
@@ -192,51 +185,52 @@ describe('Subscribers', () => {
     cy.get('table tr.is-empty');
   });
 
-  it('Creates new subscribers', () => {
+  it('Creates new customers', () => {
     const statuses = ['enabled', 'blocklisted'];
-    const lists = [[1], [2], [1, 2]];
+    const customer_lists = [[1], [2], [1, 2]];
     const json = '{"string": "hello", "ints": [1,2,3], "null": null, "sub": {"bool": true}}';
 
-    // Cycle through each status and each list ID combination and create subscribers.
+    // Cycle through each status and each customer_list ID combination and create customers.
     const n = 0;
     for (let n = 0; n < 6; n++) {
       const email = `email-${n}@EMAIL.com`;
       const name = `name-${n}`;
       const status = statuses[(n + 1) % statuses.length];
-      const list = lists[(n + 1) % lists.length];
+      const customer_list = customer_lists[(n + 1) % customer_lists.length];
 
       cy.get('[data-cy=btn-new]').click();
+      cy.get('.modal-card-body input').then(($inputs) => {
+        const names = [...$inputs].map((input) => input.name);
+        expect(names.indexOf('customer_code')).to.be.lessThan(names.indexOf('email'));
+      });
       cy.get('input[name=email]').type(email);
+      cy.get('input[name=customer_code]').type(`CUST-${n}`);
       cy.get('input[name=name]').type(name);
       cy.get('select[name=status]').select(status);
 
-      list.forEach((l) => {
-        cy.get('.list-selector input').click();
-        cy.get('.list-selector .autocomplete a').first().click();
+      customer_list.forEach((l) => {
+        cy.get('.customer_list-selector input').click();
+        cy.get('.customer_list-selector .autocomplete a').first().click();
       });
       cy.get('textarea[name=attribs]').clear().type(json, { parseSpecialCharSequences: false, delay: 0 });
       cy.get('.modal-card-foot button[type=submit]').click();
 
-      // Confirm the addition by inspecting the newly created list row,
+      // Confirm the addition by inspecting the newly created customer_list row,
       // which is always the first row in the table.
       cy.wait(250);
       const tr = cy.get('tbody tr:nth-child(1)').then(($el) => {
         cy.wrap($el).find('td[data-label=E-mail]').contains(email.toLowerCase());
-        cy.wrap($el).find('td[data-label=Name]').contains(name);
+        cy.wrap($el).find('td[data-label=Salutation]').contains(name);
 
         if (status === 'blocklisted') {
           cy.wrap($el).find('[data-cy=blocklisted]');
         }
-        cy.wrap($el).find(`.tags .${status === 'enabled' ? 'unconfirmed' : 'unsubscribed'}`)
-          .its('length').should('eq', list.length);
-        cy.wrap($el).find('td[data-label=Lists]').then((l) => {
-          cy.expect(parseInt(l.text().trim())).to.equal(status === 'blocklisted' ? 0 : list.length);
-        });
+        cy.wrap($el).find('td[data-label=CustomerLists] a').its('length').should('eq', customer_list.length);
       });
     }
   });
 
-  it('Sorts subscribers', () => {
+  it('Sorts customers', () => {
     const asc = [3, 4, 5, 6, 7, 8];
     const desc = [8, 7, 6, 5, 4, 3];
     const cases = ['cy-email', 'cy-name', 'cy-created_at', 'cy-updated_at'];
@@ -282,10 +276,10 @@ describe('Domain blocklist', () => {
     // Add non-banned domain.
     cy.request({
       method: 'POST',
-      url: `${apiUrl}/api/subscribers`,
+      url: `${apiUrl}/api/customers`,
       failOnStatusCode: true,
       body: {
-        email: 'test1@noban.net', name: 'test', lists: [1], status: 'enabled',
+        email: 'test1@noban.net', name: 'test', customer_lists: [1], status: 'enabled', customer_code: 'CUST-NB1',
       },
     }).should((response) => {
       expect(response.status).to.equal(200);
@@ -294,22 +288,22 @@ describe('Domain blocklist', () => {
     // Add banned domain.
     cy.request({
       method: 'POST',
-      url: `${apiUrl}/api/subscribers`,
+      url: `${apiUrl}/api/customers`,
       failOnStatusCode: false,
       body: {
-        email: 'test1@ban.com', name: 'test', lists: [1], status: 'enabled',
+        email: 'test1@ban.com', name: 'test', customer_lists: [1], status: 'enabled', customer_code: 'CUST-B1',
       },
     }).should((response) => {
       expect(response.status).to.equal(400);
     });
 
-    // Modify an existinb subscriber to a banned domain.
+    // Modify an existinb customer to a banned domain.
     cy.request({
       method: 'PUT',
-      url: `${apiUrl}/api/subscribers/1`,
+      url: `${apiUrl}/api/customers/1`,
       failOnStatusCode: false,
       body: {
-        email: 'test3@ban.org', name: 'test', lists: [1], status: 'enabled',
+        email: 'test3@ban.org', name: 'test', customer_lists: [1], status: 'enabled', customer_code: 'CUST-B3',
       },
     }).should((response) => {
       expect(response.status).to.equal(400);
@@ -317,9 +311,9 @@ describe('Domain blocklist', () => {
   });
 
   it('Try via import', () => {
-    cy.loginAndVisit('/admin/subscribers/import');
-    cy.get('.list-selector input').click();
-    cy.get('.list-selector .autocomplete a').first().click();
+    cy.loginAndVisit('/admin/customers/import');
+    cy.get('.customer_list-selector input').click();
+    cy.get('.customer_list-selector .autocomplete a').first().click();
 
     cy.fixture('subs-domain-blocklist.csv').then((data) => {
       cy.get('input[type="file"]').attachFile({
@@ -328,6 +322,9 @@ describe('Domain blocklist', () => {
         mimeType: 'text/csv',
       });
     });
+
+    // Wait for the preview (and its automatic field mapping) to render.
+    cy.get('.preview-table', { timeout: 10000 });
 
     cy.get('button.is-primary').click();
     cy.get('section.wrap .has-text-success');
@@ -346,22 +343,22 @@ describe('Domain blocklist', () => {
     // Add banned domain.
     cy.request({
       method: 'POST',
-      url: `${apiUrl}/api/subscribers`,
+      url: `${apiUrl}/api/customers`,
       failOnStatusCode: true,
       body: {
-        email: 'test4@BAN.com', name: 'test', lists: [1], status: 'enabled',
+        email: 'test4@BAN.com', name: 'test', customer_lists: [1], status: 'enabled', customer_code: 'CUST-NB4',
       },
     }).should((response) => {
       expect(response.status).to.equal(200);
     });
 
-    // Modify an existinb subscriber to a banned domain.
+    // Modify an existinb customer to a banned domain.
     cy.request({
       method: 'PUT',
-      url: `${apiUrl}/api/subscribers/1`,
+      url: `${apiUrl}/api/customers/1`,
       failOnStatusCode: true,
       body: {
-        email: 'test4@BAN.org', name: 'test', lists: [1], status: 'enabled',
+        email: 'test4@BAN.org', name: 'test', customer_lists: [1], status: 'enabled', customer_code: 'CUST-NB4',
       },
     }).should((response) => {
       expect(response.status).to.equal(200);

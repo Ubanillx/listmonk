@@ -1,5 +1,5 @@
 <template>
-  <div class="subscriber-activity">
+  <div class="customer-activity">
     <div v-if="isLoading" class="has-text-centered">
       <b-loading :active="true" :is-full-page="false" />
     </div>
@@ -45,7 +45,7 @@
               <p class="is-size-7 has-text-grey">{{ props.row.subject }}</p>
             </div>
             <div v-else>
-              <em class="has-text-grey">{{ $t('subscribers.activity.campaignDeleted') }}</em>
+              <em class="has-text-grey">{{ $t('customers.activity.campaignDeleted') }}</em>
             </div>
           </b-table-column>
 
@@ -106,6 +106,58 @@
       <div v-else class="has-text-centered has-text-grey p-6">
         <p class="mt-2">{{ $t('globals.messages.emptyState') }}</p>
       </div>
+
+      <!-- Reply AI Classifications -->
+      <div class="section-header mb-4 mt-6">
+        <h5 class="title is-5">
+          {{ $t('customers.replyAI.title') }}
+        </h5>
+        <p class="help">{{ $t('customers.replyAI.help') }}</p>
+      </div>
+
+      <div v-if="activity.replyAiEvents && activity.replyAiEvents.length > 0">
+        <b-table :data="activity.replyAiEvents" hoverable default-sort="receivedAt" default-sort-direction="desc"
+          paginated :per-page="10" class="reply-ai-events-table">
+          <b-table-column v-slot="props" field="receivedAt" :label="$t('globals.fields.createdAt')" sortable>
+            <span v-if="props.row.receivedAt">
+              {{ $utils.niceDate(props.row.receivedAt, true) }}
+            </span>
+          </b-table-column>
+
+          <b-table-column v-slot="props" field="intent" :label="$t('customers.replyAI.intent')" sortable>
+            <b-tag :type="intentType(props.row.intent)" rounded size="is-small">
+              {{ $t(`customers.replyAI.intent.${props.row.intent}`) }}
+            </b-tag>
+          </b-table-column>
+
+          <b-table-column v-slot="props" field="action" :label="$t('customers.replyAI.action')" sortable>
+            <b-tag :type="actionType(props.row.action)" rounded size="is-small">
+              {{ $t(`customers.replyAI.action.${props.row.action}`) }}
+            </b-tag>
+          </b-table-column>
+
+          <b-table-column v-slot="props" field="status" :label="$t('customers.replyAI.status')" sortable>
+            <span class="is-size-7">{{ $t(`customers.replyAI.status.${props.row.status}`) }}</span>
+          </b-table-column>
+
+          <b-table-column v-slot="props" field="confidence" :label="$t('customers.replyAI.confidence')" numeric>
+            <span v-if="props.row.confidence">{{ (props.row.confidence * 100).toFixed(0) }}%</span>
+            <span v-else>&mdash;</span>
+          </b-table-column>
+
+          <b-table-column v-slot="props" field="model" :label="$t('customers.replyAI.model')">
+            <span v-if="props.row.model" class="is-size-7">{{ props.row.model }}</span>
+            <span v-else>&mdash;</span>
+          </b-table-column>
+
+          <b-table-column v-slot="props" field="subject" :label="$t('customers.replyAI.subject')">
+            <span class="is-size-7 has-text-grey">{{ props.row.subject }}</span>
+          </b-table-column>
+        </b-table>
+      </div>
+      <div v-else class="has-text-centered has-text-grey p-6">
+        <p class="mt-2">{{ $t('globals.messages.emptyState') }}</p>
+      </div>
     </div>
   </div>
 </template>
@@ -115,7 +167,7 @@ import Vue from 'vue';
 
 export default Vue.extend({
   props: {
-    subscriberId: {
+    customerId: {
       type: Number,
       required: true,
     },
@@ -127,6 +179,7 @@ export default Vue.extend({
       activity: {
         campaignViews: [],
         linkClicks: [],
+        replyAiEvents: [],
       },
     };
   },
@@ -150,12 +203,28 @@ export default Vue.extend({
   methods: {
     getActivity() {
       this.isLoading = true;
-      this.$api.getSubscriberActivity(this.subscriberId).then((data) => {
+      this.$api.getCustomerActivity(this.customerId).then((data) => {
         this.activity = data;
         this.isLoading = false;
       }).catch(() => {
         this.isLoading = false;
       });
+    },
+
+    intentType(intent) {
+      return ({
+        unsubscribe: 'is-warning',
+        complaint: 'is-danger',
+        other: 'is-light',
+      })[intent] || 'is-light';
+    },
+
+    actionType(action) {
+      return ({
+        blocklisted: 'is-danger',
+        ignored: 'is-light',
+        pending: 'is-info',
+      })[action] || 'is-light';
     },
   },
 });

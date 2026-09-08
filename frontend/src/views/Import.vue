@@ -27,16 +27,16 @@
                 <template v-if="form.mode === 'subscribe'">
                   <b-radio v-model="form.subStatus" name="subStatus" native-value="unconfirmed"
                     data-cy="check-unconfirmed">
-                    {{ $t('subscribers.status.unconfirmed') }}
+                    {{ $t('customers.status.unconfirmed') }}
                   </b-radio>
                   <b-radio v-model="form.subStatus" name="subStatus" native-value="confirmed" data-cy="check-confirmed">
-                    {{ $t('subscribers.status.confirmed') }}
+                    {{ $t('customers.status.confirmed') }}
                   </b-radio>
                 </template>
 
                 <b-radio v-else v-model="form.subStatus" name="subStatus" native-value="unsubscribed"
                   data-cy="check-unsubscribed">
-                  {{ $t('subscribers.status.unsubscribed') }}
+                  {{ $t('customers.status.unsubscribed') }}
                 </b-radio>
               </b-field>
             </div>
@@ -69,9 +69,9 @@
             </div>
           </div>
 
-          <list-selector v-if="form.mode === 'subscribe'" :label="$t('globals.terms.lists')"
-            :placeholder="$t('import.listSubHelp')" :message="$t('import.listSubHelp')" v-model="form.lists"
-            :selected="form.lists" :all="lists.results" />
+          <customer-list-selector v-if="form.mode === 'subscribe'" :label="$t('globals.terms.customer_lists')"
+            :placeholder="$t('import.listSubHelp')" :message="$t('import.listSubHelp')" v-model="form.customer_lists"
+            :selected="form.customer_lists" :all="customer_lists.results" />
 
           <b-field :label="$t('import.firstRowHeader')" :message="$t('import.previewHelp')">
             <b-switch v-model="preview.firstRowHeader" @input="rebuildPreviewFromRaw" />
@@ -103,6 +103,19 @@
                 <b-select v-model="form.fieldMap.attributes" expanded>
                   <option value="">{{ $t('globals.terms.none') }}</option>
                   <option v-for="col in preview.columns" :key="`attributes-${col.value}`" :value="col.value">
+                    {{ col.label }}
+                  </option>
+                </b-select>
+              </b-field>
+            </div>
+          </div>
+
+          <div v-if="form.mode === 'subscribe'" class="columns">
+            <div class="column is-4">
+              <b-field :label="$t('import.mapCustomerCodeField')" :message="$t('import.mapCustomerCodeFieldHelp')">
+                <b-select v-model="form.fieldMap.customer_code" expanded required>
+                  <option value="">{{ $t('globals.terms.none') }}</option>
+                  <option v-for="col in preview.columns" :key="`customer_code-${col.value}`" :value="col.value">
                     {{ col.label }}
                   </option>
                 </b-select>
@@ -159,7 +172,8 @@
           </div>
           <div class="buttons">
             <b-button native-type="submit" type="is-primary"
-              :disabled="!form.file || (form.mode === 'subscribe' && form.lists.length === 0)" :loading="isProcessing">
+              :disabled="!form.file || (form.mode === 'subscribe' && form.customer_lists.length === 0) || (form.mode === 'subscribe' && !form.fieldMap.customer_code)"
+              :loading="isProcessing">
               {{ $t('import.upload') }}
             </b-button>
           </div>
@@ -217,12 +231,12 @@ import Vue from 'vue';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { mapState } from 'vuex';
-import ListSelector from '../components/ListSelector.vue';
+import CustomerListSelector from '../components/CustomerListSelector.vue';
 import LogView from '../components/LogView.vue';
 
 export default Vue.extend({
   components: {
-    ListSelector,
+    CustomerListSelector,
     LogView,
   },
 
@@ -237,7 +251,7 @@ export default Vue.extend({
         mode: 'subscribe',
         subStatus: 'unconfirmed',
         delim: ',',
-        lists: [],
+        customer_lists: [],
         overwriteUserInfo: false,
         overwriteSubStatus: false,
         file: null,
@@ -245,6 +259,7 @@ export default Vue.extend({
           email: '',
           name: '',
           attributes: '',
+          customer_code: '',
         },
         example: '',
       },
@@ -316,6 +331,7 @@ export default Vue.extend({
       this.form.fieldMap.email = '';
       this.form.fieldMap.name = '';
       this.form.fieldMap.attributes = '';
+      this.form.fieldMap.customer_code = '';
     },
 
     getCellValue(row, idx) {
@@ -385,6 +401,7 @@ export default Vue.extend({
         email: ['email', 'e-mail', 'mail'],
         name: ['name', 'fullname', 'full name'],
         attributes: ['attributes', 'attribs', 'meta', 'metadata'],
+        customer_code: ['customer_code', 'customer code', 'customercode', '客户编码'],
       };
 
       Object.keys(keyMap).forEach((target) => {
@@ -418,6 +435,7 @@ export default Vue.extend({
       this.form.fieldMap.email = '';
       this.form.fieldMap.name = '';
       this.form.fieldMap.attributes = '';
+      this.form.fieldMap.customer_code = '';
       this.autoMapFields();
     },
 
@@ -574,9 +592,9 @@ export default Vue.extend({
     },
 
     renderExample() {
-      const h = 'email,name,attributes\n'
-        + 'user1@mail.com,"User One","{""age"": 42, ""planet"": ""Mars""}"\n'
-        + 'user2@mail.com,"User Two","{""age"": 24, ""job"": ""Time Traveller""}"';
+      const h = 'email,name,customer_code,attributes\n'
+        + 'user1@mail.com,"User One",CUST-001,"{""age"": 42, ""planet"": ""Mars""}"\n'
+        + 'user2@mail.com,"User Two",CUST-002,"{""age"": 24, ""job"": ""Time Traveller""}"';
 
       this.example = h;
     },
@@ -586,13 +604,14 @@ export default Vue.extend({
       this.form.overwriteUserInfo = false;
       this.form.overwriteSubStatus = false;
       this.form.file = null;
-      this.form.lists = [];
+      this.form.customer_lists = [];
       this.form.subStatus = 'unconfirmed';
       this.form.delim = ',';
       this.form.fieldMap = {
         email: '',
         name: '',
         attributes: '',
+        customer_code: '',
       };
       this.clearPreview();
     },
@@ -615,19 +634,20 @@ export default Vue.extend({
         mode: this.form.mode,
         subscription_status: this.form.subStatus,
         delim: this.form.delim,
-        lists: this.form.lists.map((l) => l.id),
+        customer_list_ids: this.form.customer_lists.map((l) => l.id),
         overwrite_userinfo: this.form.overwriteUserInfo,
         overwrite_subscription_status: this.form.overwriteSubStatus,
         field_map: {
           email: this.form.fieldMap.email,
           name: this.form.fieldMap.name,
           attributes: this.form.fieldMap.attributes,
+          customer_code: this.form.fieldMap.customer_code,
         },
       }));
       params.set('file', this.form.file);
 
       // Post.
-      this.$api.importSubscribers(params).then(() => {
+      this.$api.importCustomers(params).then(() => {
         // On file upload, show a confirmation.
         this.$utils.toast(this.$t('import.importStarted'));
 
@@ -641,7 +661,7 @@ export default Vue.extend({
   },
 
   computed: {
-    ...mapState(['lists']),
+    ...mapState(['customer_lists']),
 
     // Import progress bar value.
     progress() {
@@ -656,10 +676,10 @@ export default Vue.extend({
     this.renderExample();
     this.pollStatus();
 
-    const ids = this.$utils.parseQueryIDs(this.$route.query.list_id);
-    if (ids.length > 0 && this.lists.results) {
+    const ids = this.$utils.parseQueryIDs(this.$route.query.customer_list_id);
+    if (ids.length > 0 && this.customer_lists.results) {
       this.$nextTick(() => {
-        this.form.lists = this.lists.results.filter((l) => ids.indexOf(l.id) > -1);
+        this.form.customer_lists = this.customer_lists.results.filter((l) => ids.indexOf(l.id) > -1);
       });
     }
   },

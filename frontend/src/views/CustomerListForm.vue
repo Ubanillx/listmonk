@@ -7,13 +7,13 @@
           {{ $t('globals.fields.uuid') }}: <copy-text :text="data.uuid" />
         </p>
         <b-tag v-if="isEditing" :class="[data.type, 'is-pulled-right']">
-          {{ $t(`lists.types.${data.type}`) }}
+          {{ $t(`customer_lists.types.${data.type}`) }}
         </b-tag>
         <h4 v-if="isEditing">
           {{ data.name }}
         </h4>
         <h4 v-else>
-          {{ $t('lists.newList') }}
+          {{ $t('customer_lists.newList') }}
         </h4>
       </header>
       <section expanded class="modal-card-body">
@@ -22,24 +22,32 @@
             :placeholder="$t('globals.fields.name')" required />
         </b-field>
 
-        <b-field :label="$t('lists.type')" label-position="on-border" :message="$t('lists.typeHelp')">
-          <b-select v-model="form.type" name="type" :placeholder="$t('lists.typeHelp')" :disabled="!canSave" required expanded>
+        <b-field :label="$t('customer_lists.type')" label-position="on-border" :message="$t('customer_lists.typeHelp')">
+          <b-select v-model="form.type" name="type" :placeholder="$t('customer_lists.typeHelp')" :disabled="!canSave" required expanded>
             <option value="private">
-              {{ $t('lists.types.private') }}
+              {{ $t('customer_lists.types.private') }}
             </option>
             <option value="public">
-              {{ $t('lists.types.public') }}
+              {{ $t('customer_lists.types.public') }}
+            </option>
+            <option v-if="isPlatformAdmin" value="pool">
+              {{ $t('customer_lists.types.pool') || '一级公海' }}
+            </option>
+            <!-- Secondary public-pool lists are created only from a first-level
+              pool's split workflow, never as standalone lists. -->
+            <option v-if="isEditing && data.type === 'pool_segment'" value="pool_segment">
+              {{ $t('customer_lists.types.pool_segment') || '二级公海列表' }}
             </option>
           </b-select>
         </b-field>
 
-        <b-field :label="$t('lists.optin')" label-position="on-border" :message="$t('lists.optinHelp')">
+        <b-field :label="$t('customer_lists.optin')" label-position="on-border" :message="$t('customer_lists.optinHelp')">
           <b-select v-model="form.optin" name="optin" placeholder="Opt-in type" :disabled="!canSave" required expanded>
             <option value="single">
-              {{ $t('lists.optins.single') }}
+              {{ $t('customer_lists.optins.single') }}
             </option>
             <option value="double">
-              {{ $t('lists.optins.double') }}
+              {{ $t('customer_lists.optins.double') }}
             </option>
           </b-select>
         </b-field>
@@ -54,7 +62,11 @@
             :placeholder="$t('globals.fields.description')" />
         </b-field>
 
-        <b-field :message="$t('lists.archivedHelp')" :label="$t('lists.archived')">
+        <b-field :message="$t('customer_lists.maskEmailsHelp')" :label="$t('customer_lists.maskEmails')">
+          <b-switch v-model="form.maskEmails" name="mask_emails" :disabled="!canSave" />
+        </b-field>
+
+        <b-field :message="$t('customer_lists.archivedHelp')" :label="$t('customer_lists.archived')">
           <b-switch v-model="isArchived" name="status" :disabled="!canSave" />
         </b-field>
       </section>
@@ -63,7 +75,7 @@
           {{ $t('globals.buttons.close') }}
         </b-button>
         <b-button v-if="canSave" native-type="submit"
-          type="is-primary" :loading="loading.lists" data-cy="btn-save">
+          type="is-primary" :loading="loading.customer_lists" data-cy="btn-save">
           {{ $t('globals.buttons.save') }}
         </b-button>
       </footer>
@@ -78,7 +90,7 @@ import { mapState } from 'vuex';
 import CopyText from '../components/CopyText.vue';
 
 export default Vue.extend({
-  name: 'ListForm',
+  name: 'CustomerListForm',
 
   components: {
     CopyText,
@@ -99,6 +111,7 @@ export default Vue.extend({
         status: 'active',
         tags: [],
         visibility: 'private',
+        maskEmails: false,
       },
     };
   },
@@ -113,8 +126,17 @@ export default Vue.extend({
       this.createList();
     },
 
+    // API responses are camel-cased by the HTTP layer while the backend binds
+    // snake_case fields, so rebuild the outgoing payload.
+    toPayload() {
+      const out = { ...this.form };
+      out.mask_emails = out.maskEmails;
+      delete out.maskEmails;
+      return out;
+    },
+
     createList() {
-      this.$api.createList(this.form).then((data) => {
+      this.$api.createList(this.toPayload()).then((data) => {
         this.$emit('finished');
         this.$parent.close();
         this.$utils.toast(this.$t('globals.messages.created', { name: data.name }));
@@ -122,7 +144,7 @@ export default Vue.extend({
     },
 
     updateList() {
-      this.$api.updateList({ id: this.data.id, ...this.form }).then((data) => {
+      this.$api.updateList({ id: this.data.id, ...this.toPayload() }).then((data) => {
         this.$emit('finished');
         this.$parent.close();
         this.$utils.toast(this.$t('globals.messages.updated', { name: data.name }));
@@ -133,11 +155,15 @@ export default Vue.extend({
   computed: {
     ...mapState(['loading', 'profile']),
 
+    isPlatformAdmin() {
+      return Number(this.profile && this.profile.userRole && this.profile.userRole.id) === 1;
+    },
+
     canSave() {
       if (!this.isEditing) {
-        return this.$canCreateWorkspaceResource('lists:manage_all');
+        return this.$canCreateWorkspaceResource('customer_lists:manage_all');
       }
-      return this.$canManageResource(this.data) && this.$canList(this.data.id, 'list:manage');
+      return this.$canManageResource(this.data) && this.$canList(this.data.id, 'customer_list:manage');
     },
 
     isArchived: {

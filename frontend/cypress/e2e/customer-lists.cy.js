@@ -1,49 +1,49 @@
-describe('Lists', () => {
-  it('Opens lists page', () => {
+describe('CustomerLists', () => {
+  it('Opens customer_lists page', () => {
     cy.resetDB();
-    cy.loginAndVisit('/admin/lists');
+    cy.loginAndVisit('/admin/customer_lists');
   });
 
-  it('Counts subscribers in default lists', () => {
-    cy.get('tbody td[data-label=Subscribers]').contains('1');
+  it('Counts customers in default customer_lists', () => {
+    cy.get('tbody td[data-label=Customers]').contains('1');
   });
 
-  it('Creates campaign for list', () => {
+  it('Creates campaign for customer_list', () => {
     cy.get('tbody a[data-cy=btn-campaign]').first().click();
     cy.location('pathname').should('contain', '/campaigns/new');
-    cy.get('.list-tags .tag').contains('Default list');
+    cy.get('.customer_list-tags .tag').contains('Default customer_list');
 
-    cy.clickMenu('lists', 'all-lists');
+    cy.clickMenu('customer_lists', 'all-customer_lists');
     cy.get('.modal button.is-primary').click();
   });
 
-  it('Creates opt-in campaign for list', () => {
+  it('Creates opt-in campaign for customer_list', () => {
     cy.get('tbody a[data-cy=btn-send-optin-campaign]').click();
     cy.get('.modal button.is-primary').click();
     cy.location('pathname').should('contain', '/campaigns/2');
-    cy.clickMenu('lists', 'all-lists');
+    cy.clickMenu('customer_lists', 'all-customer_lists');
   });
 
-  it('Checks individual subscribers in lists', () => {
-    const subs = [{ listID: 1, email: 'john@example.com' },
-      { listID: 2, email: 'anon@example.com' }];
+  it('Checks individual customers in customer_lists', () => {
+    const subs = [{ customerListID: 1, email: 'john@example.com' },
+      { customerListID: 2, email: 'anon@example.com' }];
 
-    // Click on each list on the lists page, go the subscribers page
-    // for that list, and check the subscriber details.
+    // Click on each customer_list on the customer_lists page, go the customers page
+    // for that customer_list, and check the customer details.
     subs.forEach((s, n) => {
-      cy.get('tbody td[data-label=Subscribers] a').eq(n).click();
-      cy.location('pathname').should('contain', `/subscribers/lists/${s.listID}`);
+      cy.get('tbody td[data-label=Customers] a').eq(n).click();
+      cy.location('pathname').should('contain', `/customers/customer_lists/${s.customerListID}`);
       cy.get('tbody tr').its('length').should('eq', 1);
       cy.get('tbody td[data-label="E-mail"]').contains(s.email);
-      cy.clickMenu('lists', 'all-lists');
+      cy.clickMenu('customer_lists', 'all-customer_lists');
     });
   });
 
-  it('Edits lists', () => {
-    // Open the edit popup and edit the default lists.
+  it('Edits customer_lists', () => {
+    // Open the edit popup and edit the default customer_lists.
     cy.get('[data-cy=btn-edit]').each(($el, n) => {
       cy.wrap($el).click();
-      cy.get('input[name=name]').clear().type(`list-${n}`);
+      cy.get('input[name=name]').clear().type(`customer_list-${n}`);
       cy.get('select[name=type]').select('public');
       cy.get('select[name=optin]').select('double');
       cy.get('input[name=tags]').clear().type(`tag${n}{enter}`);
@@ -55,15 +55,15 @@ describe('Lists', () => {
 
     // Confirm the edits.
     cy.get('tbody tr').each(($el, n) => {
-      cy.wrap($el).find('td[data-label=Name]').contains(`list-${n}`);
+      cy.wrap($el).find('td[data-label=Name]').contains(`customer_list-${n}`);
       cy.wrap($el).find('.tags')
         .should('contain', 'test')
         .and('contain', `tag${n}`);
     });
   });
 
-  it('Deletes lists', () => {
-    // Delete all visible lists.
+  it('Deletes customer_lists', () => {
+    // Delete all visible customer_lists.
     cy.get('tbody tr').each(() => {
       cy.get('tbody a[data-cy=btn-delete]').first().click();
       cy.get('.modal button.is-primary').click();
@@ -73,16 +73,16 @@ describe('Lists', () => {
     cy.get('table tr.is-empty');
   });
 
-  // Add new lists.
-  it('Adds new lists', () => {
-    // Open the list form and create lists of multiple type/optin combinations.
+  // Add new customer_lists.
+  it('Adds new customer_lists', () => {
+    // Open the customer_list form and create customer_lists of multiple type/optin combinations.
     const types = ['private', 'public'];
     const optin = ['single', 'double'];
 
     let n = 0;
     types.forEach((t) => {
       optin.forEach((o) => {
-        const name = `list-${t}-${o}-${n}`;
+        const name = `customer_list-${t}-${o}-${n}`;
 
         cy.get('[data-cy=btn-new]').click();
         cy.get('input[name=name]').invoke('val').should('match', /^\d{4}-\d{2}-\d{2}$/);
@@ -94,7 +94,7 @@ describe('Lists', () => {
         cy.get('[data-cy=btn-save]').click();
         cy.wait(200);
 
-        // Confirm the addition by inspecting the newly created list row.
+        // Confirm the addition by inspecting the newly created customer_list row.
         const tr = `tbody tr:nth-child(${n + 1})`;
         cy.get(`${tr} td[data-label=Name]`).contains(name);
         cy.get(`${tr} td[data-label=Type] .tag[data-cy=type-${t}]`);
@@ -104,18 +104,18 @@ describe('Lists', () => {
     });
   });
 
-  it('Searches lists', () => {
-    cy.get('[data-cy=query]').clear().type('list-public-single-2{enter}');
+  it('Searches customer_lists', () => {
+    cy.get('[data-cy=query]').clear().type('customer_list-public-single-2{enter}');
     cy.wait(200);
     cy.get('tbody tr').its('length').should('eq', 1);
-    cy.get('tbody td[data-label="Name"]').first().contains('list-public-single-2');
+    cy.get('tbody td[data-label="Name"]').first().contains('customer_list-public-single-2');
     cy.get('[data-cy=query]').clear().type('{enter}');
   });
 
-  // Sort lists by clicking on various headers. At this point, there should be four
-  // lists with IDs = [3, 4, 5, 6]. Sort the items be columns and match them with
+  // Sort customer_lists by clicking on various headers. At this point, there should be four
+  // customer_lists with IDs = [3, 4, 5, 6]. Sort the items be columns and match them with
   // the expected order of IDs.
-  it('Sorts lists', () => {
+  it('Sorts customer_lists', () => {
     cy.sortTable('thead th.cy-name', [4, 3, 6, 5]);
     cy.sortTable('thead th.cy-name', [5, 6, 3, 4]);
 
@@ -135,8 +135,8 @@ describe('Lists', () => {
     cy.get('ul li').its('length').should('eq', 2);
 
     const cases = [
-      { name: 'list-public-single-2', description: 'desc-public-2' },
-      { name: 'list-public-double-3', description: 'desc-public-3' },
+      { name: 'customer_list-public-single-2', description: 'desc-public-2' },
+      { name: 'customer_list-public-double-3', description: 'desc-public-3' },
     ];
 
     cases.forEach((c, n) => {
@@ -147,35 +147,35 @@ describe('Lists', () => {
     });
   });
 
-  it('Bulk deletes lists', () => {
+  it('Bulk deletes customer_lists', () => {
     const apiUrl = Cypress.env('apiUrl');
 
     // Create 30 in a loop.
     for (let i = 0; i < 30; i += 1) {
-      cy.request('POST', `${apiUrl}/api/lists`, { name: `test-list-${i}`, type: 'public', optin: 'single' });
+      cy.request('POST', `${apiUrl}/api/customer_lists`, { name: `test-customer_list-${i}`, type: 'public', optin: 'single' });
     }
 
-    cy.loginAndVisit('/admin/lists');
+    cy.loginAndVisit('/admin/customer_lists');
 
     // Bulk delete with the `all` flag.
     cy.window().scrollTo('top');
     cy.wait(500);
     cy.get('thead input[type="checkbox"]').click({ force: true });
-    cy.get('a[data-cy=select-all-lists]').click();
-    cy.get('a[data-cy=btn-delete-lists]').click();
+    cy.get('a[data-cy=select-all-customer_lists]').click();
+    cy.get('a[data-cy=btn-delete-customer_lists]').click();
     cy.get('.modal button.is-primary:eq(0)').click();
     cy.get('table tr.is-empty');
 
     // Bulk delete with the selected IDs.
-    // Create 5 lists in a loop.
+    // Create 5 customer_lists in a loop.
     for (let i = 0; i < 5; i += 1) {
-      cy.request('POST', `${apiUrl}/api/lists`, { name: `test-list-bulk-${i}`, type: 'public', optin: 'single' });
+      cy.request('POST', `${apiUrl}/api/customer_lists`, { name: `test-customer_list-bulk-${i}`, type: 'public', optin: 'single' });
     }
 
-    cy.visit('/admin/lists');
+    cy.visit('/admin/customer_lists');
     cy.wait(500);
     cy.get('thead input[type="checkbox"]').click({ force: true });
-    cy.get('a[data-cy=btn-delete-lists]').click();
+    cy.get('a[data-cy=btn-delete-customer_lists]').click();
     cy.get('.modal button.is-primary:eq(0)').click();
     cy.get('table tr.is-empty');
   });

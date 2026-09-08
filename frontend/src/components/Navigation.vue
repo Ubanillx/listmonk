@@ -6,26 +6,26 @@
     <b-menu-item :to="{ name: 'userProfile' }" tag="router-link" :active="activeItem.userProfile"
       data-cy="user-profile" icon="account-outline" :label="$t('users.profile')" />
 
-    <b-menu-item :expanded="activeGroup.lists" :active="activeGroup.lists" data-cy="lists"
-      @update:active="(state) => toggleGroup('lists', state)" icon="format-list-bulleted-square"
-      :label="$t('globals.terms.lists')">
-      <b-menu-item :to="{ name: 'lists' }" tag="router-link" :active="activeItem.lists" data-cy="all-lists"
+    <b-menu-item :expanded="activeGroup.customer_lists" :active="activeGroup.customer_lists" data-cy="customerLists"
+      @update:active="(state) => toggleGroup('customerLists', state)" icon="format-list-bulleted-square"
+      :label="$t('globals.terms.customer_lists')">
+      <b-menu-item :to="{ name: 'customerLists' }" tag="router-link" :active="activeItem.customer_lists" data-cy="all-customer_lists"
         icon="format-list-bulleted-square" :label="$t('menu.allLists')" />
       <b-menu-item :to="{ name: 'forms' }" tag="router-link" :active="activeItem.forms" class="forms"
         icon="newspaper-variant-outline" :label="$t('menu.forms')" />
-    </b-menu-item><!-- lists -->
+    </b-menu-item><!-- customer_lists -->
 
-    <b-menu-item :expanded="activeGroup.subscribers" :active="activeGroup.subscribers"
-      data-cy="subscribers" @update:active="(state) => toggleGroup('subscribers', state)" icon="account-multiple-outline"
-      :label="$t('globals.terms.subscribers')">
-      <b-menu-item :to="{ name: 'subscribers' }" tag="router-link"
-        :active="activeItem.subscribers" data-cy="all-subscribers" icon="account-multiple-outline"
-        :label="$t('menu.allSubscribers')" />
-      <b-menu-item v-if="$canCreateWorkspaceResource('subscribers:import')" :to="{ name: 'import' }" tag="router-link"
+    <b-menu-item :expanded="activeGroup.customers" :active="activeGroup.customers"
+      data-cy="customers" @update:active="(state) => toggleGroup('customers', state)" icon="account-multiple-outline"
+      :label="$t('globals.terms.customers')">
+      <b-menu-item :to="{ name: 'customers' }" tag="router-link"
+        :active="activeItem.customers" data-cy="all-customers" icon="account-multiple-outline"
+        :label="$t('menu.allCustomers')" />
+      <b-menu-item v-if="$canCreateWorkspaceResource('customers:import')" :to="{ name: 'import' }" tag="router-link"
         :active="activeItem.import" data-cy="import" icon="file-upload-outline" :label="$t('menu.import')" />
       <b-menu-item v-if="canViewBounces" :to="{ name: 'bounces' }" tag="router-link" :active="activeItem.bounces"
         data-cy="bounces" icon="email-alert-outline" :label="$t('globals.terms.bounces')" />
-    </b-menu-item><!-- subscribers -->
+    </b-menu-item><!-- customers -->
 
     <b-menu-item :expanded="activeGroup.campaigns" :active="activeGroup.campaigns"
       data-cy="campaigns" @update:active="(state) => toggleGroup('campaigns', state)" icon="rocket-launch-outline"
@@ -68,8 +68,8 @@
         data-cy="users" icon="account-multiple-outline" :label="$t('globals.terms.users')" />
       <b-menu-item v-if="$can('roles:get')" :to="{ name: 'userRoles' }" tag="router-link" :active="activeItem.userRoles"
         data-cy="userRoles" icon="newspaper-variant-outline" :label="$t('users.userRoles')" />
-      <b-menu-item v-if="$can('roles:get')" :to="{ name: 'listRoles' }" tag="router-link" :active="activeItem.listRoles"
-        data-cy="listRoles" icon="format-list-bulleted-square" :label="$t('users.listRoles')" />
+      <b-menu-item v-if="$can('roles:get')" :to="{ name: 'customerListRoles' }" tag="router-link" :active="activeItem.customerListRoles"
+        data-cy="customerListRoles" icon="format-list-bulleted-square" :label="$t('users.customerListRoles')" />
     </b-menu-item><!-- users -->
 
     <b-menu-item v-if="$can('settings:*')" :expanded="activeGroup.settings" :active="activeGroup.settings"

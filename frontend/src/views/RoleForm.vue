@@ -19,12 +19,12 @@
             required />
         </b-field>
 
-        <div v-if="type === 'list'" class="box">
-          <h5>{{ $t('users.listPerms') }}</h5>
+        <div v-if="type === 'customer_list'" class="box">
+          <h5>{{ $t('users.customerListPerms') }}</h5>
           <div class="mb-5">
             <div class="columns">
               <div class="column is-9">
-                <b-select :placeholder="$tc('globals.terms.list')" v-model="form.curList" name="list"
+                <b-select :placeholder="$tc('globals.terms.customer_list')" v-model="form.curList" name="customer_list"
                   :disabled="disabled || filteredLists.length < 1" expanded class="mb-3">
                   <template v-for="l in filteredLists">
                     <option :value="l.id" :key="l.id">
@@ -40,25 +40,25 @@
               </div>
             </div>
             <span
-              v-if="form.lists.length > 0 && (form.permissions['lists:get_all'] || form.permissions['lists:manage_all'])"
+              v-if="form.customer_lists.length > 0 && (form.permissions['customer_lists:get_all'] || form.permissions['customer_lists:manage_all'])"
               class="is-size-6 has-text-danger">
               <b-icon icon="warning-empty" />
-              {{ $t('users.listPermsWarning') }}
+              {{ $t('users.customerListPermsWarning') }}
             </span>
           </div>
 
-          <b-table :data="form.lists">
-            <b-table-column v-slot="props" field="name" :label="$tc('globals.terms.list')">
-              <router-link :to="`/lists/${props.row.id}`" target="_blank">
+          <b-table :data="form.customer_lists">
+            <b-table-column v-slot="props" field="name" :label="$tc('globals.terms.customer_list')">
+              <router-link :to="`/customer-lists/${props.row.id}`" target="_blank">
                 {{ props.row.name }}
               </router-link>
             </b-table-column>
 
             <b-table-column v-slot="props" field="permissions" :label="$t('users.perms')" width="40%">
-              <b-checkbox v-model="props.row.permissions" native-value="list:get">
+              <b-checkbox v-model="props.row.permissions" native-value="customer_list:get">
                 {{ $t('globals.buttons.view') }}
               </b-checkbox>
-              <b-checkbox v-model="props.row.permissions" native-value="list:manage">
+              <b-checkbox v-model="props.row.permissions" native-value="customer_list:manage">
                 {{ $t('globals.buttons.manage') }}
               </b-checkbox>
             </b-table-column>
@@ -95,8 +95,8 @@
               <div v-for="p in props.row.permissions" :key="p">
                 <b-checkbox v-model="form.permissions" :native-value="p" :disabled="disabled">
                   {{ p }}
-                  <a v-if="p === 'subscribers:sql_query'"
-                    href="https://listmonk.app/docs/roles-and-permissions/#subscriberssql_query" target="_blank"
+                  <a v-if="p === 'customers:sql_query'"
+                    href="https://listmonk.app/docs/roles-and-permissions/#customerssql_query" target="_blank"
                     rel="noopener noreferrer" aria-label="Warning: high risk permission">
                     <b-icon icon="warning-empty" type="is-danger" size="is-small" />
                   </a>
@@ -145,7 +145,7 @@ export default Vue.extend({
       // Binds form input values.
       form: {
         curList: null,
-        lists: [],
+        customer_lists: [],
         name: null,
         permissions: {},
       },
@@ -156,14 +156,14 @@ export default Vue.extend({
 
   methods: {
     onAddListPerm() {
-      const list = this.lists.results.find((l) => l.id === this.form.curList);
-      this.form.lists.push({ id: list.id, name: list.name, permissions: ['list:get', 'list:manage'] });
+      const customerList = this.customer_lists.results.find((l) => l.id === this.form.curList);
+      this.form.customer_lists.push({ id: customerList.id, name: customerList.name, permissions: ['customer_list:get', 'customer_list:manage'] });
 
       this.form.curList = (this.filteredLists.length > 0) ? this.filteredLists[0].id : null;
     },
 
     onDeleteListPerm(id) {
-      this.form.lists = this.form.lists.filter((p) => p.id !== id);
+      this.form.customer_lists = this.form.customer_lists.filter((p) => p.id !== id);
       this.form.curList = (this.filteredLists.length > 0) ? this.filteredLists[0].id : null;
     },
 
@@ -200,7 +200,7 @@ export default Vue.extend({
         form.permissions = this.form.permissions;
       } else {
         fn = this.$api.createListRole;
-        form.lists = this.form.lists.reduce((acc, item) => {
+        form.customer_lists = this.form.customer_lists.reduce((acc, item) => {
           acc.push({ id: item.id, permissions: item.permissions });
           return acc;
         }, []);
@@ -222,7 +222,7 @@ export default Vue.extend({
         form.permissions = this.form.permissions;
       } else {
         fn = this.$api.updateListRole;
-        form.lists = this.form.lists.reduce((acc, item) => {
+        form.customer_lists = this.form.customer_lists.reduce((acc, item) => {
           acc.push({ id: item.id, permissions: item.permissions });
           return acc;
         }, []);
@@ -237,16 +237,16 @@ export default Vue.extend({
   },
 
   computed: {
-    ...mapState(['loading', 'serverConfig', 'lists']),
+    ...mapState(['loading', 'serverConfig', 'customer_lists']),
 
-    // Return the list of unselected lists.
+    // Return the customerList of unselected customer_lists.
     filteredLists() {
-      if (!this.lists.results || this.type !== 'list') {
+      if (!this.customer_lists.results || this.type !== 'customer_list') {
         return [];
       }
 
-      const subIDs = this.form.lists.reduce((obj, item) => ({ ...obj, [item.id]: true }), {});
-      return this.lists.results.filter((l) => (!(l.id in subIDs)));
+      const subIDs = this.form.customer_lists.reduce((obj, item) => ({ ...obj, [item.id]: true }), {});
+      return this.customer_lists.results.filter((l) => (!(l.id in subIDs)));
     },
 
   },
@@ -266,7 +266,7 @@ export default Vue.extend({
           return acc;
         }
         item.permissions.forEach((p) => {
-          if (p !== 'subscribers:sql_query' && !p.startsWith('lists:') && !p.startsWith('settings:')) {
+          if (p !== 'customers:sql_query' && !p.startsWith('customer_lists:') && !p.startsWith('settings:')) {
             acc.push(p);
           }
         });

@@ -21,7 +21,7 @@
             <a class="a" href="#" @click.prevent="$utils.confirm(null, () => deleteBounces())" data-cy="btn-delete">
               <b-icon icon="trash-can-outline" size="is-small" /> {{ $t('globals.buttons.delete') }}
             </a>
-            <a class="a" href="#" @click.prevent="$utils.confirm(null, () => blocklistSubscribers())"
+            <a class="a" href="#" @click.prevent="$utils.confirm(null, () => blocklistCustomers())"
               data-cy="btn-manage-blocklist">
               <b-icon icon="account-off-outline" size="is-small" /> {{ $t('import.blocklist') }}
             </a>
@@ -30,20 +30,20 @@
               <span v-if="canManageAllBounces && !bulk.all && bounces.total > bounces.perPage">
                 &mdash;
                 <a href="#" @click.prevent="selectAllBounces">
-                  {{ $t('subscribers.selectAll', { num: bounces.total }) }}
+                  {{ $t('customers.selectAll', { num: bounces.total }) }}
                 </a>
               </span>
             </span>
           </template>
         </div>
       </template>
-      <b-table-column v-slot="props" field="email" :label="$t('subscribers.email')" :td-attrs="$utils.tdID" sortable>
-        <router-link :to="{ name: 'subscriber', params: { id: props.row.subscriberId } }"
-          :class="{ 'blocklisted': props.row.subscriberStatus === 'blocklisted' }">
+      <b-table-column v-slot="props" field="email" :label="$t('customers.email')" :td-attrs="$utils.tdID" sortable>
+        <router-link :to="{ name: 'customer', params: { id: props.row.customerId } }"
+          :class="{ 'blocklisted': props.row.customerStatus === 'blocklisted' }">
           {{ props.row.email }}
-          <b-tag v-if="props.row.subscriberStatus !== 'enabled'" :class="props.row.subscriberStatus"
+          <b-tag v-if="props.row.customerStatus !== 'enabled'" :class="props.row.customerStatus"
             data-cy="blocklisted">
-            {{ $t(`subscribers.status.${props.row.subscriberStatus}`) }}
+            {{ $t(`customers.status.${props.row.customerStatus}`) }}
           </b-tag>
         </router-link>
       </b-table-column>
@@ -116,7 +116,7 @@ export default Vue.extend({
         all: false,
       },
 
-      // Query params to filter the getSubscribers() API call.
+      // Query params to filter the getCustomers() API call.
       queryParams: {
         page: 1,
         orderBy: 'created_at',
@@ -194,20 +194,20 @@ export default Vue.extend({
       });
     },
 
-    blocklistSubscribers() {
+    blocklistCustomers() {
       const cb = () => {
         this.getBounces();
         this.$utils.toast(this.$t('globals.messages.done'));
       };
 
       if (!this.bulk.all && this.bulk.checked.length > 0) {
-        const subIds = this.bulk.checked.map((s) => s.subscriberId);
-        this.$api.blocklistSubscribers({ ids: subIds }).then(cb);
+        const subIds = this.bulk.checked.map((s) => s.customerId);
+        this.$api.blocklistCustomers({ ids: subIds }).then(cb);
         return;
       }
 
       if (this.bulk.all && this.canManageAllBounces) {
-        this.$api.blocklistBouncedSubscribers({ all: true }).then(cb);
+        this.$api.blocklistBouncedCustomers({ all: true }).then(cb);
       }
     },
   },

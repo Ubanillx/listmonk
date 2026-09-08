@@ -3,31 +3,31 @@
     <div class="modal-card" style="width: auto">
       <header class="modal-card-head">
         <h4 class="title is-size-5">
-          {{ $t('subscribers.manageLists') }}
+          {{ $t('customers.manageLists') }}
         </h4>
       </header>
 
       <section expanded class="modal-card-body">
         <b-field label="Action">
           <div>
-            <b-radio v-model="form.action" name="action" native-value="add" data-cy="check-list-add">
+            <b-radio v-model="form.action" name="action" native-value="add" data-cy="check-customer_list-add">
               {{ $t('globals.buttons.add') }}
             </b-radio>
-            <b-radio v-model="form.action" name="action" native-value="remove" data-cy="check-list-remove">
+            <b-radio v-model="form.action" name="action" native-value="remove" data-cy="check-customer_list-remove">
               {{ $t('globals.buttons.remove') }}
             </b-radio>
-            <b-radio v-model="form.action" name="action" native-value="unsubscribe" data-cy="check-list-unsubscribe">
-              {{ $t('subscribers.markUnsubscribed') }}
+            <b-radio v-model="form.action" name="action" native-value="unsubscribe" data-cy="check-customer_list-unsubscribe">
+              {{ $t('customers.markUnsubscribed') }}
             </b-radio>
           </div>
         </b-field>
 
-        <list-selector label="Target lists" placeholder="Lists to apply to" v-model="form.lists" :selected="form.lists"
-          :all="lists.results" />
+        <customer-list-selector label="Target customer_lists" placeholder="CustomerLists to apply to" v-model="form.customer_lists" :selected="form.customer_lists"
+          :all="customer_lists.results" />
 
-        <b-field :message="$t('subscribers.preconfirmHelp')">
+        <b-field :message="$t('customers.preconfirmHelp')">
           <b-checkbox v-model="form.preconfirm" data-cy="preconfirm" :native-value="true" :disabled="!hasOptinList">
-            {{ $t('subscribers.preconfirm') }}
+            {{ $t('customers.preconfirm') }}
           </b-checkbox>
         </b-field>
       </section>
@@ -36,7 +36,7 @@
         <b-button @click="$parent.close()">
           {{ $t('globals.buttons.close') }}
         </b-button>
-        <b-button native-type="submit" type="is-primary" :disabled="form.lists.length === 0">
+        <b-button native-type="submit" type="is-primary" :disabled="form.customer_lists.length === 0">
           {{ $t('globals.buttons.save') }}
         </b-button>
       </footer>
@@ -47,15 +47,15 @@
 <script>
 import Vue from 'vue';
 import { mapState } from 'vuex';
-import ListSelector from '../components/ListSelector.vue';
+import CustomerListSelector from '../components/CustomerListSelector.vue';
 
 export default Vue.extend({
   components: {
-    ListSelector,
+    CustomerListSelector,
   },
 
   props: {
-    numSubscribers: { type: Number, default: 0 },
+    numCustomers: { type: Number, default: 0 },
   },
 
   data() {
@@ -63,7 +63,7 @@ export default Vue.extend({
       // Binds form input values.
       form: {
         action: 'add',
-        lists: [],
+        customer_lists: [],
         preconfirm: false,
       },
     };
@@ -71,16 +71,16 @@ export default Vue.extend({
 
   methods: {
     onSubmit() {
-      this.$emit('finished', this.form.action, this.form.preconfirm, this.form.lists);
+      this.$emit('finished', this.form.action, this.form.preconfirm, this.form.customer_lists);
       this.$parent.close();
     },
   },
 
   computed: {
-    ...mapState(['lists', 'loading']),
+    ...mapState(['customer_lists', 'loading']),
 
     hasOptinList() {
-      return this.form.lists.some((l) => l.optin === 'double');
+      return this.form.customer_lists.some((l) => l.optin === 'double');
     },
   },
 });

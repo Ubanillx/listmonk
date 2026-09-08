@@ -49,14 +49,14 @@
             <b-table-column v-slot="props" field="password" :label="$t('users.password')">
               {{ maskedPassword(props.row.password) }}
             </b-table-column>
-            <b-table-column v-slot="props" field="email" :label="$t('subscribers.email')">
+            <b-table-column v-slot="props" field="email" :label="$t('customers.email')">
               {{ props.row.email }}
             </b-table-column>
             <b-table-column v-slot="props" field="userRole" :label="$tc('users.userRole', 1)">
               {{ props.row.userRole }}
             </b-table-column>
-            <b-table-column v-slot="props" field="listRole" :label="$tc('users.listRole', 1)">
-              {{ props.row.listRole || '—' }}
+            <b-table-column v-slot="props" field="customerListRole" :label="$tc('users.customerListRole', 1)">
+              {{ props.row.customerListRole || '—' }}
             </b-table-column>
             <b-table-column v-slot="props" field="status" :label="$t('globals.fields.status')">
               {{ props.row.status || 'enabled' }}
@@ -87,7 +87,7 @@ import Vue from 'vue';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 
-const columns = ['username', 'name', 'password', 'email', 'user_role', 'list_role', 'status'];
+const columns = ['username', 'name', 'password', 'email', 'user_role', 'customer_list_role', 'status'];
 const requiredColumns = ['username', 'password', 'email', 'user_role'];
 
 export default Vue.extend({
@@ -229,7 +229,7 @@ export default Vue.extend({
           password: values.password,
           email: values.email,
           userRole: values.user_role,
-          listRole: values.list_role,
+          customerListRole: values.customer_list_role,
           status: values.status,
           errors: [],
         };
@@ -292,7 +292,7 @@ export default Vue.extend({
         password: row.password,
         email: row.email,
         user_role: row.userRole,
-        list_role: row.listRole,
+        customer_list_role: row.customerListRole,
         status: row.status,
       }));
 

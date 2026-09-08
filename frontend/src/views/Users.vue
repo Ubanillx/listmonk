@@ -49,7 +49,7 @@
           {{ $t(`users.status.${props.row.status}`) }}
         </b-tag>
         <b-tag v-if="props.row.type === 'api'" class="api">
-          <b-icon icon="code" />
+          <b-icon icon="code-tags" />
           {{ $t(`users.type.${props.row.type}`) }}
         </b-tag>
         <div class="has-text-grey is-size-7 mt-2">
@@ -65,15 +65,15 @@
             {{ props.row.userRole.name }}
           </b-tag>
         </router-link>
-        <router-link :to="{ name: 'listRoles' }">
-          <b-tag v-if="props.row.listRole">
+        <router-link :to="{ name: 'customerListRoles' }">
+          <b-tag v-if="props.row.customerListRole">
             <b-icon icon="newspaper-variant-outline" />
-            {{ props.row.listRole.name }}
+            {{ props.row.customerListRole.name }}
           </b-tag>
         </router-link>
       </b-table-column>
 
-      <b-table-column v-slot="props" field="name" :label="$t('subscribers.email')" header-class="cy-name" sortable
+      <b-table-column v-slot="props" field="name" :label="$t('customers.email')" header-class="cy-name" sortable
         :td-attrs="$utils.tdID">
         <div>
           <a v-if="props.row.email" :href="`/users/${props.row.id}`" @click.prevent="showEditForm(props.row)"

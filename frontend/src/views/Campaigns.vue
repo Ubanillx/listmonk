@@ -91,7 +91,7 @@
         <div>
           <p>
             <b-tag v-if="props.row.type === 'optin'" class="is-small">
-              {{ $t('lists.optin') }}
+              {{ $t('customer_lists.optin') }}
             </b-tag>
             <router-link :to="{ name: 'campaign', params: { id: props.row.id } }">
               {{ props.row.name }}
@@ -115,10 +115,10 @@
           待转移 {{ $utils.niceDate(transferPendingAt(props.row), true) }}
         </b-tag>
       </b-table-column>
-      <b-table-column v-slot="props" cell-class="lists" field="lists" :label="$t('globals.terms.lists')" width="15%">
+      <b-table-column v-slot="props" cell-class="customer_lists" field="customerLists" :label="$t('globals.terms.customer_lists')" width="15%">
         <ul>
-          <li v-for="l in props.row.lists" :key="l.id">
-            <router-link :to="{ name: 'subscribers_list', params: { listID: l.id } }">
+          <li v-for="l in props.row.customerLists" :key="l.id">
+            <router-link :to="{ name: 'customersCustomerList', params: { customerListID: l.id } }">
               {{ l.name }}
             </router-link>
           </li>
@@ -446,13 +446,13 @@ export default Vue.extend({
             clearInterval(this.pollID);
 
             // There were running campaigns and stats earlier. Clear them
-            // and refetch the campaigns list with up-to-date fields.
+            // and refetch the campaigns customer_list with up-to-date fields.
             if (Object.keys(this.campaignStatsData).length > 0) {
               this.getCampaigns();
               this.campaignStatsData = {};
             }
           } else {
-            // Turn the list of campaigns [{id: 1, ...}, {id: 2, ...}] into
+            // Turn the customer_list of campaigns [{id: 1, ...}, {id: 2, ...}] into
             // a map indexed by the id: {1: {}, 2: {}}.
             this.campaignStatsData = data.reduce((obj, cur) => ({ ...obj, [cur.id]: cur }), {});
           }

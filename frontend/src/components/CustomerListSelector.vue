@@ -1,12 +1,12 @@
 <template>
-  <div class="field list-selector">
-    <div :class="['list-tags', ...classes]">
+  <div class="field customer_list-selector">
+    <div :class="['customer_list-tags', ...classes]">
       <b-taglist>
         <b-tag v-for="l in selectedItems" :key="l.id" :class="l.subscriptionStatus" :closable="!$props.disabled"
-          :data-id="l.id" @close="removeList(l.id)" class="list">
+          :data-id="l.id" @close="removeList(l.id)" class="customer_list">
           {{ l.name }}
           <sup v-if="l.optin === 'double' && l.subscriptionStatus">
-            {{ $t(`subscribers.status.${l.subscriptionStatus}`) }}
+            {{ $t(`customers.status.${l.subscriptionStatus}`) }}
           </sup>
         </b-tag>
       </b-taglist>
@@ -25,7 +25,7 @@
 import Vue from 'vue';
 
 export default {
-  name: 'ListSelector',
+  name: 'CustomerListSelector',
 
   props: {
     label: { type: String, default: '' },
@@ -79,12 +79,12 @@ export default {
   },
 
   computed: {
-    // Return the list of unselected lists.
+    // Return the customer_list of unselected customer_lists.
     filteredLists() {
       // Get a map of IDs of the user subscriptions. eg: {1: true, 2: true};
       const subIDs = this.selectedItems.reduce((obj, item) => ({ ...obj, [item.id]: true }), {});
 
-      // Filter lists from the global lists whose IDs are not in the user's
+      // Filter customer_lists from the global customer_lists whose IDs are not in the user's
       // subscribed ist.
       const q = this.query.toLowerCase();
       return this.$props.all.filter(
@@ -94,7 +94,7 @@ export default {
   },
 
   watch: {
-    // This is required to update the array of lists to propagate from parent
+    // This is required to update the array of customer_lists to propagate from parent
     // components and "react" on the selector.
     selected() {
       // Deep-copy.

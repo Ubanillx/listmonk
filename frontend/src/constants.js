@@ -2,13 +2,14 @@ export const models = Object.freeze({
   serverConfig: 'serverConfig',
   lang: 'lang',
   dashboard: 'dashboard',
-  // This loading state is used across all contexts where lists are loaded
+  // This loading state is used across all contexts where customer_lists are loaded
   // via the instant "minimal" API.
-  lists: 'lists',
-  // This is used only on the lists page where lists are loaded with full
-  // context (subscriber counts), which can be slow and expensive.
+  customer_lists: 'customer_lists',
+  customer_list: 'customer_list',
+  // This is used only on the customer_lists page where customer_lists are loaded with full
+  // context (customer counts), which can be slow and expensive.
   listsFull: 'listsFull',
-  subscribers: 'subscribers',
+  customers: 'customers',
   campaigns: 'campaigns',
   templates: 'templates',
   media: 'media',
@@ -16,7 +17,7 @@ export const models = Object.freeze({
   users: 'users',
   profile: 'profile',
   userRoles: 'userRoles',
-  listRoles: 'listRoles',
+  customerListRoles: 'customerListRoles',
   settings: 'settings',
   logs: 'logs',
   maintenance: 'maintenance',
@@ -32,7 +33,7 @@ export const uris = Object.freeze({
   previewCampaignArchive: '/api/campaigns/:id/preview/archive',
   previewTemplate: '/api/templates/:id/preview',
   previewRawTemplate: '/api/templates/preview',
-  exportSubscribers: '/api/subscribers/export',
+  exportCustomers: '/api/customers/export',
   errorEvents: '/api/events?type=error',
   base: `${baseURL}/static`,
   root: rootURL,

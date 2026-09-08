@@ -58,27 +58,68 @@ router.afterEach((to) => {
 
 async function initConfig(app) {
   // Load logged in user profile, server side config, and the language file before mounting the app.
-  const [profile, cfg, organizations] = await Promise.all([
+  const [profile, cfg, myOrganizations] = await Promise.all([
     api.getUserProfile(),
     api.getServerConfig(),
     api.getMyOrganizations(),
   ]);
 
+  // Platform administrators administer pools across organizations. Their
+  // workspace switcher must therefore include every active organization, not
+  // merely the organizations returned by the member-only endpoint.
+  const organizations = Number(profile.userRole && profile.userRole.id) === 1
+    ? await api.getOrganizations()
+    : myOrganizations;
+
+  // No accessible workspace — hand off to the server-rendered selection page,
+  // which shows the "contact your administrator" blocker state.
+  const redirectToWorkspaceSelection = () => {
+    const currentPath = (router.currentRoute && router.currentRoute.fullPath) || '/admin';
+    window.location.href = `/admin/select-workspace?next=${encodeURIComponent(currentPath)}`;
+  };
+
   store.commit('setOrganizations', organizations);
   const storedOrganizationID = Number(store.state.workspace.organizationId) || 0;
-  const savedOrganization = organizations.find((organization) => organization.id === storedOrganizationID);
-  store.commit('setWorkspace', savedOrganization || { organizationId: 0, personal: true });
-  let workspace;
-  try {
-    workspace = await api.getCurrentWorkspace({ disableToast: true });
-  } catch (err) {
-    // A manager can remove a member while that member still has the former
-    // organization persisted in localStorage. Fall back to personal space so
-    // revoking organization access never prevents access to personal data.
-    store.commit('setWorkspace', { organizationId: 0, personal: true });
-    workspace = await api.getCurrentWorkspace();
-  }
+  const savedOrganization = organizations.find((organization) => organization.id === storedOrganizationID) || null;
+
+  // The personal workspace requires either the super-admin role (id === 1) or
+  // the workspaces:personal permission.  Accounts without this capability
+  // fall back to the first available organization.
+  const canPersonal = Number(profile.userRole && profile.userRole.id) === 1
+    || ((profile.userRole && profile.userRole.permissions) || []).includes('workspaces:personal');
+  const personal = canPersonal ? { organizationId: 0, personal: true } : null;
+  const firstOrg = organizations.length > 0 ? organizations[0] : null;
+
+  let workspace = savedOrganization || personal || firstOrg;
   store.commit('setWorkspace', workspace);
+
+  if (workspace) {
+    try {
+      workspace = await api.getCurrentWorkspace({ disableToast: true });
+    } catch (err) {
+      // A manager can remove a member, or the personal-space capability may
+      // have been revoked while the earlier localStorage snapshot was still
+      // valid.  Fall back to the first available space; if none exists the
+      // account is blocked.
+      workspace = personal || firstOrg;
+      if (workspace) {
+        store.commit('setWorkspace', workspace);
+        workspace = await api.getCurrentWorkspace();
+      } else {
+        workspace = null;
+      }
+    }
+    if (workspace) {
+      store.commit('setWorkspace', workspace);
+    } else {
+      redirectToWorkspaceSelection();
+      return;
+    }
+  } else {
+    // No personal workspace capability and no organizations.
+    redirectToWorkspaceSelection();
+    return;
+  }
 
   // The first router transition happens before the async profile request. If
   // it landed on the management URL, enforce the now-known membership after
@@ -122,16 +163,17 @@ async function initConfig(app) {
       return true;
     }
 
-    const canManage = perm === 'list:manage';
+    const canManage = perm === 'customer_list:manage';
     if (canManage
-      ? Vue.prototype.$can('lists:manage_all')
-      : Vue.prototype.$can('lists:get_all', 'lists:manage_all')) {
+      ? Vue.prototype.$can('customer_lists:manage_all')
+      : Vue.prototype.$can('customer_lists:get_all', 'customer_lists:manage_all')) {
       return true;
     }
 
-    return profile.listRole.lists.some((list) => list.id === id && (
-      list.permissions.includes(perm)
-      || (!canManage && list.permissions.includes('list:manage'))
+    const customerLists = (profile.customerListRole && profile.customerListRole.customerLists) || [];
+    return customerLists.some((customerList) => customerList.id === id && (
+      customerList.permissions.includes(perm)
+      || (!canManage && customerList.permissions.includes('customer_list:manage'))
     ));
   };
 
@@ -164,11 +206,11 @@ async function initConfig(app) {
   );
 
   // Recipient rows contain personal data. The server requires an owner-bound
-  // campaign plus both campaign analytics and subscriber-read capability.
+  // campaign plus both campaign analytics and customer-read capability.
   Vue.prototype.$canReadCampaignRecipients = (campaign) => (
     Vue.prototype.$canManageResource(campaign)
     && Vue.prototype.$can('campaigns:get_analytics')
-    && Vue.prototype.$can('subscribers:get_all', 'subscribers:get')
+    && Vue.prototype.$can('customers:get_all', 'customers:get')
   );
 
   // Creation and mutation controls mirror the legacy role model as well as

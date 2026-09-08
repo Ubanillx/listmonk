@@ -108,8 +108,8 @@ http.interceptors.response.use((resp) => {
 });
 
 // API calls accept the following config keys.
-// loading: modelName (set's the loading status in the global store: eg: store.loading.lists = true)
-// store: modelName (set's the API response in the global store. eg: store.lists: { ... } )
+// loading: modelName (set's the loading status in the global store: eg: store.loading.customer_lists = true)
+// store: modelName (set's the API response in the global store. eg: store.customer_lists: { ... } )
 
 // Health check endpoint that does not throw a toast.
 export const getHealth = () => http.get(
@@ -130,18 +130,18 @@ export const getDashboardCharts = () => http.get(
   { loading: models.dashboard },
 );
 
-// Lists.
+// CustomerLists.
 export const getLists = (params) => http.get(
-  '/api/lists',
+  '/api/customer-lists',
   {
     params: (!params ? { per_page: 'all' } : params),
-    loading: models.lists,
-    store: models.lists,
+    loading: models.customer_lists,
+    store: models.customer_lists,
   },
 );
 
 export const queryLists = (params) => http.get(
-  '/api/lists',
+  '/api/customer-lists',
   {
     params: (!params ? { per_page: 'all' } : params),
     loading: models.listsFull,
@@ -152,7 +152,7 @@ export const queryLists = (params) => http.get(
 // organization workspace is active. An explicit zero header takes precedence
 // over the browser's workspace cookie without changing the UI selection.
 export const getPersonalLists = () => http.get(
-  '/api/lists',
+  '/api/customer-lists',
   {
     params: { per_page: 'all', status: 'active' },
     workspaceOrganizationId: 0,
@@ -181,31 +181,61 @@ export const getPersonalMedia = () => http.get(
 );
 
 export const getList = async (id) => http.get(
-  `/api/lists/${id}`,
-  { loading: models.list },
+  `/api/customer-lists/${id}`,
+  { loading: models.customer_list },
 );
 
 export const createList = (data) => http.post(
-  '/api/lists',
+  '/api/customer-lists',
   data,
-  { loading: models.lists },
+  { loading: models.customer_lists },
 );
 
 export const updateList = (data) => http.put(
-  `/api/lists/${data.id}`,
+  `/api/customer-lists/${data.id}`,
   data,
-  { loading: models.lists },
+  { loading: models.customer_lists },
 );
 
 export const deleteList = (id) => http.delete(
-  `/api/lists/${id}`,
-  { loading: models.lists },
+  `/api/customer-lists/${id}`,
+  { loading: models.customer_lists },
 );
 
 export const deleteLists = (params) => http.delete(
-  '/api/lists',
-  { params, loading: models.lists },
+  '/api/customer-lists',
+  { params, loading: models.customer_lists },
 );
+
+// Public pool contacts and organization segments. The server always applies
+// masking for non-highest administrators; reply mailbox fields are internal
+// addresses and are intentionally not transformed here.
+export const getPoolContacts = (id, params) => http.get(`/api/customer-lists/${id}/pool-contacts`, { params });
+export const getPoolSegments = (id) => http.get(`/api/customer-lists/${id}/pool-segments`);
+export const getPoolManagementTarget = (id, organizationID) => http.get(`/api/pools/${id}/management-target`, {
+  params: { organization_id: organizationID },
+});
+export const getPoolImportConflicts = (id) => http.get(`/api/pools/${id}/import-conflicts`);
+export const createPoolContact = (id, data) => http.post(`/api/customer-lists/${id}/pool-contacts`, data);
+export const createPoolSegment = (data) => http.post('/api/pool-segments', data);
+export const updatePoolSegmentReplyMailbox = (id, replyMailboxID) => http.put(
+  `/api/pool-segments/${id}/reply-mailbox`,
+  { reply_mailbox_id: replyMailboxID || null },
+);
+export const assignPoolContact = (data) => http.post('/api/pool-segments/members', data);
+export const importPoolSegmentMembers = (segmentID, file) => {
+  const form = new FormData();
+  form.append('file', file);
+  // Let the browser/axios set the multipart boundary automatically.
+  return http.post(`/api/pool-segments/${segmentID}/import-members`, form);
+};
+export const removePoolContact = (data) => http.delete('/api/pool-segments/members', { data });
+export const attachCampaignPool = (id, data) => http.post(`/api/campaigns/${id}/pools`, data);
+export const grantPoolOrganization = (data) => http.post('/api/pools/permissions', data);
+export const revokePoolOrganization = (data) => http.delete('/api/pools/permissions', { data });
+export const restorePoolContact = (data) => http.put('/api/pools/segments/members', data);
+export const importPoolList = (data) => http.post('/api/pools/import', data);
+export const clearPoolContactEmail = (poolID, contactID) => http.delete(`/api/pools/${poolID}/contacts/${contactID}/email`);
 
 // Organizations and workspaces.
 export const getCurrentWorkspace = (config = {}) => http.get('/api/workspace', config);
@@ -302,7 +332,7 @@ export const transferOrganizationTemplate = (id, data) => http.post(`/api/organi
 
 export const unpublishOrganizationTemplate = (id) => http.post(`/api/organizations/templates/${id}/unpublish`);
 
-export const migratePersonalLists = (data) => http.post('/api/organizations/resources/lists/migrate', data);
+export const migratePersonalLists = (data) => http.post('/api/organizations/resources/customer-lists/migrate', data);
 
 export const migratePersonalResources = (data) => http.post('/api/organizations/resources/migrate', data);
 
@@ -318,34 +348,34 @@ export const archiveOrganization = (id) => http.post(`/api/organizations/${id}/a
 
 export const purgeArchivedOrganization = (id) => http.delete(`/api/organizations/${id}`);
 
-// Subscribers.
-export const getSubscribers = async (params) => http.get(
-  '/api/subscribers',
+// Customers.
+export const getCustomers = async (params) => http.get(
+  '/api/customers',
   {
     params,
-    loading: models.subscribers,
-    store: models.subscribers,
+    loading: models.customers,
+    store: models.customers,
     camelCase: (keyPath) => !keyPath.startsWith('.results.*.attribs'),
   },
 );
 
-export const getSubscriber = async (id) => http.get(
-  `/api/subscribers/${id}`,
-  { loading: models.subscribers },
+export const getCustomer = async (id) => http.get(
+  `/api/customers/${id}`,
+  { loading: models.customers },
 );
 
-export const getSubscriberActivity = async (id) => http.get(
-  `/api/subscribers/${id}/activity`,
-  { loading: models.subscribers },
+export const getCustomerActivity = async (id) => http.get(
+  `/api/customers/${id}/activity`,
+  { loading: models.customers },
 );
 
-export const getSubscriberBounces = async (id) => http.get(
-  `/api/subscribers/${id}/bounces`,
+export const getCustomerBounces = async (id) => http.get(
+  `/api/customers/${id}/bounces`,
   { loading: models.bounces },
 );
 
-export const deleteSubscriberBounces = async (id) => http.delete(
-  `/api/subscribers/${id}/bounces`,
+export const deleteCustomerBounces = async (id) => http.delete(
+  `/api/customers/${id}/bounces`,
   { loading: models.bounces },
 );
 
@@ -359,87 +389,87 @@ export const deleteBounces = async (params) => http.delete(
   { params, loading: models.bounces },
 );
 
-export const blocklistBouncedSubscribers = async () => http.put(
+export const blocklistBouncedCustomers = async () => http.put(
   '/api/bounces/blocklist',
   { loading: models.bounces },
 );
 
-export const createSubscriber = (data) => http.post(
-  '/api/subscribers',
+export const createCustomer = (data) => http.post(
+  '/api/customers',
   data,
-  { loading: models.subscribers },
+  { loading: models.customers },
 );
 
-export const updateSubscriber = (data) => http.put(
-  `/api/subscribers/${data.id}`,
+export const updateCustomer = (data) => http.put(
+  `/api/customers/${data.id}`,
   data,
-  { loading: models.subscribers },
+  { loading: models.customers },
 );
 
-// Subscriber custom field definitions.
+// Customer custom field definitions.
 export const getCustomFields = async () => http.get('/api/custom-fields', { loading: models.customFields });
 export const createCustomField = async (data) => http.post('/api/custom-fields', data, { loading: models.customFields });
 export const updateCustomField = async (key, data) => http.put(`/api/custom-fields/${encodeURIComponent(key)}`, data, { loading: models.customFields });
 export const deleteCustomField = async (key) => http.delete(`/api/custom-fields/${encodeURIComponent(key)}`, { loading: models.customFields });
 
-export const sendSubscriberOptin = (id) => http.post(
-  `/api/subscribers/${id}/optin`,
+export const sendCustomerOptin = (id) => http.post(
+  `/api/customers/${id}/optin`,
   {},
-  { loading: models.subscribers },
+  { loading: models.customers },
 );
 
-export const deleteSubscriber = (id) => http.delete(
-  `/api/subscribers/${id}`,
-  { loading: models.subscribers },
+export const deleteCustomer = (id) => http.delete(
+  `/api/customers/${id}`,
+  { loading: models.customers },
 );
 
-export const addSubscribersToLists = (data) => http.put(
-  '/api/subscribers/lists',
+export const addCustomersToLists = (data) => http.put(
+  '/api/customers/customer-lists',
   data,
-  { loading: models.subscribers },
+  { loading: models.customers },
 );
 
-export const addSubscribersToListsByQuery = (data) => http.put(
-  '/api/subscribers/query/lists',
+export const addCustomersToListsByQuery = (data) => http.put(
+  '/api/customers/query/customer-lists',
   data,
 
-  { loading: models.subscribers },
+  { loading: models.customers },
 );
 
-export const blocklistSubscribers = (data) => http.put(
-  '/api/subscribers/blocklist',
+export const blocklistCustomers = (data) => http.put(
+  '/api/customers/blocklist',
   data,
-  { loading: models.subscribers },
+  { loading: models.customers },
 );
 
-export const blocklistSubscribersByQuery = (data) => http.put(
-  '/api/subscribers/query/blocklist',
+export const blocklistCustomersByQuery = (data) => http.put(
+  '/api/customers/query/blocklist',
   data,
-  { loading: models.subscribers },
+  { loading: models.customers },
 );
 
-export const deleteSubscribers = (params) => http.delete(
-  '/api/subscribers',
-  { params, loading: models.subscribers },
+export const deleteCustomers = (params) => http.delete(
+  '/api/customers',
+  { params, loading: models.customers },
 );
 
-export const deleteSubscribersByQuery = (data) => http.post(
-  '/api/subscribers/query/delete',
+export const deleteCustomersByQuery = (data) => http.post(
+  '/api/customers/query/delete',
   data,
-  { loading: models.subscribers },
+  { loading: models.customers },
 );
 
-// Subscriber import.
-export const importSubscribers = (data) => http.post('/api/import/subscribers', data);
+// Customer import.
+export const importCustomers = (data) => http.post('/api/import/customers', data);
 
-export const getImportStatus = () => http.get('/api/import/subscribers');
+export const getImportStatus = () => http.get('/api/import/customers');
 
 export const getImportLogs = async () => http.get(
-  '/api/import/subscribers/logs',
+  '/api/import/customers/logs',
   { camelCase: false },
 );
 
-export const stopImport = () => http.delete('/api/import/subscribers');
+export const stopImport = () => http.delete('/api/import/customers');
 
 // Bounces.
 export const getBounces = async (params) => http.get(
@@ -678,8 +708,8 @@ export const deleteGCCampaignAnalytics = async (typ, beforeDate) => http.delete(
   { loading: models.maintenance, params: { before_date: beforeDate } },
 );
 
-export const deleteGCSubscribers = async (typ) => http.delete(
-  `/api/maintenance/subscribers/${typ}`,
+export const deleteGCCustomers = async (typ) => http.delete(
+  `/api/maintenance/customers/${typ}`,
   { loading: models.maintenance },
 );
 
@@ -856,8 +886,8 @@ export const getUserRoles = async () => http.get(
 );
 
 export const getListRoles = async () => http.get(
-  '/api/roles/lists',
-  { loading: models.listRoles, store: models.listRoles },
+  '/api/roles/customer-lists',
+  { loading: models.customerListRoles, store: models.customerListRoles },
 );
 
 export const createUserRole = (data) => http.post(
@@ -867,9 +897,9 @@ export const createUserRole = (data) => http.post(
 );
 
 export const createListRole = (data) => http.post(
-  '/api/roles/lists',
+  '/api/roles/customer-lists',
   data,
-  { loading: models.listRoles },
+  { loading: models.customerListRoles },
 );
 
 export const updateUserRole = (data) => http.put(
@@ -879,9 +909,9 @@ export const updateUserRole = (data) => http.put(
 );
 
 export const updateListRole = (data) => http.put(
-  `/api/roles/lists/${data.id}`,
+  `/api/roles/customer-lists/${data.id}`,
   data,
-  { loading: models.userRoles },
+  { loading: models.customerListRoles },
 );
 
 export const deleteRole = (id) => http.delete(

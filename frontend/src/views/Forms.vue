@@ -5,7 +5,7 @@
     </h1>
     <hr />
 
-    <b-loading v-if="loading.lists" :active="loading.lists" :is-full-page="false" />
+    <b-loading v-if="loading.customer_lists" :active="loading.customer_lists" :is-full-page="false" />
     <p v-else-if="publicLists.length === 0">
       {{ $t('forms.noPublicLists') }}
     </p>
@@ -14,8 +14,8 @@
         <h4>{{ $t('forms.publicLists') }}</h4>
         <p>{{ $t('forms.selectHelp') }}</p>
 
-        <b-loading :active="loading.lists" :is-full-page="false" />
-        <ul class="no" data-cy="lists">
+        <b-loading :active="loading.customer_lists" :is-full-page="false" />
+        <ul class="no" data-cy="customer_lists">
           <li v-for="(l, i) in publicLists" :key="l.id">
             <b-checkbox v-model="checked" :native-value="i">
               {{ l.name }}
@@ -52,7 +52,7 @@ import { mapState } from 'vuex';
 import CodeEditor from '../components/CodeEditor.vue';
 
 export default Vue.extend({
-  name: 'ListForm',
+  name: 'CustomerListForm',
 
   components: {
     'code-editor': CodeEditor,
@@ -71,7 +71,7 @@ export default Vue.extend({
         + '  <div>\n'
         + `    <h3>${this.$t('public.sub')}</h3>\n`
         + '    <input type="hidden" name="nonce" />\n\n'
-        + `    <p><input type="email" name="email" required placeholder="${this.$t('subscribers.email')}" /></p>\n`
+        + `    <p><input type="email" name="email" required placeholder="${this.$t('customers.email')}" /></p>\n`
         + `    <p><input type="text" name="name" placeholder="${this.$t('public.subName')}" /></p>\n\n`;
 
       this.checked.forEach((i) => {
@@ -112,13 +112,13 @@ export default Vue.extend({
   },
 
   computed: {
-    ...mapState(['loading', 'lists', 'serverConfig']),
+    ...mapState(['loading', 'customer_lists', 'serverConfig']),
 
     publicLists() {
-      if (!this.lists.results) {
+      if (!this.customer_lists.results) {
         return [];
       }
-      return this.lists.results.filter((l) => l.type === 'public');
+      return this.customer_lists.results.filter((l) => l.type === 'public');
     },
   },
 

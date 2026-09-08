@@ -73,7 +73,7 @@ describe('Archive', () => {
         cy.get('h3').contains('Hi Archive!');
         cy.get('p').eq(0).contains('Bengaluru');
       } else {
-        cy.get('h3').contains('Hi Subscriber!');
+        cy.get('h3').contains('Hi Customer!');
       }
     }
   });

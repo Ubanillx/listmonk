@@ -93,26 +93,26 @@
 
       <div class="resource-step-label"><span class="step-number">2</span><div><strong>选择资源并执行操作</strong><span>复制会保留个人空间中的原始资源，移动后原资源将不再保留</span></div></div>
       <div class="resource-grid">
-        <article class="resource-card resource-list-card">
+        <article class="resource-card resource-customer_list-card">
           <div class="resource-card-top">
             <span class="resource-icon"><b-icon icon="format-list-bulleted-square" /></span>
-            <div><h3>个人列表</h3><span>{{ personalLists.length }} 项可迁移</span></div>
+            <div><h3>个人客户列表</h3><span>{{ personalLists.length }} 项可迁移</span></div>
             <b-button class="resource-preview-button" size="is-small" type="is-text"
-              icon-left="file-find-outline" :disabled="!personalListIDs.length"
-              @click="previewResource('lists', personalListIDs, personalLists)">
+              icon-left="file-find-outline" :disabled="!personalCustomerListIDs.length"
+              @click="previewResource('customer_lists', personalCustomerListIDs, personalLists)">
               预览内容
             </b-button>
           </div>
           <b-field class="resource-field">
-            <b-select v-model="personalListIDs" multiple expanded :disabled="!personalLists.length" placeholder="选择列表">
-              <option v-for="list in personalLists" :key="list.id" :value="list.id">{{ list.name }}</option>
+            <b-select v-model="personalCustomerListIDs" multiple expanded :disabled="!personalLists.length" placeholder="选择列表">
+              <option v-for="customerList in personalLists" :key="customerList.id" :value="customerList.id">{{ customerList.name }}</option>
             </b-select>
           </b-field>
           <div class="resource-card-footer">
-            <span>{{ personalListIDs.length }} 项已选</span>
+            <span>{{ personalCustomerListIDs.length }} 项已选</span>
             <div>
-              <b-button size="is-small" type="is-light" icon-left="content-copy" :disabled="!canMigrate(personalListIDs)" @click="migrateLists('copy')">复制</b-button>
-              <b-button size="is-small" type="is-primary" icon-left="folder-move" :disabled="!canMigrate(personalListIDs)" @click="migrateLists('move')">移动</b-button>
+              <b-button size="is-small" type="is-light" icon-left="content-copy" :disabled="!canMigrate(personalCustomerListIDs)" @click="migrateLists('copy')">复制</b-button>
+              <b-button size="is-small" type="is-primary" icon-left="folder-move" :disabled="!canMigrate(personalCustomerListIDs)" @click="migrateLists('move')">移动</b-button>
             </div>
           </div>
         </article>
@@ -214,13 +214,13 @@
           </div>
           <b-button type="is-text" icon-left="close" aria-label="关闭预览" @click="closePreview" />
         </header>
-        <section v-if="previewResourceType === 'lists'" class="resource-preview-body">
+        <section v-if="previewResourceType === 'customer_lists'" class="resource-preview-body">
           <div class="preview-facts">
-            <div><span>订阅者</span><strong>{{ previewItem.subscriberCount || 0 }}</strong></div>
-            <div><span>列表类型</span><strong>{{ previewItem.type === 'public' ? '公开' : '私有' }}</strong></div>
+            <div><span>客户</span><strong>{{ previewItem.customerCount || 0 }}</strong></div>
+            <div><span>客户列表类型</span><strong>{{ previewItem.type === 'public' ? '公开' : '私有' }}</strong></div>
             <div><span>状态</span><strong>{{ previewItem.status === 'active' ? '正常' : '已归档' }}</strong></div>
           </div>
-          <div class="preview-copy"><span class="preview-label">列表说明</span><p>{{ previewItem.description || '暂无列表说明。' }}</p></div>
+          <div class="preview-copy"><span class="preview-label">客户列表说明</span><p>{{ previewItem.description || '暂无客户列表说明。' }}</p></div>
         </section>
         <section v-else-if="previewResourceType === 'media'" class="resource-preview-body">
           <div v-if="previewItem.thumbUrl || previewItem.url" class="media-preview-image"><img :src="previewItem.thumbUrl || previewItem.url" :alt="previewItem.filename" /></div>
@@ -248,7 +248,7 @@ export default Vue.extend({
     return {
       migrationOrganizationID: null,
       personalLists: [],
-      personalListIDs: [],
+      personalCustomerListIDs: [],
       personalTemplates: [],
       personalTemplateIDs: [],
       personalCampaigns: [],
@@ -266,7 +266,7 @@ export default Vue.extend({
 
     previewIcon() {
       return {
-        lists: 'format-list-bulleted-square',
+        customer_lists: 'format-list-bulleted-square',
         templates: 'email-outline',
         campaigns: 'rocket-launch-outline',
         media: 'image-multiple-outline',
@@ -300,7 +300,7 @@ export default Vue.extend({
     },
 
     selectedResourceTotal() {
-      return this.personalListIDs.length + this.personalTemplateIDs.length
+      return this.personalCustomerListIDs.length + this.personalTemplateIDs.length
         + this.personalCampaignIDs.length + this.personalMediaIDs.length;
     },
   },
@@ -328,13 +328,13 @@ export default Vue.extend({
     },
 
     async refreshPersonalResources() {
-      const [lists, templates, campaigns, media] = await Promise.all([
+      const [customerLists, templates, campaigns, media] = await Promise.all([
         this.$api.getPersonalLists(),
         this.$api.getPersonalTemplates(),
         this.$api.getPersonalCampaigns(),
         this.$api.getPersonalMedia(),
       ]);
-      this.personalLists = this.personalPrivateResources(lists.results);
+      this.personalLists = this.personalPrivateResources(customerLists.results);
       this.personalTemplates = this.personalPrivateResources(templates);
       this.personalCampaigns = this.personalPrivateResources(campaigns.results);
       this.personalMedia = this.personalPrivateResources(media.results);
@@ -342,7 +342,7 @@ export default Vue.extend({
 
     clearPersonalResources() {
       this.personalLists = [];
-      this.personalListIDs = [];
+      this.personalCustomerListIDs = [];
       this.personalTemplates = [];
       this.personalTemplateIDs = [];
       this.personalCampaigns = [];
@@ -413,15 +413,15 @@ export default Vue.extend({
     },
 
     migrateLists(mode) {
-      const listIDs = [...this.personalListIDs];
+      const customerListIDs = [...this.personalCustomerListIDs];
       const action = mode === 'move' ? '移动' : '复制';
-      this.$utils.confirm(`确认${action}所选个人列表？`, async () => {
+      this.$utils.confirm(`确认${action}所选个人客户列表？`, async () => {
         await this.$api.migratePersonalLists({
-          list_ids: listIDs,
+          customer_list_ids: customerListIDs,
           mode,
           target_organization_id: this.migrationOrganizationID,
         });
-        this.personalListIDs = [];
+        this.personalCustomerListIDs = [];
         await this.refresh();
         this.$root.$emit('page.refresh');
       });
@@ -777,7 +777,7 @@ export default Vue.extend({
     width: 34px;
   }
 
-  .resource-list-card .resource-icon,
+  .resource-customer_list-card .resource-icon,
   .resource-template-card .resource-icon,
   .resource-campaign-card .resource-icon,
   .resource-media-card .resource-icon { background: #f4f6f8; color: var(--org-blue); }

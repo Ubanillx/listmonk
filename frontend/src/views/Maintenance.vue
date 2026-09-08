@@ -11,17 +11,17 @@
 
     <div class="box">
       <h4 class="is-size-4">
-        {{ $t('globals.terms.subscribers') }}
+        {{ $t('globals.terms.customers') }}
       </h4><br />
       <div class="columns">
         <div class="column is-4">
           <b-field label="Data" :message="$t('maintenance.orphanHelp')">
-            <b-select v-model="subscriberType" expanded>
+            <b-select v-model="customerType" expanded>
               <option value="orphan">
                 {{ $t('dashboard.orphanSubs') }}
               </option>
               <option value="blocklisted">
-                {{ $t('subscribers.status.blocklisted') }}
+                {{ $t('customers.status.blocklisted') }}
               </option>
             </b-select>
           </b-field>
@@ -30,13 +30,13 @@
         <div class="column">
           <br />
           <b-field>
-            <b-button class="is-primary" :loading="loading.maintenance" @click="deleteSubscribers" expanded>
+            <b-button class="is-primary" :loading="loading.maintenance" @click="deleteCustomers" expanded>
               {{ $t('globals.buttons.delete') }}
             </b-button>
           </b-field>
         </div>
       </div>
-    </div><!-- subscribers -->
+    </div><!-- customers -->
 
     <div class="box mt-6">
       <h4 class="is-size-4">
@@ -155,7 +155,7 @@ export default Vue.extend({
   data() {
     return {
       isLoading: false,
-      subscriberType: 'orphan',
+      customerType: 'orphan',
       analyticsType: 'all',
       subscriptionType: 'optin',
       analyticsDate: dayjs().subtract(7, 'day').toDate(),
@@ -176,14 +176,14 @@ export default Vue.extend({
       return dayjs(s).format('YYYY-MM-DD');
     },
 
-    deleteSubscribers() {
+    deleteCustomers() {
       this.$utils.confirm(
         null,
         () => {
-          this.$api.deleteGCSubscribers(this.subscriberType).then((data) => {
+          this.$api.deleteGCCustomers(this.customerType).then((data) => {
             this.$utils.toast(this.$t(
               'globals.messages.deletedCount',
-              { name: this.$tc('globals.terms.subscribers', 2), num: data.count },
+              { name: this.$tc('globals.terms.customers', 2), num: data.count },
             ));
           });
         },

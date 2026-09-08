@@ -52,8 +52,8 @@
           <b-input :maxlength="200" v-model="form.name" name="name" :placeholder="$t('globals.fields.name')" />
         </b-field>
 
-        <b-field v-if="form.type !== 'api'" :label="$t('subscribers.email')" label-position="on-border">
-          <b-input :maxlength="200" v-model="form.email" name="email" :placeholder="$t('subscribers.email')" required />
+        <b-field v-if="form.type !== 'api'" :label="$t('customers.email')" label-position="on-border">
+          <b-input :maxlength="200" v-model="form.email" name="email" :placeholder="$t('customers.email')" required />
         </b-field>
 
         <template v-if="form.type !== 'api'">
@@ -96,10 +96,10 @@
             </div>
 
             <div class="column is-6">
-              <b-field :label="$tc('users.listRole', 0)" label-position="on-border">
-                <b-select v-model="form.listRoleId" name="list_role" expanded>
+              <b-field :label="$tc('users.customerListRole', 0)" label-position="on-border">
+                <b-select v-model="form.customerListRoleId" name="customer_list_role" expanded>
                   <option value="">&mdash; {{ $t("globals.terms.none") }} &mdash;</option>
-                  <option v-for="r in listRoles" :value="r.id" :key="r.id">
+                  <option v-for="r in customerListRoles" :value="r.id" :key="r.id">
                     {{ r.name }}
                   </option>
                 </b-select>
@@ -138,7 +138,7 @@
           {{ $t('globals.buttons.close') }}
         </b-button>
         <b-button v-if="$can('users:manage') && !createdUserID" native-type="submit" type="is-primary"
-          :loading="loading.lists" data-cy="btn-save">
+          :loading="loading.customer_lists" data-cy="btn-save">
           {{ $t('globals.buttons.save') }}
         </b-button>
       </footer>
@@ -209,7 +209,7 @@ export default Vue.extend({
 
     createUser() {
       const form = {
-        ...this.form, password_login: this.form.passwordLogin, user_role_id: this.form.userRoleId, list_role_id: this.form.listRoleId || null,
+        ...this.form, password_login: this.form.passwordLogin, user_role_id: this.form.userRoleId, customer_list_role_id: this.form.customerListRoleId || null,
       };
       this.$api.createUser(form).then((data) => {
         this.$emit('finished');
@@ -253,7 +253,7 @@ export default Vue.extend({
 
     updateUser() {
       const form = {
-        ...this.form, password_login: this.form.passwordLogin, user_role_id: this.form.userRoleId, list_role_id: this.form.listRoleId || null,
+        ...this.form, password_login: this.form.passwordLogin, user_role_id: this.form.userRoleId, customer_list_role_id: this.form.customerListRoleId || null,
       };
       this.$api.updateUser({ id: this.data.id, ...form }).then((data) => {
         this.$emit('finished');
@@ -270,7 +270,7 @@ export default Vue.extend({
   },
 
   computed: {
-    ...mapState(['loading', 'userRoles', 'listRoles']),
+    ...mapState(['loading', 'userRoles', 'customerListRoles']),
   },
 
   mounted() {
@@ -279,7 +279,7 @@ export default Vue.extend({
       this.form.userRoleId = this.$props.data.userRole.id;
     }
 
-    this.form.listRoleId = this.$props.data.listRole ? this.$props.data.listRole.id : '';
+    this.form.customerListRoleId = this.$props.data.customerListRole ? this.$props.data.customerListRole.id : '';
 
     this.$api.getUserRoles();
     this.$api.getListRoles();

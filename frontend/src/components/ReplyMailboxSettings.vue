@@ -72,7 +72,17 @@
       </div>
 
       <div class="reply-card-footer">
-        <b-checkbox v-model="mailbox.isDefault">设为当前空间默认回信邮箱</b-checkbox>
+        <div class="reply-card-ai-toggle">
+          <b-checkbox v-model="mailbox.aiEnabled">
+            启用 AI 自动处理回信（仅识别明确的退订与垃圾/滥用投诉，其余一律忽略）
+          </b-checkbox>
+          <p class="help" v-if="mailbox.aiEnabled">
+            启用后，平台管理员在「设置 → 回信 AI 分类」中配置的模型将只对能唯一匹配到本工作区客户的回信生效。
+          </p>
+        </div>
+        <div class="reply-card-default-toggle">
+          <b-checkbox v-model="mailbox.isDefault">设为当前空间默认回信邮箱</b-checkbox>
+        </div>
         <div class="buttons mb-0">
           <b-button type="is-light" icon-left="connection" :loading="testing === index" @click="testMailbox(mailbox, index)">
             测试连接
@@ -103,6 +113,7 @@ function blankMailbox() {
     folder: 'INBOX',
     status: 'pending',
     isDefault: false,
+    aiEnabled: false,
     verifiedAt: null,
     lastSyncAt: null,
     lastSyncError: '',
@@ -174,6 +185,7 @@ export default Vue.extend({
         imap_tls: mailbox.imapTls !== false,
         folder: mailbox.folder || 'INBOX',
         is_default: !!mailbox.isDefault,
+        ai_enabled: !!mailbox.aiEnabled,
       };
       if (includePassword || mailbox.password) data.password = mailbox.password;
       return data;
@@ -246,6 +258,9 @@ export default Vue.extend({
 .reply-grid { padding: 1.25rem 1.25rem .5rem; margin: 0; }
 .reply-grid > .column { padding: .35rem; }
 .reply-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.25rem; border-top: 1px solid #edf0f4; }
+.reply-card-ai-toggle { flex: 1; min-width: 240px; }
+.reply-card-ai-toggle .help { margin-top: .3rem; margin-bottom: 0; }
+.reply-card-default-toggle { flex-shrink: 0; }
 @media (max-width: 768px) {
   .reply-mailboxes-header, .reply-card-header, .reply-card-footer { display: block; }
   .reply-mailboxes-header .button { width: 100%; margin-top: .85rem; }

@@ -14,39 +14,39 @@
           <div class="tile">
             <div class="tile is-parent is-vertical relative">
               <b-loading v-if="isCountsLoading" active :is-full-page="false" />
-              <article class="tile is-child notification" data-cy="lists">
+              <article class="tile is-child notification" data-cy="customerLists">
                 <div class="columns is-mobile">
                   <div class="column is-6">
                     <p class="title">
                       <b-icon icon="format-list-bulleted-square" />
-                      {{ $utils.niceNumber(counts.lists.total) }}
+                      {{ $utils.niceNumber(counts.customerLists.total) }}
                     </p>
                     <p class="is-size-6 has-text-grey">
-                      {{ $tc('globals.terms.list', counts.lists.total) }}
+                      {{ $tc('globals.terms.customer_list', counts.customerLists.total) }}
                     </p>
                   </div>
                   <div class="column is-6">
                     <ul class="no has-text-grey">
                       <li>
-                        <label for="#">{{ $utils.niceNumber(counts.lists.public) }}</label>
-                        {{ $t('lists.types.public') }}
+                        <label for="#">{{ $utils.niceNumber(counts.customerLists.public) }}</label>
+                        {{ $t('customer_lists.types.public') }}
                       </li>
                       <li>
-                        <label for="#">{{ $utils.niceNumber(counts.lists.private) }}</label>
-                        {{ $t('lists.types.private') }}
+                        <label for="#">{{ $utils.niceNumber(counts.customerLists.private) }}</label>
+                        {{ $t('customer_lists.types.private') }}
                       </li>
                       <li>
-                        <label for="#">{{ $utils.niceNumber(counts.lists.optinSingle) }}</label>
-                        {{ $t('lists.optins.single') }}
+                        <label for="#">{{ $utils.niceNumber(counts.customerLists.optinSingle) }}</label>
+                        {{ $t('customer_lists.optins.single') }}
                       </li>
                       <li>
-                        <label for="#">{{ $utils.niceNumber(counts.lists.optinDouble) }}</label>
-                        {{ $t('lists.optins.double') }}
+                        <label for="#">{{ $utils.niceNumber(counts.customerLists.optinDouble) }}</label>
+                        {{ $t('customer_lists.optins.double') }}
                       </li>
                     </ul>
                   </div>
                 </div>
-              </article><!-- lists -->
+              </article><!-- customer_lists -->
 
               <article class="tile is-child notification" data-cy="campaigns">
                 <div class="columns is-mobile">
@@ -76,31 +76,31 @@
 
             <div class="tile is-parent relative">
               <b-loading v-if="isCountsLoading" active :is-full-page="false" />
-              <article class="tile is-child notification" data-cy="subscribers">
+              <article class="tile is-child notification" data-cy="customers">
                 <div class="columns is-mobile">
                   <div class="column is-6">
                     <p class="title">
                       <b-icon icon="account-multiple" />
-                      {{ $utils.niceNumber(counts.subscribers.total) }}
+                      {{ $utils.niceNumber(counts.customers.total) }}
                     </p>
                     <p class="is-size-6 has-text-grey">
-                      {{ $tc('globals.terms.subscriber', counts.subscribers.total) }}
+                      {{ $tc('globals.terms.customer', counts.customers.total) }}
                     </p>
                   </div>
 
                   <div class="column is-6">
                     <ul class="no has-text-grey">
                       <li>
-                        <label for="#">{{ $utils.niceNumber(counts.subscribers.blocklisted) }}</label>
-                        {{ $t('subscribers.status.blocklisted') }}
+                        <label for="#">{{ $utils.niceNumber(counts.customers.blocklisted) }}</label>
+                        {{ $t('customers.status.blocklisted') }}
                       </li>
                       <li>
-                        <label for="#">{{ $utils.niceNumber(counts.subscribers.orphans) }}</label>
+                        <label for="#">{{ $utils.niceNumber(counts.customers.orphans) }}</label>
                         {{ $t('dashboard.orphanSubs') }}
                       </li>
                     </ul>
-                  </div><!-- subscriber breakdown -->
-                </div><!-- subscriber columns -->
+                  </div><!-- customer breakdown -->
+                </div><!-- customer columns -->
                 <hr />
                 <div class="columns" data-cy="messages">
                   <div class="column is-12">
@@ -113,7 +113,7 @@
                     </p>
                   </div>
                 </div>
-              </article><!-- subscribers -->
+              </article><!-- customers -->
             </div>
           </div>
           <div class="tile is-parent relative">
@@ -167,8 +167,8 @@ export default Vue.extend({
       campaignViews: null,
       campaignClicks: null,
       counts: {
-        lists: {},
-        subscribers: {},
+        customerLists: {},
+        customers: {},
         campaigns: {},
         messages: 0,
       },

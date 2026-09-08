@@ -3,7 +3,7 @@
     <header class="columns page-header">
       <div class="column is-10">
         <h1 class="title is-4">
-          {{ $t(isUser ? 'users.userRoles' : 'users.listRoles') }}
+          {{ $t(isUser ? 'users.userRoles' : 'users.customerListRoles') }}
           <span v-if="!isNaN(roles.length)">({{ roles.length }})</span>
         </h1>
       </div>
@@ -102,7 +102,7 @@ export default Vue.extend({
 
   methods: {
     isLoading() {
-      return this.curType === 'user' ? this.loading.userRoles : this.loading.listRoles;
+      return this.curType === 'user' ? this.loading.userRoles : this.loading.customerListRoles;
     },
 
     fetchRoles() {
@@ -116,7 +116,7 @@ export default Vue.extend({
     // Show the edit form.
     showEditForm(item) {
       this.curItem = item;
-      this.curType = this.isUser ? 'user' : 'list';
+      this.curType = this.isUser ? 'user' : 'customer_list';
       this.isFormVisible = true;
       this.isEditing = true;
     },
@@ -145,7 +145,7 @@ export default Vue.extend({
         form.permissions = item.permissions;
       } else {
         fn = this.$api.createListRole;
-        form.lists = item.lists;
+        form.customer_lists = item.customerLists;
       }
 
       fn(form).then(() => {
@@ -170,23 +170,23 @@ export default Vue.extend({
   },
 
   computed: {
-    ...mapState(['loading', 'userRoles', 'listRoles']),
+    ...mapState(['loading', 'userRoles', 'customerListRoles']),
 
     isUser() {
       return this.curType === 'user';
     },
 
     isList() {
-      return this.curType === 'list';
+      return this.curType === 'customer_list';
     },
 
     roles() {
-      return this.isUser ? this.userRoles : this.listRoles;
+      return this.isUser ? this.userRoles : this.customerListRoles;
     },
   },
 
   mounted() {
-    this.curType = this.$route.name === 'userRoles' ? 'user' : 'list';
+    this.curType = this.$route.name === 'userRoles' ? 'user' : 'customer_list';
     this.fetchRoles();
   },
 });

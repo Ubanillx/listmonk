@@ -7,7 +7,7 @@
             {{ $t(`campaigns.status.${data.status}`) }}
           </b-tag>
           <b-tag v-if="data.type === 'optin'" :class="data.type">
-            {{ $t('lists.optin') }}
+            {{ $t('customer_lists.optin') }}
           </b-tag>
           <span v-if="isEditing" class="has-text-grey-light is-size-7" :data-campaign-id="data.id">
             {{ $t('globals.fields.id') }}: <copy-text :text="`${data.id}`" />
@@ -107,8 +107,19 @@
                   尚未配置已验证的回信邮箱；如需让客户直接回复到工作邮箱，请先在个人资料中完成配置。
                 </p>
 
-                <list-selector v-model="form.lists" :selected="form.lists" :all="availableLists" :disabled="!canEdit || listsLocked"
-                  :label="$t('globals.terms.lists')" :placeholder="$t('campaigns.sendToLists')" />
+                <customer-list-selector v-model="form.customer_lists" :selected="form.customer_lists" :all="availableLists" :disabled="!canEdit || listsLocked"
+                  :label="$t('globals.terms.customer_lists')" :placeholder="$t('campaigns.sendToLists')" />
+
+                <b-notification v-if="poolRoutingRows.length" type="is-info" :closable="false"
+                  class="pool-routing-notice" data-cy="pool-routing-notice">
+                  <strong>公海回件路由（发送时生效）</strong>
+                  <ul>
+                    <li v-for="(pool, index) in poolRoutingRows" :key="`pool-route-${pool.poolId || pool.pool_id}-${index}`">
+                      {{ pool.name || `一级公海 #${pool.poolId || pool.pool_id}` }} →
+                      {{ pool.replyMailboxEmail || pool.reply_mailbox_email || '按目标组织二级列表解析（未配置时阻断发送）' }}
+                    </li>
+                  </ul>
+                </b-notification>
 
                 <p v-if="listsLocked" class="help is-info">
                   {{ $t('campaigns.listsLockedHelp') }}
@@ -424,12 +435,12 @@ import CampaignPreview from '../components/CampaignPreview.vue';
 import CampaignReport from '../components/CampaignReport.vue';
 import CopyText from '../components/CopyText.vue';
 import Editor from '../components/Editor.vue';
-import ListSelector from '../components/ListSelector.vue';
+import CustomerListSelector from '../components/CustomerListSelector.vue';
 import Media from './Media.vue';
 
 export default Vue.extend({
   components: {
-    ListSelector,
+    CustomerListSelector,
     Editor,
     Media,
     CopyText,
@@ -463,8 +474,8 @@ export default Vue.extend({
 
       data: {},
 
-      // IDs from ?list_id query param.
-      selListIDs: [],
+      // IDs from ?customer_list_id query param.
+      selCustomerListIDs: [],
 
       // Binds form input values.
       form: {
@@ -481,7 +492,7 @@ export default Vue.extend({
         visibility: 'private',
         dailySendLimit: 300,
         dailyResumeTime: '09:00',
-        lists: [],
+        customer_lists: [],
         tags: [],
         sendAt: null,
         content: {
@@ -646,7 +657,7 @@ export default Vue.extend({
           attribs = JSON.parse(this.form.attribsStr);
         } catch (e) {
           this.$utils.toast(
-            `${this.$t('subscribers.invalidJSON')}: ${e.toString()}`,
+            `${this.$t('customers.invalidJSON')}: ${e.toString()}`,
             'is-danger',
 
             3000,
@@ -713,7 +724,7 @@ export default Vue.extend({
         id: this.data.id,
         name: this.form.name,
         subject: this.form.subject,
-        lists: this.form.lists.map((l) => l.id),
+        customer_list_ids: this.form.customer_lists.map((l) => l.id),
         from_email: this.form.fromEmail,
         daily_send_limit: this.isLimitedSMTPCampaign ? this.form.dailySendLimit : 0,
         daily_resume_time: this.isLimitedSMTPCampaign ? this.form.dailyResumeTime : '09:00',
@@ -726,7 +737,7 @@ export default Vue.extend({
         content_type: this.form.content.contentType,
         body: this.form.content.body,
         altbody: this.form.content.contentType !== 'plain' ? this.form.altbody : null,
-        subscribers: this.form.testEmails,
+        customers: this.form.testEmails,
         media: this.form.media.map((m) => m.id),
         visibility: this.form.visibility,
         reply_mailbox_id: this.form.replyMailboxId || null,
@@ -743,7 +754,7 @@ export default Vue.extend({
         archiveSlug: this.form.subject,
         name: this.form.name,
         subject: this.form.subject,
-        lists: this.form.lists.map((l) => l.id),
+        customer_list_ids: this.form.customer_lists.map((l) => l.id),
         from_email: this.form.fromEmail,
         daily_send_limit: this.isLimitedSMTPCampaign ? this.form.dailySendLimit : 0,
         daily_resume_time: this.isLimitedSMTPCampaign ? this.form.dailyResumeTime : '09:00',
@@ -771,7 +782,7 @@ export default Vue.extend({
         archive_slug: this.form.archiveSlug,
         name: this.form.name,
         subject: this.form.subject,
-        lists: this.form.lists.map((l) => l.id),
+        customer_list_ids: this.form.customer_lists.map((l) => l.id),
         from_email: this.form.fromEmail,
         daily_send_limit: this.isLimitedSMTPCampaign ? this.form.dailySendLimit : 0,
         daily_resume_time: this.isLimitedSMTPCampaign ? this.form.dailyResumeTime : '09:00',
@@ -918,13 +929,21 @@ export default Vue.extend({
       });
     },
 
-    canManageList(list) {
-      return this.$canManageResource(list) && this.$canList(list.id, 'list:manage');
+    canManageList(customerList) {
+      // Public pools expose a delivery capability independently from ordinary
+      // customer-list read/manage grants. The backend still enforces the
+      // organization grant; this flag only keeps an authorized pool visible
+      // in the campaign selector when contact details are unavailable.
+      if ((customerList.type === 'pool' || customerList.type === 'pool_segment')
+        && customerList.poolDeliveryAllowed) {
+        return true;
+      }
+      return this.$canManageResource(customerList) && this.$canList(customerList.id, 'customer_list:manage');
     },
   },
 
   computed: {
-    ...mapState(['serverConfig', 'loading', 'lists', 'templates', 'workspace', 'profile']),
+    ...mapState(['serverConfig', 'loading', 'customer_lists', 'templates', 'workspace', 'profile']),
 
     canManage() {
       return this.isNew
@@ -978,18 +997,18 @@ export default Vue.extend({
     },
 
     availableLists() {
-      if (!this.lists.results) {
+      if (!this.customer_lists.results) {
         return [];
       }
-      return this.lists.results.filter((list) => this.canManageList(list));
+      return this.customer_lists.results.filter((customerList) => this.canManageList(customerList));
     },
 
     selectedLists() {
-      if (this.selListIDs.length === 0) {
+      if (this.selCustomerListIDs.length === 0) {
         return [];
       }
 
-      return this.availableLists.filter((list) => this.selListIDs.indexOf(list.id) > -1);
+      return this.availableLists.filter((customerList) => this.selCustomerListIDs.indexOf(customerList.id) > -1);
     },
 
     emailMessengers() {
@@ -1023,6 +1042,11 @@ export default Vue.extend({
     activeReplyMailboxes() {
       return this.replyMailboxes.filter((mailbox) => mailbox.status === 'active');
     },
+
+    poolRoutingRows() {
+      const rows = this.form.customerPools || this.form.customer_pools;
+      return Array.isArray(rows) ? rows : [];
+    },
   },
 
   beforeRouteLeave(to, from, next) {
@@ -1035,7 +1059,7 @@ export default Vue.extend({
 
   watch: {
     selectedLists() {
-      this.form.lists = this.selectedLists;
+      this.form.customer_lists = this.selectedLists;
     },
 
     // eslint-disable-next-line func-names
@@ -1066,16 +1090,16 @@ export default Vue.extend({
     if (id === 'new') {
       this.isNew = true;
 
-      if (this.$route.query.list_id) {
-        // Multiple list_id query params.
+      if (this.$route.query.customer_list_id) {
+        // Multiple customer_list_id query params.
         let strIds = [];
-        if (typeof this.$route.query.list_id === 'object') {
-          strIds = this.$route.query.list_id;
+        if (typeof this.$route.query.customer_list_id === 'object') {
+          strIds = this.$route.query.customer_list_id;
         } else {
-          strIds = [this.$route.query.list_id];
+          strIds = [this.$route.query.customer_list_id];
         }
 
-        this.selListIDs = strIds.map((v) => parseInt(v, 10));
+        this.selCustomerListIDs = strIds.map((v) => parseInt(v, 10));
       }
     } else {
       const intID = parseInt(id, 10);
@@ -1087,7 +1111,7 @@ export default Vue.extend({
       this.isEditing = true;
     }
 
-    // Get templates list.
+    // Get templates customerList.
     this.$api.getTemplates().then((data) => {
       if (data.length > 0) {
         if (!this.form.templateId) {

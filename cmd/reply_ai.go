@@ -11,6 +11,7 @@ import (
 	"net/mail"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/emersion/go-message"
@@ -22,8 +23,12 @@ import (
 )
 
 const (
-	replyAIPollInterval = 60 * time.Second
-	replyAIMaxRunes     = 6000
+	replyAIPollInterval    = 60 * time.Second
+	replyAIMaxRunes        = 6000
+	replyAIMaxMessages     = 200
+	replyAIMaxMessageBytes = 5 << 20
+	replyAIMailboxTimeout  = 2 * time.Minute
+	replyAIMaxConcurrent   = 4
 )
 
 var htmlTagPattern = regexp.MustCompile(`(?s)<[^>]*>`)
@@ -63,12 +68,29 @@ func (a *App) scanReplyAIMailboxes() {
 		a.log.Printf("error loading reply AI mailboxes: %v", err)
 		return
 	}
+	sem := make(chan struct{}, replyAIMaxConcurrent)
+	var wg sync.WaitGroup
 	for _, source := range sources {
-		if err := a.scanOneReplyAIMailbox(source); err != nil {
-			a.log.Printf("reply AI mailbox %d scan failed: %v", source.ID, err)
-			_, _ = a.queries.UpdateReplyAIMailboxSync.Exec(source.ID, replyAIErrorText(err))
-		}
+		source := source
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			done := make(chan error, 1)
+			go func() { done <- a.scanOneReplyAIMailbox(source) }()
+			select {
+			case err := <-done:
+				if err != nil {
+					a.log.Printf("reply AI mailbox %d scan failed: %v", source.ID, err)
+					_, _ = a.queries.UpdateReplyAIMailboxSync.Exec(source.ID, replyAIErrorText(err))
+				}
+			case <-time.After(replyAIMailboxTimeout):
+				a.log.Printf("reply AI mailbox %d scan timed out", source.ID)
+			}
+		}()
 	}
+	wg.Wait()
 }
 
 func (a *App) scanOneReplyAIMailbox(source replyAIMailboxSource) error {
@@ -89,11 +111,23 @@ func (a *App) scanOneReplyAIMailbox(source replyAIMailboxSource) error {
 	if err := conn.Auth(source.Username, source.Password); err != nil {
 		return err
 	}
-	count, _, err := conn.Stat()
+	_, _, err = conn.Stat()
 	if err != nil {
 		return err
 	}
-	for id := 1; id <= count; id++ {
+	ids, err := conn.List(0)
+	if err != nil {
+		return err
+	}
+	start := 0
+	if len(ids) > replyAIMaxMessages {
+		start = len(ids) - replyAIMaxMessages
+	}
+	for _, msg := range ids[start:] {
+		id := msg.ID
+		if msg.Size > replyAIMaxMessageBytes {
+			continue
+		}
 		raw, err := conn.RetrRaw(id)
 		if err != nil {
 			continue

@@ -34,7 +34,7 @@ type CampaignReportLinkRow struct {
 }
 
 type CampaignReportRecipientRow struct {
-	SubscriberID    int         `db:"subscriber_id" json:"subscriber_id"`
+	CustomerID    int         `db:"customer_id" json:"customer_id"`
 	UUID            string      `db:"uuid" json:"uuid"`
 	Email           string      `db:"email" json:"email"`
 	Name            string      `db:"name" json:"name"`
@@ -115,7 +115,7 @@ type CampaignsReportRecipientRow struct {
 	CampaignID      int         `db:"campaign_id" json:"campaign_id"`
 	CampaignName    string      `db:"campaign_name" json:"campaign_name"`
 	CampaignSubject string      `db:"campaign_subject" json:"campaign_subject"`
-	SubscriberID    int         `db:"subscriber_id" json:"subscriber_id"`
+	CustomerID    int         `db:"customer_id" json:"customer_id"`
 	UUID            string      `db:"uuid" json:"uuid"`
 	Email           string      `db:"email" json:"email"`
 	Name            string      `db:"name" json:"name"`

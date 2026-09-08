@@ -26,7 +26,7 @@ SELECT url FROM links WHERE uuid = $1;
 
 -- name: register-link-click
 -- A link UUID is global, but an individual click must belong to an actual
--- campaign recipient. Aggregate tracking omits the subscriber UUID and still
+-- campaign recipient. Aggregate tracking omits the customer UUID and still
 -- records a campaign-level click. Existing campaigns are marked legacy by the
 -- migration so their historical links remain valid without a new relation.
 WITH link AS (
@@ -36,45 +36,45 @@ campaign AS (
     SELECT id, organization_id, owner_user_id, tracking_links_mapped
     FROM campaigns WHERE uuid = $2::UUID
 ),
-subscriber AS (
+customer AS (
     SELECT id, organization_id, owner_user_id
-    FROM subscribers
+    FROM customers
     WHERE id IN (
-        SELECT id FROM subscribers WHERE uuid = NULLIF($3::TEXT, '')::UUID
+        SELECT id FROM customers WHERE uuid = NULLIF($3::TEXT, '')::UUID
         UNION
-        SELECT subscriber_id FROM subscriber_uuid_aliases WHERE uuid = NULLIF($3::TEXT, '')::UUID
+        SELECT customer_id FROM customer_uuid_aliases WHERE uuid = NULLIF($3::TEXT, '')::UUID
     )
 ),
 snapshot_recipient AS (
-    SELECT c.id AS campaign_id, s.id AS subscriber_id
+    SELECT c.id AS campaign_id, s.id AS customer_id
     FROM campaign c
-    JOIN subscriber s ON TRUE
+    JOIN customer s ON TRUE
     WHERE EXISTS (
         SELECT 1 FROM campaign_recipients cr
-        WHERE cr.campaign_id = c.id AND cr.subscriber_id = s.id
+        WHERE cr.campaign_id = c.id AND cr.customer_id = s.id
     )
 ),
 legacy_recipient AS (
-    SELECT c.id AS campaign_id, s.id AS subscriber_id
+    SELECT c.id AS campaign_id, s.id AS customer_id
     FROM campaign c
-    JOIN subscriber s ON TRUE
+    JOIN customer s ON TRUE
     WHERE NOT EXISTS (SELECT 1 FROM campaign_recipients cr WHERE cr.campaign_id = c.id)
         AND s.organization_id IS NOT DISTINCT FROM c.organization_id
         AND s.owner_user_id IS NOT DISTINCT FROM c.owner_user_id
         AND EXISTS (
-            SELECT 1 FROM campaign_lists cl
-            JOIN subscriber_lists sl ON sl.list_id = cl.list_id
-            WHERE cl.campaign_id = c.id AND sl.subscriber_id = s.id
+            SELECT 1 FROM campaign_customer_lists cl
+            JOIN customer_list_memberships sl ON sl.customer_list_id = cl.customer_list_id
+            WHERE cl.campaign_id = c.id AND sl.customer_id = s.id
         )
 ),
 recipient AS (
-    SELECT campaign_id, subscriber_id FROM snapshot_recipient
+    SELECT campaign_id, customer_id FROM snapshot_recipient
     UNION ALL
-    SELECT campaign_id, subscriber_id FROM legacy_recipient
+    SELECT campaign_id, customer_id FROM legacy_recipient
 )
-INSERT INTO link_clicks (campaign_id, subscriber_id, link_id)
+INSERT INTO link_clicks (campaign_id, customer_id, link_id)
     SELECT c.id,
-        CASE WHEN $3::TEXT = '' THEN NULL ELSE r.subscriber_id END,
+        CASE WHEN $3::TEXT = '' THEN NULL ELSE r.customer_id END,
         l.id
     FROM campaign c
     CROSS JOIN link l
@@ -86,5 +86,5 @@ INSERT INTO link_clicks (campaign_id, subscriber_id, link_id)
             WHERE cl.campaign_id = c.id AND cl.link_id = l.id
         )
     )
-    AND ($3::TEXT = '' OR r.subscriber_id IS NOT NULL)
+    AND ($3::TEXT = '' OR r.customer_id IS NOT NULL)
 RETURNING (SELECT url FROM link);

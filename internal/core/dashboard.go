@@ -102,26 +102,26 @@ func (c *Core) GetWorkspaceDashboardCounts(access models.WorkspaceAccess) (types
 	}
 
 	listScope, args := workspaceOwnerScopedReadPredicate(access, "l", 1)
-	subscriberScope, _ := workspaceSubscriberReadPredicate(access, "s", 1)
+	customerScope, _ := workspaceCustomerReadPredicate(access, "s", 1)
 	campaignScope, _ := workspaceReadPredicate(access, "c", 1)
 	stmt := fmt.Sprintf(`
 		WITH visible_lists AS (
-			SELECT l.id, l.type, l.optin FROM lists l WHERE (%s)
-		), visible_subscribers AS (
-			SELECT s.id, s.status FROM subscribers s WHERE (%s)
+			SELECT l.id, l.type, l.optin FROM customer_lists l WHERE (%s)
+		), visible_customers AS (
+			SELECT s.id, s.status FROM customers s WHERE (%s)
 		), visible_campaigns AS (
 			SELECT c.id, c.status, c.sent FROM campaigns c WHERE (%s)
 		), campaign_statuses AS (
 			SELECT status, COUNT(*)::INT AS count FROM visible_campaigns GROUP BY status
 		)
 		SELECT JSON_BUILD_OBJECT(
-			'subscribers', JSON_BUILD_OBJECT(
-				'total', (SELECT COUNT(*) FROM visible_subscribers),
-				'blocklisted', (SELECT COUNT(*) FROM visible_subscribers WHERE status = 'blocklisted'),
-				'orphans', (SELECT COUNT(*) FROM visible_subscribers s
-					WHERE NOT EXISTS (SELECT 1 FROM subscriber_lists sl WHERE sl.subscriber_id = s.id))
+			'customers', JSON_BUILD_OBJECT(
+				'total', (SELECT COUNT(*) FROM visible_customers),
+				'blocklisted', (SELECT COUNT(*) FROM visible_customers WHERE status = 'blocklisted'),
+				'orphans', (SELECT COUNT(*) FROM visible_customers s
+					WHERE NOT EXISTS (SELECT 1 FROM customer_list_memberships sl WHERE sl.customer_id = s.id))
 			),
-			'lists', JSON_BUILD_OBJECT(
+			'customer_lists', JSON_BUILD_OBJECT(
 				'total', (SELECT COUNT(*) FROM visible_lists),
 				'public', (SELECT COUNT(*) FROM visible_lists WHERE type = 'public'),
 				'private', (SELECT COUNT(*) FROM visible_lists WHERE type = 'private'),
@@ -133,7 +133,7 @@ func (c *Core) GetWorkspaceDashboardCounts(access models.WorkspaceAccess) (types
 				'by_status', COALESCE((SELECT JSON_OBJECT_AGG(status, count) FROM campaign_statuses), '{}'::JSON)
 			),
 			'messages', COALESCE((SELECT SUM(sent) FROM visible_campaigns), 0)
-		)`, listScope, subscriberScope, campaignScope)
+		)`, listScope, customerScope, campaignScope)
 
 	var out types.JSONText
 	if err := c.db.Get(&out, stmt, args...); err != nil {

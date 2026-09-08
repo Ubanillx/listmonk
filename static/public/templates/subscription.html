@@ -29,12 +29,12 @@
 
                 <h2>{{ L.T "public.managePrefs" }}</h2>
                 <label>{{ L.T "globals.fields.name" }}</label>
-                <input type="text" name="name" value="{{ .Data.Subscriber.Name }}" maxlength="256" required />
+                <input type="text" name="name" value="{{ .Data.Customer.Name }}" maxlength="256" required />
 
                 {{ if .Data.Subscriptions }}
                     <br /><br />
                     <h3>{{ L.T "public.managePrefsUnsub" }}</h3>
-                    <ul class="lists">
+                    <ul class="customerLists">
                         {{ range $i, $l := .Data.Subscriptions }}
                             {{ if ne $l.SubscriptionStatus.Value "unsubscribed" }}
                                 <li>

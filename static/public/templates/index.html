@@ -46,3 +46,32 @@
 </body>
 </html>
 {{ end }}
+
+{{ define "header-app" }}
+<!DOCTYPE html>
+<html>
+<head>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+	<title>{{ .Data.Title }} - {{ .SiteName }}</title>
+	<meta name="description" content="{{ .Data.Description }}" />
+	<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1" />
+
+	<link href="{{ .RootURL }}/public/static/style.css?v={{ .AssetVersion }}" rel="stylesheet" type="text/css" />
+	<link href="{{ .RootURL }}/public/custom.css?v={{ .AssetVersion }}" rel="stylesheet" type="text/css">
+	<script src="{{ .RootURL }}/public/custom.js?v={{ .AssetVersion }}" async defer></script>
+
+	{{ if ne .FaviconURL "" }}
+		<link rel="icon" href="{{ .FaviconURL }}" type="image/x-icon" />
+	{{ else }}
+		<link rel="icon" href="{{ .RootURL }}/public/static/favicon.png?v={{ .AssetVersion }}" type="image/png" />
+	{{ end }}
+</head>
+<body class="app-shell">
+	<main class="app-shell-card">
+{{ end }}
+
+{{ define "footer-app" }}
+	</main>
+</body>
+</html>
+{{ end }}

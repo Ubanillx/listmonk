@@ -22,6 +22,7 @@ import (
 	"github.com/knadh/listmonk/internal/auth"
 	"github.com/knadh/listmonk/internal/messenger/email"
 	"github.com/knadh/listmonk/internal/notifs"
+	"github.com/knadh/listmonk/internal/replyai"
 	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
 )
@@ -76,6 +77,7 @@ func (a *App) GetSettings(c echo.Context) error {
 	s.SendgridKey = strings.Repeat(pwdMask, utf8.RuneCountInString(s.SendgridKey))
 	s.BouncePostmark.Password = strings.Repeat(pwdMask, utf8.RuneCountInString(s.BouncePostmark.Password))
 	s.BounceForwardEmail.Key = strings.Repeat(pwdMask, utf8.RuneCountInString(s.BounceForwardEmail.Key))
+	s.ReplyAI.APIKey = strings.Repeat(pwdMask, utf8.RuneCountInString(s.ReplyAI.APIKey))
 	s.SecurityCaptcha.HCaptcha.Secret = strings.Repeat(pwdMask, utf8.RuneCountInString(s.SecurityCaptcha.HCaptcha.Secret))
 	s.OIDC.ClientSecret = strings.Repeat(pwdMask, utf8.RuneCountInString(s.OIDC.ClientSecret))
 
@@ -95,7 +97,7 @@ func (a *App) UpdateSettings(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	// Subscriber field definitions have their own administrator-only endpoint.
+	// Customer field definitions have their own administrator-only endpoint.
 	// Do not let a broad settings payload overwrite them accidentally.
 	set.CustomFields = cur.CustomFields
 
@@ -214,6 +216,33 @@ func (a *App) UpdateSettings(c echo.Context) error {
 					set.BounceBoxes[i].Password = c.Password
 				}
 			}
+		}
+	}
+
+	// Reply-AI credentials follow the same blank-means-unchanged convention as
+	// other settings secrets. The endpoint is validated only when automation is
+	// enabled, so administrators can save a disabled draft safely.
+	if set.ReplyAI.APIKey == "" || strings.Trim(set.ReplyAI.APIKey, pwdMask) == "" {
+		set.ReplyAI.APIKey = cur.ReplyAI.APIKey
+	}
+	set.ReplyAI.BaseURL = strings.TrimSpace(set.ReplyAI.BaseURL)
+	set.ReplyAI.Model = strings.TrimSpace(set.ReplyAI.Model)
+	if set.ReplyAI.Timeout == "" {
+		set.ReplyAI.Timeout = "15s"
+	}
+	if set.ReplyAI.MinConfidence == 0 {
+		set.ReplyAI.MinConfidence = 0.98
+	}
+	if set.ReplyAI.Enabled {
+		if _, err := replyai.New(replyai.Options{
+			Enabled:       set.ReplyAI.Enabled,
+			BaseURL:       set.ReplyAI.BaseURL,
+			APIKey:        set.ReplyAI.APIKey,
+			Model:         set.ReplyAI.Model,
+			Timeout:       set.ReplyAI.Timeout,
+			MinConfidence: set.ReplyAI.MinConfidence,
+		}); err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 		}
 	}
 

@@ -68,11 +68,11 @@ func (a *App) GetServerConfig(c echo.Context) error {
 
 	out.MediaProvider = a.cfg.MediaUpload.Provider
 
-	// Language list.
+	// Language customer_list.
 	langList, err := getI18nLangList(a.fs)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError,
-			fmt.Sprintf("Error loading language list: %v", err))
+			fmt.Sprintf("Error loading language customer_list: %v", err))
 	}
 	out.Langs = langList
 

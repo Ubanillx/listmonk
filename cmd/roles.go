@@ -52,7 +52,7 @@ func (a *App) CreateUserRole(c echo.Context) error {
 
 // CreateListRole handles role creation.
 func (a *App) CreateListRole(c echo.Context) error {
-	var r auth.ListRole
+	var r auth.CustomerListRole
 	if err := c.Bind(&r); err != nil {
 		return err
 	}
@@ -115,7 +115,7 @@ func (a *App) UpdateListRole(c echo.Context) error {
 	}
 
 	// Incoming params.
-	var r auth.ListRole
+	var r auth.CustomerListRole
 	if err := c.Bind(&r); err != nil {
 		return err
 	}
@@ -141,7 +141,7 @@ func (a *App) UpdateListRole(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{out})
 }
 
-// DeleteRole handles (user|list) role deletion.
+// DeleteRole handles (user|customer_list) role deletion.
 func (a *App) DeleteRole(c echo.Context) error {
 	// Get the role ID.
 	id := getID(c)
@@ -178,15 +178,15 @@ func (a *App) validateUserRole(r auth.Role) error {
 	return nil
 }
 
-func (a *App) validateListRole(r auth.ListRole) error {
+func (a *App) validateListRole(r auth.CustomerListRole) error {
 	if !strHasLen(r.Name.String, 1, stdInputMaxLen) {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.Ts("globals.messages.invalidFields", "name", "name"))
 	}
 
-	for _, l := range r.Lists {
+	for _, l := range r.CustomerLists {
 		for _, p := range l.Permissions {
 			if p != auth.PermListGet && p != auth.PermListManage {
-				return echo.NewHTTPError(http.StatusBadRequest, a.i18n.Ts("globals.messages.invalidFields", "name", fmt.Sprintf("list permission: %s", p)))
+				return echo.NewHTTPError(http.StatusBadRequest, a.i18n.Ts("globals.messages.invalidFields", "name", fmt.Sprintf("customer_list permission: %s", p)))
 			}
 		}
 	}

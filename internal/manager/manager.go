@@ -7,6 +7,7 @@ import (
 	"log"
 	"mime"
 	"net/textproto"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -21,6 +22,7 @@ import (
 	"github.com/knadh/listmonk/models"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
+	null "gopkg.in/volatiletech/null.v6"
 )
 
 const (
@@ -48,10 +50,10 @@ var ErrManagerClosed = errors.New("campaign manager is closed")
 var ErrPersonalSMTPUnavailable = errors.New("personal SMTP unavailable")
 
 // Store represents a data backend, such as a database,
-// that provides subscriber and campaign records.
+// that provides customer and campaign records.
 type Store interface {
 	NextCampaigns(currentIDs []int64) ([]*models.Campaign, error)
-	NextSubscribers(campID, limit int) ([]models.CampaignSubscriber, error)
+	NextCustomers(campID, limit int) ([]models.CampaignCustomer, error)
 	GetCampaign(campID int) (*models.Campaign, error)
 	GetAttachment(mediaID int) (models.Attachment, error)
 	UpdateCampaignStatus(campID int, status string) error
@@ -62,8 +64,8 @@ type Store interface {
 	UpdateCampaignRecipientStatuses(campID int, toStatus string, fromStatuses []string) error
 	DeferCampaign(campID int, nextResumeAt time.Time) error
 	CreateLink(campUUID, url string) (string, error)
-	BlocklistSubscriber(id int64) error
-	DeleteSubscriber(id int64) error
+	BlocklistCustomer(id int64) error
+	DeleteCustomer(id int64) error
 }
 
 // CampaignAttachmentStore is an optional extension implemented by the
@@ -75,6 +77,22 @@ type Store interface {
 // that do not provide the extension.
 type CampaignAttachmentStore interface {
 	GetCampaignAttachments(campaign *models.Campaign, mediaIDs []int64) ([]models.Attachment, error)
+}
+
+// PoolRecipientStore is implemented by stores that support first-class public
+// pool recipients. It keeps the legacy customers/campaign_recipients contract
+// intact while allowing the worker to persist pool status by its stable ID.
+type PoolRecipientStore interface {
+	MarkPoolCampaignMessageSent(campID int, contactID int64) error
+	MarkPoolCampaignRecipientStatus(campID int, contactID int64, status string) error
+	ResetPoolCampaignQueuedRecipients(campID int, toStatus string) error
+}
+
+// CampaignOptinListStore resolves the UUIDs of the double-opt-in lists
+// attached to a campaign. It is optional so lightweight integrations retain
+// the historical empty opt-in URL behavior.
+type CampaignOptinListStore interface {
+	GetCampaignOptinListUUIDs(campaignID int) ([]string, error)
 }
 
 // PersonalSMTPUnavailableStore is an optional store extension used when a
@@ -228,10 +246,15 @@ type Manager struct {
 }
 
 // CampaignMessage represents an instance of campaign message to be pushed out,
-// specific to a subscriber, via the campaign's messenger.
+// specific to a customer, via the campaign's messenger.
 type CampaignMessage struct {
-	Campaign   *models.Campaign
-	Subscriber models.Subscriber
+	Campaign              *models.Campaign
+	Customer              models.Customer
+	PoolContactID         int64
+	PoolID                int
+	PoolSegmentID         int64
+	PoolReplyMailboxID    null.Int
+	PoolReplyMailboxEmail string
 
 	from     string
 	to       string
@@ -245,7 +268,7 @@ type CampaignMessage struct {
 
 // Config has parameters for configuring the manager.
 type Config struct {
-	// Number of subscribers to pull from the DB in a single iteration.
+	// Number of customers to pull from the DB in a single iteration.
 	BatchSize             int
 	Concurrency           int
 	MessageRate           int
@@ -589,13 +612,13 @@ func (m *Manager) GetCampaignStats(id int) CampStats {
 // Run is a blocking function (that should be invoked as a goroutine)
 // that scans the data source at regular intervals for pending campaigns,
 // and queues them for processing. The process queue fetches batches of
-// subscribers and pushes messages to them for each queued campaign
-// until all subscribers are exhausted, at which point, a campaign is marked
+// customers and pushes messages to them for each queued campaign
+// until all customers are exhausted, at which point, a campaign is marked
 // as "finished".
 func (m *Manager) Run() {
 	if m.cfg.ScanCampaigns {
 		// Periodically scan campaigns and push running campaigns to nextPipes
-		// to fetch subscribers from the campaign.
+		// to fetch customers from the campaign.
 		go m.scanCampaigns(m.cfg.ScanInterval)
 	}
 
@@ -604,7 +627,7 @@ func (m *Manager) Run() {
 		go m.worker()
 	}
 
-	// Indefinitely wait on the pipe queue to fetch the next set of subscribers
+	// Indefinitely wait on the pipe queue to fetch the next set of customers
 	// for any active campaigns.
 	for {
 		select {
@@ -615,14 +638,14 @@ func (m *Manager) Run() {
 				continue
 			}
 			// A buffered pipe may become ready at the same time as the shutdown
-			// signal. Do not fetch another subscriber batch after Close; release
+			// signal. Do not fetch another customer batch after Close; release
 			// the pipe's scheduler counter so its cleanup goroutine cannot hang.
 			if m.closed.Load() {
 				p.Stop(stopReasonPause, false)
 				p.wg.Done()
 				continue
 			}
-			has, err := p.NextSubscribers()
+			has, err := p.NextCustomers()
 			if err != nil {
 				m.log.Printf("error processing campaign batch (%s): %v", p.camp.Name, err)
 
@@ -634,7 +657,7 @@ func (m *Manager) Run() {
 			}
 
 			if has {
-				// There are more subscribers to fetch. Queue again.
+				// There are more customers to fetch. Queue again.
 				select {
 				case m.nextPipes <- p:
 				case <-m.done:
@@ -693,20 +716,34 @@ func (m *Manager) GetTpl(id int) (*models.Template, error) {
 // TemplateFuncs returns the template functions to be applied into
 // compiled campaign templates.
 func (m *Manager) TemplateFuncs(c *models.Campaign) template.FuncMap {
+	optinQuery := ""
+	if c != nil && c.Type == models.CampaignTypeOptin {
+		if s, ok := m.store.(CampaignOptinListStore); ok {
+			if uuids, err := s.GetCampaignOptinListUUIDs(c.ID); err == nil {
+				q := url.Values{}
+				for _, id := range uuids {
+					q.Add("l", id)
+				}
+				optinQuery = q.Encode()
+			} else {
+				m.log.Printf("error resolving opt-in customer lists for campaign %d: %v", c.ID, err)
+			}
+		}
+	}
 	f := template.FuncMap{
 		"TrackLink": func(url string, msg *CampaignMessage) string {
 			if m.cfg.DisableTracking {
 				return url
 			}
 
-			return m.trackLink(url, msg.Campaign.UUID, m.trackingSubscriberUUID(msg.Subscriber.UUID))
+			return m.trackLink(url, msg.Campaign.UUID, m.trackingCustomerUUID(msg.Customer.UUID))
 		},
 		"TrackView": func(msg *CampaignMessage) template.HTML {
 			if m.cfg.DisableTracking {
 				return template.HTML("")
 			}
 
-			subUUID := msg.Subscriber.UUID
+			subUUID := msg.Customer.UUID
 			if !m.cfg.IndividualTracking {
 				subUUID = dummyUUID
 			}
@@ -721,12 +758,10 @@ func (m *Manager) TemplateFuncs(c *models.Campaign) template.FuncMap {
 			return msg.unsubURL + "?manage=true"
 		},
 		"OptinURL": func(msg *CampaignMessage) string {
-			// Add list IDs.
-			// TODO: Show private lists list on optin e-mail
-			return fmt.Sprintf(m.cfg.OptinURL, msg.Subscriber.UUID, "")
+			return fmt.Sprintf(m.cfg.OptinURL, msg.Customer.UUID, optinQuery)
 		},
 		"MessageURL": func(msg *CampaignMessage) string {
-			return fmt.Sprintf(m.cfg.MessageURL, c.UUID, msg.Subscriber.UUID)
+			return fmt.Sprintf(m.cfg.MessageURL, c.UUID, msg.Customer.UUID)
 		},
 		"ArchiveURL": func() string {
 			return m.cfg.ArchiveURL
@@ -811,7 +846,7 @@ func (m *Manager) scanCampaigns(tick time.Duration) {
 			}
 			m.log.Printf("start processing campaign (%s)", c.Name)
 
-			// If subscriber processing is busy, move on. Blocking and waiting
+			// If customer processing is busy, move on. Blocking and waiting
 			// can end up in a race condition where the waiting campaign's
 			// state in the data source has changed.
 			select {
@@ -888,7 +923,7 @@ func (m *Manager) worker() {
 				ContentType:  msg.Campaign.ContentType,
 				Body:         body,
 				AltBody:      msg.altBody,
-				Subscriber:   msg.Subscriber,
+				Customer:     msg.Customer,
 				Messenger:    msg.Campaign.Messenger,
 				UseSMTPFrom:  email.IsMessengerName(msg.Campaign.Messenger),
 				UseSMTPQuota: email.IsMessengerName(msg.Campaign.Messenger),
@@ -898,12 +933,12 @@ func (m *Manager) worker() {
 
 			h := textproto.MIMEHeader{}
 			h.Set(models.EmailHeaderCampaignUUID, msg.Campaign.UUID)
-			h.Set(models.EmailHeaderSubscriberUUID, msg.Subscriber.UUID)
+			h.Set(models.EmailHeaderCustomerUUID, msg.Customer.UUID)
 
-			// Attach List-Unsubscribe headers?
+			// Attach CustomerList-Unsubscribe headers?
 			if m.cfg.UnsubHeader {
-				h.Set("List-Unsubscribe-Post", "List-Unsubscribe=One-Click")
-				h.Set("List-Unsubscribe", `<`+msg.unsubURL+`>`)
+				h.Set("CustomerList-Unsubscribe-Post", "CustomerList-Unsubscribe=One-Click")
+				h.Set("CustomerList-Unsubscribe", `<`+msg.unsubURL+`>`)
 			}
 
 			// Attach any custom headers.
@@ -917,8 +952,12 @@ func (m *Manager) worker() {
 			// Reply-To is controlled by the selected, verified customer-reply
 			// mailbox. Apply it after custom headers so a campaign cannot spoof or
 			// overwrite the account-owned destination.
-			if msg.Campaign.ReplyMailboxEmail != "" {
-				h.Set("Reply-To", msg.Campaign.ReplyMailboxEmail)
+			replyTo := msg.Campaign.ReplyMailboxEmail
+			if msg.PoolContactID > 0 && msg.PoolReplyMailboxEmail != "" {
+				replyTo = msg.PoolReplyMailboxEmail
+			}
+			if replyTo != "" {
+				h.Set("Reply-To", replyTo)
 			}
 
 			// Set the headers.
@@ -947,7 +986,7 @@ func (m *Manager) worker() {
 				err = m.pushMessage(out)
 			}
 			if err != nil {
-				m.log.Printf("error sending message in campaign %s: subscriber %d: %v", msg.Campaign.Name, msg.Subscriber.ID, err)
+				m.log.Printf("error sending message in campaign %s: customer %d: %v", msg.Campaign.Name, msg.Customer.ID, err)
 			}
 
 			// Increment the send rate or the error counter if there was an error.
@@ -968,15 +1007,31 @@ func (m *Manager) worker() {
 					)
 					msg.pipe.DeferImmediately()
 				} else if err != nil {
-					if uErr := m.store.MarkCampaignRecipientStatus(msg.Campaign.ID, msg.Subscriber.ID, models.CampaignRecipientStatusPending); uErr != nil {
-						m.log.Printf("error resetting campaign recipient (%s:%d): %v", msg.Campaign.Name, msg.Subscriber.ID, uErr)
+					var uErr error
+					if msg.PoolContactID > 0 {
+						if ps, ok := m.store.(PoolRecipientStore); ok {
+							uErr = ps.MarkPoolCampaignRecipientStatus(msg.Campaign.ID, msg.PoolContactID, models.CampaignRecipientStatusPending)
+						}
+					} else {
+						uErr = m.store.MarkCampaignRecipientStatus(msg.Campaign.ID, msg.Customer.ID, models.CampaignRecipientStatusPending)
+					}
+					if uErr != nil {
+						m.log.Printf("error resetting campaign recipient (%s:%d): %v", msg.Campaign.Name, msg.Customer.ID, uErr)
 					}
 					// Call the error callback, which keeps track of the error count
 					// and stops the campaign if the error count exceeds the threshold.
 					msg.pipe.OnError()
 				} else {
-					if uErr := m.store.MarkCampaignMessageSent(msg.Campaign.ID, msg.Subscriber.ID); uErr != nil {
-						m.log.Printf("error updating campaign recipient (%s:%d): %v", msg.Campaign.Name, msg.Subscriber.ID, uErr)
+					var uErr error
+					if msg.PoolContactID > 0 {
+						if ps, ok := m.store.(PoolRecipientStore); ok {
+							uErr = ps.MarkPoolCampaignMessageSent(msg.Campaign.ID, msg.PoolContactID)
+						}
+					} else {
+						uErr = m.store.MarkCampaignMessageSent(msg.Campaign.ID, msg.Customer.ID)
+					}
+					if uErr != nil {
+						m.log.Printf("error updating campaign recipient (%s:%d): %v", msg.Campaign.Name, msg.Customer.ID, uErr)
 					}
 					msg.pipe.rate.Incr(1)
 					msg.pipe.sent.Add(1)

@@ -144,65 +144,65 @@ func (a *App) SendTxMessage(c echo.Context) error {
 	}
 
 	var (
-		num      = len(m.SubscriberEmails)
+		num      = len(m.CustomerEmails)
 		isEmails = true
 	)
-	if len(m.SubscriberIDs) > 0 {
-		num = len(m.SubscriberIDs)
+	if len(m.CustomerIDs) > 0 {
+		num = len(m.CustomerIDs)
 		isEmails = false
 	}
 
 	notFound := []string{}
 	for n := range num {
-		var sub models.Subscriber
+		var sub models.Customer
 
-		if m.SubscriberMode == models.TxSubModeExternal {
-			// `external`: Always create an ephemeral "subscriber" and don't
+		if m.CustomerMode == models.TxSubModeExternal {
+			// `external`: Always create an ephemeral "customer" and don't
 			// lookup in the DB.
-			sub = models.Subscriber{
-				Email: m.SubscriberEmails[n],
+			sub = models.Customer{
+				Email: m.CustomerEmails[n],
 			}
 		} else {
-			// Default/fallback mode: lookup subscriber in DB.
+			// Default/fallback mode: lookup customer in DB.
 			var (
 				subID    int
 				subEmail string
 			)
 
 			if !isEmails {
-				subID = m.SubscriberIDs[n]
+				subID = m.CustomerIDs[n]
 			} else {
-				subEmail = m.SubscriberEmails[n]
+				subEmail = m.CustomerEmails[n]
 			}
 
 			var err error
 			if !isEmails {
-				if _, err = a.requireManagedWorkspaceSubscriber(c, access, subID); err == nil {
+				if _, err = a.requireManagedWorkspaceCustomer(c, access, subID); err == nil {
 					// Resolve the row through the same workspace predicate that
 					// authorized it. A member can be removed or a resource can be
 					// transferred between these two operations; the legacy global
 					// lookup would otherwise turn that check into a stale read.
-					sub, err = a.core.GetWorkspaceSubscriber(access, subID)
+					sub, err = a.core.GetWorkspaceCustomer(access, subID)
 				}
 			} else {
-				var subs models.Subscribers
-				subs, err = a.core.GetManagedWorkspaceSubscribersByEmails(access, []string{subEmail})
+				var subs models.Customers
+				subs, err = a.core.GetManagedWorkspaceCustomersByEmails(access, []string{subEmail})
 				if err == nil {
 					sub = subs[0]
 				}
 			}
 			if err != nil {
-				if m.SubscriberMode == models.TxSubModeFallback {
+				if m.CustomerMode == models.TxSubModeFallback {
 					// `fallback` is only for an address that does not exist in the
-					// caller's writable workspace. Do not turn a database or list
+					// caller's writable workspace. Do not turn a database or customer_list
 					// loading failure into an untracked external send.
 					if er, ok := err.(*echo.HTTPError); ok && er.Code == http.StatusBadRequest {
-						sub = models.Subscriber{Email: subEmail}
+						sub = models.Customer{Email: subEmail}
 					} else {
 						return err
 					}
 				} else {
-					// `default`: do not expose cross-workspace subscriber data.
+					// `default`: do not expose cross-workspace customer data.
 					if er, ok := err.(*echo.HTTPError); ok {
 						notFound = append(notFound, fmt.Sprintf("%v", er.Message))
 						continue
@@ -222,7 +222,7 @@ func (a *App) SendTxMessage(c echo.Context) error {
 
 		// Prepare the final message.
 		msg := models.Message{}
-		msg.Subscriber = sub
+		msg.Customer = sub
 		msg.To = []string{sub.Email}
 		msg.From = rendered.FromEmail
 		msg.Subject = rendered.Subject
@@ -291,57 +291,57 @@ func (a *App) SendTxMessage(c echo.Context) error {
 
 // validateTxMessage validates the tx message fields.
 func (a *App) validateTxMessage(m models.TxMessage) (models.TxMessage, error) {
-	if len(m.SubscriberEmails) > 0 && m.SubscriberEmail != "" {
+	if len(m.CustomerEmails) > 0 && m.CustomerEmail != "" {
 		return m, echo.NewHTTPError(http.StatusBadRequest,
-			a.i18n.Ts("globals.messages.invalidFields", "name", "do not send `subscriber_email`"))
+			a.i18n.Ts("globals.messages.invalidFields", "name", "do not send `customer_email`"))
 	}
-	if len(m.SubscriberIDs) > 0 && m.SubscriberID != 0 {
+	if len(m.CustomerIDs) > 0 && m.CustomerID != 0 {
 		return m, echo.NewHTTPError(http.StatusBadRequest,
-			a.i18n.Ts("globals.messages.invalidFields", "name", "do not send `subscriber_id`"))
+			a.i18n.Ts("globals.messages.invalidFields", "name", "do not send `customer_id`"))
 	}
 
-	if m.SubscriberEmail != "" {
-		m.SubscriberEmails = append(m.SubscriberEmails, m.SubscriberEmail)
+	if m.CustomerEmail != "" {
+		m.CustomerEmails = append(m.CustomerEmails, m.CustomerEmail)
 	}
 
-	if m.SubscriberID != 0 {
-		m.SubscriberIDs = append(m.SubscriberIDs, m.SubscriberID)
+	if m.CustomerID != 0 {
+		m.CustomerIDs = append(m.CustomerIDs, m.CustomerID)
 	}
 
-	// Validate subscriber_mode.
-	if m.SubscriberMode == "" {
-		m.SubscriberMode = models.TxSubModeDefault
+	// Validate customer_mode.
+	if m.CustomerMode == "" {
+		m.CustomerMode = models.TxSubModeDefault
 	}
 
-	switch m.SubscriberMode {
+	switch m.CustomerMode {
 	case models.TxSubModeDefault:
-		// Need subscriber_emails OR subscriber_ids, but not both.
-		if (len(m.SubscriberEmails) == 0 && len(m.SubscriberIDs) == 0) || (len(m.SubscriberEmails) > 0 && len(m.SubscriberIDs) > 0) {
+		// Need customer_emails OR customer_ids, but not both.
+		if (len(m.CustomerEmails) == 0 && len(m.CustomerIDs) == 0) || (len(m.CustomerEmails) > 0 && len(m.CustomerIDs) > 0) {
 			return m, echo.NewHTTPError(http.StatusBadRequest,
-				a.i18n.Ts("globals.messages.invalidFields", "name", "send subscriber_emails OR subscriber_ids"))
+				a.i18n.Ts("globals.messages.invalidFields", "name", "send customer_emails OR customer_ids"))
 		}
 	case models.TxSubModeFallback, models.TxSubModeExternal:
-		// `fallback` and `external` can only use subscriber_emails.
-		if len(m.SubscriberIDs) > 0 {
+		// `fallback` and `external` can only use customer_emails.
+		if len(m.CustomerIDs) > 0 {
 			return m, echo.NewHTTPError(http.StatusBadRequest,
-				a.i18n.Ts("globals.messages.invalidFields", "name", "subscriber_ids not allowed in fallback or external mode"))
+				a.i18n.Ts("globals.messages.invalidFields", "name", "customer_ids not allowed in fallback or external mode"))
 		}
-		if len(m.SubscriberEmails) == 0 {
+		if len(m.CustomerEmails) == 0 {
 			return m, echo.NewHTTPError(http.StatusBadRequest,
-				a.i18n.Ts("globals.messages.invalidFields", "name", "subscriber_emails"))
+				a.i18n.Ts("globals.messages.invalidFields", "name", "customer_emails"))
 		}
 	default:
 		return m, echo.NewHTTPError(http.StatusBadRequest,
-			a.i18n.Ts("globals.messages.invalidFields", "name", "subscriber_mode"))
+			a.i18n.Ts("globals.messages.invalidFields", "name", "customer_mode"))
 	}
 
-	for n, email := range m.SubscriberEmails {
+	for n, email := range m.CustomerEmails {
 		if email != "" {
 			em, err := a.importer.SanitizeEmail(email)
 			if err != nil {
 				return m, echo.NewHTTPError(http.StatusBadRequest, err.Error())
 			}
-			m.SubscriberEmails[n] = em
+			m.CustomerEmails[n] = em
 		}
 	}
 

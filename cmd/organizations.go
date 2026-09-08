@@ -22,8 +22,8 @@ const (
 
 	// Resource identifiers are kept local to cmd so handlers do not need to
 	// depend on core's internal implementation constants.
-	resourceLists       = "lists"
-	resourceSubscribers = "subscribers"
+	resourceLists       = "customer_lists"
+	resourceCustomers = "customers"
 	resourceTemplates   = "templates"
 	resourceCampaigns   = "campaigns"
 	resourceMedia       = "media"
@@ -60,7 +60,7 @@ type organizationTransferInput struct {
 }
 
 type organizationListMigrationInput struct {
-	ListIDs              []int  `json:"list_ids"`
+	CustomerListIDs              []int  `json:"customer_list_ids"`
 	Mode                 string `json:"mode"`
 	TargetOrganizationID *int   `json:"target_organization_id"`
 }
@@ -107,7 +107,18 @@ func (a *App) workspaceFromRequest(c echo.Context) (models.Workspace, error) {
 		if !personalAPIKeyWorkspaceMatches(c, 0) {
 			return models.Workspace{}, personalAPIKeyWorkspaceError()
 		}
-		access, err := a.workspaceAccessForOrganization(c, 0)
+
+		// The four customer_list endpoints backing the personal-resource migration UI
+		// are exempt from the personal workspace capability so retained
+		// personal resources stay listable after the capability has been
+		// revoked. The personal workspace only ever exposes the caller's own
+		// resources, and detail reads, exports, every mutation, and any entry
+		// into the personal workspace still require the capability.
+		requireCapability := true
+		if isReadOnlyMethod(c) && isPersonalMigrationListPath(c.Path()) {
+			requireCapability = false
+		}
+		access, err := a.workspaceAccessForOrganizationWithPersonal(c, 0, requireCapability)
 		return access.Workspace, err
 	}
 
@@ -133,11 +144,26 @@ func (a *App) workspaceAccess(c echo.Context) (models.WorkspaceAccess, error) {
 // workspaceAccessForOrganization resolves an explicit clone or migration
 // target without trusting an organization ID from the client body.
 func (a *App) workspaceAccessForOrganization(c echo.Context, orgID int) (models.WorkspaceAccess, error) {
+	return a.workspaceAccessForOrganizationWithPersonal(c, orgID, true)
+}
+
+// workspaceAccessForOrganizationWithPersonal resolves the workspace with an
+// explicit choice of whether the personal workspace requires the
+// workspaces:personal capability. The resource-migration endpoints call with
+// requirePersonalCapability=false so retained personal resources stay
+// migratable after the capability has been revoked; ownership checks in the
+// migration handlers still keep the access strictly personal.
+func (a *App) workspaceAccessForOrganizationWithPersonal(c echo.Context, orgID int, requirePersonalCapability bool) (models.WorkspaceAccess, error) {
 	if !personalAPIKeyWorkspaceMatches(c, orgID) {
 		return models.WorkspaceAccess{}, personalAPIKeyWorkspaceError()
 	}
 	user := auth.GetUser(c)
 	if orgID == 0 {
+		if requirePersonalCapability {
+			if err := requirePersonalWorkspace(user); err != nil {
+				return models.WorkspaceAccess{}, err
+			}
+		}
 		return models.WorkspaceAccess{
 			Workspace: models.Workspace{Personal: true, PlatformAdmin: user.IsPlatformAdmin()},
 			UserID:    user.ID,
@@ -189,7 +215,7 @@ func normalizeWorkspaceVisibility(access models.WorkspaceAccess, value string) (
 }
 
 // normalizeResourceVisibility additionally constrains the resource types that
-// can be published. Lists and subscribers are always owned by one user. An
+// can be published. CustomerLists and customers are always owned by one user. An
 // organization manager can inspect them, but ordinary members must never gain
 // access through a visibility flag.
 func normalizeResourceVisibility(access models.WorkspaceAccess, resource, value string) (string, error) {
@@ -197,12 +223,12 @@ func normalizeResourceVisibility(access models.WorkspaceAccess, resource, value 
 	if err != nil {
 		return "", err
 	}
-	if (resource == resourceLists || resource == resourceSubscribers) &&
+	if (resource == resourceLists || resource == resourceCustomers) &&
 		visibility != models.ResourceVisibilityPrivate {
-		return "", echo.NewHTTPError(http.StatusBadRequest, "lists and subscribers must remain private to their owner")
+		return "", echo.NewHTTPError(http.StatusBadRequest, "customer_lists and customers must remain private to their owner")
 	}
 	if visibility == models.ResourceVisibilityGlobal &&
-		(resource == resourceLists || resource == resourceSubscribers || resource == resourceMedia) {
+		(resource == resourceLists || resource == resourceCustomers || resource == resourceMedia) {
 		return "", echo.NewHTTPError(http.StatusBadRequest, "this resource cannot be globally visible")
 	}
 	return visibility, nil
@@ -570,7 +596,7 @@ func (a *App) TransferArchivedOrganizationResources(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{true})
 }
 
-// GetOrganizationMembersForPlatform exposes the transfer target list for an
+// GetOrganizationMembersForPlatform exposes the transfer target customer_list for an
 // archived organization only to platform administrators. Active organization
 // managers continue to use the workspace-scoped member endpoint.
 func (a *App) GetOrganizationMembersForPlatform(c echo.Context) error {
@@ -617,7 +643,7 @@ func (a *App) UnpublishOrganizationTemplate(c echo.Context) error {
 }
 
 // MigratePersonalListsToOrganization copies or moves caller-owned personal
-// lists into a selected organization. The target defaults to the active
+// customer_lists into a selected organization. The target defaults to the active
 // workspace, allowing clients to offer a direct "move to current organization"
 // action while still supporting a picker from personal space.
 func (a *App) MigratePersonalListsToOrganization(c echo.Context) error {
@@ -630,8 +656,8 @@ func (a *App) MigratePersonalListsToOrganization(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return err
 	}
-	if len(req.ListIDs) == 0 {
-		return echo.NewHTTPError(http.StatusBadRequest, "at least one list is required")
+	if len(req.CustomerListIDs) == 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, "at least one customer_list is required")
 	}
 	if req.Mode != "copy" && req.Mode != "move" {
 		return echo.NewHTTPError(http.StatusBadRequest, "migration mode must be copy or move")
@@ -652,28 +678,31 @@ func (a *App) MigratePersonalListsToOrganization(c echo.Context) error {
 	if err := requireLegacyPermission(user, auth.PermListManageAll); err != nil {
 		return err
 	}
-	personal, err := a.workspaceAccessForOrganization(c, 0)
+	// Migrating a retained personal resource is allowed even when the
+	// workspaces:personal capability has been revoked, so users can move their
+	// hidden personal data into an organization.
+	personal, err := a.workspaceAccessForOrganizationWithPersonal(c, 0, false)
 	if err != nil {
 		return err
 	}
-	for _, id := range req.ListIDs {
+	for _, id := range req.CustomerListIDs {
 		if _, err := a.requireManagedWorkspaceList(c, personal, id); err != nil {
 			return err
 		}
 	}
-	listIDs, err := a.core.MigratePersonalListsToOrganization(user.ID, target.OrganizationID, user.ID, req.ListIDs, req.Mode == "move")
+	customerListIDs, err := a.core.MigratePersonalListsToOrganization(user.ID, target.OrganizationID, user.ID, req.CustomerListIDs, req.Mode == "move")
 	if err != nil {
 		return err
 	}
 	a.core.RefreshMatViews(true)
 	return c.JSON(http.StatusOK, okResp{struct {
-		ListIDs []int  `json:"list_ids"`
+		CustomerListIDs []int  `json:"customer_list_ids"`
 		Mode    string `json:"mode"`
-	}{ListIDs: listIDs, Mode: req.Mode}})
+	}{CustomerListIDs: customerListIDs, Mode: req.Mode}})
 }
 
 // MigratePersonalResourcesToOrganization handles the common copy/move flow
-// for private templates, draft campaigns, and media files. Lists retain their
+// for private templates, draft campaigns, and media files. CustomerLists retain their
 // existing endpoint for API compatibility, but use the same core migration
 // implementation and subscription-merge guarantees.
 func (a *App) MigratePersonalResourcesToOrganization(c echo.Context) error {
@@ -711,7 +740,10 @@ func (a *App) MigratePersonalResourcesToOrganization(c echo.Context) error {
 	if err := requireWritableWorkspace(target); err != nil {
 		return err
 	}
-	personal, err := a.workspaceAccessForOrganization(c, 0)
+	// Migrating a retained personal resource is allowed even when the
+	// workspaces:personal capability has been revoked, so users can move their
+	// hidden personal data into an organization.
+	personal, err := a.workspaceAccessForOrganizationWithPersonal(c, 0, false)
 	if err != nil {
 		return err
 	}

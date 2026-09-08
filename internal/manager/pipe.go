@@ -103,7 +103,7 @@ func (m *Manager) newPipe(c *models.Campaign) (*pipe, error) {
 	}
 
 	// Increment the waitgroup so that Wait() blocks immediately. This is necessary
-	// as a campaign pipe is created first and subscribers/messages under it are
+	// as a campaign pipe is created first and customers/messages under it are
 	// fetched asynchronolusly later. The messages each add to the wg and that
 	// count is used to determine the exhaustion/completion of all messages.
 	p.wg.Add(1)
@@ -122,29 +122,29 @@ func (m *Manager) newPipe(c *models.Campaign) (*pipe, error) {
 	return p, nil
 }
 
-// NextSubscribers processes the next batch of subscribers in a given campaign.
-// It returns a bool indicating whether any subscribers were processed
-// in the current batch or not. A false indicates that all subscribers
+// NextCustomers processes the next batch of customers in a given campaign.
+// It returns a bool indicating whether any customers were processed
+// in the current batch or not. A false indicates that all customers
 // have been processed, or that a campaign has been paused or cancelled.
-func (p *pipe) NextSubscribers() (bool, error) {
+func (p *pipe) NextCustomers() (bool, error) {
 	// A worker can discover an unavailable personal SMTP pool while this
-	// goroutine is fetching subscribers. Do not claim another batch after the
+	// goroutine is fetching customers. Do not claim another batch after the
 	// pipe has been stopped; cleanup will reset any already queued recipients.
 	if p.stopped.Load() {
 		return false, nil
 	}
 
-	// Fetch the next batch of subscribers from a 'running' campaign.
-	subs, err := p.m.store.NextSubscribers(p.camp.ID, p.m.cfg.BatchSize)
+	// Fetch the next batch of customers from a 'running' campaign.
+	subs, err := p.m.store.NextCustomers(p.camp.ID, p.m.cfg.BatchSize)
 	if errors.Is(err, ErrCampaignDeferred) {
 		p.Defer()
 		return false, nil
 	}
 	if err != nil {
-		return false, fmt.Errorf("error fetching campaign subscribers (%s): %v", p.camp.Name, err)
+		return false, fmt.Errorf("error fetching campaign customers (%s): %v", p.camp.Name, err)
 	}
 
-	// There are no subscribers from the query. Either all subscribers on the campaign
+	// There are no customers from the query. Either all customers on the campaign
 	// have been processed, or the campaign has changed from 'running' to 'paused' or 'cancelled'.
 	if len(subs) == 0 {
 		return false, nil
@@ -287,13 +287,18 @@ func (p *pipe) Stop(reason int32, withErrors bool) {
 // newMessage returns a campaign message while internally incrementing the
 // number of messages in the pipe wait group so that the status of every
 // message can be atomically tracked.
-func (p *pipe) newMessage(s models.CampaignSubscriber) (CampaignMessage, error) {
-	msg, err := p.m.NewCampaignMessage(p.camp, s.Subscriber)
+func (p *pipe) newMessage(s models.CampaignCustomer) (CampaignMessage, error) {
+	msg, err := p.m.NewCampaignMessage(p.camp, s.Customer)
 	if err != nil {
 		return msg, err
 	}
 
 	msg.pipe = p
+	msg.PoolContactID = s.PoolContactID
+	msg.PoolID = s.PoolID
+	msg.PoolSegmentID = s.PoolSegmentID
+	msg.PoolReplyMailboxID = s.ReplyMailboxID
+	msg.PoolReplyMailboxEmail = s.PoolReplyMailboxEmail
 	p.wg.Add(1)
 
 	return msg, nil
@@ -385,7 +390,7 @@ func (p *pipe) cleanup() {
 		return
 	}
 
-	// Campaign wasn't manually stopped and subscribers were naturally exhausted.
+	// Campaign wasn't manually stopped and customers were naturally exhausted.
 	// Fetch the up-to-date campaign status from the DB.
 	c, err := p.m.store.GetCampaign(p.camp.ID)
 	if err != nil {
@@ -393,7 +398,7 @@ func (p *pipe) cleanup() {
 		return
 	}
 
-	// If a running campaign has exhausted subscribers, it's finished.
+	// If a running campaign has exhausted customers, it's finished.
 	if c.Status == models.CampaignStatusRunning || c.Status == models.CampaignStatusScheduled || c.Status == models.CampaignStatusDeferred {
 		c.Status = models.CampaignStatusFinished
 		if err := p.m.store.UpdateCampaignStatus(p.camp.ID, models.CampaignStatusFinished); err != nil {

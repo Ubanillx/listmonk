@@ -324,17 +324,6 @@ func (o *Auth) Middleware(next echo.HandlerFunc) echo.HandlerFunc {
 		// It's an `Authorization` header request.
 		hdr := strings.TrimSpace(c.Request().Header.Get("Authorization"))
 
-		// If cookie is set, ignore BasicAuth. This is to preserve backwards compatibility
-		// in v3 -> v4 upgrade where the user browser sessions would still have old
-		// BasicAuth credentials, which no longer work in the new system which expects
-		// session cookies instead, which causes a redirect loop despite loggin in and session
-		// cookies being set.
-		//
-		// TODO: This should be removed in a future version.
-		if c := strings.TrimSpace(c.Request().Header.Get("Cookie")); strings.Contains(c, "session=") {
-			hdr = ""
-		}
-
 		if len(hdr) > 0 {
 			if strings.HasPrefix(hdr, "Bearer ") {
 				token := strings.TrimSpace(strings.TrimPrefix(hdr, "Bearer "))
@@ -516,7 +505,7 @@ func parseAuthHeader(h string) (string, string, error) {
 		// token api_key:access_token.
 		pair = strings.SplitN(strings.Trim(h[len(authToken):], " "), delim, 2)
 	} else if strings.HasPrefix(h, authBasic) {
-		// HTTP BasicAuth. This is supported for backwards compatibility.
+		// HTTP BasicAuth API credentials.
 		payload, err := base64.StdEncoding.DecodeString(string(strings.Trim(h[len(authBasic):], " ")))
 		if err != nil {
 			return "", "", echo.NewHTTPError(http.StatusBadRequest, "invalid Base64 value in Basic Authorization header")

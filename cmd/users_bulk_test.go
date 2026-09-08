@@ -14,10 +14,10 @@ func TestValidateBulkUserImportCreatesRegularUsers(t *testing.T) {
 			Password: "password1",
 			Email:    "editor1@example.com",
 			UserRole: "Editors",
-			ListRole: "3",
+			CustomerListRole: "3",
 		}},
 		[]auth.Role{{Base: auth.Base{ID: 2}, Name: null.NewString("Editors", true)}},
-		[]auth.ListRole{{Base: auth.Base{ID: 3}, Name: null.NewString("Newsletter editors", true)}},
+		[]auth.CustomerListRole{{Base: auth.Base{ID: 3}, Name: null.NewString("Newsletter editors", true)}},
 		nil,
 	)
 
@@ -32,7 +32,7 @@ func TestValidateBulkUserImportCreatesRegularUsers(t *testing.T) {
 	if user.Name != "editor1" || user.Status != auth.UserStatusEnabled || !user.PasswordLogin {
 		t.Fatalf("unexpected user defaults: %#v", user)
 	}
-	if user.UserRoleID != 2 || user.ListRoleID == nil || *user.ListRoleID != 3 {
+	if user.UserRoleID != 2 || user.CustomerListRoleID == nil || *user.CustomerListRoleID != 3 {
 		t.Fatalf("unexpected role assignment: %#v", user)
 	}
 }

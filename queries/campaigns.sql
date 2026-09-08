@@ -1,20 +1,20 @@
 -- campaigns
 -- name: create-campaign
--- This creates the campaign and inserts campaign_lists relationships.
+-- This creates the campaign and inserts campaign_customer_lists relationships.
 WITH requested_lists AS (
-    SELECT DISTINCT list_id FROM UNNEST($17::INT[]) AS requested(list_id)
+    SELECT DISTINCT customer_list_id FROM UNNEST($17::INT[]) AS requested(customer_list_id)
 ),
 scoped_lists AS (
     SELECT l.id, l.name
-    FROM lists l
-    JOIN requested_lists requested ON requested.list_id = l.id
+    FROM customer_lists l
+    JOIN requested_lists requested ON requested.customer_list_id = l.id
     WHERE l.organization_id IS NOT DISTINCT FROM $25::BIGINT
         AND l.owner_user_id = $26
         AND l.transfer_pending_at IS NULL
 ),
 valid_lists AS (
-    -- Draft campaigns may intentionally start without a sending list. Reject
-    -- only a non-empty request that contains a list outside the campaign
+    -- Draft campaigns may intentionally start without a sending customer_list. Reject
+    -- only a non-empty request that contains a customer_list outside the campaign
     -- owner's current workspace.
     SELECT COUNT(*) = (SELECT COUNT(*) FROM requested_lists) AS valid
     FROM scoped_lists
@@ -61,7 +61,7 @@ tpl AS (
 camp AS (
     INSERT INTO campaigns (uuid, type, name, subject, from_email, body, altbody,
         content_type, daily_send_limit, daily_resume_time, send_at, headers, attribs, tags, messenger, template_id, to_send,
-        max_subscriber_id, archive, archive_slug, archive_template_id, archive_meta, body_source, auto_track_links,
+        max_customer_id, archive, archive_slug, archive_template_id, archive_meta, body_source, auto_track_links,
         organization_id, owner_user_id, original_owner_user_id, visibility)
         SELECT $1, $2, $3, $4, $5,
             -- body
@@ -105,14 +105,14 @@ med AS (
         ON CONFLICT (campaign_id, media_id) DO NOTHING
 ),
 insLists AS (
-    INSERT INTO campaign_lists (campaign_id, list_id, list_name)
+    INSERT INTO campaign_customer_lists (campaign_id, customer_list_id, customer_list_name)
         SELECT (SELECT id FROM camp), id, name FROM scoped_lists
 )
 SELECT id FROM camp;
 
 -- name: query-campaigns
--- Here, 'lists' is returned as an aggregated JSON array from campaign_lists because
--- the list reference may have been deleted.
+-- Here, 'customer_lists' is returned as an aggregated JSON array from campaign_customer_lists because
+-- the customer_list reference may have been deleted.
 -- While the results are sliced using offset+limit,
 -- there's a COUNT() OVER() that still returns the total result count
 -- for pagination in the frontend, albeit being a field that'll repeat
@@ -123,7 +123,7 @@ SELECT  c.*,
             WHEN EXISTS (
                 SELECT 1
                 FROM campaign_recipients crx
-                JOIN subscribers sx ON sx.id = crx.subscriber_id
+                JOIN customers sx ON sx.id = crx.customer_id
                 WHERE crx.campaign_id = c.id
                     AND sx.organization_id IS NOT DISTINCT FROM c.organization_id
                     AND sx.owner_user_id = c.owner_user_id
@@ -131,7 +131,7 @@ SELECT  c.*,
             ) THEN (
                 SELECT COUNT(*)
                 FROM campaign_recipients cr
-                JOIN subscribers sr ON sr.id = cr.subscriber_id
+                JOIN customers sr ON sr.id = cr.customer_id
                 WHERE cr.campaign_id = c.id
                     AND cr.status = ANY('{pending,queued,deferred}'::campaign_recipient_status[])
                     AND sr.organization_id IS NOT DISTINCT FROM c.organization_id
@@ -143,20 +143,20 @@ SELECT  c.*,
         COUNT(*) OVER () AS total,
         (
             SELECT COALESCE(ARRAY_TO_JSON(ARRAY_AGG(l)), '[]') FROM (
-                SELECT COALESCE(campaign_lists.list_id, 0) AS id,
-                campaign_lists.list_name AS name
-                FROM campaign_lists WHERE campaign_lists.campaign_id = c.id
+                SELECT COALESCE(campaign_customer_lists.customer_list_id, 0) AS id,
+                campaign_customer_lists.customer_list_name AS name
+                FROM campaign_customer_lists WHERE campaign_customer_lists.campaign_id = c.id
         ) l
-    ) AS lists
+    ) AS customer_lists
 FROM campaigns c
 WHERE ($1 = 0 OR id = $1)
     AND (CARDINALITY($2::campaign_status[]) = 0 OR status = ANY($2))
     AND (CARDINALITY($3::VARCHAR(100)[]) = 0 OR $3 <@ tags)
     AND ($4 = '' OR TO_TSVECTOR(CONCAT(name, ' ', subject)) @@ TO_TSQUERY($4) OR CONCAT(c.name, ' ', c.subject) ILIKE $4)
-    -- Get all campaigns or filter by list IDs.
+    -- Get all campaigns or filter by customer_list IDs.
     AND (
         $5 OR EXISTS (
-            SELECT 1 FROM campaign_lists WHERE campaign_id = c.id AND list_id = ANY($6::INT[])
+            SELECT 1 FROM campaign_customer_lists WHERE campaign_id = c.id AND customer_list_id = ANY($6::INT[])
         )
     )
 ORDER BY %order% OFFSET $7 LIMIT (CASE WHEN $8 < 1 THEN NULL ELSE $8 END);
@@ -169,7 +169,7 @@ SELECT campaigns.*,
         WHEN EXISTS (
             SELECT 1
             FROM campaign_recipients crx
-            JOIN subscribers sx ON sx.id = crx.subscriber_id
+            JOIN customers sx ON sx.id = crx.customer_id
             WHERE crx.campaign_id = campaigns.id
                 AND sx.organization_id IS NOT DISTINCT FROM campaigns.organization_id
                 AND sx.owner_user_id = campaigns.owner_user_id
@@ -177,7 +177,7 @@ SELECT campaigns.*,
         ) THEN (
             SELECT COUNT(*)
             FROM campaign_recipients cr
-            JOIN subscribers sr ON sr.id = cr.subscriber_id
+            JOIN customers sr ON sr.id = cr.customer_id
             WHERE cr.campaign_id = campaigns.id
                 AND cr.status = ANY('{pending,queued,deferred}'::campaign_recipient_status[])
                 AND sr.organization_id IS NOT DISTINCT FROM campaigns.organization_id
@@ -246,13 +246,13 @@ WITH campaign AS (
     SELECT id, organization_id, owner_user_id
     FROM campaigns WHERE uuid = $1::UUID
 ),
-subscriber AS (
+customer AS (
     SELECT id, organization_id, owner_user_id
-    FROM subscribers
+    FROM customers
     WHERE id IN (
-        SELECT id FROM subscribers WHERE uuid = $2::UUID
+        SELECT id FROM customers WHERE uuid = $2::UUID
         UNION
-        SELECT subscriber_id FROM subscriber_uuid_aliases WHERE uuid = $2::UUID
+        SELECT customer_id FROM customer_uuid_aliases WHERE uuid = $2::UUID
     )
 ),
 snapshot_recipient AS (
@@ -260,33 +260,42 @@ snapshot_recipient AS (
     -- ownership can legitimately change after delivery (for example, when a
     -- departing member's resources are transferred), so do not bind this
     -- branch to the current owner or organization fields.
-    SELECT c.id AS campaign_id, s.id AS subscriber_id
+    SELECT c.id AS campaign_id, s.id AS customer_id
     FROM campaign c
-    JOIN subscriber s ON TRUE
+    JOIN customer s ON TRUE
     WHERE EXISTS (
         SELECT 1 FROM campaign_recipients cr
-        WHERE cr.campaign_id = c.id AND cr.subscriber_id = s.id
+        WHERE cr.campaign_id = c.id AND cr.customer_id = s.id
     )
 ),
 legacy_recipient AS (
     -- Old campaigns created before recipient snapshots existed can only use
-    -- the historical campaign-list relationship, which must remain in the
+    -- the historical campaign-customer_list relationship, which must remain in the
     -- same current owner/workspace boundary.
-    SELECT c.id AS campaign_id, s.id AS subscriber_id
+    SELECT c.id AS campaign_id, s.id AS customer_id
     FROM campaign c
-    JOIN subscriber s ON TRUE
+    JOIN customer s ON TRUE
     WHERE NOT EXISTS (SELECT 1 FROM campaign_recipients cr WHERE cr.campaign_id = c.id)
         AND s.organization_id IS NOT DISTINCT FROM c.organization_id
         AND s.owner_user_id IS NOT DISTINCT FROM c.owner_user_id
         AND EXISTS (
-            SELECT 1 FROM campaign_lists cl
-            JOIN subscriber_lists sl ON sl.list_id = cl.list_id
-            WHERE cl.campaign_id = c.id AND sl.subscriber_id = s.id
+            SELECT 1 FROM campaign_customer_lists cl
+            JOIN customer_list_memberships sl ON sl.customer_list_id = cl.customer_list_id
+            WHERE cl.campaign_id = c.id AND sl.customer_id = s.id
         )
 )
-SELECT campaign_id, subscriber_id FROM snapshot_recipient
+SELECT campaign_id, customer_id FROM snapshot_recipient
 UNION ALL
-SELECT campaign_id, subscriber_id FROM legacy_recipient
+SELECT campaign_id, customer_id FROM legacy_recipient
+LIMIT 1;
+
+-- name: get-public-pool-campaign-recipient
+SELECT cpr.campaign_id, cpr.pool_contact_id, cpr.organization_id, cpr.segment_id
+FROM campaigns c
+JOIN campaign_pool_recipients cpr ON cpr.campaign_id=c.id
+JOIN pool_contacts pc ON pc.id=cpr.pool_contact_id
+WHERE c.uuid=$1::UUID AND pc.uuid=$2::UUID
+  AND cpr.status IN ('pending','queued','sent')
 LIMIT 1;
 
 -- name: get-archived-campaigns
@@ -295,7 +304,7 @@ SELECT COUNT(*) OVER () AS total, campaigns.*,
         WHEN EXISTS (
             SELECT 1
             FROM campaign_recipients crx
-            JOIN subscribers sx ON sx.id = crx.subscriber_id
+            JOIN customers sx ON sx.id = crx.customer_id
             WHERE crx.campaign_id = campaigns.id
                 AND sx.organization_id IS NOT DISTINCT FROM campaigns.organization_id
                 AND sx.owner_user_id = campaigns.owner_user_id
@@ -303,7 +312,7 @@ SELECT COUNT(*) OVER () AS total, campaigns.*,
         ) THEN (
             SELECT COUNT(*)
             FROM campaign_recipients cr
-            JOIN subscribers sr ON sr.id = cr.subscriber_id
+            JOIN customers sr ON sr.id = cr.customer_id
             WHERE cr.campaign_id = campaigns.id
                 AND cr.status = ANY('{pending,queued,deferred}'::campaign_recipient_status[])
                 AND sr.organization_id IS NOT DISTINCT FROM campaigns.organization_id
@@ -358,13 +367,15 @@ SELECT COUNT(*) OVER () AS total, campaigns.*,
     ORDER by campaigns.created_at DESC OFFSET $1 LIMIT $2;
 
 -- name: get-campaign-stats
--- This query is used to lazy load campaign stats (views, counts, list of lists) given a list of campaign IDs.
+-- This query is used to lazy load campaign stats (views, counts, customer_list of customer_lists) given a customer_list of campaign IDs.
 -- The query returns results in the same order as the given campaign IDs, and for non-existent campaign IDs,
 -- the query still returns a row with 0 values. Thus, for lazy loading, the application simply iterate on the results in
--- the same order as the list of campaigns it would've queried and attach the results.
-WITH lists AS (
-    SELECT campaign_id, JSON_AGG(JSON_BUILD_OBJECT('id', list_id, 'name', list_name)) AS lists FROM campaign_lists
-    WHERE campaign_id = ANY($1) GROUP BY campaign_id
+-- the same order as the customer_list of campaigns it would've queried and attach the results.
+WITH customer_lists AS (
+    SELECT cl.campaign_id, JSON_AGG(JSON_BUILD_OBJECT('id', cl.customer_list_id, 'name', cl.customer_list_name)) FILTER (WHERE cl.pool_id IS NULL) AS customer_lists,
+        JSON_AGG(JSON_BUILD_OBJECT('pool_id', cl.pool_id, 'segment_id', cl.pool_segment_id, 'organization_id', cl.source_organization_id, 'reply_mailbox_id', cl.resolved_reply_mailbox_id, 'reply_mailbox_email', COALESCE(r.email, ''), 'name', cl.customer_list_name)) FILTER (WHERE cl.pool_id IS NOT NULL) AS customer_pools FROM campaign_customer_lists cl
+    LEFT JOIN reply_mailboxes r ON r.id = cl.resolved_reply_mailbox_id
+    WHERE cl.campaign_id = ANY($1) GROUP BY cl.campaign_id
 ),
 media AS (
     SELECT campaign_id, JSON_AGG(JSON_BUILD_OBJECT('id', media_id, 'filename', filename)) AS media FROM campaign_media
@@ -389,10 +400,11 @@ SELECT id as campaign_id,
     COALESCE(v.num, 0) AS views,
     COALESCE(c.num, 0) AS clicks,
     COALESCE(b.num, 0) AS bounces,
-    COALESCE(l.lists, '[]') AS lists,
+    COALESCE(l.customer_lists, '[]') AS customer_lists,
+    COALESCE(l.customer_pools, '[]') AS customer_pools,
     COALESCE(m.media, '[]') AS media
 FROM (SELECT id FROM UNNEST($1) AS id) x
-LEFT JOIN lists AS l ON (l.campaign_id = id)
+LEFT JOIN customer_lists AS l ON (l.campaign_id = id)
 LEFT JOIN media AS m ON (m.campaign_id = id)
 LEFT JOIN views AS v ON (v.campaign_id = id)
 LEFT JOIN clicks AS c ON (c.campaign_id = id)
@@ -406,7 +418,7 @@ CASE
     WHEN EXISTS (
         SELECT 1
         FROM campaign_recipients crx
-        JOIN subscribers sx ON sx.id = crx.subscriber_id
+        JOIN customers sx ON sx.id = crx.customer_id
         WHERE crx.campaign_id = campaigns.id
             AND sx.organization_id IS NOT DISTINCT FROM campaigns.organization_id
             AND sx.owner_user_id = campaigns.owner_user_id
@@ -414,7 +426,7 @@ CASE
     ) THEN (
         SELECT COUNT(*)
         FROM campaign_recipients cr
-        JOIN subscribers sr ON sr.id = cr.subscriber_id
+        JOIN customers sr ON sr.id = cr.customer_id
         WHERE cr.campaign_id = campaigns.id
             AND cr.status = ANY('{pending,queued,deferred}'::campaign_recipient_status[])
             AND sr.organization_id IS NOT DISTINCT FROM campaigns.organization_id
@@ -437,11 +449,17 @@ COALESCE((
 ), '{}') AS media_id,
 (
 	SELECT COALESCE(ARRAY_TO_JSON(ARRAY_AGG(l)), '[]') FROM (
-		SELECT COALESCE(campaign_lists.list_id, 0) AS id,
-        campaign_lists.list_name AS name
-        FROM campaign_lists WHERE campaign_lists.campaign_id = campaigns.id
+		SELECT COALESCE(campaign_customer_lists.customer_list_id, 0) AS id,
+        campaign_customer_lists.customer_list_name AS name
+        FROM campaign_customer_lists WHERE campaign_customer_lists.campaign_id = campaigns.id AND campaign_customer_lists.pool_id IS NULL
 	) l
-) AS lists
+) AS customer_lists
+,
+(
+		SELECT COALESCE(JSON_AGG(JSON_BUILD_OBJECT('pool_id', cl.pool_id, 'segment_id', cl.pool_segment_id, 'organization_id', cl.source_organization_id, 'reply_mailbox_id', cl.resolved_reply_mailbox_id, 'reply_mailbox_email', COALESCE(r.email, ''), 'name', cl.customer_list_name)), '[]')
+		FROM campaign_customer_lists cl LEFT JOIN reply_mailboxes r ON r.id = cl.resolved_reply_mailbox_id
+		WHERE cl.campaign_id = campaigns.id AND cl.pool_id IS NOT NULL
+) AS customer_pools
 FROM campaigns
 LEFT JOIN users owner_user ON owner_user.id = campaigns.owner_user_id
 LEFT JOIN templates ON (templates.id = (CASE WHEN $2=0 THEN campaigns.template_id ELSE $2 END))
@@ -453,7 +471,7 @@ SELECT id, status, to_send, sent,
         WHEN EXISTS (
             SELECT 1
             FROM campaign_recipients crx
-            JOIN subscribers sx ON sx.id = crx.subscriber_id
+            JOIN customers sx ON sx.id = crx.customer_id
             WHERE crx.campaign_id = campaigns.id
                 AND sx.organization_id IS NOT DISTINCT FROM campaigns.organization_id
                 AND sx.owner_user_id = campaigns.owner_user_id
@@ -461,7 +479,7 @@ SELECT id, status, to_send, sent,
         ) THEN (
             SELECT COUNT(*)
             FROM campaign_recipients cr
-            JOIN subscribers sr ON sr.id = cr.subscriber_id
+            JOIN customers sr ON sr.id = cr.customer_id
             WHERE cr.campaign_id = campaigns.id
                 AND cr.status = ANY('{pending,queued,deferred}'::campaign_recipient_status[])
                 AND sr.organization_id IS NOT DISTINCT FROM campaigns.organization_id
@@ -475,19 +493,19 @@ SELECT id, status, to_send, sent,
     updated_at
 FROM campaigns WHERE status=$1;
 
--- name: campaign-has-lists
--- Returns TRUE if the campaign $1 has any of the lists given in $2.
+-- name: campaign-has-customer-lists
+-- Returns TRUE if the campaign $1 has any of the customer_lists given in $2.
 SELECT EXISTS (
-    SELECT TRUE FROM campaign_lists WHERE campaign_id = $1 AND list_id = ANY($2::INT[])
+    SELECT TRUE FROM campaign_customer_lists WHERE campaign_id = $1 AND customer_list_id = ANY($2::INT[])
 );
 
 -- name: next-campaigns
 -- Retreives campaigns that are running (or scheduled and the time's up) and need
--- to be processed. It updates the to_send count and max_subscriber_id of the campaign,
--- that is, the total number of subscribers to be processed across all lists of a campaign.
+-- to be processed. It updates the to_send count and max_customer_id of the campaign,
+-- that is, the total number of customers to be processed across all customer_lists of a campaign.
 -- Thus, it has a sideaffect.
--- In addition, it finds the max_subscriber_id, the upper limit across all lists of
--- a campaign. This is used to fetch and slice subscribers for the campaign in next-campaign-subscribers.
+-- In addition, it finds the max_customer_id, the upper limit across all customer_lists of
+-- a campaign. This is used to fetch and slice customers for the campaign in next-campaign-customers.
 WITH camps AS (
     SELECT campaigns.*,
         COALESCE(owner_user.attribs, '{}'::jsonb) AS owner_user_attribs,
@@ -496,7 +514,7 @@ WITH camps AS (
             WHEN EXISTS (
                 SELECT 1
                 FROM campaign_recipients crx
-                JOIN subscribers sx ON sx.id = crx.subscriber_id
+                JOIN customers sx ON sx.id = crx.customer_id
                 WHERE crx.campaign_id = campaigns.id
                     AND sx.organization_id IS NOT DISTINCT FROM campaigns.organization_id
                     AND sx.owner_user_id = campaigns.owner_user_id
@@ -504,7 +522,7 @@ WITH camps AS (
             ) THEN (
                 SELECT COUNT(*)
                 FROM campaign_recipients cr
-                JOIN subscribers sr ON sr.id = cr.subscriber_id
+                JOIN customers sr ON sr.id = cr.customer_id
                 WHERE cr.campaign_id = campaigns.id
                     AND cr.status = ANY('{pending,queued,deferred}'::campaign_recipient_status[])
                     AND sr.organization_id IS NOT DISTINCT FROM campaigns.organization_id
@@ -636,10 +654,10 @@ WITH intval AS (
     SELECT CASE WHEN (EXTRACT (EPOCH FROM ($3::TIMESTAMP - $2::TIMESTAMP)) / 86400) >= 7 THEN 'day' ELSE 'hour' END
 ),
 uniqIDs AS (
-    SELECT DISTINCT ON(subscriber_id) subscriber_id, campaign_id, DATE_TRUNC((SELECT * FROM intval), created_at) AS "timestamp"
+    SELECT DISTINCT ON(customer_id) customer_id, campaign_id, DATE_TRUNC((SELECT * FROM intval), created_at) AS "timestamp"
     FROM %s
     WHERE campaign_id=ANY($1) AND created_at >= $2 AND created_at <= $3
-    ORDER BY subscriber_id, "timestamp"
+    ORDER BY customer_id, "timestamp"
 )
 SELECT COUNT(*) AS "count", campaign_id, "timestamp"
     FROM uniqIDs GROUP BY campaign_id, "timestamp" ORDER BY "timestamp" ASC;
@@ -667,7 +685,7 @@ SELECT campaign_id, COUNT(*) AS "count", DATE_TRUNC((SELECT * FROM intval), crea
 
 -- name: get-campaign-link-counts
 -- raw: true
--- %s = * or DISTINCT subscriber_id (prepared based on based on individual tracking=on/off). Prepared on boot.
+-- %s = * or DISTINCT customer_id (prepared based on based on individual tracking=on/off). Prepared on boot.
 SELECT links.id AS link_id, COUNT(%s) AS "count", url
     FROM link_clicks
     LEFT JOIN links ON (link_clicks.link_id = links.id)
@@ -686,7 +704,7 @@ WITH sent AS (
 views AS (
     SELECT
         COUNT(*) AS views_total,
-        COUNT(DISTINCT subscriber_id) AS unique_viewers
+        COUNT(DISTINCT customer_id) AS unique_viewers
     FROM campaign_views
     WHERE campaign_id = $1
       AND created_at >= $2
@@ -695,7 +713,7 @@ views AS (
 clicks AS (
     SELECT
         COUNT(*) AS clicks_total,
-        COUNT(DISTINCT subscriber_id) AS unique_clickers
+        COUNT(DISTINCT customer_id) AS unique_clickers
     FROM link_clicks
     WHERE campaign_id = $1
       AND created_at >= $2
@@ -731,7 +749,7 @@ views AS (
     SELECT
         campaign_id,
         COUNT(*) AS views_total,
-        COUNT(DISTINCT subscriber_id) AS unique_viewers
+        COUNT(DISTINCT customer_id) AS unique_viewers
     FROM campaign_views
     WHERE campaign_id = ANY($1)
       AND created_at >= $2
@@ -742,7 +760,7 @@ clicks AS (
     SELECT
         campaign_id,
         COUNT(*) AS clicks_total,
-        COUNT(DISTINCT subscriber_id) AS unique_clickers
+        COUNT(DISTINCT customer_id) AS unique_clickers
     FROM link_clicks
     WHERE campaign_id = ANY($1)
       AND created_at >= $2
@@ -770,7 +788,7 @@ SELECT
     links.id AS link_id,
     links.url,
     COUNT(*) AS total_clicks,
-    COUNT(DISTINCT link_clicks.subscriber_id) AS unique_clickers
+    COUNT(DISTINCT link_clicks.customer_id) AS unique_clickers
 FROM link_clicks
 LEFT JOIN links ON (link_clicks.link_id = links.id)
 WHERE link_clicks.campaign_id = $1
@@ -797,7 +815,7 @@ SELECT
     links.id AS link_id,
     links.url,
     COUNT(*) AS total_clicks,
-    COUNT(DISTINCT lc.subscriber_id) AS unique_clickers,
+    COUNT(DISTINCT lc.customer_id) AS unique_clickers,
     COALESCE(s.sent, 0) AS sent
 FROM link_clicks lc
 JOIN campaigns c ON c.id = lc.campaign_id
@@ -813,7 +831,7 @@ LIMIT 200;
 -- name: query-campaign-report-recipients
 WITH view_stats AS (
     SELECT
-        subscriber_id,
+        customer_id,
         COUNT(*) AS view_count,
         MIN(created_at) AS first_viewed_at,
         MAX(created_at) AS last_viewed_at
@@ -821,12 +839,12 @@ WITH view_stats AS (
     WHERE campaign_id = $1
       AND created_at >= $2
       AND created_at <= $3
-      AND subscriber_id IS NOT NULL
-    GROUP BY subscriber_id
+      AND customer_id IS NOT NULL
+    GROUP BY customer_id
 ),
 click_stats AS (
     SELECT
-        subscriber_id,
+        customer_id,
         COUNT(*) AS click_count,
         MIN(created_at) AS first_clicked_at,
         MAX(created_at) AS last_clicked_at
@@ -834,12 +852,12 @@ click_stats AS (
     WHERE campaign_id = $1
       AND created_at >= $2
       AND created_at <= $3
-      AND subscriber_id IS NOT NULL
-    GROUP BY subscriber_id
+      AND customer_id IS NOT NULL
+    GROUP BY customer_id
 ),
 last_click AS (
-    SELECT DISTINCT ON (lc.subscriber_id)
-        lc.subscriber_id,
+    SELECT DISTINCT ON (lc.customer_id)
+        lc.customer_id,
         lc.link_id AS last_link_id,
         links.url AS last_link_url,
         lc.created_at AS last_clicked_at
@@ -848,23 +866,23 @@ last_click AS (
     WHERE lc.campaign_id = $1
       AND lc.created_at >= $2
       AND lc.created_at <= $3
-      AND lc.subscriber_id IS NOT NULL
-    ORDER BY lc.subscriber_id, lc.created_at DESC, lc.id DESC
+      AND lc.customer_id IS NOT NULL
+    ORDER BY lc.customer_id, lc.created_at DESC, lc.id DESC
 ),
 bounce_stats AS (
     SELECT
-        subscriber_id,
+        customer_id,
         COUNT(*) AS bounce_count,
         MAX(created_at) AS last_bounced_at
     FROM bounces
     WHERE campaign_id = $1
       AND created_at >= $2
       AND created_at <= $3
-    GROUP BY subscriber_id
+    GROUP BY customer_id
 ),
 filtered AS (
     SELECT
-        s.id AS subscriber_id,
+        s.id AS customer_id,
         s.uuid,
         s.email,
         s.name,
@@ -887,11 +905,11 @@ filtered AS (
         ) AS last_engaged_at,
         COUNT(*) OVER() AS total
     FROM campaign_recipients cr
-    JOIN subscribers s ON s.id = cr.subscriber_id
-    LEFT JOIN view_stats vs ON vs.subscriber_id = cr.subscriber_id
-    LEFT JOIN click_stats cs ON cs.subscriber_id = cr.subscriber_id
-    LEFT JOIN last_click lc ON lc.subscriber_id = cr.subscriber_id
-    LEFT JOIN bounce_stats bs ON bs.subscriber_id = cr.subscriber_id
+    JOIN customers s ON s.id = cr.customer_id
+    LEFT JOIN view_stats vs ON vs.customer_id = cr.customer_id
+    LEFT JOIN click_stats cs ON cs.customer_id = cr.customer_id
+    LEFT JOIN last_click lc ON lc.customer_id = cr.customer_id
+    LEFT JOIN bounce_stats bs ON bs.customer_id = cr.customer_id
     WHERE cr.campaign_id = $1
       AND ($4 = '' OR s.email ILIKE $4 OR s.name ILIKE $4)
       AND (
@@ -914,7 +932,7 @@ filtered AS (
               SELECT 1
               FROM link_clicks lcf
               WHERE lcf.campaign_id = $1
-                AND lcf.subscriber_id = cr.subscriber_id
+                AND lcf.customer_id = cr.customer_id
                 AND lcf.created_at >= $2
                 AND lcf.created_at <= $3
                 AND lcf.link_id = $8
@@ -922,7 +940,7 @@ filtered AS (
       )
 )
 SELECT
-    subscriber_id,
+    customer_id,
     uuid,
     email,
     name,
@@ -947,7 +965,7 @@ OFFSET $9 LIMIT (CASE WHEN $10 < 1 THEN NULL ELSE $10 END);
 WITH view_stats AS (
     SELECT
         campaign_id,
-        subscriber_id,
+        customer_id,
         COUNT(*) AS view_count,
         MIN(created_at) AS first_viewed_at,
         MAX(created_at) AS last_viewed_at
@@ -955,13 +973,13 @@ WITH view_stats AS (
     WHERE campaign_id = ANY($1)
       AND created_at >= $2
       AND created_at <= $3
-      AND subscriber_id IS NOT NULL
-    GROUP BY campaign_id, subscriber_id
+      AND customer_id IS NOT NULL
+    GROUP BY campaign_id, customer_id
 ),
 click_stats AS (
     SELECT
         campaign_id,
-        subscriber_id,
+        customer_id,
         COUNT(*) AS click_count,
         MIN(created_at) AS first_clicked_at,
         MAX(created_at) AS last_clicked_at
@@ -969,13 +987,13 @@ click_stats AS (
     WHERE campaign_id = ANY($1)
       AND created_at >= $2
       AND created_at <= $3
-      AND subscriber_id IS NOT NULL
-    GROUP BY campaign_id, subscriber_id
+      AND customer_id IS NOT NULL
+    GROUP BY campaign_id, customer_id
 ),
 last_click AS (
-    SELECT DISTINCT ON (lc.campaign_id, lc.subscriber_id)
+    SELECT DISTINCT ON (lc.campaign_id, lc.customer_id)
         lc.campaign_id,
-        lc.subscriber_id,
+        lc.customer_id,
         lc.link_id AS last_link_id,
         links.url AS last_link_url,
         lc.created_at AS last_clicked_at
@@ -984,27 +1002,27 @@ last_click AS (
     WHERE lc.campaign_id = ANY($1)
       AND lc.created_at >= $2
       AND lc.created_at <= $3
-      AND lc.subscriber_id IS NOT NULL
-    ORDER BY lc.campaign_id, lc.subscriber_id, lc.created_at DESC, lc.id DESC
+      AND lc.customer_id IS NOT NULL
+    ORDER BY lc.campaign_id, lc.customer_id, lc.created_at DESC, lc.id DESC
 ),
 bounce_stats AS (
     SELECT
         campaign_id,
-        subscriber_id,
+        customer_id,
         COUNT(*) AS bounce_count,
         MAX(created_at) AS last_bounced_at
     FROM bounces
     WHERE campaign_id = ANY($1)
       AND created_at >= $2
       AND created_at <= $3
-    GROUP BY campaign_id, subscriber_id
+    GROUP BY campaign_id, customer_id
 ),
 filtered AS (
     SELECT
         c.id AS campaign_id,
         c.name AS campaign_name,
         c.subject AS campaign_subject,
-        s.id AS subscriber_id,
+        s.id AS customer_id,
         s.uuid,
         s.email,
         s.name,
@@ -1028,11 +1046,11 @@ filtered AS (
         COUNT(*) OVER() AS total
     FROM campaign_recipients cr
     JOIN campaigns c ON c.id = cr.campaign_id
-    JOIN subscribers s ON s.id = cr.subscriber_id
-    LEFT JOIN view_stats vs ON vs.campaign_id = cr.campaign_id AND vs.subscriber_id = cr.subscriber_id
-    LEFT JOIN click_stats cs ON cs.campaign_id = cr.campaign_id AND cs.subscriber_id = cr.subscriber_id
-    LEFT JOIN last_click lc ON lc.campaign_id = cr.campaign_id AND lc.subscriber_id = cr.subscriber_id
-    LEFT JOIN bounce_stats bs ON bs.campaign_id = cr.campaign_id AND bs.subscriber_id = cr.subscriber_id
+    JOIN customers s ON s.id = cr.customer_id
+    LEFT JOIN view_stats vs ON vs.campaign_id = cr.campaign_id AND vs.customer_id = cr.customer_id
+    LEFT JOIN click_stats cs ON cs.campaign_id = cr.campaign_id AND cs.customer_id = cr.customer_id
+    LEFT JOIN last_click lc ON lc.campaign_id = cr.campaign_id AND lc.customer_id = cr.customer_id
+    LEFT JOIN bounce_stats bs ON bs.campaign_id = cr.campaign_id AND bs.customer_id = cr.customer_id
     WHERE cr.campaign_id = ANY($1)
       AND ($4 = '' OR s.email ILIKE $4 OR s.name ILIKE $4)
       AND (
@@ -1055,7 +1073,7 @@ filtered AS (
               SELECT 1
               FROM link_clicks lcf
               WHERE lcf.campaign_id = cr.campaign_id
-                AND lcf.subscriber_id = cr.subscriber_id
+                AND lcf.customer_id = cr.customer_id
                 AND lcf.created_at >= $2
                 AND lcf.created_at <= $3
                 AND lcf.link_id = $8
@@ -1066,7 +1084,7 @@ SELECT
     campaign_id,
     campaign_name,
     campaign_subject,
-    subscriber_id,
+    customer_id,
     uuid,
     email,
     name,
@@ -1092,11 +1110,17 @@ WITH valid_recipients AS (
     SELECT cr.*
     FROM campaign_recipients cr
     JOIN campaigns c ON c.id = cr.campaign_id
-    JOIN subscribers s ON s.id = cr.subscriber_id
+    JOIN customers s ON s.id = cr.customer_id
     WHERE c.id = $1
         AND s.organization_id IS NOT DISTINCT FROM c.organization_id
         AND s.owner_user_id = c.owner_user_id
         AND s.transfer_pending_at IS NULL
+), valid_pool_recipients AS (
+    SELECT cpr.*
+    FROM campaign_pool_recipients cpr
+    JOIN campaigns c ON c.id = cpr.campaign_id
+    WHERE cpr.campaign_id = $1
+      AND cpr.organization_id IS NOT DISTINCT FROM c.organization_id
 )
 SELECT campaigns.id AS campaign_id,
     campaigns.type AS campaign_type,
@@ -1119,11 +1143,11 @@ SELECT campaigns.id AS campaign_id,
     COALESCE((
         SELECT COUNT(*) FROM valid_recipients
         WHERE status = 'queued'
-    ), 0) AS queued_count,
+    ) + COALESCE((SELECT COUNT(*) FROM valid_pool_recipients WHERE status='queued'), 0), 0) AS queued_count,
     COALESCE((
         SELECT COUNT(*) FROM valid_recipients
         WHERE status = ANY('{pending,queued,deferred}'::campaign_recipient_status[])
-    ), 0) AS unsent_count
+    ) + COALESCE((SELECT COUNT(*) FROM valid_pool_recipients WHERE status=ANY('{pending,queued,deferred}'::campaign_recipient_status[])), 0), 0) AS unsent_count
 FROM campaigns
 WHERE campaigns.id = $1;
 
@@ -1132,15 +1156,20 @@ SELECT EXISTS (
     SELECT 1
     FROM campaign_recipients cr
     JOIN campaigns c ON c.id = cr.campaign_id
-    JOIN subscribers s ON s.id = cr.subscriber_id
+    JOIN customers s ON s.id = cr.customer_id
     WHERE cr.campaign_id = $1
         AND s.organization_id IS NOT DISTINCT FROM c.organization_id
         AND s.owner_user_id = c.owner_user_id
         AND s.transfer_pending_at IS NULL
+)
+OR EXISTS (
+    SELECT 1 FROM campaign_pool_recipients cpr
+    JOIN campaigns c ON c.id=cpr.campaign_id
+    WHERE cpr.campaign_id=$1 AND cpr.organization_id IS NOT DISTINCT FROM c.organization_id
 );
 
 -- name: ensure-campaign-recipients
--- Build a recipient snapshot only from lists and subscribers that still
+-- Build a recipient snapshot only from customer_lists and customers that still
 -- belong to the campaign owner in the same personal or organization space.
 -- This is deliberately independent of API validation: resources can move
 -- after a campaign is saved, and stale relationship rows must never cross a
@@ -1155,19 +1184,19 @@ WITH campaign AS (
         AND (c.organization_id IS NULL OR organization.status = 'active')
 ),
 campLists AS (
-    SELECT l.id AS list_id, l.optin
-    FROM campaign_lists cl
+    SELECT l.id AS customer_list_id, l.optin
+    FROM campaign_customer_lists cl
     JOIN campaign c ON c.id = cl.campaign_id
-    JOIN lists l ON l.id = cl.list_id
+    JOIN customer_lists l ON l.id = cl.customer_list_id
     WHERE l.organization_id IS NOT DISTINCT FROM c.organization_id
         AND l.owner_user_id = c.owner_user_id
         AND l.transfer_pending_at IS NULL
 ),
 subs AS (
-    SELECT DISTINCT s.id AS subscriber_id
-    FROM subscriber_lists sl
-    JOIN campLists ON sl.list_id = campLists.list_id
-    JOIN subscribers s ON s.id = sl.subscriber_id
+    SELECT DISTINCT s.id AS customer_id
+    FROM customer_list_memberships sl
+    JOIN campLists ON sl.customer_list_id = campLists.customer_list_id
+    JOIN customers s ON s.id = sl.customer_id
     JOIN campaign c ON TRUE
     WHERE s.status != 'blocklisted'
     AND s.organization_id IS NOT DISTINCT FROM c.organization_id
@@ -1183,28 +1212,38 @@ subs AS (
         )
     )
 )
-INSERT INTO campaign_recipients (campaign_id, subscriber_id, status, email_snapshot, name_snapshot, attribs_snapshot)
+INSERT INTO campaign_recipients (campaign_id, customer_id, status, email_snapshot, name_snapshot, attribs_snapshot)
 SELECT $1, s.id, 'pending'::campaign_recipient_status, s.email, s.name, s.attribs
 FROM subs
-JOIN subscribers s ON s.id = subs.subscriber_id
-ON CONFLICT (campaign_id, subscriber_id) DO NOTHING;
+JOIN customers s ON s.id = subs.customer_id
+ON CONFLICT (campaign_id, customer_id) DO NOTHING;
 
 -- name: sync-campaign-progress
-WITH counts AS (
+WITH customer_counts AS (
     SELECT
         COUNT(*) AS total,
         COUNT(*) FILTER (WHERE cr.status = 'sent') AS sent
     FROM campaign_recipients cr
     JOIN campaigns c ON c.id = cr.campaign_id
-    JOIN subscribers s ON s.id = cr.subscriber_id
+    JOIN customers s ON s.id = cr.customer_id
     WHERE cr.campaign_id = $1
         AND s.organization_id IS NOT DISTINCT FROM c.organization_id
         AND s.owner_user_id = c.owner_user_id
         AND s.transfer_pending_at IS NULL
+), pool_counts AS (
+    SELECT
+        COUNT(*) AS total,
+        COUNT(*) FILTER (WHERE cpr.status = 'sent') AS sent
+    FROM campaign_pool_recipients cpr
+    JOIN campaigns c ON c.id = cpr.campaign_id
+    WHERE cpr.campaign_id = $1
+        AND cpr.organization_id IS NOT DISTINCT FROM c.organization_id
 )
 UPDATE campaigns
-SET to_send = COALESCE((SELECT total FROM counts), 0),
-    sent = COALESCE((SELECT sent FROM counts), 0),
+SET to_send = COALESCE((SELECT total FROM customer_counts), 0)
+        + COALESCE((SELECT total FROM pool_counts), 0),
+    sent = COALESCE((SELECT sent FROM customer_counts), 0)
+        + COALESCE((SELECT sent FROM pool_counts), 0),
     started_at = CASE WHEN started_at IS NULL THEN NOW() ELSE started_at END,
     updated_at = NOW()
 WHERE id = $1
@@ -1217,9 +1256,9 @@ SET email_snapshot = s.email,
     name_snapshot = s.name,
     attribs_snapshot = s.attribs,
     updated_at = NOW()
-FROM subscribers s
+FROM customers s
 WHERE cr.campaign_id = $1
-  AND cr.subscriber_id = s.id
+  AND cr.customer_id = s.id
   AND cr.email_snapshot IS NULL;
 
 -- name: set-campaign-running
@@ -1245,15 +1284,15 @@ SET status = 'deferred',
     updated_at = NOW()
 WHERE id = $1;
 
--- name: queue-campaign-subscribers
+-- name: queue-campaign-customers
 -- Recheck every snapshot recipient immediately before queuing. This protects
--- in-flight campaigns from a list/subscriber being moved or transferred after
+-- in-flight campaigns from a customer_list/customer being moved or transferred after
 -- the recipient snapshot was first created.
 WITH picked AS (
-    SELECT cr.subscriber_id
+    SELECT cr.customer_id
     FROM campaign_recipients cr
     JOIN campaigns c ON c.id = cr.campaign_id
-    JOIN subscribers s ON s.id = cr.subscriber_id
+    JOIN customers s ON s.id = cr.customer_id
     WHERE cr.campaign_id = $1
       AND cr.status = ANY($2::campaign_recipient_status[])
       AND c.status = 'running'
@@ -1272,9 +1311,9 @@ WITH picked AS (
       AND s.transfer_pending_at IS NULL
       AND EXISTS (
           SELECT 1
-          FROM campaign_lists cl
-          JOIN lists l ON l.id = cl.list_id
-          JOIN subscriber_lists sl ON sl.list_id = l.id AND sl.subscriber_id = s.id
+          FROM campaign_customer_lists cl
+          JOIN customer_lists l ON l.id = cl.customer_list_id
+          JOIN customer_list_memberships sl ON sl.customer_list_id = l.id AND sl.customer_id = s.id
           WHERE cl.campaign_id = c.id
               AND l.organization_id IS NOT DISTINCT FROM c.organization_id
               AND l.owner_user_id = c.owner_user_id
@@ -1289,7 +1328,7 @@ WITH picked AS (
                   )
               )
       )
-    ORDER BY subscriber_id
+    ORDER BY customer_id
     -- Lock only the recipient rows that are about to be marked queued.
     FOR UPDATE OF cr SKIP LOCKED
     LIMIT $3
@@ -1300,8 +1339,8 @@ u AS (
         updated_at = NOW()
     FROM picked
     WHERE cr.campaign_id = $1
-      AND cr.subscriber_id = picked.subscriber_id
-    RETURNING cr.subscriber_id, cr.status AS recipient_status, cr.sent_at
+      AND cr.customer_id = picked.customer_id
+    RETURNING cr.customer_id, cr.status AS recipient_status, cr.sent_at
 )
 SELECT s.id, s.uuid,
     COALESCE(cr.email_snapshot, s.email) AS email,
@@ -1312,22 +1351,62 @@ SELECT s.id, s.uuid,
     s.transfer_pending_at,
     u.recipient_status, u.sent_at
 FROM u
-JOIN subscribers s ON s.id = u.subscriber_id
-JOIN campaign_recipients cr ON cr.campaign_id = $1 AND cr.subscriber_id = s.id
+JOIN customers s ON s.id = u.customer_id
+JOIN campaign_recipients cr ON cr.campaign_id = $1 AND cr.customer_id = s.id
 ORDER BY s.id;
+
+-- name: queue-campaign-pool-customers
+-- Queue first-class public-pool recipients from their immutable send snapshot.
+-- Exclusions are rechecked immediately before delivery so a manual removal or
+-- reply/complaint cannot leak through an in-flight campaign.
+WITH picked AS (
+    SELECT cpr.pool_contact_id
+    FROM campaign_pool_recipients cpr
+    JOIN campaigns c ON c.id = cpr.campaign_id
+    JOIN pool_contacts pc ON pc.id = cpr.pool_contact_id
+    LEFT JOIN pool_segment_exclusions ex ON ex.pool_id=cpr.pool_id
+        AND ex.organization_id=cpr.organization_id
+        AND ex.contact_id=cpr.pool_contact_id
+        AND ex.restored_at IS NULL
+    WHERE cpr.campaign_id=$1
+      AND cpr.status = ANY($2::campaign_recipient_status[])
+      AND c.status='running'
+      AND pc.status='active'
+      AND ex.contact_id IS NULL
+      AND (cpr.organization_id IS NOT DISTINCT FROM c.organization_id)
+    ORDER BY cpr.pool_contact_id
+    FOR UPDATE OF cpr SKIP LOCKED
+    LIMIT $3
+), u AS (
+    UPDATE campaign_pool_recipients cpr
+    SET status='queued', updated_at=NOW()
+    FROM picked
+    WHERE cpr.campaign_id=$1 AND cpr.pool_contact_id=picked.pool_contact_id
+    RETURNING cpr.pool_contact_id, cpr.status AS recipient_status, cpr.reply_mailbox_id, cpr.pool_id, cpr.segment_id, cpr.email_snapshot, cpr.name_snapshot
+)
+SELECT 0 AS id, pc.uuid, COALESCE(u.email_snapshot,pc.email) AS email, COALESCE(u.name_snapshot,pc.name) AS name, pc.attribs, 'enabled' AS status,
+    pc.customer_code,
+    pc.created_at, pc.updated_at,
+    u.recipient_status, NULL::TIMESTAMPTZ AS sent_at,
+    u.pool_contact_id, u.pool_id, COALESCE(u.segment_id,0) AS pool_segment_id,
+    u.reply_mailbox_id AS pool_reply_mailbox_id,
+    COALESCE(rm.email,'') AS pool_reply_mailbox_email
+FROM u JOIN pool_contacts pc ON pc.id=u.pool_contact_id
+LEFT JOIN reply_mailboxes rm ON rm.id=u.reply_mailbox_id
+ORDER BY u.pool_contact_id;
 
 -- name: mark-campaign-recipient-sent
 UPDATE campaign_recipients
 SET status = 'sent',
     sent_at = NOW(),
     updated_at = NOW()
-WHERE campaign_id = $1 AND subscriber_id = $2;
+WHERE campaign_id = $1 AND customer_id = $2;
 
 -- name: mark-campaign-recipient-status
 UPDATE campaign_recipients
 SET status = $3::campaign_recipient_status,
     updated_at = NOW()
-WHERE campaign_id = $1 AND subscriber_id = $2;
+WHERE campaign_id = $1 AND customer_id = $2;
 
 -- name: reset-campaign-queued-recipients
 UPDATE campaign_recipients
@@ -1348,8 +1427,8 @@ ON CONFLICT (campaign_id, usage_date) DO UPDATE
 SET sent_count = campaign_daily_usage.sent_count + 1,
     updated_at = NOW();
 
--- name: get-campaign-list-ids
-SELECT COALESCE(list_id, 0) AS id FROM campaign_lists WHERE campaign_id = $1 ORDER BY id;
+-- name: get-campaign-customer-list-ids
+SELECT COALESCE(customer_list_id, 0) AS id FROM campaign_customer_lists WHERE campaign_id = $1 ORDER BY id;
 
 -- name: delete-campaign-views
 DELETE FROM campaign_views WHERE created_at < $1;
@@ -1357,12 +1436,12 @@ DELETE FROM campaign_views WHERE created_at < $1;
 -- name: delete-campaign-link-clicks
 DELETE FROM link_clicks WHERE created_at < $1;
 
--- name: get-one-campaign-subscriber
-SELECT s.* FROM subscribers s
+-- name: get-one-campaign-customer
+SELECT s.* FROM customers s
 JOIN campaigns c ON c.id = $1
-JOIN subscriber_lists sl ON sl.subscriber_id = s.id AND sl.status != 'unsubscribed'
-JOIN campaign_lists cl ON cl.list_id = sl.list_id AND cl.campaign_id = c.id
-JOIN lists l ON l.id = cl.list_id
+JOIN customer_list_memberships sl ON sl.customer_id = s.id AND sl.status != 'unsubscribed'
+JOIN campaign_customer_lists cl ON cl.customer_list_id = sl.customer_list_id AND cl.campaign_id = c.id
+JOIN customer_lists l ON l.id = cl.customer_list_id
 WHERE s.organization_id IS NOT DISTINCT FROM c.organization_id
     AND s.owner_user_id = c.owner_user_id
     AND s.transfer_pending_at IS NULL
@@ -1405,8 +1484,10 @@ WITH camp AS (
     WHERE id = $1 RETURNING id
 ),
 clists AS (
-    -- Reset list relationships
-    DELETE FROM campaign_lists WHERE campaign_id = $1 AND NOT(list_id = ANY($16))
+    -- Reset customer_list relationships
+    DELETE FROM campaign_customer_lists
+    WHERE campaign_id = $1
+      AND (pool_id IS NOT NULL OR NOT(customer_list_id = ANY($16)))
 ),
 med AS (
     DELETE FROM campaign_media WHERE campaign_id = $1
@@ -1428,21 +1509,21 @@ medi AS (
             ))
         ON CONFLICT (campaign_id, media_id) DO NOTHING
 )
-INSERT INTO campaign_lists (campaign_id, list_id, list_name)
+INSERT INTO campaign_customer_lists (campaign_id, customer_list_id, customer_list_name)
     (SELECT $1 AS campaign_id, l.id, l.name
-    FROM lists l
+    FROM customer_lists l
     JOIN campaigns c ON c.id = $1
     WHERE l.id = ANY($16::INT[])
         AND l.organization_id IS NOT DISTINCT FROM c.organization_id
         AND l.owner_user_id = c.owner_user_id
         AND l.transfer_pending_at IS NULL)
-    ON CONFLICT (campaign_id, list_id) DO UPDATE SET list_name = EXCLUDED.list_name;
+    ON CONFLICT (campaign_id, customer_list_id) DO UPDATE SET customer_list_name = EXCLUDED.customer_list_name;
 
 -- name: update-campaign-counts
 UPDATE campaigns SET
     to_send=(CASE WHEN $2 != 0 THEN $2 ELSE to_send END),
     sent=sent+$3,
-    last_subscriber_id=(CASE WHEN $4 > 0 THEN $4 ELSE last_subscriber_id END),
+    last_customer_id=(CASE WHEN $4 > 0 THEN $4 ELSE last_customer_id END),
     updated_at=NOW()
 WHERE id=$1;
 
@@ -1483,64 +1564,64 @@ WHERE (
         ELSE $2 = '' OR TO_TSVECTOR(CONCAT(name, ' ', subject)) @@ TO_TSQUERY($2) OR CONCAT(c.name, ' ', c.subject) ILIKE $2
     END
 )
--- Get all campaigns or filter by permitted list IDs.
+-- Get all campaigns or filter by permitted customer_list IDs.
 AND (
     $3 OR EXISTS (
-        SELECT 1 FROM campaign_lists WHERE campaign_id = c.id AND list_id = ANY($4::INT[])
+        SELECT 1 FROM campaign_customer_lists WHERE campaign_id = c.id AND customer_list_id = ANY($4::INT[])
     )
 );
 
 -- name: register-campaign-view
 -- When individual tracking is enabled, only record a view for a recipient
 -- relation belonging to this campaign. Without individual tracking, retain
--- the aggregate campaign-level event with a NULL subscriber ID. The fallback
+-- the aggregate campaign-level event with a NULL customer ID. The fallback
 -- covers historical campaigns created before recipient snapshots existed.
 WITH campaign AS (
     SELECT id, organization_id, owner_user_id
     FROM campaigns WHERE uuid = $1::UUID
 ),
-subscriber AS (
+customer AS (
     SELECT id, organization_id, owner_user_id
-    FROM subscribers
+    FROM customers
     WHERE id IN (
-        SELECT id FROM subscribers WHERE uuid = NULLIF($2::TEXT, '')::UUID
+        SELECT id FROM customers WHERE uuid = NULLIF($2::TEXT, '')::UUID
         UNION
-        SELECT subscriber_id FROM subscriber_uuid_aliases WHERE uuid = NULLIF($2::TEXT, '')::UUID
+        SELECT customer_id FROM customer_uuid_aliases WHERE uuid = NULLIF($2::TEXT, '')::UUID
     )
 ),
 snapshot_recipient AS (
-    SELECT c.id AS campaign_id, s.id AS subscriber_id
+    SELECT c.id AS campaign_id, s.id AS customer_id
     FROM campaign c
-    JOIN subscriber s ON TRUE
+    JOIN customer s ON TRUE
     WHERE EXISTS (
         SELECT 1 FROM campaign_recipients cr
-        WHERE cr.campaign_id = c.id AND cr.subscriber_id = s.id
+        WHERE cr.campaign_id = c.id AND cr.customer_id = s.id
     )
 ),
 legacy_recipient AS (
-    SELECT c.id AS campaign_id, s.id AS subscriber_id
+    SELECT c.id AS campaign_id, s.id AS customer_id
     FROM campaign c
-    JOIN subscriber s ON TRUE
+    JOIN customer s ON TRUE
     WHERE NOT EXISTS (SELECT 1 FROM campaign_recipients cr WHERE cr.campaign_id = c.id)
         AND s.organization_id IS NOT DISTINCT FROM c.organization_id
         AND s.owner_user_id IS NOT DISTINCT FROM c.owner_user_id
         AND EXISTS (
-            SELECT 1 FROM campaign_lists cl
-            JOIN subscriber_lists sl ON sl.list_id = cl.list_id
-            WHERE cl.campaign_id = c.id AND sl.subscriber_id = s.id
+            SELECT 1 FROM campaign_customer_lists cl
+            JOIN customer_list_memberships sl ON sl.customer_list_id = cl.customer_list_id
+            WHERE cl.campaign_id = c.id AND sl.customer_id = s.id
         )
 ),
 recipient AS (
-    SELECT campaign_id, subscriber_id FROM snapshot_recipient
+    SELECT campaign_id, customer_id FROM snapshot_recipient
     UNION ALL
-    SELECT campaign_id, subscriber_id FROM legacy_recipient
+    SELECT campaign_id, customer_id FROM legacy_recipient
 ),
 view AS (
     SELECT c.id AS campaign_id,
-        CASE WHEN $2::TEXT = '' THEN NULL ELSE r.subscriber_id END AS subscriber_id
+        CASE WHEN $2::TEXT = '' THEN NULL ELSE r.customer_id END AS customer_id
     FROM campaign c
     LEFT JOIN recipient r ON r.campaign_id = c.id
-    WHERE $2::TEXT = '' OR r.subscriber_id IS NOT NULL
+    WHERE $2::TEXT = '' OR r.customer_id IS NOT NULL
 )
-INSERT INTO campaign_views (campaign_id, subscriber_id)
-    SELECT campaign_id, subscriber_id FROM view;
+INSERT INTO campaign_views (campaign_id, customer_id)
+    SELECT campaign_id, customer_id FROM view;

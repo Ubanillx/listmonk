@@ -79,8 +79,8 @@ func (a *App) GetBounces(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{out})
 }
 
-// GetSubscriberBounces retrieves a subscriber's bounce records.
-func (a *App) GetSubscriberBounces(c echo.Context) error {
+// GetCustomerBounces retrieves a customer's bounce records.
+func (a *App) GetCustomerBounces(c echo.Context) error {
 	access, err := a.workspaceAccess(c)
 	if err != nil {
 		return err
@@ -90,7 +90,7 @@ func (a *App) GetSubscriberBounces(c echo.Context) error {
 	}
 	// Query and fetch bounces from the DB.
 	subID := getID(c)
-	if _, err := a.requireReadableWorkspaceSubscriber(c, access, subID); err != nil {
+	if _, err := a.requireReadableWorkspaceCustomer(c, access, subID); err != nil {
 		return err
 	}
 	out, _, err := a.core.QueryWorkspaceBounces(access, 0, 0, subID, "", "", "", 0, 1000)
@@ -121,7 +121,7 @@ func (a *App) redactWorkspaceBounceSensitiveFields(access models.WorkspaceAccess
 		return
 	}
 	bounce.Email = ""
-	bounce.SubscriberUUID = ""
+	bounce.CustomerUUID = ""
 	bounce.Meta = nil
 }
 
@@ -135,7 +135,7 @@ func (a *App) requireBounceReadPermission(c echo.Context, access models.Workspac
 	return requireLegacyPermission(auth.GetUser(c), auth.PermBouncesGet)
 }
 
-// DeleteBounces handles bounce deletion of a list.
+// DeleteBounces handles bounce deletion of a customer_list.
 func (a *App) DeleteBounces(c echo.Context) error {
 	access, err := a.workspaceAccess(c)
 	if err != nil {
@@ -192,8 +192,8 @@ func (a *App) DeleteBounce(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{true})
 }
 
-// BlocklistBouncedSubscribers handles blocklisting of all bounced subscribers.
-func (a *App) BlocklistBouncedSubscribers(c echo.Context) error {
+// BlocklistBouncedCustomers handles blocklisting of all bounced customers.
+func (a *App) BlocklistBouncedCustomers(c echo.Context) error {
 	access, err := a.workspaceAccess(c)
 	if err != nil {
 		return err
@@ -204,7 +204,7 @@ func (a *App) BlocklistBouncedSubscribers(c echo.Context) error {
 	if err := requireLegacyPermission(auth.GetUser(c), auth.PermBouncesManage); err != nil {
 		return err
 	}
-	if err := a.core.BlocklistWorkspaceBouncedSubscribers(access); err != nil {
+	if err := a.core.BlocklistWorkspaceBouncedCustomers(access); err != nil {
 		return err
 	}
 
@@ -333,12 +333,12 @@ func (a *App) BounceWebhook(c echo.Context) error {
 }
 
 func (a *App) validateBounceFields(b models.Bounce) (models.Bounce, error) {
-	if b.Email == "" && b.SubscriberUUID == "" {
-		return b, echo.NewHTTPError(http.StatusBadRequest, a.i18n.Ts("globals.messages.invalidFields", "name", "email / subscriber_uuid"))
+	if b.Email == "" && b.CustomerUUID == "" {
+		return b, echo.NewHTTPError(http.StatusBadRequest, a.i18n.Ts("globals.messages.invalidFields", "name", "email / customer_uuid"))
 	}
 
-	if b.SubscriberUUID != "" && !reUUID.MatchString(b.SubscriberUUID) {
-		return b, echo.NewHTTPError(http.StatusBadRequest, a.i18n.Ts("globals.messages.invalidFields", "name", "subscriber_uuid"))
+	if b.CustomerUUID != "" && !reUUID.MatchString(b.CustomerUUID) {
+		return b, echo.NewHTTPError(http.StatusBadRequest, a.i18n.Ts("globals.messages.invalidFields", "name", "customer_uuid"))
 	}
 
 	if b.Email != "" {

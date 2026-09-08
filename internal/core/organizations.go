@@ -53,7 +53,7 @@ func (c *Core) GetUserOrganizations(userID int) ([]models.Organization, error) {
 	return out, nil
 }
 
-// GetOrganizations lists organizations for platform administration.
+// GetOrganizations customer_lists organizations for platform administration.
 func (c *Core) GetOrganizations(includeArchived bool) ([]models.Organization, error) {
 	out := []models.Organization{}
 	err := c.db.Select(&out, `
@@ -577,7 +577,7 @@ func (c *Core) RemoveOrganizationMember(orgID, userID, removedBy int) ([]models.
 		return nil, err
 	}
 
-	for _, table := range []string{"lists", "subscribers", "templates", "media"} {
+	for _, table := range []string{"customer_lists", "customers", "templates", "media"} {
 		stmt := fmt.Sprintf(`
 			UPDATE %s SET owner_user_id = NULL,
 				original_owner_user_id = COALESCE(original_owner_user_id, owner_user_id),
@@ -628,7 +628,7 @@ func (c *Core) RemoveOrganizationMember(orgID, userID, removedBy int) ([]models.
 }
 
 // TransferPendingOrganizationResources gives all pending resources from a
-// former member to an active member. Subscriber conflicts are merged by scoped
+// former member to an active member. Customer conflicts are merged by scoped
 // email, preserving subscriptions and historical analytics before deletion.
 func (c *Core) TransferPendingOrganizationResources(orgID, targetUserID int) error {
 	tx, err := c.db.BeginTxx(context.Background(), nil)
@@ -655,9 +655,9 @@ func (c *Core) TransferPendingOrganizationResources(orgID, targetUserID int) err
 		return c.organizationDBErr("checking transfer target", err)
 	}
 
-	// Transfer lists first so merged subscriber subscriptions point at target
-	// owned lists when a recipient record is merged below.
-	for _, table := range []string{"lists", "campaigns", "media"} {
+	// Transfer customer_lists first so merged customer subscriptions point at target
+	// owned customer_lists when a recipient record is merged below.
+	for _, table := range []string{"customer_lists", "campaigns", "media"} {
 		stmt := fmt.Sprintf(`
 			UPDATE %s SET owner_user_id = $2, transfer_pending_at = NULL, updated_at = NOW()
 			WHERE organization_id = $1 AND owner_user_id IS NULL AND transfer_pending_at IS NOT NULL`, table)
@@ -676,33 +676,33 @@ func (c *Core) TransferPendingOrganizationResources(orgID, targetUserID int) err
 		return c.organizationDBErr("transferring organization templates", err)
 	}
 
-	type pendingSubscriber struct {
+	type pendingCustomer struct {
 		ID    int    `db:"id"`
 		Email string `db:"email"`
 	}
-	var pending []pendingSubscriber
+	var pending []pendingCustomer
 	if err := tx.Select(&pending, `
-		SELECT id, email FROM subscribers
+		SELECT id, email FROM customers
 		WHERE organization_id = $1 AND owner_user_id IS NULL AND transfer_pending_at IS NOT NULL
 		FOR UPDATE`, orgID); err != nil {
-		return c.organizationDBErr("fetching pending subscribers", err)
+		return c.organizationDBErr("fetching pending customers", err)
 	}
 	for _, source := range pending {
 		var targetID int
 		err := tx.Get(&targetID, `
-			SELECT id FROM subscribers
+			SELECT id FROM customers
 			WHERE organization_id = $1 AND owner_user_id = $2 AND LOWER(email) = LOWER($3)
 			LIMIT 1 FOR UPDATE`, orgID, targetUserID, source.Email)
 		if errors.Is(err, sql.ErrNoRows) {
-			if _, err := tx.Exec(`UPDATE subscribers SET owner_user_id = $2, transfer_pending_at = NULL, updated_at = NOW() WHERE id = $1`, source.ID, targetUserID); err != nil {
-				return c.organizationDBErr("transferring subscriber", err)
+			if _, err := tx.Exec(`UPDATE customers SET owner_user_id = $2, transfer_pending_at = NULL, updated_at = NOW() WHERE id = $1`, source.ID, targetUserID); err != nil {
+				return c.organizationDBErr("transferring customer", err)
 			}
 			continue
 		}
 		if err != nil {
-			return c.organizationDBErr("checking subscriber transfer conflict", err)
+			return c.organizationDBErr("checking customer transfer conflict", err)
 		}
-		if err := c.mergeSubscriber(tx, source.ID, targetID); err != nil {
+		if err := c.mergeCustomer(tx, source.ID, targetID); err != nil {
 			return err
 		}
 	}
@@ -716,7 +716,7 @@ func (c *Core) TransferPendingOrganizationResources(orgID, targetUserID int) err
 // TransferArchivedOrganizationResourcesToPersonal completes the archive
 // lifecycle by moving every remaining pending resource into one active
 // member's personal workspace. It intentionally preserves data relations
-// (lists, subscribers, campaigns, templates, media, and CID associations),
+// (customer_lists, customers, campaigns, templates, media, and CID associations),
 // while converting organization-only visibility to private. Global templates
 // detached during archive remain globally shared and are not included here.
 func (c *Core) TransferArchivedOrganizationResourcesToPersonal(orgID, targetUserID int) error {
@@ -749,14 +749,14 @@ func (c *Core) TransferArchivedOrganizationResourcesToPersonal(orgID, targetUser
 		return ErrNotOrganizationMember
 	}
 
-	// Move lists before subscribers. If a scoped email collides with an
-	// existing personal subscriber, the merge below then points every retained
-	// subscription at the already moved list IDs.
+	// Move customer_lists before customers. If a scoped email collides with an
+	// existing personal customer, the merge below then points every retained
+	// subscription at the already moved customer_list IDs.
 	if _, err := tx.Exec(`
-		UPDATE lists SET organization_id = NULL, owner_user_id = $2,
+		UPDATE customer_lists SET organization_id = NULL, owner_user_id = $2,
 			visibility = 'private', transfer_pending_at = NULL, updated_at = NOW()
 		WHERE organization_id = $1 AND transfer_pending_at IS NOT NULL`, orgID, targetUserID); err != nil {
-		return c.organizationDBErr("moving archived organization lists", err)
+		return c.organizationDBErr("moving archived organization customer_lists", err)
 	}
 	if _, err := tx.Exec(`
 		UPDATE campaigns SET organization_id = NULL, owner_user_id = $2,
@@ -779,17 +779,17 @@ func (c *Core) TransferArchivedOrganizationResourcesToPersonal(orgID, targetUser
 		return c.organizationDBErr("moving archived organization media", err)
 	}
 
-	type pendingSubscriber struct {
+	type pendingCustomer struct {
 		ID    int    `db:"id"`
 		Email string `db:"email"`
 	}
-	var pending []pendingSubscriber
+	var pending []pendingCustomer
 	if err := tx.Select(&pending, `
-		SELECT id, email FROM subscribers
+		SELECT id, email FROM customers
 		WHERE organization_id = $1 AND transfer_pending_at IS NOT NULL
 		ORDER BY id
 		FOR UPDATE`, orgID); err != nil {
-		return c.organizationDBErr("fetching archived organization subscribers", err)
+		return c.organizationDBErr("fetching archived organization customers", err)
 	}
 
 	// A single organization can contain the same address under several owners.
@@ -803,29 +803,29 @@ func (c *Core) TransferArchivedOrganizationResourcesToPersonal(orgID, targetUser
 		targetID, ok := targetsByEmail[email]
 		if !ok {
 			err := tx.Get(&targetID, `
-				SELECT id FROM subscribers
+				SELECT id FROM customers
 				WHERE organization_id IS NULL AND owner_user_id = $1
 					AND LOWER(email) = LOWER($2)
 				LIMIT 1 FOR UPDATE`, targetUserID, source.Email)
 			if err != nil && !errors.Is(err, sql.ErrNoRows) {
-				return c.organizationDBErr("checking archived subscriber transfer conflict", err)
+				return c.organizationDBErr("checking archived customer transfer conflict", err)
 			}
 			if errors.Is(err, sql.ErrNoRows) {
 				if _, err := tx.Exec(`
-					UPDATE subscribers SET organization_id = NULL, owner_user_id = $2,
+					UPDATE customers SET organization_id = NULL, owner_user_id = $2,
 						visibility = 'private', transfer_pending_at = NULL, updated_at = NOW()
 					WHERE id = $1`, source.ID, targetUserID); err != nil {
-					return c.organizationDBErr("moving archived organization subscriber", err)
+					return c.organizationDBErr("moving archived organization customer", err)
 				}
 				targetID = source.ID
-			} else if err := c.mergeSubscriber(tx, source.ID, targetID); err != nil {
+			} else if err := c.mergeCustomer(tx, source.ID, targetID); err != nil {
 				return err
 			}
 			targetsByEmail[email] = targetID
 			continue
 		}
 		if source.ID != targetID {
-			if err := c.mergeSubscriber(tx, source.ID, targetID); err != nil {
+			if err := c.mergeCustomer(tx, source.ID, targetID); err != nil {
 				return err
 			}
 		}
@@ -1066,7 +1066,7 @@ func (c *Core) ArchiveOrganization(orgID int) ([]models.Campaign, error) {
 	// Members can no longer select the workspace; platform administration later
 	// moves this coherent resource set to one member's personal workspace
 	// before the organization metadata can be permanently deleted.
-	for _, table := range []string{"lists", "subscribers", "templates", "media"} {
+	for _, table := range []string{"customer_lists", "customers", "templates", "media"} {
 		stmt := fmt.Sprintf(`
 			UPDATE %s SET owner_user_id = NULL,
 				original_owner_user_id = COALESCE(original_owner_user_id, owner_user_id),
@@ -1131,7 +1131,7 @@ func (c *Core) PurgeArchivedOrganization(orgID int) error {
 		return echo.NewHTTPError(http.StatusConflict, "archive the organization before permanently deleting it")
 	}
 
-	for _, table := range []string{"lists", "subscribers", "templates", "campaigns", "media"} {
+	for _, table := range []string{"customer_lists", "customers", "templates", "campaigns", "media"} {
 		var count int
 		if err := tx.Get(&count, fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE organization_id = $1", table), orgID); err != nil {
 			return c.organizationDBErr("checking organization resources", err)
@@ -1164,7 +1164,7 @@ func (c *Core) ClaimUnownedResources(userID int) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid resource owner")
 	}
 
-	for _, table := range []string{"lists", "subscribers", "templates", "campaigns", "media"} {
+	for _, table := range []string{"customer_lists", "customers", "templates", "campaigns", "media"} {
 		stmt := fmt.Sprintf(`
 			UPDATE %s
 			SET owner_user_id = $1, original_owner_user_id = $1
@@ -1219,7 +1219,7 @@ func (c *Core) lockActiveOrganization(tx *sqlx.Tx, orgID int) error {
 	return nil
 }
 
-func (c *Core) mergeSubscriber(tx *sqlx.Tx, sourceID, targetID int) error {
+func (c *Core) mergeCustomer(tx *sqlx.Tx, sourceID, targetID int) error {
 	if sourceID == targetID {
 		return nil
 	}
@@ -1227,73 +1227,73 @@ func (c *Core) mergeSubscriber(tx *sqlx.Tx, sourceID, targetID int) error {
 	// Store the source UUID and any earlier aliases before deleting the source
 	// record so historical message, click, view, and unsubscribe links resolve.
 	if _, err := tx.Exec(`
-		UPDATE subscriber_uuid_aliases
-		SET subscriber_id = $2
-		WHERE subscriber_id = $1`, sourceID, targetID); err != nil {
-		return c.organizationDBErr("preserving subscriber UUID aliases", err)
+		UPDATE customer_uuid_aliases
+		SET customer_id = $2
+		WHERE customer_id = $1`, sourceID, targetID); err != nil {
+		return c.organizationDBErr("preserving customer UUID aliases", err)
 	}
 	if _, err := tx.Exec(`
-		INSERT INTO subscriber_uuid_aliases (uuid, subscriber_id)
-		SELECT uuid, $2 FROM subscribers WHERE id = $1
-		ON CONFLICT (uuid) DO UPDATE SET subscriber_id = EXCLUDED.subscriber_id`, sourceID, targetID); err != nil {
-		return c.organizationDBErr("preserving subscriber UUID alias", err)
+		INSERT INTO customer_uuid_aliases (uuid, customer_id)
+		SELECT uuid, $2 FROM customers WHERE id = $1
+		ON CONFLICT (uuid) DO UPDATE SET customer_id = EXCLUDED.customer_id`, sourceID, targetID); err != nil {
+		return c.organizationDBErr("preserving customer UUID alias", err)
 	}
-	if err := c.mergeSubscriberProfile(tx, sourceID, targetID); err != nil {
+	if err := c.mergeCustomerProfile(tx, sourceID, targetID); err != nil {
 		return err
 	}
 	// Preserve the strongest subscription status when the same pair exists.
 	if _, err := tx.Exec(`
-		INSERT INTO subscriber_lists (subscriber_id, list_id, status, meta, created_at, updated_at)
-		SELECT $2, list_id, status, meta, created_at, updated_at
-		FROM subscriber_lists WHERE subscriber_id = $1
-		ON CONFLICT (subscriber_id, list_id) DO UPDATE SET
+		INSERT INTO customer_list_memberships (customer_id, customer_list_id, status, meta, created_at, updated_at)
+		SELECT $2, customer_list_id, status, meta, created_at, updated_at
+		FROM customer_list_memberships WHERE customer_id = $1
+		ON CONFLICT (customer_id, customer_list_id) DO UPDATE SET
 			status = CASE
-				WHEN subscriber_lists.status = 'confirmed' OR EXCLUDED.status = 'confirmed' THEN 'confirmed'::subscription_status
-				WHEN subscriber_lists.status = 'unconfirmed' OR EXCLUDED.status = 'unconfirmed' THEN 'unconfirmed'::subscription_status
+				WHEN customer_list_memberships.status = 'confirmed' OR EXCLUDED.status = 'confirmed' THEN 'confirmed'::subscription_status
+				WHEN customer_list_memberships.status = 'unconfirmed' OR EXCLUDED.status = 'unconfirmed' THEN 'unconfirmed'::subscription_status
 				ELSE 'unsubscribed'::subscription_status END,
-			meta = subscriber_lists.meta || EXCLUDED.meta,
+			meta = customer_list_memberships.meta || EXCLUDED.meta,
 			updated_at = NOW()`, sourceID, targetID); err != nil {
-		return c.organizationDBErr("merging subscriber lists", err)
+		return c.organizationDBErr("merging customer customer_lists", err)
 	}
 	if _, err := tx.Exec(`
 		DELETE FROM campaign_recipients source
 		USING campaign_recipients target
-		WHERE source.subscriber_id = $1 AND target.subscriber_id = $2
+		WHERE source.customer_id = $1 AND target.customer_id = $2
 			AND source.campaign_id = target.campaign_id`, sourceID, targetID); err != nil {
 		return c.organizationDBErr("merging campaign recipients", err)
 	}
 	for _, table := range []string{"campaign_recipients", "campaign_views", "link_clicks", "bounces"} {
-		stmt := fmt.Sprintf(`UPDATE %s SET subscriber_id = $2 WHERE subscriber_id = $1`, table)
+		stmt := fmt.Sprintf(`UPDATE %s SET customer_id = $2 WHERE customer_id = $1`, table)
 		if _, err := tx.Exec(stmt, sourceID, targetID); err != nil {
-			return c.organizationDBErr("merging subscriber history", err)
+			return c.organizationDBErr("merging customer history", err)
 		}
 	}
-	if _, err := tx.Exec(`DELETE FROM subscribers WHERE id = $1`, sourceID); err != nil {
-		return c.organizationDBErr("removing merged subscriber", err)
+	if _, err := tx.Exec(`DELETE FROM customers WHERE id = $1`, sourceID); err != nil {
+		return c.organizationDBErr("removing merged customer", err)
 	}
 	return nil
 }
 
-// mergeSubscriberProfile preserves the useful parts of a source profile before
+// mergeCustomerProfile preserves the useful parts of a source profile before
 // its scoped subscriptions and history are merged into another record. The
 // target keeps explicit values, while a blocklist state always wins.
-func (c *Core) mergeSubscriberProfile(tx *sqlx.Tx, sourceID, targetID int) error {
+func (c *Core) mergeCustomerProfile(tx *sqlx.Tx, sourceID, targetID int) error {
 	if sourceID == targetID {
 		return nil
 	}
 	if _, err := tx.Exec(`
-		UPDATE subscribers AS target
+		UPDATE customers AS target
 		SET status = CASE
 				WHEN target.status = 'blocklisted' OR source.status = 'blocklisted'
-					THEN 'blocklisted'::subscriber_status
+					THEN 'blocklisted'::customer_status
 				ELSE target.status
 			END,
 			name = CASE WHEN target.name = '' AND source.name <> '' THEN source.name ELSE target.name END,
 			attribs = source.attribs || target.attribs,
 			updated_at = GREATEST(target.updated_at, source.updated_at)
-		FROM subscribers AS source
+		FROM customers AS source
 		WHERE source.id = $1 AND target.id = $2`, sourceID, targetID); err != nil {
-		return c.organizationDBErr("merging subscriber profiles", err)
+		return c.organizationDBErr("merging customer profiles", err)
 	}
 	return nil
 }

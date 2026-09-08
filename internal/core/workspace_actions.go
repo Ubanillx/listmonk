@@ -48,7 +48,7 @@ func (c *Core) CloneCampaignForWorkspaceWithSource(sourceID int, sourceAccess, t
 	}
 
 	// The campaign row is locked before its associations are read. Normal
-	// campaign updates use the same lock, so the list/media/template snapshot is
+	// campaign updates use the same lock, so the customer_list/media/template snapshot is
 	// consistent with the campaign fields below.
 	source, err := c.getCampaignCloneSourceTx(tx, sourceID)
 	if err != nil {
@@ -157,7 +157,7 @@ func (c *Core) CloneCampaignForWorkspaceWithSource(sourceID int, sourceAccess, t
 			uuid, type, name, subject, from_email, body, body_source, altbody,
 			content_type, send_at, headers, attribs, status, daily_send_limit,
 			daily_resume_time, tags, messenger, template_id, to_send, sent,
-			max_subscriber_id, last_subscriber_id, archive, archive_slug,
+			max_customer_id, last_customer_id, archive, archive_slug,
 			archive_template_id, archive_meta, auto_track_links,
 			organization_id, owner_user_id, original_owner_user_id, visibility
 		) VALUES (
@@ -178,7 +178,7 @@ func (c *Core) CloneCampaignForWorkspaceWithSource(sourceID int, sourceAccess, t
 	}
 
 	// Campaign media records carry the original filenames used by CID/MIME
-	// attachment assembly. Sending lists and recipient/history rows are
+	// attachment assembly. Sending customer_lists and recipient/history rows are
 	// deliberately not copied.
 	for _, association := range associations.Campaign {
 		if err := insertMediaAssociation(tx, "campaign_media", "campaign_id", newID, association, mediaCopies); err != nil {
@@ -284,7 +284,7 @@ func (c *Core) snapshotVisualCampaignMedia(tx *sqlx.Tx, access models.WorkspaceA
 
 	// lockTemplateCloneMedia locks every association and validates that each
 	// binary belongs to the template's workspace/owner graph. This is stricter
-	// than a client-provided media list and closes concurrent delete/transfer
+	// than a client-provided media customer_list and closes concurrent delete/transfer
 	// races before any destination row is inserted.
 	refs, err := c.lockTemplateCloneMedia(tx, templateID)
 	if err != nil {
@@ -661,7 +661,7 @@ func (c *Core) getCampaignCloneSourceTx(tx *sqlx.Tx, id int) (models.Campaign, e
 	// GetCampaign intentionally selects campaigns.* because the regular read
 	// path scans a Campaigns slice from the database's Unsafe handle.  A
 	// transaction's Stmtx wrapper otherwise uses sqlx's safe mapper and rejects
-	// legacy progress columns (max_subscriber_id/last_subscriber_id) that are
+	// legacy progress columns (max_customer_id/last_customer_id) that are
 	// not exposed on models.Campaign.  Preserve the same scan semantics inside
 	// the clone transaction while the row lock is held.
 	if err := tx.Stmtx(c.q.GetCampaign).Unsafe().Get(&source, id, nil, nil, campaignTplDefault); err != nil {

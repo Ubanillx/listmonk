@@ -25,6 +25,7 @@ import (
 	"github.com/knadh/listmonk/internal/manager"
 	"github.com/knadh/listmonk/internal/media"
 	"github.com/knadh/listmonk/internal/messenger/email"
+	"github.com/knadh/listmonk/internal/replyai"
 	"github.com/knadh/listmonk/internal/subimporter"
 	"github.com/knadh/listmonk/models"
 	"github.com/knadh/paginator"
@@ -46,6 +47,7 @@ type App struct {
 	auth       *auth.Auth
 	media      media.Store
 	bounce     *bounce.Manager
+	replyAI    *replyai.Client
 	captcha    *captcha.Captcha
 	i18n       *i18n.I18n
 	pg         *paginator.Paginator
@@ -54,7 +56,7 @@ type App struct {
 	bufLog     *buflog.BufLog
 
 	about         about
-	fnOptinNotify func(models.Subscriber, []int) (int, error)
+	fnOptinNotify func(models.Customer, []int) (int, error)
 
 	// Channel for passing reload signals.
 	chReload chan os.Signal
@@ -215,6 +217,10 @@ func main() {
 		// Crud core.
 		core = initCore(fbOptinNotify, queries, db, i18n, ko)
 
+		// OpenAI-compatible inbound reply classifier. It remains inert until
+		// the global setting and an individual mailbox are both enabled.
+		replyAI = initReplyAIClassifier(ko)
+
 		// Initialize all messengers, SMTP and postback.
 		smtpMsgrs = initSMTPMessengers()
 		msgrs     = append(smtpMsgrs.messengers, initPostbackMessengers(ko)...)
@@ -275,6 +281,7 @@ func main() {
 		auth:       auth,
 		media:      media,
 		bounce:     bounce,
+		replyAI:    replyAI,
 		captcha:    initCaptcha(),
 		i18n:       i18n,
 		log:        lo,
@@ -302,6 +309,9 @@ func main() {
 	// bounce mailbox. The worker never deletes source messages and forwards
 	// them through the platform system SMTP.
 	go runReplyForwarder(app)
+	if app.replyAI.Enabled() {
+		go runReplyAIProcessor(app)
+	}
 
 	// Star the update checker.
 	if ko.Bool("app.check_updates") {

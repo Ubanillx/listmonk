@@ -14,7 +14,7 @@ import (
 
 var customFieldKey = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 
-const customFieldsSettingKey = "subscriber.custom_fields"
+const customFieldsSettingKey = "customer.custom_fields"
 
 var customFieldTypes = map[string]bool{
 	"text": true, "textarea": true, "number": true, "url": true, "date": true, "select": true,
@@ -46,12 +46,12 @@ func (a *App) GetCustomFields(c echo.Context) error {
 		return err
 	}
 	out := []customFieldResponse{
-		{Key: "email", Label: a.i18n.T("subscribers.email"), Type: "email", Active: true, System: true, Placeholder: "{{ .Subscriber.Email }}", Locked: locked},
-		{Key: "name", Label: a.i18n.T("globals.fields.name"), Type: "text", Active: true, System: true, Placeholder: "{{ .Subscriber.Name }}", Locked: locked},
+		{Key: "email", Label: a.i18n.T("customers.email"), Type: "email", Active: true, System: true, Placeholder: "{{ .Customer.Email }}", Locked: locked},
+		{Key: "name", Label: a.i18n.T("globals.fields.name"), Type: "text", Active: true, System: true, Placeholder: "{{ .Customer.Name }}", Locked: locked},
 	}
 	for _, f := range s.CustomFields {
 		out = append(out, customFieldResponse{Key: f.Key, Label: f.Label, Type: f.Type, Required: f.Required,
-			Options: f.Options, Description: f.Description, Active: f.Active, Placeholder: "{{ .Subscriber.Attribs." + f.Key + " }}", Locked: locked})
+			Options: f.Options, Description: f.Description, Active: f.Active, Placeholder: "{{ .Customer.Attribs." + f.Key + " }}", Locked: locked})
 	}
 	return c.JSON(http.StatusOK, okResp{out})
 }
@@ -91,7 +91,7 @@ func (a *App) saveCustomFields(c echo.Context, mutate func([]models.CustomFieldD
 }
 
 // customFieldsLocked uses the persisted campaign state rather than only the
-// in-memory worker list. This keeps the rule intact while a process is being
+// in-memory worker customer_list. This keeps the rule intact while a process is being
 // restarted or when a second worker owns the active campaign.
 func (a *App) customFieldsLocked() (bool, error) {
 	var locked bool

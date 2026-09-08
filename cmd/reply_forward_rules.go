@@ -126,7 +126,7 @@ func (a *App) disableReplyForwardRule(orgID, mailboxID, actorID int) error {
 	return nil
 }
 
-// GetReplyForwardRules lists retained customer-reply forwarding rules for
+// GetReplyForwardRules customer_lists retained customer-reply forwarding rules for
 // the active organization. Only organization managers may inspect them.
 func (a *App) GetReplyForwardRules(c echo.Context) error {
 	ws, err := a.requireOrganizationManager(c)

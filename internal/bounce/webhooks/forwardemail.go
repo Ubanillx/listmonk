@@ -24,8 +24,8 @@ type BounceDetails struct {
 
 type forwardemailNotif struct {
 	EmailID         string            `json:"email_id"`
-	ListID          string            `json:"list_id"`
-	ListUnsubscribe string            `json:"list_unsubscribe"`
+	CustomerListID          string            `json:"customer_list_id"`
+	CustomerListUnsubscribe string            `json:"list_unsubscribe"`
 	FeedbackID      string            `json:"feedback_id"`
 	Recipient       string            `json:"recipient"`
 	Message         string            `json:"message"`

@@ -1,10 +1,13 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/knadh/listmonk/internal/auth"
 	"github.com/knadh/listmonk/models"
+	"github.com/labstack/echo/v4"
 	null "gopkg.in/volatiletech/null.v6"
 )
 
@@ -120,39 +123,130 @@ func TestCampaignCopyAllowsManagerInspection(t *testing.T) {
 }
 
 func TestLegacyPermissionsRemainNarrowingGuards(t *testing.T) {
-	readOnly := permissionTestUser(auth.PermSubscribersGet, auth.PermListGet)
-	readOnly.GetListIDs = []int{3}
-	readOnly.ListPermissionsMap = map[int]map[string]struct{}{
+	readOnly := permissionTestUser(auth.PermCustomersGet, auth.PermListGet)
+	readOnly.GetCustomerListIDs = []int{3}
+	readOnly.CustomerListPermissionsMap = map[int]map[string]struct{}{
 		3: {auth.PermListGet: {}},
 	}
 
-	if err := requireLegacyPermission(readOnly, auth.PermSubscribersManage); err == nil {
-		t.Fatal("subscriber write permission unexpectedly granted")
+	if err := requireLegacyPermission(readOnly, auth.PermCustomersManage); err == nil {
+		t.Fatal("customer write permission unexpectedly granted")
 	}
 	if err := requireLegacyPermission(readOnly, auth.PermTxSend); err == nil {
 		t.Fatal("send permission unexpectedly granted")
 	}
 	if err := requireLegacyListPermission(readOnly, 3, true); err == nil {
-		t.Fatal("list write permission unexpectedly granted from list:get")
+		t.Fatal("customer_list write permission unexpectedly granted from customer_list:get")
 	}
 	if err := requireLegacyListPermission(readOnly, 3, false); err != nil {
-		t.Fatalf("list read permission = %v, want allowed", err)
+		t.Fatalf("customer_list read permission = %v, want allowed", err)
 	}
 
-	all, ids := legacyReadableListIDs(readOnly)
+	all, ids := legacyReadableCustomerListIDs(readOnly)
 	if all || len(ids) != 1 || ids[0] != 3 {
-		t.Fatalf("legacyReadableListIDs() = (%v, %v), want (false, [3])", all, ids)
+		t.Fatalf("legacyReadableCustomerListIDs() = (%v, %v), want (false, [3])", all, ids)
 	}
 }
 
 func TestManagedListIntersectionNeverFallsBackToAllLists(t *testing.T) {
-	if got := intersectManagedWorkspaceLegacyListIDs([]int{2, 5}, false, []int{5}); len(got) != 1 || got[0] != 5 {
-		t.Fatalf("managed list intersection = %v, want [5]", got)
+	if got := intersectManagedWorkspaceLegacyCustomerListIDs([]int{2, 5}, false, []int{5}); len(got) != 1 || got[0] != 5 {
+		t.Fatalf("managed customer_list intersection = %v, want [5]", got)
 	}
-	if got := intersectManagedWorkspaceLegacyListIDs([]int{2, 5}, false, []int{9}); len(got) != 1 || got[0] != -1 {
-		t.Fatalf("empty managed list intersection = %v, want [-1]", got)
+	if got := intersectManagedWorkspaceLegacyCustomerListIDs([]int{2, 5}, false, []int{9}); len(got) != 1 || got[0] != -1 {
+		t.Fatalf("empty managed customer_list intersection = %v, want [-1]", got)
 	}
-	if got := intersectManagedWorkspaceLegacyListIDs(nil, true, nil); len(got) != 1 || got[0] != -1 {
-		t.Fatalf("empty global managed list set = %v, want [-1]", got)
+	if got := intersectManagedWorkspaceLegacyCustomerListIDs(nil, true, nil); len(got) != 1 || got[0] != -1 {
+		t.Fatalf("empty global managed customer_list set = %v, want [-1]", got)
+	}
+}
+
+func TestCanUsePersonalWorkspace(t *testing.T) {
+	tests := []struct {
+		name string
+		user auth.User
+		want bool
+	}{
+		{
+			name: "platform administrator always has personal workspace",
+			user: auth.User{UserRoleID: auth.SuperAdminRoleID},
+			want: true,
+		},
+		{
+			name: "user with workspaces:personal permission has personal workspace",
+			user: permissionTestUser(auth.PermWorkspacesPersonal),
+			want: true,
+		},
+		{
+			name: "user without the permission loses personal workspace",
+			user: permissionTestUser(auth.PermCampaignsGet),
+			want: false,
+		},
+		{
+			name: "user with no permissions has no personal workspace",
+			user: auth.User{},
+			want: false,
+		},
+		{
+			name: "platform admin with additional permissions still has personal workspace",
+			user: auth.User{UserRoleID: auth.SuperAdminRoleID, PermissionsMap: map[string]struct{}{"some:other": {}}},
+			want: true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := canUsePersonalWorkspace(test.user); got != test.want {
+				t.Fatalf("canUsePersonalWorkspace() = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestRequirePersonalWorkspace(t *testing.T) {
+	admin := auth.User{UserRoleID: auth.SuperAdminRoleID}
+	if err := requirePersonalWorkspace(admin); err != nil {
+		t.Fatalf("requirePersonalWorkspace(admin) = %v, want nil", err)
+	}
+	permitted := permissionTestUser(auth.PermWorkspacesPersonal)
+	if err := requirePersonalWorkspace(permitted); err != nil {
+		t.Fatalf("requirePersonalWorkspace(permitted) = %v, want nil", err)
+	}
+	denied := permissionTestUser(auth.PermCampaignsGet)
+	if err := requirePersonalWorkspace(denied); err == nil {
+		t.Fatal("requirePersonalWorkspace(denied) = nil, want error")
+	}
+}
+
+func TestPersonalMigrationListReadExemption(t *testing.T) {
+	e := echo.New()
+
+	mkCtx := func(method, path string) echo.Context {
+		req := httptest.NewRequest(method, path, nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath(path)
+		return c
+	}
+
+	// Only read-only methods on the four migration customer_list endpoints are exempt.
+	for _, path := range []string{"/api/customer-lists", "/api/templates", "/api/campaigns", "/api/media"} {
+		c := mkCtx(http.MethodGet, path)
+		if !isReadOnlyMethod(c) || !isPersonalMigrationListPath(c.Path()) {
+			t.Fatalf("GET %s should be a read-only migration customer_list path", path)
+		}
+		c = mkCtx(http.MethodPost, path)
+		if isReadOnlyMethod(c) {
+			t.Fatalf("POST %s must not count as read-only", path)
+		}
+	}
+
+	// Detail reads, exports, and other endpoints are not exempt.
+	for _, path := range []string{
+		"/api/customer-lists/3", "/api/templates/3", "/api/campaigns/3", "/api/media/3",
+		"/api/customers/export", "/api/dashboard/counts", "/api/workspace",
+	} {
+		c := mkCtx(http.MethodGet, path)
+		if isPersonalMigrationListPath(c.Path()) {
+			t.Fatalf("GET %s must not be an exempt migration customer_list path", path)
+		}
 	}
 }

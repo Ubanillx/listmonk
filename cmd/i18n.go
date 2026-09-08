@@ -39,16 +39,16 @@ func (a *App) GetI18nLang(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{json.RawMessage(i.JSON())})
 }
 
-// getI18nLangList returns the list of available i18n languages.
+// getI18nLangList returns the customer_list of available i18n languages.
 func getI18nLangList(fs stuffbin.FileSystem) ([]i18nLang, error) {
-	list, err := fs.Glob("/i18n/*.json")
+	customer_list, err := fs.Glob("/i18n/*.json")
 	if err != nil {
 		return nil, err
 	}
 
 	// Read language JSON files from the fs.
 	var out []i18nLang
-	for _, l := range list {
+	for _, l := range customer_list {
 		b, err := fs.Get(l)
 		if err != nil {
 			return out, fmt.Errorf("error reading lang file: %s: %v", l, err)

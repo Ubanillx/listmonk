@@ -23,7 +23,7 @@ func TestNewCampaignMessageUsesOwnerAccountAttribs(t *testing.T) {
 	c := &models.Campaign{
 		UUID:             "campaign",
 		Subject:          "subject",
-		Body:             `{{ .Subscriber.Attribs.whatsapp }}`,
+		Body:             `{{ .Customer.Attribs.whatsapp }}`,
 		ContentType:      models.CampaignContentTypeHTML,
 		OwnerUserAttribs: models.JSON{"whatsapp": "+8613800000000"},
 	}
@@ -31,19 +31,19 @@ func TestNewCampaignMessageUsesOwnerAccountAttribs(t *testing.T) {
 		t.Fatalf("compile campaign template: %v", err)
 	}
 
-	msg, err := m.NewCampaignMessage(c, models.Subscriber{
+	msg, err := m.NewCampaignMessage(c, models.Customer{
 		Email:   "recipient@example.com",
 		Name:    "Recipient",
-		UUID:    "subscriber",
-		Attribs: models.JSON{"whatsapp": "subscriber-value"},
+		UUID:    "customer",
+		Attribs: models.JSON{"whatsapp": "customer-value"},
 	})
 	if err != nil {
 		t.Fatalf("new campaign message: %v", err)
 	}
 	if got := string(msg.Body()); !strings.Contains(got, "8613800000000") {
 		t.Fatalf("message body = %q, account field was not injected", got)
-	} else if strings.Contains(got, "subscriber-value") {
-		t.Fatalf("message body = %q, subscriber field overrode account field", got)
+	} else if strings.Contains(got, "customer-value") {
+		t.Fatalf("message body = %q, customer field overrode account field", got)
 	}
 }
 
@@ -59,7 +59,7 @@ func TestNewCampaignMessageAutoTracksRenderedTemplateAndCustomFieldLinks(t *test
 		ContentType:    models.CampaignContentTypeHTML,
 		AutoTrackLinks: true,
 		TemplateBody:   `<section><a href="https://template.example/path">Template</a>{{ template "content" . }}</section>`,
-		Body: `<a href="{{ .Subscriber.Attribs.customURL }}">Custom field</a>
+		Body: `<a href="{{ .Customer.Attribs.customURL }}">Custom field</a>
 <a href="https://body.example/path">Body</a>
 <a href="https://explicit.example/path@TrackLink">Explicit</a>`,
 	}
@@ -67,9 +67,9 @@ func TestNewCampaignMessageAutoTracksRenderedTemplateAndCustomFieldLinks(t *test
 		t.Fatalf("compile campaign template: %v", err)
 	}
 
-	msg, err := m.NewCampaignMessage(c, models.Subscriber{
+	msg, err := m.NewCampaignMessage(c, models.Customer{
 		Email:   "recipient@example.com",
-		UUID:    "subscriber",
+		UUID:    "customer",
 		Attribs: models.JSON{"customURL": "https://custom.example/path"},
 	})
 	if err != nil {
@@ -98,7 +98,7 @@ func TestNewCampaignMessageAutoTracksRenderedTemplateAndCustomFieldLinks(t *test
 		}
 	}
 	for i := 1; i <= len(wantURLs); i++ {
-		tracked := fmt.Sprintf("https://listmonk.test/link/link-%d/campaign/subscriber", i)
+		tracked := fmt.Sprintf("https://listmonk.test/link/link-%d/campaign/customer", i)
 		if !strings.Contains(body, tracked) {
 			t.Fatalf("rendered message missing tracked URL %q: %q", tracked, body)
 		}
@@ -116,15 +116,15 @@ func TestNewCampaignMessageDoesNotAutoTrackWhenDisabled(t *testing.T) {
 		Subject:      "subject",
 		ContentType:  models.CampaignContentTypeHTML,
 		TemplateBody: `<section><a href="https://template.example/path">Template</a>{{ template "content" . }}</section>`,
-		Body:         `<a href="{{ .Subscriber.Attribs.customURL }}">Custom field</a>`,
+		Body:         `<a href="{{ .Customer.Attribs.customURL }}">Custom field</a>`,
 	}
 	if err := c.CompileTemplate(m.TemplateFuncs(c)); err != nil {
 		t.Fatalf("compile campaign template: %v", err)
 	}
 
-	msg, err := m.NewCampaignMessage(c, models.Subscriber{
+	msg, err := m.NewCampaignMessage(c, models.Customer{
 		Email:   "recipient@example.com",
-		UUID:    "subscriber",
+		UUID:    "customer",
 		Attribs: models.JSON{"customURL": "https://custom.example/path"},
 	})
 	if err != nil {
@@ -156,9 +156,9 @@ func TestNewCampaignMessageAutoTracksTemplateLinksWithAggregateTracking(t *testi
 		t.Fatalf("compile campaign template: %v", err)
 	}
 
-	msg, err := m.NewCampaignMessage(c, models.Subscriber{
+	msg, err := m.NewCampaignMessage(c, models.Customer{
 		Email: "recipient@example.com",
-		UUID:  "subscriber",
+		UUID:  "customer",
 	})
 	if err != nil {
 		t.Fatalf("new campaign message: %v", err)

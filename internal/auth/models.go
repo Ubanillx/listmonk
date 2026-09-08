@@ -39,7 +39,7 @@ const (
 
 	// Role.
 	RoleTypeUser = "user"
-	RoleTypeList = "list"
+	RoleTypeList = "customer_list"
 )
 
 const (
@@ -47,17 +47,17 @@ const (
 	IntegrationTokenKindPersonal = "personal"
 )
 
-// List of all granular permissions.
+// CustomerList of all granular permissions.
 const (
-	PermListGetAll            = "lists:get_all"
-	PermListManageAll         = "lists:manage_all"
-	PermListManage            = "list:manage"
-	PermListGet               = "list:get"
-	PermSubscribersGet        = "subscribers:get"
-	PermSubscribersGetAll     = "subscribers:get_all"
-	PermSubscribersManage     = "subscribers:manage"
-	PermSubscribersImport     = "subscribers:import"
-	PermSubscribersSqlQuery   = "subscribers:sql_query"
+	PermListGetAll            = "customer_lists:get_all"
+	PermListManageAll         = "customer_lists:manage_all"
+	PermListManage            = "customer_list:manage"
+	PermListGet               = "customer_list:get"
+	PermCustomersGet          = "customers:get"
+	PermCustomersGetAll       = "customers:get_all"
+	PermCustomersManage       = "customers:manage"
+	PermCustomersImport       = "customers:import"
+	PermCustomersSqlQuery     = "customers:sql_query"
 	PermTxSend                = "tx:send"
 	PermCampaignsGet          = "campaigns:get"
 	PermCampaignsGetAll       = "campaigns:get_all"
@@ -78,6 +78,7 @@ const (
 	PermSettingsGet           = "settings:get"
 	PermSettingsManage        = "settings:manage"
 	PermSettingsMaintain      = "settings:maintain"
+	PermWorkspacesPersonal    = "workspaces:personal"
 )
 
 // Base holds common fields shared across models.
@@ -102,19 +103,19 @@ type User struct {
 	// Attribs stores values for administrator-defined account fields. These
 	// values belong to the sending account and are injected into campaign
 	// templates at render time.
-	Attribs       models.JSON      `db:"attribs" json:"attribs"`
-	Type          string           `db:"type" json:"type"`
-	Status        string           `db:"status" json:"status"`
-	Avatar        null.String      `db:"avatar" json:"avatar"`
-	TwofaType     string           `db:"twofa_type" json:"twofa_type"`
-	TwofaKey      null.String      `db:"twofa_key" json:"-"`
-	LoggedInAt    null.Time        `db:"loggedin_at" json:"loggedin_at"`
-	UserRoleID    int              `db:"user_role_id" json:"user_role_id,omitempty"`
-	UserRoleName  string           `db:"user_role_name" json:"-"`
-	ListRoleID    *int             `db:"list_role_id" json:"list_role_id,omitempty"`
-	ListRoleName  null.String      `db:"list_role_name" json:"-"`
-	UserRolePerms pq.StringArray   `db:"user_role_permissions" json:"-"`
-	ListsPermsRaw *json.RawMessage `db:"list_role_perms" json:"-"`
+	Attribs               models.JSON      `db:"attribs" json:"attribs"`
+	Type                  string           `db:"type" json:"type"`
+	Status                string           `db:"status" json:"status"`
+	Avatar                null.String      `db:"avatar" json:"avatar"`
+	TwofaType             string           `db:"twofa_type" json:"twofa_type"`
+	TwofaKey              null.String      `db:"twofa_key" json:"-"`
+	LoggedInAt            null.Time        `db:"loggedin_at" json:"loggedin_at"`
+	UserRoleID            int              `db:"user_role_id" json:"user_role_id,omitempty"`
+	UserRoleName          string           `db:"user_role_name" json:"-"`
+	CustomerListRoleID    *int             `db:"list_role_id" json:"customer_list_role_id,omitempty"`
+	CustomerListRoleName  null.String      `db:"list_role_name" json:"-"`
+	UserRolePerms         pq.StringArray   `db:"user_role_permissions" json:"-"`
+	CustomerListsPermsRaw *json.RawMessage `db:"list_role_perms" json:"-"`
 
 	// Non-DB fields filled post-retrieval.
 	UserRole struct {
@@ -123,12 +124,12 @@ type User struct {
 		Permissions []string `db:"-" json:"permissions"`
 	} `db:"-" json:"user_role"`
 
-	ListRole           *ListRolePermissions        `db:"-" json:"list_role"`
-	PermissionsMap     map[string]struct{}         `db:"-" json:"-"`
-	ListPermissionsMap map[int]map[string]struct{} `db:"-" json:"-"`
-	GetListIDs         []int                       `db:"-" json:"-"`
-	ManageListIDs      []int                       `db:"-" json:"-"`
-	HasPassword        bool                        `db:"-" json:"-"`
+	CustomerListRole           *CustomerListRolePermissions `db:"-" json:"customer_list_role"`
+	PermissionsMap             map[string]struct{}          `db:"-" json:"-"`
+	CustomerListPermissionsMap map[int]map[string]struct{}  `db:"-" json:"-"`
+	GetCustomerListIDs         []int                        `db:"-" json:"-"`
+	ManageCustomerListIDs      []int                        `db:"-" json:"-"`
+	HasPassword                bool                         `db:"-" json:"-"`
 }
 
 // IsPlatformAdmin reports whether the user is the built-in platform
@@ -156,16 +157,16 @@ type IntegrationToken struct {
 	User User `db:"-" json:"-"`
 }
 
-type ListPermission struct {
+type CustomerListPermission struct {
 	ID          int            `json:"id"`
 	Name        string         `json:"name"`
 	Permissions pq.StringArray `json:"permissions"`
 }
 
-type ListRolePermissions struct {
-	ID    int              `db:"-" json:"id"`
-	Name  string           `db:"-" json:"name"`
-	Lists []ListPermission `db:"-" json:"lists"`
+type CustomerListRolePermissions struct {
+	ID            int                      `db:"-" json:"id"`
+	Name          string                   `db:"-" json:"name"`
+	CustomerLists []CustomerListPermission `db:"-" json:"customer_lists"`
 }
 
 type Role struct {
@@ -175,21 +176,21 @@ type Role struct {
 	Name        null.String    `db:"name" json:"name"`
 	Permissions pq.StringArray `db:"permissions" json:"permissions"`
 
-	ListID   null.Int         `db:"list_id" json:"-"`
-	ParentID null.Int         `db:"parent_id" json:"-"`
-	ListsRaw json.RawMessage  `db:"list_permissions" json:"-"`
-	Lists    []ListPermission `db:"-" json:"lists"`
+	CustomerListID   null.Int                 `db:"customer_list_id" json:"-"`
+	ParentID         null.Int                 `db:"parent_id" json:"-"`
+	CustomerListsRaw json.RawMessage          `db:"list_permissions" json:"-"`
+	CustomerLists    []CustomerListPermission `db:"-" json:"customer_lists"`
 }
 
-type ListRole struct {
+type CustomerListRole struct {
 	Base
 
 	Name null.String `db:"name" json:"name"`
 
-	ListID   null.Int         `db:"list_id" json:"-"`
-	ParentID null.Int         `db:"parent_id" json:"-"`
-	ListsRaw json.RawMessage  `db:"list_permissions" json:"-"`
-	Lists    []ListPermission `db:"-" json:"lists"`
+	CustomerListID   null.Int                 `db:"customer_list_id" json:"-"`
+	ParentID         null.Int                 `db:"parent_id" json:"-"`
+	CustomerListsRaw json.RawMessage          `db:"list_permissions" json:"-"`
+	CustomerLists    []CustomerListPermission `db:"-" json:"customer_lists"`
 }
 
 // HasPerm checks if the user has a specific permission.
@@ -203,9 +204,9 @@ func (u *User) HasPerm(perm string) bool {
 	return ok
 }
 
-// HasListPerm checks if the user has get or manage access to the given list.
+// HasListPerm checks if the user has get or manage access to the given customer_list.
 // perm is either PermGet or PermManage.
-func (u *User) HasListPerm(types PermType, listIDs ...int) error {
+func (u *User) HasListPerm(types PermType, customerListIDs ...int) error {
 	var permAll, perm string
 
 	if types == 0 {
@@ -220,12 +221,12 @@ func (u *User) HasListPerm(types PermType, listIDs ...int) error {
 		perm = PermListManage
 	}
 
-	// Check if the user has permissions for all lists or the specific list.
+	// Check if the user has permissions for all customer_lists or the specific customer_list.
 	if u.HasPerm(permAll) {
 		return nil
 	}
 
-	for _, id := range listIDs {
+	for _, id := range customerListIDs {
 		if id > 0 {
 			if !u.hasListPerm(perm, id) {
 				return ErrPermDenied
@@ -236,24 +237,24 @@ func (u *User) HasListPerm(types PermType, listIDs ...int) error {
 	return nil
 }
 
-func (u *User) hasListPerm(perm string, listID int) bool {
+func (u *User) hasListPerm(perm string, customerListID int) bool {
 	// Short-circuit if the user is the primordial super admin.
 	if u.IsPlatformAdmin() {
 		return true
 	}
 
-	if _, ok := u.ListPermissionsMap[listID]; !ok {
+	if _, ok := u.CustomerListPermissionsMap[customerListID]; !ok {
 		return false
 	}
 
-	_, ok := u.ListPermissionsMap[listID][perm]
+	_, ok := u.CustomerListPermissionsMap[customerListID][perm]
 	return ok
 }
 
-// GetPermittedLists returns a list of IDs the user has access to based on
+// GetPermittedLists returns a customer_list of IDs the user has access to based on
 // the given get / manage permissions. If the user has the blanket "*_all"
 // permission (or the user is a super admin), then the bool is set to true and
-// the list is nil as all lists are permitted.
+// the customer_list is nil as all customer_lists are permitted.
 func (u *User) GetPermittedLists(types PermType) (bool, []int) {
 	if types == 0 {
 		return false, nil
@@ -269,7 +270,7 @@ func (u *User) GetPermittedLists(types PermType) (bool, []int) {
 		manage = types&PermTypeManage != 0
 	)
 
-	// If the user has the list:get_all or list:manage_all permission, no
+	// If the user has the customer_list:get_all or customer_list:manage_all permission, no
 	// further checks are required.
 	if get {
 		if _, ok := u.PermissionsMap[PermListGetAll]; ok {
@@ -283,32 +284,32 @@ func (u *User) GetPermittedLists(types PermType) (bool, []int) {
 	}
 
 	if get {
-		// If the user has per-list permissions, return that. Otherwise, let the
+		// If the user has per-customer_list permissions, return that. Otherwise, let the
 		// 'manage' permission check run.
-		if len(u.GetListIDs) > 0 {
-			out := make([]int, len(u.GetListIDs))
-			copy(out, u.GetListIDs)
+		if len(u.GetCustomerListIDs) > 0 {
+			out := make([]int, len(u.GetCustomerListIDs))
+			copy(out, u.GetCustomerListIDs)
 			return false, out
 		}
 	}
 
 	if manage {
-		// User has per-list permissions.
-		out := make([]int, len(u.ManageListIDs))
-		copy(out, u.ManageListIDs)
+		// User has per-customer_list permissions.
+		out := make([]int, len(u.ManageCustomerListIDs))
+		copy(out, u.ManageCustomerListIDs)
 		return false, out
 	}
 
 	return false, nil
 }
 
-// FilterListsByPerm returns list IDs filtered by either of the given perms.
-func (u *User) FilterListsByPerm(types PermType, listIDs []int) []int {
+// FilterListsByPerm returns customer_list IDs filtered by either of the given perms.
+func (u *User) FilterListsByPerm(types PermType, customerListIDs []int) []int {
 	if types == 0 {
 		return nil
 	}
 	if u.IsPlatformAdmin() {
-		return listIDs
+		return customerListIDs
 	}
 
 	var (
@@ -316,23 +317,23 @@ func (u *User) FilterListsByPerm(types PermType, listIDs []int) []int {
 		manage = types&PermTypeManage != 0
 	)
 
-	// If the user has full list management permission,
+	// If the user has full customer_list management permission,
 	// no further checks are required.
 	if get {
 		if _, ok := u.PermissionsMap[PermListGetAll]; ok {
-			return listIDs
+			return customerListIDs
 		}
 	}
 	if manage {
 		if _, ok := u.PermissionsMap[PermListManageAll]; ok {
-			return listIDs
+			return customerListIDs
 		}
 	}
 
-	out := make([]int, 0, len(listIDs))
-	for _, id := range listIDs {
+	out := make([]int, 0, len(customerListIDs))
+	for _, id := range customerListIDs {
 		// Check if it exists in the map.
-		if l, ok := u.ListPermissionsMap[id]; ok {
+		if l, ok := u.CustomerListPermissionsMap[id]; ok {
 			// Check if any of the given permission exists for it.
 			if get {
 				if _, ok := l[PermListGet]; ok {

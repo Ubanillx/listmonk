@@ -21,7 +21,7 @@ def translate(data, lang):
     completion = client.chat.completions.create(
         model="gpt-4.1-mini",
         messages=[
-            {"role": "system", "content": "You are an i18n language pack translator for listmonk, a mailing list manager. Remember that context when translating."},
+            {"role": "system", "content": "You are an i18n language pack translator for listmonk, a mailing customer_list manager. Remember that context when translating."},
             {"role": "user",
                 "content": "Translate the untranslated English strings in the following JSON language map to {}. Retain any technical terms or acronyms.".format(lang)},
             {"role": "user", "content": json.dumps(data)}

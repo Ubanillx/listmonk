@@ -22,11 +22,15 @@ type Bounce struct {
 	CreatedAt time.Time       `db:"created_at" json:"created_at"`
 
 	// One of these should be provided.
-	Email            string `db:"email" json:"email,omitempty"`
-	SubscriberUUID   string `db:"subscriber_uuid" json:"subscriber_uuid,omitempty"`
-	SubscriberID     int    `db:"subscriber_id" json:"subscriber_id,omitempty"`
-	SubscriberStatus string `db:"subscriber_status" json:"subscriber_status"`
-	// Bounce records inherit their access boundary from the subscriber. These
+	Email                string   `db:"email" json:"email,omitempty"`
+	CustomerUUID         string   `db:"customer_uuid" json:"customer_uuid,omitempty"`
+	CustomerID           int      `db:"customer_id" json:"customer_id,omitempty"`
+	PoolContactID        int64    `db:"pool_contact_id" json:"pool_contact_id,omitempty"`
+	SourcePoolID         int      `db:"source_pool_id" json:"source_pool_id,omitempty"`
+	SourceSegmentID      int64    `db:"source_segment_id" json:"source_segment_id,omitempty"`
+	SourceOrganizationID null.Int `db:"source_organization_id" json:"source_organization_id,omitempty"`
+	CustomerStatus       string   `db:"customer_status" json:"customer_status"`
+	// Bounce records inherit their access boundary from the customer. These
 	// fields let organization managers inspect a member's bounce history while
 	// the UI keeps destructive controls limited to records they own.
 	OrganizationID    null.Int  `db:"organization_id" json:"organization_id"`

@@ -32,6 +32,24 @@ func newTestManager() *Manager {
 	return New(Config{Concurrency: 1}, nil, nil, log.New(io.Discard, "", 0))
 }
 
+type optinListStore struct{ Store }
+
+func (optinListStore) GetCampaignOptinListUUIDs(int) ([]string, error) {
+	return []string{"private-list", "org-list"}, nil
+}
+
+func TestOptinURLIncludesPrivateCustomerLists(t *testing.T) {
+	m := newTestManager()
+	m.store = optinListStore{}
+	m.cfg.OptinURL = "/subscription/optin/%s?%s"
+	c := &models.Campaign{Base: models.Base{ID: 7}, Type: models.CampaignTypeOptin}
+	fn := m.TemplateFuncs(c)["OptinURL"].(func(*CampaignMessage) string)
+	got := fn(&CampaignMessage{Campaign: c, Customer: models.Customer{UUID: "customer-uuid"}})
+	if got != "/subscription/optin/customer-uuid?l=private-list&l=org-list" {
+		t.Fatalf("opt-in URL = %q", got)
+	}
+}
+
 func TestManagerCloseIsIdempotentAndRejectsQueuedMessages(t *testing.T) {
 	m := newTestManager()
 	m.Close()

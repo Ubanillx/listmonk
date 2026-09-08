@@ -134,7 +134,7 @@ func (m *Manager) runMailboxScanner() {
 	}
 }
 
-// Record records a new bounce event given the subscriber's email or UUID.
+// Record records a new bounce event given the customer's email or UUID.
 func (m *Manager) Record(b models.Bounce) error {
 	m.queue <- b
 	return nil

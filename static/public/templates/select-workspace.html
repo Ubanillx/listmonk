@@ -1,0 +1,144 @@
+{{ define "admin-select-workspace" }}
+{{ template "header-app" .}}
+
+<div class="app-shell-logo">
+	{{ if ne .LogoURL "" }}<img src="{{ .LogoURL }}" alt="{{ .Data.Title }}" />{{ else }}<img src="{{ .RootURL }}/public/static/logo.svg?v={{ .AssetVersion }}" alt="{{ .Data.Title }}" />{{ end }}
+</div>
+
+{{ if .Data.Error }}
+	<h1>{{ .Data.Error }}</h1>
+	<p class="center small">{{ .L.T "users.noWorkspaceHint" }}</p>
+	<p class="center small"><a href="{{ .RootURL }}/admin/logout">{{ .L.T "users.logout" }}</a></p>
+{{ else if .Data.AutoEnter }}
+	<h1>{{ .Data.Title }}</h1>
+	<p class="center">{{ .L.Ts "users.enteringSpace" "name" .Data.AutoName }}</p>
+	<div class="app-shell-spinner"></div>
+	<script>
+		(function () {
+			function enterWorkspace(orgID, next) {
+				document.cookie = 'listmonk_workspace_organization_id=' + orgID + '; Path=/; SameSite=Lax';
+				try {
+					if (orgID > 0) {
+						window.localStorage.setItem('listmonk.workspace.organizationId', String(orgID));
+					} else {
+						window.localStorage.removeItem('listmonk.workspace.organizationId');
+					}
+				} catch (e) {}
+				window.location.href = next;
+			}
+			enterWorkspace({{ .Data.AutoOrgID }}, {{ .Data.NextURI }});
+		})();
+	</script>
+{{ else }}
+	<h1>{{ .Data.Title }}</h1>
+	<ul class="space-list">
+		{{ range $i, $s := .Data.Spaces }}
+		<li>
+			<button type="button" class="button space-option" data-org="{{ $s.OrganizationID }}">
+				<span class="space-option-icon">
+					{{ if $s.Personal }}
+					<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+					{{ else }}
+					<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="2" y1="20" x2="22" y2="20"/></svg>
+					{{ end }}
+				</span>
+				<span class="space-option-name">{{ $s.Name }}</span>
+				{{ if $s.Role }}
+				<span class="space-option-role">{{ $s.Role }}</span>
+				{{ end }}
+			</button>
+		</li>
+		{{ end }}
+	</ul>
+	<script>
+		(function () {
+			var next = {{ .Data.NextURI }};
+			function enterWorkspace(orgID) {
+				document.cookie = 'listmonk_workspace_organization_id=' + orgID + '; Path=/; SameSite=Lax';
+				try {
+					if (orgID > 0) {
+						window.localStorage.setItem('listmonk.workspace.organizationId', String(orgID));
+					} else {
+						window.localStorage.removeItem('listmonk.workspace.organizationId');
+					}
+				} catch (e) {}
+				window.location.href = next;
+			}
+			var buttons = document.querySelectorAll('.space-option');
+			Array.prototype.forEach.call(buttons, function (btn) {
+				btn.addEventListener('click', function () {
+					enterWorkspace(parseInt(btn.getAttribute('data-org'), 10) || 0);
+				});
+			});
+		})();
+	</script>
+{{ end }}
+
+{{ if not .Data.AutoEnter }}
+	<section class="join-help">
+		<p class="join-help-title">{{ .L.T "users.noOrgTitle" }}</p>
+		<p class="join-help-hint">{{ .L.T "users.noOrgHint" }}</p>
+		<form id="join-form" class="join-form" autocomplete="off">
+			<input id="join-code" type="text" name="code" placeholder="{{ .L.T "users.inviteCode" }}" required />
+			<button type="submit" class="button">{{ .L.T "users.joinOrg" }}</button>
+		</form>
+		<p id="join-error" class="error center small" hidden></p>
+	</section>
+	<script>
+		(function () {
+			var next = {{ .Data.NextURI }};
+			var form = document.getElementById('join-form');
+			var codeInput = document.getElementById('join-code');
+			var errBox = document.getElementById('join-error');
+			if (!form) {
+				return;
+			}
+			function enterWorkspace(orgID) {
+				document.cookie = 'listmonk_workspace_organization_id=' + orgID + '; Path=/; SameSite=Lax';
+				try {
+					if (orgID > 0) {
+						window.localStorage.setItem('listmonk.workspace.organizationId', String(orgID));
+					} else {
+						window.localStorage.removeItem('listmonk.workspace.organizationId');
+					}
+				} catch (e) {}
+				window.location.href = next;
+			}
+			form.addEventListener('submit', function (e) {
+				e.preventDefault();
+				errBox.hidden = true;
+				var code = codeInput.value.trim();
+				if (!code) {
+					errBox.textContent = codeInput.placeholder;
+					errBox.hidden = false;
+					return;
+				}
+				fetch('{{ .RootURL }}/api/organizations/join', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					credentials: 'same-origin',
+					body: JSON.stringify({ code: code })
+				}).then(function (res) {
+					return res.json().catch(function () { return {}; }).then(function (data) {
+						if (!res.ok) {
+							throw new Error((data && data.message) ? data.message : String(res.status));
+						}
+						var org = data && data.data;
+						var orgID = parseInt(org && (org.id || org.organization_id), 10) || 0;
+						if (orgID > 0) {
+							enterWorkspace(orgID);
+						} else {
+							throw new Error('invalid response');
+						}
+					});
+				}).catch(function (err) {
+					errBox.textContent = err.message || 'error';
+					errBox.hidden = false;
+				});
+			});
+		})();
+	</script>
+{{ end }}
+
+{{ template "footer-app" .}}
+{{ end }}

@@ -12,19 +12,19 @@ import (
 )
 
 const (
-	resourceLists       = "lists"
-	resourceSubscribers = "subscribers"
-	resourceTemplates   = "templates"
-	resourceCampaigns   = "campaigns"
-	resourceMedia       = "media"
+	resourceLists     = "customer_lists"
+	resourceCustomers = "customers"
+	resourceTemplates = "templates"
+	resourceCampaigns = "campaigns"
+	resourceMedia     = "media"
 )
 
 var workspaceResourceTables = map[string]string{
-	resourceLists:       "lists",
-	resourceSubscribers: "subscribers",
-	resourceTemplates:   "templates",
-	resourceCampaigns:   "campaigns",
-	resourceMedia:       "media",
+	resourceLists:     "customer_lists",
+	resourceCustomers: "customers",
+	resourceTemplates: "templates",
+	resourceCampaigns: "campaigns",
+	resourceMedia:     "media",
 }
 
 // GetResourceScope returns scope metadata without exposing the resource body.
@@ -192,7 +192,7 @@ func (c *Core) CanCopyCampaign(access models.WorkspaceAccess, scope models.Resou
 	return access.IsOrganizationManager()
 }
 
-// CanReadOwnerScopedResource is the access rule for lists and subscribers.
+// CanReadOwnerScopedResource is the access rule for customer_lists and customers.
 // These resources deliberately do not honor organization/global visibility:
 // a member's audience remains private to that member, while organization
 // managers retain the documented read-only oversight access.
@@ -243,9 +243,9 @@ func (c *Core) CanManageResource(access models.WorkspaceAccess, scope models.Res
 	return access.IsOrganization() && int(scope.OrganizationID.Int) == access.OrganizationID
 }
 
-// CanSeeSensitiveResource controls recipient e-mails, sending lists, mail
+// CanSeeSensitiveResource controls recipient e-mails, sending customer_lists, mail
 // headers, sender identity and CSV export. A manager may inspect a member's
-// campaign or subscriber detail but never its sensitive delivery data.
+// campaign or customer detail but never its sensitive delivery data.
 func (c *Core) CanSeeSensitiveResource(access models.WorkspaceAccess, scope models.ResourceScope) bool {
 	return c.CanManageResource(access, scope) || access.PlatformAdmin
 }
@@ -256,7 +256,7 @@ func (c *Core) RequireReadResource(access models.WorkspaceAccess, resource strin
 		return scope, err
 	}
 	canRead := c.CanReadResource(access, scope)
-	if resource == resourceLists || resource == resourceSubscribers {
+	if resource == resourceLists || resource == resourceCustomers {
 		canRead = c.CanReadOwnerScopedResource(access, scope)
 	}
 	if !canRead {
@@ -385,10 +385,10 @@ func nullInt(v int) modelsNullableInt {
 // models.ResourceScope fields below.
 type modelsNullableInt = null.Int
 
-// ListWorkspaceResources returns only resources visible within the active
+// CustomerListWorkspaceResources returns only resources visible within the active
 // workspace. Managers see member resources in their organization, while
 // ordinary members see their own resources plus explicitly shared resources.
-func (c *Core) ListWorkspaceResources(access models.WorkspaceAccess, resource string) ([]int, error) {
+func (c *Core) CustomerListWorkspaceResources(access models.WorkspaceAccess, resource string) ([]int, error) {
 	table, ok := workspaceResourceTables[resource]
 	if !ok {
 		return nil, echo.NewHTTPError(http.StatusInternalServerError, "unknown workspace resource")
@@ -403,7 +403,7 @@ func (c *Core) ListWorkspaceResources(access models.WorkspaceAccess, resource st
 
 	var q string
 	var args []any
-	if resource == resourceLists || resource == resourceSubscribers {
+	if resource == resourceLists || resource == resourceCustomers {
 		scope, scopeArgs := workspaceOwnerScopedReadPredicate(access, "", 1)
 		q = fmt.Sprintf("SELECT id FROM %s WHERE (%s)", table, scope)
 		args = scopeArgs
@@ -440,11 +440,11 @@ func validateResourceVisibility(resource string, visibility string) error {
 		visibility != models.ResourceVisibilityGlobal {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid resource visibility")
 	}
-	if (resource == resourceLists || resource == resourceSubscribers) && visibility != models.ResourceVisibilityPrivate {
-		return echo.NewHTTPError(http.StatusBadRequest, "lists and subscribers must remain private to their owner")
+	if (resource == resourceLists || resource == resourceCustomers) && visibility != models.ResourceVisibilityPrivate {
+		return echo.NewHTTPError(http.StatusBadRequest, "customer_lists and customers must remain private to their owner")
 	}
 	if visibility == models.ResourceVisibilityGlobal &&
-		(resource == resourceLists || resource == resourceSubscribers || resource == resourceMedia) {
+		(resource == resourceLists || resource == resourceCustomers || resource == resourceMedia) {
 		return echo.NewHTTPError(http.StatusBadRequest, "this resource cannot be globally visible")
 	}
 	return nil
@@ -454,10 +454,10 @@ func (c *Core) CountWorkspaceManagers(orgID int) (int, error) {
 	return c.countOrganizationManagers(c.db, orgID)
 }
 
-// ListManagedWorkspaceResources returns only resources the active caller may
+// CustomerListManagedWorkspaceResources returns only resources the active caller may
 // mutate. It is used by every bulk endpoint so managers cannot accidentally
 // operate on another member's records merely because they can inspect them.
-func (c *Core) ListManagedWorkspaceResources(access models.WorkspaceAccess, resource string) ([]int, error) {
+func (c *Core) CustomerListManagedWorkspaceResources(access models.WorkspaceAccess, resource string) ([]int, error) {
 	table, ok := workspaceResourceTables[resource]
 	if !ok {
 		return nil, echo.NewHTTPError(http.StatusInternalServerError, "unknown workspace resource")

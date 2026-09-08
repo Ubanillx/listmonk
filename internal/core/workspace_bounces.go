@@ -10,11 +10,11 @@ import (
 	"github.com/lib/pq"
 )
 
-// workspaceManagedSubscriberPredicate is the write counterpart to
-// workspaceSubscriberReadPredicate. Organization managers may inspect a
-// member's bounces but may only delete or blocklist bounces for subscribers
+// workspaceManagedCustomerPredicate is the write counterpart to
+// workspaceCustomerReadPredicate. Organization managers may inspect a
+// member's bounces but may only delete or blocklist bounces for customers
 // they own themselves.
-func workspaceManagedSubscriberPredicate(access models.WorkspaceAccess, alias string, firstArg int) (string, []any) {
+func workspaceManagedCustomerPredicate(access models.WorkspaceAccess, alias string, firstArg int) (string, []any) {
 	field := func(name string) string { return alias + "." + name }
 	arg := func(offset int) string { return fmt.Sprintf("$%d", firstArg+offset) }
 	if access.PlatformAdmin {
@@ -28,9 +28,9 @@ func workspaceManagedSubscriberPredicate(access models.WorkspaceAccess, alias st
 		field(""), field(""), arg(0), field("")), []any{access.UserID}
 }
 
-// QueryWorkspaceBounces returns bounce history through the scoped subscriber
+// QueryWorkspaceBounces returns bounce history through the scoped customer
 // relationship. The optional bounceID is used for single-record lookups.
-func (c *Core) QueryWorkspaceBounces(access models.WorkspaceAccess, bounceID, campaignID, subscriberID int, source, orderBy, order string, offset, limit int) ([]models.Bounce, int, error) {
+func (c *Core) QueryWorkspaceBounces(access models.WorkspaceAccess, bounceID, campaignID, customerID int, source, orderBy, order string, offset, limit int) ([]models.Bounce, int, error) {
 	fields := map[string]string{
 		"id":            "b.id",
 		"email":         "s.email",
@@ -46,39 +46,49 @@ func (c *Core) QueryWorkspaceBounces(access models.WorkspaceAccess, bounceID, ca
 		order = SortDesc
 	}
 
-	scope, args := workspaceSubscriberReadPredicate(access, "s", 1)
+	scope, args := workspaceCustomerReadPredicate(access, "s", 1)
 	first := len(args) + 1
+	poolScope := "FALSE"
+	if access.PlatformAdmin {
+		poolScope = "TRUE"
+	} else if access.IsOrganization() {
+		poolScope = fmt.Sprintf("b.source_organization_id = $%d", first)
+		args = append(args, access.OrganizationID)
+		first++
+	}
 	stmt := fmt.Sprintf(`
 		SELECT COUNT(*) OVER () AS total,
-			b.id, b.type, b.source, b.meta, b.created_at, b.subscriber_id,
-			s.uuid AS subscriber_uuid, s.email, s.status AS subscriber_status,
+			b.id, b.type, b.source, b.meta, b.created_at, b.customer_id,
+			b.pool_contact_id, b.source_pool_id, b.source_segment_id, b.source_organization_id,
+			COALESCE(s.uuid, pc.uuid::text, '') AS customer_uuid, COALESCE(s.email, pc.email, '') AS email, COALESCE(s.status, pc.status, '') AS customer_status,
 			s.organization_id, s.owner_user_id, s.transfer_pending_at,
 			CASE WHEN b.campaign_id IS NOT NULL
 				THEN JSON_BUILD_OBJECT('id', b.campaign_id, 'name', c.name)
 				ELSE NULL END AS campaign
 		FROM bounces b
-		JOIN subscribers s ON s.id = b.subscriber_id
-		-- A bounce row is keyed by subscriber, while campaign_id is supplied by
+		LEFT JOIN customers s ON s.id = b.customer_id
+		LEFT JOIN pool_contacts pc ON pc.id = b.pool_contact_id
+		-- A bounce row is keyed by customer, while campaign_id is supplied by
 		-- the delivery provider and may be stale or malformed.  Keep the optional
-		-- campaign label inside the subscriber's same workspace/owner boundary;
+		-- campaign label inside the customer's same workspace/owner boundary;
 		-- otherwise a forged historical relation could disclose another tenant's
 		-- campaign name to an organization manager.
 		LEFT JOIN campaigns c ON c.id = b.campaign_id
 			AND c.organization_id IS NOT DISTINCT FROM s.organization_id
 			AND c.owner_user_id IS NOT DISTINCT FROM s.owner_user_id
-		WHERE (%s)
+		WHERE ((s.id IS NOT NULL AND (%s)) OR (b.pool_contact_id IS NOT NULL AND %s))
 			AND ($%d = 0 OR b.id = $%d)
 			AND ($%d = 0 OR b.campaign_id = $%d)
-			AND ($%d = 0 OR b.subscriber_id = $%d)
+			AND ($%d = 0 OR b.customer_id = $%d)
 			AND ($%d = '' OR b.source = $%d)
 		ORDER BY %s OFFSET $%d LIMIT (CASE WHEN $%d < 1 THEN NULL ELSE $%d END)`,
-		scope,
+		scope, poolScope,
 		first, first,
 		first+1, first+1,
 		first+2, first+2,
 		first+3, first+3,
 		workspaceSort(orderBy, order, fields, "b.created_at"), first+4, first+5, first+5)
-	args = append(args, bounceID, campaignID, subscriberID, source, offset, limit)
+	args = append(args, bounceID, campaignID, customerID, source, offset, limit)
 
 	out := []models.Bounce{}
 	if err := c.db.Select(&out, stmt, args...); err != nil {
@@ -102,18 +112,18 @@ func (c *Core) GetWorkspaceBounce(access models.WorkspaceAccess, id int) (models
 	return out[0], nil
 }
 
-// DeleteWorkspaceBounces removes only bounces for subscribers owned by the
+// DeleteWorkspaceBounces removes only bounces for customers owned by the
 // caller in the selected workspace. An empty explicit ID set is a no-op.
 func (c *Core) DeleteWorkspaceBounces(access models.WorkspaceAccess, ids []int, all bool) error {
 	if !all && len(ids) == 0 {
 		return nil
 	}
-	scope, args := workspaceManagedSubscriberPredicate(access, "s", 1)
+	scope, args := workspaceManagedCustomerPredicate(access, "s", 1)
 	first := len(args) + 1
 	stmt := fmt.Sprintf(`
 		DELETE FROM bounces b
-		USING subscribers s
-		WHERE b.subscriber_id = s.id AND (%s)
+		USING customers s
+		WHERE b.customer_id = s.id AND (%s)
 			AND ($%d::BOOLEAN OR b.id = ANY($%d::INT[]))`, scope, first, first+1)
 	args = append(args, all, pq.Array(ids))
 	if _, err := c.db.Exec(stmt, args...); err != nil {
@@ -122,25 +132,39 @@ func (c *Core) DeleteWorkspaceBounces(access models.WorkspaceAccess, ids []int, 
 	return nil
 }
 
-// BlocklistWorkspaceBouncedSubscribers applies the bounce action only to the
-// current caller's subscriber records. This keeps an organization manager's
+// BlocklistWorkspaceBouncedCustomers applies the bounce action only to the
+// current caller's customer records. This keeps an organization manager's
 // read-only access from becoming a member-wide bulk mutation capability.
-func (c *Core) BlocklistWorkspaceBouncedSubscribers(access models.WorkspaceAccess) error {
-	scope, args := workspaceManagedSubscriberPredicate(access, "s", 1)
+func (c *Core) BlocklistWorkspaceBouncedCustomers(access models.WorkspaceAccess) error {
+	scope, args := workspaceManagedCustomerPredicate(access, "s", 1)
 	stmt := fmt.Sprintf(`
 		WITH bounced AS (
 			SELECT DISTINCT s.id FROM bounces b
-			JOIN subscribers s ON s.id = b.subscriber_id
+			JOIN customers s ON s.id = b.customer_id
 			WHERE (%s)
 		), updated AS (
-			UPDATE subscribers SET status = 'blocklisted', updated_at = NOW()
+			UPDATE customers SET status = 'blocklisted', updated_at = NOW()
 			WHERE id IN (SELECT id FROM bounced)
 			RETURNING id
 		)
-		UPDATE subscriber_lists SET status = 'unsubscribed', updated_at = NOW()
-		WHERE subscriber_id IN (SELECT id FROM updated)`, scope)
+		UPDATE customer_list_memberships SET status = 'unsubscribed', updated_at = NOW()
+		WHERE customer_id IN (SELECT id FROM updated)`, scope)
 	if _, err := c.db.Exec(stmt, args...); err != nil {
-		return workspaceQueryError("blocklisting bounced subscribers", err)
+		return workspaceQueryError("blocklisting bounced customers", err)
+	}
+	// Logical pool exclusions are organization-scoped; unlike legacy customers,
+	// no global blocklist row is mutated.
+	poolStmt := `INSERT INTO pool_segment_exclusions(pool_id,organization_id,contact_id,segment_id,reason,source)
+		SELECT source_pool_id,source_organization_id,pool_contact_id,source_segment_id,'bounce','bounce'
+		FROM bounces WHERE pool_contact_id IS NOT NULL AND source_pool_id IS NOT NULL AND source_organization_id IS NOT NULL %s
+		ON CONFLICT(pool_id,organization_id,contact_id) DO UPDATE SET reason='bounce',source='bounce',removed_at=NOW(),restored_at=NULL`
+	if access.PlatformAdmin {
+		_, err := c.db.Exec(fmt.Sprintf(poolStmt, ""))
+		return err
+	}
+	if access.IsOrganization() {
+		_, err := c.db.Exec(fmt.Sprintf(poolStmt, `AND source_organization_id=$1`), access.OrganizationID)
+		return err
 	}
 	return nil
 }

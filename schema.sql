@@ -1,7 +1,7 @@
-DROP TYPE IF EXISTS list_type CASCADE; CREATE TYPE list_type AS ENUM ('public', 'private', 'temporary');
-DROP TYPE IF EXISTS list_optin CASCADE; CREATE TYPE list_optin AS ENUM ('single', 'double');
-DROP TYPE IF EXISTS list_status CASCADE; CREATE TYPE list_status AS ENUM ('active', 'archived');
-DROP TYPE IF EXISTS subscriber_status CASCADE; CREATE TYPE subscriber_status AS ENUM ('enabled', 'disabled', 'blocklisted');
+DROP TYPE IF EXISTS customer_list_type CASCADE; CREATE TYPE customer_list_type AS ENUM ('public', 'private', 'temporary', 'pool', 'pool_segment');
+DROP TYPE IF EXISTS customer_list_optin CASCADE; CREATE TYPE customer_list_optin AS ENUM ('single', 'double');
+DROP TYPE IF EXISTS customer_list_status CASCADE; CREATE TYPE customer_list_status AS ENUM ('active', 'archived');
+DROP TYPE IF EXISTS customer_status CASCADE; CREATE TYPE customer_status AS ENUM ('enabled', 'disabled', 'blocklisted');
 DROP TYPE IF EXISTS subscription_status CASCADE; CREATE TYPE subscription_status AS ENUM ('unconfirmed', 'confirmed', 'unsubscribed');
 DROP TYPE IF EXISTS campaign_status CASCADE; CREATE TYPE campaign_status AS ENUM ('draft', 'running', 'scheduled', 'paused', 'deferred', 'cancelled', 'finished');
 DROP TYPE IF EXISTS campaign_type CASCADE; CREATE TYPE campaign_type AS ENUM ('regular', 'optin');
@@ -11,13 +11,14 @@ DROP TYPE IF EXISTS bounce_type CASCADE; CREATE TYPE bounce_type AS ENUM ('soft'
 DROP TYPE IF EXISTS template_type CASCADE; CREATE TYPE template_type AS ENUM ('campaign', 'campaign_visual', 'tx');
 DROP TYPE IF EXISTS user_type CASCADE; CREATE TYPE user_type AS ENUM ('user', 'api');
 DROP TYPE IF EXISTS user_status CASCADE; CREATE TYPE user_status AS ENUM ('enabled', 'disabled');
-DROP TYPE IF EXISTS role_type CASCADE; CREATE TYPE role_type AS ENUM ('user', 'list');
+DROP TYPE IF EXISTS role_type CASCADE; CREATE TYPE role_type AS ENUM ('user', 'customer_list');
 DROP TYPE IF EXISTS twofa_type CASCADE; CREATE TYPE twofa_type AS ENUM ('none', 'totp');
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- Organization tenancy tables are declared after users below because they
 -- reference user IDs. Drop them explicitly on a destructive fresh install.
+DROP TABLE IF EXISTS reply_ai_events CASCADE;
 DROP TABLE IF EXISTS reply_forward_messages CASCADE;
 DROP TABLE IF EXISTS reply_forward_rules CASCADE;
 DROP TABLE IF EXISTS reply_mailboxes CASCADE;
@@ -26,74 +27,79 @@ DROP TABLE IF EXISTS organization_join_requests CASCADE;
 DROP TABLE IF EXISTS organization_members CASCADE;
 DROP TABLE IF EXISTS organizations CASCADE;
 
--- subscribers
-DROP TABLE IF EXISTS subscriber_uuid_aliases CASCADE;
-DROP TABLE IF EXISTS subscribers CASCADE;
-CREATE TABLE subscribers (
+-- customers
+DROP TABLE IF EXISTS customer_uuid_aliases CASCADE;
+DROP TABLE IF EXISTS customers CASCADE;
+CREATE TABLE customers (
     id              SERIAL PRIMARY KEY,
     uuid uuid       NOT NULL UNIQUE,
     email           TEXT NOT NULL UNIQUE,
     name            TEXT NOT NULL,
     attribs         JSONB NOT NULL DEFAULT '{}',
-    status          subscriber_status NOT NULL DEFAULT 'enabled',
+    status          customer_status NOT NULL DEFAULT 'enabled',
+    customer_code   TEXT NOT NULL DEFAULT '',
 
     created_at      TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at      TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
-DROP INDEX IF EXISTS idx_subs_email; CREATE UNIQUE INDEX idx_subs_email ON subscribers(LOWER(email));
-DROP INDEX IF EXISTS idx_subs_status; CREATE INDEX idx_subs_status ON subscribers(status);
-DROP INDEX IF EXISTS idx_subs_id_status; CREATE INDEX idx_subs_id_status ON subscribers(id, status);
-DROP INDEX IF EXISTS idx_subs_created_at; CREATE INDEX idx_subs_created_at ON subscribers(created_at);
-DROP INDEX IF EXISTS idx_subs_updated_at; CREATE INDEX idx_subs_updated_at ON subscribers(updated_at);
+DROP INDEX IF EXISTS idx_subs_email; CREATE UNIQUE INDEX idx_subs_email ON customers(LOWER(email));
+DROP INDEX IF EXISTS idx_subs_status; CREATE INDEX idx_subs_status ON customers(status);
+DROP INDEX IF EXISTS idx_subs_customer_code; CREATE INDEX idx_subs_customer_code ON customers(customer_code);
+DROP INDEX IF EXISTS idx_subs_id_status; CREATE INDEX idx_subs_id_status ON customers(id, status);
+DROP INDEX IF EXISTS idx_subs_created_at; CREATE INDEX idx_subs_created_at ON customers(created_at);
+DROP INDEX IF EXISTS idx_subs_updated_at; CREATE INDEX idx_subs_updated_at ON customers(updated_at);
 
--- A subscriber can be merged into another record when scoped e-mail
+-- A customer can be merged into another record when scoped e-mail
 -- duplicates are reconciled. Preserve previous UUIDs so delivered campaign
--- URLs continue resolving to the retained subscriber.
-CREATE TABLE subscriber_uuid_aliases (
+-- URLs continue resolving to the retained customer.
+CREATE TABLE customer_uuid_aliases (
     uuid          UUID PRIMARY KEY,
-    subscriber_id INTEGER NOT NULL REFERENCES subscribers(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE ON UPDATE CASCADE,
     created_at    TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
-CREATE INDEX idx_subscriber_uuid_aliases_subscriber_id ON subscriber_uuid_aliases(subscriber_id);
+CREATE INDEX idx_customer_uuid_aliases_customer_id ON customer_uuid_aliases(customer_id);
 
--- lists
-DROP TABLE IF EXISTS lists CASCADE;
-CREATE TABLE lists (
+-- customer_lists
+DROP TABLE IF EXISTS customer_lists CASCADE;
+CREATE TABLE customer_lists (
     id              SERIAL PRIMARY KEY,
     uuid            uuid NOT NULL UNIQUE,
     name            TEXT NOT NULL,
-    type            list_type NOT NULL,
-    optin           list_optin NOT NULL DEFAULT 'single',
-    status          list_status NOT NULL DEFAULT 'active',
+    type            customer_list_type NOT NULL,
+    optin           customer_list_optin NOT NULL DEFAULT 'single',
+    status          customer_list_status NOT NULL DEFAULT 'active',
     tags            VARCHAR(100)[],
     description     TEXT NOT NULL DEFAULT '',
+    mask_emails     BOOLEAN NOT NULL DEFAULT false,
+    pool_parent_id  INTEGER NULL REFERENCES customer_lists(id) ON DELETE CASCADE,
 
     created_at      TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at      TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
-DROP INDEX IF EXISTS idx_lists_type; CREATE INDEX idx_lists_type ON lists(type);
-DROP INDEX IF EXISTS idx_lists_optin; CREATE INDEX idx_lists_optin ON lists(optin);
-DROP INDEX IF EXISTS idx_lists_status; CREATE INDEX idx_lists_status ON lists(status);
-DROP INDEX IF EXISTS idx_lists_name; CREATE INDEX idx_lists_name ON lists(name);
-DROP INDEX IF EXISTS idx_lists_created_at; CREATE INDEX idx_lists_created_at ON lists(created_at);
-DROP INDEX IF EXISTS idx_lists_updated_at; CREATE INDEX idx_lists_updated_at ON lists(updated_at);
+DROP INDEX IF EXISTS idx_lists_type; CREATE INDEX idx_lists_type ON customer_lists(type);
+DROP INDEX IF EXISTS idx_lists_optin; CREATE INDEX idx_lists_optin ON customer_lists(optin);
+DROP INDEX IF EXISTS idx_lists_status; CREATE INDEX idx_lists_status ON customer_lists(status);
+DROP INDEX IF EXISTS idx_lists_name; CREATE INDEX idx_lists_name ON customer_lists(name);
+DROP INDEX IF EXISTS idx_lists_created_at; CREATE INDEX idx_lists_created_at ON customer_lists(created_at);
+DROP INDEX IF EXISTS idx_lists_updated_at; CREATE INDEX idx_lists_updated_at ON customer_lists(updated_at);
+DROP INDEX IF EXISTS idx_customer_lists_pool_parent; CREATE INDEX idx_customer_lists_pool_parent ON customer_lists(pool_parent_id);
 
 
-DROP TABLE IF EXISTS subscriber_lists CASCADE;
-CREATE TABLE subscriber_lists (
-    subscriber_id      INTEGER REFERENCES subscribers(id) ON DELETE CASCADE ON UPDATE CASCADE,
-    list_id            INTEGER NULL REFERENCES lists(id) ON DELETE CASCADE ON UPDATE CASCADE,
+DROP TABLE IF EXISTS customer_list_memberships CASCADE;
+CREATE TABLE customer_list_memberships (
+    customer_id      INTEGER REFERENCES customers(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    customer_list_id            INTEGER NULL REFERENCES customer_lists(id) ON DELETE CASCADE ON UPDATE CASCADE,
     meta               JSONB NOT NULL DEFAULT '{}',
     status             subscription_status NOT NULL DEFAULT 'unconfirmed',
 
     created_at         TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at         TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
 
-    PRIMARY KEY(subscriber_id, list_id)
+    PRIMARY KEY(customer_id, customer_list_id)
 );
-DROP INDEX IF EXISTS idx_sub_lists_sub_id; CREATE INDEX idx_sub_lists_sub_id ON subscriber_lists(subscriber_id);
-DROP INDEX IF EXISTS idx_sub_lists_list_id; CREATE INDEX idx_sub_lists_list_id ON subscriber_lists(list_id);
-DROP INDEX IF EXISTS idx_sub_lists_status; CREATE INDEX idx_sub_lists_status ON subscriber_lists(status);
+DROP INDEX IF EXISTS idx_sub_lists_sub_id; CREATE INDEX idx_sub_lists_sub_id ON customer_list_memberships(customer_id);
+DROP INDEX IF EXISTS idx_sub_lists_customer_list_id; CREATE INDEX idx_sub_lists_customer_list_id ON customer_list_memberships(customer_list_id);
+DROP INDEX IF EXISTS idx_sub_lists_status; CREATE INDEX idx_sub_lists_status ON customer_list_memberships(status);
 
 -- templates
 DROP TABLE IF EXISTS templates CASCADE;
@@ -134,7 +140,7 @@ CREATE TABLE campaigns (
     next_resume_at   TIMESTAMP WITH TIME ZONE,
     tags             VARCHAR(100)[],
 
-    -- The subscription statuses of subscribers to which a campaign will be sent.
+    -- The subscription statuses of customers to which a campaign will be sent.
     -- For opt-in campaigns, this will be 'unsubscribed'.
     type campaign_type DEFAULT 'regular',
 
@@ -145,8 +151,8 @@ CREATE TABLE campaigns (
     -- Progress and stats.
     to_send            INT NOT NULL DEFAULT 0,
     sent               INT NOT NULL DEFAULT 0,
-    max_subscriber_id  INT NOT NULL DEFAULT 0,
-    last_subscriber_id INT NOT NULL DEFAULT 0,
+    max_customer_id  INT NOT NULL DEFAULT 0,
+    last_customer_id INT NOT NULL DEFAULT 0,
 
     -- Publishing.
     archive             BOOLEAN NOT NULL DEFAULT false,
@@ -167,24 +173,24 @@ DROP INDEX IF EXISTS idx_camps_created_at; CREATE INDEX idx_camps_created_at ON 
 DROP INDEX IF EXISTS idx_camps_updated_at; CREATE INDEX idx_camps_updated_at ON campaigns(updated_at);
 
 
-DROP TABLE IF EXISTS campaign_lists CASCADE;
-CREATE TABLE campaign_lists (
+DROP TABLE IF EXISTS campaign_customer_lists CASCADE;
+CREATE TABLE campaign_customer_lists (
     id           BIGSERIAL PRIMARY KEY,
     campaign_id  INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE ON UPDATE CASCADE,
 
-    -- Lists may be deleted, so list_id is nullable
-    -- and a copy of the original list name is maintained here.
-    list_id      INTEGER NULL REFERENCES lists(id) ON DELETE SET NULL ON UPDATE CASCADE,
-    list_name    TEXT NOT NULL DEFAULT ''
+    -- CustomerLists may be deleted, so customer_list_id is nullable
+    -- and a copy of the original customer_list name is maintained here.
+    customer_list_id      INTEGER NULL REFERENCES customer_lists(id) ON DELETE SET NULL ON UPDATE CASCADE,
+    customer_list_name    TEXT NOT NULL DEFAULT ''
 );
-CREATE UNIQUE INDEX ON campaign_lists (campaign_id, list_id);
-DROP INDEX IF EXISTS idx_camp_lists_camp_id; CREATE INDEX idx_camp_lists_camp_id ON campaign_lists(campaign_id);
-DROP INDEX IF EXISTS idx_camp_lists_list_id; CREATE INDEX idx_camp_lists_list_id ON campaign_lists(list_id);
+CREATE UNIQUE INDEX ON campaign_customer_lists (campaign_id, customer_list_id);
+DROP INDEX IF EXISTS idx_camp_lists_camp_id; CREATE INDEX idx_camp_lists_camp_id ON campaign_customer_lists(campaign_id);
+DROP INDEX IF EXISTS idx_camp_lists_customer_list_id; CREATE INDEX idx_camp_lists_customer_list_id ON campaign_customer_lists(customer_list_id);
 
 DROP TABLE IF EXISTS campaign_recipients CASCADE;
 CREATE TABLE campaign_recipients (
     campaign_id    INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE ON UPDATE CASCADE,
-    subscriber_id  INTEGER NOT NULL REFERENCES subscribers(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    customer_id  INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE ON UPDATE CASCADE,
     status         campaign_recipient_status NOT NULL DEFAULT 'pending',
     email_snapshot TEXT,
     name_snapshot  TEXT,
@@ -192,10 +198,10 @@ CREATE TABLE campaign_recipients (
     sent_at        TIMESTAMP WITH TIME ZONE,
     created_at     TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at     TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    PRIMARY KEY (campaign_id, subscriber_id)
+    PRIMARY KEY (campaign_id, customer_id)
 );
-DROP INDEX IF EXISTS idx_camp_recipients_status; CREATE INDEX idx_camp_recipients_status ON campaign_recipients(campaign_id, status, subscriber_id);
-DROP INDEX IF EXISTS idx_camp_recipients_sub_id; CREATE INDEX idx_camp_recipients_sub_id ON campaign_recipients(subscriber_id);
+DROP INDEX IF EXISTS idx_camp_recipients_status; CREATE INDEX idx_camp_recipients_status ON campaign_recipients(campaign_id, status, customer_id);
+DROP INDEX IF EXISTS idx_camp_recipients_sub_id; CREATE INDEX idx_camp_recipients_sub_id ON campaign_recipients(customer_id);
 
 DROP TABLE IF EXISTS smtp_daily_usage CASCADE;
 CREATE TABLE smtp_daily_usage (
@@ -220,12 +226,12 @@ CREATE TABLE campaign_views (
     id               BIGSERIAL PRIMARY KEY,
     campaign_id      INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE ON UPDATE CASCADE,
 
-    -- Subscribers may be deleted, but the view counts should remain.
-    subscriber_id    INTEGER NULL REFERENCES subscribers(id) ON DELETE SET NULL ON UPDATE CASCADE,
+    -- Customers may be deleted, but the view counts should remain.
+    customer_id    INTEGER NULL REFERENCES customers(id) ON DELETE SET NULL ON UPDATE CASCADE,
     created_at       TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 DROP INDEX IF EXISTS idx_views_camp_id; CREATE INDEX idx_views_camp_id ON campaign_views(campaign_id);
-DROP INDEX IF EXISTS idx_views_subscriber_id; CREATE INDEX idx_views_subscriber_id ON campaign_views(subscriber_id);
+DROP INDEX IF EXISTS idx_views_customer_id; CREATE INDEX idx_views_customer_id ON campaign_views(customer_id);
 DROP INDEX IF EXISTS idx_views_date; CREATE INDEX idx_views_date ON campaign_views(created_at);
 
 -- media
@@ -294,13 +300,13 @@ CREATE TABLE link_clicks (
     campaign_id      INTEGER NULL REFERENCES campaigns(id) ON DELETE CASCADE ON UPDATE CASCADE,
     link_id          INTEGER NOT NULL REFERENCES links(id) ON DELETE CASCADE ON UPDATE CASCADE,
 
-    -- Subscribers may be deleted, but the link counts should remain.
-    subscriber_id    INTEGER NULL REFERENCES subscribers(id) ON DELETE SET NULL ON UPDATE CASCADE,
+    -- Customers may be deleted, but the link counts should remain.
+    customer_id    INTEGER NULL REFERENCES customers(id) ON DELETE SET NULL ON UPDATE CASCADE,
     created_at       TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 DROP INDEX IF EXISTS idx_clicks_camp_id; CREATE INDEX idx_clicks_camp_id ON link_clicks(campaign_id);
 DROP INDEX IF EXISTS idx_clicks_link_id; CREATE INDEX idx_clicks_link_id ON link_clicks(link_id);
-DROP INDEX IF EXISTS idx_clicks_sub_id; CREATE INDEX idx_clicks_sub_id ON link_clicks(subscriber_id);
+DROP INDEX IF EXISTS idx_clicks_sub_id; CREATE INDEX idx_clicks_sub_id ON link_clicks(customer_id);
 DROP INDEX IF EXISTS idx_clicks_date; CREATE INDEX idx_clicks_date ON link_clicks(created_at);
 
 -- settings
@@ -312,8 +318,8 @@ CREATE TABLE settings (
 );
 DROP INDEX IF EXISTS idx_settings_key; CREATE INDEX idx_settings_key ON settings(key);
 INSERT INTO settings (key, value) VALUES
-	('subscriber.custom_fields', '[]'),
-    ('app.site_name', '"Mailing list"'),
+	('customer.custom_fields', '[]'),
+    ('app.site_name', '"Mailing customer_list"'),
     ('app.root_url', '"http://localhost:9000"'),
     ('app.favicon_url', '""'),
     ('app.from_email', '"listmonk <noreply@listmonk.yoursite.com>"'),
@@ -377,6 +383,7 @@ INSERT INTO settings (key, value) VALUES
     ('bounce.forwardemail', '{"enabled": false, "key": ""}'),
     ('bounce.mailboxes',
         '[{"enabled":false, "type": "pop", "host":"pop.yoursite.com","port":995,"auth_protocol":"userpass","username":"username","password":"password","return_path": "bounce@listmonk.yoursite.com","scan_interval":"15m","tls_enabled":true,"tls_skip_verify":false}]'),
+    ('reply_ai', '{"enabled": false, "base_url": "", "api_key": "", "model": "", "timeout": "15s", "min_confidence": 0.98}'),
     ('appearance.admin.custom_css', '""'),
     ('appearance.admin.custom_js', '""'),
     ('appearance.public.custom_css', '""'),
@@ -387,14 +394,19 @@ INSERT INTO settings (key, value) VALUES
 DROP TABLE IF EXISTS bounces CASCADE;
 CREATE TABLE bounces (
     id               SERIAL PRIMARY KEY,
-    subscriber_id    INTEGER NOT NULL REFERENCES subscribers(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    customer_id    INTEGER NULL REFERENCES customers(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    pool_contact_id BIGINT NULL,
+    source_pool_id INTEGER NULL,
+    source_segment_id BIGINT NULL,
+    source_organization_id BIGINT NULL,
     campaign_id      INTEGER NULL REFERENCES campaigns(id) ON DELETE SET NULL ON UPDATE CASCADE,
     type             bounce_type NOT NULL DEFAULT 'hard',
     source           TEXT NOT NULL DEFAULT '',
     meta             JSONB NOT NULL DEFAULT '{}',
+    reply_ai_event_id BIGINT NULL UNIQUE,
     created_at       TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
-DROP INDEX IF EXISTS idx_bounces_sub_id; CREATE INDEX idx_bounces_sub_id ON bounces(subscriber_id);
+DROP INDEX IF EXISTS idx_bounces_sub_id; CREATE INDEX idx_bounces_sub_id ON bounces(customer_id);
 DROP INDEX IF EXISTS idx_bounces_camp_id; CREATE INDEX idx_bounces_camp_id ON bounces(campaign_id);
 DROP INDEX IF EXISTS idx_bounces_source; CREATE INDEX idx_bounces_source ON bounces(source);
 DROP INDEX IF EXISTS idx_bounces_date; CREATE INDEX idx_bounces_date ON bounces(created_at);
@@ -405,13 +417,13 @@ CREATE TABLE roles (
     id               SERIAL PRIMARY KEY,
     type             role_type NOT NULL DEFAULT 'user',
     parent_id        INTEGER NULL REFERENCES roles(id) ON DELETE CASCADE ON UPDATE CASCADE,
-    list_id          INTEGER NULL REFERENCES lists(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    customer_list_id          INTEGER NULL REFERENCES customer_lists(id) ON DELETE CASCADE ON UPDATE CASCADE,
     permissions      TEXT[] NOT NULL DEFAULT '{}',
     name             TEXT NULL,
     created_at       TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at       TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
-CREATE UNIQUE INDEX idx_roles ON roles (parent_id, list_id);
+CREATE UNIQUE INDEX idx_roles ON roles (parent_id, customer_list_id);
 CREATE UNIQUE INDEX idx_roles_name ON roles (type, name) WHERE name IS NOT NULL;
 
 -- users
@@ -575,6 +587,7 @@ CREATE TABLE reply_mailboxes (
     status           TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','active','retained','disabled')),
     verified_at      TIMESTAMP WITH TIME ZONE NULL,
     is_default       BOOLEAN NOT NULL DEFAULT FALSE,
+    ai_enabled       BOOLEAN NOT NULL DEFAULT FALSE,
     last_sync_at     TIMESTAMP WITH TIME ZONE NULL,
     last_sync_error  TEXT NOT NULL DEFAULT '',
     forward_count    INTEGER NOT NULL DEFAULT 0,
@@ -627,15 +640,55 @@ CREATE TABLE reply_forward_messages (
 );
 CREATE INDEX idx_reply_forward_messages_pending ON reply_forward_messages(status, created_at);
 
+-- AI classifications are an idempotent, leased work queue. The normalized
+-- message body is cleared once the item reaches a terminal state; the hash and
+-- bounded decision fields remain for customer-level audit.
+CREATE TABLE reply_ai_events (
+    id                BIGSERIAL PRIMARY KEY,
+    reply_mailbox_id  INTEGER NOT NULL REFERENCES reply_mailboxes(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    customer_id       INTEGER NULL REFERENCES customers(id) ON DELETE SET NULL ON UPDATE CASCADE,
+    pool_contact_id   BIGINT NULL,
+    pool_id           INTEGER NULL,
+    source_segment_id BIGINT NULL,
+    source_organization_id BIGINT NULL,
+    message_key       TEXT NOT NULL,
+    from_email        TEXT NOT NULL DEFAULT '',
+    subject           TEXT NOT NULL DEFAULT '',
+    body              TEXT NOT NULL DEFAULT '',
+    body_hash         TEXT NOT NULL DEFAULT '',
+    intent            TEXT NOT NULL DEFAULT 'other' CHECK (intent IN ('unsubscribe','complaint','other')),
+    confidence        DOUBLE PRECISION NOT NULL DEFAULT 0,
+    reason_code       TEXT NOT NULL DEFAULT '',
+    model             TEXT NOT NULL DEFAULT '',
+    action            TEXT NOT NULL DEFAULT 'pending' CHECK (action IN ('pending','ignored','blocklisted')),
+    status            TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','processing','processed','ignored','failed')),
+    attempts          INTEGER NOT NULL DEFAULT 0,
+    last_error        TEXT NOT NULL DEFAULT '',
+    received_at       TIMESTAMP WITH TIME ZONE NULL,
+    classified_at     TIMESTAMP WITH TIME ZONE NULL,
+    actioned_at       TIMESTAMP WITH TIME ZONE NULL,
+    next_attempt_at   TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    lease_expires_at  TIMESTAMP WITH TIME ZONE NULL,
+    lease_token       UUID NULL,
+    created_at        TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    UNIQUE (reply_mailbox_id, message_key)
+);
+CREATE INDEX idx_reply_ai_events_claim ON reply_ai_events(status, next_attempt_at, created_at);
+CREATE INDEX idx_reply_ai_events_customer ON reply_ai_events(customer_id, created_at DESC);
+ALTER TABLE bounces
+    ADD CONSTRAINT bounces_reply_ai_event_id_fkey
+    FOREIGN KEY (reply_ai_event_id) REFERENCES reply_ai_events(id) ON DELETE SET NULL ON UPDATE CASCADE;
+
 -- All user-owned resources receive an explicit tenancy and ownership scope.
 -- organization_id is NULL for a personal workspace.
-ALTER TABLE lists
+ALTER TABLE customer_lists
     ADD COLUMN organization_id BIGINT REFERENCES organizations(id) ON DELETE RESTRICT,
     ADD COLUMN owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     ADD COLUMN original_owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('private', 'organization', 'global')),
     ADD COLUMN transfer_pending_at TIMESTAMP WITH TIME ZONE;
-ALTER TABLE subscribers
+ALTER TABLE customers
     ADD COLUMN organization_id BIGINT REFERENCES organizations(id) ON DELETE RESTRICT,
     ADD COLUMN owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     ADD COLUMN original_owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -660,16 +713,16 @@ ALTER TABLE media
     ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('private', 'organization', 'global')),
     ADD COLUMN transfer_pending_at TIMESTAMP WITH TIME ZONE;
 
-CREATE INDEX idx_lists_workspace_owner ON lists(organization_id, owner_user_id);
-CREATE INDEX idx_subscribers_workspace_owner ON subscribers(organization_id, owner_user_id);
+CREATE INDEX idx_lists_workspace_owner ON customer_lists(organization_id, owner_user_id);
+CREATE INDEX idx_customers_workspace_owner ON customers(organization_id, owner_user_id);
 CREATE INDEX idx_templates_workspace_owner_visibility ON templates(organization_id, owner_user_id, visibility);
 CREATE INDEX idx_campaigns_workspace_owner_visibility ON campaigns(organization_id, owner_user_id, visibility);
 CREATE INDEX idx_media_workspace_owner ON media(organization_id, owner_user_id);
 
-ALTER TABLE subscribers DROP CONSTRAINT subscribers_email_key;
+ALTER TABLE customers DROP CONSTRAINT customers_email_key;
 DROP INDEX idx_subs_email;
-CREATE UNIQUE INDEX idx_subscribers_scope_owner_email
-    ON subscribers ((COALESCE(organization_id, 0)), owner_user_id, LOWER(email))
+CREATE UNIQUE INDEX idx_customers_scope_owner_email
+    ON customers ((COALESCE(organization_id, 0)), owner_user_id, LOWER(email))
     WHERE owner_user_id IS NOT NULL;
 
 -- Defaults are local to an owner in a personal or organization workspace.
@@ -693,25 +746,25 @@ DROP INDEX IF EXISTS idx_sessions; CREATE INDEX idx_sessions ON sessions (id, cr
 DROP MATERIALIZED VIEW IF EXISTS mat_dashboard_counts;
 CREATE MATERIALIZED VIEW mat_dashboard_counts AS
     WITH subs AS (
-        SELECT COUNT(*) AS num, status FROM subscribers GROUP BY status
+        SELECT COUNT(*) AS num, status FROM customers GROUP BY status
     )
     SELECT NOW() AS updated_at,
         JSON_BUILD_OBJECT(
-            'subscribers', JSON_BUILD_OBJECT(
+            'customers', JSON_BUILD_OBJECT(
                 'total', (SELECT SUM(num) FROM subs),
                 'blocklisted', (SELECT num FROM subs WHERE status='blocklisted'),
                 'orphans', (
-                    SELECT COUNT(id) FROM subscribers
-                    LEFT JOIN subscriber_lists ON (subscribers.id = subscriber_lists.subscriber_id)
-                    WHERE subscriber_lists.subscriber_id IS NULL
+                    SELECT COUNT(id) FROM customers
+                    LEFT JOIN customer_list_memberships ON (customers.id = customer_list_memberships.customer_id)
+                    WHERE customer_list_memberships.customer_id IS NULL
                 )
             ),
-            'lists', JSON_BUILD_OBJECT(
-                'total', (SELECT COUNT(*) FROM lists),
-                'private', (SELECT COUNT(*) FROM lists WHERE type='private'),
-                'public', (SELECT COUNT(*) FROM lists WHERE type='public'),
-                'optin_single', (SELECT COUNT(*) FROM lists WHERE optin='single'),
-                'optin_double', (SELECT COUNT(*) FROM lists WHERE optin='double')
+            'customerLists', JSON_BUILD_OBJECT(
+                'total', (SELECT COUNT(*) FROM customer_lists),
+                'private', (SELECT COUNT(*) FROM customer_lists WHERE type='private'),
+                'public', (SELECT COUNT(*) FROM customer_lists WHERE type='public'),
+                'optin_single', (SELECT COUNT(*) FROM customer_lists WHERE optin='single'),
+                'optin_double', (SELECT COUNT(*) FROM customer_lists WHERE optin='double')
             ),
             'campaigns', JSON_BUILD_OBJECT(
                 'total', (SELECT COUNT(*) FROM campaigns),
@@ -760,12 +813,134 @@ CREATE MATERIALIZED VIEW mat_dashboard_charts AS
                                 ) AS data;
 DROP INDEX IF EXISTS mat_dashboard_charts_idx; CREATE UNIQUE INDEX mat_dashboard_charts_idx ON mat_dashboard_charts (updated_at);
 
--- subscriber counts stats for lists
-DROP MATERIALIZED VIEW IF EXISTS mat_list_subscriber_stats;
-CREATE MATERIALIZED VIEW mat_list_subscriber_stats AS
-    SELECT NOW() AS updated_at, lists.id AS list_id, subscriber_lists.status, COUNT(subscriber_lists.status) AS subscriber_count FROM lists
-    LEFT JOIN subscriber_lists ON (subscriber_lists.list_id = lists.id)
-    GROUP BY lists.id, subscriber_lists.status
+-- customer counts stats for customer_lists
+DROP MATERIALIZED VIEW IF EXISTS mat_customer_list_customer_stats;
+CREATE MATERIALIZED VIEW mat_customer_list_customer_stats AS
+    SELECT NOW() AS updated_at, customer_lists.id AS customer_list_id, customer_list_memberships.status, COUNT(customer_list_memberships.status) AS customer_count FROM customer_lists
+    LEFT JOIN customer_list_memberships ON (customer_list_memberships.customer_list_id = customer_lists.id)
+    GROUP BY customer_lists.id, customer_list_memberships.status
     UNION ALL
-    SELECT NOW() AS updated_at, 0 AS list_id, NULL AS status, COUNT(id) AS subscriber_count FROM subscribers;
-DROP INDEX IF EXISTS mat_list_subscriber_stats_idx; CREATE UNIQUE INDEX mat_list_subscriber_stats_idx ON mat_list_subscriber_stats (list_id, status);
+    SELECT NOW() AS updated_at, 0 AS customer_list_id, NULL AS status, COUNT(id) AS customer_count FROM customers;
+DROP INDEX IF EXISTS mat_customer_list_customer_stats_idx; CREATE UNIQUE INDEX mat_customer_list_customer_stats_idx ON mat_customer_list_customer_stats (customer_list_id, status);
+
+-- First-class public customer pools and organization segments.
+ALTER TABLE customer_lists ADD COLUMN IF NOT EXISTS pool_reply_mailbox_id INTEGER NULL REFERENCES reply_mailboxes(id) ON DELETE SET NULL;
+DROP INDEX IF EXISTS idx_customer_lists_pool_reply_mailbox; CREATE INDEX idx_customer_lists_pool_reply_mailbox ON customer_lists(pool_reply_mailbox_id);
+
+DROP TABLE IF EXISTS campaign_pool_recipients CASCADE;
+DROP TABLE IF EXISTS pool_merge_conflicts CASCADE;
+DROP TABLE IF EXISTS pool_segment_exclusions CASCADE;
+DROP TABLE IF EXISTS pool_organization_permissions CASCADE;
+DROP TABLE IF EXISTS pool_segment_members CASCADE;
+DROP TABLE IF EXISTS pool_segments CASCADE;
+DROP TABLE IF EXISTS pool_members CASCADE;
+DROP TABLE IF EXISTS pool_contacts CASCADE;
+
+CREATE TABLE pool_contacts (
+    id BIGSERIAL PRIMARY KEY,
+    uuid UUID NOT NULL DEFAULT gen_random_uuid() UNIQUE,
+    customer_code TEXT NOT NULL DEFAULT '',
+    company_name TEXT NOT NULL DEFAULT '',
+    email TEXT NOT NULL,
+    name TEXT NOT NULL DEFAULT '',
+    attribs JSONB NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','archived')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_pool_contacts_code ON pool_contacts(customer_code);
+CREATE INDEX idx_pool_contacts_email ON pool_contacts(LOWER(email));
+
+CREATE TABLE pool_members (
+    pool_id INTEGER NOT NULL REFERENCES customer_lists(id) ON DELETE CASCADE,
+    contact_id BIGINT NOT NULL REFERENCES pool_contacts(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (pool_id, contact_id)
+);
+
+CREATE TABLE pool_segments (
+    id BIGSERIAL PRIMARY KEY,
+    list_id INTEGER NOT NULL UNIQUE REFERENCES customer_lists(id) ON DELETE CASCADE,
+    pool_id INTEGER NULL REFERENCES customer_lists(id) ON DELETE CASCADE,
+    organization_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    reply_mailbox_id INTEGER REFERENCES reply_mailboxes(id) ON DELETE SET NULL,
+    created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX idx_pool_segments_pool_org ON pool_segments(pool_id, organization_id);
+
+CREATE TABLE pool_segment_members (
+    segment_id BIGINT NOT NULL REFERENCES pool_segments(id) ON DELETE CASCADE,
+    contact_id BIGINT NOT NULL REFERENCES pool_contacts(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','removed')),
+    removed_reason TEXT NOT NULL DEFAULT '',
+    removed_at TIMESTAMPTZ,
+    removed_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (segment_id, contact_id)
+);
+
+CREATE TABLE pool_organization_permissions (
+    pool_id INTEGER NOT NULL REFERENCES customer_lists(id) ON DELETE CASCADE,
+    organization_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    granted_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (pool_id, organization_id)
+);
+
+CREATE TABLE pool_segment_exclusions (
+    pool_id INTEGER NOT NULL REFERENCES customer_lists(id) ON DELETE CASCADE,
+    organization_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    contact_id BIGINT NOT NULL REFERENCES pool_contacts(id) ON DELETE CASCADE,
+    segment_id BIGINT REFERENCES pool_segments(id) ON DELETE SET NULL,
+    reason TEXT NOT NULL DEFAULT 'manual',
+    source TEXT NOT NULL DEFAULT 'segment',
+    removed_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    removed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    restored_at TIMESTAMPTZ,
+    PRIMARY KEY (pool_id, organization_id, contact_id)
+);
+
+CREATE TABLE pool_merge_conflicts (
+    id BIGSERIAL PRIMARY KEY,
+    pool_id INTEGER REFERENCES customer_lists(id) ON DELETE CASCADE,
+    contact_id BIGINT REFERENCES pool_contacts(id) ON DELETE SET NULL,
+    customer_code TEXT NOT NULL,
+    existing_snapshot JSONB NOT NULL DEFAULT '{}',
+    incoming_snapshot JSONB NOT NULL DEFAULT '{}',
+    created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE campaign_customer_lists ADD COLUMN IF NOT EXISTS pool_id INTEGER REFERENCES customer_lists(id) ON DELETE SET NULL;
+ALTER TABLE campaign_customer_lists ADD COLUMN IF NOT EXISTS pool_segment_id BIGINT REFERENCES pool_segments(id) ON DELETE SET NULL;
+ALTER TABLE campaign_customer_lists ADD COLUMN IF NOT EXISTS source_organization_id BIGINT REFERENCES organizations(id) ON DELETE SET NULL;
+ALTER TABLE campaign_customer_lists ADD COLUMN IF NOT EXISTS resolved_reply_mailbox_id INTEGER REFERENCES reply_mailboxes(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_campaign_customer_lists_pool ON campaign_customer_lists(pool_id, pool_segment_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_campaign_customer_lists_pool_unique ON campaign_customer_lists(campaign_id, pool_id, COALESCE(pool_segment_id, 0)) WHERE pool_id IS NOT NULL;
+ALTER TABLE campaign_recipients ADD COLUMN IF NOT EXISTS pool_contact_id BIGINT REFERENCES pool_contacts(id) ON DELETE SET NULL;
+ALTER TABLE campaign_recipients ADD COLUMN IF NOT EXISTS source_pool_id INTEGER REFERENCES customer_lists(id) ON DELETE SET NULL;
+ALTER TABLE campaign_recipients ADD COLUMN IF NOT EXISTS source_segment_id BIGINT REFERENCES pool_segments(id) ON DELETE SET NULL;
+ALTER TABLE campaign_recipients ADD COLUMN IF NOT EXISTS source_organization_id BIGINT REFERENCES organizations(id) ON DELETE SET NULL;
+ALTER TABLE campaign_recipients ADD COLUMN IF NOT EXISTS reply_mailbox_id INTEGER REFERENCES reply_mailboxes(id) ON DELETE SET NULL;
+CREATE TABLE campaign_pool_recipients (
+    campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+    pool_contact_id BIGINT NOT NULL REFERENCES pool_contacts(id) ON DELETE CASCADE,
+    pool_id INTEGER NOT NULL REFERENCES customer_lists(id) ON DELETE CASCADE,
+    segment_id BIGINT REFERENCES pool_segments(id) ON DELETE SET NULL,
+    organization_id BIGINT REFERENCES organizations(id) ON DELETE SET NULL,
+    reply_mailbox_id INTEGER REFERENCES reply_mailboxes(id) ON DELETE SET NULL,
+    status campaign_recipient_status NOT NULL DEFAULT 'pending',
+    email_snapshot TEXT NOT NULL,
+    name_snapshot TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (campaign_id, pool_contact_id)
+);
+
+ALTER TABLE bounces ADD COLUMN IF NOT EXISTS pool_contact_id BIGINT;
+ALTER TABLE bounces ADD COLUMN IF NOT EXISTS source_pool_id INTEGER;
+ALTER TABLE bounces ADD COLUMN IF NOT EXISTS source_segment_id BIGINT;
+ALTER TABLE bounces ADD COLUMN IF NOT EXISTS source_organization_id BIGINT;
+CREATE INDEX IF NOT EXISTS idx_bounces_pool_contact ON bounces(pool_contact_id);

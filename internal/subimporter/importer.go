@@ -1,4 +1,4 @@
-// Package subimporter implements a bulk ZIP/CSV importer of subscribers.
+// Package subimporter implements a bulk ZIP/CSV importer of customers.
 // It implements a simple queue for buffering imports and committing records
 // to DB along with ZIP and CSV handling utilities. It is meant to be used as
 // a singleton as each Importer instance is stateful, where it keeps track of
@@ -51,7 +51,7 @@ const (
 	ModeBlocklist = "blocklist"
 )
 
-// Importer represents the bulk CSV subscriber import system.
+// Importer represents the bulk CSV customer import system.
 type Importer struct {
 	opt  Options
 	db   *sql.DB
@@ -103,7 +103,7 @@ type SessionOpt struct {
 	OverwriteSubStatus bool              `json:"overwrite_subscription_status"`
 	Delim              string            `json:"delim"`
 	FieldMap           map[string]string `json:"field_map"`
-	ListIDs            []int             `json:"lists"`
+	CustomerListIDs    []int             `json:"customer_list_ids"`
 
 	// Scope is assigned only by authenticated handlers. It is deliberately
 	// excluded from client JSON so an importer cannot choose another owner.
@@ -123,12 +123,12 @@ type Status struct {
 	logBuf         *bytes.Buffer
 }
 
-// SubReq is a wrapper over the Subscriber model.
+// SubReq is a wrapper over the Customer model.
 type SubReq struct {
-	models.Subscriber
-	Lists          []int    `json:"lists"`
-	ListUUIDs      []string `json:"list_uuids"`
-	PreconfirmSubs bool     `json:"preconfirm_subscriptions"`
+	models.Customer
+	CustomerLists     []int    `json:"customer_list_ids"`
+	CustomerListUUIDs []string `json:"list_uuids"`
+	PreconfirmSubs    bool     `json:"preconfirm_subscriptions"`
 }
 
 type importStatusTpl struct {
@@ -145,9 +145,10 @@ var (
 	errImportStopped = errors.New("import stopped")
 
 	csvHeaders = map[string]bool{
-		"email":      true,
-		"name":       true,
-		"attributes": true}
+		"email":         true,
+		"name":          true,
+		"attributes":    true,
+		"customer_code": true}
 
 	regexCleanStr = regexp.MustCompile("[[:^ascii:]]")
 )
@@ -308,7 +309,7 @@ func (im *Importer) sendNotif(status string) error {
 }
 
 // Start is a blocking function that selects on a channel queue until all
-// subscriber entries in the import session are imported. It should be
+// customer entries in the import session are imported. It should be
 // invoked as a goroutine.
 func (s *Session) Start() {
 	var (
@@ -319,8 +320,8 @@ func (s *Session) Start() {
 		cur   = 0
 	)
 
-	listIDs := make([]int, len(s.opt.ListIDs))
-	copy(listIDs, s.opt.ListIDs)
+	customerListIDs := make([]int, len(s.opt.CustomerListIDs))
+	copy(customerListIDs, s.opt.CustomerListIDs)
 
 	for sub := range s.subQueue {
 		// Do not drain a stopped queue into the database. The loader will close
@@ -364,11 +365,11 @@ func (s *Session) Start() {
 
 		if s.opt.Mode == ModeSubscribe {
 			if s.opt.OwnerUserID > 0 {
-				_, err = stmt.Exec(uu, sub.Email, sub.Name, sub.Attribs, pq.Array(listIDs), s.opt.SubStatus,
+				_, err = stmt.Exec(uu, sub.Email, sub.Name, sub.Attribs, pq.Array(customerListIDs), s.opt.SubStatus,
 					s.opt.OverwriteUserInfo, s.opt.OverwriteSubStatus, organizationValue(s.opt.OrganizationID),
-					s.opt.OwnerUserID, s.opt.OriginalOwnerUserID)
+					s.opt.OwnerUserID, s.opt.OriginalOwnerUserID, sub.CustomerCode)
 			} else {
-				_, err = stmt.Exec(uu, sub.Email, sub.Name, sub.Attribs, pq.Array(listIDs), s.opt.SubStatus, s.opt.OverwriteUserInfo, s.opt.OverwriteSubStatus)
+				_, err = stmt.Exec(uu, sub.Email, sub.Name, sub.Attribs, pq.Array(customerListIDs), s.opt.SubStatus, s.opt.OverwriteUserInfo, s.opt.OverwriteSubStatus, sub.CustomerCode)
 			}
 		} else if s.opt.Mode == ModeBlocklist {
 			if s.opt.OwnerUserID > 0 {
@@ -413,8 +414,8 @@ func (s *Session) Start() {
 	if cur == 0 {
 		s.im.setStatus(StatusFinished)
 		s.log.Printf("imported finished")
-		if _, err := s.im.opt.UpdateListDateStmt.Exec(pq.Array(listIDs)); err != nil {
-			s.log.Printf("error updating lists date: %v", err)
+		if _, err := s.im.opt.UpdateListDateStmt.Exec(pq.Array(customerListIDs)); err != nil {
+			s.log.Printf("error updating customer_lists date: %v", err)
 		}
 		s.im.sendNotif(StatusFinished)
 		return
@@ -432,8 +433,8 @@ func (s *Session) Start() {
 	s.im.incrementImportCount(cur)
 	s.im.setStatus(StatusFinished)
 	s.log.Printf("imported finished")
-	if _, err := s.im.opt.UpdateListDateStmt.Exec(pq.Array(listIDs)); err != nil {
-		s.log.Printf("error updating lists date: %v", err)
+	if _, err := s.im.opt.UpdateListDateStmt.Exec(pq.Array(customerListIDs)); err != nil {
+		s.log.Printf("error updating customer_lists date: %v", err)
 	}
 
 	s.im.sendNotif(StatusFinished)
@@ -446,7 +447,7 @@ func (s *Session) Stop() {
 
 // ExtractZIP takes a ZIP file's path and extracts all .csv files in it to
 // a temporary directory, and returns the name of the temp directory and the
-// list of extracted .csv files.
+// customer_list of extracted .csv files.
 func (s *Session) ExtractZIP(srcPath string, maxCSVs int) (string, []string, error) {
 	if s.im.isDone() {
 		return "", nil, ErrIsImporting
@@ -525,7 +526,7 @@ func (s *Session) ExtractZIP(srcPath string, maxCSVs int) (string, []string, err
 	return dir, files, nil
 }
 
-// LoadCSV loads a CSV file and validates and imports the subscriber entries in it.
+// LoadCSV loads a CSV file and validates and imports the customer entries in it.
 func (s *Session) LoadCSV(srcPath string, delim rune) error {
 	if s.im.isDone() {
 		return ErrIsImporting
@@ -574,6 +575,11 @@ func (s *Session) LoadCSV(srcPath string, delim rune) error {
 	if err != nil {
 		s.log.Printf("error resolving field mappings for '%s': %v", srcPath, err)
 		return err
+	}
+	if s.opt.Mode == ModeSubscribe {
+		if _, ok := hdrKeys["customer_code"]; !ok {
+			return errors.New("'customer_code' column not found. Subscribe imports require a customer code column")
+		}
 	}
 
 	// If CSV has a header row, don't include it in total row count.
@@ -645,7 +651,7 @@ func (s *Session) LoadCSV(srcPath string, delim rune) error {
 	return nil
 }
 
-// LoadXLSX loads the first sheet in an XLSX file and imports subscriber entries.
+// LoadXLSX loads the first sheet in an XLSX file and imports customer entries.
 func (s *Session) LoadXLSX(srcPath string) error {
 	if s.im.isDone() {
 		return ErrIsImporting
@@ -681,6 +687,11 @@ func (s *Session) LoadXLSX(srcPath string) error {
 	if err != nil {
 		s.log.Printf("error resolving field mappings for '%s': %v", srcPath, err)
 		return err
+	}
+	if s.opt.Mode == ModeSubscribe {
+		if _, ok := hdrKeys["customer_code"]; !ok {
+			return errors.New("'customer_code' column not found. Subscribe imports require a customer code column")
+		}
 	}
 
 	total := len(rows)
@@ -755,7 +766,7 @@ func (im *Importer) SanitizeEmail(email string) (string, error) {
 	// any valid email address with name and also valid address with empty name like `<abc@example.com>`.
 	em, err := mail.ParseAddress(email)
 	if err != nil || em.Address != email {
-		return "", errors.New(im.i18n.T("subscribers.invalidEmail"))
+		return "", errors.New(im.i18n.T("customers.invalidEmail"))
 	}
 
 	// Check if the e-mail's domain is blocklisted. The e-mail domain and blocklist config
@@ -771,11 +782,11 @@ func (im *Importer) SanitizeEmail(email string) (string, error) {
 		// If there's an allowlist, check if the domain is in it. Checking blocklist after that is moot.
 		if im.hasAllowlist {
 			if !im.checkInList(domain, im.hasAllowlistWildcards, im.domainAllowlist) {
-				return "", errors.New(im.i18n.T("subscribers.domainBlocklisted"))
+				return "", errors.New(im.i18n.T("customers.domainBlocklisted"))
 			}
 		} else if im.hasBlocklist {
 			if im.checkInList(domain, im.hasBlocklistWildcards, im.domainBlocklist) {
-				return "", errors.New(im.i18n.T("subscribers.domainBlocklisted"))
+				return "", errors.New(im.i18n.T("customers.domainBlocklisted"))
 			}
 		}
 	}
@@ -783,10 +794,10 @@ func (im *Importer) SanitizeEmail(email string) (string, error) {
 	return em.Address, nil
 }
 
-// ValidateFields validates incoming subscriber field values and returns sanitized fields.
+// ValidateFields validates incoming customer field values and returns sanitized fields.
 func (im *Importer) ValidateFields(s SubReq) (SubReq, error) {
 	if len(s.Email) > 1000 {
-		return s, errors.New(im.i18n.T("subscribers.invalidEmail"))
+		return s, errors.New(im.i18n.T("customers.invalidEmail"))
 	}
 
 	em, err := im.SanitizeEmail(s.Email)
@@ -818,11 +829,11 @@ func (im *Importer) checkInList(domain string, hasWildcards bool, mp map[string]
 		return true
 	}
 
-	// If there are wildcards in the list and the email domain has a subdomain, check that.
+	// If there are wildcards in the customer_list and the email domain has a subdomain, check that.
 	if hasWildcards && strings.Count(domain, ".") > 1 {
 		parts := strings.Split(domain, ".")
 
-		// Replace the first part of the subdomain with * and check if that exists in the list.
+		// Replace the first part of the subdomain with * and check if that exists in the customer_list.
 		// Eg: test.mail.example.com => *.mail.example.com
 		parts[0] = "*"
 		domain = strings.Join(parts, ".")
@@ -835,9 +846,9 @@ func (im *Importer) checkInList(domain string, hasWildcards bool, mp map[string]
 	return false
 }
 
-// mapCSVHeaders takes a list of headers obtained from a CSV file, a map of known headers,
+// mapCSVHeaders takes a customer_list of headers obtained from a CSV file, a map of known headers,
 // and returns a new map with each of the headers in the known map mapped by the position (0-n)
-// in the given CSV list.
+// in the given CSV customer_list.
 func (s *Session) mapCSVHeaders(csvHdrs []string, knownHdrs map[string]bool) map[string]int {
 	// Map 0-n column index to the header keys, name: 0, email: 1 etc.
 	// This is to allow dynamic ordering of columns in th CSV.
@@ -980,6 +991,13 @@ func (s *Session) enqueueRow(cols []string, keyMap map[string]int, line int) err
 
 	sub.Name = getMappedValue(cols, keyMap, "name")
 
+	// Customer code is a required business identifier when importing new
+	// subscriptions; blocklist imports only need the e-mail address.
+	sub.CustomerCode = getMappedValue(cols, keyMap, "customer_code")
+	if s.opt.Mode == ModeSubscribe && sub.CustomerCode == "" {
+		return errors.New("customer code not found in row")
+	}
+
 	var err error
 	sub, err = s.im.ValidateFields(sub)
 	if err != nil {
@@ -999,7 +1017,7 @@ func (s *Session) enqueueRow(cols []string, keyMap map[string]int, line int) err
 		sub.Attribs = models.JSON{}
 	}
 	for key := range keyMap {
-		if key == "email" || key == "name" || key == "attributes" {
+		if key == "email" || key == "name" || key == "attributes" || key == "customer_code" {
 			continue
 		}
 		if value := getMappedValue(cols, keyMap, key); value != "" {

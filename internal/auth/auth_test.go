@@ -1,11 +1,39 @@
 package auth
 
 import (
+	"encoding/base64"
+	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/labstack/echo/v4"
 	null "gopkg.in/volatiletech/null.v6"
 )
+
+func TestMiddlewareDoesNotIgnoreAuthorizationWhenSessionCookiePresent(t *testing.T) {
+	a := &Auth{apiUsers: map[string]User{}}
+	e := echo.New()
+	req := httptest.NewRequest("GET", "/api/workspace", nil)
+	req.Header.Set("Cookie", "session=current-session")
+	req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte("legacy-v3-user:legacy-v3-password")))
+	c := e.NewContext(req, httptest.NewRecorder())
+
+	called := false
+	err := a.Middleware(func(ctx echo.Context) error {
+		called = true
+		return nil
+	})(c)
+	if err != nil {
+		t.Fatalf("middleware returned unexpected error: %v", err)
+	}
+	if !called {
+		t.Fatal("expected middleware chain to continue with an auth error in context")
+	}
+	got, ok := c.Get(UserHTTPCtxKey).(*echo.HTTPError)
+	if !ok || got.Code != 403 {
+		t.Fatalf("expected invalid explicit BasicAuth to be rejected, got %#v", c.Get(UserHTTPCtxKey))
+	}
+}
 
 func TestHashIntegrationTokenDeterministic(t *testing.T) {
 	tok := "lmit_example_secret"

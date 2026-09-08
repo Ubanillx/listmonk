@@ -11,11 +11,11 @@ import (
 )
 
 const (
-	apiKeyScopeListsRead           = "lists:read"
-	apiKeyScopeListsWrite          = "lists:write"
-	apiKeyScopeSubscribersRead     = "subscribers:read"
-	apiKeyScopeSubscribersWrite    = "subscribers:write"
-	apiKeyScopeSubscribersImport   = "subscribers:import"
+	apiKeyScopeListsRead           = "customer_lists:read"
+	apiKeyScopeListsWrite          = "customer_lists:write"
+	apiKeyScopeCustomersRead     = "customers:read"
+	apiKeyScopeCustomersWrite    = "customers:write"
+	apiKeyScopeCustomersImport   = "customers:import"
 	apiKeyScopeTemplatesRead       = "templates:read"
 	apiKeyScopeTemplatesWrite      = "templates:write"
 	apiKeyScopeMediaRead           = "media:read"
@@ -36,11 +36,11 @@ type apiKeyScopeOption struct {
 }
 
 var personalAPIKeyScopeOptions = []apiKeyScopeOption{
-	{apiKeyScopeListsRead, "Lists: read"},
-	{apiKeyScopeListsWrite, "Lists: create and manage"},
-	{apiKeyScopeSubscribersRead, "Subscribers: read and export"},
-	{apiKeyScopeSubscribersWrite, "Subscribers: create and manage"},
-	{apiKeyScopeSubscribersImport, "Subscribers: bulk import"},
+	{apiKeyScopeListsRead, "CustomerLists: read"},
+	{apiKeyScopeListsWrite, "CustomerLists: create and manage"},
+	{apiKeyScopeCustomersRead, "Customers: read and export"},
+	{apiKeyScopeCustomersWrite, "Customers: create and manage"},
+	{apiKeyScopeCustomersImport, "Customers: bulk import"},
 	{apiKeyScopeTemplatesRead, "Templates: read"},
 	{apiKeyScopeTemplatesWrite, "Templates: create and manage"},
 	{apiKeyScopeMediaRead, "Media: read"},
@@ -104,13 +104,13 @@ func rejectUnsupportedPersonalAPIKey(next echo.HandlerFunc) echo.HandlerFunc {
 }
 
 func isPersonalAPIKeyBusinessPath(path string) bool {
-	if strings.HasPrefix(path, "/api/subscribers/query/") || path == "/api/subscribers/export" {
+	if strings.HasPrefix(path, "/api/customers/query/") || path == "/api/customers/export" {
 		return false
 	}
 	for _, prefix := range []string{
-		"/api/lists",
-		"/api/subscribers",
-		"/api/import/subscribers",
+		"/api/customer-lists",
+		"/api/customers",
+		"/api/import/customers",
 		"/api/campaigns",
 		"/api/media",
 		"/api/templates",

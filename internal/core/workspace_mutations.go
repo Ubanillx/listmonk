@@ -239,7 +239,7 @@ func (c *Core) resourceOrganizationIDs(tx *sqlx.Tx, resource string, ids []int, 
 }
 
 // lockWorkspaceMutationResources rechecks the ownership boundary and locks
-// every requested row. It is also used for related list IDs by subscriber and
+// every requested row. It is also used for related customer_list IDs by customer and
 // campaign operations after their primary resource has been locked.
 func (c *Core) lockWorkspaceMutationResources(tx *sqlx.Tx, access models.WorkspaceAccess, resource string, ids []int) error {
 	ids = uniqueMutationIDs(ids)

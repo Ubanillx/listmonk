@@ -12,11 +12,11 @@
           <tr style="width:100%">
             <td>
               <h3 style="font-weight:bold;margin:0;font-size:20px;padding:16px 24px 16px 24px">
-                Hello {{ .Subscriber.Name }}
+                Hello {{ .Customer.Name }}
               </h3>
               <div style="font-weight:normal;padding:16px 24px 16px 24px">
                 <p>
-                  This is a test e-mail campaign. Your second name is {{ .Subscriber.LastName }} and this block of text is in Markdown.
+                  This is a test e-mail campaign. Your second name is {{ .Customer.LastName }} and this block of text is in Markdown.
                 </p>
                 <p>
                   Here is a

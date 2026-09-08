@@ -7,9 +7,9 @@ import (
 	"github.com/lib/pq"
 )
 
-// workspaceCampaignListPredicate limits a campaign-list snapshot to the
-// campaign's own workspace/owner graph. A NULL list_id is a historical
-// snapshot of a list that has since been deleted and is intentionally kept.
+// workspaceCampaignListPredicate limits a campaign-customer_list snapshot to the
+// campaign's own workspace/owner graph. A NULL customer_list_id is a historical
+// snapshot of a customer_list that has since been deleted and is intentionally kept.
 // Platform administrators already have global access; keeping the predicate
 // open for them also preserves their ability to inspect malformed legacy rows
 // while ordinary callers remain strictly tenant-scoped.
@@ -20,11 +20,11 @@ func workspaceCampaignListPredicate(access models.WorkspaceAccess, campaignAlias
 	pendingPredicate := fmt.Sprintf("%s.transfer_pending_at IS NULL", listAlias)
 	if access.IsOrganizationManager() {
 		// Managers inspect the transfer queue while ordinary members must never
-		// receive a pending list ID through a campaign snapshot.
+		// receive a pending customer_list ID through a campaign snapshot.
 		pendingPredicate = "TRUE"
 	}
 	return fmt.Sprintf(`
-		%s.list_id IS NULL OR (
+		%s.customer_list_id IS NULL OR (
 			%s.id IS NOT NULL
 			AND %s.organization_id IS NOT DISTINCT FROM %s.organization_id
 			AND %s.owner_user_id IS NOT DISTINCT FROM %s.owner_user_id
@@ -125,7 +125,7 @@ func workspaceTemplateMediaPredicate(access models.WorkspaceAccess, templateAlia
 // lazy get-campaign-stats query. The campaign IDs are scoped in a CTE and all
 // denormalized association metadata is joined back through the campaign's
 // owner/workspace graph. Event counts are also joined to that CTE, so a stale
-// ID list cannot retrieve statistics after a transfer or archive.
+// ID customer_list cannot retrieve statistics after a transfer or archive.
 func (c *Core) loadWorkspaceCampaignStats(access models.WorkspaceAccess, camps models.Campaigns) error {
 	if len(camps) == 0 {
 		return nil
@@ -139,13 +139,20 @@ func (c *Core) loadWorkspaceCampaignStats(access models.WorkspaceAccess, camps m
 			SELECT sc.id, sc.organization_id, sc.owner_user_id
 			FROM campaigns sc
 			WHERE sc.id = ANY($1::INT[]) AND (%s)
-		), lists AS (
+		), customer_lists AS (
 			SELECT cl.campaign_id,
-				JSON_AGG(JSON_BUILD_OBJECT('id', cl.list_id, 'name', cl.list_name)
-					ORDER BY cl.list_id NULLS LAST, cl.list_name) AS lists
-			FROM campaign_lists cl
+				JSON_AGG(JSON_BUILD_OBJECT('id', cl.customer_list_id, 'name', cl.customer_list_name)
+					ORDER BY cl.customer_list_id NULLS LAST, cl.customer_list_name)
+					FILTER (WHERE cl.pool_id IS NULL) AS customer_lists,
+				JSON_AGG(JSON_BUILD_OBJECT('pool_id', cl.pool_id, 'segment_id', cl.pool_segment_id,
+					'organization_id', cl.source_organization_id, 'reply_mailbox_id', cl.resolved_reply_mailbox_id,
+					'reply_mailbox_email', COALESCE(pool_reply.email, ''), 'name', cl.customer_list_name)
+					ORDER BY cl.pool_id, cl.pool_segment_id NULLS FIRST)
+					FILTER (WHERE cl.pool_id IS NOT NULL) AS customer_pools
+			FROM campaign_customer_lists cl
 			JOIN scoped_campaigns sc ON sc.id = cl.campaign_id
-			LEFT JOIN lists cl_list ON cl_list.id = cl.list_id
+			LEFT JOIN customer_lists cl_list ON cl_list.id = cl.customer_list_id
+			LEFT JOIN reply_mailboxes pool_reply ON pool_reply.id = cl.resolved_reply_mailbox_id
 			WHERE (%s)
 			GROUP BY cl.campaign_id
 		), media AS (
@@ -174,10 +181,11 @@ func (c *Core) loadWorkspaceCampaignStats(access models.WorkspaceAccess, camps m
 			COALESCE(v.num, 0) AS views,
 			COALESCE(clicks.num, 0) AS clicks,
 			COALESCE(b.num, 0) AS bounces,
-			COALESCE(l.lists, '[]') AS lists,
+			COALESCE(l.customer_lists, '[]') AS customer_lists,
+			COALESCE(l.customer_pools, '[]') AS customer_pools,
 			COALESCE(m.media, '[]') AS media
 		FROM UNNEST($1::INT[]) AS requested(id)
-		LEFT JOIN lists l ON l.campaign_id = requested.id
+		LEFT JOIN customer_lists l ON l.campaign_id = requested.id
 		LEFT JOIN media m ON m.campaign_id = requested.id
 		LEFT JOIN views v ON v.campaign_id = requested.id
 		LEFT JOIN clicks ON clicks.campaign_id = requested.id
@@ -198,7 +206,8 @@ func (c *Core) loadWorkspaceCampaignStats(access models.WorkspaceAccess, camps m
 		if row.CampaignID != camps[i].ID {
 			return fmt.Errorf("campaign stats order does not match")
 		}
-		camps[i].Lists = row.Lists
+		camps[i].CustomerLists = row.CustomerLists
+		camps[i].CustomerPools = row.CustomerPools
 		camps[i].Views = row.Views
 		camps[i].Clicks = row.Clicks
 		camps[i].Bounces = row.Bounces

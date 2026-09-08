@@ -1,9 +1,9 @@
 {{ define "optin-campaign" }}
 
-<p>{{ L.Ts "email.optin.confirmSubWelcome" }} {{ "{{" }}.Subscriber.FirstName {{ "}}" }}</p>
+<p>{{ L.Ts "email.optin.confirmSubWelcome" }} {{ "{{" }}.Customer.FirstName {{ "}}" }}</p>
 <p>{{ L.Ts "email.optin.confirmSubInfo" }}</p>
 <ul>
-    {{ range $i, $l := .Lists }}
+    {{ range $i, $l := .CustomerLists }}
         {{ if eq .Type "public" }}
             <li>{{ .Name }}</li>
         {{ else }}

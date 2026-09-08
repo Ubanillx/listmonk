@@ -10,7 +10,7 @@ INSERT INTO users (username, password_login, password, email, name, type, user_r
                 THEN $3
             ELSE NULL
         END
-    ), $4, $5, $6, (SELECT id FROM roles WHERE id = $7 AND type = 'user'), (SELECT id FROM roles WHERE id = $8 AND type = 'list'), $9) RETURNING id;
+    ), $4, $5, $6, (SELECT id FROM roles WHERE id = $7 AND type = 'user'), (SELECT id FROM roles WHERE id = $8 AND type = 'customer_list'), $9) RETURNING id;
 
 -- name: update-user
 WITH u AS (
@@ -34,7 +34,7 @@ UPDATE users SET
     list_role_id=(
         CASE
             WHEN $9 < 0 THEN NULL
-            WHEN $9 > 0 THEN (SELECT id FROM roles WHERE id = $9 AND type = 'list')
+            WHEN $9 > 0 THEN (SELECT id FROM roles WHERE id = $9 AND type = 'customer_list')
             ELSE list_role_id END
     ),
     status=(CASE WHEN $10 != '' THEN $10::user_status ELSE status END),
@@ -52,23 +52,23 @@ WITH ur AS (
     SELECT id, name, permissions FROM roles WHERE type = 'user' AND parent_id IS NULL
 ),
 lr AS (
-    SELECT r.id, r.name, r.permissions, r.list_id, l.name AS list_name
+    SELECT r.id, r.name, r.permissions, r.customer_list_id, l.name AS customer_list_name
     FROM roles r
-    LEFT JOIN lists l ON r.list_id = l.id
-    WHERE r.type = 'list' AND r.parent_id IS NULL
+    LEFT JOIN customer_lists l ON r.customer_list_id = l.id
+    WHERE r.type = 'customer_list' AND r.parent_id IS NULL
 ),
 lp AS (
     SELECT lr.id AS list_role_id,
         JSONB_AGG(
             JSONB_BUILD_OBJECT(
-                'id', COALESCE(cr.list_id, lr.list_id),
-                'name', COALESCE(cl.name, lr.list_name),
+                'id', COALESCE(cr.customer_list_id, lr.customer_list_id),
+                'name', COALESCE(cl.name, lr.customer_list_name),
                 'permissions', COALESCE(cr.permissions, lr.permissions)
             )
         ) AS list_role_perms
     FROM lr
-    LEFT JOIN roles cr ON cr.parent_id = lr.id AND cr.type = 'list'
-    LEFT JOIN lists cl ON cr.list_id = cl.id
+    LEFT JOIN roles cr ON cr.parent_id = lr.id AND cr.type = 'customer_list'
+    LEFT JOIN customer_lists cl ON cr.customer_list_id = cl.id
     GROUP BY lr.id
 )
 SELECT
@@ -108,22 +108,22 @@ SELECT
 FROM sel
     LEFT JOIN roles ur ON sel.user_role_id = ur.id AND ur.type = 'user' AND ur.parent_id IS NULL
     LEFT JOIN (
-        SELECT r.id, r.name, r.permissions, r.list_id, l.name AS list_name
+        SELECT r.id, r.name, r.permissions, r.customer_list_id, l.name AS customer_list_name
         FROM roles r
-        LEFT JOIN lists l ON r.list_id = l.id
-        WHERE r.type = 'list' AND r.parent_id IS NULL
+        LEFT JOIN customer_lists l ON r.customer_list_id = l.id
+        WHERE r.type = 'customer_list' AND r.parent_id IS NULL
     ) lr ON sel.list_role_id = lr.id
     LEFT JOIN LATERAL (
         SELECT JSONB_AGG(
                 JSONB_BUILD_OBJECT(
-                    'id', COALESCE(cr.list_id, lr.list_id),
-                    'name', COALESCE(cl.name, lr.list_name),
+                    'id', COALESCE(cr.customer_list_id, lr.customer_list_id),
+                    'name', COALESCE(cl.name, lr.customer_list_name),
                     'permissions', COALESCE(cr.permissions, lr.permissions)
                 )
             ) AS list_role_perms
         FROM roles cr
-        LEFT JOIN lists cl ON cr.list_id = cl.id
-        WHERE cr.parent_id = lr.id AND cr.type = 'list'
+        LEFT JOIN customer_lists cl ON cr.customer_list_id = cl.id
+        WHERE cr.parent_id = lr.id AND cr.type = 'customer_list'
         GROUP BY lr.id
     ) lp ON TRUE;
 

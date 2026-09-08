@@ -64,7 +64,7 @@ func (c *Core) CreateUser(u auth.User) (auth.User, error) {
 		u.Password = null.String{String: tk, Valid: true}
 	}
 
-	if err := c.q.CreateUser.Get(&id, u.Username, u.PasswordLogin, u.Password, u.Email, u.Name, u.Type, u.UserRoleID, u.ListRoleID, u.Status); err != nil {
+	if err := c.q.CreateUser.Get(&id, u.Username, u.PasswordLogin, u.Password, u.Email, u.Name, u.Type, u.UserRoleID, u.CustomerListRoleID, u.Status); err != nil {
 		return auth.User{}, echo.NewHTTPError(http.StatusInternalServerError,
 			c.i18n.Ts("globals.messages.errorCreating", "name", "{globals.terms.user}", "error", pqErrMsg(err)))
 	}
@@ -91,7 +91,7 @@ func (c *Core) CreateUsers(users []auth.User) error {
 
 	for _, u := range users {
 		var id int
-		if err := tx.Stmtx(c.q.CreateUser).Get(&id, u.Username, u.PasswordLogin, u.Password, u.Email, u.Name, u.Type, u.UserRoleID, u.ListRoleID, u.Status); err != nil {
+		if err := tx.Stmtx(c.q.CreateUser).Get(&id, u.Username, u.PasswordLogin, u.Password, u.Email, u.Name, u.Type, u.UserRoleID, u.CustomerListRoleID, u.Status); err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError,
 				c.i18n.Ts("globals.messages.errorCreating", "name", "{globals.terms.user}", "error", pqErrMsg(err)))
 		}
@@ -188,14 +188,14 @@ func (c *Core) CreatePersonalIntegrationToken(userID, organizationID int, name s
 
 // UpdateUser updates a given user.
 func (c *Core) UpdateUser(id int, u auth.User) (auth.User, error) {
-	listRoleID := 0
-	if u.ListRoleID == nil {
-		listRoleID = -1
+	customerListRoleID := 0
+	if u.CustomerListRoleID == nil {
+		customerListRoleID = -1
 	} else {
-		listRoleID = *u.ListRoleID
+		customerListRoleID = *u.CustomerListRoleID
 	}
 
-	res, err := c.q.UpdateUser.Exec(id, u.Username, u.PasswordLogin, u.Password, u.Email, u.Name, u.Type, u.UserRoleID, listRoleID, u.Status)
+	res, err := c.q.UpdateUser.Exec(id, u.Username, u.PasswordLogin, u.Password, u.Email, u.Name, u.Type, u.UserRoleID, customerListRoleID, u.Status)
 	if err != nil {
 		return auth.User{}, echo.NewHTTPError(http.StatusInternalServerError,
 			c.i18n.Ts("globals.messages.errorUpdating", "name", "{globals.terms.user}", "error", pqErrMsg(err)))
@@ -505,7 +505,7 @@ func (c *Core) prepareUsersForDeletion(tx *sqlx.Tx, ids []int) error {
 		return err
 	}
 
-	for _, table := range []string{"lists", "subscribers", "templates", "media"} {
+	for _, table := range []string{"customer_lists", "customers", "templates", "media"} {
 		query := fmt.Sprintf(`
 			UPDATE %s SET owner_user_id = NULL,
 				original_owner_user_id = COALESCE(original_owner_user_id, owner_user_id),
@@ -616,36 +616,36 @@ func (c *Core) setupUserFields(users []auth.User) []auth.User {
 		u.UserRoleID = 0
 
 		// Prepare lookup maps.
-		u.ListPermissionsMap = make(map[int]map[string]struct{})
+		u.CustomerListPermissionsMap = make(map[int]map[string]struct{})
 		u.PermissionsMap = make(map[string]struct{})
 		for _, p := range u.UserRolePerms {
 			u.PermissionsMap[p] = struct{}{}
 		}
 
-		if u.ListRoleID != nil {
-			// Unmarshall the raw list perms map.
-			var listPerms []auth.ListPermission
-			if u.ListsPermsRaw != nil {
-				if err := json.Unmarshal(*u.ListsPermsRaw, &listPerms); err != nil {
-					c.log.Printf("error unmarshalling list permissions for role %d: %v", u.ID, err)
+		if u.CustomerListRoleID != nil {
+			// Unmarshall the raw customer_list perms map.
+			var customerListPerms []auth.CustomerListPermission
+			if u.CustomerListsPermsRaw != nil {
+				if err := json.Unmarshal(*u.CustomerListsPermsRaw, &customerListPerms); err != nil {
+					c.log.Printf("error unmarshalling customer_list permissions for role %d: %v", u.ID, err)
 				}
 			}
 
-			u.ListRole = &auth.ListRolePermissions{ID: *u.ListRoleID, Name: u.ListRoleName.String, Lists: listPerms}
+			u.CustomerListRole = &auth.CustomerListRolePermissions{ID: *u.CustomerListRoleID, Name: u.CustomerListRoleName.String, CustomerLists: customerListPerms}
 
-			// Iterate each list in the list permissions and setup get/manage list IDs.
-			for _, p := range listPerms {
-				u.ListPermissionsMap[p.ID] = make(map[string]struct{})
+			// Iterate each customer_list in the customer_list permissions and setup get/manage customer_list IDs.
+			for _, p := range customerListPerms {
+				u.CustomerListPermissionsMap[p.ID] = make(map[string]struct{})
 
 				for _, perm := range p.Permissions {
-					u.ListPermissionsMap[p.ID][perm] = struct{}{}
+					u.CustomerListPermissionsMap[p.ID][perm] = struct{}{}
 
-					// List IDs with get / manage permissions.
+					// CustomerList IDs with get / manage permissions.
 					if perm == auth.PermListGet {
-						u.GetListIDs = append(u.GetListIDs, p.ID)
+						u.GetCustomerListIDs = append(u.GetCustomerListIDs, p.ID)
 					}
 					if perm == auth.PermListManage {
-						u.ManageListIDs = append(u.ManageListIDs, p.ID)
+						u.ManageCustomerListIDs = append(u.ManageCustomerListIDs, p.ID)
 					}
 				}
 			}

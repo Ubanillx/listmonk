@@ -16,7 +16,7 @@ import (
 // Enum values for various statuses.
 const (
 	// Headers attached to e-mails for bounce tracking.
-	EmailHeaderSubscriberUUID = "X-Listmonk-Subscriber"
+	EmailHeaderCustomerUUID = "X-Listmonk-Customer"
 	EmailHeaderCampaignUUID   = "X-Listmonk-Campaign"
 
 	// Standard e-mail headers.
@@ -91,7 +91,7 @@ var markdown = goldmark.New(
 // similar to url.Values{}
 type Headers []map[string]string
 
-// PageResults is a generic HTTP response container for paginated results of list of items.
+// PageResults is a generic HTTP response container for paginated results of customer_list of items.
 type PageResults struct {
 	Results any `json:"results"`
 
@@ -115,7 +115,7 @@ type JSON map[string]any
 // StringIntMap is used to define DB Scan()s.
 type StringIntMap map[string]int
 
-// Value returns the JSON marshalled SubscriberAttribs.
+// Value returns the JSON marshalled CustomerAttribs.
 func (s JSON) Value() (driver.Value, error) {
 	return json.Marshal(s)
 }

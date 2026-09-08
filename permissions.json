@@ -1,21 +1,21 @@
 [
     {
-        "group": "lists",
+        "group": "customerLists",
         "permissions":
         [
-            "lists:get_all",
-            "lists:manage_all"
+            "customer_lists:get_all",
+            "customer_lists:manage_all"
         ]
     },
     {
-        "group": "subscribers",
+        "group": "customers",
         "permissions":
         [
-            "subscribers:get",
-            "subscribers:get_all",
-            "subscribers:manage",
-            "subscribers:import",
-            "subscribers:sql_query",
+            "customers:get",
+            "customers:get_all",
+            "customers:manage",
+            "customers:import",
+            "customers:sql_query",
             "tx:send"
         ]
     },
@@ -72,6 +72,13 @@
             "settings:get",
             "settings:manage",
             "settings:maintain"
+        ]
+    },
+    {
+        "group": "workspaces",
+        "permissions":
+        [
+            "workspaces:personal"
         ]
     }
 ]

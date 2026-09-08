@@ -15,11 +15,11 @@ const trackingLinkMarker = "__listmonk_link_uuid__"
 
 // NewCampaignMessage creates and returns a CampaignMessage that is made available
 // to message templates while they're compiled. It represents a message from
-// a campaign that's bound to a single Subscriber.
-func (m *Manager) NewCampaignMessage(c *models.Campaign, s models.Subscriber) (CampaignMessage, error) {
+// a campaign that's bound to a single Customer.
+func (m *Manager) NewCampaignMessage(c *models.Campaign, s models.Customer) (CampaignMessage, error) {
 	// Account custom fields are scoped to the campaign owner. Merge them into
-	// the subscriber view exposed to templates, with account values taking
-	// precedence if a legacy subscriber attribute uses the same key.
+	// the customer view exposed to templates, with account values taking
+	// precedence if a legacy customer attribute uses the same key.
 	if len(c.OwnerUserAttribs) > 0 {
 		merged := make(models.JSON, len(s.Attribs)+len(c.OwnerUserAttribs))
 		for key, value := range s.Attribs {
@@ -32,7 +32,7 @@ func (m *Manager) NewCampaignMessage(c *models.Campaign, s models.Subscriber) (C
 	}
 	msg := CampaignMessage{
 		Campaign:   c,
-		Subscriber: s,
+		Customer: s,
 
 		subject:  c.Subject,
 		from:     c.FromEmail,
@@ -48,9 +48,9 @@ func (m *Manager) NewCampaignMessage(c *models.Campaign, s models.Subscriber) (C
 	return msg, nil
 }
 
-// autoTrackMessageLinks rewrites links after all campaign and subscriber
+// autoTrackMessageLinks rewrites links after all campaign and customer
 // template fields have been rendered. This includes links introduced by a
-// campaign template or a custom subscriber attribute, which are unavailable
+// campaign template or a custom customer attribute, which are unavailable
 // while the campaign body is compiled.
 func (m *Manager) autoTrackMessageLinks(msg *CampaignMessage) {
 	if msg == nil || msg.Campaign == nil || !msg.Campaign.AutoTrackLinks ||
@@ -64,7 +64,7 @@ func (m *Manager) autoTrackMessageLinks(msg *CampaignMessage) {
 		return
 	}
 
-	subUUID := m.trackingSubscriberUUID(msg.Subscriber.UUID)
+	subUUID := m.trackingCustomerUUID(msg.Customer.UUID)
 	var (
 		out  strings.Builder
 		last int
@@ -89,7 +89,7 @@ func (m *Manager) autoTrackMessageLinks(msg *CampaignMessage) {
 	msg.body = []byte(out.String())
 }
 
-func (m *Manager) trackingSubscriberUUID(subUUID string) string {
+func (m *Manager) trackingCustomerUUID(subUUID string) string {
 	if !m.cfg.IndividualTracking {
 		return dummyUUID
 	}

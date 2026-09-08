@@ -1,5 +1,5 @@
 // package core is the collection of re-usable functions that primarily provides data (DB / CRUD) operations
-// to the app. For instance, creating and mutating objects like lists, subscribers etc.
+// to the app. For instance, creating and mutating objects like customer_lists, customers etc.
 // All such methods return an echo.HTTPError{} (which implements error.error) that can be directly returned
 // as a response to HTTP handlers without further processing.
 package core
@@ -25,7 +25,7 @@ const (
 
 	matDashboardCharts = "mat_dashboard_charts"
 	matDashboardCounts = "mat_dashboard_counts"
-	matListSubStats    = "mat_list_subscriber_stats"
+	matListSubStats    = "mat_customer_list_customer_stats"
 )
 
 // Core represents the listmonk core with all shared, global functions.
@@ -51,7 +51,7 @@ type Constants struct {
 
 // Hooks contains external function hooks that are required by the core package.
 type Hooks struct {
-	SendOptinConfirmation func(models.Subscriber, []int) (int, error)
+	SendOptinConfirmation func(models.Customer, []int) (int, error)
 }
 
 // Opt contains the controllers required to start the core.
@@ -71,8 +71,8 @@ var (
 	regexFullTextQuery  = regexp.MustCompile(`\s+`)
 	regexpSpaces        = regexp.MustCompile(`[\s]+`)
 	campQuerySortFields = []string{"name", "status", "created_at", "updated_at"}
-	subQuerySortFields  = []string{"email", "status", "name", "created_at", "updated_at"}
-	listQuerySortFields = []string{"name", "status", "created_at", "updated_at", "subscriber_count"}
+	subQuerySortFields  = []string{"email", "status", "name", "customer_code", "created_at", "updated_at"}
+	listQuerySortFields = []string{"name", "status", "created_at", "updated_at", "customer_count"}
 )
 
 // New returns a new instance of the core.
@@ -170,7 +170,7 @@ func strSliceContains(str string, sl []string) bool {
 	return false
 }
 
-// normalizeTags takes a list of string tags and normalizes them by
+// normalizeTags takes a customer_list of string tags and normalizes them by
 // lower casing and removing all special characters except for dashes.
 func normalizeTags(tags []string) []string {
 	var (

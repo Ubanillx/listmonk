@@ -24,13 +24,13 @@ type bulkUserImportRequest struct {
 }
 
 type bulkUserImportRow struct {
-	Username string `json:"username"`
-	Name     string `json:"name"`
-	Password string `json:"password"`
-	Email    string `json:"email"`
-	UserRole string `json:"user_role"`
-	ListRole string `json:"list_role"`
-	Status   string `json:"status"`
+	Username         string `json:"username"`
+	Name             string `json:"name"`
+	Password         string `json:"password"`
+	Email            string `json:"email"`
+	UserRole         string `json:"user_role"`
+	CustomerListRole string `json:"customer_list_role"`
+	Status           string `json:"status"`
 }
 
 type bulkUserImportIssue struct {
@@ -144,7 +144,7 @@ func (a *App) CreateUsers(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	listRoles, err := a.core.GetListRoles()
+	customerListRoles, err := a.core.GetListRoles()
 	if err != nil {
 		return err
 	}
@@ -153,7 +153,7 @@ func (a *App) CreateUsers(c echo.Context) error {
 		return err
 	}
 
-	users, issues := validateBulkUserImport(req.Users, userRoles, listRoles, existing)
+	users, issues := validateBulkUserImport(req.Users, userRoles, customerListRoles, existing)
 	if len(issues) > 0 {
 		return c.JSON(http.StatusOK, okResp{bulkUserImportResponse{Errors: issues}})
 	}
@@ -169,7 +169,7 @@ func (a *App) CreateUsers(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{bulkUserImportResponse{Created: len(users), Errors: []bulkUserImportIssue{}}})
 }
 
-func validateBulkUserImport(rows []bulkUserImportRow, userRoles []auth.Role, listRoles []auth.ListRole, existing []auth.User) ([]auth.User, []bulkUserImportIssue) {
+func validateBulkUserImport(rows []bulkUserImportRow, userRoles []auth.Role, customerListRoles []auth.CustomerListRole, existing []auth.User) ([]auth.User, []bulkUserImportIssue) {
 	var (
 		out    = make([]auth.User, 0, len(rows))
 		issues []bulkUserImportIssue
@@ -181,11 +181,11 @@ func validateBulkUserImport(rows []bulkUserImportRow, userRoles []auth.Role, lis
 		userRoleNames[strings.ToLower(strings.TrimSpace(role.Name.String))] = role.ID
 		userRoleIDs[role.ID] = struct{}{}
 	}
-	listRoleNames := make(map[string]int, len(listRoles))
-	listRoleIDs := make(map[int]struct{}, len(listRoles))
-	for _, role := range listRoles {
-		listRoleNames[strings.ToLower(strings.TrimSpace(role.Name.String))] = role.ID
-		listRoleIDs[role.ID] = struct{}{}
+	customerListRoleNames := make(map[string]int, len(customerListRoles))
+	customerListRoleIDs := make(map[int]struct{}, len(customerListRoles))
+	for _, role := range customerListRoles {
+		customerListRoleNames[strings.ToLower(strings.TrimSpace(role.Name.String))] = role.ID
+		customerListRoleIDs[role.ID] = struct{}{}
 	}
 
 	existingUsernames := make(map[string]struct{}, len(existing))
@@ -259,9 +259,9 @@ func validateBulkUserImport(rows []bulkUserImportRow, userRoles []auth.Role, lis
 			valid = false
 		}
 
-		listRoleID, listRoleOK := bulkListRoleID(row.ListRole, listRoleNames, listRoleIDs)
-		if strings.TrimSpace(row.ListRole) != "" && !listRoleOK {
-			addIssue(rowNum, "list_role", "invalid_list_role")
+		customerListRoleID, customerListRoleOK := bulkListRoleID(row.CustomerListRole, customerListRoleNames, customerListRoleIDs)
+		if strings.TrimSpace(row.CustomerListRole) != "" && !customerListRoleOK {
+			addIssue(rowNum, "customer_list_role", "invalid_list_role")
 			valid = false
 		}
 		if status != auth.UserStatusEnabled && status != auth.UserStatusDisabled {
@@ -286,8 +286,8 @@ func validateBulkUserImport(rows []bulkUserImportRow, userRoles []auth.Role, lis
 			Status:        status,
 			UserRoleID:    userRoleID,
 		}
-		if listRoleOK {
-			user.ListRoleID = &listRoleID
+		if customerListRoleOK {
+			user.CustomerListRoleID = &customerListRoleID
 		}
 		out = append(out, user)
 	}
@@ -416,7 +416,7 @@ func (a *App) DeleteUser(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{true})
 }
 
-// DeleteUsers handles user deletion, either a single one (ID in the URI), or a list.
+// DeleteUsers handles user deletion, either a single one (ID in the URI), or a customer_list.
 func (a *App) DeleteUsers(c echo.Context) error {
 	ids, err := getQueryInts("id", c.QueryParams())
 	if err != nil {

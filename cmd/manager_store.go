@@ -130,6 +130,11 @@ func (s *store) NextCampaigns(currentIDs []int64) ([]*models.Campaign, error) {
 
 	ready := make([]*models.Campaign, 0, len(out))
 	for _, c := range out {
+		if s.core != nil {
+			if err := s.core.EnsurePoolCampaignRecipients(c.ID); err != nil {
+				return nil, err
+			}
+		}
 		// SetCampaignRunning below atomically claims scheduled/deferred rows and
 		// changes their persisted status to running. Keep the pre-claim value on
 		// the in-memory model so a strict personal-SMTP failure can distinguish a
@@ -191,9 +196,9 @@ func (s *store) NextCampaigns(currentIDs []int64) ([]*models.Campaign, error) {
 	return ready, nil
 }
 
-// NextSubscribers retrieves a subset of subscribers of a given campaign.
-// Since batches are processed sequentially, the retrieval is ordered by subscriber ID.
-func (s *store) NextSubscribers(campID, limit int) ([]models.CampaignSubscriber, error) {
+// NextCustomers retrieves a subset of customers of a given campaign.
+// Since batches are processed sequentially, the retrieval is ordered by customer ID.
+func (s *store) NextCustomers(campID, limit int) ([]models.CampaignCustomer, error) {
 	var st campaignSendState
 	if err := s.queries.GetCampaignSendState.Get(&st, campID, currentLocalDate()); err != nil {
 		return nil, err
@@ -241,13 +246,46 @@ func (s *store) NextSubscribers(campID, limit int) ([]models.CampaignSubscriber,
 		limit = batchLimit
 	}
 
-	var out []models.CampaignSubscriber
-	err := s.queries.NextCampaignSubscribers.Select(&out,
+	var out []models.CampaignCustomer
+	err := s.queries.NextCampaignCustomers.Select(&out,
 		campID,
 		pq.Array([]string{models.CampaignRecipientStatusPending, models.CampaignRecipientStatusDeferred}),
 		limit,
 	)
-	return out, err
+	if err != nil {
+		return nil, err
+	}
+	if len(out) < limit && s.queries.NextCampaignPoolCustomers != nil {
+		poolRows := []models.CampaignCustomer{}
+		if err := s.queries.NextCampaignPoolCustomers.Select(&poolRows, campID,
+			pq.Array([]string{models.CampaignRecipientStatusPending, models.CampaignRecipientStatusDeferred}), limit-len(out)); err != nil {
+			return nil, err
+		}
+		out = append(out, poolRows...)
+	}
+	return out, nil
+}
+
+func (s *store) MarkPoolCampaignMessageSent(campID int, contactID int64) error {
+	_, err := s.db.Exec(`UPDATE campaign_pool_recipients SET status=$3::campaign_recipient_status, updated_at=NOW() WHERE campaign_id=$1 AND pool_contact_id=$2`, campID, contactID, models.CampaignRecipientStatusSent)
+	if err != nil {
+		return err
+	}
+	if _, err = s.queries.IncrementCampaignDailyUsage.Exec(campID, currentLocalDate()); err != nil {
+		return err
+	}
+	_, err = s.queries.UpdateCampaignCounts.Exec(campID, 0, 1, 0)
+	return err
+}
+
+func (s *store) MarkPoolCampaignRecipientStatus(campID int, contactID int64, status string) error {
+	_, err := s.db.Exec(`UPDATE campaign_pool_recipients SET status=$3::campaign_recipient_status, updated_at=NOW() WHERE campaign_id=$1 AND pool_contact_id=$2`, campID, contactID, status)
+	return err
+}
+
+func (s *store) ResetPoolCampaignQueuedRecipients(campID int, toStatus string) error {
+	_, err := s.db.Exec(`UPDATE campaign_pool_recipients SET status=$2::campaign_recipient_status, updated_at=NOW() WHERE campaign_id=$1 AND status='queued'`, campID, toStatus)
+	return err
 }
 
 // userSMTPRemaining returns aggregate remaining capacity for an account's
@@ -265,6 +303,21 @@ func (s *store) userSMTPRemaining(userID int) (int, error) {
 func (s *store) GetCampaign(campID int) (*models.Campaign, error) {
 	var out = &models.Campaign{}
 	err := s.queries.GetCampaign.Get(out, campID, nil, nil, "default")
+	return out, err
+}
+
+// GetCampaignOptinListUUIDs returns only double-opt-in list UUIDs attached to
+// the campaign. The campaign relation is already workspace-authorized when
+// it is queued, so this does not expose unrelated private lists.
+func (s *store) GetCampaignOptinListUUIDs(campID int) ([]string, error) {
+	var out []string
+	err := s.db.Select(&out, `
+		SELECT l.uuid
+		FROM campaign_customer_lists cl
+		JOIN customer_lists l ON l.id=cl.customer_list_id
+		WHERE cl.campaign_id=$1 AND cl.pool_id IS NULL
+		  AND l.optin='double' AND l.status='active'
+		ORDER BY l.id`, campID)
 	return out, err
 }
 
@@ -330,6 +383,11 @@ func (s *store) MarkCampaignStartFailure(campID int, previousStatus string) erro
 		WHERE campaign_id = $1 AND status = 'queued'`, campID); err != nil {
 		return err
 	}
+	if _, err := tx.Exec(`
+		UPDATE campaign_pool_recipients SET status = 'pending', updated_at = NOW()
+		WHERE campaign_id = $1 AND status = 'queued'`, campID); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
@@ -357,11 +415,18 @@ func (s *store) MarkCampaignRecipientStatus(campID int, subID int, status string
 
 func (s *store) ResetCampaignQueuedRecipients(campID int, toStatus string) error {
 	_, err := s.queries.ResetCampaignQueuedRecipients.Exec(campID, toStatus)
-	return err
+	if err != nil {
+		return err
+	}
+	return s.ResetPoolCampaignQueuedRecipients(campID, toStatus)
 }
 
 func (s *store) UpdateCampaignRecipientStatuses(campID int, toStatus string, fromStatuses []string) error {
 	_, err := s.queries.UpdateCampaignRecipientStatuses.Exec(campID, toStatus, pq.Array(fromStatuses))
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`UPDATE campaign_pool_recipients SET status=$2::campaign_recipient_status, updated_at=NOW() WHERE campaign_id=$1 AND status=ANY($3::campaign_recipient_status[])`, campID, toStatus, pq.Array(fromStatuses))
 	return err
 }
 
@@ -652,29 +717,29 @@ func (s *store) CreateLink(campUUID, url string) (string, error) {
 // RecordBounce records a bounce event and returns the bounce count.
 func (s *store) RecordBounce(b models.Bounce) (int64, int, error) {
 	var res = struct {
-		SubscriberID int64 `db:"subscriber_id"`
-		Num          int   `db:"num"`
+		CustomerID int64 `db:"customer_id"`
+		Num        int   `db:"num"`
 	}{}
 
 	err := s.queries.UpdateCampaignStatus.Select(&res,
-		b.SubscriberUUID,
+		b.CustomerUUID,
 		b.Email,
 		b.CampaignUUID,
 		b.Type,
 		b.Source,
 		b.Meta)
 
-	return res.SubscriberID, res.Num, err
+	return res.CustomerID, res.Num, err
 }
 
-// BlocklistSubscriber blocklists a subscriber permanently.
-func (s *store) BlocklistSubscriber(id int64) error {
-	_, err := s.queries.BlocklistSubscribers.Exec(pq.Int64Array{id})
+// BlocklistCustomer blocklists a customer permanently.
+func (s *store) BlocklistCustomer(id int64) error {
+	_, err := s.queries.BlocklistCustomers.Exec(pq.Int64Array{id})
 	return err
 }
 
-// DeleteSubscriber deletes a subscriber from the DB.
-func (s *store) DeleteSubscriber(id int64) error {
-	_, err := s.queries.DeleteSubscribers.Exec(pq.Int64Array{id})
+// DeleteCustomer deletes a customer from the DB.
+func (s *store) DeleteCustomer(id int64) error {
+	_, err := s.queries.DeleteCustomers.Exec(pq.Int64Array{id})
 	return err
 }

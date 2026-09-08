@@ -63,7 +63,7 @@ func workspaceReadPredicate(access models.WorkspaceAccess, alias string, firstAr
 		[]any{access.OrganizationID, access.UserID}
 }
 
-// workspaceOwnerScopedReadPredicate is used for lists and subscribers. An
+// workspaceOwnerScopedReadPredicate is used for customer_lists and customers. An
 // owner audience cannot be shared with ordinary organization members; only an
 // organization manager can inspect another member's records in that org.
 func workspaceOwnerScopedReadPredicate(access models.WorkspaceAccess, alias string, firstArg int) (string, []any) {
@@ -102,8 +102,8 @@ func workspaceSort(orderBy, order string, fields map[string]string, fallback str
 	return field + " DESC"
 }
 
-// QueryWorkspaceLists returns only lists visible in the selected workspace.
-func (c *Core) QueryWorkspaceLists(access models.WorkspaceAccess, search, typ, optin, status string, tags []string, orderBy, order string, offset, limit int) ([]models.List, int, error) {
+// QueryWorkspaceLists returns only customer_lists visible in the selected workspace.
+func (c *Core) QueryWorkspaceLists(access models.WorkspaceAccess, search, typ, optin, status string, tags []string, orderBy, order string, offset, limit int) ([]models.CustomerList, int, error) {
 	if tags == nil {
 		tags = []string{}
 	}
@@ -117,25 +117,25 @@ func (c *Core) QueryWorkspaceLists(access models.WorkspaceAccess, search, typ, o
 			SELECT COUNT(*) OVER() AS total, l.*,
 				COALESCE(u.username, '') AS owner_username,
 				COALESCE(u.name, '') AS owner_name
-			FROM lists l
+			FROM customer_lists l
 			LEFT JOIN users u ON u.id = COALESCE(l.owner_user_id, l.original_owner_user_id)
 			WHERE (%s)
 				AND ($%d = '' OR l.name ILIKE $%d)
-				AND ($%d = '' OR l.type = $%d::list_type)
-				AND ($%d = '' OR l.optin = $%d::list_optin)
-				AND ($%d = '' OR l.status = $%d::list_status)
+				AND ($%d = '' OR l.type = $%d::customer_list_type)
+				AND ($%d = '' OR l.optin = $%d::customer_list_optin)
+				AND ($%d = '' OR l.status = $%d::customer_list_status)
 				AND (CARDINALITY($%d::VARCHAR(100)[]) = 0 OR $%d <@ l.tags)
 			ORDER BY %s
 			OFFSET $%d LIMIT (CASE WHEN $%d < 1 THEN NULL ELSE $%d END)
 		), statuses AS (
-			SELECT list_id,
-				COALESCE(JSONB_OBJECT_AGG(status, subscriber_count) FILTER (WHERE status IS NOT NULL), '{}') AS subscriber_statuses,
-				SUM(subscriber_count) AS subscriber_count
-			FROM mat_list_subscriber_stats GROUP BY list_id
+			SELECT customer_list_id,
+				COALESCE(JSONB_OBJECT_AGG(status, customer_count) FILTER (WHERE status IS NOT NULL), '{}') AS customer_statuses,
+				SUM(customer_count) AS customer_count
+			FROM mat_customer_list_customer_stats GROUP BY customer_list_id
 		)
-		SELECT ls.*, COALESCE(ss.subscriber_statuses, '{}') AS subscriber_statuses,
-			COALESCE(ss.subscriber_count, 0) AS subscriber_count
-		FROM ls LEFT JOIN statuses ss ON ss.list_id = ls.id
+		SELECT ls.*, COALESCE(ss.customer_statuses, '{}') AS customer_statuses,
+			COALESCE(ss.customer_count, 0) AS customer_count
+		FROM ls LEFT JOIN statuses ss ON ss.customer_list_id = ls.id
 		ORDER BY %s`,
 		scope,
 		first, first,
@@ -144,28 +144,28 @@ func (c *Core) QueryWorkspaceLists(access models.WorkspaceAccess, search, typ, o
 		first+3, first+3,
 		first+4, first+4,
 		workspaceSort(orderBy, order, map[string]string{
-			"name":             "l.name",
-			"status":           "l.status",
-			"created_at":       "l.created_at",
-			"updated_at":       "l.updated_at",
-			"subscriber_count": "l.id",
+			"name":           "l.name",
+			"status":         "l.status",
+			"created_at":     "l.created_at",
+			"updated_at":     "l.updated_at",
+			"customer_count": "l.id",
 		}, "l.created_at"),
 		first+5, first+6, first+6,
 		workspaceSort(orderBy, order, map[string]string{
-			"name":             "ls.name",
-			"status":           "ls.status",
-			"created_at":       "ls.created_at",
-			"updated_at":       "ls.updated_at",
-			"subscriber_count": "subscriber_count",
+			"name":           "ls.name",
+			"status":         "ls.status",
+			"created_at":     "ls.created_at",
+			"updated_at":     "ls.updated_at",
+			"customer_count": "customer_count",
 		}, "ls.created_at"),
 	)
 	args = append(args,
 		searchString(search), typ, optin, status, pq.StringArray(tags), offset, limit,
 	)
 
-	var out []models.List
+	var out []models.CustomerList
 	if err := c.db.Select(&out, stmt, args...); err != nil {
-		return nil, 0, workspaceQueryError("fetching lists", err)
+		return nil, 0, workspaceQueryError("fetching customer_lists", err)
 	}
 	for i := range out {
 		if out[i].Tags == nil {
@@ -179,25 +179,25 @@ func (c *Core) QueryWorkspaceLists(access models.WorkspaceAccess, search, typ, o
 	return out, total, nil
 }
 
-// GetWorkspaceLists is the lightweight list selector equivalent of the
-// paginated list query.
-func (c *Core) GetWorkspaceLists(access models.WorkspaceAccess, typ, status string) ([]models.List, error) {
+// GetWorkspaceLists is the lightweight customer_list selector equivalent of the
+// paginated customer_list query.
+func (c *Core) GetWorkspaceLists(access models.WorkspaceAccess, typ, status string) ([]models.CustomerList, error) {
 	out, _, err := c.QueryWorkspaceLists(access, "", typ, "", status, nil, "name", SortAsc, 0, 0)
 	return out, err
 }
 
-// GetPublicSubscriptionLists returns active public lists that can accept an
+// GetPublicSubscriptionLists returns active public customer_lists that can accept an
 // unauthenticated subscription. Unlike the legacy GetLists helper, this query
 // excludes resources awaiting transfer and returns enough scope metadata to
-// bind the submitted e-mail to the list owner's workspace.
-func (c *Core) GetPublicSubscriptionLists(uuids []string) ([]models.List, error) {
+// bind the submitted e-mail to the customer_list owner's workspace.
+func (c *Core) GetPublicSubscriptionLists(uuids []string) ([]models.CustomerList, error) {
 	var (
 		stmt string
 		args []any
 	)
 	if len(uuids) == 0 {
 		stmt = `
-			SELECT l.* FROM lists l
+			SELECT l.* FROM customer_lists l
 			LEFT JOIN organizations o ON o.id = l.organization_id
 			WHERE l.type = 'public' AND l.status = 'active'
 				AND owner_user_id IS NOT NULL AND transfer_pending_at IS NULL
@@ -205,7 +205,7 @@ func (c *Core) GetPublicSubscriptionLists(uuids []string) ([]models.List, error)
 			ORDER BY l.name`
 	} else {
 		stmt = `
-			SELECT l.* FROM lists l
+			SELECT l.* FROM customer_lists l
 			LEFT JOIN organizations o ON o.id = l.organization_id
 			WHERE l.uuid = ANY($1::UUID[]) AND l.type = 'public' AND l.status = 'active'
 				AND l.owner_user_id IS NOT NULL AND l.transfer_pending_at IS NULL
@@ -213,9 +213,9 @@ func (c *Core) GetPublicSubscriptionLists(uuids []string) ([]models.List, error)
 			ORDER BY l.name`
 		args = []any{pq.Array(uuids)}
 	}
-	var out []models.List
+	var out []models.CustomerList
 	if err := c.db.Select(&out, stmt, args...); err != nil {
-		return nil, workspaceQueryError("fetching public subscription lists", err)
+		return nil, workspaceQueryError("fetching public subscription customer_lists", err)
 	}
 	return out, nil
 }
@@ -239,11 +239,11 @@ func (c *Core) QueryWorkspaceCampaigns(access models.WorkspaceAccess, search str
 				ELSE GREATEST(c.to_send - c.sent, 0) END AS unsent_count,
 			COUNT(*) OVER() AS total,
 			(SELECT COALESCE(ARRAY_TO_JSON(ARRAY_AGG(l)), '[]') FROM (
-				SELECT COALESCE(cl.list_id, 0) AS id, cl.list_name AS name
-				FROM campaign_lists cl
-				LEFT JOIN lists cl_list ON cl_list.id = cl.list_id
+				SELECT COALESCE(cl.customer_list_id, 0) AS id, cl.customer_list_name AS name
+				FROM campaign_customer_lists cl
+				LEFT JOIN customer_lists cl_list ON cl_list.id = cl.customer_list_id
 				WHERE cl.campaign_id = c.id AND (%s)
-			) l) AS lists
+			) l) AS customer_lists
 		FROM campaigns c
 		LEFT JOIN users u ON u.id = COALESCE(c.owner_user_id, c.original_owner_user_id)
 		LEFT JOIN reply_mailboxes rm ON rm.id = c.reply_mailbox_id
@@ -418,12 +418,12 @@ func (c *Core) GetWorkspaceCampaignForPreview(access models.WorkspaceAccess, id,
 			), '{}') AS media_id,
 			(
 				SELECT COALESCE(ARRAY_TO_JSON(ARRAY_AGG(l)), '[]') FROM (
-				SELECT COALESCE(cl.list_id, 0) AS id, cl.list_name AS name
-				FROM campaign_lists cl
-				LEFT JOIN lists cl_list ON cl_list.id = cl.list_id
+				SELECT COALESCE(cl.customer_list_id, 0) AS id, cl.customer_list_name AS name
+				FROM campaign_customer_lists cl
+				LEFT JOIN customer_lists cl_list ON cl_list.id = cl.customer_list_id
 				WHERE cl.campaign_id = campaigns.id AND (%s)
 			) l
-			) AS lists
+			) AS customer_lists
 		FROM campaigns
 		LEFT JOIN users campaign_owner
 			ON campaign_owner.id = COALESCE(campaigns.owner_user_id, campaigns.original_owner_user_id)
@@ -459,47 +459,47 @@ func (c *Core) GetWorkspaceCampaignForPreview(access models.WorkspaceAccess, id,
 	return out, nil
 }
 
-// GetWorkspaceList returns one list with subscriber counters through the
-// owner-scoped predicate.  Managers may inspect another member's list, while
+// GetWorkspaceList returns one customer_list with customer counters through the
+// owner-scoped predicate.  Managers may inspect another member's customer_list, while
 // a personal request can only ever resolve its own row.
-func (c *Core) GetWorkspaceList(access models.WorkspaceAccess, id int) (models.List, error) {
+func (c *Core) GetWorkspaceList(access models.WorkspaceAccess, id int) (models.CustomerList, error) {
 	if id < 1 {
-		return models.List{}, echo.NewHTTPError(http.StatusBadRequest,
-			c.i18n.Ts("globals.messages.notFound", "name", "{globals.terms.list}"))
+		return models.CustomerList{}, echo.NewHTTPError(http.StatusBadRequest,
+			c.i18n.Ts("globals.messages.notFound", "name", "{globals.terms.customer_list}"))
 	}
 	_ = c.refreshCache(matListSubStats, false)
 	scope, args := workspaceOwnerScopedReadPredicate(access, "l", 1)
 	idArg := len(args) + 1
 	stmt := fmt.Sprintf(`
 		WITH statuses AS (
-			SELECT list_id,
-				COALESCE(JSONB_OBJECT_AGG(status, subscriber_count) FILTER (WHERE status IS NOT NULL), '{}') AS subscriber_statuses,
-				SUM(subscriber_count) AS subscriber_count
-			FROM mat_list_subscriber_stats GROUP BY list_id
+			SELECT customer_list_id,
+				COALESCE(JSONB_OBJECT_AGG(status, customer_count) FILTER (WHERE status IS NOT NULL), '{}') AS customer_statuses,
+				SUM(customer_count) AS customer_count
+			FROM mat_customer_list_customer_stats GROUP BY customer_list_id
 		)
 		SELECT l.*, COALESCE(u.username, '') AS owner_username,
 			COALESCE(u.name, '') AS owner_name,
-			COALESCE(s.subscriber_statuses, '{}') AS subscriber_statuses,
-			COALESCE(s.subscriber_count, 0) AS subscriber_count
-		FROM lists l
+			COALESCE(s.customer_statuses, '{}') AS customer_statuses,
+			COALESCE(s.customer_count, 0) AS customer_count
+		FROM customer_lists l
 		LEFT JOIN users u ON u.id = COALESCE(l.owner_user_id, l.original_owner_user_id)
-		LEFT JOIN statuses s ON s.list_id = l.id
+		LEFT JOIN statuses s ON s.customer_list_id = l.id
 		WHERE l.id = $%d AND (%s)
 		LIMIT 1`, idArg, scope)
 	args = append(args, id)
-	var out models.List
+	var out models.CustomerList
 	if err := c.db.Get(&out, stmt, args...); err != nil {
 		if err == sql.ErrNoRows {
-			return models.List{}, echo.NewHTTPError(http.StatusBadRequest,
-				c.i18n.Ts("globals.messages.notFound", "name", "{globals.terms.list}"))
+			return models.CustomerList{}, echo.NewHTTPError(http.StatusBadRequest,
+				c.i18n.Ts("globals.messages.notFound", "name", "{globals.terms.customer_list}"))
 		}
-		return models.List{}, workspaceQueryError("fetching list", err)
+		return models.CustomerList{}, workspaceQueryError("fetching customer_list", err)
 	}
 	if out.Tags == nil {
 		out.Tags = []string{}
 	}
-	for _, n := range out.SubscriberCounts {
-		out.SubscriberCount += n
+	for _, n := range out.CustomerCounts {
+		out.CustomerCount += n
 	}
 	return out, nil
 }
@@ -599,7 +599,7 @@ func (c *Core) QueryWorkspaceMedia(access models.WorkspaceAccess, provider strin
 		-- paginator encodes per_page=all as a zero limit. PostgreSQL's
 		-- literal LIMIT 0 would incorrectly return an empty media library, so
 		-- normalize non-positive limits to an unbounded LIMIT just like the
-		-- other workspace list queries.
+		-- other workspace customer_list queries.
 		ORDER BY m.created_at DESC OFFSET $%d LIMIT (CASE WHEN $%d < 1 THEN NULL ELSE $%d END)`,
 		scope, first, first, first+1, first+2, first+3, first+3)
 	query = strings.TrimSpace(query)
@@ -919,18 +919,18 @@ func (c *Core) IsPublicArchiveMediaID(id int) (bool, error) {
 	return err == nil, err
 }
 
-func workspaceSubscriberReadPredicate(access models.WorkspaceAccess, alias string, firstArg int) (string, []any) {
+func workspaceCustomerReadPredicate(access models.WorkspaceAccess, alias string, firstArg int) (string, []any) {
 	return workspaceOwnerScopedReadPredicate(access, alias, firstArg)
 }
 
-// workspaceSensitiveSubscriberPredicate is the immutable owner boundary for
+// workspaceSensitiveCustomerPredicate is the immutable owner boundary for
 // operations that serialize recipient identity (CSV/privacy exports). An
-// organization manager may inspect a member's subscriber row through the
+// organization manager may inspect a member's customer row through the
 // normal read predicate, but that inspection grant must never be enough to
 // export the member's e-mail address or subscriptions. Keep this predicate in
 // Core as well as the HTTP checks so a non-HTTP caller cannot bypass the
 // privacy boundary by invoking an export helper directly.
-func workspaceSensitiveSubscriberPredicate(access models.WorkspaceAccess, alias string, firstArg int) (string, []any) {
+func workspaceSensitiveCustomerPredicate(access models.WorkspaceAccess, alias string, firstArg int) (string, []any) {
 	field := func(name string) string {
 		if alias == "" {
 			return name
@@ -950,25 +950,25 @@ func workspaceSensitiveSubscriberPredicate(access models.WorkspaceAccess, alias 
 		field(""), field(""), arg(0), field("")), []any{access.UserID}
 }
 
-type workspaceSubscriberLists struct {
-	SubscriberID int            `db:"subscriber_id"`
-	Lists        types.JSONText `db:"lists"`
+type workspaceCustomerListMemberships struct {
+	CustomerID    int            `db:"customer_id"`
+	CustomerLists types.JSONText `db:"customer_lists"`
 }
 
-// loadWorkspaceSubscriberLists deliberately does not use the legacy lazy
-// query. A malformed subscriber_lists row must not expose a list that belongs
-// to a different owner or organization just because the subscriber itself is
+// loadWorkspaceCustomerListMemberships deliberately does not use the legacy lazy
+// query. A malformed customer_list_memberships row must not expose a customer_list that belongs
+// to a different owner or organization just because the customer itself is
 // visible to an organization manager.
-func (c *Core) loadWorkspaceSubscriberLists(access models.WorkspaceAccess, subscribers models.Subscribers) error {
-	if len(subscribers) == 0 {
+func (c *Core) loadWorkspaceCustomerListMemberships(access models.WorkspaceAccess, customers models.Customers) error {
+	if len(customers) == 0 {
 		return nil
 	}
 
-	// Pending-transfer lists are intentionally hidden from ordinary members,
+	// Pending-transfer customer_lists are intentionally hidden from ordinary members,
 	// but organization managers (and platform administrators) must be able to
 	// inspect the complete audience before transferring it.  The owner/org
 	// equality predicates below remain mandatory in both cases, so a malformed
-	// subscriber_lists row can never expose another workspace's list.
+	// customer_list_memberships row can never expose another workspace's customer_list.
 	listStatePredicate := "l.transfer_pending_at IS NULL"
 	if access.PlatformAdmin || access.IsOrganizationManager() {
 		listStatePredicate = "TRUE"
@@ -981,10 +981,10 @@ func (c *Core) loadWorkspaceSubscriberLists(access models.WorkspaceAccess, subsc
 		))`
 	}
 
-	var rows []workspaceSubscriberLists
+	var rows []workspaceCustomerListMemberships
 	if err := c.db.Select(&rows, fmt.Sprintf(`
 		WITH associated_lists AS (
-			SELECT sl.subscriber_id, JSON_AGG(
+			SELECT sl.customer_id, JSON_AGG(
 				ROW_TO_JSON((SELECT list_row FROM (
 					SELECT
 						sl.status AS subscription_status,
@@ -993,88 +993,88 @@ func (c *Core) loadWorkspaceSubscriberLists(access models.WorkspaceAccess, subsc
 						sl.meta AS subscription_meta,
 						l.*
 				) list_row)) ORDER BY l.id
-			) AS lists
-			FROM subscriber_lists sl
-			JOIN subscribers s ON s.id = sl.subscriber_id
-			JOIN lists l ON l.id = sl.list_id
-			WHERE sl.subscriber_id = ANY($1::INT[])
+			) AS customer_lists
+			FROM customer_list_memberships sl
+			JOIN customers s ON s.id = sl.customer_id
+			JOIN customer_lists l ON l.id = sl.customer_list_id
+			WHERE sl.customer_id = ANY($1::INT[])
 				AND l.organization_id IS NOT DISTINCT FROM s.organization_id
 				AND l.owner_user_id IS NOT DISTINCT FROM s.owner_user_id
 				AND %s
 				AND %s
-			GROUP BY sl.subscriber_id
+			GROUP BY sl.customer_id
 		)
-		SELECT requested.id AS subscriber_id, COALESCE(associated_lists.lists, '[]') AS lists
+		SELECT requested.id AS customer_id, COALESCE(associated_lists.customer_lists, '[]') AS customer_lists
 		FROM UNNEST($1::INT[]) AS requested(id)
-		LEFT JOIN associated_lists ON associated_lists.subscriber_id = requested.id
-		ORDER BY ARRAY_POSITION($1::INT[], requested.id)`, listStatePredicate, organizationPredicate), pq.Array(subscribers.GetIDs())); err != nil {
+		LEFT JOIN associated_lists ON associated_lists.customer_id = requested.id
+		ORDER BY ARRAY_POSITION($1::INT[], requested.id)`, listStatePredicate, organizationPredicate), pq.Array(customers.GetIDs())); err != nil {
 		return err
 	}
 
 	loaded := make(map[int]types.JSONText, len(rows))
 	for _, row := range rows {
-		loaded[row.SubscriberID] = row.Lists
+		loaded[row.CustomerID] = row.CustomerLists
 	}
-	for i := range subscribers {
-		if lists, ok := loaded[subscribers[i].ID]; ok {
-			subscribers[i].Lists = lists
+	for i := range customers {
+		if customer_lists, ok := loaded[customers[i].ID]; ok {
+			customers[i].CustomerLists = customer_lists
 		} else {
-			subscribers[i].Lists = types.JSONText([]byte("[]"))
+			customers[i].CustomerLists = types.JSONText([]byte("[]"))
 		}
 	}
 	return nil
 }
 
-// GetWorkspaceSubscriber returns one subscriber after applying the same
-// owner/workspace predicate used by list and bulk queries.  The legacy
-// GetSubscriber method intentionally remains available to public bearer-token
-// flows; authenticated handlers must use this method so the embedded Lists
+// GetWorkspaceCustomer returns one customer after applying the same
+// owner/workspace predicate used by customer_list and bulk queries.  The legacy
+// GetCustomer method intentionally remains available to public bearer-token
+// flows; authenticated handlers must use this method so the embedded CustomerLists
 // payload cannot reveal cross-workspace associations.
-func (c *Core) GetWorkspaceSubscriber(access models.WorkspaceAccess, id int) (models.Subscriber, error) {
+func (c *Core) GetWorkspaceCustomer(access models.WorkspaceAccess, id int) (models.Customer, error) {
 	if id < 1 {
-		return models.Subscriber{}, echo.NewHTTPError(http.StatusBadRequest,
-			c.i18n.Ts("globals.messages.notFound", "name", fmt.Sprintf("{globals.terms.subscriber} (%d)", id)))
+		return models.Customer{}, echo.NewHTTPError(http.StatusBadRequest,
+			c.i18n.Ts("globals.messages.notFound", "name", fmt.Sprintf("{globals.terms.customer} (%d)", id)))
 	}
 
-	scope, args := workspaceSubscriberReadPredicate(access, "s", 1)
+	scope, args := workspaceCustomerReadPredicate(access, "s", 1)
 	first := len(args) + 1
 	stmt := fmt.Sprintf(`
 		SELECT s.*, COALESCE(u.username, '') AS owner_username,
 			COALESCE(u.name, '') AS owner_name
-		FROM subscribers s
+		FROM customers s
 		LEFT JOIN users u ON u.id = COALESCE(s.owner_user_id, s.original_owner_user_id)
 		WHERE s.id = $%d AND (%s)
 		LIMIT 1`, first, scope)
 	args = append(args, id)
 
-	var out models.Subscriber
+	var out models.Customer
 	if err := c.db.Get(&out, stmt, args...); err != nil {
 		if err == sql.ErrNoRows {
-			return models.Subscriber{}, echo.NewHTTPError(http.StatusBadRequest,
+			return models.Customer{}, echo.NewHTTPError(http.StatusBadRequest,
 				c.i18n.Ts("globals.messages.notFound", "name",
-					fmt.Sprintf("{globals.terms.subscriber} (%d)", id)))
+					fmt.Sprintf("{globals.terms.customer} (%d)", id)))
 		}
-		return models.Subscriber{}, workspaceQueryError("fetching subscriber", err)
+		return models.Customer{}, workspaceQueryError("fetching customer", err)
 	}
 
-	// loadWorkspaceSubscriberLists mutates the slice elements in place. Keep a
+	// loadWorkspaceCustomerListMemberships mutates the slice elements in place. Keep a
 	// stable slice here and copy the hydrated element back; passing a temporary
-	// literal would otherwise discard the Lists field before returning it.
-	hydrated := models.Subscribers{out}
-	if err := c.loadWorkspaceSubscriberLists(access, hydrated); err != nil {
-		return models.Subscriber{}, workspaceQueryError("fetching subscriber lists", err)
+	// literal would otherwise discard the CustomerLists field before returning it.
+	hydrated := models.Customers{out}
+	if err := c.loadWorkspaceCustomerListMemberships(access, hydrated); err != nil {
+		return models.Customer{}, workspaceQueryError("fetching customer customer_lists", err)
 	}
 	out = hydrated[0]
 	return out, nil
 }
 
 // campaignActivityScope returns a conservative relationship predicate for
-// campaign analytics attached to a subscriber.  Campaign recipients are
+// campaign analytics attached to a customer.  Campaign recipients are
 // created only for matching organization/owner pairs; enforcing that same
 // invariant here prevents forged historical rows from crossing workspaces.
-func campaignActivityScope(access models.WorkspaceAccess, campaignAlias, subscriberAlias string) string {
+func campaignActivityScope(access models.WorkspaceAccess, campaignAlias, customerAlias string) string {
 	predicate := fmt.Sprintf(`%s.organization_id IS NOT DISTINCT FROM %s.organization_id
-		AND %s.owner_user_id IS NOT DISTINCT FROM %s.owner_user_id`, campaignAlias, subscriberAlias, campaignAlias, subscriberAlias)
+		AND %s.owner_user_id IS NOT DISTINCT FROM %s.owner_user_id`, campaignAlias, customerAlias, campaignAlias, customerAlias)
 	if access.PlatformAdmin || access.IsOrganizationManager() {
 		return predicate
 	}
@@ -1086,30 +1086,30 @@ func campaignActivityScope(access models.WorkspaceAccess, campaignAlias, subscri
 		))`, campaignAlias, campaignAlias, campaignAlias)
 }
 
-// GetWorkspaceSubscriberActivity returns campaign views and link clicks for
-// a subscriber while constraining every joined campaign to the subscriber's
+// GetWorkspaceCustomerActivity returns campaign views and link clicks for
+// a customer while constraining every joined campaign to the customer's
 // own organization/owner boundary. Organization managers may inspect member
 // statistics (including resources awaiting transfer), but no unrelated
 // campaign identifiers are returned.
-func (c *Core) GetWorkspaceSubscriberActivity(access models.WorkspaceAccess, id int) (models.SubscriberActivity, error) {
+func (c *Core) GetWorkspaceCustomerActivity(access models.WorkspaceAccess, id int) (models.CustomerActivity, error) {
 	if id < 1 {
-		return models.SubscriberActivity{}, echo.NewHTTPError(http.StatusBadRequest,
-			c.i18n.Ts("globals.messages.notFound", "name", fmt.Sprintf("{globals.terms.subscriber} (%d)", id)))
+		return models.CustomerActivity{}, echo.NewHTTPError(http.StatusBadRequest,
+			c.i18n.Ts("globals.messages.notFound", "name", fmt.Sprintf("{globals.terms.customer} (%d)", id)))
 	}
 
-	subscriberScope, args := workspaceSubscriberReadPredicate(access, "s", 1)
+	customerScope, args := workspaceCustomerReadPredicate(access, "s", 1)
 	first := len(args) + 1
 	activityScope := campaignActivityScope(access, "c", "s")
 	stmt := fmt.Sprintf(`
 		WITH target AS (
 			SELECT s.id, s.organization_id, s.owner_user_id
-			FROM subscribers s
+			FROM customers s
 			WHERE s.id = $%d AND (%s)
 		), views AS (
 			SELECT c.id, c.uuid, c.name, c.subject,
 				COUNT(*) AS view_count, MAX(cv.created_at) AS last_viewed_at
 			FROM campaign_views cv
-			JOIN target s ON s.id = cv.subscriber_id
+			JOIN target s ON s.id = cv.customer_id
 			JOIN campaigns c ON c.id = cv.campaign_id
 			WHERE %s
 			GROUP BY c.id, c.uuid, c.name, c.subject
@@ -1120,53 +1120,64 @@ func (c *Core) GetWorkspaceSubscriberActivity(access models.WorkspaceAccess, id 
 				c.name AS campaign_name, c.subject AS campaign_subject,
 				COUNT(*) AS click_count, MAX(lc.created_at) AS last_clicked_at
 			FROM link_clicks lc
-			JOIN target s ON s.id = lc.subscriber_id
+			JOIN target s ON s.id = lc.customer_id
 			JOIN links l ON l.id = lc.link_id
 			JOIN campaigns c ON c.id = lc.campaign_id
 			WHERE %s
 			GROUP BY l.id, l.url, c.id, c.uuid, c.name, c.subject
 			ORDER BY last_clicked_at DESC
+		), reply_ai AS (
+			SELECT e.id, e.intent, e.confidence, e.reason_code, e.model,
+				e.action, e.status, e.from_email, e.subject,
+				e.received_at, e.classified_at, e.actioned_at
+			FROM reply_ai_events e
+			JOIN target s ON s.id = e.customer_id
+			JOIN reply_mailboxes m ON m.id = e.reply_mailbox_id
+			WHERE m.user_id = s.owner_user_id
+				AND m.organization_id IS NOT DISTINCT FROM s.organization_id
+			ORDER BY e.created_at DESC
 		)
 		SELECT
 			COALESCE((SELECT JSON_AGG(v) FROM views v), '[]') AS campaign_views,
-			COALESCE((SELECT JSON_AGG(c) FROM clicks c), '[]') AS link_clicks`,
-		first, subscriberScope, activityScope, activityScope)
+			COALESCE((SELECT JSON_AGG(c) FROM clicks c), '[]') AS link_clicks,
+			COALESCE((SELECT JSON_AGG(r) FROM reply_ai r), '[]') AS reply_ai_events`,
+		first, customerScope, activityScope, activityScope)
 	args = append(args, id)
 
 	// Aggregates always produce one row, so explicitly verify that the target
-	// subscriber matched the workspace predicate before returning an empty
+	// customer matched the workspace predicate before returning an empty
 	// activity payload for a hidden ID.
 	var exists bool
-	existsStmt := fmt.Sprintf(`SELECT EXISTS(SELECT 1 FROM subscribers s WHERE s.id = $%d AND (%s))`, first, subscriberScope)
+	existsStmt := fmt.Sprintf(`SELECT EXISTS(SELECT 1 FROM customers s WHERE s.id = $%d AND (%s))`, first, customerScope)
 	if err := c.db.Get(&exists, existsStmt, args...); err != nil {
-		return models.SubscriberActivity{}, workspaceQueryError("checking subscriber", err)
+		return models.CustomerActivity{}, workspaceQueryError("checking customer", err)
 	}
 	if !exists {
-		return models.SubscriberActivity{}, echo.NewHTTPError(http.StatusBadRequest,
-			c.i18n.Ts("globals.messages.notFound", "name", fmt.Sprintf("{globals.terms.subscriber} (%d)", id)))
+		return models.CustomerActivity{}, echo.NewHTTPError(http.StatusBadRequest,
+			c.i18n.Ts("globals.messages.notFound", "name", fmt.Sprintf("{globals.terms.customer} (%d)", id)))
 	}
 
-	var out models.SubscriberActivity
+	var out models.CustomerActivity
 	if err := c.db.Get(&out, stmt, args...); err != nil {
-		return models.SubscriberActivity{}, workspaceQueryError("fetching subscriber activity", err)
+		return models.CustomerActivity{}, workspaceQueryError("fetching customer activity", err)
 	}
 	return out, nil
 }
 
-// GetWorkspaceSubscriberProfileForExport returns the privacy export payload
+// GetWorkspaceCustomerProfileForExport returns the privacy export payload
 // for an authenticated owner. Every relation is matched to the target
-// subscriber's organization and owner, preventing a manager/platform request
-// from accidentally serializing unrelated lists or campaign analytics.
-func (c *Core) GetWorkspaceSubscriberProfileForExport(access models.WorkspaceAccess, id int) (models.SubscriberExportProfile, error) {
+// customer's organization and owner, preventing a manager/platform request
+// from accidentally serializing unrelated customer_lists or campaign analytics.
+func (c *Core) GetWorkspaceCustomerProfileForExport(access models.WorkspaceAccess, id int) (models.CustomerExportProfile, error) {
 	if id < 1 {
-		return models.SubscriberExportProfile{}, echo.NewHTTPError(http.StatusBadRequest,
-			c.i18n.Ts("globals.messages.notFound", "name", fmt.Sprintf("{globals.terms.subscriber} (%d)", id)))
+		return models.CustomerExportProfile{}, echo.NewHTTPError(http.StatusBadRequest,
+			c.i18n.Ts("globals.messages.notFound", "name", fmt.Sprintf("{globals.terms.customer} (%d)", id)))
 	}
 
 	// Privacy exports follow the immutable owner boundary, not the broader
 	// organization-manager inspection predicate. Keep this check in Core so a
 	// direct caller cannot turn a manager's read access into an export.
-	subscriberScope, args := workspaceSensitiveSubscriberPredicate(access, "s", 1)
+	customerScope, args := workspaceSensitiveCustomerPredicate(access, "s", 1)
 	first := len(args) + 1
 	listState := "l.transfer_pending_at IS NULL"
 	listOrganizationState := `(l.organization_id IS NULL OR EXISTS (
@@ -1187,32 +1198,32 @@ func (c *Core) GetWorkspaceSubscriberProfileForExport(access models.WorkspaceAcc
 		WITH prof AS (
 			SELECT s.id, s.uuid, s.email, s.name, s.attribs, s.status,
 				s.created_at, s.updated_at, s.organization_id, s.owner_user_id
-			FROM subscribers s
+			FROM customers s
 			WHERE s.id = $%d AND (%s)
 		), subs AS (
 			SELECT sl.status AS subscription_status,
-				(CASE WHEN l.type = 'private' THEN 'Private list' ELSE l.name END) AS name,
+				(CASE WHEN l.type = 'private' THEN 'Private customer_list' ELSE l.name END) AS name,
 				l.type, sl.created_at
 			FROM prof p
-			JOIN subscriber_lists sl ON sl.subscriber_id = p.id
-			JOIN lists l ON l.id = sl.list_id
+			JOIN customer_list_memberships sl ON sl.customer_id = p.id
+			JOIN customer_lists l ON l.id = sl.customer_list_id
 			WHERE l.organization_id IS NOT DISTINCT FROM p.organization_id
 				AND l.owner_user_id IS NOT DISTINCT FROM p.owner_user_id
 				AND %s
 				AND %s
 		), views AS (
-			SELECT c.subject AS campaign, COUNT(cv.subscriber_id) AS views
+			SELECT c.subject AS campaign, COUNT(cv.customer_id) AS views
 			FROM prof p
-			JOIN campaign_views cv ON cv.subscriber_id = p.id
+			JOIN campaign_views cv ON cv.customer_id = p.id
 			JOIN campaigns c ON c.id = cv.campaign_id
 			WHERE c.organization_id IS NOT DISTINCT FROM p.organization_id
 				AND c.owner_user_id IS NOT DISTINCT FROM p.owner_user_id
 				AND %s
 			GROUP BY c.id, c.subject ORDER BY c.id
 		), clicks AS (
-			SELECT l.url, COUNT(lc.subscriber_id) AS clicks
+			SELECT l.url, COUNT(lc.customer_id) AS clicks
 			FROM prof p
-			JOIN link_clicks lc ON lc.subscriber_id = p.id
+			JOIN link_clicks lc ON lc.customer_id = p.id
 			JOIN links l ON l.id = lc.link_id
 			JOIN campaigns c ON c.id = lc.campaign_id
 			WHERE c.organization_id IS NOT DISTINCT FROM p.organization_id
@@ -1225,26 +1236,26 @@ func (c *Core) GetWorkspaceSubscriberProfileForExport(access models.WorkspaceAcc
 			COALESCE((SELECT JSON_AGG(t) FROM subs t), '[]') AS subscriptions,
 			COALESCE((SELECT JSON_AGG(t) FROM views t), '[]') AS campaign_views,
 			COALESCE((SELECT JSON_AGG(t) FROM clicks t), '[]') AS link_clicks`,
-		first, subscriberScope, listState, listOrganizationState, campaignState, campaignState)
+		first, customerScope, listState, listOrganizationState, campaignState, campaignState)
 	args = append(args, id)
 
-	var out models.SubscriberExportProfile
+	var out models.CustomerExportProfile
 	if err := c.db.Get(&out, stmt, args...); err != nil {
-		return models.SubscriberExportProfile{}, workspaceQueryError("fetching subscriber export data", err)
+		return models.CustomerExportProfile{}, workspaceQueryError("fetching customer export data", err)
 	}
 	if out.Email == "" {
-		return models.SubscriberExportProfile{}, echo.NewHTTPError(http.StatusBadRequest,
-			c.i18n.Ts("globals.messages.notFound", "name", fmt.Sprintf("{globals.terms.subscriber} (%d)", id)))
+		return models.CustomerExportProfile{}, echo.NewHTTPError(http.StatusBadRequest,
+			c.i18n.Ts("globals.messages.notFound", "name", fmt.Sprintf("{globals.terms.customer} (%d)", id)))
 	}
 	return out, nil
 }
 
-// QueryWorkspaceSubscribers keeps subscriber identifiers and personal data
+// QueryWorkspaceCustomers keeps customer identifiers and personal data
 // inside the active owner/workspace boundary. Organization managers may read
 // member records but never gain a writable result set from this query.
-func (c *Core) QueryWorkspaceSubscribers(access models.WorkspaceAccess, search string, listIDs []int, subscriptionStatus, order, orderBy string, offset, limit int) (models.Subscribers, int, error) {
-	if listIDs == nil {
-		listIDs = []int{}
+func (c *Core) QueryWorkspaceCustomers(access models.WorkspaceAccess, search string, customerListIDs []int, subscriptionStatus, order, orderBy string, offset, limit int) (models.Customers, int, error) {
+	if customerListIDs == nil {
+		customerListIDs = []int{}
 	}
 	fields := map[string]string{
 		"email":      "s.email",
@@ -1256,19 +1267,19 @@ func (c *Core) QueryWorkspaceSubscribers(access models.WorkspaceAccess, search s
 	if _, ok := fields[orderBy]; !ok {
 		orderBy = "created_at"
 	}
-	scope, args := workspaceSubscriberReadPredicate(access, "s", 1)
+	scope, args := workspaceCustomerReadPredicate(access, "s", 1)
 	first := len(args) + 1
 	stmt := fmt.Sprintf(`
 		SELECT s.*, COALESCE(u.username, '') AS owner_username, COALESCE(u.name, '') AS owner_name,
 			COUNT(*) OVER() AS total
-		FROM subscribers s
+		FROM customers s
 		LEFT JOIN users u ON u.id = COALESCE(s.owner_user_id, s.original_owner_user_id)
 		WHERE (%s)
 			AND ($%d = '' OR s.name ~* $%d OR s.email ~* $%d)
 			AND (CARDINALITY($%d::INT[]) = 0 OR EXISTS (
-				SELECT 1 FROM subscriber_lists sl
-				JOIN lists l ON l.id = sl.list_id
-				WHERE sl.subscriber_id = s.id AND sl.list_id = ANY($%d::INT[])
+				SELECT 1 FROM customer_list_memberships sl
+				JOIN customer_lists l ON l.id = sl.customer_list_id
+				WHERE sl.customer_id = s.id AND sl.customer_list_id = ANY($%d::INT[])
 					AND l.organization_id IS NOT DISTINCT FROM s.organization_id
 					AND l.owner_user_id IS NOT DISTINCT FROM s.owner_user_id
 					AND l.transfer_pending_at IS NULL
@@ -1279,14 +1290,14 @@ func (c *Core) QueryWorkspaceSubscribers(access models.WorkspaceAccess, search s
 		first, first, first,
 		first+1, first+1, first+2, first+2,
 		workspaceSort(orderBy, order, fields, "s.created_at"), first+3, first+4, first+4)
-	args = append(args, strings.TrimSpace(search), pq.Array(listIDs), subscriptionStatus, offset, limit)
+	args = append(args, strings.TrimSpace(search), pq.Array(customerListIDs), subscriptionStatus, offset, limit)
 
-	var out models.Subscribers
+	var out models.Customers
 	if err := c.db.Select(&out, stmt, args...); err != nil {
-		return nil, 0, workspaceQueryError("fetching subscribers", err)
+		return nil, 0, workspaceQueryError("fetching customers", err)
 	}
-	if err := c.loadWorkspaceSubscriberLists(access, out); err != nil {
-		return nil, 0, workspaceQueryError("fetching subscriber lists", err)
+	if err := c.loadWorkspaceCustomerListMemberships(access, out); err != nil {
+		return nil, 0, workspaceQueryError("fetching customer customer_lists", err)
 	}
 	total := 0
 	if len(out) > 0 {
@@ -1295,24 +1306,24 @@ func (c *Core) QueryWorkspaceSubscribers(access models.WorkspaceAccess, search s
 	return out, total, nil
 }
 
-// GetWorkspaceSubscriberIDs resolves bulk targets through the same scope
-// predicate used for list views. It intentionally does not accept arbitrary
+// GetWorkspaceCustomerIDs resolves bulk targets through the same scope
+// predicate used for customer_list views. It intentionally does not accept arbitrary
 // SQL expressions; raw expressions are unsafe for workspace bulk writes.
-func (c *Core) GetWorkspaceSubscriberIDs(access models.WorkspaceAccess, search string, listIDs []int, subscriptionStatus string) ([]int, error) {
-	if listIDs == nil {
-		listIDs = []int{}
+func (c *Core) GetWorkspaceCustomerIDs(access models.WorkspaceAccess, search string, customerListIDs []int, subscriptionStatus string) ([]int, error) {
+	if customerListIDs == nil {
+		customerListIDs = []int{}
 	}
-	scope, args := workspaceSubscriberReadPredicate(access, "s", 1)
+	scope, args := workspaceCustomerReadPredicate(access, "s", 1)
 	first := len(args) + 1
 	stmt := fmt.Sprintf(`
-		SELECT s.id FROM subscribers s
+		SELECT s.id FROM customers s
 		WHERE (%s)
 			AND ($%d = '' OR s.name ~* $%d OR s.email ~* $%d)
 			AND (CARDINALITY($%d::INT[]) = 0 OR EXISTS (
-				SELECT 1 FROM subscriber_lists sl
-				JOIN lists l ON l.id = sl.list_id
-				WHERE sl.subscriber_id = s.id
-					AND sl.list_id = ANY($%d::INT[])
+				SELECT 1 FROM customer_list_memberships sl
+				JOIN customer_lists l ON l.id = sl.customer_list_id
+				WHERE sl.customer_id = s.id
+					AND sl.customer_list_id = ANY($%d::INT[])
 					AND l.organization_id IS NOT DISTINCT FROM s.organization_id
 					AND l.owner_user_id IS NOT DISTINCT FROM s.owner_user_id
 					AND l.transfer_pending_at IS NULL
@@ -1321,50 +1332,50 @@ func (c *Core) GetWorkspaceSubscriberIDs(access models.WorkspaceAccess, search s
 		scope,
 		first, first, first,
 		first+1, first+1, first+2, first+2)
-	args = append(args, strings.TrimSpace(search), pq.Array(listIDs), subscriptionStatus)
+	args = append(args, strings.TrimSpace(search), pq.Array(customerListIDs), subscriptionStatus)
 	var ids []int
 	if err := c.db.Select(&ids, stmt, args...); err != nil {
-		return nil, workspaceQueryError("selecting subscribers", err)
+		return nil, workspaceQueryError("selecting customers", err)
 	}
 	return ids, nil
 }
 
-// GetWorkspaceSubscribersByEmails is used by campaign test sends. Email
+// GetWorkspaceCustomersByEmails is used by campaign test sends. Email
 // addresses are only unique within an owner/workspace, so the legacy global
 // email lookup cannot be used here.
-func (c *Core) GetWorkspaceSubscribersByEmails(access models.WorkspaceAccess, emails []string) (models.Subscribers, error) {
+func (c *Core) GetWorkspaceCustomersByEmails(access models.WorkspaceAccess, emails []string) (models.Customers, error) {
 	if emails == nil {
 		emails = []string{}
 	}
-	scope, args := workspaceSubscriberReadPredicate(access, "s", 1)
+	scope, args := workspaceCustomerReadPredicate(access, "s", 1)
 	first := len(args) + 1
 	stmt := fmt.Sprintf(`
 		SELECT s.*
-		FROM subscribers s
+		FROM customers s
 		WHERE (%s) AND LOWER(s.email) = ANY($%d::TEXT[])
 		ORDER BY s.id`, scope, first)
 	for i := range emails {
 		emails[i] = strings.ToLower(strings.TrimSpace(emails[i]))
 	}
 	args = append(args, pq.Array(emails))
-	var out models.Subscribers
+	var out models.Customers
 	if err := c.db.Select(&out, stmt, args...); err != nil {
-		return nil, workspaceQueryError("fetching subscribers", err)
+		return nil, workspaceQueryError("fetching customers", err)
 	}
 	if len(out) == 0 {
 		return nil, echo.NewHTTPError(http.StatusBadRequest, c.i18n.T("campaigns.noKnownSubsToTest"))
 	}
-	if err := c.loadWorkspaceSubscriberLists(access, out); err != nil {
-		return nil, workspaceQueryError("fetching subscriber lists", err)
+	if err := c.loadWorkspaceCustomerListMemberships(access, out); err != nil {
+		return nil, workspaceQueryError("fetching customer customer_lists", err)
 	}
 	return out, nil
 }
 
-// GetManagedWorkspaceSubscribersByEmails is the test-send counterpart of the
+// GetManagedWorkspaceCustomersByEmails is the test-send counterpart of the
 // read helper above. Organization managers can inspect another member's
-// subscriber records, but test sending must remain within their own owner
+// customer records, but test sending must remain within their own owner
 // boundary.
-func (c *Core) GetManagedWorkspaceSubscribersByEmails(access models.WorkspaceAccess, emails []string) (models.Subscribers, error) {
+func (c *Core) GetManagedWorkspaceCustomersByEmails(access models.WorkspaceAccess, emails []string) (models.Customers, error) {
 	if emails == nil {
 		emails = []string{}
 	}
@@ -1385,43 +1396,43 @@ func (c *Core) GetManagedWorkspaceSubscribersByEmails(access models.WorkspaceAcc
 		emails[i] = strings.ToLower(strings.TrimSpace(emails[i]))
 	}
 	stmt := fmt.Sprintf(`
-		SELECT s.* FROM subscribers s
+		SELECT s.* FROM customers s
 		WHERE (%s) AND LOWER(s.email) = ANY($%d::TEXT[])
 		ORDER BY s.id`, scope, len(args)+1)
 	args = append(args, pq.Array(emails))
-	var out models.Subscribers
+	var out models.Customers
 	if err := c.db.Select(&out, stmt, args...); err != nil {
-		return nil, workspaceQueryError("fetching subscribers", err)
+		return nil, workspaceQueryError("fetching customers", err)
 	}
 	if len(out) == 0 {
 		return nil, echo.NewHTTPError(http.StatusBadRequest, c.i18n.T("campaigns.noKnownSubsToTest"))
 	}
-	if err := c.loadWorkspaceSubscriberLists(access, out); err != nil {
-		return nil, workspaceQueryError("fetching subscriber lists", err)
+	if err := c.loadWorkspaceCustomerListMemberships(access, out); err != nil {
+		return nil, workspaceQueryError("fetching customer customer_lists", err)
 	}
 	return out, nil
 }
 
-// ExportWorkspaceSubscribers batches export rows without ever preparing an
+// ExportWorkspaceCustomers batches export rows without ever preparing an
 // unscoped query. Managers are rejected at the handler boundary before this
 // helper is called.
-func (c *Core) ExportWorkspaceSubscribers(access models.WorkspaceAccess, search string, listIDs, requestedIDs []int, subscriptionStatus string, batchSize int) (func() ([]models.SubscriberExport, error), error) {
-	return c.exportWorkspaceSubscribers(access, search, "", listIDs, requestedIDs, subscriptionStatus, batchSize)
+func (c *Core) ExportWorkspaceCustomers(access models.WorkspaceAccess, search string, customerListIDs, requestedIDs []int, subscriptionStatus string, batchSize int) (func() ([]models.CustomerExport, error), error) {
+	return c.exportWorkspaceCustomers(access, search, "", customerListIDs, requestedIDs, subscriptionStatus, batchSize)
 }
 
-// InsertWorkspaceSubscriber creates an owner-scoped subscriber and its list
-// subscriptions atomically. The caller validates target lists first; the
+// InsertWorkspaceCustomer creates an owner-scoped customer and its customer_list
+// subscriptions atomically. The caller validates target customer_lists first; the
 // additional database predicates keep a forged request from crossing scope.
-func (c *Core) InsertWorkspaceSubscriber(access models.WorkspaceAccess, sub models.Subscriber, listIDs []int, preconfirm, assertOptin bool) (models.Subscriber, bool, error) {
-	if listIDs == nil {
-		listIDs = []int{}
+func (c *Core) InsertWorkspaceCustomer(access models.WorkspaceAccess, sub models.Customer, customerListIDs []int, preconfirm, assertOptin bool) (models.Customer, bool, error) {
+	if customerListIDs == nil {
+		customerListIDs = []int{}
 	}
 	uu, err := uuid.NewV4()
 	if err != nil {
-		return models.Subscriber{}, false, echo.NewHTTPError(http.StatusInternalServerError, c.i18n.Ts("globals.messages.errorUUID", "error", err.Error()))
+		return models.Customer{}, false, echo.NewHTTPError(http.StatusInternalServerError, c.i18n.Ts("globals.messages.errorUUID", "error", err.Error()))
 	}
 	if sub.Status == "" {
-		sub.Status = models.SubscriberStatusEnabled
+		sub.Status = models.CustomerStatusEnabled
 	}
 	scope := ApplyWorkspaceScope(access, models.ResourceVisibilityPrivate)
 	subStatus := models.SubscriptionStatusUnconfirmed
@@ -1431,68 +1442,68 @@ func (c *Core) InsertWorkspaceSubscriber(access models.WorkspaceAccess, sub mode
 
 	tx, err := c.db.BeginTxx(context.Background(), nil)
 	if err != nil {
-		return models.Subscriber{}, false, workspaceQueryError("starting subscriber creation", err)
+		return models.Customer{}, false, workspaceQueryError("starting customer creation", err)
 	}
 	defer tx.Rollback()
 	var id int
 	err = tx.Get(&id, `
-		INSERT INTO subscribers (
-			uuid, email, name, status, attribs,
+		INSERT INTO customers (
+			uuid, email, name, status, attribs, customer_code,
 			organization_id, owner_user_id, original_owner_user_id, visibility
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-		RETURNING id`, uu, sub.Email, strings.TrimSpace(sub.Name), sub.Status, sub.Attribs,
+		) VALUES ($1, $2, $3, $4, $5, $10, $6, $7, $8, $9)
+		RETURNING id`, uu, sub.Email, strings.TrimSpace(sub.Name), sub.Status, sub.Attribs, sub.CustomerCode,
 		scope.OrganizationID, scope.OwnerUserID, scope.OriginalOwnerUserID, scope.Visibility)
 	if err != nil {
 		if pqErr, ok := err.(*pq.Error); ok && pqErr.Code == "23505" {
-			return models.Subscriber{}, false, echo.NewHTTPError(http.StatusConflict, c.i18n.T("subscribers.emailExists"))
+			return models.Customer{}, false, echo.NewHTTPError(http.StatusConflict, c.i18n.T("customers.emailExists"))
 		}
-		return models.Subscriber{}, false, workspaceQueryError("creating subscriber", err)
+		return models.Customer{}, false, workspaceQueryError("creating customer", err)
 	}
 
-	if len(listIDs) > 0 {
+	if len(customerListIDs) > 0 {
 		var inserted int
 		if access.IsOrganization() {
 			err = tx.Get(&inserted, `
 				WITH lists_in_scope AS (
-					SELECT id FROM lists WHERE id = ANY($1::INT[])
+					SELECT id FROM customer_lists WHERE id = ANY($1::INT[])
 						AND organization_id = $2 AND owner_user_id = $3 AND transfer_pending_at IS NULL
 				), ins AS (
-					INSERT INTO subscriber_lists (subscriber_id, list_id, status)
+					INSERT INTO customer_list_memberships (customer_id, customer_list_id, status)
 					SELECT $4, id, $5::subscription_status FROM lists_in_scope
-					ON CONFLICT (subscriber_id, list_id) DO UPDATE SET status = EXCLUDED.status, updated_at = NOW()
+					ON CONFLICT (customer_id, customer_list_id) DO UPDATE SET status = EXCLUDED.status, updated_at = NOW()
 					RETURNING 1
-				) SELECT COUNT(*) FROM ins`, pq.Array(listIDs), access.OrganizationID, access.UserID, id, subStatus)
+				) SELECT COUNT(*) FROM ins`, pq.Array(customerListIDs), access.OrganizationID, access.UserID, id, subStatus)
 		} else {
 			err = tx.Get(&inserted, `
 				WITH lists_in_scope AS (
-					SELECT id FROM lists WHERE id = ANY($1::INT[])
+					SELECT id FROM customer_lists WHERE id = ANY($1::INT[])
 						AND organization_id IS NULL AND owner_user_id = $2 AND transfer_pending_at IS NULL
 				), ins AS (
-					INSERT INTO subscriber_lists (subscriber_id, list_id, status)
+					INSERT INTO customer_list_memberships (customer_id, customer_list_id, status)
 					SELECT $3, id, $4::subscription_status FROM lists_in_scope
-					ON CONFLICT (subscriber_id, list_id) DO UPDATE SET status = EXCLUDED.status, updated_at = NOW()
+					ON CONFLICT (customer_id, customer_list_id) DO UPDATE SET status = EXCLUDED.status, updated_at = NOW()
 					RETURNING 1
-				) SELECT COUNT(*) FROM ins`, pq.Array(listIDs), access.UserID, id, subStatus)
+				) SELECT COUNT(*) FROM ins`, pq.Array(customerListIDs), access.UserID, id, subStatus)
 		}
 		if err != nil {
-			return models.Subscriber{}, false, workspaceQueryError("adding subscriber lists", err)
+			return models.Customer{}, false, workspaceQueryError("adding customer customer_lists", err)
 		}
-		if inserted != len(listIDs) {
-			return models.Subscriber{}, false, echo.NewHTTPError(http.StatusForbidden, "a selected list is outside the active workspace")
+		if inserted != len(customerListIDs) {
+			return models.Customer{}, false, echo.NewHTTPError(http.StatusForbidden, "a selected customer_list is outside the active workspace")
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return models.Subscriber{}, false, workspaceQueryError("committing subscriber creation", err)
+		return models.Customer{}, false, workspaceQueryError("committing customer creation", err)
 	}
 
 	sub.ID = id
-	out, err := c.GetWorkspaceSubscriber(access, id)
+	out, err := c.GetWorkspaceCustomer(access, id)
 	if err != nil {
-		return models.Subscriber{}, false, err
+		return models.Customer{}, false, err
 	}
 	hasOptin := false
 	if !preconfirm && c.consts.SendOptinConfirmation {
-		num, err := c.h.SendOptinConfirmation(out, listIDs)
+		num, err := c.h.SendOptinConfirmation(out, customerListIDs)
 		if assertOptin && err != nil {
 			return out, hasOptin, err
 		}
@@ -1501,36 +1512,36 @@ func (c *Core) InsertWorkspaceSubscriber(access models.WorkspaceAccess, sub mode
 	return out, hasOptin, nil
 }
 
-// UpsertPublicWorkspaceSubscriber subscribes an unauthenticated address to
-// public lists that have already been proven to belong to one owner/workspace.
+// UpsertPublicWorkspaceCustomer subscribes an unauthenticated address to
+// public customer_lists that have already been proven to belong to one owner/workspace.
 // This is deliberately separate from the administrator create flow: public
-// requests retain the existing subscriber profile and only add subscriptions.
-func (c *Core) UpsertPublicWorkspaceSubscriber(access models.WorkspaceAccess, sub models.Subscriber, listIDs []int) (models.Subscriber, bool, error) {
+// requests retain the existing customer profile and only add subscriptions.
+func (c *Core) UpsertPublicWorkspaceCustomer(access models.WorkspaceAccess, sub models.Customer, customerListIDs []int) (models.Customer, bool, error) {
 	if access.UserID < 1 {
-		return models.Subscriber{}, false, echo.NewHTTPError(http.StatusBadRequest, "public list has no resource owner")
+		return models.Customer{}, false, echo.NewHTTPError(http.StatusBadRequest, "public customer_list has no resource owner")
 	}
-	if len(listIDs) == 0 {
-		return models.Subscriber{}, false, echo.NewHTTPError(http.StatusBadRequest, "at least one public list is required")
+	if len(customerListIDs) == 0 {
+		return models.Customer{}, false, echo.NewHTTPError(http.StatusBadRequest, "at least one public customer_list is required")
 	}
 
 	uu, err := uuid.NewV4()
 	if err != nil {
-		return models.Subscriber{}, false, echo.NewHTTPError(http.StatusInternalServerError,
+		return models.Customer{}, false, echo.NewHTTPError(http.StatusInternalServerError,
 			c.i18n.Ts("globals.messages.errorUUID", "error", err.Error()))
 	}
 	scope := ApplyWorkspaceScope(access, models.ResourceVisibilityPrivate)
 	tx, err := c.db.BeginTxx(context.Background(), nil)
 	if err != nil {
-		return models.Subscriber{}, false, workspaceQueryError("starting public subscription", err)
+		return models.Customer{}, false, workspaceQueryError("starting public subscription", err)
 	}
 	defer tx.Rollback()
 
 	var (
-		subscriberID int
-		status       string
+		customerID int
+		status     string
 	)
 	if err := tx.QueryRowx(`
-		INSERT INTO subscribers AS s (
+		INSERT INTO customers AS s (
 			uuid, email, name, status, attribs,
 			organization_id, owner_user_id, original_owner_user_id, visibility
 		) VALUES ($1, $2, $3, 'enabled', $4, $5, $6, $7, 'private')
@@ -1539,14 +1550,14 @@ func (c *Core) UpsertPublicWorkspaceSubscriber(access models.WorkspaceAccess, su
 		DO UPDATE SET updated_at = NOW()
 		RETURNING id, status`, uu, strings.ToLower(strings.TrimSpace(sub.Email)), strings.TrimSpace(sub.Name),
 		sub.Attribs, scope.OrganizationID, scope.OwnerUserID, scope.OriginalOwnerUserID).
-		Scan(&subscriberID, &status); err != nil {
-		return models.Subscriber{}, false, workspaceQueryError("creating public subscription", err)
+		Scan(&customerID, &status); err != nil {
+		return models.Customer{}, false, workspaceQueryError("creating public subscription", err)
 	}
 
 	var inserted int
 	if err := tx.Get(&inserted, `
 		WITH lists_in_scope AS (
-			SELECT l.id FROM lists l
+			SELECT l.id FROM customer_lists l
 			LEFT JOIN organizations organization ON organization.id = l.organization_id
 			WHERE l.id = ANY($1::INT[]) AND l.type = 'public' AND l.status = 'active'
 				AND l.transfer_pending_at IS NULL
@@ -1554,32 +1565,32 @@ func (c *Core) UpsertPublicWorkspaceSubscriber(access models.WorkspaceAccess, su
 				AND l.owner_user_id = $3
 				AND (l.organization_id IS NULL OR organization.status = 'active')
 		), subscriptions AS (
-			INSERT INTO subscriber_lists (subscriber_id, list_id, status)
+			INSERT INTO customer_list_memberships (customer_id, customer_list_id, status)
 			SELECT $4, id,
 				CASE WHEN $5 = 'blocklisted' THEN 'unsubscribed'::subscription_status
 				ELSE 'unconfirmed'::subscription_status END
 			FROM lists_in_scope
-			ON CONFLICT (subscriber_id, list_id) DO UPDATE
+			ON CONFLICT (customer_id, customer_list_id) DO UPDATE
 				SET updated_at = NOW()
 			RETURNING 1
 		)
-		SELECT COUNT(*) FROM subscriptions`, pq.Array(listIDs), scope.OrganizationID, access.UserID, subscriberID, status); err != nil {
-		return models.Subscriber{}, false, workspaceQueryError("adding public list subscriptions", err)
+		SELECT COUNT(*) FROM subscriptions`, pq.Array(customerListIDs), scope.OrganizationID, access.UserID, customerID, status); err != nil {
+		return models.Customer{}, false, workspaceQueryError("adding public customer_list subscriptions", err)
 	}
-	if inserted != len(listIDs) {
-		return models.Subscriber{}, false, echo.NewHTTPError(http.StatusForbidden, "a selected public list is outside the owner's workspace")
+	if inserted != len(customerListIDs) {
+		return models.Customer{}, false, echo.NewHTTPError(http.StatusForbidden, "a selected public customer_list is outside the owner's workspace")
 	}
 	if err := tx.Commit(); err != nil {
-		return models.Subscriber{}, false, workspaceQueryError("committing public subscription", err)
+		return models.Customer{}, false, workspaceQueryError("committing public subscription", err)
 	}
 
-	out, err := c.GetWorkspaceSubscriber(access, subscriberID)
+	out, err := c.GetWorkspaceCustomer(access, customerID)
 	if err != nil {
-		return models.Subscriber{}, false, err
+		return models.Customer{}, false, err
 	}
 	hasOptin := false
 	if c.consts.SendOptinConfirmation {
-		num, err := c.h.SendOptinConfirmation(out, listIDs)
+		num, err := c.h.SendOptinConfirmation(out, customerListIDs)
 		if err != nil {
 			return out, false, err
 		}
@@ -1598,4 +1609,24 @@ func searchString(in string) string {
 
 func workspaceQueryError(action string, err error) error {
 	return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("error %s: %s", action, pqErrMsg(err)))
+}
+
+// MaskedCustomerListIDs returns the subset of the given customer_list IDs whose mask_emails
+// flag is enabled. Callers have already verified that the customer_list IDs belong to
+// the active workspace, so this only resolves the e-mail masking opt-in for
+// the currently viewed customer_lists.
+func (c *Core) MaskedCustomerListIDs(customerListIDs []int) (map[int]bool, error) {
+	out := make(map[int]bool, len(customerListIDs))
+	if len(customerListIDs) == 0 {
+		return out, nil
+	}
+	var masked []int
+	if err := c.db.Select(&masked,
+		"SELECT id FROM customer_lists WHERE id = ANY($1) AND mask_emails = TRUE", pq.Array(customerListIDs)); err != nil {
+		return nil, workspaceQueryError("resolving masked customer_lists", err)
+	}
+	for _, id := range masked {
+		out[id] = true
+	}
+	return out, nil
 }

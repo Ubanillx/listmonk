@@ -22,6 +22,7 @@ type replyMailboxRequest struct {
 	IMAPTLS   *bool  `json:"imap_tls"`
 	Folder    string `json:"folder"`
 	IsDefault bool   `json:"is_default"`
+	AIEnabled bool   `json:"ai_enabled"`
 }
 
 type replyMailboxTestRequest struct {
@@ -70,7 +71,7 @@ func (a *App) CreateReplyMailbox(c echo.Context) error {
 	var id int
 	if err := tx.Stmtx(a.queries.CreateReplyMailbox).Get(&id, userID, nullableOrganizationID(access.OrganizationID), req.Email, req.Name,
 		req.Username, req.IMAPHost, req.IMAPPort, boolValue(req.IMAPTLS), req.Folder,
-		req.Password, req.IsDefault); err != nil {
+		req.Password, req.IsDefault, req.AIEnabled); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 	if err := tx.Commit(); err != nil {
@@ -105,7 +106,7 @@ func (a *App) UpdateReplyMailbox(c echo.Context) error {
 	var updatedID int
 	if err := tx.Stmtx(a.queries.UpdateReplyMailbox).Get(&updatedID, id, userID, req.Email,
 		req.Name, req.Username, req.IMAPHost, req.IMAPPort, boolValue(req.IMAPTLS), req.Folder,
-		req.Password, req.IsDefault, nullableOrganizationID(access.OrganizationID)); err != nil {
+		req.Password, req.IsDefault, req.AIEnabled, nullableOrganizationID(access.OrganizationID)); err != nil {
 		return echo.NewHTTPError(http.StatusNotFound, "reply mailbox not found")
 	}
 	if err := tx.Commit(); err != nil {

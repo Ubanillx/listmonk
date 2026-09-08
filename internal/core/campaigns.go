@@ -92,44 +92,83 @@ func (c *Core) GetCampaign(id int, uuid, archiveSlug string) (models.Campaign, e
 
 // GetPublicCampaignMessage resolves the bearer UUID pair used by a sent
 // campaign message. The recipient relation is checked before either record is
-// returned so one workspace's subscriber UUID cannot be combined with another
+// returned so one workspace's customer UUID cannot be combined with another
 // workspace's campaign UUID.
-func (c *Core) GetPublicCampaignMessage(campUUID, subUUID string) (models.Campaign, models.Subscriber, error) {
+func (c *Core) GetPublicCampaignMessage(campUUID, subUUID string) (models.Campaign, models.Customer, error) {
 	var recipient struct {
-		CampaignID   int `db:"campaign_id"`
-		SubscriberID int `db:"subscriber_id"`
+		CampaignID int `db:"campaign_id"`
+		CustomerID int `db:"customer_id"`
 	}
 	if err := c.q.GetPublicCampaignRecipient.Get(&recipient, campUUID, subUUID); err != nil {
-		if err == sql.ErrNoRows {
-			return models.Campaign{}, models.Subscriber{}, echo.NewHTTPError(http.StatusNotFound,
-				c.i18n.Ts("globals.messages.notFound", "name", "{globals.terms.campaign}"))
+		if err != sql.ErrNoRows {
+			c.log.Printf("error resolving public campaign recipient: %v", err)
+			return models.Campaign{}, models.Customer{}, echo.NewHTTPError(http.StatusInternalServerError,
+				c.i18n.Ts("public.errorProcessingRequest"))
 		}
-		c.log.Printf("error resolving public campaign recipient: %v", err)
-		return models.Campaign{}, models.Subscriber{}, echo.NewHTTPError(http.StatusInternalServerError,
-			c.i18n.Ts("public.errorProcessingRequest"))
+
+		// First-class public-pool recipients do not have a row in customers or
+		// campaign_recipients. Resolve the same campaign/contact UUID pair from
+		// the immutable pool snapshot and construct the Customer view consumed by
+		// the template renderer. The pool contact UUID is the public bearer token;
+		// the campaign_pool_recipients relation prevents cross-campaign access.
+		var poolRecipient PublicPoolRecipient
+		if poolErr := c.q.GetPublicPoolCampaignRecipient.Get(&poolRecipient, campUUID, subUUID); poolErr != nil {
+			if poolErr == sql.ErrNoRows {
+				return models.Campaign{}, models.Customer{}, echo.NewHTTPError(http.StatusNotFound,
+					c.i18n.Ts("globals.messages.notFound", "name", "{globals.terms.campaign}"))
+			}
+			c.log.Printf("error resolving public pool campaign recipient: %v", poolErr)
+			return models.Campaign{}, models.Customer{}, echo.NewHTTPError(http.StatusInternalServerError,
+				c.i18n.Ts("public.errorProcessingRequest"))
+		}
+
+		campaign, campaignErr := c.GetCampaign(poolRecipient.CampaignID, "", "")
+		if campaignErr != nil {
+			return models.Campaign{}, models.Customer{}, campaignErr
+		}
+		var poolContact models.PoolContact
+		if contactErr := c.db.Get(&poolContact, `SELECT id,uuid,customer_code,company_name,email,name,attribs,status,created_at,updated_at FROM pool_contacts WHERE id=$1`, poolRecipient.PoolContactID); contactErr != nil {
+			if contactErr == sql.ErrNoRows {
+				return models.Campaign{}, models.Customer{}, echo.NewHTTPError(http.StatusNotFound,
+					c.i18n.Ts("globals.messages.notFound", "name", "{globals.terms.customer}"))
+			}
+			c.log.Printf("error resolving public pool contact: %v", contactErr)
+			return models.Campaign{}, models.Customer{}, echo.NewHTTPError(http.StatusInternalServerError,
+				c.i18n.Ts("public.errorProcessingRequest"))
+		}
+		return campaign, models.Customer{
+			Base: models.Base{ID: int(poolContact.ID)},
+			UUID: poolContact.UUID, Email: poolContact.Email, Name: poolContact.Name,
+			Attribs: poolContact.Attribs, Status: poolContact.Status,
+			CustomerCode: poolContact.CustomerCode,
+		}, nil
 	}
 
 	campaign, err := c.GetCampaign(recipient.CampaignID, "", "")
 	if err != nil {
-		return models.Campaign{}, models.Subscriber{}, err
+		return models.Campaign{}, models.Customer{}, err
 	}
-	subscriber, err := c.GetSubscriber(recipient.SubscriberID, "", "")
+	customer, err := c.GetCustomer(recipient.CustomerID, "", "")
 	if err != nil {
-		return models.Campaign{}, models.Subscriber{}, err
+		return models.Campaign{}, models.Customer{}, err
 	}
-	return campaign, subscriber, nil
+	return campaign, customer, nil
 }
 
-// IsPublicCampaignRecipient reports whether a campaign/subscriber bearer pair
+// IsPublicCampaignRecipient reports whether a campaign/customer bearer pair
 // belongs together. It intentionally uses the same query as message rendering
 // so public subscription management cannot widen the relation.
 func (c *Core) IsPublicCampaignRecipient(campUUID, subUUID string) (bool, error) {
 	var recipient struct {
-		CampaignID   int `db:"campaign_id"`
-		SubscriberID int `db:"subscriber_id"`
+		CampaignID int `db:"campaign_id"`
+		CustomerID int `db:"customer_id"`
 	}
 	if err := c.q.GetPublicCampaignRecipient.Get(&recipient, campUUID, subUUID); err != nil {
 		if err == sql.ErrNoRows {
+			var poolRecipient PublicPoolRecipient
+			if err := c.q.GetPublicPoolCampaignRecipient.Get(&poolRecipient, campUUID, subUUID); err == nil {
+				return true, nil
+			}
 			return false, nil
 		}
 		c.log.Printf("error resolving public campaign recipient: %v", err)
@@ -137,6 +176,40 @@ func (c *Core) IsPublicCampaignRecipient(campUUID, subUUID string) (bool, error)
 			c.i18n.Ts("public.errorProcessingRequest"))
 	}
 	return true, nil
+}
+
+type PublicPoolRecipient struct {
+	CampaignID     int      `db:"campaign_id"`
+	PoolContactID  int64    `db:"pool_contact_id"`
+	OrganizationID null.Int `db:"organization_id"`
+	SegmentID      null.Int `db:"segment_id"`
+}
+
+func (c *Core) GetPublicPoolCampaignRecipient(campUUID, contactUUID string) (PublicPoolRecipient, error) {
+	var out PublicPoolRecipient
+	if err := c.q.GetPublicPoolCampaignRecipient.Get(&out, campUUID, contactUUID); err != nil {
+		if err == sql.ErrNoRows {
+			return out, echo.NewHTTPError(http.StatusNotFound, "campaign recipient not found")
+		}
+		return out, err
+	}
+	return out, nil
+}
+
+func (c *Core) UnsubscribePoolByCampaign(campUUID, contactUUID string, reason string) error {
+	var r PublicPoolRecipient
+	if err := c.q.GetPublicPoolCampaignRecipient.Get(&r, campUUID, contactUUID); err != nil {
+		if err == sql.ErrNoRows {
+			return echo.NewHTTPError(http.StatusNotFound, "campaign recipient not found")
+		}
+		return err
+	}
+	_, err := c.db.Exec(`INSERT INTO pool_segment_exclusions(pool_id,organization_id,contact_id,segment_id,reason,source) SELECT cpr.pool_id,cpr.organization_id,cpr.pool_contact_id,cpr.segment_id,$3,'unsubscribe' FROM campaign_pool_recipients cpr WHERE cpr.campaign_id=$1 AND cpr.pool_contact_id=$2 ON CONFLICT(pool_id,organization_id,contact_id) DO UPDATE SET reason=EXCLUDED.reason,source='unsubscribe',removed_at=NOW(),restored_at=NULL`, r.CampaignID, r.PoolContactID, reason)
+	if err != nil {
+		return err
+	}
+	_, err = c.db.Exec(`UPDATE campaign_pool_recipients SET status='cancelled',updated_at=NOW() WHERE campaign_id=$1 AND pool_contact_id=$2`, r.CampaignID, r.PoolContactID)
+	return err
 }
 
 // GetArchivedCampaign retrieves a campaign with the archive template body.
@@ -230,7 +303,7 @@ func (c *Core) GetArchivedCampaigns(offset, limit int) (models.Campaigns, int, e
 }
 
 // CreateCampaign creates a new campaign.
-func (c *Core) CreateCampaign(o models.Campaign, listIDs []int, mediaIDs []int, scope models.ResourceScope) (models.Campaign, error) {
+func (c *Core) CreateCampaign(o models.Campaign, customerListIDs []int, mediaIDs []int, scope models.ResourceScope) (models.Campaign, error) {
 	uu, err := uuid.NewV4()
 	if err != nil {
 		c.log.Printf("error generating UUID: %v", err)
@@ -257,7 +330,7 @@ func (c *Core) CreateCampaign(o models.Campaign, listIDs []int, mediaIDs []int, 
 		pq.StringArray(normalizeTags(o.Tags)),
 		o.Messenger,
 		o.TemplateID,
-		pq.Array(listIDs),
+		pq.Array(customerListIDs),
 		o.Archive,
 		o.ArchiveSlug,
 		o.ArchiveTemplateID,
@@ -288,11 +361,11 @@ func (c *Core) CreateCampaign(o models.Campaign, listIDs []int, mediaIDs []int, 
 }
 
 // CreateCampaignInWorkspace keeps campaign creation and all requested
-// list/media/template associations behind the active workspace lock. This is
+// customer_list/media/template associations behind the active workspace lock. This is
 // the creation counterpart to UpdateCampaignInWorkspace; it prevents a stale
 // organization membership from creating a campaign after a leave/archive has
 // committed.
-func (c *Core) CreateCampaignInWorkspace(access models.WorkspaceAccess, o models.Campaign, listIDs, mediaIDs []int, scope models.ResourceScope) (models.Campaign, error) {
+func (c *Core) CreateCampaignInWorkspace(access models.WorkspaceAccess, o models.Campaign, customerListIDs, mediaIDs []int, scope models.ResourceScope) (models.Campaign, error) {
 	uuidValue, err := uuid.NewV4()
 	if err != nil {
 		c.log.Printf("error generating UUID: %v", err)
@@ -323,7 +396,7 @@ func (c *Core) CreateCampaignInWorkspace(access models.WorkspaceAccess, o models
 			o.TemplateID = null.Int{}
 		}
 		// Keep related-resource locks in the same order used by campaign
-		// updates (templates, media, lists). This prevents a campaign create
+		// updates (templates, media, customer_lists). This prevents a campaign create
 		// racing a template update from acquiring media and template locks in
 		// opposite orders.
 		if o.TemplateID.Valid {
@@ -339,7 +412,7 @@ func (c *Core) CreateCampaignInWorkspace(access models.WorkspaceAccess, o models
 		if err := c.lockWorkspaceUsableResources(tx, access, resourceMedia, mediaIDs); err != nil {
 			return err
 		}
-		if err := c.lockWorkspaceMutationResources(tx, access, resourceLists, listIDs); err != nil {
+		if err := c.lockWorkspaceMutationResources(tx, access, resourceLists, customerListIDs); err != nil {
 			return err
 		}
 		if err := tx.Stmtx(c.q.CreateCampaign).Get(&newID,
@@ -359,7 +432,7 @@ func (c *Core) CreateCampaignInWorkspace(access models.WorkspaceAccess, o models
 			pq.StringArray(normalizeTags(o.Tags)),
 			o.Messenger,
 			o.TemplateID,
-			pq.Array(listIDs),
+			pq.Array(customerListIDs),
 			o.Archive,
 			o.ArchiveSlug,
 			o.ArchiveTemplateID,
@@ -385,7 +458,7 @@ func (c *Core) CreateCampaignInWorkspace(access models.WorkspaceAccess, o models
 }
 
 // UpdateCampaign updates a campaign.
-func (c *Core) UpdateCampaign(id int, o models.Campaign, listIDs []int, mediaIDs []int) (models.Campaign, error) {
+func (c *Core) UpdateCampaign(id int, o models.Campaign, customerListIDs []int, mediaIDs []int) (models.Campaign, error) {
 	_, err := c.q.UpdateCampaign.Exec(id,
 		o.Name,
 		o.Subject,
@@ -401,7 +474,7 @@ func (c *Core) UpdateCampaign(id int, o models.Campaign, listIDs []int, mediaIDs
 		pq.StringArray(normalizeTags(o.Tags)),
 		o.Messenger,
 		o.TemplateID,
-		pq.Array(listIDs),
+		pq.Array(customerListIDs),
 		o.Archive,
 		o.ArchiveSlug,
 		o.ArchiveTemplateID,
@@ -490,10 +563,10 @@ func (c *Core) HasCampaignRecipients(id int) (bool, error) {
 	return has, nil
 }
 
-func (c *Core) GetCampaignListIDs(id int) ([]int, error) {
+func (c *Core) GetCampaignCustomerListIDs(id int) ([]int, error) {
 	out := []int{}
-	if err := c.q.GetCampaignListIDs.Select(&out, id); err != nil {
-		c.log.Printf("error fetching campaign lists: %v", err)
+	if err := c.q.GetCampaignCustomerListIDs.Select(&out, id); err != nil {
+		c.log.Printf("error fetching campaign customer_lists: %v", err)
 		return nil, echo.NewHTTPError(http.StatusInternalServerError,
 			c.i18n.Ts("globals.messages.errorFetching", "name", "{globals.terms.campaign}", "error", pqErrMsg(err)))
 	}
@@ -560,11 +633,11 @@ func (c *Core) DeleteCampaigns(ids []int, query string, hasAllPerm bool, permitt
 	return nil
 }
 
-// CampaignHasLists checks if a campaign has any of the given list IDs.
-func (c *Core) CampaignHasLists(id int, listIDs []int) (bool, error) {
+// CampaignHasLists checks if a campaign has any of the given customer_list IDs.
+func (c *Core) CampaignHasLists(id int, customerListIDs []int) (bool, error) {
 	has := false
-	if err := c.q.CampaignHasLists.Get(&has, id, pq.Array(listIDs)); err != nil {
-		c.log.Printf("error checking campaign lists: %v", err)
+	if err := c.q.CampaignHasLists.Get(&has, id, pq.Array(customerListIDs)); err != nil {
+		c.log.Printf("error checking campaign customer_lists: %v", err)
 		return false, echo.NewHTTPError(http.StatusInternalServerError,
 			c.i18n.Ts("globals.messages.errorFetching", "name", "{globals.terms.campaign}", "error", pqErrMsg(err)))
 	}
@@ -975,7 +1048,7 @@ func ratePtr(num, den int) *float64 {
 	return &out
 }
 
-// RegisterCampaignView registers a subscriber's view on a campaign.
+// RegisterCampaignView registers a customer's view on a campaign.
 func (c *Core) RegisterCampaignView(campUUID, subUUID string) error {
 	if _, err := c.q.RegisterCampaignView.Exec(campUUID, subUUID); err != nil {
 		if pqErr, ok := err.(*pq.Error); ok && pqErr.Column == "campaign_id" {
@@ -999,7 +1072,7 @@ func (c *Core) GetLinkURL(linkUUID string) (string, error) {
 	return url, nil
 }
 
-// RegisterCampaignLinkClick registers a subscriber's link click on a campaign.
+// RegisterCampaignLinkClick registers a customer's link click on a campaign.
 func (c *Core) RegisterCampaignLinkClick(linkUUID, campUUID, subUUID string) (string, error) {
 	var url string
 	if err := c.q.RegisterLinkClick.Get(&url, linkUUID, campUUID, subUUID); err != nil {

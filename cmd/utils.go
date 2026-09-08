@@ -15,7 +15,7 @@ var (
 	regexpSpaces = regexp.MustCompile(`[\s]+`)
 )
 
-// inArray checks if a string is present in a list of strings.
+// inArray checks if a string is present in a customer_list of strings.
 func inArray(val string, vals []string) (ok bool) {
 	return slices.Contains(vals, val)
 }
@@ -93,7 +93,7 @@ func strHasLen(str string, min, max int) bool {
 	return len(str) >= min && len(str) <= max
 }
 
-// getQueryInts parses the list of given query param values into ints.
+// getQueryInts parses the customer_list of given query param values into ints.
 func getQueryInts(param string, qp url.Values) ([]int, error) {
 	var out []int
 	if vals, ok := qp[param]; ok {
@@ -102,11 +102,11 @@ func getQueryInts(param string, qp url.Values) ([]int, error) {
 				continue
 			}
 
-			listID, err := strconv.Atoi(v)
+			customerListID, err := strconv.Atoi(v)
 			if err != nil {
 				return nil, err
 			}
-			out = append(out, listID)
+			out = append(out, customerListID)
 		}
 	}
 

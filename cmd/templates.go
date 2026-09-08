@@ -40,7 +40,7 @@ type templateCloneReq struct {
 	TargetOrganizationID *int   `json:"target_organization_id"`
 }
 
-// templateReq keeps the API's write representation of media (a list of IDs)
+// templateReq keeps the API's write representation of media (a customer_list of IDs)
 // separate from Template.Media, which is the read representation sent to the UI.
 type templateReq struct {
 	ID         int         `json:"id"`
@@ -469,7 +469,7 @@ func (a *App) previewTemplate(tpl models.Template) ([]byte, error) {
 		}
 
 		// Render the message body.
-		msg, err := a.manager.NewCampaignMessage(&camp, dummySubscriber)
+		msg, err := a.manager.NewCampaignMessage(&camp, dummyCustomer)
 		if err != nil {
 			return nil, echo.NewHTTPError(http.StatusBadRequest,
 				a.i18n.Ts("templates.errorRendering", "error", err.Error()))
@@ -486,7 +486,7 @@ func (a *App) previewTemplate(tpl models.Template) ([]byte, error) {
 		}
 
 		// Render the message.
-		if err := m.Render(dummySubscriber, &tpl, a.manager.GenericTemplateFuncs()); err != nil {
+		if err := m.Render(dummyCustomer, &tpl, a.manager.GenericTemplateFuncs()); err != nil {
 			return nil, echo.NewHTTPError(http.StatusBadRequest, err.Error())
 		}
 		out = m.Body

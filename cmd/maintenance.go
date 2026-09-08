@@ -9,8 +9,8 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-// GCSubscribers garbage collects (deletes) orphaned or blocklisted subscribers.
-func (a *App) GCSubscribers(c echo.Context) error {
+// GCCustomers garbage collects (deletes) orphaned or blocklisted customers.
+func (a *App) GCCustomers(c echo.Context) error {
 	var (
 		typ = c.Param("type")
 
@@ -20,9 +20,9 @@ func (a *App) GCSubscribers(c echo.Context) error {
 
 	switch typ {
 	case "blocklisted":
-		n, err = a.core.DeleteBlocklistedSubscribers()
+		n, err = a.core.DeleteBlocklistedCustomers()
 	case "orphan":
-		n, err = a.core.DeleteOrphanSubscribers()
+		n, err = a.core.DeleteOrphanCustomers()
 	default:
 		err = echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("globals.messages.invalidData"))
 	}
@@ -36,7 +36,7 @@ func (a *App) GCSubscribers(c echo.Context) error {
 	}{n}})
 }
 
-// GCSubscriptions garbage collects (deletes) orphaned or blocklisted subscribers.
+// GCSubscriptions garbage collects (deletes) orphaned or blocklisted customers.
 func (a *App) GCSubscriptions(c echo.Context) error {
 	// Validate the date.
 	t, err := time.Parse(time.RFC3339, c.FormValue("before_date"))

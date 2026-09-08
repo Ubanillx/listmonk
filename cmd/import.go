@@ -13,9 +13,9 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-// ImportSubscribers handles the uploading and bulk importing of
+// ImportCustomers handles the uploading and bulk importing of
 // a ZIP file of one or more CSV files.
-func (a *App) ImportSubscribers(c echo.Context) error {
+func (a *App) ImportCustomers(c echo.Context) error {
 	access, err := a.workspaceAccess(c)
 	if err != nil {
 		return err
@@ -23,7 +23,7 @@ func (a *App) ImportSubscribers(c echo.Context) error {
 	if err := requireWritableWorkspace(access); err != nil {
 		return err
 	}
-	if err := requireLegacyPermission(auth.GetUser(c), auth.PermSubscribersImport); err != nil {
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCustomersImport); err != nil {
 		return err
 	}
 	// Is an import already running?
@@ -43,7 +43,7 @@ func (a *App) ImportSubscribers(c echo.Context) error {
 	// Reject mappings for fields that have not been defined by the platform
 	// administrator. Built-in email/name/attributes are always allowed.
 	if len(opt.FieldMap) > 0 {
-		allowed := map[string]bool{"email": true, "name": true, "attributes": true}
+		allowed := map[string]bool{"email": true, "name": true, "attributes": true, "customer_code": true}
 		for key := range opt.FieldMap {
 			if !allowed[strings.ToLower(strings.TrimSpace(key))] {
 				return echo.NewHTTPError(http.StatusBadRequest, "unknown custom field: "+key)
@@ -71,7 +71,7 @@ func (a *App) ImportSubscribers(c echo.Context) error {
 		opt.SubStatus != models.SubscriptionStatusUnsubscribed {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("import.invalidSubStatus"))
 	}
-	if err := a.requireWorkspaceListIDsForRequest(c, access, opt.ListIDs, true); err != nil {
+	if err := a.requireWorkspaceCustomerListIDsForRequest(c, access, opt.CustomerListIDs, true); err != nil {
 		return err
 	}
 	opt.OwnerUserID = access.UserID
@@ -152,13 +152,13 @@ func (a *App) ImportSubscribers(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{a.importer.GetStats()})
 }
 
-// GetImportSubscribers returns import statistics.
-func (a *App) GetImportSubscribers(c echo.Context) error {
+// GetImportCustomers returns import statistics.
+func (a *App) GetImportCustomers(c echo.Context) error {
 	access, err := a.workspaceAccess(c)
 	if err != nil {
 		return err
 	}
-	if err := requireLegacyPermission(auth.GetUser(c), auth.PermSubscribersImport); err != nil {
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCustomersImport); err != nil {
 		return err
 	}
 	if err := a.requireImportAccess(access); err != nil {
@@ -168,13 +168,13 @@ func (a *App) GetImportSubscribers(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{s})
 }
 
-// GetImportSubscriberStats returns import statistics.
-func (a *App) GetImportSubscriberStats(c echo.Context) error {
+// GetImportCustomerStats returns import statistics.
+func (a *App) GetImportCustomerStats(c echo.Context) error {
 	access, err := a.workspaceAccess(c)
 	if err != nil {
 		return err
 	}
-	if err := requireLegacyPermission(auth.GetUser(c), auth.PermSubscribersImport); err != nil {
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCustomersImport); err != nil {
 		return err
 	}
 	if err := a.requireImportAccess(access); err != nil {
@@ -183,15 +183,15 @@ func (a *App) GetImportSubscriberStats(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{string(a.importer.GetLogs())})
 }
 
-// StopImportSubscribers sends a stop signal to the importer.
+// StopImportCustomers sends a stop signal to the importer.
 // If there's an ongoing import, it'll be stopped, and if an import
 // is finished, it's state is cleared.
-func (a *App) StopImportSubscribers(c echo.Context) error {
+func (a *App) StopImportCustomers(c echo.Context) error {
 	access, err := a.workspaceAccess(c)
 	if err != nil {
 		return err
 	}
-	if err := requireLegacyPermission(auth.GetUser(c), auth.PermSubscribersImport); err != nil {
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCustomersImport); err != nil {
 		return err
 	}
 	if err := a.requireImportAccess(access); err != nil {

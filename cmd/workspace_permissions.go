@@ -10,6 +10,44 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+// canUsePersonalWorkspace reports whether the caller may enter their personal
+// workspace. Platform administrators always retain it; every other user needs
+// the workspaces:personal capability granted by their user role.
+func canUsePersonalWorkspace(user auth.User) bool {
+	return user.IsPlatformAdmin() || user.HasPerm(auth.PermWorkspacesPersonal)
+}
+
+// requirePersonalWorkspace enforces the personal workspace capability for
+// paths that resolved the personal workspace independently of the standard
+// workspace resolver.
+func requirePersonalWorkspace(user auth.User) error {
+	if canUsePersonalWorkspace(user) {
+		return nil
+	}
+	return echo.NewHTTPError(http.StatusForbidden, "personal workspace is disabled for this account")
+}
+
+// isReadOnlyMethod reports whether the request method cannot change state.
+func isReadOnlyMethod(c echo.Context) bool {
+	switch c.Request().Method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		return true
+	}
+	return false
+}
+
+// isPersonalMigrationListPath reports whether the request targets one of the
+// resource customer_list endpoints that back the personal-resource migration UI. Only
+// these exact paths may resolve the caller's personal workspace without the
+// workspaces:personal capability, and only for read-only requests.
+func isPersonalMigrationListPath(path string) bool {
+	switch path {
+	case "/api/customer-lists", "/api/templates", "/api/campaigns", "/api/media":
+		return true
+	}
+	return false
+}
+
 // requireLegacyPermission preserves the pre-workspace role model. Workspace
 // checks always happen in the caller before this helper is used, so a global
 // role can never widen a personal or organization resource boundary.
@@ -128,21 +166,21 @@ func canCopyWorkspaceCampaign(access models.WorkspaceAccess, scope models.Resour
 	return access.IsOrganizationManager()
 }
 
-// legacyReadableListIDs returns every list that the caller may read under the
-// pre-existing list role model. A manage grant implies read capability; this
-// is necessary for a user to work with a list they are permitted to manage.
-func legacyReadableListIDs(user auth.User) (bool, []int) {
-	if user.IsPlatformAdmin() || user.HasPerm(auth.PermListGetAll) || user.HasPerm(auth.PermListManageAll) {
+// legacyReadableCustomerListIDs returns every customer_list that the caller may read under the
+// pre-existing customer_list role model. A manage grant implies read capability; this
+// is necessary for a user to work with a customer_list they are permitted to manage.
+func legacyReadableCustomerListIDs(user auth.User) (bool, []int) {
+	if user.IsPlatformAdmin() || user.HasPerm(auth.PermCustomersGetAll) || user.HasPerm(auth.PermListGetAll) || user.HasPerm(auth.PermListManageAll) {
 		return true, nil
 	}
 
-	set := make(map[int]struct{}, len(user.GetListIDs)+len(user.ManageListIDs))
-	for _, id := range user.GetListIDs {
+	set := make(map[int]struct{}, len(user.GetCustomerListIDs)+len(user.ManageCustomerListIDs))
+	for _, id := range user.GetCustomerListIDs {
 		if id > 0 {
 			set[id] = struct{}{}
 		}
 	}
-	for _, id := range user.ManageListIDs {
+	for _, id := range user.ManageCustomerListIDs {
 		if id > 0 {
 			set[id] = struct{}{}
 		}
@@ -155,23 +193,12 @@ func legacyReadableListIDs(user auth.User) (bool, []int) {
 	return false, ids
 }
 
-// legacyReadableSubscriberListIDs applies the historical subscriber-wide
-// grant before falling back to per-list grants. A user with
-// subscribers:get_all may read every subscriber in its active workspace;
-// narrower roles are limited to the lists explicitly granted to them.
-func legacyReadableSubscriberListIDs(user auth.User) (bool, []int) {
-	if user.IsPlatformAdmin() || user.HasPerm(auth.PermSubscribersGetAll) {
-		return true, nil
-	}
-	return legacyReadableListIDs(user)
-}
-
-func legacyManageableListIDs(user auth.User) (bool, []int) {
+func legacyManageableCustomerListIDs(user auth.User) (bool, []int) {
 	if user.IsPlatformAdmin() || user.HasPerm(auth.PermListManageAll) {
 		return true, nil
 	}
-	ids := make([]int, 0, len(user.ManageListIDs))
-	for _, id := range user.ManageListIDs {
+	ids := make([]int, 0, len(user.ManageCustomerListIDs))
+	for _, id := range user.ManageCustomerListIDs {
 		if id > 0 {
 			ids = append(ids, id)
 		}
@@ -180,22 +207,22 @@ func legacyManageableListIDs(user auth.User) (bool, []int) {
 	return false, ids
 }
 
-// managedWorkspaceLegacyListIDs returns the caller's mutable lists after
-// applying both workspace ownership and the legacy per-list role. The SQL
-// used by UpdateSubscriberWithLists treats an empty permitted-list slice as
+// managedWorkspaceLegacyCustomerListIDs returns the caller's mutable customer_lists after
+// applying both workspace ownership and the legacy per-customer_list role. The SQL
+// used by UpdateCustomerWithLists treats an empty permitted-customer_list slice as
 // unrestricted, so a caller with no matching legacy grant must receive a
 // sentinel instead of an empty slice.
-func (a *App) managedWorkspaceLegacyListIDs(c echo.Context, access models.WorkspaceAccess) ([]int, error) {
-	workspaceIDs, err := a.core.ListManagedWorkspaceResources(access, resourceLists)
+func (a *App) managedWorkspaceLegacyCustomerListIDs(c echo.Context, access models.WorkspaceAccess) ([]int, error) {
+	workspaceIDs, err := a.core.CustomerListManagedWorkspaceResources(access, resourceLists)
 	if err != nil {
 		return nil, err
 	}
 
-	hasAll, legacyIDs := legacyManageableListIDs(auth.GetUser(c))
-	return intersectManagedWorkspaceLegacyListIDs(workspaceIDs, hasAll, legacyIDs), nil
+	hasAll, legacyIDs := legacyManageableCustomerListIDs(auth.GetUser(c))
+	return intersectManagedWorkspaceLegacyCustomerListIDs(workspaceIDs, hasAll, legacyIDs), nil
 }
 
-func intersectManagedWorkspaceLegacyListIDs(workspaceIDs []int, hasAll bool, legacyIDs []int) []int {
+func intersectManagedWorkspaceLegacyCustomerListIDs(workspaceIDs []int, hasAll bool, legacyIDs []int) []int {
 	if hasAll {
 		if len(workspaceIDs) == 0 {
 			return []int{-1}
@@ -220,21 +247,21 @@ func intersectManagedWorkspaceLegacyListIDs(workspaceIDs []int, hasAll bool, leg
 
 func requireLegacyListPermission(user auth.User, id int, manage bool) error {
 	if id < 1 {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid list id")
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid customer_list id")
 	}
 	if manage {
 		if user.IsPlatformAdmin() || user.HasPerm(auth.PermListManageAll) ||
 			user.HasListPerm(auth.PermTypeManage, id) == nil {
 			return nil
 		}
-		return echo.NewHTTPError(http.StatusForbidden, "permission denied: list:manage")
+		return echo.NewHTTPError(http.StatusForbidden, "permission denied: customer_list:manage")
 	}
 
 	if user.IsPlatformAdmin() || user.HasPerm(auth.PermListGetAll) || user.HasPerm(auth.PermListManageAll) ||
 		user.HasListPerm(auth.PermTypeGet, id) == nil || user.HasListPerm(auth.PermTypeManage, id) == nil {
 		return nil
 	}
-	return echo.NewHTTPError(http.StatusForbidden, "permission denied: list:get")
+	return echo.NewHTTPError(http.StatusForbidden, "permission denied: customer_list:get")
 }
 
 func (a *App) requireReadableWorkspaceResource(c echo.Context, access models.WorkspaceAccess, resource string, id int, permissions ...string) (models.ResourceScope, error) {
@@ -323,14 +350,14 @@ func (a *App) requireManagedWorkspaceList(c echo.Context, access models.Workspac
 	return scope, nil
 }
 
-func (a *App) requireReadableWorkspaceSubscriber(c echo.Context, access models.WorkspaceAccess, id int) (models.ResourceScope, error) {
-	scope, err := a.requireReadableWorkspaceResource(c, access, resourceSubscribers, id,
-		auth.PermSubscribersGetAll, auth.PermSubscribersGet)
+func (a *App) requireReadableWorkspaceCustomer(c echo.Context, access models.WorkspaceAccess, id int) (models.ResourceScope, error) {
+	scope, err := a.requireReadableWorkspaceResource(c, access, resourceCustomers, id,
+		auth.PermCustomersGetAll, auth.PermCustomersGet)
 	if err != nil || workspaceReadException(access, scope) {
 		return scope, err
 	}
 	user := auth.GetUser(c)
-	if user.HasPerm(auth.PermSubscribersGetAll) {
+	if user.HasPerm(auth.PermCustomersGetAll) {
 		return scope, nil
 	}
 	if err := a.hasSubPerm(access, user, []int{id}); err != nil {
@@ -339,8 +366,8 @@ func (a *App) requireReadableWorkspaceSubscriber(c echo.Context, access models.W
 	return scope, nil
 }
 
-func (a *App) requireManagedWorkspaceSubscriber(c echo.Context, access models.WorkspaceAccess, id int) (models.ResourceScope, error) {
-	scope, err := a.requireManagedWorkspaceResource(c, access, resourceSubscribers, id, auth.PermSubscribersManage)
+func (a *App) requireManagedWorkspaceCustomer(c echo.Context, access models.WorkspaceAccess, id int) (models.ResourceScope, error) {
+	scope, err := a.requireManagedWorkspaceResource(c, access, resourceCustomers, id, auth.PermCustomersManage)
 	if err != nil {
 		return scope, err
 	}
@@ -350,20 +377,20 @@ func (a *App) requireManagedWorkspaceSubscriber(c echo.Context, access models.Wo
 	return scope, nil
 }
 
-// requireExportableWorkspaceSubscriber is intentionally stricter than a
+// requireExportableWorkspaceCustomer is intentionally stricter than a
 // normal read: a CSV or profile export contains personal data, so it follows
 // the mutable owner boundary. Organization managers cannot export another
 // member's audience merely because they can inspect it.
-func (a *App) requireExportableWorkspaceSubscriber(c echo.Context, access models.WorkspaceAccess, id int) (models.ResourceScope, error) {
-	scope, err := a.core.RequireManageResource(access, resourceSubscribers, id)
+func (a *App) requireExportableWorkspaceCustomer(c echo.Context, access models.WorkspaceAccess, id int) (models.ResourceScope, error) {
+	scope, err := a.core.RequireManageResource(access, resourceCustomers, id)
 	if err != nil {
 		return scope, err
 	}
 	user := auth.GetUser(c)
-	if err := requireLegacyPermission(user, auth.PermSubscribersGetAll, auth.PermSubscribersGet); err != nil {
+	if err := requireLegacyPermission(user, auth.PermCustomersGetAll, auth.PermCustomersGet); err != nil {
 		return scope, err
 	}
-	if user.HasPerm(auth.PermSubscribersGetAll) {
+	if user.HasPerm(auth.PermCustomersGetAll) {
 		return scope, nil
 	}
 	if err := a.hasSubPerm(access, user, []int{id}); err != nil {
@@ -372,17 +399,17 @@ func (a *App) requireExportableWorkspaceSubscriber(c echo.Context, access models
 	return scope, nil
 }
 
-// campaignHasLegacyListAccess retains the old campaign-to-list entitlement
+// campaignHasLegacyListAccess retains the old campaign-to-customer_list entitlement
 // model after ownership has already been checked. Freshly cloned drafts have
-// no lists by design, and remain editable by their owner with campaign manage
-// permission so a recipient list can be selected afterwards.
+// no customer_lists by design, and remain editable by their owner with campaign manage
+// permission so a recipient customer_list can be selected afterwards.
 func (a *App) campaignHasLegacyListAccess(access models.WorkspaceAccess, user auth.User, id int, manage bool) error {
 	ok, err := a.hasLegacyCampaignListAccess(access, user, id, manage)
 	if err != nil {
 		return err
 	}
 	if !ok {
-		return echo.NewHTTPError(http.StatusForbidden, "permission denied: campaign lists")
+		return echo.NewHTTPError(http.StatusForbidden, "permission denied: campaign customer_lists")
 	}
 	return nil
 }
@@ -394,18 +421,18 @@ func (a *App) hasLegacyCampaignListAccess(access models.WorkspaceAccess, user au
 	if !manage && user.HasPerm(auth.PermCampaignsGetAll) {
 		return true, nil
 	}
-	hasAll, listIDs := legacyReadableListIDs(user)
+	hasAll, customerListIDs := legacyReadableCustomerListIDs(user)
 	if hasAll {
 		return true, nil
 	}
-	campaignListIDs, err := a.core.GetCampaignListIDsInWorkspace(access, id)
+	campaignCustomerListIDs, err := a.core.GetCampaignCustomerListIDsInWorkspace(access, id)
 	if err != nil {
 		return false, err
 	}
-	if len(campaignListIDs) == 0 {
+	if len(campaignCustomerListIDs) == 0 {
 		return true, nil
 	}
-	ok, err := a.core.CampaignHasListsInWorkspace(access, id, listIDs)
+	ok, err := a.core.CampaignHasListsInWorkspace(access, id, customerListIDs)
 	if err != nil {
 		return false, err
 	}
@@ -448,7 +475,7 @@ func (a *App) requireManagedWorkspaceCampaign(c echo.Context, access models.Work
 // requireSensitiveWorkspaceCampaign protects recipient identities. Aggregate
 // analytics can be inspected by organization managers, but recipient details
 // remain available only to the campaign owner with the pre-existing analytics
-// and list grants.
+// and customer_list grants.
 func (a *App) requireSensitiveWorkspaceCampaign(c echo.Context, access models.WorkspaceAccess, id int) (models.ResourceScope, error) {
 	scope, err := a.core.RequireManageResource(access, resourceCampaigns, id)
 	if err != nil {
@@ -502,29 +529,52 @@ func (a *App) requireCampaignAnalytics(c echo.Context, access models.WorkspaceAc
 	return a.campaignHasLegacyListAccess(access, user, id, false)
 }
 
-// queryReadableWorkspaceLists filters legacy list grants before pagination.
-// Workspace predicates run in Core first, so list-role IDs can only narrow a
+// queryReadableWorkspaceLists filters legacy customer_list grants before pagination.
+// Workspace predicates run in Core first, so customer_list-role IDs can only narrow a
 // caller's active workspace and can never grant access across an organization.
-func (a *App) queryReadableWorkspaceLists(c echo.Context, access models.WorkspaceAccess, search, typ, optin, status string, tags []string, orderBy, order string, offset, limit int) ([]models.List, int, error) {
+func (a *App) queryReadableWorkspaceLists(c echo.Context, access models.WorkspaceAccess, search, typ, optin, status string, tags []string, orderBy, order string, offset, limit int) ([]models.CustomerList, int, error) {
 	all, _, err := a.core.QueryWorkspaceLists(access, search, typ, optin, status, tags, orderBy, order, 0, 0)
 	if err != nil {
 		return nil, 0, err
 	}
+	// First-class public pools have an independent delivery grant and may be
+	// stored in the platform administrator's workspace. Add only minimal pool
+	// metadata for organizations that can deliver them; contact endpoints apply
+	// the separate masking/detail policy.
+	if typ == "" || typ == models.CustomerListTypePool || typ == models.CustomerListTypePoolSegment {
+		poolLists, poolErr := a.core.QueryAuthorizedPoolLists(access)
+		if poolErr != nil {
+			return nil, 0, poolErr
+		}
+		known := make(map[int]struct{}, len(all))
+		for _, l := range all {
+			known[l.ID] = struct{}{}
+		}
+		for _, l := range poolLists {
+			if _, ok := known[l.ID]; !ok && (typ == "" || l.Type == typ) {
+				all = append(all, l)
+			}
+		}
+	}
 
 	user := auth.GetUser(c)
-	hasAll, ids := legacyReadableListIDs(user)
+	hasAll, ids := legacyReadableCustomerListIDs(user)
 	permitted := make(map[int]struct{}, len(ids))
 	for _, id := range ids {
 		permitted[id] = struct{}{}
 	}
-	filtered := make([]models.List, 0, len(all))
-	for _, list := range all {
-		if workspaceReadException(access, list.ResourceScope) || hasAll {
-			filtered = append(filtered, list)
+	filtered := make([]models.CustomerList, 0, len(all))
+	for _, customer_list := range all {
+		if customer_list.PoolDeliveryAllowed {
+			filtered = append(filtered, customer_list)
 			continue
 		}
-		if _, ok := permitted[list.ID]; ok {
-			filtered = append(filtered, list)
+		if workspaceReadException(access, customer_list.ResourceScope) || hasAll {
+			filtered = append(filtered, customer_list)
+			continue
+		}
+		if _, ok := permitted[customer_list.ID]; ok {
+			filtered = append(filtered, customer_list)
 		}
 	}
 
@@ -533,7 +583,7 @@ func (a *App) queryReadableWorkspaceLists(c echo.Context, access models.Workspac
 		offset = 0
 	}
 	if offset >= total {
-		return []models.List{}, total, nil
+		return []models.CustomerList{}, total, nil
 	}
 	end := total
 	if limit > 0 && offset+limit < end {
@@ -543,7 +593,7 @@ func (a *App) queryReadableWorkspaceLists(c echo.Context, access models.Workspac
 }
 
 // queryReadableWorkspaceCampaigns filters after the fixed workspace query but
-// before pagination. This prevents restricted role/list grants from learning
+// before pagination. This prevents restricted role/customer_list grants from learning
 // about inaccessible campaign rows through total counts or page boundaries.
 func (a *App) queryReadableWorkspaceCampaigns(c echo.Context, access models.WorkspaceAccess, search string, statuses, tags []string, orderBy, order string, offset, limit int) (models.Campaigns, int, error) {
 	all, _, err := a.core.QueryWorkspaceCampaigns(access, search, statuses, tags, orderBy, order, 0, 0)

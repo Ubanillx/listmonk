@@ -2,7 +2,7 @@ package core
 
 import "testing"
 
-func TestValidateWorkspaceSubscriberSQLExpression(t *testing.T) {
+func TestValidateWorkspaceCustomerSQLExpression(t *testing.T) {
 	tests := []struct {
 		name  string
 		query string
@@ -15,7 +15,7 @@ func TestValidateWorkspaceSubscriberSQLExpression(t *testing.T) {
 		},
 		{
 			name:  "nested condition and escaped quote",
-			query: "(name = 'Ada''s list' OR email ILIKE '%@example.com')",
+			query: "(name = 'Ada''s customer_list' OR email ILIKE '%@example.com')",
 			want:  true,
 		},
 		{
@@ -62,9 +62,9 @@ func TestValidateWorkspaceSubscriberSQLExpression(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := validateWorkspaceSubscriberSQLExpression(test.query)
+			err := validateWorkspaceCustomerSQLExpression(test.query)
 			if (err == nil) != test.want {
-				t.Fatalf("validateWorkspaceSubscriberSQLExpression(%q) error = %v, want valid=%v", test.query, err, test.want)
+				t.Fatalf("validateWorkspaceCustomerSQLExpression(%q) error = %v, want valid=%v", test.query, err, test.want)
 			}
 		})
 	}

@@ -15,14 +15,14 @@ import (
 // UpdateCampaignInWorkspace performs the normal campaign update while the
 // campaign row and all selected related resources are protected by the same
 // workspace mutation transaction. The existing prepared statement remains the
-// source of truth for campaign/list/media relationship behavior.
-func (c *Core) UpdateCampaignInWorkspace(access models.WorkspaceAccess, id int, o models.Campaign, listIDs, mediaIDs []int, visibility string) (models.Campaign, error) {
+// source of truth for campaign/customer_list/media relationship behavior.
+func (c *Core) UpdateCampaignInWorkspace(access models.WorkspaceAccess, id int, o models.Campaign, customerListIDs, mediaIDs []int, visibility string) (models.Campaign, error) {
 	err := c.withWorkspaceResourceMutation(access, resourceCampaigns, []int{id}, func(tx *sqlx.Tx) error {
 		// A campaign with a recipient snapshot has started (or has been
 		// processed previously) and its audience must remain immutable.  Perform
 		// this check while the campaign row is locked by
 		// withWorkspaceResourceMutation; the handler's read-time check alone
-		// would allow a concurrent scheduler/member update to change lists
+		// would allow a concurrent scheduler/member update to change customer_lists
 		// between authorization and the write.
 		var hasRecipients bool
 		if err := tx.Get(&hasRecipients,
@@ -30,15 +30,15 @@ func (c *Core) UpdateCampaignInWorkspace(access models.WorkspaceAccess, id int, 
 			return workspaceQueryError("checking campaign recipients", err)
 		}
 		if hasRecipients {
-			var currentListIDs []int
-			if err := tx.Select(&currentListIDs, `
-				SELECT COALESCE(list_id, 0) AS id
-				FROM campaign_lists
+			var currentCustomerListIDs []int
+			if err := tx.Select(&currentCustomerListIDs, `
+				SELECT COALESCE(customer_list_id, 0) AS id
+				FROM campaign_customer_lists
 				WHERE campaign_id = $1
-				ORDER BY list_id NULLS FIRST`, id); err != nil {
-				return workspaceQueryError("fetching campaign lists", err)
+				ORDER BY customer_list_id NULLS FIRST`, id); err != nil {
+				return workspaceQueryError("fetching campaign customer_lists", err)
 			}
-			if !sameIntIDs(currentListIDs, listIDs) {
+			if !sameIntIDs(currentCustomerListIDs, customerListIDs) {
 				return echo.NewHTTPError(http.StatusBadRequest,
 					c.i18n.T("campaigns.cantUpdateListsAfterStart"))
 			}
@@ -94,7 +94,7 @@ func (c *Core) UpdateCampaignInWorkspace(access models.WorkspaceAccess, id int, 
 		if err := c.lockWorkspaceUsableResources(tx, access, resourceMedia, mediaIDs); err != nil {
 			return err
 		}
-		if err := c.lockWorkspaceMutationResources(tx, access, resourceLists, listIDs); err != nil {
+		if err := c.lockWorkspaceMutationResources(tx, access, resourceLists, customerListIDs); err != nil {
 			return err
 		}
 		_, err := tx.Stmtx(c.q.UpdateCampaign).Exec(id,
@@ -112,7 +112,7 @@ func (c *Core) UpdateCampaignInWorkspace(access models.WorkspaceAccess, id int, 
 			pq.StringArray(normalizeTags(o.Tags)),
 			o.Messenger,
 			o.TemplateID,
-			pq.Array(listIDs),
+			pq.Array(customerListIDs),
 			o.Archive,
 			o.ArchiveSlug,
 			o.ArchiveTemplateID,
@@ -137,7 +137,7 @@ func (c *Core) UpdateCampaignInWorkspace(access models.WorkspaceAccess, id int, 
 }
 
 // sameIntIDs compares relationship ID slices as sets.  API clients are free
-// to submit list IDs in any order, while campaign_lists has a deterministic
+// to submit customer_list IDs in any order, while campaign_customer_lists has a deterministic
 // database order; duplicate request IDs are ignored by the relationship
 // query and should not make an otherwise unchanged audience look different.
 func sameIntIDs(a, b []int) bool {
@@ -273,7 +273,7 @@ func (c *Core) DeleteCampaignsInWorkspace(access models.WorkspaceAccess, ids []i
 	})
 }
 
-func (c *Core) UpdateListInWorkspace(access models.WorkspaceAccess, id int, l models.List, visibility string) (models.List, error) {
+func (c *Core) UpdateListInWorkspace(access models.WorkspaceAccess, id int, l models.CustomerList, visibility string) (models.CustomerList, error) {
 	err := c.withWorkspaceResourceMutation(access, resourceLists, []int{id}, func(tx *sqlx.Tx) error {
 		if visibility != "" {
 			if err := validateResourceVisibility(resourceLists, visibility); err != nil {
@@ -281,18 +281,18 @@ func (c *Core) UpdateListInWorkspace(access models.WorkspaceAccess, id int, l mo
 			}
 		}
 		if _, err := tx.Stmtx(c.q.UpdateList).Exec(id, l.Name, l.Type, l.Optin, l.Status,
-			pq.StringArray(normalizeTags(l.Tags)), l.Description); err != nil {
-			return workspaceQueryError("updating list", err)
+			pq.StringArray(normalizeTags(l.Tags)), l.Description, l.MaskEmails); err != nil {
+			return workspaceQueryError("updating customer_list", err)
 		}
 		if visibility != "" {
-			if _, err := tx.Exec("UPDATE lists SET visibility = $2, updated_at = NOW() WHERE id = $1", id, visibility); err != nil {
-				return workspaceQueryError("updating list visibility", err)
+			if _, err := tx.Exec("UPDATE customer_lists SET visibility = $2, updated_at = NOW() WHERE id = $1", id, visibility); err != nil {
+				return workspaceQueryError("updating customer_list visibility", err)
 			}
 		}
 		return nil
 	})
 	if err != nil {
-		return models.List{}, err
+		return models.CustomerList{}, err
 	}
 	return c.GetWorkspaceList(access, id)
 }
@@ -304,7 +304,7 @@ func (c *Core) DeleteListsInWorkspace(access models.WorkspaceAccess, ids []int) 
 	}
 	return c.withWorkspaceResourceMutation(access, resourceLists, ids, func(tx *sqlx.Tx) error {
 		if _, err := tx.Stmtx(c.q.DeleteLists).Exec(pq.Array(ids), "", true, pq.Array(nil)); err != nil {
-			return workspaceQueryError("deleting lists", err)
+			return workspaceQueryError("deleting customer_lists", err)
 		}
 		return nil
 	})

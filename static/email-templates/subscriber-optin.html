@@ -1,10 +1,10 @@
-{{ define "subscriber-optin" }}
+{{ define "customer-optin" }}
 {{ template "header" . }}
 <h2>{{ L.Ts "email.optin.confirmSubTitle" }}</h2>
-<p>{{ L.Ts "email.optin.confirmSubWelcome" }} {{ .Subscriber.FirstName }}</p>
+<p>{{ L.Ts "email.optin.confirmSubWelcome" }} {{ .Customer.FirstName }}</p>
 <p>{{ L.Ts "email.optin.confirmSubInfo" }}</p>
 <ul>
-    {{ range $i, $l := .Lists }}
+    {{ range $i, $l := .CustomerLists }}
         {{ if eq .Type "public" }}
             <li>{{ .Name }}</li>
         {{ else }}

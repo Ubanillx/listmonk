@@ -177,7 +177,7 @@ func (a *App) UploadMedia(c echo.Context) error {
 		cleanUp = true
 		return err
 	}
-	// Keep the immediate upload response consistent with media list responses.
+	// Keep the immediate upload response consistent with media customer_list responses.
 	// Editors should insert the protected application route, never a direct
 	// filesystem or object-store URL.
 	a.setWorkspaceMediaURLs(&m)

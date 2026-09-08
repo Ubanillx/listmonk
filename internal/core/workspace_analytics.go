@@ -45,7 +45,7 @@ func workspaceCampaignScopeCTE(scope string) string {
 }
 
 // GetWorkspaceCampaignAnalyticsCounts applies the workspace predicate in the
-// analytics SQL itself.  Handler-level ID checks remain useful for legacy list
+// analytics SQL itself.  Handler-level ID checks remain useful for legacy customer_list
 // permissions, but a campaign moved or archived between those checks and this
 // statement cannot leak an event count.
 func (c *Core) GetWorkspaceCampaignAnalyticsCounts(access models.WorkspaceAccess, campIDs []int, typ, fromDate, toDate string) ([]models.CampaignAnalyticsCount, error) {
@@ -100,7 +100,7 @@ func (c *Core) GetWorkspaceCampaignAnalyticsLinks(access models.WorkspaceAccess,
 	scope, scopeArgs := workspaceReadPredicate(access, "scoped_campaign", 4)
 	countExpr := "COUNT(*)"
 	if unique {
-		countExpr = "COUNT(DISTINCT lc.subscriber_id)"
+		countExpr = "COUNT(DISTINCT lc.customer_id)"
 	}
 	stmt := fmt.Sprintf(`
 		WITH %s
@@ -122,7 +122,7 @@ func (c *Core) GetWorkspaceCampaignAnalyticsLinks(access models.WorkspaceAccess,
 }
 
 // GetWorkspaceCampaignReportSummary returns aggregate campaign statistics
-// without relying solely on a previously checked ID list.
+// without relying solely on a previously checked ID customer_list.
 func (c *Core) GetWorkspaceCampaignReportSummary(access models.WorkspaceAccess, campID int, fromDate, toDate string, individualTracking bool) (models.CampaignReportSummary, error) {
 	if err := validateWorkspaceAnalyticsDates(c, fromDate, toDate); err != nil {
 		return models.CampaignReportSummary{}, err
@@ -139,11 +139,11 @@ func (c *Core) GetWorkspaceCampaignReportSummary(access models.WorkspaceAccess, 
 			WHERE cr.campaign_id = $1 AND cr.sent_at IS NOT NULL
 				AND cr.sent_at >= $2 AND cr.sent_at <= $3
 		), views AS (
-			SELECT COUNT(*) AS views_total, COUNT(DISTINCT subscriber_id) AS unique_viewers
+			SELECT COUNT(*) AS views_total, COUNT(DISTINCT customer_id) AS unique_viewers
 			FROM campaign_views e JOIN scoped_campaigns sc ON sc.id = e.campaign_id
 			WHERE e.campaign_id = $1 AND e.created_at >= $2 AND e.created_at <= $3
 		), clicks AS (
-			SELECT COUNT(*) AS clicks_total, COUNT(DISTINCT subscriber_id) AS unique_clickers
+			SELECT COUNT(*) AS clicks_total, COUNT(DISTINCT customer_id) AS unique_clickers
 			FROM link_clicks e JOIN scoped_campaigns sc ON sc.id = e.campaign_id
 			WHERE e.campaign_id = $1 AND e.created_at >= $2 AND e.created_at <= $3
 		), bnc AS (
@@ -199,11 +199,11 @@ func (c *Core) GetWorkspaceCampaignsReportSummary(access models.WorkspaceAccess,
 			WHERE cr.campaign_id = ANY($1::INT[]) AND cr.sent_at IS NOT NULL
 				AND cr.sent_at >= $2 AND cr.sent_at <= $3
 		), views AS (
-			SELECT COUNT(*) AS views_total, COUNT(DISTINCT subscriber_id) AS unique_viewers
+			SELECT COUNT(*) AS views_total, COUNT(DISTINCT customer_id) AS unique_viewers
 			FROM campaign_views e JOIN scoped_campaigns sc ON sc.id = e.campaign_id
 			WHERE e.campaign_id = ANY($1::INT[]) AND e.created_at >= $2 AND e.created_at <= $3
 		), clicks AS (
-			SELECT COUNT(*) AS clicks_total, COUNT(DISTINCT subscriber_id) AS unique_clickers
+			SELECT COUNT(*) AS clicks_total, COUNT(DISTINCT customer_id) AS unique_clickers
 			FROM link_clicks e JOIN scoped_campaigns sc ON sc.id = e.campaign_id
 			WHERE e.campaign_id = ANY($1::INT[]) AND e.created_at >= $2 AND e.created_at <= $3
 		), bnc AS (
@@ -286,7 +286,7 @@ func (c *Core) GetWorkspaceCampaignReportLinks(access models.WorkspaceAccess, ca
 		return []models.CampaignReportLinkRow{}, nil
 	}
 	scope, scopeArgs := workspaceReadPredicate(access, "scoped_campaign", 4)
-	uniqueExpr := "COUNT(DISTINCT lc.subscriber_id)"
+	uniqueExpr := "COUNT(DISTINCT lc.customer_id)"
 	if !individualTracking {
 		uniqueExpr = "0"
 	}
@@ -330,7 +330,7 @@ func (c *Core) GetWorkspaceCampaignsReportLinks(access models.WorkspaceAccess, c
 		return []models.CampaignsReportLinkRow{}, nil
 	}
 	scope, scopeArgs := workspaceReadPredicate(access, "scoped_campaign", 4)
-	uniqueExpr := "COUNT(DISTINCT lc.subscriber_id)"
+	uniqueExpr := "COUNT(DISTINCT lc.customer_id)"
 	if !individualTracking {
 		uniqueExpr = "0"
 	}

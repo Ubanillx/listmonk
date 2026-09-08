@@ -37,22 +37,22 @@ func (c *Core) GetRole(id int) (auth.Role, error) {
 	return out[0], nil
 }
 
-// GetListRoles retrieves all list roles.
-func (c *Core) GetListRoles() ([]auth.ListRole, error) {
-	out := []auth.ListRole{}
+// GetListRoles retrieves all customer_list roles.
+func (c *Core) GetListRoles() ([]auth.CustomerListRole, error) {
+	out := []auth.CustomerListRole{}
 	if err := c.q.GetListRoles.Select(&out); err != nil {
 		return nil, echo.NewHTTPError(http.StatusInternalServerError,
 			c.i18n.Ts("globals.messages.errorFetching", "name", "role", "error", pqErrMsg(err)))
 	}
 
-	// Unmarshall the nested list permissions, if any.
+	// Unmarshall the nested customer_list permissions, if any.
 	for n, r := range out {
-		if r.ListsRaw == nil {
+		if r.CustomerListsRaw == nil {
 			continue
 		}
 
-		if err := json.Unmarshal(r.ListsRaw, &out[n].Lists); err != nil {
-			c.log.Printf("error unmarshalling list permissions for role %d: %v", r.ID, err)
+		if err := json.Unmarshal(r.CustomerListsRaw, &out[n].CustomerLists); err != nil {
+			c.log.Printf("error unmarshalling customer_list permissions for role %d: %v", r.ID, err)
 		}
 	}
 
@@ -71,16 +71,16 @@ func (c *Core) CreateRole(r auth.Role) (auth.Role, error) {
 	return out, nil
 }
 
-// CreateListRole creates a new list role.
-func (c *Core) CreateListRole(r auth.ListRole) (auth.ListRole, error) {
-	var out auth.ListRole
+// CreateListRole creates a new customer_list role.
+func (c *Core) CreateListRole(r auth.CustomerListRole) (auth.CustomerListRole, error) {
+	var out auth.CustomerListRole
 
 	if err := c.q.CreateRole.Get(&out, r.Name, auth.RoleTypeList, pq.Array([]string{})); err != nil {
 		return out, echo.NewHTTPError(http.StatusInternalServerError,
 			c.i18n.Ts("globals.messages.errorCreating", "name", "{users.role}", "error", pqErrMsg(err)))
 	}
 
-	if err := c.UpsertListPermissions(out.ID, r.Lists); err != nil {
+	if err := c.UpsertListPermissions(out.ID, r.CustomerLists); err != nil {
 		return out, echo.NewHTTPError(http.StatusInternalServerError,
 			c.i18n.Ts("globals.messages.errorCreating", "name", "{users.role}", "error", pqErrMsg(err)))
 	}
@@ -89,26 +89,26 @@ func (c *Core) CreateListRole(r auth.ListRole) (auth.ListRole, error) {
 }
 
 // UpsertListPermissions upserts permission for a role.
-func (c *Core) UpsertListPermissions(roleID int, lp []auth.ListPermission) error {
+func (c *Core) UpsertListPermissions(roleID int, lp []auth.CustomerListPermission) error {
 	var (
-		listIDs   = make([]int, 0, len(lp))
-		listPerms = make([][]string, 0, len(lp))
+		customerListIDs   = make([]int, 0, len(lp))
+		customerListPerms = make([][]string, 0, len(lp))
 	)
 	for _, p := range lp {
 		if len(p.Permissions) == 0 {
 			continue
 		}
 
-		listIDs = append(listIDs, p.ID)
+		customerListIDs = append(customerListIDs, p.ID)
 
 		// For the Postgres array unnesting query to work, all permissions arrays should
-		// have equal number of entries. Add "" in case there's only one of either list:get or list:manage
+		// have equal number of entries. Add "" in case there's only one of either customer_list:get or customer_list:manage
 		perms := make([]string, 2)
 		copy(perms[:], p.Permissions[:])
-		listPerms = append(listPerms, perms)
+		customerListPerms = append(customerListPerms, perms)
 	}
 
-	if _, err := c.q.UpsertListPermissions.Exec(roleID, pq.Array(listIDs), pq.Array(listPerms)); err != nil {
+	if _, err := c.q.UpsertListPermissions.Exec(roleID, pq.Array(customerListIDs), pq.Array(customerListPerms)); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError,
 			c.i18n.Ts("globals.messages.errorCreating", "name", "{users.role}", "error", pqErrMsg(err)))
 	}
@@ -116,9 +116,9 @@ func (c *Core) UpsertListPermissions(roleID int, lp []auth.ListPermission) error
 	return nil
 }
 
-// DeleteListPermission deletes a list permission entry from a role.
-func (c *Core) DeleteListPermission(roleID, listID int) error {
-	if _, err := c.q.DeleteListPermission.Exec(roleID, listID); err != nil {
+// DeleteListPermission deletes a customer_list permission entry from a role.
+func (c *Core) DeleteListPermission(roleID, customerListID int) error {
+	if _, err := c.q.DeleteListPermission.Exec(roleID, customerListID); err != nil {
 		if pqErr, ok := err.(*pq.Error); ok && pqErr.Constraint == "users_role_id_fkey" {
 			return echo.NewHTTPError(http.StatusBadRequest, c.i18n.T("users.cantDeleteRole"))
 		}
@@ -146,21 +146,21 @@ func (c *Core) UpdateUserRole(id int, r auth.Role) (auth.Role, error) {
 }
 
 // UpdateListRole updates a given role.
-func (c *Core) UpdateListRole(id int, r auth.ListRole) (auth.ListRole, error) {
-	var out auth.ListRole
+func (c *Core) UpdateListRole(id int, r auth.CustomerListRole) (auth.CustomerListRole, error) {
+	var out auth.CustomerListRole
 
 	if err := c.q.UpdateRole.Get(&out, id, r.Name, pq.Array([]string{})); err != nil {
 		return out, echo.NewHTTPError(http.StatusInternalServerError,
-			c.i18n.Ts("globals.messages.errorUpdating", "name", "{users.listRole}", "error", pqErrMsg(err)))
+			c.i18n.Ts("globals.messages.errorUpdating", "name", "{users.customerListRole}", "error", pqErrMsg(err)))
 	}
 
 	if out.ID == 0 {
-		return out, echo.NewHTTPError(http.StatusBadRequest, c.i18n.Ts("globals.messages.notFound", "name", "{users.listRole}"))
+		return out, echo.NewHTTPError(http.StatusBadRequest, c.i18n.Ts("globals.messages.notFound", "name", "{users.customerListRole}"))
 	}
 
-	if err := c.UpsertListPermissions(out.ID, r.Lists); err != nil {
+	if err := c.UpsertListPermissions(out.ID, r.CustomerLists); err != nil {
 		return out, echo.NewHTTPError(http.StatusInternalServerError,
-			c.i18n.Ts("globals.messages.errorCreating", "name", "{users.listRole}", "error", pqErrMsg(err)))
+			c.i18n.Ts("globals.messages.errorCreating", "name", "{users.customerListRole}", "error", pqErrMsg(err)))
 	}
 
 	return out, nil

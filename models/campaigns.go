@@ -87,14 +87,14 @@ type Campaign struct {
 	SubjectTpl          *txttpl.Template   `json:"-"`
 	AltBodyTpl          *template.Template `json:"-"`
 
-	// List of media (attachment) IDs obtained from the next-campaign query
+	// CustomerList of media (attachment) IDs obtained from the next-campaign query
 	// while sending a campaign.
 	MediaIDs pq.Int64Array `json:"-" db:"media_id"`
 
 	// Fetched bodies of the attachments.
 	Attachments []Attachment `json:"-" db:"-"`
 
-	// Pseudofield for getting the total number of subscribers
+	// Pseudofield for getting the total number of customers
 	// in searches and queries.
 	Total int `db:"total" json:"-"`
 }
@@ -106,13 +106,14 @@ type CampaignMeta struct {
 	Clicks     int `db:"clicks" json:"clicks"`
 	Bounces    int `db:"bounces" json:"bounces"`
 
-	// This is a list of {list_id, name} pairs unlike Subscriber.Lists[]
-	// because lists can be deleted after a campaign is finished, resulting
-	// in null lists data to be returned. For that reason, campaign_lists maintains
-	// campaign-list associations with a historical record of id + name that persist
-	// even after a list is deleted.
-	Lists types.JSONText `db:"lists" json:"lists"`
-	Media types.JSONText `db:"media" json:"media"`
+	// This is a customer_list of {customer_list_id, name} pairs unlike Customer.CustomerLists[]
+	// because customer_lists can be deleted after a campaign is finished, resulting
+	// in null customer_lists data to be returned. For that reason, campaign_customer_lists maintains
+	// campaign-customer_list associations with a historical record of id + name that persist
+	// even after a customer_list is deleted.
+	CustomerLists types.JSONText `db:"customer_lists" json:"customer_lists"`
+	CustomerPools types.JSONText `db:"customer_pools" json:"customer_pools"`
+	Media         types.JSONText `db:"media" json:"media"`
 
 	StartedAt null.Time `db:"started_at" json:"started_at"`
 	ToSend    int       `db:"to_send" json:"to_send"`
@@ -129,7 +130,7 @@ const (
 
 var reTrackableHREF = regexp.MustCompile(`(?i)(href\s*=\s*)(['"])(https?://[^"'<>]+)(['"])`)
 
-// GetIDs returns the list of campaign IDs.
+// GetIDs returns the customer_list of campaign IDs.
 func (camps Campaigns) GetIDs() []int {
 	IDs := make([]int, len(camps))
 	for i, c := range camps {
@@ -139,7 +140,7 @@ func (camps Campaigns) GetIDs() []int {
 	return IDs
 }
 
-// LoadStats lazy loads campaign stats onto a list of campaigns.
+// LoadStats lazy loads campaign stats onto a customer_list of campaigns.
 func (camps Campaigns) LoadStats(stmt *sqlx.Stmt) error {
 	var meta []CampaignMeta
 	if err := stmt.Select(&meta, pq.Array(camps.GetIDs())); err != nil {
@@ -152,7 +153,7 @@ func (camps Campaigns) LoadStats(stmt *sqlx.Stmt) error {
 
 	for i, c := range meta {
 		if c.CampaignID == camps[i].ID {
-			camps[i].Lists = c.Lists
+			camps[i].CustomerLists = c.CustomerLists
 			camps[i].Views = c.Views
 			camps[i].Clicks = c.Clicks
 			camps[i].Bounces = c.Bounces

@@ -163,7 +163,7 @@ func (a *App) CampaignArchivePage(c echo.Context) error {
 
 	// Render the campaign body.
 	camp := out[0].Campaign
-	msg, err := a.manager.NewCampaignMessage(camp, out[0].Subscriber)
+	msg, err := a.manager.NewCampaignMessage(camp, out[0].Customer)
 	if err != nil {
 		a.log.Printf("error rendering campaign: %v", err)
 		return c.Render(http.StatusInternalServerError, tplMessage,
@@ -222,7 +222,7 @@ func (a *App) getCampaignArchives(offset, limit int, renderBody bool) ([]campArc
 
 		// Render the full template body if requested.
 		if renderBody {
-			msg, err := a.manager.NewCampaignMessage(camp, m.Subscriber)
+			msg, err := a.manager.NewCampaignMessage(camp, m.Customer)
 			if err != nil {
 				return []campArchive{}, total, err
 			}
@@ -235,7 +235,7 @@ func (a *App) getCampaignArchives(offset, limit int, renderBody bool) ([]campArc
 	return out, total, nil
 }
 
-// compileArchiveCampaigns compiles the campaign template with the subscriber data.
+// compileArchiveCampaigns compiles the campaign template with the customer data.
 func (a *App) compileArchiveCampaigns(camps []models.Campaign) ([]manager.CampaignMessage, error) {
 
 	var (
@@ -249,8 +249,8 @@ func (a *App) compileArchiveCampaigns(camps []models.Campaign) ([]manager.Campai
 			return nil, echo.NewHTTPError(http.StatusInternalServerError, a.i18n.T("public.errorFetchingCampaign"))
 		}
 
-		// Load the dummy subscriber meta.
-		var sub models.Subscriber
+		// Load the dummy customer meta.
+		var sub models.Customer
 		if err := json.Unmarshal([]byte(camp.ArchiveMeta), &sub); err != nil {
 			a.log.Printf("error unmarshalling campaign archive meta: %v", err)
 			return nil, echo.NewHTTPError(http.StatusInternalServerError, a.i18n.T("public.errorFetchingCampaign"))
@@ -258,7 +258,7 @@ func (a *App) compileArchiveCampaigns(camps []models.Campaign) ([]manager.Campai
 
 		m := manager.CampaignMessage{
 			Campaign:   &camp,
-			Subscriber: sub,
+			Customer: sub,
 		}
 
 		// Render the subject if it's a template.

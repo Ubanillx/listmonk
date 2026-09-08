@@ -101,11 +101,11 @@ func (p *Postback) Push(m models.Message) error {
 		ContentType: m.ContentType,
 		Body:        string(m.Body),
 		Recipients: []recipient{{
-			UUID:    m.Subscriber.UUID,
-			Email:   m.Subscriber.Email,
-			Name:    m.Subscriber.Name,
-			Status:  m.Subscriber.Status,
-			Attribs: m.Subscriber.Attribs,
+			UUID:    m.Customer.UUID,
+			Email:   m.Customer.Email,
+			Name:    m.Customer.Name,
+			Status:  m.Customer.Status,
+			Attribs: m.Customer.Attribs,
 		}},
 	}
 

@@ -43,7 +43,7 @@ func TestParsePersonalAPIKeyExpiry(t *testing.T) {
 
 func TestPersonalAPIKeyWorkspaceMatch(t *testing.T) {
 	e := echo.New()
-	c := e.NewContext(httptest.NewRequest("GET", "/api/lists", nil), httptest.NewRecorder())
+	c := e.NewContext(httptest.NewRequest("GET", "/api/customer-lists", nil), httptest.NewRecorder())
 	c.Set(auth.IntegrationTokenHTTPCtxKey, auth.IntegrationToken{
 		Kind:                    auth.IntegrationTokenKindPersonal,
 		WorkspaceOrganizationID: null.Int{Int: 42, Valid: true},
@@ -82,8 +82,8 @@ func TestRejectUnsupportedPersonalAPIKey(t *testing.T) {
 		t.Fatal("expected unsupported route to stop before its handler")
 	}
 
-	c = e.NewContext(httptest.NewRequest("GET", "/api/lists", nil), httptest.NewRecorder())
-	c.SetPath("/api/lists")
+	c = e.NewContext(httptest.NewRequest("GET", "/api/customer-lists", nil), httptest.NewRecorder())
+	c.SetPath("/api/customer-lists")
 	c.Set(auth.IntegrationTokenHTTPCtxKey, auth.IntegrationToken{Kind: auth.IntegrationTokenKindPersonal})
 	nextCalled = false
 	if err := rejectUnsupportedPersonalAPIKey(func(echo.Context) error {

@@ -71,6 +71,7 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 
 		// Authenticated endpoints.
 		g.GET(path.Join(uriAdmin, ""), a.AdminPage)
+		g.GET(path.Join(uriAdmin, "/select-workspace"), a.SelectWorkspacePage)
 		g.GET(path.Join(uriAdmin, "/custom.css"), serveCustomAppearance("admin.custom_css"))
 		g.GET(path.Join(uriAdmin, "/custom.js"), serveCustomAppearance("admin.custom_js"))
 		g.GET(path.Join(uriAdmin, "/*"), a.AdminPage)
@@ -118,51 +119,78 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.PUT("/api/custom-fields/:key", a.UpdateCustomField)
 		g.DELETE("/api/custom-fields/:key", a.DeleteCustomField)
 
-		// Workspace-scoped subscriber handlers enforce owner and organization
+		// Workspace-scoped customer handlers enforce owner and organization
 		// boundaries themselves. Global role middleware here would reject a
-		// member before it can access the subscribers it owns.
-		g.GET("/api/subscribers", apiKeyScope(a.QuerySubscribers, apiKeyScopeSubscribersRead))
-		g.GET("/api/subscribers/:id", apiKeyScope(hasID(a.GetSubscriber), apiKeyScopeSubscribersRead))
-		g.GET("/api/subscribers/:id/activity", apiKeyScope(hasID(a.GetSubscriberActivity), apiKeyScopeSubscribersRead))
-		g.GET("/api/subscribers/:id/export", apiKeyScope(hasID(a.ExportSubscriberData), apiKeyScopeSubscribersRead))
-		g.GET("/api/subscribers/:id/bounces", apiKeyScope(hasID(a.GetSubscriberBounces), apiKeyScopeSubscribersRead))
-		g.DELETE("/api/subscribers/:id/bounces", apiKeyScope(hasID(a.DeleteSubscriberBounces), apiKeyScopeSubscribersWrite))
-		g.POST("/api/subscribers", apiKeyScope(a.CreateSubscriber, apiKeyScopeSubscribersWrite))
-		g.PUT("/api/subscribers/:id", apiKeyScope(hasID(a.UpdateSubscriber), apiKeyScopeSubscribersWrite))
-		g.POST("/api/subscribers/:id/optin", apiKeyScope(hasID(a.SubscriberSendOptin), apiKeyScopeSubscribersWrite))
-		g.PUT("/api/subscribers/blocklist", apiKeyScope(a.BlocklistSubscribers, apiKeyScopeSubscribersWrite))
-		g.PUT("/api/subscribers/:id/blocklist", apiKeyScope(hasID(a.BlocklistSubscriber), apiKeyScopeSubscribersWrite))
-		g.PUT("/api/subscribers/lists/:id", apiKeyScope(a.ManageSubscriberLists, apiKeyScopeSubscribersWrite))
-		g.PUT("/api/subscribers/lists", apiKeyScope(a.ManageSubscriberLists, apiKeyScopeSubscribersWrite))
-		g.DELETE("/api/subscribers/:id", apiKeyScope(hasID(a.DeleteSubscriber), apiKeyScopeSubscribersWrite))
-		g.DELETE("/api/subscribers", apiKeyScope(a.DeleteSubscribers, apiKeyScopeSubscribersWrite))
+		// member before it can access the customers it owns.
+		g.GET("/api/customers", apiKeyScope(a.QueryCustomers, apiKeyScopeCustomersRead))
+		g.GET("/api/customers/:id", apiKeyScope(hasID(a.GetCustomer), apiKeyScopeCustomersRead))
+		g.GET("/api/customers/:id/activity", apiKeyScope(hasID(a.GetCustomerActivity), apiKeyScopeCustomersRead))
+		g.GET("/api/customers/:id/export", apiKeyScope(hasID(a.ExportCustomerData), apiKeyScopeCustomersRead))
+		g.GET("/api/customers/:id/bounces", apiKeyScope(hasID(a.GetCustomerBounces), apiKeyScopeCustomersRead))
+		g.DELETE("/api/customers/:id/bounces", apiKeyScope(hasID(a.DeleteCustomerBounces), apiKeyScopeCustomersWrite))
+		g.POST("/api/customers", apiKeyScope(a.CreateCustomer, apiKeyScopeCustomersWrite))
+		g.PUT("/api/customers/:id", apiKeyScope(hasID(a.UpdateCustomer), apiKeyScopeCustomersWrite))
+		g.POST("/api/customers/:id/optin", apiKeyScope(hasID(a.CustomerSendOptin), apiKeyScopeCustomersWrite))
+		g.PUT("/api/customers/blocklist", apiKeyScope(a.BlocklistCustomers, apiKeyScopeCustomersWrite))
+		g.PUT("/api/customers/:id/blocklist", apiKeyScope(hasID(a.BlocklistCustomer), apiKeyScopeCustomersWrite))
+		g.PUT("/api/customers/customer-lists/:id", apiKeyScope(a.ManageCustomerListMemberships, apiKeyScopeCustomersWrite))
+		g.PUT("/api/customers/customer-lists", apiKeyScope(a.ManageCustomerListMemberships, apiKeyScopeCustomersWrite))
+		g.DELETE("/api/customers/:id", apiKeyScope(hasID(a.DeleteCustomer), apiKeyScopeCustomersWrite))
+		g.DELETE("/api/customers", apiKeyScope(a.DeleteCustomers, apiKeyScopeCustomersWrite))
 
 		g.GET("/api/bounces", apiKeyScope(a.GetBounces, apiKeyScopeBouncesRead))
-		g.PUT("/api/bounces/blocklist", apiKeyScope(a.BlocklistBouncedSubscribers, apiKeyScopeBouncesWrite))
+		g.PUT("/api/bounces/blocklist", apiKeyScope(a.BlocklistBouncedCustomers, apiKeyScopeBouncesWrite))
 		g.GET("/api/bounces/:id", apiKeyScope(hasID(a.GetBounce), apiKeyScopeBouncesRead))
 		g.DELETE("/api/bounces", apiKeyScope(a.DeleteBounces, apiKeyScopeBouncesWrite))
 		g.DELETE("/api/bounces/:id", apiKeyScope(hasID(a.DeleteBounce), apiKeyScopeBouncesWrite))
 
-		// Subscriber operations based on arbitrary SQL queries.
+		// Customer operations based on arbitrary SQL queries.
 		// These aren't very REST-like.
-		g.POST("/api/subscribers/query/delete", a.DeleteSubscribersByQuery)
-		g.PUT("/api/subscribers/query/blocklist", a.BlocklistSubscribersByQuery)
-		g.PUT("/api/subscribers/query/lists", a.ManageSubscriberListsByQuery)
-		g.GET("/api/subscribers/export",
-			middleware.GzipWithConfig(middleware.GzipConfig{Level: 9})(a.ExportSubscribers))
+		g.POST("/api/customers/query/delete", a.DeleteCustomersByQuery)
+		g.PUT("/api/customers/query/blocklist", a.BlocklistCustomersByQuery)
+		g.PUT("/api/customers/query/customer-lists", a.ManageCustomerListMembershipsByQuery)
+		g.GET("/api/customers/export",
+			middleware.GzipWithConfig(middleware.GzipConfig{Level: 9})(a.ExportCustomers))
 
-		g.GET("/api/import/subscribers", apiKeyScope(a.GetImportSubscribers, apiKeyScopeSubscribersImport))
-		g.GET("/api/import/subscribers/logs", apiKeyScope(a.GetImportSubscriberStats, apiKeyScopeSubscribersImport))
-		g.POST("/api/import/subscribers", apiKeyScope(a.ImportSubscribers, apiKeyScopeSubscribersImport))
-		g.DELETE("/api/import/subscribers", apiKeyScope(a.StopImportSubscribers, apiKeyScopeSubscribersImport))
+		g.GET("/api/import/customers", apiKeyScope(a.GetImportCustomers, apiKeyScopeCustomersImport))
+		g.GET("/api/import/customers/logs", apiKeyScope(a.GetImportCustomerStats, apiKeyScopeCustomersImport))
+		g.POST("/api/import/customers", apiKeyScope(a.ImportCustomers, apiKeyScopeCustomersImport))
+		g.DELETE("/api/import/customers", apiKeyScope(a.StopImportCustomers, apiKeyScopeCustomersImport))
 
-		// List handlers enforce the active workspace and owner boundary directly.
-		g.GET("/api/lists", apiKeyScope(a.GetLists, apiKeyScopeListsRead))
-		g.GET("/api/lists/:id", apiKeyScope(hasID(a.GetList), apiKeyScopeListsRead))
-		g.POST("/api/lists", apiKeyScope(a.CreateList, apiKeyScopeListsWrite))
-		g.PUT("/api/lists/:id", apiKeyScope(hasID(a.UpdateList), apiKeyScopeListsWrite))
-		g.DELETE("/api/lists", apiKeyScope(a.DeleteLists, apiKeyScopeListsWrite))
-		g.DELETE("/api/lists/:id", apiKeyScope(hasID(a.DeleteList), apiKeyScopeListsWrite))
+		// CustomerList handlers enforce the active workspace and owner boundary directly.
+		g.GET("/api/customer-lists", apiKeyScope(a.GetLists, apiKeyScopeListsRead))
+		g.GET("/api/customer-lists/:id", apiKeyScope(hasID(a.GetList), apiKeyScopeListsRead))
+		g.POST("/api/customer-lists", apiKeyScope(a.CreateList, apiKeyScopeListsWrite))
+		g.PUT("/api/customer-lists/:id", apiKeyScope(hasID(a.UpdateList), apiKeyScopeListsWrite))
+		g.DELETE("/api/customer-lists", apiKeyScope(a.DeleteLists, apiKeyScopeListsWrite))
+		g.DELETE("/api/customer-lists/:id", apiKeyScope(hasID(a.DeleteList), apiKeyScopeListsWrite))
+		g.GET("/api/customer-lists/:id/pool-contacts", apiKeyScope(hasID(a.GetPoolContacts), apiKeyScopeListsRead))
+		g.GET("/api/customer-lists/:id/pool-segments", apiKeyScope(hasID(a.GetPoolSegments), apiKeyScopeListsRead))
+		g.POST("/api/customer-lists/:id/pool-contacts", apiKeyScope(hasID(a.CreatePoolContact), apiKeyScopeListsWrite))
+		g.DELETE("/api/customer-lists/:id/pool-contacts/:contact_id/email", apiKeyScope(a.ClearPoolContactEmail, apiKeyScopeListsWrite))
+		g.POST("/api/pool-segments", apiKeyScope(a.CreatePoolSegment, apiKeyScopeListsWrite))
+		g.PUT("/api/pool-segments/:id/reply-mailbox", apiKeyScope(a.UpdatePoolSegmentReplyMailbox, apiKeyScopeListsWrite))
+		g.POST("/api/pool-segments/members", apiKeyScope(a.AssignPoolContact, apiKeyScopeListsWrite))
+		g.POST("/api/pool-segments/:id/import-members", apiKeyScope(a.ImportPoolSegmentMembers, apiKeyScopeListsWrite))
+		g.DELETE("/api/pool-segments/members", apiKeyScope(a.RemovePoolContact, apiKeyScopeListsWrite))
+		g.PUT("/api/pool-segments/members", apiKeyScope(a.RestorePoolContact, apiKeyScopeListsWrite))
+		// Explicit pool aliases keep the public-pool API independent from legacy
+		// customer-list endpoints while retaining backwards-compatible routing.
+		g.GET("/api/pools/:id/contacts", apiKeyScope(hasID(a.GetPoolContacts), apiKeyScopeListsRead))
+		g.GET("/api/pools/:id/segments", apiKeyScope(hasID(a.GetPoolSegments), apiKeyScopeListsRead))
+		g.GET("/api/pools/:id/management-target", apiKeyScope(hasID(a.GetPoolManagementTarget), apiKeyScopeListsRead))
+		g.GET("/api/pools/:id/import-conflicts", apiKeyScope(hasID(a.GetPoolImportConflicts), apiKeyScopeListsRead))
+		g.POST("/api/pools/permissions", apiKeyScope(a.GrantPoolOrganization, apiKeyScopeListsWrite))
+		g.DELETE("/api/pools/permissions", apiKeyScope(a.RevokePoolOrganization, apiKeyScopeListsWrite))
+		g.POST("/api/pools/:id/contacts", apiKeyScope(hasID(a.CreatePoolContact), apiKeyScopeListsWrite))
+		g.DELETE("/api/pools/:id/contacts/:contact_id/email", apiKeyScope(a.ClearPoolContactEmail, apiKeyScopeListsWrite))
+		g.POST("/api/pools/segments", apiKeyScope(a.CreatePoolSegment, apiKeyScopeListsWrite))
+		g.PUT("/api/pools/segments/:id/reply-mailbox", apiKeyScope(a.UpdatePoolSegmentReplyMailbox, apiKeyScopeListsWrite))
+		g.POST("/api/pools/segments/members", apiKeyScope(a.AssignPoolContact, apiKeyScopeListsWrite))
+		g.POST("/api/pools/segments/:id/import-members", apiKeyScope(a.ImportPoolSegmentMembers, apiKeyScopeListsWrite))
+		g.DELETE("/api/pools/segments/members", apiKeyScope(a.RemovePoolContact, apiKeyScopeListsWrite))
+		g.PUT("/api/pools/segments/members", apiKeyScope(a.RestorePoolContact, apiKeyScopeListsWrite))
+		g.POST("/api/pools/import", apiKeyScope(a.ImportListIntoPool, apiKeyScopeListsWrite))
 
 		// Read access is resolved in handlers using workspace scope. Do not put
 		// legacy global permissions in front of these routes: a logged-in user
@@ -190,6 +218,7 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.PUT("/api/campaigns/:id", apiKeyScope(hasID(a.UpdateCampaign), apiKeyScopeCampaignsWrite))
 		g.PUT("/api/campaigns/:id/status", apiKeyScope(hasID(a.UpdateCampaignStatus), apiKeyScopeCampaignsWrite))
 		g.PUT("/api/campaigns/:id/archive", apiKeyScope(hasID(a.UpdateCampaignArchive), apiKeyScopeCampaignsWrite))
+		g.POST("/api/campaigns/:id/pools", apiKeyScope(hasID(a.AttachCampaignPool), apiKeyScopeCampaignsWrite))
 		g.DELETE("/api/campaigns", apiKeyScope(a.DeleteCampaigns, apiKeyScopeCampaignsWrite))
 		g.DELETE("/api/campaigns/:id", apiKeyScope(hasID(a.DeleteCampaign), apiKeyScopeCampaignsWrite))
 
@@ -213,7 +242,7 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.PUT("/api/templates/:id/default", apiKeyScope(hasID(a.TemplateSetDefault), apiKeyScopeTemplatesWrite))
 		g.DELETE("/api/templates/:id", apiKeyScope(hasID(a.DeleteTemplate), apiKeyScopeTemplatesWrite))
 
-		g.DELETE("/api/maintenance/subscribers/:type", pm(a.GCSubscribers, "settings:maintain"))
+		g.DELETE("/api/maintenance/customers/:type", pm(a.GCCustomers, "settings:maintain"))
 		g.DELETE("/api/maintenance/analytics/:type", pm(a.GCCampaignAnalytics, "settings:maintain"))
 		g.DELETE("/api/maintenance/subscriptions/unconfirmed", pm(a.GCSubscriptions, "settings:maintain"))
 
@@ -249,7 +278,7 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.POST("/api/organizations/join", a.JoinOrganizationByInvite)
 		g.POST("/api/organizations/leave", a.LeaveOrganization)
 		g.POST("/api/organizations/resources/migrate", a.MigratePersonalResourcesToOrganization)
-		g.POST("/api/organizations/resources/lists/migrate", a.MigratePersonalListsToOrganization)
+		g.POST("/api/organizations/resources/customer-lists/migrate", a.MigratePersonalListsToOrganization)
 		g.GET("/api/organizations/members", a.GetOrganizationMembers)
 		g.POST("/api/organizations/members", a.AddOrganizationMember)
 		g.PUT("/api/organizations/members/:user_id", a.UpdateOrganizationMember)
@@ -289,11 +318,11 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.DELETE("/api/users/:id/twofa", hasID(a.DisableTOTP))
 
 		g.GET("/api/roles/users", pm(a.GetUserRoles, "roles:get"))
-		g.GET("/api/roles/lists", pm(a.GeListRoles, "roles:get"))
+		g.GET("/api/roles/customer-lists", pm(a.GeListRoles, "roles:get"))
 		g.POST("/api/roles/users", pm(a.CreateUserRole, "roles:manage"))
-		g.POST("/api/roles/lists", pm(a.CreateListRole, "roles:manage"))
+		g.POST("/api/roles/customer-lists", pm(a.CreateListRole, "roles:manage"))
 		g.PUT("/api/roles/users/:id", pm(hasID(a.UpdateUserRole), "roles:manage"))
-		g.PUT("/api/roles/lists/:id", pm(hasID(a.UpdateListRole), "roles:manage"))
+		g.PUT("/api/roles/customer-lists/:id", pm(hasID(a.UpdateListRole), "roles:manage"))
 		g.DELETE("/api/roles/:id", pm(hasID(a.DeleteRole), "roles:manage"))
 
 		if a.cfg.BounceWebhooksEnabled {
@@ -334,7 +363,7 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		}
 
 		// Public APIs.
-		g.GET("/api/public/lists", a.GetPublicLists)
+		g.GET("/api/public/customer-lists", a.GetPublicLists)
 		g.POST("/api/public/subscription", a.PublicSubscription)
 		g.GET("/api/public/captcha/altcha", a.AltchaChallenge)
 		if a.cfg.EnablePublicArchive {
@@ -342,15 +371,15 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		}
 
 		// /public/static/* file server is registered in initHTTPServer().
-		// Public subscriber facing views.
+		// Public customer facing views.
 		g.GET("/subscription/form", a.SubscriptionFormPage)
 		g.POST("/subscription/form", a.SubscriptionForm)
 		g.GET("/subscription/:campUUID/:subUUID", noIndex(a.hasUUID(a.SubscriptionPage, "campUUID", "subUUID")))
 		g.POST("/subscription/:campUUID/:subUUID", a.hasUUID(a.SubscriptionPrefs, "campUUID", "subUUID"))
 		g.GET("/subscription/optin/:subUUID", noIndex(a.hasUUID(a.hasSub(a.OptinPage), "subUUID")))
 		g.POST("/subscription/optin/:subUUID", a.hasUUID(a.hasSub(a.OptinPage), "subUUID"))
-		g.POST("/subscription/export/:subUUID", a.hasUUID(a.hasSub(a.SelfExportSubscriberData), "subUUID"))
-		g.POST("/subscription/wipe/:subUUID", a.hasUUID(a.hasSub(a.WipeSubscriberData), "subUUID"))
+		g.POST("/subscription/export/:subUUID", a.hasUUID(a.hasSub(a.SelfExportCustomerData), "subUUID"))
+		g.POST("/subscription/wipe/:subUUID", a.hasUUID(a.hasSub(a.WipeCustomerData), "subUUID"))
 		g.GET("/link/:linkUUID/:campUUID/:subUUID", noIndex(a.hasUUID(a.LinkRedirect, "linkUUID", "campUUID", "subUUID")))
 		g.GET("/campaign/:campUUID/:subUUID", noIndex(a.hasUUID(a.ViewCampaignMessage, "campUUID", "subUUID")))
 		g.GET("/campaign/:campUUID/:subUUID/px.png", noIndex(a.hasUUID(a.RegisterCampaignView, "campUUID", "subUUID")))
@@ -458,19 +487,19 @@ func hasID(next echo.HandlerFunc) echo.HandlerFunc {
 	}
 }
 
-// hasSub middleware checks if a subscriber exists given the UUID
+// hasSub middleware checks if a customer exists given the UUID
 // param in a request.
 func (a *App) hasSub(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		subUUID := c.Param("subUUID")
 
-		if _, err := a.core.GetSubscriber(0, subUUID, ""); err != nil {
+		if _, err := a.core.GetCustomer(0, subUUID, ""); err != nil {
 			if er, ok := err.(*echo.HTTPError); ok && er.Code == http.StatusBadRequest {
 				return c.Render(http.StatusNotFound, tplMessage,
 					makeMsgTpl(a.i18n.T("public.notFoundTitle"), "", er.Message.(string)))
 			}
 
-			a.log.Printf("error checking subscriber existence: %v", err)
+			a.log.Printf("error checking customer existence: %v", err)
 			return c.Render(http.StatusInternalServerError, tplMessage,
 				makeMsgTpl(a.i18n.T("public.errorTitle"), "", a.i18n.T("public.errorProcessingRequest")))
 		}

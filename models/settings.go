@@ -43,7 +43,7 @@ type Settings struct {
 	// CustomFields contains globally defined account fields. The definitions
 	// are managed by the platform administrator and values are stored on each
 	// user's attribs.
-	CustomFields                  []CustomFieldDefinition `json:"subscriber.custom_fields,omitempty"`
+	CustomFields                  []CustomFieldDefinition `json:"customer.custom_fields,omitempty"`
 	AppSiteName                   string                  `json:"app.site_name"`
 	AppRootURL                    string                  `json:"app.root_url"`
 	AppLogoURL                    string                  `json:"app.logo_url"`
@@ -167,6 +167,8 @@ type Settings struct {
 		ScanInterval  string `json:"scan_interval"`
 	} `json:"bounce.mailboxes"`
 
+	ReplyAI ReplyAISettings `json:"reply_ai"`
+
 	MaintenanceDB struct {
 		Vacuum         bool   `json:"vacuum"`
 		VacuumInterval string `json:"vacuum_cron_interval"`
@@ -178,7 +180,7 @@ type Settings struct {
 	PublicCustomJS  string `json:"appearance.public.custom_js"`
 }
 
-// CustomFieldDefinition describes a subscriber field exposed in forms,
+// CustomFieldDefinition describes a customer field exposed in forms,
 // imports and campaign templates.
 type CustomFieldDefinition struct {
 	Key         string   `json:"key"`

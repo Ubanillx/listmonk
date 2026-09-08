@@ -45,6 +45,7 @@ import (
 	"github.com/knadh/listmonk/internal/messenger/email"
 	"github.com/knadh/listmonk/internal/messenger/postback"
 	"github.com/knadh/listmonk/internal/notifs"
+	"github.com/knadh/listmonk/internal/replyai"
 	"github.com/knadh/listmonk/internal/subimporter"
 	"github.com/knadh/listmonk/models"
 	"github.com/knadh/stuffbin"
@@ -381,7 +382,7 @@ func prepareQueries(qMap goyesql.Queries, db *sqlx.DB, ko *koanf.Koanf) *models.
 	)
 	if ko.Bool("privacy.individual_tracking") {
 		countQuery = "get-campaign-analytics-unique-counts"
-		linkSel = "DISTINCT subscriber_id"
+		linkSel = "DISTINCT customer_id"
 	}
 
 	// These don't exist in the SQL file but are in the queries struct to be prepared.
@@ -439,22 +440,22 @@ func initUrlConfig(ko *koanf.Koanf) *UrlConfig {
 		LoginURL:   path.Join(uriAdmin, "/login"),
 
 		// Static URLS.
-		// url.com/subscription/{campaign_uuid}/{subscriber_uuid}
+		// url.com/subscription/{campaign_uuid}/{customer_uuid}
 		UnsubURL: fmt.Sprintf("%s/subscription/%%s/%%s", root),
 
-		// url.com/subscription/optin/{subscriber_uuid}
+		// url.com/subscription/optin/{customer_uuid}
 		OptinURL: fmt.Sprintf("%s/subscription/optin/%%s?%%s", root),
 
-		// url.com/link/{campaign_uuid}/{subscriber_uuid}/{link_uuid}
+		// url.com/link/{campaign_uuid}/{customer_uuid}/{link_uuid}
 		LinkTrackURL: fmt.Sprintf("%s/link/%%s/%%s/%%s", root),
 
-		// url.com/link/{campaign_uuid}/{subscriber_uuid}
+		// url.com/link/{campaign_uuid}/{customer_uuid}
 		MessageURL: fmt.Sprintf("%s/campaign/%%s/%%s", root),
 
 		// url.com/archive
 		ArchiveURL: root + "/archive",
 
-		// url.com/campaign/{campaign_uuid}/{subscriber_uuid}/px.png
+		// url.com/campaign/{campaign_uuid}/{customer_uuid}/px.png
 		ViewTrackURL: fmt.Sprintf("%s/campaign/%%s/%%s/px.png", root),
 	}
 }
@@ -536,7 +537,7 @@ func initI18n(lang string, fs stuffbin.FileSystem) *i18n.I18n {
 }
 
 // initCore initializes the CRUD DB core .
-func initCore(fnNotify func(sub models.Subscriber, listIDs []int) (int, error), queries *models.Queries, db *sqlx.DB, i *i18n.I18n, ko *koanf.Koanf) *core.Core {
+func initCore(fnNotify func(sub models.Customer, customerListIDs []int) (int, error), queries *models.Queries, db *sqlx.DB, i *i18n.I18n, ko *koanf.Koanf) *core.Core {
 	opt := &core.Opt{
 		Constants: core.Constants{
 			SendOptinConfirmation: ko.Bool("app.send_optin_confirmation"),
@@ -634,22 +635,22 @@ func initTxTemplates(m *manager.Manager, co *core.Core) {
 	}
 }
 
-// initImporter initializes the bulk subscriber importer.
+// initImporter initializes the bulk customer importer.
 func initImporter(q *models.Queries, db *sqlx.DB, core *core.Core, i *i18n.I18n, ko *koanf.Koanf) *subimporter.Importer {
 	return subimporter.New(
 		subimporter.Options{
 			DomainBlocklist:        ko.Strings("privacy.domain_blocklist"),
 			DomainAllowlist:        ko.Strings("privacy.domain_allowlist"),
-			UpsertStmt:             q.UpsertSubscriber.Stmt,
-			BlocklistStmt:          q.UpsertBlocklistSubscriber.Stmt,
-			WorkspaceUpsertStmt:    q.UpsertWorkspaceSubscriber.Stmt,
-			WorkspaceBlocklistStmt: q.UpsertWorkspaceBlocklistSubscriber.Stmt,
+			UpsertStmt:             q.UpsertCustomer.Stmt,
+			BlocklistStmt:          q.UpsertBlocklistCustomer.Stmt,
+			WorkspaceUpsertStmt:    q.UpsertWorkspaceCustomer.Stmt,
+			WorkspaceBlocklistStmt: q.UpsertWorkspaceBlocklistCustomer.Stmt,
 			UpdateListDateStmt:     q.UpdateListsDate.Stmt,
 
 			// Hook for triggering admin notifications and refreshing stats materialized
 			// views after a successful import.
 			PostCB: func(subject string, data any) error {
-				// Refresh cached subscriber counts and stats.
+				// Refresh cached customer counts and stats.
 				core.RefreshMatViews(true)
 
 				// Send admin notification.
@@ -874,6 +875,24 @@ func initBounceManager(cb func(models.Bounce) error, stmt *sqlx.Stmt, lo *log.Lo
 }
 
 // initAbout initializes the app's /about API endpoint with the app and system info.
+// initReplyAIClassifier initializes the OpenAI-compatible inbound reply classifier.
+// A disabled setting yields an inert client, while an enabled invalid setting is
+// rejected at startup just like other persisted transport configuration.
+func initReplyAIClassifier(ko *koanf.Koanf) *replyai.Client {
+	client, err := replyai.New(replyai.Options{
+		Enabled:       ko.Bool("reply_ai.enabled"),
+		BaseURL:       ko.String("reply_ai.base_url"),
+		APIKey:        ko.String("reply_ai.api_key"),
+		Model:         ko.String("reply_ai.model"),
+		Timeout:       ko.String("reply_ai.timeout"),
+		MinConfidence: ko.Float64("reply_ai.min_confidence"),
+	})
+	if err != nil {
+		lo.Fatalf("error initializing reply AI classifier: %v", err)
+	}
+	return client
+}
+
 func initAbout(q *models.Queries, db *sqlx.DB) about {
 	var (
 		mem runtime.MemStats
@@ -943,7 +962,7 @@ func initHTTPServer(cfg *Config, urlCfg *UrlConfig, i *i18n.I18n, fs stuffbin.Fi
 	// Initialize the static file server.
 	fSrv := fs.FileServer()
 
-	// Public (subscriber) facing static files.
+	// Public (customer) facing static files.
 	srv.GET("/public/static/*", echo.WrapHandler(fSrv))
 
 	// Admin (frontend) facing static files.
@@ -1060,7 +1079,7 @@ func awaitReload(sigChan chan os.Signal, closerWait chan bool, closer func()) ch
 		os.Exit(0)
 	}
 
-	// Listen for reload signal.
+	// CustomerListen for reload signal.
 	go func() {
 		for range sigChan {
 			lo.Println("reloading on signal ...")

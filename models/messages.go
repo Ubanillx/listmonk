@@ -20,11 +20,11 @@ type Message struct {
 	Headers     textproto.MIMEHeader
 	Attachments []Attachment
 
-	Subscriber   Subscriber
+	Customer   Customer
 	UseSMTPFrom  bool
 	UseSMTPQuota bool
 
-	// Campaign is generally the same instance for a large number of subscribers.
+	// Campaign is generally the same instance for a large number of customers.
 	Campaign *Campaign
 
 	// Messenger is the messenger backend to use: email|postback.
@@ -50,7 +50,7 @@ type Attachment struct {
 	Inline    bool   `json:"-"`
 }
 
-// TxMessage subscriber modes.
+// TxMessage customer modes.
 const (
 	TxSubModeDefault  = "default"
 	TxSubModeFallback = "fallback"
@@ -59,13 +59,13 @@ const (
 
 // TxMessage represents an e-mail campaign.
 type TxMessage struct {
-	SubscriberMode   string   `json:"subscriber_mode"`
-	SubscriberEmails []string `json:"subscriber_emails"`
-	SubscriberIDs    []int    `json:"subscriber_ids"`
+	CustomerMode   string   `json:"customer_mode"`
+	CustomerEmails []string `json:"customer_emails"`
+	CustomerIDs    []int    `json:"customer_ids"`
 
 	// Deprecated.
-	SubscriberEmail string `json:"subscriber_email"`
-	SubscriberID    int    `json:"subscriber_id"`
+	CustomerEmail string `json:"customer_email"`
+	CustomerID    int    `json:"customer_id"`
 
 	TemplateID  int            `json:"template_id"`
 	Data        map[string]any `json:"data"`
@@ -84,9 +84,9 @@ type TxMessage struct {
 	SubjectTpl *txttpl.Template   `json:"-"`
 }
 
-func (m *TxMessage) Render(sub Subscriber, tpl *Template, funcs txttpl.FuncMap) error {
+func (m *TxMessage) Render(sub Customer, tpl *Template, funcs txttpl.FuncMap) error {
 	data := struct {
-		Subscriber Subscriber
+		Customer Customer
 		Tx         *TxMessage
 	}{sub, m}
 

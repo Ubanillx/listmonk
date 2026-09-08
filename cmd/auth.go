@@ -97,7 +97,7 @@ func (a *App) LoginPage(c echo.Context) error {
 	if c.Request().Method == http.MethodPost {
 		loginErr = a.doLogin(c)
 		if loginErr == nil {
-			return c.Redirect(http.StatusFound, utils.SanitizeURI(c.FormValue("next")))
+			return c.Redirect(http.StatusFound, a.workspaceSelectURI(c.FormValue("next")))
 		}
 	}
 
@@ -115,7 +115,7 @@ func (a *App) LoginSetupPage(c echo.Context) error {
 			a.Lock()
 			a.needsUserSetup = false
 			a.Unlock()
-			return c.Redirect(http.StatusFound, utils.SanitizeURI(c.FormValue("next")))
+			return c.Redirect(http.StatusFound, a.workspaceSelectURI(c.FormValue("next")))
 		}
 	}
 
@@ -267,8 +267,8 @@ func (a *App) OIDCFinish(c echo.Context) error {
 		return a.renderLoginPage(c, err)
 	}
 
-	// Redirect to the next page.
-	return c.Redirect(http.StatusFound, utils.SanitizeURI(state.Next))
+	// Redirect to the workspace selection page.
+	return c.Redirect(http.StatusFound, a.workspaceSelectURI(state.Next))
 }
 
 // ForgotPage renders the forgot password page and handles the forgot password form.
@@ -426,21 +426,21 @@ func (a *App) createOIDCUser(claims auth.OIDCclaim, c echo.Context) (auth.User, 
 		name = strings.Split(claims.Email, "@")[0]
 	}
 
-	var listRoleID *int
+	var customerListRoleID *int
 	if a.cfg.Security.OIDC.DefaultListRoleID > 0 {
-		listRoleID = &a.cfg.Security.OIDC.DefaultListRoleID
+		customerListRoleID = &a.cfg.Security.OIDC.DefaultListRoleID
 	}
 
 	user, err := a.core.CreateUser(auth.User{
-		Type:          auth.UserTypeUser,
-		HasPassword:   false,
-		PasswordLogin: false,
-		Username:      claims.Email,
-		Name:          name,
-		Email:         null.NewString(claims.Email, true),
-		UserRoleID:    a.cfg.Security.OIDC.DefaultUserRoleID,
-		ListRoleID:    listRoleID,
-		Status:        auth.UserStatusEnabled,
+		Type:               auth.UserTypeUser,
+		HasPassword:        false,
+		PasswordLogin:      false,
+		Username:           claims.Email,
+		Name:               name,
+		Email:              null.NewString(claims.Email, true),
+		UserRoleID:         a.cfg.Security.OIDC.DefaultUserRoleID,
+		CustomerListRoleID: customerListRoleID,
+		Status:             auth.UserStatusEnabled,
 	})
 
 	return user, err
@@ -632,7 +632,7 @@ func (a *App) doForgotPassword(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, a.i18n.T("globals.messages.internalError"))
 	}
 
-	subject, body := notifs.GetTplSubject(a.i18n.T("email.forgotPassword.subject"), msg.Bytes())
+	subject, body := utils.GetTplSubject(a.i18n.T("email.forgotPassword.subject"), msg.Bytes())
 
 	// Send the email.
 	if err := a.emailMsgr.Push(models.Message{
@@ -696,8 +696,8 @@ func (a *App) doResetPassword(c echo.Context, token, email string) error {
 		return err
 	}
 
-	// Redirect to the admin page.
-	return c.Redirect(http.StatusFound, uriAdmin)
+	// Redirect to the workspace selection page.
+	return c.Redirect(http.StatusFound, a.workspaceSelectURI(uriAdmin))
 }
 
 // renderTwofaPage renders the 2FA verification page.
@@ -747,7 +747,7 @@ func (a *App) doTwofaVerify(c echo.Context, token string, userID int, next strin
 	}
 
 	// Redirect to the next page.
-	return c.Redirect(http.StatusFound, next)
+	return c.Redirect(http.StatusFound, a.workspaceSelectURI(next))
 }
 
 // GenerateTOTPQR generates a TOTP QR code for a user to scan with their authenticator app.

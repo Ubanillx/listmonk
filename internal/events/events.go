@@ -52,14 +52,14 @@ func (ev *Events) Subscribe(id string) (chan Event, error) {
 	return ch, nil
 }
 
-// Unsubscribe unsubscribes a subscriber (obviously).
+// Unsubscribe unsubscribes a customer (obviously).
 func (ev *Events) Unsubscribe(id string) {
 	ev.Lock()
 	defer ev.Unlock()
 	delete(ev.subs, id)
 }
 
-// Publish publishes an event to all subscribers.
+// Publish publishes an event to all customers.
 func (ev *Events) Publish(e Event) error {
 	ev.Lock()
 	defer ev.Unlock()

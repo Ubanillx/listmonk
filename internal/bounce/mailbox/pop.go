@@ -37,10 +37,10 @@ type bounceMeta struct {
 }
 
 var (
-	// List of header to look for in the e-mail body, regexp to fall back to if the header is empty.
+	// CustomerList of header to look for in the e-mail body, regexp to fall back to if the header is empty.
 	headerLookups = []bounceHeaders{
 		{models.EmailHeaderCampaignUUID, regexp.MustCompile(`(?m)(?:^` + models.EmailHeaderCampaignUUID + `:\s+?)([a-z0-9\-]{36})`)},
-		{models.EmailHeaderSubscriberUUID, regexp.MustCompile(`(?m)(?:^` + models.EmailHeaderSubscriberUUID + `:\s+?)([a-z0-9\-]{36})`)},
+		{models.EmailHeaderCustomerUUID, regexp.MustCompile(`(?m)(?:^` + models.EmailHeaderCustomerUUID + `:\s+?)([a-z0-9\-]{36})`)},
 		{models.EmailHeaderDate, regexp.MustCompile(`(?m)(?:^` + models.EmailHeaderDate + `:\s+?)([\w,\,\ ,:,+,-]*(?:\(?:\w*\))?)`)},
 		{models.EmailHeaderFrom, regexp.MustCompile(`(?m)(?:^` + models.EmailHeaderFrom + `:\s+?)(.*)`)},
 		{models.EmailHeaderSubject, regexp.MustCompile(`(?m)(?:^` + models.EmailHeaderSubject + `:\s+?)(.*)`)},
@@ -53,7 +53,7 @@ var (
 	// SMTP status code (5.x.x or 4.x.x) to classify hard/soft bounces.
 	reSMTPStatus = regexp.MustCompile(`(?m)(?i)^(?:Status:\s*)?(?:\d{3}\s+)?([45]\.\d+\.\d+)`)
 
-	// List of (conventional) strings to guess hard bounces.
+	// CustomerList of (conventional) strings to guess hard bounces.
 	reHardBounce = regexp.MustCompile(`(?i)(NXDOMAIN|user unknown|address not found|mailbox not found|address.*reject|does not exist|` +
 		`invalid recipient|no such user|recipient.*invalid|undeliverable|permanent.*failure|permanent.*error|` +
 		`bad.*address|unknown.*user|account.*disabled|address.*disabled)`)
@@ -188,7 +188,7 @@ func (p *POP) Scan(limit int, ch chan models.Bounce) error {
 		case ch <- models.Bounce{
 			Type:           bounceType,
 			CampaignUUID:   hdr[models.EmailHeaderCampaignUUID],
-			SubscriberUUID: hdr[models.EmailHeaderSubscriberUUID],
+			CustomerUUID: hdr[models.EmailHeaderCustomerUUID],
 			Source:         p.opt.Host,
 			CreatedAt:      date,
 			Meta:           meta,

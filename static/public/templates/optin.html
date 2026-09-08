@@ -8,7 +8,7 @@
 
     <form method="post" class="optin-form">
         <ul>
-            {{ range $i, $l := .Data.Lists }}
+            {{ range $i, $l := .Data.CustomerLists }}
                 <input type="hidden" name="l" value="{{ $l.UUID }}" />
                 {{ if eq $l.Type "public" }}
                     <li>{{ $l.Name }}</li>

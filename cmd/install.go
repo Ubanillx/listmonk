@@ -63,10 +63,10 @@ func install(lastVer string, db *sqlx.DB, fs stuffbin.FileSystem, prompt, idempo
 	// Load the queries.
 	q := prepareQueries(qMap, db, ko)
 
-	// Sample list.
+	// Sample customer_list.
 	defList, optinList := installLists(q)
 
-	// Sample subscribers.
+	// Sample customers.
 	installSubs(defList, optinList, q)
 
 	// Templates.
@@ -140,64 +140,66 @@ func installLists(q *models.Queries) (int, int) {
 	)
 	if err := q.CreateList.Get(&defList,
 		uuid.Must(uuid.NewV4()),
-		"Default list",
-		models.ListTypePrivate,
-		models.ListOptinSingle,
-		models.ListStatusActive,
+		"Default customer_list",
+		models.CustomerListTypePrivate,
+		models.CustomerListOptinSingle,
+		models.CustomerListStatusActive,
 		pq.StringArray{"test"},
 		"",
+		false,
 		nil,
 		nil,
 		nil,
 		models.ResourceVisibilityPrivate,
 	); err != nil {
-		lo.Fatalf("error creating list: %v", err)
+		lo.Fatalf("error creating customer_list: %v", err)
 	}
 
 	if err := q.CreateList.Get(&optinList, uuid.Must(uuid.NewV4()),
-		"Opt-in list",
-		models.ListTypePublic,
-		models.ListOptinDouble,
-		models.ListStatusActive,
+		"Opt-in customer_list",
+		models.CustomerListTypePublic,
+		models.CustomerListOptinDouble,
+		models.CustomerListStatusActive,
 		pq.StringArray{"test"},
 		"",
+		false,
 		nil,
 		nil,
 		nil,
 		models.ResourceVisibilityPrivate,
 	); err != nil {
-		lo.Fatalf("error creating list: %v", err)
+		lo.Fatalf("error creating customer_list: %v", err)
 	}
 
 	return defList, optinList
 }
 
-func installSubs(defListID, optinListID int, q *models.Queries) {
-	// Sample subscriber.
+func installSubs(defCustomerListID, optinCustomerListID int, q *models.Queries) {
+	// Sample customer.
 	var id int
-	if err := q.InsertSubscriber.Get(&id,
+	if err := q.InsertCustomer.Get(&id,
 		uuid.Must(uuid.NewV4()),
 		"john@example.com",
 		"John Doe",
-		models.SubscriberStatusEnabled,
+		models.CustomerStatusEnabled,
 		`{"type": "known", "good": true, "city": "Bengaluru"}`,
-		pq.Int64Array{int64(defListID)},
+		pq.Int64Array{int64(defCustomerListID)},
 		pq.StringArray{},
 		models.SubscriptionStatusUnconfirmed,
 	); err != nil {
-		lo.Fatalf("Error creating subscriber: %v", err)
+		lo.Fatalf("Error creating customer: %v", err)
 	}
-	if err := q.InsertSubscriber.Get(&id,
+	if err := q.InsertCustomer.Get(&id,
 		uuid.Must(uuid.NewV4()),
 		"anon@example.com",
 		"Anon Doe",
-		models.SubscriberStatusEnabled,
+		models.CustomerStatusEnabled,
 		`{"type": "unknown", "good": true, "city": "Bengaluru"}`,
-		pq.Int64Array{int64(optinListID)},
+		pq.Int64Array{int64(optinCustomerListID)},
 		pq.StringArray{},
 		models.SubscriptionStatusUnconfirmed,
 	); err != nil {
-		lo.Fatalf("error creating subscriber: %v", err)
+		lo.Fatalf("error creating customer: %v", err)
 	}
 }
 
@@ -233,7 +235,7 @@ func installTemplates(q *models.Queries) (int, int) {
 		lo.Fatalf("error reading default e-mail template: %v", err)
 	}
 
-	if _, err := q.CreateTemplate.Exec("Sample transactional template", models.TemplateTypeTx, "Welcome {{ .Subscriber.Name }}", txTpl.ReadBytes(), nil, pq.Int64Array{}, nil, nil, nil, models.ResourceVisibilityPrivate); err != nil {
+	if _, err := q.CreateTemplate.Exec("Sample transactional template", models.TemplateTypeTx, "Welcome {{ .Customer.Name }}", txTpl.ReadBytes(), nil, pq.Int64Array{}, nil, nil, nil, models.ResourceVisibilityPrivate); err != nil {
 		lo.Fatalf("error creating sample transactional template: %v", err)
 	}
 
@@ -261,8 +263,8 @@ func installCampaign(campTplID, archiveTplID int, q *models.Queries) {
 		"Test campaign",
 		"Welcome to listmonk",
 		"No Reply <noreply@yoursite.com>",
-		`<h3>Hi {{ .Subscriber.FirstName }}!</h3>
-		<p>This is a test e-mail campaign. Your second name is {{ .Subscriber.LastName }} and you are from {{ .Subscriber.Attribs.city }}.</p>
+		`<h3>Hi {{ .Customer.FirstName }}!</h3>
+		<p>This is a test e-mail campaign. Your second name is {{ .Customer.LastName }} and you are from {{ .Customer.Attribs.city }}.</p>
 		<p>Here is a <a href="https://listmonk.app@TrackLink">tracked link</a>.</p>
 		<p>Use the link icon in the editor toolbar or when writing raw HTML or Markdown,
 			simply suffix @TrackLink to the end of a URL to turn it into a tracking link. Example:</p>
@@ -283,7 +285,7 @@ func installCampaign(campTplID, archiveTplID int, q *models.Queries) {
 		false,
 		"welcome-to-listmonk",
 		archiveTplID,
-		json.RawMessage(`{"name":"Subscriber"}`),
+		json.RawMessage(`{"name":"Customer"}`),
 		pq.Array([]int{}),
 		nil,
 		false,
@@ -383,7 +385,7 @@ func installUser(username, password, apiUsername string, q *models.Queries) int 
 // create the super administrator from environment variables. Seed resources
 // exist before that account, so they must become personal resources of it.
 func claimInstallResources(db *sqlx.DB, userID int) {
-	for _, table := range []string{"lists", "subscribers", "templates", "campaigns", "media"} {
+	for _, table := range []string{"customer_lists", "customers", "templates", "campaigns", "media"} {
 		stmt := fmt.Sprintf(`
 			UPDATE %s SET owner_user_id = $1, original_owner_user_id = $1
 			WHERE owner_user_id IS NULL AND organization_id IS NULL`, table)

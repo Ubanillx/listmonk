@@ -183,31 +183,31 @@ func TestOwnerScopedResourceAccessBoundaries(t *testing.T) {
 		want   bool
 	}{
 		{
-			name:   "member reads own organization list",
+			name:   "member reads own organization customer_list",
 			access: member,
 			scope:  workspaceTestScope(7, 20, models.ResourceVisibilityPrivate, false),
 			want:   true,
 		},
 		{
-			name:   "member cannot read another members old shared list",
+			name:   "member cannot read another members old shared customer_list",
 			access: member,
 			scope:  workspaceTestScope(7, 10, models.ResourceVisibilityOrganization, false),
 			want:   false,
 		},
 		{
-			name:   "manager can inspect another members list",
+			name:   "manager can inspect another members customer_list",
 			access: manager,
 			scope:  workspaceTestScope(7, 10, models.ResourceVisibilityPrivate, false),
 			want:   true,
 		},
 		{
-			name:   "member cannot inspect pending list",
+			name:   "member cannot inspect pending customer_list",
 			access: member,
 			scope:  workspaceTestScope(7, 0, models.ResourceVisibilityPrivate, true),
 			want:   false,
 		},
 		{
-			name:   "manager can inspect pending list for transfer",
+			name:   "manager can inspect pending customer_list for transfer",
 			access: manager,
 			scope:  workspaceTestScope(7, 0, models.ResourceVisibilityPrivate, true),
 			want:   true,

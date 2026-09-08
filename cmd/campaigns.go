@@ -34,16 +34,21 @@ type campReq struct {
 	// partial update can distinguish an omitted value from the saved scope.
 	Visibility string `json:"visibility"`
 
-	// This overrides Campaign.Lists to receive and
-	// write a list of int IDs during creation and updation.
-	// Campaign.Lists is JSONText for sending lists children
+	// This overrides Campaign.CustomerLists to receive and
+	// write a customer_list of int IDs during creation and updation.
+	// Campaign.CustomerLists is JSONText for sending customer_lists children
 	// to the outside world.
-	ListIDs []int `json:"lists"`
+	CustomerListIDs []int `json:"customer_list_ids"`
 
 	MediaIDs []int `json:"media"`
 
 	// This is only relevant to campaign test requests.
-	SubscriberEmails pq.StringArray `json:"subscribers"`
+	CustomerEmails pq.StringArray `json:"customers"`
+}
+
+type campaignPoolAudience struct {
+	PoolID    int
+	SegmentID *int64
 }
 
 type campaignCloneReq struct {
@@ -83,7 +88,7 @@ func (a *App) GetCampaigns(c echo.Context) error {
 	)
 
 	// Query and retrieve campaigns from the active workspace only, then apply
-	// any legacy campaign/list grants before pagination is exposed.
+	// any legacy campaign/customer_list grants before pagination is exposed.
 	res, total, err := a.queryReadableWorkspaceCampaigns(c, access, query, status, tags, orderBy, order, pg.Offset, pg.Limit)
 	if err != nil {
 		return err
@@ -145,16 +150,18 @@ func (a *App) GetCampaign(c echo.Context) error {
 
 // redactCampaignSensitiveFields keeps public and manager read-only views
 // useful for inspection and cloning without exposing a member's sender
-// identity, arbitrary delivery headers, or audience list names.
+// identity, arbitrary delivery headers, or audience customer_list names.
 func (a *App) redactCampaignSensitiveFields(access models.WorkspaceAccess, campaign *models.Campaign) {
 	if a.core.CanSeeSensitiveResource(access, campaign.ResourceScope) {
 		return
 	}
 	campaign.FromEmail = ""
 	campaign.Headers = nil
-	campaign.ReplyMailboxID = null.Int{}
-	campaign.ReplyMailboxEmail = ""
-	campaign.Lists = []byte("[]")
+	// Reply mailboxes are company-internal routing addresses, not customer
+	// contact data. Keep them visible so operators can verify the effective
+	// pool/segment return path; customer addresses remain protected by the pool
+	// contact DTO and snapshot boundaries.
+	campaign.CustomerLists = []byte("[]")
 }
 
 // PreviewCampaign renders the HTML preview of a campaign body.
@@ -187,6 +194,9 @@ func (a *App) PreviewCampaign(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := a.core.ValidatePoolCampaignAudience(id); err != nil {
+		return err
+	}
 
 	// There's a body in the request to preview instead of the body in the DB.
 	if isPost {
@@ -204,7 +214,7 @@ func (a *App) PreviewCampaign(c echo.Context) error {
 
 	// Use a dummy campaign ID to prevent views and clicks from {{ TrackView }}
 	// and {{ TrackLink }} being registered on preview.
-	camp.UUID = dummySubscriber.UUID
+	camp.UUID = dummyCustomer.UUID
 	if err := camp.CompileTemplate(a.manager.TemplateFuncs(&camp)); err != nil {
 		a.log.Printf("error compiling template: %v", err)
 		return echo.NewHTTPError(http.StatusBadRequest,
@@ -212,7 +222,7 @@ func (a *App) PreviewCampaign(c echo.Context) error {
 	}
 
 	// Render the message body.
-	msg, err := a.manager.NewCampaignMessage(&camp, dummySubscriber)
+	msg, err := a.manager.NewCampaignMessage(&camp, dummyCustomer)
 	if err != nil {
 		a.log.Printf("error rendering message: %v", err)
 		return echo.NewHTTPError(http.StatusBadRequest,
@@ -263,7 +273,7 @@ func (a *App) PreviewCampaignArchive(c echo.Context) error {
 
 	// Render the campaign body.
 	out := res[0].Campaign
-	msg, err := a.manager.NewCampaignMessage(out, res[0].Subscriber)
+	msg, err := a.manager.NewCampaignMessage(out, res[0].Customer)
 	if err != nil {
 		a.log.Printf("error rendering campaign: %v", err)
 		return c.Render(http.StatusInternalServerError, tplMessage,
@@ -314,7 +324,11 @@ func (a *App) CreateCampaign(c echo.Context) error {
 		return err
 	}
 
-	if err := a.requireWorkspaceListIDsForRequest(c, access, o.ListIDs, true); err != nil {
+	regularListIDs, poolAudiences, err := a.splitCampaignAudienceIDs(access, o.CustomerListIDs)
+	if err != nil {
+		return err
+	}
+	if err := a.requireWorkspaceCustomerListIDsForRequest(c, access, regularListIDs, true); err != nil {
 		return err
 	}
 	if err := a.requireUsableCampaignResources(c, access, o); err != nil {
@@ -355,7 +369,7 @@ func (a *App) CreateCampaign(c echo.Context) error {
 		o.ArchiveTemplateID = o.TemplateID
 	}
 
-	out, err := a.core.CreateCampaignInWorkspace(access, o.Campaign, o.ListIDs, o.MediaIDs, core.ApplyWorkspaceScope(access, visibility))
+	out, err := a.core.CreateCampaignInWorkspace(access, o.Campaign, regularListIDs, o.MediaIDs, core.ApplyWorkspaceScope(access, visibility))
 	if err != nil {
 		return err
 	}
@@ -363,12 +377,23 @@ func (a *App) CreateCampaign(c echo.Context) error {
 		return err
 	}
 	out.ReplyMailboxID = o.ReplyMailboxID
+	for _, audience := range poolAudiences {
+		if err := a.core.AttachPoolToCampaign(out.ID, audience.PoolID, audience.SegmentID, int64(access.OrganizationID)); err != nil {
+			return err
+		}
+	}
+	if len(poolAudiences) > 0 {
+		out, err = a.core.GetWorkspaceCampaign(access, out.ID)
+		if err != nil {
+			return err
+		}
+	}
 
 	return c.JSON(http.StatusOK, okResp{out})
 }
 
 // CloneCampaign performs a server-side snapshot copy. The frontend only
-// selects a target; it never supplies lists, sender settings, or media rows.
+// selects a target; it never supplies customer_lists, sender settings, or media rows.
 func (a *App) CloneCampaign(c echo.Context) error {
 	access, err := a.workspaceAccess(c)
 	if err != nil {
@@ -449,7 +474,11 @@ func (a *App) UpdateCampaign(c echo.Context) error {
 		return err
 	}
 
-	if err := a.requireWorkspaceListIDsForRequest(c, access, o.ListIDs, true); err != nil {
+	regularListIDs, poolAudiences, err := a.splitCampaignAudienceIDs(access, o.CustomerListIDs)
+	if err != nil {
+		return err
+	}
+	if err := a.requireWorkspaceCustomerListIDsForRequest(c, access, regularListIDs, true); err != nil {
 		return err
 	}
 	if err := a.requireUsableCampaignResources(c, access, o); err != nil {
@@ -472,19 +501,27 @@ func (a *App) UpdateCampaign(c echo.Context) error {
 		o = c
 	}
 
-	if hasRecipients, err := a.core.HasCampaignRecipientsInWorkspace(access, id); err != nil {
+	hasRecipients, err := a.core.HasCampaignRecipientsInWorkspace(access, id)
+	if err != nil {
 		return err
-	} else if hasRecipients {
-		curListIDs, err := a.core.GetCampaignListIDsInWorkspace(access, id)
+	}
+	// Drafts may have a provisional pool snapshot created by the audience
+	// selector. It is rebuilt below on every update; only a campaign that has
+	// left draft is locked to its original audience after recipients exist.
+	if cm.Status == models.CampaignStatusDraft {
+		hasRecipients = false
+	}
+	if hasRecipients {
+		curCustomerListIDs, err := a.core.GetCampaignCustomerListIDsInWorkspace(access, id)
 		if err != nil {
 			return err
 		}
-		if !sameIntSlice(curListIDs, o.ListIDs) {
+		if !sameIntSlice(curCustomerListIDs, o.CustomerListIDs) {
 			return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("campaigns.cantUpdateListsAfterStart"))
 		}
 	}
 
-	out, err := a.core.UpdateCampaignInWorkspace(access, id, o.Campaign, o.ListIDs, o.MediaIDs, visibility)
+	out, err := a.core.UpdateCampaignInWorkspace(access, id, o.Campaign, regularListIDs, o.MediaIDs, visibility)
 	if err != nil {
 		return err
 	}
@@ -495,7 +532,51 @@ func (a *App) UpdateCampaign(c echo.Context) error {
 	if visibility != "" {
 		out.Visibility = visibility
 	}
-
+	// Pool audience rows are maintained separately from legacy customer-list
+	// rows. Remove pools omitted by the current draft, then attach the selected
+	// first-level/secondary pools. Attach is idempotent and resolves a first-level
+	// pool to the target organization's secondary segment at send time.
+	poolIDs := make([]int, 0, len(poolAudiences))
+	for _, audience := range poolAudiences {
+		poolIDs = append(poolIDs, audience.PoolID)
+	}
+	if !hasRecipients {
+		// A draft has no immutable send snapshot yet. Rebuild all pool
+		// associations so removing a secondary list (or replacing it with a
+		// different one under the same first-level pool) cannot leave stale
+		// audience metadata or recipients behind.
+		if _, err := a.db.Exec(`DELETE FROM campaign_pool_recipients WHERE campaign_id=$1`, id); err != nil {
+			return err
+		}
+		if _, err := a.db.Exec(`DELETE FROM campaign_customer_lists WHERE campaign_id=$1 AND pool_id IS NOT NULL`, id); err != nil {
+			return err
+		}
+	} else if len(poolIDs) == 0 {
+		if _, err := a.db.Exec(`DELETE FROM campaign_pool_recipients WHERE campaign_id=$1`, id); err != nil {
+			return err
+		}
+		if _, err := a.db.Exec(`DELETE FROM campaign_customer_lists WHERE campaign_id=$1 AND pool_id IS NOT NULL`, id); err != nil {
+			return err
+		}
+	} else if _, err := a.db.Exec(`DELETE FROM campaign_pool_recipients WHERE campaign_id=$1 AND pool_id <> ALL($2::INT[])`, id, pq.Array(poolIDs)); err != nil {
+		return err
+	}
+	if len(poolIDs) > 0 {
+		if _, err := a.db.Exec(`DELETE FROM campaign_customer_lists WHERE campaign_id=$1 AND pool_id IS NOT NULL AND pool_id <> ALL($2::INT[])`, id, pq.Array(poolIDs)); err != nil {
+			return err
+		}
+	}
+	for _, audience := range poolAudiences {
+		if err := a.core.AttachPoolToCampaign(id, audience.PoolID, audience.SegmentID, int64(access.OrganizationID)); err != nil {
+			return err
+		}
+	}
+	if len(poolAudiences) > 0 {
+		out, err = a.core.GetWorkspaceCampaign(access, id)
+		if err != nil {
+			return err
+		}
+	}
 	return c.JSON(http.StatusOK, okResp{out})
 }
 
@@ -536,6 +617,11 @@ func (a *App) UpdateCampaignStatus(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusConflict, "campaign owner has no personal SMTP configured")
 		}
 		if err := a.requirePersonalSMTPAvailable(int(current.OwnerUserID.Int)); err != nil {
+			return err
+		}
+	}
+	if req.Status == models.CampaignStatusScheduled || req.Status == models.CampaignStatusRunning {
+		if err := a.core.ValidatePoolCampaignAudience(id); err != nil {
 			return err
 		}
 	}
@@ -663,7 +749,7 @@ func (a *App) DeleteCampaigns(c echo.Context) error {
 		if err := requireLegacyPermission(auth.GetUser(c), auth.PermCampaignsManageAll, auth.PermCampaignsManage); err != nil {
 			return err
 		}
-		managed, err := a.core.ListManagedWorkspaceResources(access, resourceCampaigns)
+		managed, err := a.core.CustomerListManagedWorkspaceResources(access, resourceCampaigns)
 		if err != nil {
 			return err
 		}
@@ -755,7 +841,7 @@ func (a *App) GetRunningCampaignStats(c echo.Context) error {
 }
 
 // TestCampaign handles the sending of a campaign message to
-// arbitrary subscribers for testing.
+// arbitrary customers for testing.
 func (a *App) TestCampaign(c echo.Context) error {
 	access, err := a.workspaceAccess(c)
 	if err != nil {
@@ -791,23 +877,23 @@ func (a *App) TestCampaign(c echo.Context) error {
 	} else {
 		req = c
 	}
-	if err := a.requireWorkspaceListIDsForRequest(c, access, req.ListIDs, true); err != nil {
+	if err := a.requireWorkspaceCustomerListIDsForRequest(c, access, req.CustomerListIDs, true); err != nil {
 		return err
 	}
 	if err := a.requireUsableCampaignResources(c, access, req); err != nil {
 		return err
 	}
-	if len(req.SubscriberEmails) == 0 {
+	if len(req.CustomerEmails) == 0 {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("campaigns.noSubsToTest"))
 	}
 
-	// Sanitize subscriber e-mails.
-	for i := range req.SubscriberEmails {
-		req.SubscriberEmails[i] = strings.ToLower(strings.TrimSpace(req.SubscriberEmails[i]))
+	// Sanitize customer e-mails.
+	for i := range req.CustomerEmails {
+		req.CustomerEmails[i] = strings.ToLower(strings.TrimSpace(req.CustomerEmails[i]))
 	}
 
-	// Get the subscribers from the DB by their e-mails.
-	subs, err := a.core.GetManagedWorkspaceSubscribersByEmails(access, req.SubscriberEmails)
+	// Get the customers from the DB by their e-mails.
+	subs, err := a.core.GetManagedWorkspaceCustomersByEmails(access, req.CustomerEmails)
 	if err != nil {
 		return err
 	}
@@ -848,7 +934,7 @@ func (a *App) TestCampaign(c echo.Context) error {
 	camp.ContentType = req.ContentType
 	camp.Headers = req.Headers
 	camp.TemplateID = req.TemplateID
-	// For a test send the submitted media list is authoritative. The preview
+	// For a test send the submitted media customer_list is authoritative. The preview
 	// query also includes the campaign's saved associations, which would make a
 	// media item that the user just removed reappear in the test message. Start
 	// from the request and let preloadTestCampaignMedia append the selected
@@ -1101,7 +1187,7 @@ func (a *App) GetCampaignReportRecipients(c echo.Context) error {
 	if _, err := a.requireSensitiveWorkspaceCampaign(c, access, id); err != nil {
 		return err
 	}
-	if err := requireLegacyPermission(auth.GetUser(c), auth.PermSubscribersGetAll, auth.PermSubscribersGet); err != nil {
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCustomersGetAll, auth.PermCustomersGet); err != nil {
 		return err
 	}
 	if !a.cfg.Privacy.IndividualTracking {
@@ -1148,7 +1234,7 @@ func (a *App) GetCampaignsReportRecipients(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := requireLegacyPermission(auth.GetUser(c), auth.PermSubscribersGetAll, auth.PermSubscribersGet); err != nil {
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCustomersGetAll, auth.PermCustomersGet); err != nil {
 		return err
 	}
 	if !a.cfg.Privacy.IndividualTracking {
@@ -1239,7 +1325,7 @@ func (a *App) getAccessibleCampaignReportIDs(c echo.Context) ([]int, error) {
 		return nil, err
 	}
 
-	// The list endpoint intentionally contains campaigns that are merely
+	// The customer_list endpoint intentionally contains campaigns that are merely
 	// readable (for example organization/global publications).  Analytics are
 	// narrower: ordinary users may report only on campaigns they own, while an
 	// organization manager may report on campaigns in the active organization.
@@ -1269,7 +1355,7 @@ func (a *App) getManagedCampaignReportIDs(c echo.Context, access models.Workspac
 			a.i18n.Ts("globals.messages.errorInvalidIDs", "error", err.Error()))
 	}
 	if len(ids) == 0 {
-		managed, err := a.core.ListManagedWorkspaceResources(access, resourceCampaigns)
+		managed, err := a.core.CustomerListManagedWorkspaceResources(access, resourceCampaigns)
 		if err != nil {
 			return nil, err
 		}
@@ -1303,8 +1389,8 @@ func (a *App) getManagedCampaignReportIDs(c echo.Context, access models.Workspac
 	return out, nil
 }
 
-// sendTestMessage takes a campaign and a subscriber and sends out a sample campaign message.
-func (a *App) sendTestMessage(sub models.Subscriber, camp *models.Campaign) error {
+// sendTestMessage takes a campaign and a customer and sends out a sample campaign message.
+func (a *App) sendTestMessage(sub models.Customer, camp *models.Campaign) error {
 	if err := camp.CompileTemplate(a.manager.TemplateFuncs(camp)); err != nil {
 		a.log.Printf("error compiling template: %v", err)
 		return echo.NewHTTPError(http.StatusInternalServerError,
@@ -1523,6 +1609,81 @@ func (a *App) requireUsableCampaignResources(c echo.Context, access models.Works
 	return nil
 }
 
+// splitCampaignAudienceIDs separates legacy customer lists from first-class
+// public pools. Pool IDs are authorized through pool delivery grants/segments,
+// not through customer-list read/manage permissions; this is what permits an
+// organization to select a pool while keeping contact details hidden.
+func (a *App) splitCampaignAudienceIDs(access models.WorkspaceAccess, ids []int) ([]int, []campaignPoolAudience, error) {
+	regular := make([]int, 0, len(ids))
+	pools := make([]campaignPoolAudience, 0)
+	if len(ids) == 0 {
+		return regular, pools, nil
+	}
+	var rows []struct {
+		ID     int      `db:"id"`
+		Type   string   `db:"type"`
+		PoolID null.Int `db:"pool_parent_id"`
+	}
+	if err := a.db.Select(&rows, `SELECT id,type,pool_parent_id FROM customer_lists WHERE id = ANY($1::INT[])`, pq.Array(ids)); err != nil {
+		return nil, nil, err
+	}
+	seen := make(map[int]bool, len(rows))
+	requested := make(map[int]struct{}, len(ids))
+	for _, id := range ids {
+		requested[id] = struct{}{}
+	}
+	for _, row := range rows {
+		seen[row.ID] = true
+		switch row.Type {
+		case models.CustomerListTypePool:
+			if access.OrganizationID <= 0 {
+				return nil, nil, echo.NewHTTPError(http.StatusForbidden, "public pool requires an organization workspace")
+			}
+			if !access.PlatformAdmin {
+				if !access.IsOrganization() {
+					return nil, nil, echo.NewHTTPError(http.StatusForbidden, "public pool requires an organization workspace")
+				}
+				ok, err := a.core.HasPoolOrganizationPermission(row.ID, int64(access.OrganizationID))
+				if err != nil {
+					return nil, nil, err
+				}
+				if !ok {
+					if err := a.db.Get(&ok, `SELECT EXISTS(SELECT 1 FROM pool_segments WHERE pool_id=$1 AND organization_id=$2)`, row.ID, access.OrganizationID); err != nil {
+						return nil, nil, err
+					}
+				}
+				if !ok {
+					return nil, nil, echo.NewHTTPError(http.StatusForbidden, "pool delivery access has not been granted")
+				}
+			}
+			p := campaignPoolAudience{PoolID: row.ID}
+			pools = append(pools, p)
+		case models.CustomerListTypePoolSegment:
+			if !row.PoolID.Valid {
+				return nil, nil, echo.NewHTTPError(http.StatusBadRequest, "public-pool segment is not bound to a first-level pool")
+			}
+			var orgID int64
+			if err := a.db.Get(&orgID, `SELECT organization_id FROM pool_segments WHERE list_id=$1 AND pool_id=$2`, row.ID, row.PoolID.Int); err != nil {
+				return nil, nil, err
+			}
+			if !access.PlatformAdmin && (!access.IsOrganization() || orgID != int64(access.OrganizationID)) {
+				return nil, nil, echo.NewHTTPError(http.StatusForbidden, "pool segment is outside the active organization")
+			}
+			segmentID := int64(row.ID)
+			if err := a.db.Get(&segmentID, `SELECT id FROM pool_segments WHERE list_id=$1 AND pool_id=$2`, row.ID, row.PoolID.Int); err != nil {
+				return nil, nil, err
+			}
+			pools = append(pools, campaignPoolAudience{PoolID: int(row.PoolID.Int), SegmentID: &segmentID})
+		default:
+			regular = append(regular, row.ID)
+		}
+	}
+	if len(seen) != len(requested) {
+		return nil, nil, echo.NewHTTPError(http.StatusBadRequest, "one or more customer lists were not found")
+	}
+	return regular, pools, nil
+}
+
 // validateCampaignFields validates incoming campaign field values.
 func (a *App) validateCampaignFields(c campReq) (campReq, error) {
 	if c.FromEmail == "" {
@@ -1562,8 +1723,8 @@ func (a *App) validateCampaignFields(c campReq) (campReq, error) {
 		}
 	}
 
-	if len(c.ListIDs) == 0 {
-		return c, errors.New(a.i18n.T("campaigns.fieldInvalidListIDs"))
+	if len(c.CustomerListIDs) == 0 {
+		return c, errors.New(a.i18n.T("campaigns.fieldInvalidCustomerListIDs"))
 	}
 
 	if email.IsMessengerName(c.Messenger) {
@@ -1613,7 +1774,7 @@ func (a *App) validateCampaignFields(c campReq) (campReq, error) {
 	// Validate and initialize attribs.
 	if c.Attribs != nil {
 		if _, err := json.Marshal(c.Attribs); err != nil {
-			return c, errors.New(a.i18n.T("subscribers.invalidJSON"))
+			return c, errors.New(a.i18n.T("customers.invalidJSON"))
 		}
 	}
 
@@ -1638,36 +1799,36 @@ func (a *App) validateCampaignFields(c campReq) (campReq, error) {
 
 // makeOptinCampaignMessage makes a default opt-in campaign message body.
 func (a *App) makeOptinCampaignMessage(access models.WorkspaceAccess, o campReq) (campReq, error) {
-	if len(o.ListIDs) == 0 {
-		return o, echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("campaigns.fieldInvalidListIDs"))
+	if len(o.CustomerListIDs) == 0 {
+		return o, echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("campaigns.fieldInvalidCustomerListIDs"))
 	}
 
-	// Fetch double opt-in lists from the given list IDs from the DB.
-	lists, err := a.core.GetListsByOptinInWorkspace(access, o.ListIDs, models.ListOptinDouble)
+	// Fetch double opt-in customer_lists from the given customer_list IDs from the DB.
+	customer_lists, err := a.core.GetListsByOptinInWorkspace(access, o.CustomerListIDs, models.CustomerListOptinDouble)
 	if err != nil {
 		return o, err
 	}
 
-	// There are no double opt-in lists.
-	if len(lists) == 0 {
+	// There are no double opt-in customer_lists.
+	if len(customer_lists) == 0 {
 		return o, echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("campaigns.noOptinLists"))
 	}
 
-	// Construct the opt-in URL with list IDs.
-	listIDs := url.Values{}
-	for _, l := range lists {
-		listIDs.Add("l", l.UUID)
+	// Construct the opt-in URL with customer_list IDs.
+	customerListIDs := url.Values{}
+	for _, l := range customer_lists {
+		customerListIDs.Add("l", l.UUID)
 	}
-	// optinURLFunc := template.URL("{{ OptinURL }}?" + listIDs.Encode())
-	optinURLAttr := template.HTMLAttr(fmt.Sprintf(`href="{{ OptinURL }}%s"`, listIDs.Encode()))
+	// optinURLFunc := template.URL("{{ OptinURL }}?" + customerListIDs.Encode())
+	optinURLAttr := template.HTMLAttr(fmt.Sprintf(`href="{{ OptinURL }}%s"`, customerListIDs.Encode()))
 
 	// Prepare sample opt-in message for the campaign.
 	var b bytes.Buffer
 
 	if err := notifs.Tpls.ExecuteTemplate(&b, "optin-campaign", struct {
-		Lists        []models.List
-		OptinURLAttr template.HTMLAttr
-	}{lists, optinURLAttr}); err != nil {
+		CustomerLists []models.CustomerList
+		OptinURLAttr  template.HTMLAttr
+	}{customer_lists, optinURLAttr}); err != nil {
 		a.log.Printf("error compiling 'optin-campaign' template: %v", err)
 		return o, echo.NewHTTPError(http.StatusBadRequest,
 			a.i18n.Ts("templates.errorCompiling", "error", err.Error()))

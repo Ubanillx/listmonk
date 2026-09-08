@@ -101,6 +101,8 @@ Go 测试放在实现附近的 `*_test.go`；修改工作区、权限、导入�
 
 ## 发布与部署脚本
 
+- v6.23.0 术语迁移在重命名统计物化视图后同步重命名输出列，再创建索引；兼容旧 `list_id/subscriber_count` 并保留数据。迁移回归测试使用 `MIGRATION_TEST_DSN` 指向测试 PostgreSQL，创建并清理独立测试 schema，覆盖重复执行。
+
 - 根目录 `docker-compose.yml` 是常规 Compose 部署：应用启动时幂等安装、执行迁移，再开始服务；所有密钥使用运行环境变量或 `LISTMONK_*_FILE`，不可提交真实配置。
 - `deploy/package_bundle.sh` 先执行 `make dist`，打包官方镜像、本地镜像、PostgreSQL 镜像与 Compose 脚本。将生成包复制到目标机后，依次运行包内 `scripts/load-images.sh`，配置 `env/runtime.env`，再运行 `start-online.sh` 或 `start-local.sh`；`stop.sh` 用于停止。
 - `Jenkinsfile` 执行 `make test` 和 `make dist`，归档二进制、前端压缩包及 SHA-256，再通过 SSH 和 systemd 进行可回滚部署。`listmonk@.service` 是强化隔离的模板，`listmonk-simple.service` 兼容旧系统。

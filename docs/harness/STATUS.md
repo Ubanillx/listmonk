@@ -1,13 +1,15 @@
 # 工作状态
 
-快照日期：2026-09-07
+快照日期：2026-09-08
 
 - 公海二级列表模板下载与单条维护表格体验优化（2026-09-07）：管理弹窗的“下载模板”现在生成 `pool-segment-allocation-templates.zip`，同时包含 CSV 与 XLSX 两份 `customer_code,email` 模板；单条维护改为工具栏 + 结果计数 + 状态/组织剔除标签的后台表格，状态统一显示“正常 / 已归档 / 已移除”，空结果使用固定高度空状态，邮箱列省略显示；不再在弹窗打开时全量读取联系人，必须先按客户编码查询。验证：`cd frontend && yarn lint && yarn build`；浏览器实际打开公海管理页，已确认目标组织的二级列表中显示新版工具栏、3 条查询结果和标签列；重启 `dev-backend-1` 后 `http://localhost:9173` 返回 HTTP 200，日志显示无待执行迁移。
 
 ## 已完成
 
+- 修复 v6.23.0 旧库升级：物化视图改名后显式将 `list_id/subscriber_count` 改为 `customer_list_id/customer_count`，再创建索引，保留原数据。真实 PostgreSQL 回归覆盖旧名、过渡名、目标名和无视图四种情况，以及重复执行和并发刷新（`internal/migrations/v6.23.0_test.go`，使用 `MIGRATION_TEST_DSN`）。
+
 - 用户列表 API 标签改用已安装 MDI 图标库中的 `code-tags`，修复原 `code` 图标名无对应字形导致的空白（`frontend/src/views/Users.vue`，2026-09-07）。验证：`yarn lint`、`yarn build` 通过；后端容器已重启，9173 与最新 Users 脚本均返回 HTTP 200，脚本包含 `code-tags`。
-- 客户/客户列表命名重构已完成：后端 API 使用 `/api/customers`、`/api/customer-lists`，数据库表、列、枚举和权限同步改名；v6.23.0/v6.24.0 迁移保留现有数据并重建客户列表统计视图。`namesalutation` 技术字段保持不变。验证：`go test ./...`、`cd frontend && yarn lint && yarn build`，Docker 重启后 9173 返回 HTTP 200；旧 `/api/lists` 返回 404。
+- 客户/客户列表命名重构已完成：后端 API 使用 `/api/customers`、`/api/customer-lists`，数据库表、列、枚举和权限同步改名；v6.23.0 迁移保留现有数据并升级客户列表统计视图及输出列名。`namesalutation` 技术字段保持不变。验证：`go test ./...`、`cd frontend && yarn lint && yarn build`，Docker 重启后 9173 返回 HTTP 200；旧 `/api/lists` 返回 404。
 
 - 客户管理界面已按业务确认调整：客户编码成为勾选框后的首个数据列，并位于新建/编辑表单首项；客户的“名称”显示为“称呼”；“客户列表”列显示可点击的列表名称，跳转至相应客户列表的客户筛选页。覆盖项已更新至 `frontend/cypress/e2e/customers.cy.js`；`cd frontend && yarn lint` 与中英文语言包 JSON 解析通过。生产管理端已通过 `cd frontend && yarn build` 构建并重启后端，`http://localhost:9173` 及其最新客户脚本均返回 HTTP 200（2026-09-04）。
 - 修复客户命名重构后超级管理员仪表板仍读取旧 `subscribers/lists` 物化视图的问题：新增 v6.26.0 迁移重建 `mat_dashboard_counts`，统一返回 `customers/customerLists`，避免前端读取 `counts.customerLists.total` 时渲染异常。Docker 已执行迁移并重启；仪表板接口返回 200、页面显示客户列表 18、客户 26，浏览器刷新后无新的渲染错误（2026-09-04）。

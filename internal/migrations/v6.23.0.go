@@ -64,6 +64,17 @@ CREATE MATERIALIZED VIEW IF NOT EXISTS mat_customer_list_customer_stats AS
   GROUP BY customer_lists.id, customer_list_memberships.status
   UNION ALL
   SELECT NOW(), 0, NULL, COUNT(id) FROM customers;
+
+-- Renaming a materialized view does not rename its output columns. These
+-- columns are in pg_attribute, not information_schema.columns.
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = 'mat_customer_list_customer_stats'::regclass AND attname = 'list_id' AND NOT attisdropped) THEN
+    ALTER MATERIALIZED VIEW mat_customer_list_customer_stats RENAME COLUMN list_id TO customer_list_id;
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = 'mat_customer_list_customer_stats'::regclass AND attname = 'subscriber_count' AND NOT attisdropped) THEN
+    ALTER MATERIALIZED VIEW mat_customer_list_customer_stats RENAME COLUMN subscriber_count TO customer_count;
+  END IF;
+END $$;
 CREATE UNIQUE INDEX IF NOT EXISTS mat_customer_list_customer_stats_idx
   ON mat_customer_list_customer_stats (customer_list_id, status);
 

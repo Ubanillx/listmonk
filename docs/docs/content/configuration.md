@@ -132,7 +132,7 @@ To change listmonk's time zone (logs, etc.) edit `docker-compose.yml`:
 environment:
     - TZ=Etc/UTC
 ```
-with any Timezone listed [here](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones). Then run `sudo docker-compose stop ; sudo docker-compose up` after making changes.
+with any Timezone listed [here](https://en.wikipedia.org/wiki/CustomerList_of_tz_database_time_zones). Then run `sudo docker-compose stop ; sudo docker-compose up` after making changes.
 
 ## SMTP
 
@@ -147,4 +147,4 @@ Some server hosts block outgoing SMTP ports (25, 465). You may have to contact y
 
 ### Batch size
 
-The batch size parameter is useful when working with very large lists with millions of subscribers for maximising throughput. It is the number of subscribers that are fetched from the database sequentially in a single cycle (~5 seconds) when a campaign is running. Increasing the batch size uses more memory, but reduces the round trip to the database.
+The batch size parameter is useful when working with very large customer_lists with millions of customers for maximising throughput. It is the number of customers that are fetched from the database sequentially in a single cycle (~5 seconds) when a campaign is running. Increasing the batch size uses more memory, but reduces the round trip to the database.

@@ -3,10 +3,10 @@ If you spot a security vulnerability in listmonk, please report it via GitHub [s
 
 The below listed scenarios are either not security vulnerabilities or are of acceptable risk. They keep getting reported unfortunately. Please refrain from doing so.
 
-### SQL injection via subscriber query
-The subscribers UI (and APIs) support issuing of arbitrary SQL expressions via a `query` parameter. While listmonk ensures that the queries are executed as readonly and has basic checks for target tables to prevent accidental side-effects, it is not really possible to prevent arbitrary Turing-complete SQL expressions from calling various Postgres functions. Postgres itself does not offer an easy way to allow/disallow specific functions.
+### SQL injection via customer query
+The customers UI (and APIs) support issuing of arbitrary SQL expressions via a `query` parameter. While listmonk ensures that the queries are executed as readonly and has basic checks for target tables to prevent accidental side-effects, it is not really possible to prevent arbitrary Turing-complete SQL expressions from calling various Postgres functions. Postgres itself does not offer an easy way to allow/disallow specific functions.
 
-That's why this feature is behind a special permission `subscribers:sql_query` and its risks are [clearly documented](__https://listmonk.app/docs/roles-and-permissions/#user-roles__). In a multi-user scenario, it is up to an admin to allow this permission to trusted users.
+That's why this feature is behind a special permission `customers:sql_query` and its risks are [clearly documented](__https://listmonk.app/docs/roles-and-permissions/#user-roles__). In a multi-user scenario, it is up to an admin to allow this permission to trusted users.
 
 ### Stored XSS via SVG
 In addition to images, listmonk allows uploading of arbitrary file types, .html, .js, .svg, .* and does not transform or modify the files. That means, it is possible to have `<script>`s and other arbitrary content inside HTML and SVG files. It is not possible for listmonk to have special checks or transformations for various file types, and many environments legitimately want SVGs and other filetypes to be uploaded.

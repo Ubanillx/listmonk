@@ -12,7 +12,7 @@
 | GET    | [/api/campaigns/{campaign_id}/report/links](#get-apicampaignscampaign_idreportlinks) | Retrieve link analytics for a campaign.   |
 | GET    | [/api/campaigns/{campaign_id}/report/recipients](#get-apicampaignscampaign_idreportrecipients) | Retrieve recipient-level analytics for a campaign. |
 | POST   | [/api/campaigns](#post-apicampaigns)                                        | Create a new campaign.                    |
-| POST   | [/api/campaigns/{campaign_id}/test](#post-apicampaignscampaign_idtest)      | Test campaign with arbitrary subscribers. |
+| POST   | [/api/campaigns/{campaign_id}/test](#post-apicampaignscampaign_idtest)      | Test campaign with arbitrary customers. |
 | PUT    | [/api/campaigns/{campaign_id}](#put-apicampaignscampaign_id)                | Update a campaign.                        |
 | PUT    | [/api/campaigns/{campaign_id}/status](#put-apicampaignscampaign_idstatus)   | Change status of a campaign.              |
 | PUT    | [/api/campaigns/{campaign_id}/archive](#put-apicampaignscampaign_idarchive) | Publish campaign to public archive.       |
@@ -56,10 +56,10 @@ Retrieve all campaigns.
                 "updated_at": "2020-03-14T17:36:41.29451+01:00",
                 "views": 0,
                 "clicks": 0,
-                "lists": [
+                "customerLists": [
                     {
                         "id": 1,
-                        "name": "Default list"
+                        "name": "Default customer_list"
                     }
                 ],
                 "started_at": null,
@@ -70,7 +70,7 @@ Retrieve all campaigns.
                 "name": "Test campaign",
                 "subject": "Welcome to listmonk",
                 "from_email": "No Reply <noreply@yoursite.com>",
-                "body": "<h3>Hi {{ .Subscriber.FirstName }}!</h3>\n\t\t\tThis is a test e-mail campaign. Your second name is {{ .Subscriber.LastName }} and you are from {{ .Subscriber.Attribs.city }}.",
+                "body": "<h3>Hi {{ .Customer.FirstName }}!</h3>\n\t\t\tThis is a test e-mail campaign. Your second name is {{ .Customer.LastName }} and you are from {{ .Customer.Attribs.city }}.",
                 "body_source": null,
                 "send_at": "2020-03-15T17:36:41.293233+01:00",
                 "status": "draft",
@@ -119,10 +119,10 @@ curl -u "api_user:token" -X GET 'http://localhost:9000/api/campaigns/1'
         "updated_at": "2020-03-14T17:36:41.29451+01:00",
         "views": 0,
         "clicks": 0,
-        "lists": [
+        "customerLists": [
             {
                 "id": 1,
-                "name": "Default list"
+                "name": "Default customer_list"
             }
         ],
         "started_at": null,
@@ -133,7 +133,7 @@ curl -u "api_user:token" -X GET 'http://localhost:9000/api/campaigns/1'
         "name": "Test campaign",
         "subject": "Welcome to listmonk",
         "from_email": "No Reply <noreply@yoursite.com>",
-        "body": "<h3>Hi {{ .Subscriber.FirstName }}!</h3>\n\t\t\tThis is a test e-mail campaign. Your second name is {{ .Subscriber.LastName }} and you are from {{ .Subscriber.Attribs.city }}.",
+        "body": "<h3>Hi {{ .Customer.FirstName }}!</h3>\n\t\t\tThis is a test e-mail campaign. Your second name is {{ .Customer.LastName }} and you are from {{ .Customer.Attribs.city }}.",
         "body_source": null,
         "send_at": "2020-03-15T17:36:41.293233+01:00",
         "status": "draft",
@@ -418,7 +418,7 @@ curl -u "api_user:token" -X GET 'http://localhost:9000/api/campaigns/1/report/re
   "data": {
     "results": [
       {
-        "subscriber_id": 5,
+        "customer_id": 5,
         "uuid": "6f06411c-d505-4f48-a0db-98ab394c86c0",
         "email": "jane@example.com",
         "name": "Jane",
@@ -455,7 +455,7 @@ Create a new campaign.
 | :----------- | :--------- | :------- | :--------------------------------------------------------------------------------------------------------------------- |
 | name         | string     | Yes      | Campaign name.                                                                                                         |
 | subject      | string     | Yes      | Campaign email subject.                                                                                                |
-| lists        | number\[\] | Yes      | List IDs to send campaign to.                                                                                          |
+| customer_lists        | number\[\] | Yes      | CustomerList IDs to send campaign to.                                                                                          |
 | from_email   | string     |          | Optional compatibility field. For `email` and `email-*` messengers, the final sender comes from the selected SMTP configuration. |
 | daily_send_limit | number | Conditionally required | Required for `regular` campaigns using `email` or `email-*`. Limits campaign sends per local day.                    |
 | daily_resume_time | string | Conditionally required | Required for `regular` campaigns using `email` or `email-*`. Local server time in `HH:MM` at which deferred sends resume. |
@@ -474,7 +474,7 @@ Create a new campaign.
 ##### Example request
 
 ```shell
-curl -u "api_user:token" 'http://localhost:9000/api/campaigns' -X POST -H 'Content-Type: application/json;charset=utf-8' --data-raw '{"name":"Test campaign","subject":"Hello, world","lists":[1],"content_type":"richtext","messenger":"email","type":"regular","tags":["test"],"template_id":1}'
+curl -u "api_user:token" 'http://localhost:9000/api/campaigns' -X POST -H 'Content-Type: application/json;charset=utf-8' --data-raw '{"name":"Test campaign","subject":"Hello, world","customerLists":[1],"content_type":"richtext","messenger":"email","type":"regular","tags":["test"],"template_id":1}'
 ```
 
 ##### Example response
@@ -488,9 +488,9 @@ curl -u "api_user:token" 'http://localhost:9000/api/campaigns' -X POST -H 'Conte
         "views": 0,
         "clicks": 0,
         "bounces": 0,
-        "lists": [{
+        "customerLists": [{
             "id": 1,
-            "name": "Default list"
+            "name": "Default customer_list"
         }],
         "started_at": null,
         "to_send": 1,
@@ -519,7 +519,7 @@ ______________________________________________________________________
 
 #### POST /api/campaigns/{campaign_id}/test
 
-Test campaign with arbitrary subscribers.
+Test campaign with arbitrary customers.
 
 Use the same parameters in [POST /api/campaigns](#post-apicampaigns) in addition to the below parameters.
 
@@ -527,7 +527,7 @@ Use the same parameters in [POST /api/campaigns](#post-apicampaigns) in addition
 
 | Name        | Type       | Required | Description                                        |
 | :---------- | :--------- | :------- | :------------------------------------------------- |
-| subscribers | string\[\] | Yes      | List of subscriber e-mails to send the message to. |
+| customers | string\[\] | Yes      | CustomerList of customer e-mails to send the message to. |
 
 ______________________________________________________________________
 
@@ -583,10 +583,10 @@ curl -u "api_user:token" -X PUT 'http://localhost:9000/api/campaigns/1/status' \
         "updated_at": "2020-04-08T19:35:17.331867+01:00",
         "views": 0,
         "clicks": 0,
-        "lists": [
+        "customerLists": [
             {
                 "id": 1,
-                "name": "Default list"
+                "name": "Default customer_list"
             }
         ],
         "started_at": null,
@@ -597,7 +597,7 @@ curl -u "api_user:token" -X PUT 'http://localhost:9000/api/campaigns/1/status' \
         "name": "Test campaign",
         "subject": "Welcome to listmonk",
         "from_email": "No Reply <noreply@yoursite.com>",
-        "body": "<h3>Hi {{ .Subscriber.FirstName }}!</h3>\n\t\t\tThis is a test e-mail campaign. Your second name is {{ .Subscriber.LastName }} and you are from {{ .Subscriber.Attribs.city }}.",
+        "body": "<h3>Hi {{ .Customer.FirstName }}!</h3>\n\t\t\tThis is a test e-mail campaign. Your second name is {{ .Customer.LastName }} and you are from {{ .Customer.Attribs.city }}.",
         "send_at": "2020-03-15T17:36:41.293233+01:00",
         "status": "scheduled",
         "content_type": "richtext",
@@ -631,7 +631,7 @@ Publish campaign to public archive.
 
 ```shell
 
-curl -u "api_user:token" -X PUT 'http://localhost:8080/api/campaigns/33/archive' 
+curl -u "api_user:token" -X PUT 'http://localhost:9000/api/campaigns/33/archive'
 --header 'Content-Type: application/json' 
 --data-raw '{"archive":true,"archive_template_id":1,"archive_meta":{},"archive_slug":"my-newsletter-old-edition"}'
 ```

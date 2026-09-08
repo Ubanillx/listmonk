@@ -1,6 +1,6 @@
 # APIs
 
-All features that are available on the listmonk dashboard are also available as REST-like HTTP APIs that can be interacted with directly. Request and response bodies are JSON. This allows easy scripting of listmonk and integration with other systems, for instance, synchronisation with external subscriber databases.
+All features that are available on the listmonk dashboard are also available as REST-like HTTP APIs that can be interacted with directly. Request and response bodies are JSON. This allows easy scripting of listmonk and integration with other systems, for instance, synchronisation with external customer databases.
 
 !!! note
     If you come across API calls that are yet to be documented, please consider contributing to docs.
@@ -11,29 +11,29 @@ HTTP API requests support BasicAuth, Authorization `token` headers, and Bearer t
 
 ##### BasicAuth example
 ```shell
-curl -u "api_user:token" http://localhost:9000/api/lists
+curl -u "api_user:token" http://localhost:9000/api/customer-lists
 ```
 
 ##### Authorization token example
 ```shell
-curl -H "Authorization: token api_user:token" http://localhost:9000/api/lists
+curl -H "Authorization: token api_user:token" http://localhost:9000/api/customer-lists
 ```
 
 ##### Bearer integration token example
 ```shell
-curl -H "Authorization: Bearer lmit_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" http://localhost:9000/api/lists
+curl -H "Authorization: Bearer lmit_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" http://localhost:9000/api/customer-lists
 ```
 
-Personal Bearer API keys run as their creator inside their bound workspace. They are narrowed by the key's selected scopes and still pass the user's existing role, organization membership, list, and owner checks. They cannot access user, role, global settings, SMTP, profile, or organization-management endpoints. Legacy Bearer service tokens are linked to API-user accounts and retain the existing role/list-permission behavior.
+Personal Bearer API keys run as their creator inside their bound workspace. They are narrowed by the key's selected scopes and still pass the user's existing role, organization membership, customer_list, and owner checks. They cannot access user, role, global settings, SMTP, profile, or organization-management endpoints. Legacy Bearer service tokens are linked to API-user accounts and retain the existing role/customer_list-permission behavior.
 
 ## Permissions
-**User role**: Permissions allowed for a user are defined as a *User role* (Admin -> User roles) and then attached to a user. 
+**User role**: Permissions allowed for a user are defined as a *User role* (Admin -> User roles) and then attached to a user.
 
-**List role**: Read / write permissions per-list can be defined as a *List role* (Admin -> User roles) and then attached to a user. 
+**CustomerList role**: Read / write permissions per-customer_list can be defined as a *CustomerList role* (Admin -> User roles) and then attached to a user.
 
-In a *User role*, `lists:get_all` or `lists:manage_all` permission supercede and override any list specific permissions for a user defined in a *List role*.
+In a *User role*, `customer_lists:get_all` or `customer_lists:manage_all` permission supercede and override any customer_list specific permissions for a user defined in a *CustomerList role*.
 
-To manage lists and subscriber list subscriptions via API requests, ensure that the appropriate permissions are attached to the API user.
+To manage customer_lists and customer customer_list subscriptions via API requests, ensure that the appropriate permissions are attached to the API user.
 
 ______________________________________________________________________
 

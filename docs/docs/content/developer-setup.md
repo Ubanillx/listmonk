@@ -5,7 +5,8 @@ The app has two distinct components, the Go backend and the VueJS frontend. In t
 ### Pre-requisites
 - `go`
 - `nodejs` (if you are working on the frontend) and `yarn`
-- Postgres database. If there is no local installation, the demo docker DB can be used for development (`docker compose up demo-db`)
+- PostgreSQL database. If it is not installed locally, use the repository development suite: run `make init-dev-docker` and then `make dev-docker`.
+- Docker Desktop for the containerized development suite.
 
 
 ### First time setup
@@ -20,7 +21,7 @@ The app has two distinct components, the Go backend and the VueJS frontend. In t
 ### Running the dev environment
 You can run your dev environment locally or inside containers.
 
-After setting up the dev environment, you can visit `http://localhost:8080`.
+The local Vite server is available at `http://localhost:8080`; the containerized frontend is available at `http://localhost:8181`.
 
 
 1. Locally
@@ -33,6 +34,28 @@ After setting up the dev environment, you can visit `http://localhost:8080`.
     - Run `make init-dev-docker` to setup container for db.
     - Run `make dev-docker` to setup docker container suite.
     - Run `make rm-dev-docker` to clean up docker container suite.
+
+    The Makefile uses POSIX utilities. On Windows, install Git for Windows and
+    GNU Make with `winget install --id ezwinports.make --exact --source winget`.
+    Restart the shell and ensure `C:\Program Files\Git\usr\bin` comes before
+    the GNU Make directory in `PATH`; then verify with `make --version` and
+    `make -n dev-docker`. The backend performs an idempotent database install
+    and applies pending upgrades on startup.
+
+    PowerShell users can run the equivalent detached startup directly:
+
+    ```powershell
+    docker compose -f dev/docker-compose.yml up --build -d
+    docker compose -f dev/docker-compose.yml ps
+    ```
+
+    The containerized endpoints are `http://localhost:8181` (admin UI),
+    `http://localhost:9173` (backend), `http://localhost:8171` (Adminer),
+    `http://localhost:8265` (MailHog), and PostgreSQL on `localhost:5437`.
+
+    To stop the suite without deleting its database volume, use
+    `docker compose -f dev/docker-compose.yml down`. The `make rm-dev-docker`
+    target removes the containers and database volume.
 
 3. Inside containers (Using devcontainer)
 

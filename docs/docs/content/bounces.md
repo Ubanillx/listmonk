@@ -2,6 +2,30 @@
 
 Enable bounce processing in Settings -> Bounces. POP3 bounce scanning and APIs only become available once the setting is enabled.
 
+## AI classification of customer replies
+
+When a campaign uses a dedicated reply mailbox (see Reply-To configuration in the campaign editor and the reply mailbox settings under your profile), you can optionally let listmonk classify inbound customer replies with an OpenAI-compatible model and act on the two explicit intents automatically:
+
+- **Unsubscribe** — an explicit request to stop receiving marketing e-mail.
+- **Complaint** — an explicit spam/abuse allegation or a threat to report the sender.
+
+Negative tone, questions, ambiguous content, and every other reply is ignored and never changes customer data.
+
+### Configuration
+
+1. **Settings -> Reply AI classification**: enable classification and configure a base URL of an OpenAI-compatible API (for example `https://api.openai.com/v1`; `/chat/completions` is appended automatically), an API key, the model name, the request timeout, and the minimum confidence. Keys are masked after saving; leave the field blank to keep the stored key.
+2. **Profile -> Reply mailboxes**: enable "AI automatic reply processing" on each verified mailbox individually. Only mailboxes that are explicitly enabled AND verified are scanned, and only when the global setting above is enabled.
+
+The mailbox is polled with POP3 without deleting messages; classification is queued per message (`Message-ID` plus content hash) so retries and restarts never double-process a reply.
+
+### Actions
+
+- The sender address is matched **only inside the mailbox owner's workspace**, and only when it resolves to exactly one customer. Unmatched or ambiguous senders are ignored and audited.
+- For both actionable intents the matched customer is globally **blocklisted** and unsubscribed from all of their lists.
+- An explicit complaint additionally records a bounce entry with source `reply_ai` and metadata holding the queue event id, model, confidence, and reason, so provider feedback (`ses`, `postmark`, ...) and AI-derived complaints remain distinguishable.
+- Only the normalized, trimmed latest reply text is sent to the model; attachments and quoted history are never sent. After classification the retained text is removed from the queue and only the hash plus the bounded decision fields are kept for the customer activity audit ("AI reply classifications" on the customer's Activity tab).
+
+
 ## POP3 bounce mailbox
 Configure the bounce mailbox in Settings -> Bounces. Either the "From" e-mail that is set on a campaign (or in settings) should have a POP3 mailbox behind it to receive bounce e-mails, or you should configure a dedicated POP3 mailbox and add that address as the `Return-Path` (envelope sender) header in Settings -> SMTP -> Custom headers box. For example:
 
@@ -27,8 +51,8 @@ The bounce webhook API can be used to record bounce events with custom scripting
 
 | Name            | Type   | Required | Description                                                                          |
 | --------------- | ------ | -------- | ------------------------------------------------------------------------------------ |
-| subscriber_uuid | string |          | The UUID of the subscriber. Either this or `email` is required.                      |
-| email           | string |          | The e-mail of the subscriber. Either this or `subscriber_uuid` is required.          |
+| customer_uuid | string |          | The UUID of the customer. Either this or `email` is required.                      |
+| email           | string |          | The e-mail of the customer. Either this or `customer_uuid` is required.          |
 | campaign_uuid   | string |          | UUID of the campaign for which the bounce happened.                                  |
 | source          | string | Yes      | A string indicating the source, eg: `api`, `my_script` etc.                          |
 | type            | string | Yes      | `hard` or `soft` bounce. Currently, this has no effect on how the bounce is treated. |
@@ -84,7 +108,7 @@ If using SES as your SMTP provider, automatic bounce processing is the recommend
     - SNS topic: `ses-bounces` (or whatever you named it)
     - Include original email headers: `Enabled` (checked)
 9. Repeat steps 6-8 for any `Email address` identities you send from using listmonk
-10. Bounce processing should now be working. You can test it with [SES simulator addresses](https://docs.aws.amazon.com/ses/latest/dg/send-an-email-from-console.html#send-email-simulator). Add them as subscribers, send them campaign previews, and ensure that the appropriate action was taken after the configured bounce count was reached.
+10. Bounce processing should now be working. You can test it with [SES simulator addresses](https://docs.aws.amazon.com/ses/latest/dg/send-an-email-from-console.html#send-email-simulator). Add them as customers, send them campaign previews, and ensure that the appropriate action was taken after the configured bounce count was reached.
     - Soft bounce: `ooto@simulator.amazonses.com`
     - Hard bounce: `bounce@simulator.amazonses.com`
     - Complaint: `complaint@simulator.amazonses.com`
@@ -100,10 +124,10 @@ curl -u 'username:passsword' 'http://localhost:9000/api/bounces'
 Or by querying the database directly:
 ```sql
 SELECT bounces.created_at,
-    bounces.subscriber_id,
-    subscribers.uuid AS subscriber_uuid,
-    subscribers.email AS email
+    bounces.customer_id,
+    customers.uuid AS customer_uuid,
+    customers.email AS email
 FROM bounces
-LEFT JOIN subscribers ON (subscribers.id = bounces.subscriber_id)
+LEFT JOIN customers ON (customers.id = bounces.customer_id)
 ORDER BY bounces.created_at DESC LIMIT 1000;
 ```

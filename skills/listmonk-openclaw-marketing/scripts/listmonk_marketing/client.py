@@ -42,7 +42,7 @@ class ListmonkClient:
         path: str,
         *,
         params: dict[str, Any] | None = None,
-        payload: dict[str, Any] | list[Any] | None = None,
+        payload: dict[str, Any] | customer_list[Any] | None = None,
         data: bytes | None = None,
         headers: dict[str, str] | None = None,
     ) -> Any:
@@ -82,13 +82,13 @@ class ListmonkClient:
             raise APIError(exc.code, message, data_out) from exc
 
     def validate_token(self) -> Any:
-        return self.request("GET", "/api/lists", params={"minimal": "true", "per_page": "all"})
+        return self.request("GET", "/api/customer-lists", params={"minimal": "true", "per_page": "all"})
 
-    def get_list(self, list_id: int) -> dict[str, Any]:
-        return self.request("GET", f"/api/lists/{list_id}")
+    def get_list(self, customer_list_id: int) -> dict[str, Any]:
+        return self.request("GET", f"/api/customer-lists/{customer_list_id}")
 
-    def query_lists(self, query: str) -> list[dict[str, Any]]:
-        page = self.request("GET", "/api/lists", params={"query": query, "page": 1, "per_page": "all"})
+    def query_lists(self, query: str) -> customer_list[dict[str, Any]]:
+        page = self.request("GET", "/api/customer-lists", params={"query": query, "page": 1, "per_page": "all"})
         return page.get("results", [])
 
     def create_list(
@@ -97,7 +97,7 @@ class ListmonkClient:
         list_type: str,
         optin: str,
         status: str,
-        tags: list[str],
+        tags: customer_list[str],
         description: str,
     ) -> dict[str, Any]:
         payload = {
@@ -108,38 +108,38 @@ class ListmonkClient:
             "tags": tags,
             "description": description,
         }
-        return self.request("POST", "/api/lists", payload=payload)
+        return self.request("POST", "/api/customer-lists", payload=payload)
 
-    def create_subscriber(self, subscriber: dict[str, Any], list_id: int, preconfirm: bool) -> dict[str, Any]:
-        payload = dict(subscriber)
-        lists = payload.get("lists", [])
-        if list_id not in lists:
-            lists = list(lists) + [list_id]
-        payload["lists"] = lists
+    def create_customer(self, customer: dict[str, Any], customer_list_id: int, preconfirm: bool) -> dict[str, Any]:
+        payload = dict(customer)
+        customer_lists = payload.get("customerLists", [])
+        if customer_list_id not in customer_lists:
+            customer_lists = customer_list(customer_lists) + [customer_list_id]
+        payload["customerLists"] = customer_lists
         payload.setdefault("status", "enabled")
         payload["preconfirm_subscriptions"] = preconfirm
-        return self.request("POST", "/api/subscribers", payload=payload)
+        return self.request("POST", "/api/customers", payload=payload)
 
-    def query_subscribers(self, search: str, per_page: int | str = "all") -> list[dict[str, Any]]:
-        page = self.request("GET", "/api/subscribers", params={"search": search, "page": 1, "per_page": per_page})
+    def query_customers(self, search: str, per_page: int | str = "all") -> customer_list[dict[str, Any]]:
+        page = self.request("GET", "/api/customers", params={"search": search, "page": 1, "per_page": per_page})
         return page.get("results", [])
 
-    def manage_subscriber_lists(
+    def manage_customer_list_memberships(
         self,
-        subscriber_ids: list[int],
-        target_list_ids: list[int],
+        customer_ids: customer_list[int],
+        target_customer_list_ids: customer_list[int],
         status: str,
         action: str = "add",
     ) -> Any:
         payload = {
-            "ids": subscriber_ids,
+            "ids": customer_ids,
             "action": action,
-            "target_list_ids": target_list_ids,
+            "target_customer_list_ids": target_customer_list_ids,
             "status": status,
         }
-        return self.request("PUT", "/api/subscribers/lists", payload=payload)
+        return self.request("PUT", "/api/customers/customer-lists", payload=payload)
 
-    def start_subscriber_import(
+    def start_customer_import(
         self,
         *,
         file_path: str,
@@ -167,18 +167,18 @@ class ListmonkClient:
 
         return self.request(
             "POST",
-            "/api/import/subscribers",
+            "/api/import/customers",
             data=bytes(body),
             headers={
                 "Content-Type": f"multipart/form-data; boundary={boundary}",
             },
         )
 
-    def get_subscriber_import_status(self) -> dict[str, Any]:
-        return self.request("GET", "/api/import/subscribers")
+    def get_customer_import_status(self) -> dict[str, Any]:
+        return self.request("GET", "/api/import/customers")
 
-    def get_subscriber_import_logs(self) -> str:
-        return self.request("GET", "/api/import/subscribers/logs")
+    def get_customer_import_logs(self) -> str:
+        return self.request("GET", "/api/import/customers/logs")
 
     def clone_template(self, template_id: int, name: str, subject: str | None) -> dict[str, Any]:
         payload: dict[str, Any] = {"name": name}
@@ -189,7 +189,7 @@ class ListmonkClient:
     def get_campaign(self, campaign_id: int) -> dict[str, Any]:
         return self.request("GET", f"/api/campaigns/{campaign_id}")
 
-    def query_campaigns(self, query: str) -> list[dict[str, Any]]:
+    def query_campaigns(self, query: str) -> customer_list[dict[str, Any]]:
         page = self.request("GET", "/api/campaigns", params={"query": query, "page": 1, "per_page": "all"})
         return page.get("results", [])
 

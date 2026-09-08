@@ -8,7 +8,7 @@ ______________________________________________________________________
 
 #### POST /api/tx
 
-Allows sending transactional messages to one or more subscribers via a preconfigured transactional template.
+Allows sending transactional messages to one or more customers via a preconfigured transactional template.
 
 When `messenger` is `email` or `email-*`, the selected SMTP's sender configuration overrides `from_email`, and the request is subject to SMTP daily quota checks. If no SMTP has quota left, the API returns HTTP `429 Too Many Requests`.
 
@@ -16,11 +16,11 @@ When `messenger` is `email` or `email-*`, the selected SMTP's sender configurati
 
 | Name              | Type       | Required | Description                                                                |
 | :---------------- | :--------- | :------- | :------------------------------------------------------------------------- |
-| subscriber_email  | string     |          | Email of the subscriber. Can substitute with `subscriber_id`.              |
-| subscriber_id     | number     |          | Subscriber's ID can substitute with `subscriber_email`.                    |
-| subscriber_emails | string\[\] |          | Multiple subscriber emails as alternative to `subscriber_email`.           |
-| subscriber_ids    | number\[\] |          | Multiple subscriber IDs as an alternative to `subscriber_id`.              |
-| subscriber_mode   | string     |          | Subscriber lookup mode: `default`, `fallback`, or `external`               |
+| customer_email  | string     |          | Email of the customer. Can substitute with `customer_id`.              |
+| customer_id     | number     |          | Customer's ID can substitute with `customer_email`.                    |
+| customer_emails | string\[\] |          | Multiple customer emails as alternative to `customer_email`.           |
+| customer_ids    | number\[\] |          | Multiple customer IDs as an alternative to `customer_id`.              |
+| customer_mode   | string     |          | Customer lookup mode: `default`, `fallback`, or `external`               |
 | template_id       | number     | Yes      | ID of the transactional template to be used for the message.               |
 | from_email        | string     |          | Optional compatibility field. For `email` and `email-*` messengers, the final sender comes from the selected SMTP configuration. |
 | subject           | string     |          | Optional subject. If empty, the subject defined on the template is used    |
@@ -30,15 +30,15 @@ When `messenger` is `email` or `email-*`, the selected SMTP's sender configurati
 | content_type      | string     |          | Email format options include `html`, `markdown`, and `plain`.              |
 | altbody           | string     |          | Optional alternate plaintext body for multipart HTML emails.               |
 
-##### Subscriber modes
+##### Customer modes
 
-The `subscriber_mode` parameter controls how the recipients (subscribers or non-subscriber recipients) are resolved.
+The `customer_mode` parameter controls how the recipients (customers or non-customer recipients) are resolved.
 
 | Mode       | Description                                                                                                                                                                                                                                                                    |
 | :--------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `default`  | Recipients must exist as subscribers in the database. Pass either `subscriber_emails` or `subscriber_ids`.                                                                                                                                                                     |
-| `fallback` | Only accepts `subscriber_emails` and looks up subscribers in the database. If not found, sends the message to the e-mail anyway. In the template, apart from `{{ .Subscriber.Email }}`, other subscriber fields such as `.Name`. will be empty. Use `{{ Tx.Data.* }}` instead. |
-| `external` | Sends to the given `subscriber_emails` without subscriber lookup in the database. In the template, apart from `{{ .Subscriber.Email }}`, other subscriber fields such as `.Name`. will be empty. Use `{{ Tx.Data.* }}` instead.                                                |
+| `default`  | Recipients must exist as customers in the database. Pass either `customer_emails` or `customer_ids`.                                                                                                                                                                     |
+| `fallback` | Only accepts `customer_emails` and looks up customers in the database. If not found, sends the message to the e-mail anyway. In the template, apart from `{{ .Customer.Email }}`, other customer fields such as `.Name`. will be empty. Use `{{ Tx.Data.* }}` instead. |
+| `external` | Sends to the given `customer_emails` without customer lookup in the database. In the template, apart from `{{ .Customer.Email }}`, other customer fields such as `.Name`. will be empty. Use `{{ Tx.Data.* }}` instead.                                                |
 
 ##### Example
 
@@ -47,7 +47,7 @@ curl -u "api_user:token" "http://localhost:9000/api/tx" -X POST \
      -H 'Content-Type: application/json; charset=utf-8' \
      --data-binary @- << EOF
     {
-        "subscriber_email": "user@test.com",
+        "customer_email": "user@test.com",
         "template_id": 2,
         "data": {"order_id": "1234", "date": "2022-07-30", "items": [1, 2, 3]},
         "content_type": "html"
@@ -65,15 +65,15 @@ EOF
 
 ##### Example with external mode
 
-Send to arbitrary email addresses without requiring them to be subscribers:
+Send to arbitrary email addresses without requiring them to be customers:
 
 ```shell
 curl -u "api_user:token" "http://localhost:9000/api/tx" -X POST \
      -H 'Content-Type: application/json; charset=utf-8' \
      --data-binary @- << EOF
     {
-        "subscriber_mode": "external",
-        "subscriber_emails": ["recipient@example.com"],
+        "customer_mode": "external",
+        "customer_emails": ["recipient@example.com"],
         "template_id": 2,
         "data": {"name": "John", "order_id": "1234"},
         "content_type": "html"
@@ -92,7 +92,7 @@ To include file attachments in a transactional message, use the `multipart/form-
 ```shell
 curl -u "api_user:token" "http://localhost:9000/api/tx" -X POST \
 -F 'data=\"{
-    \"subscriber_email\": \"user@test.com\",
+    \"customer_email\": \"user@test.com\",
     \"template_id\": 4
 }"' \
 -F 'file=@"/path/to/attachment.pdf"' \

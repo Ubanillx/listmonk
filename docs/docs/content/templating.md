@@ -15,21 +15,21 @@ Transactional templates are used for sending arbitrary transactional messages us
 
 ## Template expressions
 
-There are several template functions and expressions that can be used in campaign and template bodies. They are written in the form `{{ .Subscriber.Email }}`, that is, an expression between double curly braces `{{` and `}}`.
+There are several template functions and expressions that can be used in campaign and template bodies. They are written in the form `{{ .Customer.Email }}`, that is, an expression between double curly braces `{{` and `}}`.
 
-### Subscriber fields
+### Customer fields
 
 | Expression                    | Description                                                                                  |
 | ----------------------------- | -------------------------------------------------------------------------------------------- |
-| `{{ .Subscriber.UUID }}`      | The randomly generated unique ID of the subscriber                                           |
-| `{{ .Subscriber.Email }}`     | E-mail ID of the subscriber                                                                  |
-| `{{ .Subscriber.Name }}`      | Name of the subscriber                                                                       |
-| `{{ .Subscriber.FirstName }}` | First name of the subscriber (automatically extracted from the name)                         |
-| `{{ .Subscriber.LastName }}`  | Last name of the subscriber (automatically extracted from the name)                          |
-| `{{ .Subscriber.Status }}`    | Status of the subscriber (enabled, disabled, blocklisted)                                    |
-| `{{ .Subscriber.Attribs }}`   | Map of arbitrary attributes. Fields can be accessed with `.`, eg: `.Subscriber.Attribs.city` |
-| `{{ .Subscriber.CreatedAt }}` | Timestamp when the subscriber was first added                                                |
-| `{{ .Subscriber.UpdatedAt }}` | Timestamp when the subscriber was modified                                                   |
+| `{{ .Customer.UUID }}`      | The randomly generated unique ID of the customer                                           |
+| `{{ .Customer.Email }}`     | E-mail ID of the customer                                                                  |
+| `{{ .Customer.Name }}`      | Name of the customer                                                                       |
+| `{{ .Customer.FirstName }}` | First name of the customer (automatically extracted from the name)                         |
+| `{{ .Customer.LastName }}`  | Last name of the customer (automatically extracted from the name)                          |
+| `{{ .Customer.Status }}`    | Status of the customer (enabled, disabled, blocklisted)                                    |
+| `{{ .Customer.Attribs }}`   | Map of arbitrary attributes. Fields can be accessed with `.`, eg: `.Customer.Attribs.city` |
+| `{{ .Customer.CreatedAt }}` | Timestamp when the customer was first added                                                |
+| `{{ .Customer.UpdatedAt }}` | Timestamp when the customer was modified                                                   |
 
 ### Campaigns
 
@@ -89,8 +89,8 @@ The expression `{{ template "content" . }}` should appear exactly once in every 
     <section class="container">
       <header>
         <!-- This will appear in the header of all e-mails.
-             The subscriber's name will be automatically inserted here. //-->
-        Hi {{ .Subscriber.FirstName }}!
+             The customer's name will be automatically inserted here. //-->
+        Hi {{ .Customer.FirstName }}!
       </header>
 
       <!-- This is where the e-mail body will be inserted //-->
@@ -114,16 +114,16 @@ The expression `{{ template "content" . }}` should appear exactly once in every 
 
 ### Example campaign body
 
-Campaign bodies can be composed using the built-in WYSIWYG editor or as raw HTML documents. Assuming that the subscriber has a set of [attributes defined](querying-and-segmentation.md#sample-attributes), this example shows how to render those values in a campaign.
+Campaign bodies can be composed using the built-in WYSIWYG editor or as raw HTML documents. Assuming that the customer has a set of [attributes defined](querying-and-segmentation.md#sample-attributes), this example shows how to render those values in a campaign.
 
 ```
 Hey, did you notice how the template showed your first name?
-Your last name is {{.Subscriber.LastName }}.
+Your last name is {{.Customer.LastName }}.
 
-You have done {{ .Subscriber.Attribs.projects }} projects.
+You have done {{ .Customer.Attribs.projects }} projects.
 
 
-{{ if eq .Subscriber.Attribs.city "Bengaluru" }}
+{{ if eq .Customer.Attribs.city "Bengaluru" }}
   You live in Bangalore!
 {{ else }}
   Where do you live?
@@ -135,7 +135,7 @@ Here is a link for you to click that will be tracked.
 
 ```
 
-The above example uses an `if` condition to show one of two messages depending on the value of a subscriber attribute. Many such dynamic expressions are possible with Go templating expressions.
+The above example uses an `if` condition to show one of two messages depending on the value of a customer attribute. Many such dynamic expressions are possible with Go templating expressions.
 
 ## System templates
 System templates are used for rendering public user-facing pages such as the subscription management page, and in automatically generated system e-mails such as the opt-in confirmation e-mail. These are bundled into listmonk but can be customized by copying the [static directory](https://github.com/knadh/listmonk/tree/master/static) locally, and passing its path to listmonk with the `./listmonk --static-dir=your/custom/path` flag.
@@ -155,7 +155,7 @@ You can fetch the static files with:<br>
 | `message.html`           | Generic success / failure message page.                             |
 | `optin.html`             | Opt-in confirmation page.                                           |
 | `subscription.html`      | Subscription management page with options for data export and wipe. |
-| `subscription-form.html` | List selection and subscription form page.                          |
+| `subscription-form.html` | CustomerList selection and subscription form page.                          |
 
 
 To edit the appearance of the public pages using CSS and Javascript, head to Settings > Appearance > Public:
@@ -171,9 +171,9 @@ To edit the appearance of the public pages using CSS and Javascript, head to Set
 | `base.html`                      | Base template with the header and footer that all system generated e-mails use.                                               |
 | `campaign-status.html`           | E-mail notification that is sent to admins on campaign start, completion etc.                                                      |
 | `import-status.html`             | E-mail notification that is sent to admins on finish of an import job.                                                             |
-| `subscriber-data.html`           | E-mail that is sent to subscribers when they request a full dump of their private data.                                            |
-| `subscriber-optin.html`          | Automatic opt-in confirmation e-mail that is sent to an unconfirmed subscriber when they are added.                                |
-| `subscriber-optin-campaign.html` | E-mail content that's inserted into a campaign body when starting an opt-in campaign from the lists page.                          |
+| `customer-data.html`           | E-mail that is sent to customers when they request a full dump of their private data.                                            |
+| `customer-optin.html`          | Automatic opt-in confirmation e-mail that is sent to an unconfirmed customer when they are added.                                |
+| `customer-optin-campaign.html` | E-mail content that's inserted into a campaign body when starting an opt-in campaign from the customer_lists page.                          |
 | `default.tpl`                    | Default campaign template that is created in Campaigns -> Templates when listmonk is first installed. This is not used after that. |
 
 !!! info

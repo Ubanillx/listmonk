@@ -17,7 +17,7 @@ def is_column_letter(value: str) -> bool:
     return bool(re.fullmatch(r"[A-Za-z]+", value.strip()))
 
 
-def extract_emails(raw_value: Any) -> list[str]:
+def extract_emails(raw_value: Any) -> customer_list[str]:
     if raw_value is None:
         return []
 
@@ -26,7 +26,7 @@ def extract_emails(raw_value: Any) -> list[str]:
         return []
 
     matches = re.findall(r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+", text)
-    out: list[str] = []
+    out: customer_list[str] = []
     seen: set[str] = set()
     for match in matches:
         email = match.strip()
@@ -66,7 +66,7 @@ def resolve_sheet(workbook: Any, sheet_spec: str) -> Any:
 
 
 def build_header_maps(
-    header_values: list[Any],
+    header_values: customer_list[Any],
     max_column: int,
     get_column_letter: Any,
 ) -> tuple[dict[str, int], dict[int, str]]:
@@ -109,7 +109,7 @@ def resolve_column(
     raise ValueError(f"Could not resolve {label}: {column_spec}")
 
 
-def parse_excel_subscribers(
+def parse_excel_customers(
     *,
     excel_file: str,
     email_column: str,
@@ -138,7 +138,7 @@ def parse_excel_subscribers(
             raise ValueError("Excel sheet is empty")
 
         header_rows = sheet.iter_rows(min_row=header_row, max_row=header_row, values_only=True)
-        header_values = list(next(header_rows, ()))
+        header_values = customer_list(next(header_rows, ()))
         header_to_index, index_to_key = build_header_maps(header_values, max_column, get_column_letter)
         email_col = resolve_column(
             email_column,
@@ -157,9 +157,9 @@ def parse_excel_subscribers(
 
         start = start_row or (header_row + 1)
         seen_emails: set[str] = set()
-        subscribers: list[dict[str, Any]] = []
-        skipped_rows: list[dict[str, Any]] = []
-        failed_rows: list[dict[str, Any]] = []
+        customers: customer_list[dict[str, Any]] = []
+        skipped_rows: customer_list[dict[str, Any]] = []
+        failed_rows: customer_list[dict[str, Any]] = []
 
         row_iter = sheet.iter_rows(min_row=start, values_only=True)
         for row_idx, row_values in enumerate(row_iter, start=start):
@@ -208,17 +208,17 @@ def parse_excel_subscribers(
                     continue
                 seen_emails.add(email_key)
 
-                subscriber: dict[str, Any] = {"email": email}
+                customer: dict[str, Any] = {"email": email}
                 if name:
-                    subscriber["name"] = name
+                    customer["name"] = name
                 if attribs:
-                    subscriber["attribs"] = dict(attribs)
+                    customer["attribs"] = dict(attribs)
 
-                subscribers.append({"row": row_idx, "subscriber": subscriber})
+                customers.append({"row": row_idx, "customer": customer})
 
         return {
             "source": "excel",
-            "subscribers": subscribers,
+            "customers": customers,
             "skipped_rows": skipped_rows,
             "failed_rows": failed_rows,
         }

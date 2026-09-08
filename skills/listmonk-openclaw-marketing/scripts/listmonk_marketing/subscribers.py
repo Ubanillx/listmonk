@@ -10,7 +10,7 @@ from typing import Any
 
 from listmonk_marketing.client import APIError, ListmonkClient
 from listmonk_marketing.common import load_json_file
-from listmonk_marketing.excel import parse_excel_subscribers
+from listmonk_marketing.excel import parse_excel_customers
 
 IMPORT_TIMEOUT_SECONDS = 3600
 IMPORT_POLL_INTERVAL_SECONDS = 0.25
@@ -28,25 +28,25 @@ class BatchImportError(RuntimeError):
         }
 
 
-def load_json_subscribers(subscribers_file: str) -> dict[str, Any]:
-    subscribers = load_json_file(subscribers_file, list)
+def load_json_customers(customers_file: str) -> dict[str, Any]:
+    customers = load_json_file(customers_file, customer_list)
     rows = []
-    for index, subscriber in enumerate(subscribers, start=1):
-        if not isinstance(subscriber, dict):
-            raise ValueError(f"Each subscriber entry must be a JSON object. Invalid item at index {index}")
-        rows.append({"row": index, "subscriber": subscriber})
+    for index, customer in enumerate(customers, start=1):
+        if not isinstance(customer, dict):
+            raise ValueError(f"Each customer entry must be a JSON object. Invalid item at index {index}")
+        rows.append({"row": index, "customer": customer})
 
     return {
         "source": "json",
-        "subscribers": rows,
+        "customers": rows,
         "skipped_rows": [],
         "failed_rows": [],
     }
 
 
-def load_subscriber_source(
+def load_customer_source(
     *,
-    subscribers_file: str = "",
+    customers_file: str = "",
     excel_file: str = "",
     excel_sheet: str = "",
     email_column: str = "",
@@ -56,13 +56,13 @@ def load_subscriber_source(
     skip_empty_rows: bool = False,
     dedupe_by_email: bool = True,
 ) -> dict[str, Any]:
-    if subscribers_file:
-        return load_json_subscribers(subscribers_file)
+    if customers_file:
+        return load_json_customers(customers_file)
 
     if not excel_file:
-        raise ValueError("Either subscribers_file or excel_file is required")
+        raise ValueError("Either customers_file or excel_file is required")
 
-    return parse_excel_subscribers(
+    return parse_excel_customers(
         excel_file=excel_file,
         email_column=email_column,
         name_column=name_column,
@@ -74,26 +74,26 @@ def load_subscriber_source(
     )
 
 
-def reuse_existing_subscriber(
+def reuse_existing_customer(
     client: ListmonkClient,
     *,
-    subscriber: dict[str, Any],
-    list_id: int,
+    customer: dict[str, Any],
+    customer_list_id: int,
     preconfirm_subscriptions: bool,
 ) -> dict[str, Any]:
-    email = str(subscriber.get("email", "")).strip()
-    matches = client.query_subscribers(email)
+    email = str(customer.get("email", "")).strip()
+    matches = client.query_customers(email)
     match = next((item for item in matches if str(item.get("email", "")).casefold() == email.casefold()), None)
     if match is None:
-        raise APIError(409, "subscriber already exists but could not be queried back")
+        raise APIError(409, "customer already exists but could not be queried back")
 
     desired_status = "confirmed" if preconfirm_subscriptions else "unconfirmed"
-    lists = match.get("lists", [])
-    current = next((item for item in lists if item.get("id") == list_id), None)
+    customer_lists = match.get("customerLists", [])
+    current = next((item for item in customer_lists if item.get("id") == customer_list_id), None)
     current_status = current.get("subscription_status") if current else None
     if current is None or current_status != desired_status:
-        client.manage_subscriber_lists([int(match["id"])], [list_id], desired_status)
-        refreshed = client.query_subscribers(email)
+        client.manage_customer_list_memberships([int(match["id"])], [customer_list_id], desired_status)
+        refreshed = client.query_customers(email)
         updated = next((item for item in refreshed if str(item.get("email", "")).casefold() == email.casefold()), None)
         if updated is not None:
             match = updated
@@ -101,42 +101,42 @@ def reuse_existing_subscriber(
     return match
 
 
-def ensure_batch_compatible_subscriber(subscriber: dict[str, Any], *, row: int, list_id: int) -> None:
-    raw_lists = subscriber.get("lists")
+def ensure_batch_compatible_customer(customer: dict[str, Any], *, row: int, customer_list_id: int) -> None:
+    raw_lists = customer.get("customerLists")
     if raw_lists in (None, "", []):
         raw_lists = []
-    if raw_lists and not isinstance(raw_lists, list):
-        raise ValueError(f"Subscriber row {row} has an unsupported 'lists' value for batch import")
+    if raw_lists and not isinstance(raw_lists, customer_list):
+        raise ValueError(f"Customer row {row} has an unsupported 'customerLists' value for batch import")
 
-    extra_lists = [value for value in raw_lists if str(value).strip() and str(value).strip() != str(list_id)]
+    extra_lists = [value for value in raw_lists if str(value).strip() and str(value).strip() != str(customer_list_id)]
     if extra_lists:
         raise ValueError(
-            f"Subscriber row {row} targets additional lists {extra_lists}, but batch import only supports the selected list {list_id}"
+            f"Customer row {row} targets additional customer_lists {extra_lists}, but batch import only supports the selected customer_list {customer_list_id}"
         )
 
-    status = str(subscriber.get("status", "")).strip()
+    status = str(customer.get("status", "")).strip()
     if status and status != "enabled":
         raise ValueError(
-            f"Subscriber row {row} has status '{status}', but batch import only supports the default enabled status"
+            f"Customer row {row} has status '{status}', but batch import only supports the default enabled status"
         )
 
 
-def write_batch_import_csv(source_rows: list[dict[str, Any]], *, list_id: int) -> tuple[str, dict[int, int]]:
+def write_batch_import_csv(source_rows: customer_list[dict[str, Any]], *, customer_list_id: int) -> tuple[str, dict[int, int]]:
     handle = tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False, encoding="utf-8", newline="")
     line_map: dict[int, int] = {}
     try:
         writer = csv.writer(handle)
         for line_number, item in enumerate(source_rows, start=1):
             row = int(item["row"])
-            subscriber = item["subscriber"]
-            if not isinstance(subscriber, dict):
-                raise ValueError(f"Subscriber row {row} must be an object")
+            customer = item["customer"]
+            if not isinstance(customer, dict):
+                raise ValueError(f"Customer row {row} must be an object")
 
-            ensure_batch_compatible_subscriber(subscriber, row=row, list_id=list_id)
+            ensure_batch_compatible_customer(customer, row=row, customer_list_id=customer_list_id)
 
-            email = "" if subscriber.get("email") is None else str(subscriber.get("email")).strip()
-            name = "" if subscriber.get("name") is None else str(subscriber.get("name")).strip()
-            attribs = subscriber.get("attribs")
+            email = "" if customer.get("email") is None else str(customer.get("email")).strip()
+            name = "" if customer.get("name") is None else str(customer.get("name")).strip()
+            attribs = customer.get("attribs")
             attribs_json = ""
             if attribs not in (None, "", {}):
                 attribs_json = json.dumps(attribs, ensure_ascii=False, separators=(",", ":"))
@@ -149,12 +149,12 @@ def write_batch_import_csv(source_rows: list[dict[str, Any]], *, list_id: int) -
     return handle.name, line_map
 
 
-def build_batch_import_params(*, list_id: int, preconfirm_subscriptions: bool) -> dict[str, Any]:
+def build_batch_import_params(*, customer_list_id: int, preconfirm_subscriptions: bool) -> dict[str, Any]:
     return {
         "mode": "subscribe",
         "subscription_status": "confirmed" if preconfirm_subscriptions else "unconfirmed",
         "delim": ",",
-        "lists": [list_id],
+        "customerLists": [customer_list_id],
         "overwrite_userinfo": False,
         "overwrite_subscription_status": True,
         "field_map": {
@@ -175,26 +175,26 @@ def wait_for_batch_import(
     last_stats: dict[str, Any] = {}
 
     while time.monotonic() <= deadline:
-        stats = client.get_subscriber_import_status()
+        stats = client.get_customer_import_status()
         last_stats = stats
         status = str(stats.get("status", "")).lower()
         if status in IMPORT_DONE_STATUSES:
-            logs = client.get_subscriber_import_logs()
+            logs = client.get_customer_import_logs()
             if status != "finished":
-                raise BatchImportError(f"Subscriber import ended with status '{status}'", stats=stats, logs=logs)
+                raise BatchImportError(f"Customer import ended with status '{status}'", stats=stats, logs=logs)
             return stats, logs
         time.sleep(poll_interval_seconds)
 
-    logs = client.get_subscriber_import_logs()
+    logs = client.get_customer_import_logs()
     raise BatchImportError(
-        f"Subscriber import did not finish within {int(timeout_seconds)} seconds",
+        f"Customer import did not finish within {int(timeout_seconds)} seconds",
         stats=last_stats,
         logs=logs,
     )
 
 
-def parse_import_failed_rows(logs: str, *, line_map: dict[int, int]) -> list[dict[str, Any]]:
-    failed_rows: list[dict[str, Any]] = []
+def parse_import_failed_rows(logs: str, *, line_map: dict[int, int]) -> customer_list[dict[str, Any]]:
+    failed_rows: customer_list[dict[str, Any]] = []
     seen: set[tuple[int, str]] = set()
 
     for line in logs.splitlines():
@@ -214,21 +214,21 @@ def parse_import_failed_rows(logs: str, *, line_map: dict[int, int]) -> list[dic
     return failed_rows
 
 
-def create_subscribers_via_batch_import(
+def create_customers_via_batch_import(
     client: ListmonkClient,
     *,
-    list_id: int,
+    customer_list_id: int,
     parsed: dict[str, Any],
     preconfirm_subscriptions: bool,
 ) -> dict[str, Any]:
-    source_rows = list(parsed["subscribers"])
-    skipped_rows = list(parsed["skipped_rows"])
-    failed_rows = list(parsed["failed_rows"])
+    source_rows = customer_list(parsed["customers"])
+    skipped_rows = customer_list(parsed["skipped_rows"])
+    failed_rows = customer_list(parsed["failed_rows"])
 
     if not source_rows:
         return {
             "import_source": parsed["source"],
-            "created_subscribers": [],
+            "created_customers": [],
             "imported_count": 0,
             "skipped_rows": skipped_rows,
             "failed_rows": failed_rows,
@@ -236,13 +236,13 @@ def create_subscribers_via_batch_import(
             "import_logs": "",
         }
 
-    csv_path, line_map = write_batch_import_csv(source_rows, list_id=list_id)
+    csv_path, line_map = write_batch_import_csv(source_rows, customer_list_id=customer_list_id)
     try:
-        client.start_subscriber_import(
+        client.start_customer_import(
             file_path=csv_path,
             filename=Path(csv_path).name,
             params=build_batch_import_params(
-                list_id=list_id,
+                customer_list_id=customer_list_id,
                 preconfirm_subscriptions=preconfirm_subscriptions,
             ),
         )
@@ -253,7 +253,7 @@ def create_subscribers_via_batch_import(
     failed_rows.extend(parse_import_failed_rows(logs, line_map=line_map))
     return {
         "import_source": parsed["source"],
-        "created_subscribers": [],
+        "created_customers": [],
         "imported_count": int(stats.get("imported", 0)),
         "skipped_rows": skipped_rows,
         "failed_rows": failed_rows,
@@ -262,11 +262,11 @@ def create_subscribers_via_batch_import(
     }
 
 
-def create_subscribers_if_needed(
+def create_customers_if_needed(
     client: ListmonkClient,
     *,
-    list_id: int,
-    subscribers_file: str = "",
+    customer_list_id: int,
+    customers_file: str = "",
     excel_file: str = "",
     preconfirm_subscriptions: bool = False,
     excel_sheet: str = "",
@@ -277,8 +277,8 @@ def create_subscribers_if_needed(
     skip_empty_rows: bool = False,
     dedupe_by_email: bool = True,
 ) -> dict[str, Any]:
-    parsed = load_subscriber_source(
-        subscribers_file=subscribers_file,
+    parsed = load_customer_source(
+        customers_file=customers_file,
         excel_file=excel_file,
         excel_sheet=excel_sheet,
         email_column=email_column,
@@ -289,15 +289,15 @@ def create_subscribers_if_needed(
         dedupe_by_email=dedupe_by_email,
     )
     source = parsed["source"]
-    source_rows = parsed["subscribers"]
-    skipped_rows = list(parsed["skipped_rows"])
-    failed_rows = list(parsed["failed_rows"])
+    source_rows = parsed["customers"]
+    skipped_rows = customer_list(parsed["skipped_rows"])
+    failed_rows = customer_list(parsed["failed_rows"])
     created = []
 
-    if hasattr(client, "start_subscriber_import") and hasattr(client, "get_subscriber_import_status"):
-        return create_subscribers_via_batch_import(
+    if hasattr(client, "start_customer_import") and hasattr(client, "get_customer_import_status"):
+        return create_customers_via_batch_import(
             client,
-            list_id=list_id,
+            customer_list_id=customer_list_id,
             parsed=parsed,
             preconfirm_subscriptions=preconfirm_subscriptions,
         )
@@ -305,17 +305,17 @@ def create_subscribers_if_needed(
     if source == "json":
         for item in source_rows:
             index = int(item["row"])
-            subscriber = item["subscriber"]
+            customer = item["customer"]
             try:
-                created.append(client.create_subscriber(subscriber, list_id, preconfirm_subscriptions))
+                created.append(client.create_customer(customer, customer_list_id, preconfirm_subscriptions))
             except APIError as exc:
-                if exc.status == 409 and subscriber.get("email"):
+                if exc.status == 409 and customer.get("email"):
                     try:
                         created.append(
-                            reuse_existing_subscriber(
+                            reuse_existing_customer(
                                 client,
-                                subscriber=subscriber,
-                                list_id=list_id,
+                                customer=customer,
+                                customer_list_id=customer_list_id,
                                 preconfirm_subscriptions=preconfirm_subscriptions,
                             )
                         )
@@ -325,7 +325,7 @@ def create_subscribers_if_needed(
                 failed_rows.append(
                     {
                         "row": index,
-                        "email": subscriber.get("email"),
+                        "email": customer.get("email"),
                         "reason": exc.message,
                         "status": exc.status,
                     }
@@ -333,7 +333,7 @@ def create_subscribers_if_needed(
 
         return {
             "import_source": source,
-            "created_subscribers": created,
+            "created_customers": created,
             "imported_count": len(created),
             "skipped_rows": skipped_rows,
             "failed_rows": failed_rows,
@@ -341,17 +341,17 @@ def create_subscribers_if_needed(
 
     for item in source_rows:
         row = int(item["row"])
-        subscriber = item["subscriber"]
+        customer = item["customer"]
         try:
-            created.append(client.create_subscriber(subscriber, list_id, preconfirm_subscriptions))
+            created.append(client.create_customer(customer, customer_list_id, preconfirm_subscriptions))
         except APIError as exc:
-            if exc.status == 409 and subscriber.get("email"):
+            if exc.status == 409 and customer.get("email"):
                 try:
                     created.append(
-                        reuse_existing_subscriber(
+                        reuse_existing_customer(
                             client,
-                            subscriber=subscriber,
-                            list_id=list_id,
+                            customer=customer,
+                            customer_list_id=customer_list_id,
                             preconfirm_subscriptions=preconfirm_subscriptions,
                         )
                     )
@@ -361,7 +361,7 @@ def create_subscribers_if_needed(
             failed_rows.append(
                 {
                     "row": row,
-                    "email": subscriber.get("email"),
+                    "email": customer.get("email"),
                     "reason": exc.message,
                     "status": exc.status,
                 }
@@ -369,7 +369,7 @@ def create_subscribers_if_needed(
 
     return {
         "import_source": source,
-        "created_subscribers": created,
+        "created_customers": created,
         "imported_count": len(created),
         "skipped_rows": skipped_rows,
         "failed_rows": failed_rows,

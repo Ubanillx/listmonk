@@ -8,8 +8,8 @@ rotate responses.
 
 | Method | Endpoint | Description |
 | :-- | :-- | :-- |
-| GET | `/api/profile/api-key-scopes` | List selectable business scopes. |
-| GET | `/api/profile/api-keys` | List the current user's keys and metadata. |
+| GET | `/api/profile/api-key-scopes` | CustomerList selectable business scopes. |
+| GET | `/api/profile/api-keys` | CustomerList the current user's keys and metadata. |
 | POST | `/api/profile/api-keys` | Create a workspace-bound key. |
 | PUT | `/api/profile/api-keys/{id}` | Update a key's name, scopes, or expiry. |
 | POST | `/api/profile/api-keys/{id}/rotate` | Immediately revoke and replace a key. |
@@ -30,10 +30,10 @@ organization ID for an organization workspace. `expires_at` is a required
   "name": "openclaw-production",
   "workspace_organization_id": 42,
   "scopes": [
-    "lists:read",
-    "lists:write",
-    "subscribers:write",
-    "subscribers:import",
+    "customer_lists:read",
+    "customer_lists:write",
+    "customers:write",
+    "customers:import",
     "templates:read",
     "templates:write",
     "campaigns:read",
@@ -51,7 +51,7 @@ Store it in the integration secret store immediately; it cannot be read again.
 ## Scope behavior
 
 Scopes only narrow API access. The key still uses its creator's user role,
-list-role grants, organization membership, ownership checks, and campaign SMTP
+customer_list-role grants, organization membership, ownership checks, and campaign SMTP
 ownership rules. `campaigns:send` is required when setting a campaign to
 `running` or `scheduled`.
 

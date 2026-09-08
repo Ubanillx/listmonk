@@ -47,8 +47,8 @@ curl -u "api_user:token" -X GET 'http://localhost:9000/api/bounces?campaign_id=1
         },
         "created_at": "2024-08-20T23:54:22.851858Z",
         "email": "gilles.deleuze@example.app",
-        "subscriber_uuid": "32ca1f3e-1a1d-42e1-af04-df0757f420f3",
-        "subscriber_id": 60,
+        "customer_uuid": "32ca1f3e-1a1d-42e1-af04-df0757f420f3",
+        "customer_id": 60,
         "campaign": {
           "id": 1,
           "name": "Test campaign"
@@ -63,8 +63,8 @@ curl -u "api_user:token" -X GET 'http://localhost:9000/api/bounces?campaign_id=1
         },
         "created_at": "2024-08-20T22:46:36.393547Z",
         "email": "gottfried.leibniz@example.app",
-        "subscriber_uuid": "5911d3f4-2346-4bfc-aad2-eb319ab0e879",
-        "subscriber_id": 13,
+        "customer_uuid": "5911d3f4-2346-4bfc-aad2-eb319ab0e879",
+        "customer_id": 13,
         "campaign": {
           "id": 1,
           "name": "Test campaign"

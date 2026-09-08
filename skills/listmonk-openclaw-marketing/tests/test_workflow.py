@@ -18,10 +18,10 @@ class WorkflowClient:
     def __init__(self) -> None:
         self.clone_template_called = False
 
-    def validate_token(self) -> list[dict[str, object]]:
+    def validate_token(self) -> customer_list[dict[str, object]]:
         return []
 
-    def query_lists(self, query: str) -> list[dict[str, object]]:
+    def query_lists(self, query: str) -> customer_list[dict[str, object]]:
         return []
 
     def create_list(
@@ -31,13 +31,13 @@ class WorkflowClient:
         list_type: str,
         optin: str,
         status: str,
-        tags: list[str],
+        tags: customer_list[str],
         description: str,
     ) -> dict[str, object]:
         return {"id": 11, "name": name}
 
-    def create_subscriber(self, subscriber: dict[str, object], list_id: int, preconfirm: bool) -> dict[str, object]:
-        return {"id": 21, "email": subscriber["email"]}
+    def create_customer(self, customer: dict[str, object], customer_list_id: int, preconfirm: bool) -> dict[str, object]:
+        return {"id": 21, "email": customer["email"]}
 
     def clone_template(self, template_id: int, name: str, subject: str | None) -> dict[str, object]:
         self.clone_template_called = True
@@ -57,7 +57,7 @@ class WorkflowClient:
             "tags": ["test"],
         }
 
-    def query_campaigns(self, query: str) -> list[dict[str, object]]:
+    def query_campaigns(self, query: str) -> customer_list[dict[str, object]]:
         return [{"id": 2, "name": "复制用模板"}]
 
     def create_campaign(self, payload: dict[str, object]) -> dict[str, object]:
@@ -71,7 +71,7 @@ class WorkflowClient:
 
 
 class WorkflowTests(unittest.TestCase):
-    def make_json_file(self, payload: list[dict[str, object]]) -> str:
+    def make_json_file(self, payload: customer_list[dict[str, object]]) -> str:
         handle = tempfile.NamedTemporaryFile(suffix=".json", delete=False)
         handle.write(json.dumps(payload).encode("utf-8"))
         handle.close()
@@ -84,14 +84,14 @@ class WorkflowTests(unittest.TestCase):
         args = argparse.Namespace(
             base_url="http://localhost:9000",
             bearer_token="token",
-            list_id=None,
-            list_name="Flow List",
+            customer_list_id=None,
+            customer_list_name="Flow CustomerList",
             list_type="private",
             list_optin="single",
             list_status="active",
             list_tags="growth",
             list_description="",
-            subscribers_file=source,
+            customers_file=source,
             excel_file="",
             preconfirm_subscriptions=False,
             excel_sheet="",
@@ -124,7 +124,7 @@ class WorkflowTests(unittest.TestCase):
             verbose=False,
         )
         result = run_workflow(args, client=client)
-        self.assertEqual(result["list_id"], 11)
+        self.assertEqual(result["customer_list_id"], 11)
         self.assertEqual(result["template_id"], 31)
         self.assertEqual(result["campaign_id"], 41)
         self.assertEqual(result["imported_count"], 1)
@@ -137,14 +137,14 @@ class WorkflowTests(unittest.TestCase):
         args = argparse.Namespace(
             base_url="http://localhost:9000",
             bearer_token="token",
-            list_id=None,
-            list_name="Flow List",
+            customer_list_id=None,
+            customer_list_name="Flow CustomerList",
             list_type="private",
             list_optin="single",
             list_status="active",
             list_tags="growth",
             list_description="",
-            subscribers_file=source,
+            customers_file=source,
             excel_file="",
             preconfirm_subscriptions=False,
             excel_sheet="",
@@ -177,7 +177,7 @@ class WorkflowTests(unittest.TestCase):
             verbose=False,
         )
         result = run_workflow(args, client=client)
-        self.assertEqual(result["list_id"], 11)
+        self.assertEqual(result["customer_list_id"], 11)
         self.assertEqual(result["template_id"], 8)
         self.assertEqual(result["campaign_id"], 41)
         self.assertEqual(result["source_campaign_id"], 2)

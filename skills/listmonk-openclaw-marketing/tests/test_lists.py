@@ -9,18 +9,18 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 from listmonk_marketing.client import APIError
-from listmonk_marketing.lists import find_or_create_list
+from listmonk_marketing.customer_lists import find_or_create_list
 
 
-class ListClient:
+class CustomerListClient:
     def __init__(self) -> None:
-        self.created_payloads: list[dict[str, object]] = []
+        self.created_payloads: customer_list[dict[str, object]] = []
         self.queries = 0
 
-    def get_list(self, list_id: int) -> dict[str, object]:
-        return {"id": list_id, "name": "Existing"}
+    def get_list(self, customer_list_id: int) -> dict[str, object]:
+        return {"id": customer_list_id, "name": "Existing"}
 
-    def query_lists(self, query: str) -> list[dict[str, object]]:
+    def query_lists(self, query: str) -> customer_list[dict[str, object]]:
         self.queries += 1
         if query == "Found":
             return [{"id": 7, "name": "Found"}]
@@ -35,7 +35,7 @@ class ListClient:
         list_type: str,
         optin: str,
         status: str,
-        tags: list[str],
+        tags: customer_list[str],
         description: str,
     ) -> dict[str, object]:
         payload = {
@@ -52,23 +52,23 @@ class ListClient:
         return {"id": 9, **payload}
 
 
-class ListResolutionTests(unittest.TestCase):
-    def test_find_or_create_reuses_list_id(self) -> None:
-        client = ListClient()
-        result = find_or_create_list(client, list_id=12)
+class CustomerListResolutionTests(unittest.TestCase):
+    def test_find_or_create_reuses_customer_list_id(self) -> None:
+        client = CustomerListClient()
+        result = find_or_create_list(client, customer_list_id=12)
         self.assertEqual(result["id"], 12)
 
     def test_find_or_create_reuses_exact_name_match(self) -> None:
-        client = ListClient()
-        result = find_or_create_list(client, list_name="Found")
+        client = CustomerListClient()
+        result = find_or_create_list(client, customer_list_name="Found")
         self.assertEqual(result["id"], 7)
         self.assertEqual(client.created_payloads, [])
 
     def test_find_or_create_creates_when_missing(self) -> None:
-        client = ListClient()
+        client = CustomerListClient()
         result = find_or_create_list(
             client,
-            list_name="Created",
+            customer_list_name="Created",
             list_type="private",
             list_optin="single",
             list_status="active",
@@ -79,8 +79,8 @@ class ListResolutionTests(unittest.TestCase):
         self.assertEqual(client.created_payloads[0]["tags"], ["foo", "bar"])
 
     def test_find_or_create_requeries_after_create_failure(self) -> None:
-        client = ListClient()
-        result = find_or_create_list(client, list_name="Retryable")
+        client = CustomerListClient()
+        result = find_or_create_list(client, customer_list_name="Retryable")
         self.assertEqual(result["id"], 8)
 
 

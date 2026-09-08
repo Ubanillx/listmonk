@@ -1,4 +1,25 @@
-listmonk supports (>= v4.0.0) creating systems users with granular permissions to various features, including list-specific permissions. Users can login with a username and password, or via an OIDC (OpenID Connect) handshake if an auth provider is connected. Various permissions can be grouped into "user roles", which can be assigned to users. List-specific permissions can be grouped into "list roles".
+listmonk supports (>= v4.0.0) creating systems users with granular permissions to various features, including customer_list-specific permissions. Users can login with a username and password, or via an OIDC (OpenID Connect) handshake if an auth provider is connected. Various permissions can be grouped into "user roles", which can be assigned to users. CustomerList-specific permissions can be grouped into "customer_list roles".
+
+## Workspaces and resource boundaries
+
+Roles are necessary but not sufficient for access. Every authenticated request is
+also limited to the selected personal or organization workspace and the
+resource's owner, visibility, and transfer state. A global role or a
+customer_list-specific grant never exposes a resource in another workspace.
+
+- CustomerLists and customers remain private to their owner. Organization managers
+  may inspect member-owned records in their active organization, but cannot
+  modify them, export recipient data, or send with them.
+- Templates and campaigns can be private, organization-visible, or global.
+  Members can read organization-visible resources in their active organization;
+  global resources remain readable across workspaces. Sending, exports, and
+  mutations apply stricter owner and workspace checks.
+- Organization membership has separate `member` and `manager` roles. It does
+  not grant system user-role or customer_list-role permissions. Archived organizations
+  reject normal writes.
+
+The server is authoritative. The admin UI may hide unavailable actions, but it
+does not replace API authorization.
 
 ## User roles
 
@@ -6,16 +27,16 @@ A user role is a collection of user related permissions. User roles are attached
 
 | Group       | Permission              | Description                                                                                                                                                                                                                          |
 | ----------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| lists       | lists:get_all           | Get details of all lists                                                                                                                                                                                                             |
-|             | lists:manage_all        | Create, update, and delete all lists                                                                                                                                                                                                 |
-| subscribers | subscribers:get         | Get individual subscriber details                                                                                                                                                                                                    |
-|             | subscribers:get_all     | Get all subscribers and their details                                                                                                                                                                                                |
-|             | subscribers:manage      | Add, update, and delete subscribers                                                                                                                                                                                                  |
-|             | subscribers:import      | Import subscribers from external files                                                                                                                                                                                               |
-|             | subscribers:sql_query   | Run raw SQL queries on subscriber data.<br /><span style="color: #de4a45;">**WARNING:**</span><span style="font-size: 0.875em; line-height: 1.3; color:#888;">This permission allows execution of arbitrary SQL expressions and SQL functions. While it is readonly on the table data, it allows querying of all lists and subscribers directly from the database superceding individual list and subscriber permissions. Raw SQL expressions make it possible to obtain Postgres database configuration and potentially interact with other Postgres system features. Give this permission ONLY to trusted users. [Learn more](#subscriberssql_query). |
-|             | tx:send                 | Send transactional messages to subscribers                                                                                                                                                                                           |
-| campaigns   | campaigns:get           | Get and view campaigns belonging to permitted lists                                                                                                                                                                                  |
-|             | campaigns:get_all       | Get and view campaigns across all lists                                                                                                                                                                                              |
+| customer_lists       | customer_lists:get_all           | Get details of all accessible customer_lists in the active workspace                                                                                                                                                                         |
+|             | customer_lists:manage_all        | Create, update, and delete all owner-managed customer_lists in the active workspace                                                                                                                                                          |
+| customers | customers:get         | Get individual customer details                                                                                                                                                                                                    |
+|             | customers:get_all     | Get all customers and their details in the active workspace                                                                                                                                                                       |
+|             | customers:manage      | Add, update, and delete customers                                                                                                                                                                                                  |
+|             | customers:import      | Import customers from external files                                                                                                                                                                                               |
+|             | customers:sql_query   | Run raw SQL queries on customer data.<br /><span style="color: #de4a45;">**WARNING:**</span><span style="font-size: 0.875em; line-height: 1.3; color:#888;">This permission allows execution of arbitrary SQL expressions and SQL functions. While it is readonly on the table data, it allows querying of all customer_lists and customers directly from the database superceding individual customer_list and customer permissions. Raw SQL expressions make it possible to obtain Postgres database configuration and potentially interact with other Postgres system features. Give this permission ONLY to trusted users. [Learn more](#customerssql_query). |
+|             | tx:send                 | Send transactional messages to customers                                                                                                                                                                                           |
+| campaigns   | campaigns:get           | Get and view campaigns belonging to permitted customer_lists                                                                                                                                                                                  |
+|             | campaigns:get_all       | Get and view campaigns across accessible customer_lists in the active workspace                                                                                                                                                               |
 |             | campaigns:get_analytics | Access campaign performance metrics                                                                                                                                                                                                  |
 |             | campaigns:manage        | Create, update, and delete campaigns                                                                                                                                                                                                 |
 | bounces     | bounces:get             | Get email bounce records                                                                                                                                                                                                             |
@@ -32,20 +53,70 @@ A user role is a collection of user related permissions. User roles are attached
 | settings    | settings:get            | Get system settings                                                                                                                                                                                                                  |
 |             | settings:manage         | Modify system configuration                                                                                                                                                                                                          |
 |             | settings:maintain       | Perform system maintenance tasks                                                                                                                                                                                                     |
+| workspaces  | workspaces:personal     | Enter the personal workspace. Without this permission the account can only enter organization workspaces; platform administrators always retain the personal workspace. |
 
-## List roles
+## Personal workspace capability
 
-A list role is a collection of permissions assigned per list. Each list can be assigned a view (read) or manage (update) permission. List roles are attached to user accounts. Only the lists defined in a list role is accessible by the user, be it on the admin UI or via API calls. Do note that the `lists:get_all` and `lists:manage_all` permissions in user roles override all per-list permissions.
+Every user with a username and password (or OIDC) login starts without a
+personal workspace unless their user role grants `workspaces:personal`.
+Platform administrators (the Super Admin role) always keep the personal
+workspace regardless of role permissions.
+
+Behavior of an account without the capability:
+
+- After login the user is sent to the workspace selection page, which customer_lists
+  only the organization workspaces they are an active member of. A user with a
+  single available space is entered automatically.
+- Requests that select the personal workspace (missing workspace header,
+  `organization_id=0`, or a personal-bound API key) are rejected with 403,
+  except the four resource customer_list endpoints used by the migration UI
+  (`/api/customer-lists`, `/api/templates`, `/api/campaigns`, `/api/media` on GET),
+  which remain readable because the personal workspace only ever exposes the
+  caller's own resources. Detail reads, exports, and every mutation still
+  require the capability.
+- Personal resources that existed before the capability was revoked are
+  retained but hidden. They can still be copied or moved into an organization
+  from `My organizations`, so the capability can be revoked without data loss
+  and re-granted later without data loss either way.
+- Accounts that are neither allowed a personal workspace nor members of any
+  organization see a blocking message on the selection page and cannot enter
+  the admin UI until an administrator grants access.
+
+## CustomerList roles
+
+A customer_list role is a collection of permissions assigned per customer_list. Each customer_list can be assigned a view (read) or manage (update) permission. CustomerList roles are attached to user accounts. Only the customer_lists defined in a customer_list role are accessible by the user, in the admin UI and via API calls. The `customer_lists:get_all` and `customer_lists:manage_all` user-role permissions override per-customer_list permissions, but neither bypasses the active workspace, resource owner, or transfer boundary.
+
+## E-mail masking and customer codes
+
+Two per-resource protections control what a viewer sees of a customer record:
+
+- **Customer code.** Every customer carries a required (non-unique) `customer_code`
+  business identifier on the admin and import paths. Public subscription forms
+  and public APIs do not require it. When importing a CSV/XLSX/ZIP file in
+  "subscribe" mode, the customer code column must be mapped (or present under a
+  `customer_code` header); rows without a value are skipped. The customer code
+  is included in customer listings and in CSV exports.
+- **Masked e-mails.** Each customer_list has a "mask e-mails" (`mask_emails`) setting. When
+  enabled, viewers who lack sensitive-data access to a customer (customer_list owners,
+  customer-list managers, and platform administrators are always exempt) see masked
+  e-mail addresses such as `liuxxx@gmail.com` instead of the full address in
+  customer listings, detail views, API responses, and CSV exports scoped to
+  that customer_list. The local part keeps its first 3 characters; the remainder is
+  replaced with `x`s, preserving the length (local parts of 3 characters or
+  fewer are fully replaced). Viewers with no sensitive-data access and no
+  masking-enabled customer_list context continue to receive the pre-existing redaction
+  (empty e-mail). Masking affects display only — searching and segmentation
+  still match against the full address.
 
 ## API users
 
-Regular users can create personal API keys from `Profile -> API Keys`. Each key is restricted to one personal or organization workspace, must expire within 24 months, and can be narrowed with business API scopes. The key never changes the user's role, list role, organization membership, or resource ownership.
+Regular users can create personal API keys from `Profile -> API Keys`. Each key is restricted to one personal or organization workspace, must expire within 24 months, and can be narrowed with business API scopes. The key never changes the user's role, customer_list role, organization membership, or resource ownership.
 
 A user account can also be of type API. API users are administrator-managed internal service accounts. Unlike regular user accounts that have custom passwords or OIDC for authentication, API users get an automatically generated secret token and can retain the legacy API-token behavior.
 
-## `subscribers:sql_query`
+## `customers:sql_query`
 
-This permission allowers users to write and execute arbitrary SQL queries on the database. Although it is executed as a read-only transaction disallowing changing of data in the database tables, it allows querying of all lists, subscribers and other data directly from the database superceding individual list and subscriber permissions.
+This permission allowers users to write and execute arbitrary SQL queries on the database. Although it is executed as a read-only transaction disallowing changing of data in the database tables, it allows querying of all customer_lists, customers and other data directly from the database superceding individual customer_list and customer permissions.
 
 Raw SQL expressions also make it possible to obtain Postgres database configuration and potentially interact with other Postgres system features. Give this permission ONLY to trusted users.
 

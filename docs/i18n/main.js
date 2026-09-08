@@ -149,7 +149,7 @@ var app = new Vue({
 		view(v) {
 			// When the view changes, create a copy of the items to be filtered
 			// by and filter the view based on that. Otherwise, the moment the value
-			// in the input changes, the list re-renders making items disappear.
+			// in the input changes, the customer_list re-renders making items disappear.
 
 			const visibleKeys = {};
 			this.keys.forEach((k) => {

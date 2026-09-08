@@ -68,7 +68,7 @@ def build_campaign_payload(
     *,
     campaign_name: str,
     subject: str | None,
-    list_id: int,
+    customer_list_id: int,
     template_id: int | None = None,
     campaign_body: str | None = None,
     content_type: str | None = None,
@@ -77,13 +77,13 @@ def build_campaign_payload(
     daily_send_limit: int | None = None,
     daily_resume_time: str | None = None,
     send_at: str | None = None,
-    tags: list[str] | None = None,
+    tags: customer_list[str] | None = None,
     attribs_file: str = "",
     source_campaign: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     payload = inherit_campaign_fields(source_campaign)
     payload["name"] = campaign_name
-    payload["lists"] = [list_id]
+    payload["customerLists"] = [customer_list_id]
 
     if subject is not None:
         payload["subject"] = subject

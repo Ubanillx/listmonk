@@ -9,7 +9,7 @@ from listmonk_marketing.common import emit_error, emit_json, log
 from listmonk_marketing.reports import fetch_campaign_reports
 
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+def parse_args(argv: customer_list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Fetch listmonk campaign reports with a Bearer personal API key.")
     add_auth_arguments(parser)
     parser.add_argument("--campaign-id", type=int, required=True, help="Campaign ID to report on")
@@ -20,7 +20,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: customer_list[str] | None = None) -> int:
     args = parse_args(argv)
     client = ListmonkClient(args.base_url, args.bearer_token, organization_id=args.organization_id)
     try:

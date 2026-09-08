@@ -11,11 +11,11 @@ SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-from listmonk_marketing.excel import extract_emails, parse_excel_subscribers
+from listmonk_marketing.excel import extract_emails, parse_excel_customers
 
 
 class ExcelParsingTests(unittest.TestCase):
-    def make_workbook(self, rows: list[list[object]]) -> str:
+    def make_workbook(self, rows: customer_list[customer_list[object]]) -> str:
         workbook = Workbook()
         sheet = workbook.active
         for row in rows:
@@ -32,7 +32,7 @@ class ExcelParsingTests(unittest.TestCase):
         emails = extract_emails("a@example.com; b@example.com; a@example.com")
         self.assertEqual(emails, ["a@example.com", "b@example.com"])
 
-    def test_parse_excel_subscribers_by_header_name(self) -> None:
+    def test_parse_excel_customers_by_header_name(self) -> None:
         path = self.make_workbook(
             [
                 ["邮箱", "姓名", "城市", "预算"],
@@ -41,20 +41,20 @@ class ExcelParsingTests(unittest.TestCase):
             ]
         )
 
-        parsed = parse_excel_subscribers(
+        parsed = parse_excel_customers(
             excel_file=path,
             email_column="邮箱",
             name_column="姓名",
         )
 
         self.assertEqual(parsed["source"], "excel")
-        self.assertEqual(len(parsed["subscribers"]), 2)
-        first = parsed["subscribers"][0]["subscriber"]
+        self.assertEqual(len(parsed["customers"]), 2)
+        first = parsed["customers"][0]["customer"]
         self.assertEqual(first["email"], "alice@example.com")
         self.assertEqual(first["name"], "Alice")
         self.assertEqual(first["attribs"], {"城市": "Shanghai", "预算": 100})
 
-    def test_parse_excel_subscribers_by_column_letter(self) -> None:
+    def test_parse_excel_customers_by_column_letter(self) -> None:
         path = self.make_workbook(
             [
                 ["Ignore", "Email", "Name"],
@@ -62,14 +62,14 @@ class ExcelParsingTests(unittest.TestCase):
             ]
         )
 
-        parsed = parse_excel_subscribers(
+        parsed = parse_excel_customers(
             excel_file=path,
             email_column="B",
             name_column="C",
         )
 
-        self.assertEqual(parsed["subscribers"][0]["subscriber"]["email"], "charlie@example.com")
-        self.assertEqual(parsed["subscribers"][0]["subscriber"]["name"], "Charlie")
+        self.assertEqual(parsed["customers"][0]["customer"]["email"], "charlie@example.com")
+        self.assertEqual(parsed["customers"][0]["customer"]["name"], "Charlie")
 
     def test_parse_excel_respects_header_and_start_row(self) -> None:
         path = self.make_workbook(
@@ -81,7 +81,7 @@ class ExcelParsingTests(unittest.TestCase):
             ]
         )
 
-        parsed = parse_excel_subscribers(
+        parsed = parse_excel_customers(
             excel_file=path,
             email_column="Email",
             name_column="Name",
@@ -89,8 +89,8 @@ class ExcelParsingTests(unittest.TestCase):
             start_row=4,
         )
 
-        self.assertEqual(len(parsed["subscribers"]), 1)
-        self.assertEqual(parsed["subscribers"][0]["subscriber"]["email"], "keep@example.com")
+        self.assertEqual(len(parsed["customers"]), 1)
+        self.assertEqual(parsed["customers"][0]["customer"]["email"], "keep@example.com")
 
     def test_parse_excel_reports_empty_and_missing_and_invalid_rows(self) -> None:
         path = self.make_workbook(
@@ -102,7 +102,7 @@ class ExcelParsingTests(unittest.TestCase):
             ]
         )
 
-        parsed = parse_excel_subscribers(
+        parsed = parse_excel_customers(
             excel_file=path,
             email_column="Email",
             name_column="Name",
@@ -121,14 +121,14 @@ class ExcelParsingTests(unittest.TestCase):
             ]
         )
 
-        parsed = parse_excel_subscribers(
+        parsed = parse_excel_customers(
             excel_file=path,
             email_column="Email",
             name_column="Name",
             dedupe_by_email=True,
         )
 
-        emails = [item["subscriber"]["email"] for item in parsed["subscribers"]]
+        emails = [item["customer"]["email"] for item in parsed["customers"]]
         self.assertEqual(emails, ["alpha@example.com", "beta@example.com"])
         self.assertEqual(parsed["skipped_rows"][0]["reason"], "duplicate_email")
 

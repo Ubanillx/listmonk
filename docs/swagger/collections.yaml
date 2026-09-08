@@ -26,20 +26,20 @@ tags:
     description: Admin API
   - name: Logs
     description: Logs API
-  - name: Subscribers
-    description: Subscribers API
+  - name: Customers
+    description: Customers API
     externalDocs:
-      url: https://listmonk.app/docs/apis/subscribers/
+      url: https://listmonk.app/docs/apis/customers/
   - name: Bounces
     description: Bounce API
-  - name: Lists
-    description: Subscriber List API
+  - name: CustomerLists
+    description: Customer CustomerList API
     externalDocs:
-      url: https://listmonk.app/docs/apis/lists/
+      url: https://listmonk.app/docs/apis/customer-lists/
   - name: Import
     description: Import API
     externalDocs:
-      url: https://listmonk.app/docs/apis/lists/
+      url: https://listmonk.app/docs/apis/customer-lists/
   - name: Campaigns
     description: Campaign API
     externalDocs:
@@ -256,12 +256,12 @@ paths:
                     items:
                       type: string
 
-  /subscribers:
+  /customers:
     get:
       tags:
-        - Subscribers
-      description: returns all subscribers.
-      operationId: getSubscribers
+        - Customers
+      description: returns all customers.
+      operationId: getCustomers
       parameters:
         - in: query
           name: page
@@ -283,7 +283,7 @@ paths:
                 description: Return all results without pagination
         - in: query
           name: query
-          description: query subscribers with an SQL expression.
+          description: query customers with an SQL expression.
           required: false
           schema:
             type: string
@@ -303,13 +303,13 @@ paths:
             enum: ["ASC", "DESC"]
         - in: query
           name: subscription_status
-          description: Subscription status to filter by if there are one or more list_ids.
+          description: Subscription status to filter by if there are one or more customer_list_ids.
           required: false
           schema:
             type: string
         - in: query
-          name: list_id
-          description: ID of lists to filter by. Repeat in the query for multiple values.
+          name: customer_list_id
+          description: ID of customer_lists to filter by. Repeat in the query for multiple values.
           required: false
           schema:
             type: array
@@ -318,7 +318,7 @@ paths:
 
       responses:
         "200":
-          description: subscribers list
+          description: customers customer_list
           content:
             application/json:
               schema:
@@ -330,7 +330,7 @@ paths:
                       results:
                         type: array
                         items:
-                          $ref: "#/components/schemas/Subscriber"
+                          $ref: "#/components/schemas/Customer"
                       query:
                         type: string
                       total:
@@ -341,38 +341,38 @@ paths:
                         type: integer
 
     post:
-      description: handles creation of new subscriber
-      operationId: createSubscriber
+      description: handles creation of new customer
+      operationId: createCustomer
       tags:
-        - Subscribers
+        - Customers
       requestBody:
-        description: new subscriber info
+        description: new customer info
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/NewSubscriber"
+              $ref: "#/components/schemas/NewCustomer"
 
       responses:
         "200":
-          description: subscriber object
+          description: customer object
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   data:
-                    $ref: "#/components/schemas/Subscriber"
+                    $ref: "#/components/schemas/Customer"
 
     delete:
-      description: handles subscribers deletion
-      operationId: deleteSubscriberByList
+      description: handles customers deletion
+      operationId: deleteCustomerByList
       tags:
-        - Subscribers
+        - Customers
       parameters:
         - in: query
           name: id
           required: true
-          description: subscriber id/s to be deleted
+          description: customer id/s to be deleted
           schema:
             type: string
       responses:
@@ -386,70 +386,70 @@ paths:
                   data:
                     type: boolean
 
-  "/subscribers/{id}":
+  "/customers/{id}":
     get:
-      description: handles the retrieval of a single subscriber by ID.
-      operationId: getSubscriberById
+      description: handles the retrieval of a single customer by ID.
+      operationId: getCustomerById
       tags:
-        - Subscribers
+        - Customers
       parameters:
         - in: path
           name: id
           required: true
-          description: The id value of the subscriber you want to get.
+          description: The id value of the customer you want to get.
           schema:
             type: integer
 
       responses:
         "200":
-          description: gets a single subscriber.
+          description: gets a single customer.
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   data:
-                    $ref: "#/components/schemas/Subscriber"
+                    $ref: "#/components/schemas/Customer"
 
     put:
-      description: modify subscriber data
-      operationId: updateSubscriberById
+      description: modify customer data
+      operationId: updateCustomerById
       tags:
-        - Subscribers
+        - Customers
       parameters:
         - in: path
           name: id
           required: true
-          description: The id of subscriber to update
+          description: The id of customer to update
           schema:
             type: integer
       requestBody:
-        description: new subscriber info
+        description: new customer info
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/UpdateSubscriber"
+              $ref: "#/components/schemas/UpdateCustomer"
       responses:
         "200":
-          description: returns updated subscriber.
+          description: returns updated customer.
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   data:
-                    $ref: "#/components/schemas/Subscriber"
+                    $ref: "#/components/schemas/Customer"
 
     delete:
-      description: handles subscriber deletion based on id
-      operationId: deleteSubscriberById
+      description: handles customer deletion based on id
+      operationId: deleteCustomerById
       tags:
-        - Subscribers
+        - Customers
       parameters:
         - in: path
           name: id
           required: true
-          description: The id value of the subscriber you want to get.
+          description: The id value of the customer you want to get.
           schema:
             type: integer
 
@@ -464,18 +464,18 @@ paths:
                   data:
                     type: boolean
 
-  /subscribers/lists:
+  /customers/customer-lists:
     put:
-      description: handles bulk addition or removal of subscribers
-      operationId: manageSubscriberLists
+      description: handles bulk addition or removal of customers
+      operationId: manageCustomerListMemberships
       tags:
-        - Subscribers
+        - Customers
       requestBody:
-        description: The list of subscribers details to add or remove
+        description: The customer_list of customers details to add or remove
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/SubscriberQueryRequest"
+              $ref: "#/components/schemas/CustomerQueryRequest"
       responses:
         "200":
           description: OK
@@ -487,80 +487,80 @@ paths:
                   data:
                     type: boolean
 
-  "/subscribers/lists/{id}":
+  "/customers/customer-lists/{id}":
     put:
-      description: handles bulk addition or removal of subscribers for a specified list id
-      operationId: manageSubscriberListById
+      description: handles bulk addition or removal of customers for a specified customer_list id
+      operationId: manageCustomerListById
       tags:
-        - Subscribers
+        - Customers
       requestBody:
-        description: The list of subscribers to add or remove
+        description: The customer_list of customers to add or remove
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/SubscriberQueryRequest"
+              $ref: "#/components/schemas/CustomerQueryRequest"
       parameters:
         - in: path
           name: id
           required: true
-          description: The id of list you want to update
-          schema:
-            type: integer
-            format: int32
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    type: boolean
-
-  "/subscribers/blocklist":
-    put:
-      description: handles blocklisting of subscriber list
-      operationId: manageBlocklistBySubscriberList
-      tags:
-        - Subscribers
-      requestBody:
-        description: The list of subscribers to blocklist
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SubscriberQueryRequest"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    type: boolean
-
-  "/subscribers/{id}/blocklist":
-    put:
-      description: handles the blocklisting of one or more subscribers.
-      operationId: manageBlocklistSubscribersById
-      tags:
-        - Subscribers
-      requestBody:
-        description: The id of subscriber to add or remove
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SubscriberQueryRequest"
-      parameters:
-        - in: path
-          name: id
-          required: true
-          description: The id value of the subscriber you want to blocklist.
+          description: The id of customer_list you want to update
           schema:
             type: integer
             format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: boolean
+
+  "/customers/blocklist":
+    put:
+      description: handles blocklisting of customer customer_list
+      operationId: manageBlocklistByCustomerList
+      tags:
+        - Customers
+      requestBody:
+        description: The customer_list of customers to blocklist
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomerQueryRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: boolean
+
+  "/customers/{id}/blocklist":
+    put:
+      description: handles the blocklisting of one or more customers.
+      operationId: manageBlocklistCustomersById
+      tags:
+        - Customers
+      requestBody:
+        description: The id of customer to add or remove
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomerQueryRequest"
+      parameters:
+        - in: path
+          name: id
+          required: true
+          description: The id value of the customer you want to blocklist.
+          schema:
+            type: integer
+            format: int32
 
       responses:
         "200":
@@ -573,17 +573,17 @@ paths:
                   data:
                     type: boolean
 
-  "/subscribers/{id}/export":
+  "/customers/{id}/export":
     get:
-      description: retrieves a subscriber's profile
-      operationId: exportSubscriberDataByID
+      description: retrieves a customer's profile
+      operationId: exportCustomerDataByID
       tags:
-        - Subscribers
+        - Customers
       parameters:
         - in: path
           name: id
           required: true
-          description: The id value of subscriber profile you want to export
+          description: The id value of customer profile you want to export
           schema:
             type: integer
       responses:
@@ -597,28 +597,28 @@ paths:
                 type: string
                 example: attachment; filename="data.json"
 
-          description: subscriber data object
+          description: customer data object
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SubscriberData"
+                $ref: "#/components/schemas/CustomerData"
 
-  "/subscribers/{id}/bounces":
+  "/customers/{id}/bounces":
     get:
-      description: retrieves a subscriber's bounce records
-      operationId: getSubscriberBouncesById
+      description: retrieves a customer's bounce records
+      operationId: getCustomerBouncesById
       tags:
-        - Subscribers
+        - Customers
       parameters:
         - in: path
           name: id
           required: true
-          description: subscriber id
+          description: customer id
           schema:
             type: integer
       responses:
         "200":
-          description: list of bounce records of a subscriber
+          description: customer_list of bounce records of a customer
           content:
             application/json:
               schema:
@@ -630,15 +630,15 @@ paths:
                       $ref: "#/components/schemas/Bounce"
 
     delete:
-      description: deletes a subscriber's bounce records
-      operationId: deleteSubscriberBouncesById
+      description: deletes a customer's bounce records
+      operationId: deleteCustomerBouncesById
       tags:
-        - Subscribers
+        - Customers
       parameters:
         - in: path
           name: id
           required: true
-          description: subscriber id
+          description: customer id
           schema:
             type: integer
       responses:
@@ -652,17 +652,17 @@ paths:
                   data:
                     type: boolean
 
-  "/subscribers/{id}/optin":
+  "/customers/{id}/optin":
     post:
-      description: sends an optin confirmation e-mail to a subscriber.
-      operationId: subscriberSendOptinById
+      description: sends an optin confirmation e-mail to a customer.
+      operationId: customerSendOptinById
       tags:
-        - Subscribers
+        - Customers
       parameters:
         - in: path
           name: id
           required: true
-          description: sends an optin confirmation e-mail to a subscriber
+          description: sends an optin confirmation e-mail to a customer
           schema:
             type: integer
       responses:
@@ -676,12 +676,12 @@ paths:
                   data:
                     type: boolean
 
-  "/subscribers/query/delete":
+  "/customers/query/delete":
     post:
       description: bulk deletes based on an arbitrary SQL expression.
-      operationId: deleteSubscriberByQuery
+      operationId: deleteCustomerByQuery
       tags:
-        - Subscribers
+        - Customers
       requestBody:
         description: Arbitrary SQL expression.
         content:
@@ -690,7 +690,7 @@ paths:
               type: string
           application/json:
             schema:
-              $ref: "#/components/schemas/SubscriberQueryRequest"
+              $ref: "#/components/schemas/CustomerQueryRequest"
 
       responses:
         "200":
@@ -703,12 +703,12 @@ paths:
                   data:
                     type: boolean
 
-  "/subscribers/query/blocklist":
+  "/customers/query/blocklist":
     put:
-      description: bulk blocklists subscribers based on an arbitrary SQL expression.
-      operationId: blocklistSubscribersQuery
+      description: bulk blocklists customers based on an arbitrary SQL expression.
+      operationId: blocklistCustomersQuery
       tags:
-        - Subscribers
+        - Customers
       requestBody:
         description: Arbitrary SQL expression.
         content:
@@ -717,7 +717,7 @@ paths:
               type: string
           application/json:
             schema:
-              $ref: "#/components/schemas/SubscriberQueryRequest"
+              $ref: "#/components/schemas/CustomerQueryRequest"
 
       responses:
         "200":
@@ -730,12 +730,12 @@ paths:
                   data:
                     type: boolean
 
-  "/subscribers/query/lists":
+  "/customers/query/customer-lists":
     put:
-      description: bulk adds/removes/unsubscribes subscribers from one or more lists based on an arbitrary SQL expression.
-      operationId: manageSubscriberListsByQuery
+      description: bulk adds/removes/unsubscribes customers from one or more customer_lists based on an arbitrary SQL expression.
+      operationId: manageCustomerListMembershipsByQuery
       tags:
-        - Subscribers
+        - Customers
       requestBody:
         description: Arbitrary SQL expression.
         content:
@@ -744,7 +744,7 @@ paths:
               type: string
           application/json:
             schema:
-              $ref: "#/components/schemas/SubscriberQueryRequest"
+              $ref: "#/components/schemas/CustomerQueryRequest"
 
       responses:
         "200":
@@ -804,7 +804,7 @@ paths:
             enum: ["asc", "desc"]
       responses:
         "200":
-          description: list of bounce records
+          description: customer_list of bounce records
           content:
             application/json:
               schema:
@@ -838,7 +838,7 @@ paths:
             type: boolean
         - in: query
           name: id
-          description: list of bounce ids to delete
+          description: customer_list of bounce ids to delete
           schema:
             type: string
       responses:
@@ -877,7 +877,7 @@ paths:
                     $ref: "#/components/schemas/Bounce"
 
     delete:
-      description: handles bounce deletion, either a single one (ID in the URI), or a list.
+      description: handles bounce deletion, either a single one (ID in the URI), or a customer_list.
       operationId: deleteBounceById
       parameters:
         - in: path
@@ -899,12 +899,12 @@ paths:
                   data:
                     type: boolean
                     
-  /lists:
+  /customer-lists:
     get:
-      description: retrieves lists with additional metadata like subscriber counts. This may be slow.
+      description: retrieves customer_lists with additional metadata like customer counts. This may be slow.
       operationId: getLists
       tags:
-        - Lists
+        - CustomerLists
       parameters:
         - in: query
           name: page
@@ -925,7 +925,7 @@ paths:
                 description: Return all results without pagination
         - in: query
           name: query
-          description: Optional string to search a list by name.
+          description: Optional string to search a customer_list by name.
           required: false
           schema:
             type: string
@@ -951,7 +951,7 @@ paths:
             type: boolean
         - in: query
           name: tag
-          description: Tags to filter lists. Repeat in the query for multiple values.
+          description: Tags to filter customer_lists. Repeat in the query for multiple values.
           required: false
           schema:
             type: array
@@ -959,7 +959,7 @@ paths:
               type: string
       responses:
         "200":
-          description: list of metadata
+          description: customer_list of metadata
           content:
             application/json:
               schema:
@@ -971,7 +971,7 @@ paths:
                       results:
                         type: array
                         items:
-                          $ref: "#/components/schemas/List"
+                          $ref: "#/components/schemas/CustomerList"
                       total:
                         type: integer
                       per_page:
@@ -980,89 +980,89 @@ paths:
                         type: integer
 
     post:
-      description: handles list creation
+      description: handles customer_list creation
       operationId: createList
       tags:
-        - Lists
+        - CustomerLists
       requestBody:
-        description: new list info
+        description: new customer_list info
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/NewList"
       responses:
         "200":
-          description: updated list object
+          description: updated customer_list object
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   data:
-                    $ref: "#/components/schemas/List"
+                    $ref: "#/components/schemas/CustomerList"
 
-  "/lists/{list_id}":
+  "/customer-lists/{customer_list_id}":
     get:
-      description: retrieves lists with additional metadata like subscriber counts. This may be slow.
+      description: retrieves customer_lists with additional metadata like customer counts. This may be slow.
       operationId: getListById
       tags:
-        - Lists
+        - CustomerLists
       parameters:
         - in: path
-          name: list_id
+          name: customer_list_id
           required: true
-          description: The id value of the list you want to retreive.
+          description: The id value of the customer_list you want to retreive.
           schema:
             type: integer
 
       responses:
         "200":
-          description: list object
+          description: customer_list object
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   data:
-                    $ref: "#/components/schemas/List"
+                    $ref: "#/components/schemas/CustomerList"
     put:
-      description: handles list modification
+      description: handles customer_list modification
       operationId: updateListById
       tags:
-        - Lists
+        - CustomerLists
       parameters:
         - in: path
-          name: list_id
+          name: customer_list_id
           required: true
-          description: The id value of the list you want to update
+          description: The id value of the customer_list you want to update
           schema:
             type: integer
       requestBody:
-        description: updated list field values
+        description: updated customer_list field values
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/List"
+              $ref: "#/components/schemas/CustomerList"
       responses:
         "200":
-          description: updated list object
+          description: updated customer_list object
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   data:
-                    $ref: "#/components/schemas/List"
+                    $ref: "#/components/schemas/CustomerList"
     delete:
-      description: handles list deletion, either a single one (ID in the URI), or a list.
+      description: handles customer_list deletion, either a single one (ID in the URI), or a customer_list.
       operationId: deleteListById
       tags:
-        - Lists
+        - CustomerLists
       parameters:
         - in: path
-          name: list_id
+          name: customer_list_id
           required: true
-          description: The id value of the lists you want to delete.
+          description: The id value of the customer_lists you want to delete.
           schema:
             type: integer
 
@@ -1077,10 +1077,10 @@ paths:
                   data:
                     type: boolean
 
-  /import/subscribers:
+  /import/customers:
     get:
       description: returns import status.
-      operationId: getImportSubscribers
+      operationId: getImportCustomers
       tags:
         - Import
       responses:
@@ -1096,7 +1096,7 @@ paths:
 
     post:
       description: handles the uploading and bulk importing of a ZIP file of one or more CSV files.
-      operationId: importSubscribers
+      operationId: importCustomers
       tags:
         - Import
       requestBody:
@@ -1109,7 +1109,7 @@ paths:
                 params:
                   type: string
                   description: JSON string containing import parameters for more detail https://listmonk.app/docs/apis/import/#params-json-string
-                  example: '{"mode":"subscribe", "subscription_status":"confirmed", "delim":",", "lists":[1, 2], "overwrite": true}'
+                  example: '{"mode":"subscribe", "subscription_status":"confirmed", "delim":",", "customerLists":[1, 2], "overwrite": true}'
                 file:
                   type: string
                   format: binary
@@ -1127,7 +1127,7 @@ paths:
 
     delete:
       description: sends a stop signal to the importer.
-      operationId: stopImportSubscribers
+      operationId: stopImportCustomers
       tags:
         - Import
       responses:
@@ -1141,10 +1141,10 @@ paths:
                   data:
                     $ref: "#/components/schemas/ImportStatus"
 
-  /import/subscribers/logs:
+  /import/customers/logs:
     get:
       description: returns import logs from an ongoing import
-      operationId: getImportSubscriberLogs
+      operationId: getImportCustomerLogs
       tags:
         - Import
       responses:
@@ -1227,7 +1227,7 @@ paths:
         - Campaigns
       responses:
         "200":
-          description: list of campaigns
+          description: customer_list of campaigns
           content:
             application/json:
               schema:
@@ -1369,7 +1369,7 @@ paths:
             type: number
       responses:
         "200":
-          description: list of stats for given set of campaign ids
+          description: customer_list of stats for given set of campaign ids
           content:
             application/json:
               schema:
@@ -1415,7 +1415,7 @@ paths:
             type: string
       responses:
         "200":
-          description: list of stats for given set of campaign ids
+          description: customer_list of stats for given set of campaign ids
           content:
             application/json:
               schema:
@@ -1629,7 +1629,7 @@ paths:
 
   "/campaigns/{id}/test":
     post:
-      description: handles sending of campaign message to arbitrary subscribers for testing
+      description: handles sending of campaign message to arbitrary customers for testing
       operationId: testCampaignById
       tags:
         - Campaigns
@@ -1739,7 +1739,7 @@ paths:
         - in: path
           name: id
           required: true
-          description: The id value of the list you want to delete.
+          description: The id value of the customer_list you want to delete.
           schema:
             type: integer
       responses:
@@ -1973,10 +1973,10 @@ paths:
     post:
       tags:
         - Transactional
-      description: send message to a subscriber
-      operationId: transactWithSubscriber
+      description: send message to a customer
+      operationId: transactWithCustomer
       requestBody:
-        description: email message to a subscriber
+        description: email message to a customer
         content:
           application/json:
             schema:
@@ -1992,16 +1992,16 @@ paths:
                   data:
                     type: boolean
 
-  "/maintenance/subscribers/{type}":
+  "/maintenance/customers/{type}":
     delete:
-      description: garbage collects (deletes) orphaned or blocklisted subscribers.
-      operationId: deleteGCSubscribers
+      description: garbage collects (deletes) orphaned or blocklisted customers.
+      operationId: deleteGCCustomers
       tags:
         - Maintenance
       parameters:
         - in: path
           name: type
-          description: type of GC collected subscribers
+          description: type of GC collected customers
           schema:
             type: string
           required: true
@@ -2039,7 +2039,7 @@ paths:
       parameters:
         - in: path
           name: type
-          description: type of GC collected subscribers
+          description: type of GC collected customers
           schema:
             type: string
           required: true
@@ -2056,7 +2056,7 @@ paths:
 
   "/maintenance/subscriptions/unconfirmed":
     delete:
-      description: garbage collects (deletes) orphaned or blocklisted subscribers.
+      description: garbage collects (deletes) orphaned or blocklisted customers.
       operationId: deleteUnconfirmedSubscriptions
       tags:
         - Maintenance
@@ -2085,9 +2085,9 @@ paths:
                       count:
                         type: integer
 
-  "/public/lists":
+  "/public/customer-lists":
     get:
-      description: returns the list of public lists with minimal fields
+      description: returns the customer_list of public customer_lists with minimal fields
       operationId: getPublicLists
       tags:
         - Public
@@ -2345,7 +2345,7 @@ paths:
     get:
       tags:
         - Users
-      description: lists integration bearer tokens for an API user.
+      description: customer_lists integration bearer tokens for an API user.
       operationId: getUserIntegrationTokens
       parameters:
         - in: path
@@ -2355,7 +2355,7 @@ paths:
             type: integer
       responses:
         "200":
-          description: list of integration tokens
+          description: customer_list of integration tokens
           content:
             application/json:
               schema:
@@ -2520,7 +2520,7 @@ components:
               type: string
             campaigns.fieldInvalidFromEmail:
               type: string
-            campaigns.fieldInvalidListIDs:
+            campaigns.fieldInvalidCustomerListIDs:
               type: string
             campaigns.fieldInvalidMessenger:
               type: string
@@ -2848,9 +2848,9 @@ components:
               type: string
             globals.terms.hour:
               type: string
-            globals.terms.list:
+            globals.terms.customer_list:
               type: string
-            globals.terms.lists:
+            globals.terms.customer_lists:
               type: string
             globals.terms.media:
               type: string
@@ -2866,9 +2866,9 @@ components:
               type: string
             globals.terms.settings:
               type: string
-            globals.terms.subscriber:
+            globals.terms.customer:
               type: string
-            globals.terms.subscribers:
+            globals.terms.customers:
               type: string
             globals.terms.subscriptions:
               type: string
@@ -2942,35 +2942,35 @@ components:
               type: string
             import.upload:
               type: string
-            lists.confirmDelete:
+            customer_lists.confirmDelete:
               type: string
-            lists.confirmSub:
+            customer_lists.confirmSub:
               type: string
-            lists.invalidName:
+            customer_lists.invalidName:
               type: string
-            lists.newList:
+            customer_lists.newList:
               type: string
-            lists.optin:
+            customer_lists.optin:
               type: string
-            lists.optinHelp:
+            customer_lists.optinHelp:
               type: string
-            lists.optinTo:
+            customer_lists.optinTo:
               type: string
-            lists.optins.double:
+            customer_lists.optins.double:
               type: string
-            lists.optins.single:
+            customer_lists.optins.single:
               type: string
-            lists.sendCampaign:
+            customer_lists.sendCampaign:
               type: string
-            lists.sendOptinCampaign:
+            customer_lists.sendOptinCampaign:
               type: string
-            lists.type:
+            customer_lists.type:
               type: string
-            lists.typeHelp:
+            customer_lists.typeHelp:
               type: string
-            lists.types.private:
+            customer_lists.types.private:
               type: string
-            lists.types.public:
+            customer_lists.types.public:
               type: string
             logs.title:
               type: string
@@ -3008,7 +3008,7 @@ components:
               type: string
             menu.allLists:
               type: string
-            menu.allSubscribers:
+            menu.allCustomers:
               type: string
             menu.dashboard:
               type: string
@@ -3444,97 +3444,97 @@ components:
               type: string
             settings.updateAvailable:
               type: string
-            subscribers.advancedQuery:
+            customers.advancedQuery:
               type: string
-            subscribers.advancedQueryHelp:
+            customers.advancedQueryHelp:
               type: string
-            subscribers.attribs:
+            customers.attribs:
               type: string
-            subscribers.attribsHelp:
+            customers.attribsHelp:
               type: string
-            subscribers.blocklistedHelp:
+            customers.blocklistedHelp:
               type: string
-            subscribers.confirmBlocklist:
+            customers.confirmBlocklist:
               type: string
-            subscribers.confirmDelete:
+            customers.confirmDelete:
               type: string
-            subscribers.confirmExport:
+            customers.confirmExport:
               type: string
-            subscribers.domainBlocklisted:
+            customers.domainBlocklisted:
               type: string
-            subscribers.downloadData:
+            customers.downloadData:
               type: string
-            subscribers.email:
+            customers.email:
               type: string
-            subscribers.emailExists:
+            customers.emailExists:
               type: string
-            subscribers.errorBlocklisting:
+            customers.errorBlocklisting:
               type: string
-            subscribers.errorNoIDs:
+            customers.errorNoIDs:
               type: string
-            subscribers.errorNoListsGiven:
+            customers.errorNoListsGiven:
               type: string
-            subscribers.errorPreparingQuery:
+            customers.errorPreparingQuery:
               type: string
-            subscribers.errorSendingOptin:
+            customers.errorSendingOptin:
               type: string
-            subscribers.export:
+            customers.export:
               type: string
-            subscribers.invalidAction:
+            customers.invalidAction:
               type: string
-            subscribers.invalidEmail:
+            customers.invalidEmail:
               type: string
-            subscribers.invalidJSON:
+            customers.invalidJSON:
               type: string
-            subscribers.invalidName:
+            customers.invalidName:
               type: string
-            subscribers.listChangeApplied:
+            customers.listChangeApplied:
               type: string
-            subscribers.lists:
+            customers.customer_lists:
               type: string
-            subscribers.listsHelp:
+            customers.listsHelp:
               type: string
-            subscribers.listsPlaceholder:
+            customers.listsPlaceholder:
               type: string
-            subscribers.manageLists:
+            customers.manageLists:
               type: string
-            subscribers.markUnsubscribed:
+            customers.markUnsubscribed:
               type: string
-            subscribers.newSubscriber:
+            customers.newCustomer:
               type: string
-            subscribers.numSelected:
+            customers.numSelected:
               type: string
-            subscribers.optinSubject:
+            customers.optinSubject:
               type: string
-            subscribers.preconfirm:
+            customers.preconfirm:
               type: string
-            subscribers.preconfirmHelp:
+            customers.preconfirmHelp:
               type: string
-            subscribers.query:
+            customers.query:
               type: string
-            subscribers.queryPlaceholder:
+            customers.queryPlaceholder:
               type: string
-            subscribers.reset:
+            customers.reset:
               type: string
-            subscribers.selectAll:
+            customers.selectAll:
               type: string
-            subscribers.sendOptinConfirm:
+            customers.sendOptinConfirm:
               type: string
-            subscribers.sentOptinConfirm:
+            customers.sentOptinConfirm:
               type: string
-            subscribers.status.blocklisted:
+            customers.status.blocklisted:
               type: string
-            subscribers.status.confirmed:
+            customers.status.confirmed:
               type: string
-            subscribers.status.enabled:
+            customers.status.enabled:
               type: string
-            subscribers.status.subscribed:
+            customers.status.subscribed:
               type: string
-            subscribers.status.unconfirmed:
+            customers.status.unconfirmed:
               type: string
-            subscribers.status.unsubscribed:
+            customers.status.unsubscribed:
               type: string
-            subscribers.subscribersDeleted:
+            customers.customersDeleted:
               type: string
             templates.cantDeleteDefault:
               type: string
@@ -3623,7 +3623,7 @@ components:
         data:
           type: object
           properties:
-            subscribers:
+            customers:
               type: object
               properties:
                 total:
@@ -3632,7 +3632,7 @@ components:
                   type: object
                 orphans:
                   type: integer
-            lists:
+            customer_lists:
               type: object
               properties:
                 total:
@@ -3888,7 +3888,7 @@ components:
         appearance.public.custom_js:
           type: string
 
-    SubscriberProfile:
+    CustomerProfile:
       type: object
       properties:
         id:
@@ -3921,7 +3921,7 @@ components:
         created_at:
           type: string
 
-    SubscriberData:
+    CustomerData:
       type: object
       properties:
         email:
@@ -3929,7 +3929,7 @@ components:
         profile:
           type: array
           items:
-            $ref: "#/components/schemas/SubscriberProfile"
+            $ref: "#/components/schemas/CustomerProfile"
         subscriptions:
           type: array
           items:
@@ -3943,7 +3943,7 @@ components:
           items:
             type: object
 
-    Subscriber:
+    Customer:
       type: object
       properties:
         id:
@@ -3963,7 +3963,7 @@ components:
           additionalProperties: true
         status:
           type: string
-        lists:
+        customer_lists:
           type: array
           items:
             type: object
@@ -3987,7 +3987,7 @@ components:
               updated_at:
                 type: string
 
-    NewSubscriber:
+    NewCustomer:
       type: object
       properties:
         email:
@@ -3996,7 +3996,7 @@ components:
           type: string
         status:
           type: string
-        lists:
+        customer_lists:
           type: array
           items:
             type: integer
@@ -4010,7 +4010,7 @@ components:
           type: object
           additionalProperties: true
 
-    UpdateSubscriber:
+    UpdateCustomer:
       type: object
       properties:
         email:
@@ -4019,7 +4019,7 @@ components:
           type: string
         status:
           type: string
-        lists:
+        customer_lists:
           type: array
           items:
             type: integer
@@ -4033,23 +4033,23 @@ components:
           type: object
           additionalProperties: true
 
-    SubscriberQueryRequest:
+    CustomerQueryRequest:
       type: object
       properties:
         query:
           type: string
         ids:
           type: array
-          description: The ids of the subscribers to be modified.
+          description: The ids of the customers to be modified.
           items:
             type: integer
         action:
           type: string
           enum: [add, remove, unsubscribe]
           description: Whether to add, remove, or unsubscribe the users.
-        target_list_ids:
+        target_customer_list_ids:
           type: integer
-          description: The ids of the lists to be modified.
+          description: The ids of the customer_lists to be modified.
           items:
             type: integer
         status:
@@ -4077,9 +4077,9 @@ components:
                 type: string
               email:
                 type: string
-              subscriber_uuid:
+              customer_uuid:
                 type: string
-              subscriber_id:
+              customer_id:
                 type: integer
               campaign:
                 type: object
@@ -4093,7 +4093,7 @@ components:
               total:
                 type: integer
 
-    List:
+    CustomerList:
       type: object
       properties:
         id:
@@ -4114,7 +4114,7 @@ components:
           type: array
           items:
             type: string
-        subscriber_count:
+        customer_count:
           type: integer
         description:
           type: string
@@ -4167,7 +4167,7 @@ components:
           type: integer
         clicks:
           type: integer
-        lists:
+        customer_lists:
           type: array
           items:
             type: object
@@ -4226,7 +4226,7 @@ components:
           type: integer
         clicks:
           type: integer
-        lists:
+        customer_lists:
           type: array
           items:
             type: object
@@ -4281,7 +4281,7 @@ components:
           type: string
         subject:
           type: string
-        lists:
+        customer_lists:
           type: array
           items:
             type: number
@@ -4316,7 +4316,7 @@ components:
           type: string
         subject:
           type: string
-        lists:
+        customer_lists:
           type: array
           items:
             type: integer
@@ -4588,7 +4588,7 @@ components:
     CampaignReportRecipient:
       type: object
       properties:
-        subscriber_id:
+        customer_id:
           type: integer
         uuid:
           type: string
@@ -4638,9 +4638,9 @@ components:
     TransactionalMessage:
       type: object
       properties:
-        subscriber_email:
+        customer_email:
           type: string
-        subscriber_id:
+        customer_id:
           type: integer
         template_id:
           type: integer

@@ -1,31 +1,31 @@
-# API / Lists
+# API / CustomerLists
 
 | Method | Endpoint                                        | Description               |
 | :----- | :---------------------------------------------- | :------------------------ |
-| GET    | [/api/lists](#get-apilists)                     | Retrieve all lists.       |
-| GET    | [/api/public/lists](#get-public-apilists)       | Retrieve public lists.    |
-| GET    | [/api/lists/{list_id}](#get-apilistslist_id)    | Retrieve a specific list. |
-| POST   | [/api/lists](#post-apilists)                    | Create a new list.        |
-| PUT    | [/api/lists/{list_id}](#put-apilistslist_id)    | Update a list.            |
-| DELETE | [/api/lists/{list_id}](#delete-apilistslist_id) | Delete a list.            |
-| DELETE | [/api/lists](#delete-apilists)                  | Delete multiple lists.    |
+| GET    | [/api/customer-lists](#get-apilists)                     | Retrieve all customer_lists.       |
+| GET    | [/api/public/customer-lists](#get-public-apilists)       | Retrieve public customer_lists.    |
+| GET    | [/api/customer-lists/{customer_list_id}](#get-apilistscustomer_list_id)    | Retrieve a specific customer_list. |
+| POST   | [/api/customer-lists](#post-apilists)                    | Create a new customer_list.        |
+| PUT    | [/api/customer-lists/{customer_list_id}](#put-apilistscustomer_list_id)    | Update a customer_list.            |
+| DELETE | [/api/customer-lists/{customer_list_id}](#delete-apilistscustomer_list_id) | Delete a customer_list.            |
+| DELETE | [/api/customer-lists](#delete-apilists)                  | Delete multiple customer_lists.    |
 
 ______________________________________________________________________
 
-#### GET /api/lists
+#### GET /api/customer-lists
 
-Retrieve lists.
+Retrieve customer_lists.
 
-> **Note:** Lists with `status: archived` are hidden from list selectors in campaigns, public subscription forms, and roles by default. They can only be viewed by filtering with `status=archived` or by viewing all lists without a status filter.
+> **Note:** CustomerLists with `status: archived` are hidden from customer_list selectors in campaigns, public subscription forms, and roles by default. They can only be viewed by filtering with `status=archived` or by viewing all customer_lists without a status filter.
 
 ##### Parameters
 
 | Name     | Type     | Required | Description                                                                                        |
 | :------- | :------- | :------- | :------------------------------------------------------------------------------------------------- |
-| query    | string   |          | String for list name search.                                                                       |
-| status   | string   |          | Status to filter lists. Options: active, archived. Defaults to showing all lists if not specified. |
-| minimal  | boolean  |          | If true, returns lists without subscriber counts (faster). Defaults to false.                      |
-| tag      | []string |          | Tags to filter lists. Repeat in the query for multiple values.                                     |
+| query    | string   |          | String for customer_list name search.                                                                       |
+| status   | string   |          | Status to filter customer_lists. Options: active, archived. Defaults to showing all customer_lists if not specified. |
+| minimal  | boolean  |          | If true, returns customer_lists without customer counts (faster). Defaults to false.                      |
+| tag      | []string |          | Tags to filter customer_lists. Repeat in the query for multiple values.                                     |
 | order_by | string   |          | Sort field. Options: name, status, created_at, updated_at.                                         |
 | order    | string   |          | Sorting order. Options: ASC, DESC.                                                                 |
 | page     | number   |          | Page number for pagination.                                                                        |
@@ -34,14 +34,14 @@ Retrieve lists.
 ##### Example Request
 
 ```shell
-# Get all lists
-curl -u "api_user:token" -X GET 'http://localhost:9000/api/lists?page=1&per_page=100'
+# Get all customer_lists
+curl -u "api_user:token" -X GET 'http://localhost:9000/api/customer-lists?page=1&per_page=100'
 
-# Get only active lists
-curl -u "api_user:token" -X GET 'http://localhost:9000/api/lists?status=active&per_page=100'
+# Get only active customer_lists
+curl -u "api_user:token" -X GET 'http://localhost:9000/api/customer-lists?status=active&per_page=100'
 
-# Get archived lists with minimal data
-curl -u "api_user:token" -X GET 'http://localhost:9000/api/lists?status=archived&minimal=true&per_page=all'
+# Get archived customer_lists with minimal data
+curl -u "api_user:token" -X GET 'http://localhost:9000/api/customer-lists?status=archived&minimal=true&per_page=all'
 ```
 
 ##### Example Response
@@ -55,14 +55,14 @@ curl -u "api_user:token" -X GET 'http://localhost:9000/api/lists?status=archived
                 "created_at": "2020-02-10T23:07:16.194843+01:00",
                 "updated_at": "2020-03-06T22:32:01.118327+01:00",
                 "uuid": "ce13e971-c2ed-4069-bd0c-240e9a9f56f9",
-                "name": "Default list",
+                "name": "Default customer_list",
                 "type": "public",
                 "optin": "double",
                 "status": "active",
                 "tags": [
                     "test"
                 ],
-                "subscriber_count": 2
+                "customer_count": 2
             },
             {
                 "id": 2,
@@ -74,7 +74,7 @@ curl -u "api_user:token" -X GET 'http://localhost:9000/api/lists?status=archived
                 "optin": "single",
                 "status": "active",
                 "tags": [],
-                "subscriber_count": 0
+                "customer_count": 0
             }
         ],
         "total": 5,
@@ -86,16 +86,16 @@ curl -u "api_user:token" -X GET 'http://localhost:9000/api/lists?status=archived
 
 ______________________________________________________________________
 
-#### GET /api/public/lists
+#### GET /api/public/customer-lists
 
-Retrieve public lists with name and uuid to submit a subscription. This is an unauthenticated call to enable scripting to subscription form.
+Retrieve public customer_lists with name and uuid to submit a subscription. This is an unauthenticated call to enable scripting to subscription form.
 
-> **Note:** This endpoint only returns lists with `type: public` and `status: active`. Archived lists are never shown on public subscription forms.
+> **Note:** This endpoint only returns customer_lists with `type: public` and `status: active`. Archived customer_lists are never shown on public subscription forms.
 
 ##### Example Request
 
 ```shell
-curl -X GET 'http://localhost:9000/api/public/lists'
+curl -X GET 'http://localhost:9000/api/public/customer-lists'
 ```
 
 ##### Example Response
@@ -104,26 +104,26 @@ curl -X GET 'http://localhost:9000/api/public/lists'
 [
   {
     "uuid": "55e243af-80c6-4169-8d7f-bc571e0269e9",
-    "name": "Opt-in list"
+    "name": "Opt-in customer_list"
   }
 ]
 ```
 ______________________________________________________________________
 
-#### GET /api/lists/{list_id}
+#### GET /api/customer-lists/{customer_list_id}
 
-Retrieve a specific list.
+Retrieve a specific customer_list.
 
 ##### Parameters
 
 | Name    | Type   | Required | Description                 |
 | :------ | :----- | :------- | :-------------------------- |
-| list_id | number | Yes      | ID of the list to retrieve. |
+| customer_list_id | number | Yes      | ID of the customer_list to retrieve. |
 
 ##### Example Request
 
 ```shell
-curl -u "api_user:token" -X GET 'http://localhost:9000/api/lists/5'
+curl -u "api_user:token" -X GET 'http://localhost:9000/api/customer-lists/5'
 ```
 
 ##### Example Response
@@ -135,37 +135,37 @@ curl -u "api_user:token" -X GET 'http://localhost:9000/api/lists/5'
         "created_at": "2020-03-07T06:31:06.072483+01:00",
         "updated_at": "2020-03-07T06:31:06.072483+01:00",
         "uuid": "1bb246ab-7417-4cef-bddc-8fc8fc941d3a",
-        "name": "Test list",
+        "name": "Test customer_list",
         "type": "public",
         "optin": "double",
         "status": "active",
         "tags": [],
-        "subscriber_count": 0
+        "customer_count": 0
     }
 }
 ```
 
 ______________________________________________________________________
 
-#### POST /api/lists
+#### POST /api/customer-lists
 
-Create a new list.
+Create a new customer_list.
 
 ##### Parameters
 
 | Name        | Type       | Required | Description                                                        |
 | :---------- | :--------- | :------- | :----------------------------------------------------------------- |
-| name        | string     | Yes      | Name of the new list.                                              |
-| type        | string     | Yes      | Type of list. Options: private, public.                            |
+| name        | string     | Yes      | Name of the new customer_list.                                              |
+| type        | string     | Yes      | Type of customer_list. Options: private, public.                            |
 | optin       | string     | Yes      | Opt-in type. Options: single, double.                              |
-| status      | string     | No       | Status of the list. Options: active, archived. Defaults to active. |
-| tags        | string\[\] |          | Associated tags for a list.                                        |
-| description | string     | No       | Description of the new list.                                       |
+| status      | string     | No       | Status of the customer_list. Options: active, archived. Defaults to active. |
+| tags        | string\[\] |          | Associated tags for a customer_list.                                        |
+| description | string     | No       | Description of the new customer_list.                                       |
 
 ##### Example Request
 
 ```shell
-curl -u "api_user:token" -X POST 'http://localhost:9000/api/lists'
+curl -u "api_user:token" -X POST 'http://localhost:9000/api/customer-lists'
 ```
 
 ##### Example Response
@@ -177,40 +177,40 @@ curl -u "api_user:token" -X POST 'http://localhost:9000/api/lists'
         "created_at": "2020-03-07T06:31:06.072483+01:00",
         "updated_at": "2020-03-07T06:31:06.072483+01:00",
         "uuid": "1bb246ab-7417-4cef-bddc-8fc8fc941d3a",
-        "name": "Test list",
+        "name": "Test customer_list",
         "type": "public",
         "optin": "single",
         "status": "active",
         "tags": [],
-        "subscriber_count": 0,
-        "description": "This is a test list"
+        "customer_count": 0,
+        "description": "This is a test customer_list"
     }
 }
 ```
 
 ______________________________________________________________________
 
-#### PUT /api/lists/{list_id}
+#### PUT /api/customer-lists/{customer_list_id}
 
-Update a list.
+Update a customer_list.
 
 ##### Parameters
 
 | Name        | Type       | Required | Description                                    |
 | :---------- | :--------- | :------- | :--------------------------------------------- |
-| list_id     | number     | Yes      | ID of the list to update.                      |
-| name        | string     |          | New name for the list.                         |
-| type        | string     |          | Type of list. Options: private, public.        |
+| customer_list_id     | number     | Yes      | ID of the customer_list to update.                      |
+| name        | string     |          | New name for the customer_list.                         |
+| type        | string     |          | Type of customer_list. Options: private, public.        |
 | optin       | string     |          | Opt-in type. Options: single, double.          |
-| status      | string     |          | Status of the list. Options: active, archived. |
-| tags        | string\[\] |          | Associated tags for the list.                  |
-| description | string     |          | Description of the list.                       |
+| status      | string     |          | Status of the customer_list. Options: active, archived. |
+| tags        | string\[\] |          | Associated tags for the customer_list.                  |
+| description | string     |          | Description of the customer_list.                       |
 
 ##### Example Request
 
 ```shell
-curl -u "api_user:token" -X PUT 'http://localhost:9000/api/lists/5' \
---form 'name=modified test list' \
+curl -u "api_user:token" -X PUT 'http://localhost:9000/api/customer-lists/5' \
+--form 'name=modified test customer_list' \
 --form 'type=private'
 ```
 
@@ -223,33 +223,33 @@ curl -u "api_user:token" -X PUT 'http://localhost:9000/api/lists/5' \
         "created_at": "2020-03-07T06:31:06.072483+01:00",
         "updated_at": "2020-03-07T06:52:15.208075+01:00",
         "uuid": "1bb246ab-7417-4cef-bddc-8fc8fc941d3a",
-        "name": "modified test list",
+        "name": "modified test customer_list",
         "type": "private",
         "optin": "single",
         "status": "active",
         "tags": [],
-        "subscriber_count": 0,
-        "description": "This is a test list"
+        "customer_count": 0,
+        "description": "This is a test customer_list"
     }
 }
 ```
 
 ______________________________________________________________________
 
-#### DELETE /api/lists/{list_id}
+#### DELETE /api/customer-lists/{customer_list_id}
 
-Delete a specific list.
+Delete a specific customer_list.
 
 ##### Parameters
 
 | Name    | Type   | Required | Description               |
 | :------ | :----- | :------- | :------------------------ |
-| list_id | Number | Yes      | ID of the list to delete. |
+| customer_list_id | Number | Yes      | ID of the customer_list to delete. |
 
 ##### Example Request
 
 ```shell
-curl -u 'api_username:access_token' -X DELETE 'http://localhost:9000/api/lists/1'
+curl -u 'api_username:access_token' -X DELETE 'http://localhost:9000/api/customer-lists/1'
 ```
 
 ##### Example Response
@@ -262,29 +262,29 @@ curl -u 'api_username:access_token' -X DELETE 'http://localhost:9000/api/lists/1
 
 ______________________________________________________________________
 
-#### DELETE /api/lists
+#### DELETE /api/customer-lists
 
-Delete multiple lists by IDs or by a search query.
+Delete multiple customer_lists by IDs or by a search query.
 
-> **Note:** Users can only delete lists they have `manage` permission for. Any lists in the query that the user doesn't have permission to manage is ignored.
+> **Note:** Users can only delete customer_lists they have `manage` permission for. Any customer_lists in the query that the user doesn't have permission to manage is ignored.
 
 ##### Parameters
 
 | Name  | Type       | Required                      | Description                                                        |
 | :---- | :--------- | :---------------------------- | :----------------------------------------------------------------- |
-| id    | number\[\] | Yes (if `query` not provided) | One or more list IDs to delete.                                    |
-| query | string     | Yes (if `id` not provided)    | Search query to filter lists for deletion (same as the GET query). |
+| id    | number\[\] | Yes (if `query` not provided) | One or more customer_list IDs to delete.                                    |
+| query | string     | Yes (if `id` not provided)    | Search query to filter customer_lists for deletion (same as the GET query). |
 
 ##### Example Request (by IDs)
 
 ```shell
-curl -u "api_user:token" -X DELETE 'http://localhost:9000/api/lists?id=10&id=11&id=12'
+curl -u "api_user:token" -X DELETE 'http://localhost:9000/api/customer-lists?id=10&id=11&id=12'
 ```
 
 ##### Example Request (by search query)
 
 ```shell
-curl -u "api_user:token" -X DELETE 'http://localhost:9000/api/lists?query=test%20list'
+curl -u "api_user:token" -X DELETE 'http://localhost:9000/api/customer-lists?query=test%20list'
 ```
 
 ##### Example Response

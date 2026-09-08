@@ -81,6 +81,8 @@ It is safe to upgrade an older installation with `--upgrade`, but there are a fe
 
 1. **Credentials in TOML file or old environment variables**: The admin dashboard shows a warning until the `admin_username` and `admin_password` fields are removed from the configuration file or old environment variables. In v4.x.x, these are irrelevant as user credentials are stored in the database and managed from the admin UI. IMPORTANT: if you are using APIs to interact with listmonk, follow the previous step before removing the legacy credentials.
 
+1. **Browser authentication**: The v3-to-v4 browser compatibility window has ended. Browser requests that send both an `Authorization` header and a `session` cookie now evaluate the explicit Authorization credentials. Remove cached legacy BasicAuth credentials from browser clients; a stale credential is rejected and does not fall back to the session cookie.
+
 
 ## Railway
 - Head to your dashboard, and select your Listmonk project.

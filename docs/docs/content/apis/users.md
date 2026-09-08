@@ -2,7 +2,7 @@
 
 | Method | Endpoint                                                     | Description                                      |
 | :----- | :----------------------------------------------------------- | :----------------------------------------------- |
-| GET    | [/api/users/{user_id}/integration-tokens](#get-apiusersuser_idintegration-tokens) | List integration bearer tokens for an API user.  |
+| GET    | [/api/users/{user_id}/integration-tokens](#get-apiusersuser_idintegration-tokens) | CustomerList integration bearer tokens for an API user.  |
 | POST   | [/api/users/{user_id}/integration-tokens](#post-apiusersuser_idintegration-tokens) | Create a new integration bearer token.           |
 | DELETE | [/api/users/{user_id}/integration-tokens/{token_id}](#delete-apiusersuser_idintegration-tokenstoken_id) | Revoke an integration bearer token.              |
 
@@ -10,7 +10,7 @@ ______________________________________________________________________
 
 #### GET /api/users/{user_id}/integration-tokens
 
-List integration bearer tokens for an API user. The plaintext token value is never returned from this endpoint.
+CustomerList integration bearer tokens for an API user. The plaintext token value is never returned from this endpoint.
 
 ##### Example Request
 

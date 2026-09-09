@@ -9,7 +9,10 @@ customer_list-specific grant never exposes a resource in another workspace.
 
 - CustomerLists and customers remain private to their owner. Organization managers
   may inspect member-owned records in their active organization, but cannot
-  modify them, export recipient data, or send with them.
+  modify them or send with them. Since v6.28.0, the dedicated administrator
+  export API permits organization managers to export their own organization's
+  member data, subject to email masking. Export jobs remain private to their
+  requesting administrator. See [Data exports](data-exports.md).
 - Templates and campaigns can be private, organization-visible, or global.
   Members can read organization-visible resources in their active organization;
   global resources remain readable across workspaces. Sending, exports, and
@@ -131,3 +134,5 @@ CREATE ROLE listmonk_app WITH
     NOCREATEROLE
     NOREPLICATION;
 ```
+
+- “我参与的组织”页面的“迁移个人资源”默认折叠，点击标题展开或收起。仅最高管理员或具有 `workspaces:personal` 权限的人员显示；其他人员不显示迁移板块和待迁移资源统计，也不请求个人资源列表。

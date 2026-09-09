@@ -11,6 +11,7 @@
 | HTTP/API | `cmd/` | Echo 路由、认证接入、请求校验和响应。 |
 | 领域与持久化 | `internal/core/`、`models/`、`queries/`、`schema.sql` | 业务操作、工作区授权、SQL 查询和事务写入。 |
 | 后台能力 | `internal/manager/`、`messenger/`、`bounce/`、`replyai/`、`subimporter/` | 调度发送、SMTP/Postback、退信、AI 回信分类和批量导入。 |
+| 数据导出 | `internal/dataexport/`、`cmd/exports.go` | 管理员范围检查、当前名单查询、CSV/XLSX 后台生成、数据库文件块、七天过期和下载审计。 |
 | Web 客户端 | `frontend/`、`frontend/email-builder/` | Vue 2 管理端与 React/TypeScript 邮件编辑器。 |
 | 运行与交付 | `dev/`、`deploy/`、`.github/`、`Jenkinsfile` | 本地 Compose、离线包、CI 和 systemd/GoReleaser 发布。 |
 

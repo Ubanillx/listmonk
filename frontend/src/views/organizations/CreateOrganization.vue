@@ -2,7 +2,7 @@
   <section class="organizations">
     <header class="columns page-header">
       <div class="column">
-        <h1 class="title is-4"><b-icon icon="file-document-edit-outline" size="is-small" />创建组织</h1>
+        <h1 class="title is-4">创建组织</h1>
       </div>
     </header>
 
@@ -19,8 +19,8 @@
     </section>
 
     <section>
-      <h2 class="title is-5"><b-icon icon="clipboard-text-outline" size="is-small" />我的申请</h2>
-      <b-table :data="requests" :mobile-cards="false" narrowed>
+      <h2 class="title is-5">我的申请</h2>
+      <b-table :data="requests" :mobile-cards="false">
         <b-table-column v-slot="props" field="requestedName" label="组织">
           <strong>{{ props.row.requestedName }}</strong>
           <p v-if="props.row.description" class="has-text-grey is-size-7">{{ props.row.description }}</p>

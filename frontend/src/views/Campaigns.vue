@@ -16,6 +16,7 @@
         </b-field>
       </div>
     </header>
+    <div class="mb-4"><export-button kind="campaigns" :filters="{ ...queryParams, ...$route.query }" :selected="bulk.all ? [] : bulk.checked" /></div>
 
     <b-table :data="campaigns.results" :loading="loading.campaigns" :row-class="highlightedRow"
       @check-all="onTableCheck" @check="onTableCheck" :checked-rows.sync="bulk.checked" paginated backend-pagination

@@ -275,6 +275,9 @@ func (a *App) redactWorkspaceCustomerSensitiveFields(access models.WorkspaceAcce
 
 // ExportCustomers handles querying customers based on an arbitrary SQL expression.
 func (a *App) ExportCustomers(c echo.Context) error {
+	if _, err := a.exportAccess(c); err != nil {
+		return err
+	}
 	access, err := a.workspaceAccess(c)
 	if err != nil {
 		return err
@@ -889,6 +892,9 @@ func (a *App) DeleteCustomerBounces(c echo.Context) error {
 // a JSON report. This is a privacy feature and depends on the
 // configuration in a.Constants.Privacy.
 func (a *App) ExportCustomerData(c echo.Context) error {
+	if _, err := a.exportAccess(c); err != nil {
+		return err
+	}
 	access, err := a.workspaceAccess(c)
 	if err != nil {
 		return err

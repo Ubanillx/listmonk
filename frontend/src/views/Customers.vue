@@ -22,6 +22,7 @@
         </b-field>
       </div>
     </header>
+    <div class="mb-4"><export-button ref="exportButton" kind="customers" :filters="queryParams" :selected="bulk.all ? [] : bulk.checked" /></div>
 
     <section class="customers-controls">
       <div class="columns">
@@ -160,7 +161,7 @@
 
       <b-table-column v-slot="props" cell-class="actions" align="right">
         <div>
-          <a v-if="canManageCustomer(props.row)" :href="customerExportURL(props.row.id)" data-cy="btn-download"
+          <a v-if="canExportCustomers && canManageCustomer(props.row)" :href="customerExportURL(props.row.id)" data-cy="btn-download"
             :aria-label="$t('customers.downloadData')">
             <b-tooltip :label="$t('customers.downloadData')" type="is-dark">
               <b-icon icon="cloud-download-outline" size="is-small" />
@@ -202,7 +203,6 @@
 import Vue from 'vue';
 import { mapState } from 'vuex';
 import EmptyPlaceholder from '../components/EmptyPlaceholder.vue';
-import { uris } from '../constants';
 import CustomerBulkList from './CustomerBulkList.vue';
 import CustomerForm from './CustomerForm.vue';
 import CopyText from '../components/CopyText.vue';
@@ -426,37 +426,7 @@ export default Vue.extend({
     },
 
     exportCustomers() {
-      const num = !this.bulk.all && this.bulk.checked.length > 0
-        ? this.bulk.checked.length : this.customers.total;
-
-      this.$utils.confirm(this.$t('customers.confirmExport', { num }), () => {
-        const q = new URLSearchParams();
-
-        if (this.queryParams.search) {
-          q.append('search', this.queryParams.search);
-        } else if (this.queryParams.queryExp) {
-          q.append('query', this.queryParams.queryExp);
-        }
-
-        if (this.queryParams.customerListID) {
-          q.append('customer_list_id', this.queryParams.customerListID);
-        }
-
-        if (this.queryParams.subStatus) {
-          q.append('subscription_status', this.queryParams.subStatus);
-        }
-
-        if (this.workspace.organizationId) {
-          q.append('organization_id', this.workspace.organizationId);
-        }
-
-        // Export selected customers.
-        if (!this.bulk.all && this.bulk.checked.length > 0) {
-          this.bulk.checked.map((s) => q.append('id', s.id));
-        }
-
-        document.location.href = `${uris.exportCustomers}?${q.toString()}`;
-      });
+      this.$refs.exportButton.open();
     },
 
     deleteCustomers() {
@@ -541,7 +511,8 @@ export default Vue.extend({
     },
 
     canExportCustomers() {
-      return this.$canCreateWorkspaceResource('customers:get_all', 'customers:get')
+      return (this.workspace.platformAdmin || (this.workspace.organizationId && this.workspace.role === 'manager'))
+        && this.$canCreateWorkspaceResource('customers:get_all', 'customers:get')
         && (!this.bulk.checked.length || this.bulk.checked.every((customer) => this.$canManageResource(customer)));
     },
 

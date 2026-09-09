@@ -8,6 +8,9 @@ import router from './router';
 import store from './store';
 import * as api from './api';
 import Utils from './utils';
+import ExportButton from './components/ExportButton.vue';
+
+Vue.component('ExportButton', ExportButton);
 
 // Internationalisation.
 Vue.use(VueI18n);

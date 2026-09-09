@@ -3,14 +3,14 @@
     <div class="reply-mailboxes-header level mb-5">
       <div>
         <h2 class="title is-5 mb-1"><b-icon icon="email-arrow-left-outline" size="is-small" /> 客户回信邮箱</h2>
-        <p class="help">使用企业邮箱接收客户直接回复。营销活动会把 Reply-To 设置为这里选定的邮箱，个人空间与组织空间分别配置。</p>
+        <p class="help">客户回复邮件时，用于接收回信的邮箱。</p>
       </div>
       <b-button type="is-primary" icon-left="plus" @click="addMailbox">新增回信邮箱</b-button>
     </div>
 
     <div v-if="mailboxes.length === 0" class="notification is-light reply-empty-state">
       <b-icon icon="email-off-outline" size="is-small" />
-      <span>尚未配置回信邮箱。未配置并验证邮箱时，活动不能排期或发送。</span>
+      <span>尚未配置客户回信邮箱。</span>
     </div>
 
     <div v-for="(mailbox, index) in mailboxes" :key="mailbox.id || `new-${index}`" class="box reply-mailbox-card">
@@ -49,7 +49,7 @@
         </div>
         <div class="column is-6">
           <b-field label="密码" label-position="on-border"
-            message="部分邮箱服务商要求填写客户端授权码；只保存于服务器用于收信验证，不会回显">
+            message="填写邮箱密码或客户端授权码">
             <b-input v-model="mailbox.password" type="password" password-reveal
               :placeholder="mailbox.id ? '已保存，留空表示不修改' : '输入邮箱密码或客户端授权码'" />
           </b-field>
@@ -74,14 +74,14 @@
       <div class="reply-card-footer">
         <div class="reply-card-ai-toggle">
           <b-checkbox v-model="mailbox.aiEnabled">
-            启用 AI 自动处理回信（仅识别明确的退订与垃圾/滥用投诉，其余一律忽略）
+            启用 AI 自动处理回信
           </b-checkbox>
           <p class="help" v-if="mailbox.aiEnabled">
-            启用后，平台管理员在「设置 → 回信 AI 分类」中配置的模型将只对能唯一匹配到本工作区客户的回信生效。
+            自动处理客户回信中的退订和投诉。
           </p>
         </div>
         <div class="reply-card-default-toggle">
-          <b-checkbox v-model="mailbox.isDefault">设为当前空间默认回信邮箱</b-checkbox>
+          <b-checkbox v-model="mailbox.isDefault">设为默认回信邮箱</b-checkbox>
         </div>
         <div class="buttons mb-0">
           <b-button type="is-light" icon-left="connection" :loading="testing === index" @click="testMailbox(mailbox, index)">

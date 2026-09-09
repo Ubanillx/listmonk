@@ -8,6 +8,7 @@
         </h1>
       </div>
     </header>
+    <div class="mb-4"><export-button kind="bounces" :filters="{ ...queryParams, ...$route.query }" :selected="bulk.all ? [] : bulk.checked" /></div>
 
     <b-table :data="bounces.results" :hoverable="true" :loading="loading.bounces" default-sort="createdAt" :checkable="canManageBounces"
       :is-row-checkable="canManageBounce"

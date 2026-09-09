@@ -1,7 +1,10 @@
 <template>
   <section class="personal-api-keys mt-6">
     <div class="level api-key-header mb-5">
-      <h2 class="title is-5 mb-1">{{ $t('apiKeys.title') }}</h2>
+      <div>
+        <h2 class="title is-5 mb-1">{{ $t('apiKeys.title') }}</h2>
+        <p class="help">{{ $t('apiKeys.help') }}</p>
+      </div>
       <b-button type="is-primary" icon-left="plus" @click="openCreate">{{ $t('apiKeys.new') }}</b-button>
     </div>
 

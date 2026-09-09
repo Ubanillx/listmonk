@@ -1,6 +1,9 @@
 <!-- eslint-disable vue/max-len -->
 <template>
   <section class="pool-manager">
+    <export-button v-if="selectedSegment && organizationID === Number(workspace.organizationId)" kind="pools"
+      :filters="{ search: customerCode, list_ids: [selectedSegment.listId || selectedSegment.list_id] }" />
+    <p v-else-if="selectedSegment" class="help">导出该组织名单，请进入对应组织工作区，在客户列表页面点击导出。</p>
     <div class="pool-manager__intro"><div><h3>一级公海拆分</h3><p>管理员可在这里指定目标组织并创建二级列表，不需要切换或加入目标组织。</p></div><b-tag type="is-info" class="is-light">一级公海</b-tag></div>
     <section class="pool-manager__section" data-cy="pool-target-organization-panel">
       <div class="pool-manager__section-heading"><span class="pool-manager__section-number">1</span><div><h4>选择目标组织</h4><p>二级列表和回件邮箱归属于所选组织，当前工作区不会被切换。</p></div></div>
@@ -42,15 +45,17 @@
               <div class="pool-manager__table-meta"><span>查询结果</span><strong>{{ contacts.length }}</strong><small>条</small></div>
             </div>
             <p class="help pool-manager__table-help">仅显示客户编码、公司名称和脱敏邮箱。勾选联系人后，可执行本组织移除、恢复分配或清空无效邮箱。</p>
-            <b-table :data="contacts" :loading="loadingContacts" checkable :checked-rows.sync="selectedContacts" :mobile-cards="false" narrowed hoverable class="pool-manager__contact-table">
+            <b-table :data="contacts" :loading="loadingContacts" checkable :checked-rows.sync="selectedContacts" :mobile-cards="false" hoverable class="pool-manager__contact-table">
               <b-table-column v-slot="props" field="customer_code" label="客户编码"><span class="pool-manager__cell-code">{{ props.row.customerCode || props.row.customer_code || '-' }}</span></b-table-column>
               <b-table-column v-slot="props" field="company_name" label="公司名称"><span class="pool-manager__cell-company">{{ props.row.companyName || props.row.company_name || '-' }}</span></b-table-column>
               <b-table-column v-slot="props" field="email" label="邮箱"><span class="pool-manager__cell-email" :title="props.row.email || '-'">{{ props.row.email || '-' }}</span></b-table-column>
               <b-table-column v-slot="props" field="status" label="状态"><b-tag rounded size="is-small" :type="contactStatusType(props.row)">{{ contactStatusLabel(props.row) }}</b-tag></b-table-column>
+              <b-table-column v-if="!isPlatformAdmin" v-slot="props" label="移除原因">{{ props.row.excluded ? (props.row.exclusionReason || props.row.exclusion_reason || '—') : '—' }}</b-table-column>
               <b-table-column v-if="isPlatformAdmin" v-slot="props" label="组织剔除标记"><div v-if="props.row.exclusions && props.row.exclusions.length" class="pool-manager__exclusion-tags"><b-tag v-for="item in props.row.exclusions" :key="`${props.row.id}-${item.organizationId || item.organization_id}`" rounded size="is-small" type="is-warning">{{ item.organizationName || item.organizationId }}：{{ item.reason || '已移除' }}</b-tag></div><span v-else class="pool-manager__muted">—</span></b-table-column>
               <template #empty><div class="pool-manager__table-empty"><b-icon icon="account-search-outline" size="is-medium" /><strong>{{ customerCode ? '未找到匹配联系人' : '请输入客户编码开始查询' }}</strong><span>{{ customerCode ? '请确认客户编码后重试' : '公海联系人较多，请使用客户编码定位记录' }}</span></div></template>
             </b-table>
-            <div class="pool-manager__contact-actions"><div class="buttons"><b-button size="is-small" type="is-danger" :disabled="!selectedContacts.length" @click="removeSelected">移除（仅本组织）</b-button><b-button size="is-small" type="is-light" :disabled="!selectedContacts.length" @click="restoreSelected">恢复分配</b-button><b-button v-if="canManageSegments" size="is-small" type="is-light" :disabled="!selectedContacts.length" @click="clearSelectedEmails">清空无效邮箱</b-button></div><b-field label="移除原因" label-position="on-border" class="pool-manager__remove-reason"><b-input v-model="removeReason" size="is-small" placeholder="可选，例如客户明确拒收" /></b-field></div>
+            <p class="help">转入私有列表时，移除原因填写“转入私有”，再手动添加到私有列表；此原因会在公海名单及导出中展示。</p>
+            <div class="pool-manager__contact-actions"><div class="buttons"><b-button size="is-small" type="is-danger" :disabled="!selectedContacts.length" @click="removeSelected">移除（仅本组织）</b-button><b-button size="is-small" type="is-light" :disabled="!selectedContacts.length" @click="restoreSelected">恢复分配</b-button><b-button v-if="canManageSegments" size="is-small" type="is-light" :disabled="!selectedContacts.length" @click="clearSelectedEmails">清空无效邮箱</b-button></div><b-field label="移除原因" label-position="on-border" class="pool-manager__remove-reason"><b-input v-model.trim="removeReason" size="is-small" placeholder="例如：转入私有、客户明确拒收" /></b-field></div>
           </div>
         </b-collapse>
       </div>

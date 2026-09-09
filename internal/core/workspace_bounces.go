@@ -58,9 +58,11 @@ func (c *Core) QueryWorkspaceBounces(access models.WorkspaceAccess, bounceID, ca
 	}
 	stmt := fmt.Sprintf(`
 		SELECT COUNT(*) OVER () AS total,
-			b.id, b.type, b.source, b.meta, b.created_at, b.customer_id,
-			b.pool_contact_id, b.source_pool_id, b.source_segment_id, b.source_organization_id,
-			COALESCE(s.uuid, pc.uuid::text, '') AS customer_uuid, COALESCE(s.email, pc.email, '') AS email, COALESCE(s.status, pc.status, '') AS customer_status,
+			b.id, b.type, b.source, b.meta, b.created_at, COALESCE(b.customer_id, 0) AS customer_id,
+			COALESCE(b.pool_contact_id, 0) AS pool_contact_id, COALESCE(b.source_pool_id, 0) AS source_pool_id,
+			COALESCE(b.source_segment_id, 0) AS source_segment_id, b.source_organization_id,
+			COALESCE(s.uuid::text, pc.uuid::text, '') AS customer_uuid,
+			COALESCE(s.email, pc.email, '') AS email, COALESCE(s.status::text, pc.status, '') AS customer_status,
 			s.organization_id, s.owner_user_id, s.transfer_pending_at,
 			CASE WHEN b.campaign_id IS NOT NULL
 				THEN JSON_BUILD_OBJECT('id', b.campaign_id, 'name', c.name)

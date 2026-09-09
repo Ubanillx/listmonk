@@ -2,7 +2,7 @@
   <section class="organizations section-mini">
     <header class="columns page-header">
       <div class="column">
-        <h1 class="title is-4"><b-icon icon="account-plus-outline" size="is-small" />加入组织</h1>
+        <h1 class="title is-4">加入组织</h1>
       </div>
     </header>
 

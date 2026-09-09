@@ -36,7 +36,7 @@
 
         <div v-if="rows.length > 0" class="user-import-preview">
           <h5 class="title is-size-6">{{ $t('users.bulkImportPreview') }} ({{ rows.length }})</h5>
-          <b-table :data="rows" :mobile-cards="false" narrowed striped hoverable>
+          <b-table :data="rows" :mobile-cards="false" striped hoverable>
             <b-table-column v-slot="props" field="line" :label="$t('users.bulkImportRow')" numeric>
               {{ props.row.line }}
             </b-table-column>

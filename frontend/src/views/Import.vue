@@ -704,9 +704,9 @@ export default Vue.extend({
 
 .preview-table :deep(th),
 .preview-table :deep(td) {
-  padding: 0.3rem 0.5rem;
-  line-height: 1.2;
-  font-size: 0.85rem;
+  padding: 15px 10px;
+  line-height: 1.5;
+  font-size: 1rem;
   white-space: nowrap;
 }
 

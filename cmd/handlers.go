@@ -101,6 +101,10 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 
 		// API endpoints.
 		g.GET("/api/health", a.HealthCheck)
+		g.POST("/api/exports", a.CreateExport)
+		g.GET("/api/exports", a.ListExports)
+		g.GET("/api/exports/options", a.ExportOptions)
+		g.GET("/api/exports/:id/download", a.DownloadExport)
 		g.GET("/api/config", a.GetServerConfig)
 		g.GET("/api/lang/:lang", a.GetI18nLang)
 		g.GET("/api/dashboard/charts", a.GetDashboardCharts)

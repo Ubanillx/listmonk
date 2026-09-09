@@ -2,7 +2,7 @@
   <section class="organizations">
     <header class="columns page-header">
       <div class="column">
-        <h1 class="title is-4"><b-icon icon="account-cog-outline" size="is-small" />管理组织</h1>
+        <h1 class="title is-4">管理组织</h1>
       </div>
     </header>
 
@@ -40,7 +40,7 @@
             </div>
           </form>
 
-          <b-table :data="activeMembers" :mobile-cards="false" narrowed>
+          <b-table :data="activeMembers" :mobile-cards="false">
             <b-table-column v-slot="props" field="username" label="账号">
               <strong>{{ props.row.username }}</strong>
               <span v-if="props.row.name" class="has-text-grey"> {{ props.row.name }}</span>
@@ -87,7 +87,7 @@
             <copy-text :text="newInviteCode" />
           </b-notification>
 
-          <b-table :data="invites" :mobile-cards="false" narrowed>
+          <b-table :data="invites" :mobile-cards="false">
             <b-table-column v-slot="props" field="name" label="名称">{{ props.row.name || '邀请码' }}</b-table-column>
             <b-table-column v-slot="props" field="useCount" label="使用次数">
               {{ props.row.useCount }}<span v-if="props.row.maxUses"> / {{ props.row.maxUses }}</span>
@@ -132,7 +132,7 @@
       <b-tab-item v-if="selectedOrganizationID" label="客户回信转发" icon="email-arrow-left-outline">
         <section class="wrap">
           <p class="has-text-grey mb-4">成员离组后，原回信邮箱仍会继续收信。这里可以暂停或恢复转发到组织管理员工作邮箱。</p>
-          <b-table :data="replyForwardRules" :mobile-cards="false" narrowed>
+          <b-table :data="replyForwardRules" :mobile-cards="false">
             <b-table-column v-slot="props" field="sourceEmail" label="成员邮箱">
               <strong>{{ props.row.sourceEmail || props.row.sourceName || '-' }}</strong>
             </b-table-column>
@@ -156,8 +156,8 @@
 
       <b-tab-item v-if="isPlatformAdmin" label="平台管理" icon="shield-crown-outline">
         <section class="mb-6">
-          <h2 class="title is-5"><b-icon icon="file-document-edit-outline" size="is-small" />组织创建申请</h2>
-          <b-table :data="requests" :mobile-cards="false" narrowed>
+          <h2 class="title is-5">组织创建申请</h2>
+          <b-table :data="requests" :mobile-cards="false">
             <b-table-column v-slot="props" field="requestedName" label="组织">{{ props.row.requestedName }}</b-table-column>
             <b-table-column v-slot="props" field="requestedByName" label="申请人">{{ props.row.requestedByName }}</b-table-column>
             <b-table-column v-slot="props" field="description" label="说明">{{ props.row.description }}</b-table-column>
@@ -171,8 +171,8 @@
         </section>
 
         <section>
-          <h2 class="title is-5"><b-icon icon="archive-outline" size="is-small" />组织归档</h2>
-          <b-table :data="platformOrganizations" :mobile-cards="false" narrowed>
+          <h2 class="title is-5">组织归档</h2>
+          <b-table :data="platformOrganizations" :mobile-cards="false">
             <b-table-column v-slot="props" field="name" label="组织">
               <strong>{{ props.row.name }}</strong>
               <p v-if="props.row.description" class="has-text-grey is-size-7">{{ props.row.description }}</p>

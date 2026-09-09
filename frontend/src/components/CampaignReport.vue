@@ -128,7 +128,7 @@
       <div v-if="trackingDisabled" class="notification is-light">
         {{ $t('analytics.trackingChartsUnavailable') }}
       </div>
-      <b-table v-else :data="links" :loading="loading.links" hoverable narrowed>
+      <b-table v-else :data="links" :loading="loading.links" hoverable>
         <b-table-column v-slot="props" field="url" :label="$t('globals.terms.url')">
           <a href="#" @click.prevent="applyLinkFilter(props.row)">
             {{ props.row.url }}

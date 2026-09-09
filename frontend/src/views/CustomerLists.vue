@@ -25,6 +25,7 @@
         </b-field>
       </div>
     </header>
+    <div class="mb-4"><export-button kind="lists" :filters="queryParams" :selected="bulk.all ? [] : bulk.checked" /></div>
 
     <b-table :data="customer_lists.results" :loading="loading.listsFull" @check-all="onTableCheck" @check="onTableCheck"
       :checked-rows.sync="bulk.checked" hoverable default-sort="createdAt" paginated backend-pagination

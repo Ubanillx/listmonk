@@ -309,6 +309,9 @@ func main() {
 	// bounce mailbox. The worker never deletes source messages and forwards
 	// them through the platform system SMTP.
 	go runReplyForwarder(app)
+	exportCtx, stopExports := context.WithCancel(context.Background())
+	defer stopExports()
+	go app.exportService().Run(exportCtx)
 	if app.replyAI.Enabled() {
 		go runReplyAIProcessor(app)
 	}
@@ -338,6 +341,7 @@ func main() {
 		mgr.Close()
 
 		// Close the DB pool.
+		stopExports()
 		db.Close()
 
 		// Close the messenger pool.

@@ -149,7 +149,7 @@
             <strong>{{ smtpStatusUser.username }}</strong>
             <span v-if="smtpStatusUser.email" class="has-text-grey"> {{ smtpStatusUser.email }}</span>
           </p>
-          <b-table :data="smtpStatus" :loading="smtpStatusLoading" :mobile-cards="false" narrowed>
+          <b-table :data="smtpStatus" :loading="smtpStatusLoading" :mobile-cards="false">
             <b-table-column v-slot="props" field="name" :label="$t('globals.fields.name')">
               {{ props.row.name || $t('settings.smtp.name') }}
             </b-table-column>

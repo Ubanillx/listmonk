@@ -1,10 +1,22 @@
 # 工作状态
 
-快照日期：2026-09-08
+快照日期：2026-09-09
 
 - 公海二级列表模板下载与单条维护表格体验优化（2026-09-07）：管理弹窗的“下载模板”现在生成 `pool-segment-allocation-templates.zip`，同时包含 CSV 与 XLSX 两份 `customer_code,email` 模板；单条维护改为工具栏 + 结果计数 + 状态/组织剔除标签的后台表格，状态统一显示“正常 / 已归档 / 已移除”，空结果使用固定高度空状态，邮箱列省略显示；不再在弹窗打开时全量读取联系人，必须先按客户编码查询。验证：`cd frontend && yarn lint && yarn build`；浏览器实际打开公海管理页，已确认目标组织的二级列表中显示新版工具栏、3 条查询结果和标签列；重启 `dev-backend-1` 后 `http://localhost:9173` 返回 HTTP 200，日志显示无待执行迁移。
 
 ## 已完成
+
+- 表格展示密度统一（2026-09-09）：按“用户角色”表格的可读密度统一前端表格，移除各页面 `narrowed` 紧凑模式，并将批量导入预览、客户订阅、公海联系人表格的字号与内边距调整为正文大小和 `15px 10px` 标准。保留列宽、边框、状态标签和横向滚动等业务表现。验证：前端 `yarn lint`、`yarn build` 通过；Docker 后端已重启，9173 返回 HTTP 200，日志无错误。
+
+- 组织页标题对齐修正（2026-09-09）：`frontend/src/views/organizations/MyOrganizations.vue` 移除页头对公共 columns 顶部、左右外边距的覆盖，恢复与加入/创建/管理组织页一致的标题起点，并将右侧空间信息顶部对齐。验证：前端 lint、生产构建通过；浏览器截图确认标题与内容左边缘对齐；后端已重启，9173 返回 HTTP 200 且正常监听。
+
+- API 密钥用途说明（2026-09-09）：按确认文案在个人资料页 API 密钥标题下新增“用于连接外部应用，实现数据同步和邮件发送。”，沿用页面帮助文本样式并补齐 en/zh-CN/zh-TW 翻译。来源：`frontend/src/components/PersonalAPIKeySettings.vue`、`i18n/{en,zh-CN,zh-TW}.json`。验证：前端 lint、生产构建、语言包 JSON 解析通过；已重启本地后端加载新资源。
+
+- 个人资料页提示文案精简（2026-09-09）：个人 SMTP 仅说明发送营销活动和事务邮件的用途；客户回信邮箱仅说明接收客户回复的用途，同时缩短空状态、密码、AI 回信处理、默认邮箱与保存提示，移除平台发送规则和内部配置说明。来源：`frontend/src/components/ReplyMailboxSettings.vue`、`i18n/{en,zh-CN,zh-TW}.json`。验证：前端 lint、生产构建与三份语言包 JSON 解析通过；已重启 `dev-backend-1`，9173 返回 HTTP 200，日志显示无待执行迁移且服务正常监听。
+
+- 自定义字段页布局统一（2026-09-09）：`frontend/src/views/CustomFields.vue` 移除居中限宽与额外横向内边距，标题和表格从内容区左上角对齐；移除表格卡片、条纹和独立表头/单元格样式，复用邮件模板页的公共表格样式。验证：前端 `yarn lint`、`yarn build` 通过；浏览器截图确认左上对齐与全宽表格；已重启 `dev-backend-1`，9173 返回 HTTP 200，日志显示无待执行迁移且服务正常监听。
+
+- 管理员数据导出（2026-09-09）：新增客户/黑名单、退信汇总与明细、活动汇总与行为、公海分配名单（含实际移除原因）、一级公海联系人和列表目录的后台 CSV/XLSX 导出。各页面弹窗内查看进度与下载、固定中文字段、筛选/勾选范围、七天文件过期、生成/下载权限重验与审计；不增加自动转私域。已按用户简化要求移除独立转私域导出，改为手动填写“转入私有”原因并在公海页面和导出显示。来源：本任务用户确认的导出需求。实现见 `cmd/exports.go`、`internal/dataexport/`、`frontend/src/components/ExportButton.vue`；迁移 v6.28.0，详细数据口径见 `docs/docs/content/data-exports.md`。已通过 Go 套件及隔离 PostgreSQL 查询/权限/格式/过期测试，前端 lint 与生产构建通过；Docker 已应用迁移并返回 HTTP 200。
 
 - 退信邮箱只读 POP 检测已完成（2026-09-08）：新增 `POST /api/settings/bounce/mailbox/test`，复用当前表单与已保存密码，连接/登录/读取/解析四步，仅读取当前会话最后一封且不删除、不入队；支持 SSL/TLS、STARTTLS 和普通 POP3，STARTTLS 保存后也适用于后台扫描。解析外层发件人、编码主题、Received/Date、标准 DSN 多收件人和对应 SMTP 原因；普通邮件与空邮箱分别提示。前端按钮、结果卡片及 en/zh-CN/zh-TW 文案已交付。
   - 验证：`go test ./...` 通过；后续补充的 `go test ./cmd ./internal/bounce/mailbox` 通过，覆盖三种连接模式、STLS 后台兼容、HTTP 响应包裹、MIME/字段优先级、无 DELE、异常/超时。首次 STLS 兼容回归发现适配器关闭时取消顺序导致重复关闭，已修正并通过回归。
@@ -49,3 +61,12 @@
 - `CYPRESS_BASE_URL=http://localhost:8181 npx cypress run --spec cypress/e2e/pools.cy.js --env POOL_E2E=true --browser electron`：3 passing（组织管理员脱敏、最高管理员明文、未授权组织隐藏入口及详情 403）。
 - `dev/pools_e2e_verify.ps1`、`dev/pools_smtp_e2e_verify.ps1`：全部断言 PASS；按名称动态解析一级、二级和回件邮箱 fixture ID，脚本可在重复加载夹具后稳定运行并清理临时活动/SMTP。`make test` 在当前 PowerShell 环境不可用（未安装/未加入 PATH），由等价 `go test ./...` 完成后端验证。
 - `dev/wsqa_verify.ps1`：认证升级回归新增“session Cookie + 失效旧 BasicAuth 返回 403”断言；与登录、工作区选择、个人空间迁移断言一并通过（2026-09-06）。
+
+导出验证补充（2026-09-09）：Cypress exports.cy.js 已通过创建、筛选、生成、下载完整流程；Excel 文件内容校验与 MkDocs strict 构建通过。
+
+
+导出交互简化（2026-09-09）：按用户要求移除独立导出中心页面、路由及导航；进度与下载回到各业务页面的导出弹窗，关闭后后台继续生成，再次打开可恢复查看。一级公海联系人导出入口纳入列表页面，后台权限和文件过期机制保留。
+
+退信页面修复（2026-09-09）：普通客户 UUID/枚举状态与公海文本字段在 COALESCE 中类型不一致，导致退信列表报错。已在 internal/core/workspace_bounces.go 与 queries/bounces.sql 统一转为 text，并将缺失的来源编号映射为 0 以匹配 Go 响应类型；保留原权限边界。新增临时表数据库回归测试，覆盖普通客户、公海联系人、管理员/组织经理列表及详情和组织隔离；设置 BOUNCE_TEST_DSN 的 go test ./... 已通过。
+
+- “我参与的组织”页面的“迁移个人资源”默认折叠，点击标题展开或收起。仅最高管理员或具有 `workspaces:personal` 权限的人员显示；其他人员不显示迁移板块和待迁移资源统计，也不请求个人资源列表。

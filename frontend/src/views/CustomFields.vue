@@ -1,7 +1,7 @@
 <template>
   <section class="custom-fields">
     <div class="custom-fields__content">
-      <header class="columns page-header is-vcentered">
+      <header class="columns page-header">
         <div class="column">
           <h1 class="title is-4 mb-2">{{ $t('customFields.title') }}</h1>
           <p class="subtitle is-6 mb-0">{{ $t('customFields.help') }}</p>
@@ -24,9 +24,8 @@
         {{ $t('customFields.locked') }}
       </b-notification>
 
-      <section class="box custom-fields__table-card">
-        <b-loading :active="loading.customFields" :is-full-page="false" />
-        <b-table :data="fields" striped hoverable narrowed class="custom-fields__table">
+      <section>
+        <b-table :data="fields" hoverable :loading="loading.customFields" class="custom-fields__table">
           <b-table-column field="label" :label="$t('customFields.label')" width="24%" v-slot="props">
             <div class="field-label">
               <span>{{ props.row.label }}</span>
@@ -129,14 +128,10 @@ export default Vue.extend({
 <style lang="scss" scoped>
 .custom-fields {
   &__content {
-    max-width: 1320px;
-    margin: 0 auto;
-    padding: 0 24px 40px;
+    padding-bottom: 40px;
   }
 
   .page-header {
-    margin-bottom: 1.5rem;
-
     .title {
       line-height: 1.25;
       margin-bottom: .5rem !important;
@@ -163,28 +158,8 @@ export default Vue.extend({
     margin-bottom: 1.25rem;
   }
 
-  &__table-card {
-    min-height: 180px;
-    padding: 0;
-    overflow: hidden;
-  }
-
   &__table :deep(.table-wrapper) {
     overflow-x: auto;
-  }
-
-  &__table :deep(th) {
-    color: #4a5568;
-    font-size: .8125rem;
-    font-weight: 600;
-    letter-spacing: .02em;
-    white-space: nowrap;
-  }
-
-  &__table :deep(td),
-  &__table :deep(th) {
-    padding: 1rem 1.25rem;
-    vertical-align: middle;
   }
 
   code {

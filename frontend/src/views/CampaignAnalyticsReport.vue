@@ -10,6 +10,7 @@
         </h1>
       </div>
     </header>
+    <div class="mb-4"><export-button kind="campaigns" :filters="{ from: filters.from, to: filters.to, campaign_ids: form.campaigns.map(c => c.id) }" /></div>
 
     <div class="notification is-info" v-if="trackingDisabled">
       {{ $t('analytics.trackingDisabled') }}
@@ -208,7 +209,7 @@
       <div v-if="trackingDisabled" class="notification is-light">
         {{ $t('analytics.trackingChartsUnavailable') }}
       </div>
-      <b-table v-else :data="links" :loading="loading.links" hoverable narrowed>
+      <b-table v-else :data="links" :loading="loading.links" hoverable>
         <b-table-column v-slot="props" field="campaignSubject" :label="$tc('globals.terms.campaign', 1)">
           <router-link :to="{ name: 'campaign', params: { id: props.row.campaignId }, hash: '#analytics' }">
             {{ props.row.campaignSubject }}

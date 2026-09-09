@@ -1,18 +1,17 @@
 <template>
   <section class="organizations org-page">
-    <header class="org-page-header">
-      <div>
-        <p class="org-eyebrow">组织空间</p>
+    <header class="columns page-header org-page-header">
+      <div class="column is-10">
         <h1 class="title is-4">我参与的组织</h1>
-        <p class="org-subtitle">管理你加入的工作空间，并将个人资源安全地迁移到组织。</p>
+        <p class="org-subtitle">{{ canPersonalWorkspace ? '管理你加入的工作空间，并将个人资源安全地迁移到组织。' : '管理你加入的工作空间。' }}</p>
       </div>
-      <div class="org-header-meta">
+      <div class="column org-header-meta">
         <span class="org-meta-label">当前空间</span>
         <strong>{{ workspace.organizationId ? workspace.organizationName : '个人空间' }}</strong>
       </div>
     </header>
 
-    <section class="org-overview" aria-label="组织概览">
+    <section class="org-overview" :class="{ 'org-overview-compact': !canPersonalWorkspace }" aria-label="组织概览">
       <div class="org-stat">
         <span class="org-stat-icon is-blue"><b-icon icon="office-building-outline" /></span>
         <div><span class="org-stat-label">已加入组织</span><strong>{{ organizations.length }}</strong></div>
@@ -21,7 +20,7 @@
         <span class="org-stat-icon is-green"><b-icon icon="account-multiple-outline" /></span>
         <div><span class="org-stat-label">可协作成员</span><strong>{{ organizationMemberTotal }}</strong></div>
       </div>
-      <div class="org-stat">
+      <div v-if="canPersonalWorkspace" class="org-stat">
         <span class="org-stat-icon is-orange"><b-icon icon="folder-move-outline" /></span>
         <div><span class="org-stat-label">待迁移资源</span><strong>{{ personalResourceTotal }}</strong></div>
       </div>
@@ -35,7 +34,7 @@
         </div>
         <b-tag type="is-light" rounded>{{ organizations.length }} 个组织</b-tag>
       </div>
-      <b-table :data="organizations" :mobile-cards="false" narrowed class="org-table">
+      <b-table :data="organizations" :mobile-cards="false" class="org-table">
         <b-table-column v-slot="props" field="name" label="组织">
           <div class="org-name-cell">
             <span class="org-avatar"><b-icon icon="office-building-outline" size="is-small" /></span>
@@ -70,15 +69,18 @@
       </b-table>
     </section>
 
-    <section v-if="organizations.length" class="migration-panel">
-      <div class="org-panel-heading migration-heading">
+    <details v-if="organizations.length && canPersonalWorkspace" class="migration-panel" data-cy="personal-migration">
+      <summary class="org-panel-heading migration-heading">
         <div>
           <span class="step-kicker">资源整理</span>
           <h2>迁移个人资源</h2>
           <p>先选择目标组织，再选择要复制或移动的资源。</p>
         </div>
-        <div class="migration-summary"><span>已选择</span><strong>{{ selectedResourceTotal }}</strong><span>项资源</span></div>
-      </div>
+        <div class="migration-heading-actions">
+          <div class="migration-summary"><span>已选择</span><strong>{{ selectedResourceTotal }}</strong><span>项资源</span></div>
+          <span class="migration-expand">展开 ▾</span><span class="migration-collapse">收起 ▴</span>
+        </div>
+      </summary>
 
       <div class="migration-target">
         <span class="step-number">1</span>
@@ -203,7 +205,7 @@
         </article>
       </div>
       <div class="migration-tip"><b-icon icon="information-outline" size="is-small" /><span>迁移只会处理“个人”可见资源，组织共享资源不会出现在列表中。</span></div>
-    </section>
+    </details>
 
     <b-modal :active.sync="isPreviewVisible" :width="760" scroll="keep" :aria-modal="true">
       <div v-if="previewItem" class="resource-preview-modal">
@@ -262,7 +264,12 @@ export default Vue.extend({
   },
 
   computed: {
-    ...mapState(['workspace', 'organizations']),
+    ...mapState(['workspace', 'organizations', 'profile']),
+
+    canPersonalWorkspace() {
+      const role = this.profile.userRole || {};
+      return Number(role.id) === 1 || (role.permissions || []).includes('workspaces:personal');
+    },
 
     previewIcon() {
       return {
@@ -310,7 +317,7 @@ export default Vue.extend({
       const organizations = await this.$api.getMyOrganizations();
       this.$store.commit('setOrganizations', organizations);
       this.setMigrationTarget(organizations);
-      if (organizations.length) {
+      if (organizations.length && this.canPersonalWorkspace) {
         await this.refreshPersonalResources();
       } else {
         this.clearPersonalResources();
@@ -383,7 +390,7 @@ export default Vue.extend({
     },
 
     canMigrate(ids) {
-      return Boolean(this.migrationOrganizationID) && ids.length > 0;
+      return this.canPersonalWorkspace && Boolean(this.migrationOrganizationID) && ids.length > 0;
     },
 
     previewResource(resource, ids, resources) {
@@ -475,7 +482,7 @@ export default Vue.extend({
   --org-muted: #7a7a7a;
   --org-border: #e6e6e6;
   --org-surface: #ffffff;
-  background: #fff;
+  background: transparent;
   max-width: none;
   min-height: auto;
   margin: 0;
@@ -488,13 +495,10 @@ export default Vue.extend({
   }
 
   .org-page-header {
-    align-items: flex-end;
-    display: flex;
-    justify-content: space-between;
-    margin: 4px 0 24px;
+    align-items: flex-start;
+    margin-bottom: 24px;
   }
 
-  .org-eyebrow,
   .step-kicker {
     color: var(--org-blue);
     font-size: 11px;
@@ -515,6 +519,7 @@ export default Vue.extend({
     flex-direction: column;
     gap: 3px;
     padding-left: 18px;
+    margin-top: 0;
     min-width: 160px;
     text-align: left;
   }
@@ -531,6 +536,8 @@ export default Vue.extend({
     grid-template-columns: repeat(3, minmax(0, 1fr));
     margin-bottom: 22px;
   }
+
+  .org-overview-compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
   .org-stat {
     align-items: center;
@@ -566,19 +573,18 @@ export default Vue.extend({
 
   .org-panel,
   .migration-panel {
-    background: var(--org-surface);
-    border: 1px solid var(--org-border);
-    border-radius: 3px;
-    box-shadow: 2px 2px 0 #f3f3f3;
-    margin-bottom: 22px;
-    padding: 22px 24px;
+    margin-bottom: 28px;
+    padding: 0;
   }
 
   .org-panel-heading {
     align-items: flex-start;
     display: flex;
     justify-content: space-between;
-    margin-bottom: 18px;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+
+    border-bottom: 1px solid var(--org-border);
 
     h2 {
       color: var(--org-ink);
@@ -595,7 +601,7 @@ export default Vue.extend({
   }
 
   .org-table {
-    margin: 0 -8px;
+    margin: 0;
 
     table {
       min-width: 700px;
@@ -604,14 +610,14 @@ export default Vue.extend({
     thead th {
       background: #fafafa;
       color: #4a4a4a;
-      font-size: 12px;
+      font-size: 1rem;
       font-weight: 600;
-      padding: 11px 12px;
+      padding: 15px 10px;
     }
 
     tbody td {
       color: #39485a;
-      padding: 14px 12px;
+      padding: 15px 10px;
       vertical-align: middle;
     }
 
@@ -662,9 +668,22 @@ export default Vue.extend({
     span { font-size: 12px; }
   }
 
-  .migration-panel { background: #fff; }
+  .migration-panel {
+    border-top: 1px solid var(--org-border);
+    padding-top: 18px;
+  }
+
+  .migration-heading-actions { display: flex; align-items: center; gap: 16px; }
+  .migration-expand, .migration-collapse { color: var(--org-blue); font-size: 13px; }
+  .migration-collapse { display: none; }
+  .migration-panel[open] .migration-expand { display: none; }
+  .migration-panel[open] .migration-collapse { display: inline; }
+  .migration-panel:not([open]) .migration-heading { border-bottom: 0; margin-bottom: 0; padding-bottom: 0; }
+  .migration-heading::-webkit-details-marker { display: none; }
 
   .migration-heading {
+    cursor: pointer;
+    list-style: none;
     align-items: center;
     margin-bottom: 20px;
   }
@@ -858,10 +877,10 @@ export default Vue.extend({
   @media screen and (max-width: 800px) {
     margin: 0;
     padding: 0 0 40px;
-    .org-page-header { align-items: flex-start; flex-direction: column; gap: 15px; }
+    .org-page-header { align-items: flex-start; }
     .org-header-meta { border-left: 0; border-top: 1px solid var(--org-border); padding: 10px 0 0; width: 100%; }
     .org-overview { grid-template-columns: 1fr; }
-    .org-panel, .migration-panel { padding: 18px 14px; }
+    .org-panel, .migration-panel { padding-left: 0; padding-right: 0; }
     .migration-target { align-items: flex-start; flex-wrap: wrap; }
     .target-copy { flex: 1; }
     .target-field { margin-left: 37px; max-width: none; width: calc(100% - 37px); }

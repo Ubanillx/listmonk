@@ -1004,11 +1004,11 @@ body.is-noscroll {
 
     th {
       height: 42px;
-      padding: 10px 12px;
+      padding: 15px 10px;
       border-bottom: 1px solid $grey-lighter;
       color: $grey-dark;
       background: #f7f8fa;
-      font-size: 0.75rem;
+      font-size: 1rem;
       font-weight: 600;
       letter-spacing: 0.01em;
       white-space: nowrap;
@@ -1016,11 +1016,11 @@ body.is-noscroll {
 
     td {
       height: 48px;
-      padding: 10px 12px;
+      padding: 15px 10px;
       border-bottom: 1px solid #f0f1f3;
       vertical-align: middle;
       color: $grey-dark;
-      font-size: $size-7;
+      font-size: 1rem;
     }
 
     tbody tr {
@@ -1064,7 +1064,7 @@ body.is-noscroll {
   &__cell-code {
     color: $grey-darker;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    font-size: 0.78rem;
+    font-size: 0.875rem;
     font-weight: 600;
   }
 
@@ -1613,7 +1613,7 @@ section.customer_lists {
   max-height: 250px;
 
   thead th, tbody td {
-    padding: 10px;
+    padding: 15px 10px;
   }
 
   td.status .tag {

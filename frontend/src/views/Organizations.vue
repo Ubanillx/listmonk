@@ -11,7 +11,7 @@
       <div class="column is-5">
         <section class="mb-6">
           <h2 class="title is-6"><b-icon icon="office-building-outline" size="is-small" />我的组织</h2>
-          <b-table :data="organizations" :mobile-cards="false" narrowed>
+          <b-table :data="organizations" :mobile-cards="false">
             <b-table-column v-slot="props" field="name" label="组织">
               <a href="#" @click.prevent="switchWorkspace(props.row)">{{ props.row.name }}</a>
             </b-table-column>
@@ -157,7 +157,7 @@
                 <b-button native-type="submit" type="is-primary" expanded icon-left="account-plus-outline">添加</b-button>
               </div>
             </form>
-            <b-table :data="activeMembers" :mobile-cards="false" narrowed>
+            <b-table :data="activeMembers" :mobile-cards="false">
               <b-table-column v-slot="props" field="username" label="账号">
                 <strong>{{ props.row.username }}</strong>
                 <span v-if="props.row.name" class="has-text-grey"> {{ props.row.name }}</span>
@@ -200,7 +200,7 @@
             <b-notification v-if="newInviteCode" type="is-success" :closable="false">
               <copy-text :text="newInviteCode" />
             </b-notification>
-            <b-table :data="invites" :mobile-cards="false" narrowed>
+            <b-table :data="invites" :mobile-cards="false">
               <b-table-column v-slot="props" field="name" label="名称">{{ props.row.name || '邀请码' }}</b-table-column>
               <b-table-column v-slot="props" field="useCount" label="使用次数">
                 {{ props.row.useCount }}<span v-if="props.row.maxUses"> / {{ props.row.maxUses }}</span>
@@ -242,7 +242,7 @@
 
     <section v-if="isPlatformAdmin" class="mt-6">
       <h2 class="title is-5"><b-icon icon="file-document-edit-outline" size="is-small" />组织创建申请</h2>
-      <b-table :data="requests" :mobile-cards="false" narrowed>
+      <b-table :data="requests" :mobile-cards="false">
         <b-table-column v-slot="props" field="requestedName" label="组织">{{ props.row.requestedName }}</b-table-column>
         <b-table-column v-slot="props" field="requestedByName" label="申请人">{{ props.row.requestedByName }}</b-table-column>
         <b-table-column v-slot="props" field="description" label="说明">{{ props.row.description }}</b-table-column>
@@ -253,7 +253,7 @@
       </b-table>
 
       <h2 class="title is-5 mt-6"><b-icon icon="archive-outline" size="is-small" />组织归档</h2>
-      <b-table :data="platformOrganizations" :mobile-cards="false" narrowed>
+      <b-table :data="platformOrganizations" :mobile-cards="false">
         <b-table-column v-slot="props" field="name" label="组织">{{ props.row.name }}</b-table-column>
         <b-table-column v-slot="props" field="memberCount" label="成员数">{{ props.row.memberCount }}</b-table-column>
         <b-table-column v-slot="props" field="status" label="状态">

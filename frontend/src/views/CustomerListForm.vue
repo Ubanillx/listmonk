@@ -22,8 +22,8 @@
             :placeholder="$t('globals.fields.name')" required />
         </b-field>
 
-        <b-field :label="$t('customer_lists.type')" label-position="on-border" :message="$t('customer_lists.typeHelp')">
-          <b-select v-model="form.type" name="type" :placeholder="$t('customer_lists.typeHelp')" :disabled="!canSave" required expanded>
+        <b-field :label="$t('customer_lists.type')" label-position="on-border" :message="typeHelp">
+          <b-select v-model="form.type" name="type" :placeholder="typeHelp" :disabled="!canSave" required expanded>
             <option value="private">
               {{ $t('customer_lists.types.private') }}
             </option>
@@ -153,6 +153,15 @@ export default Vue.extend({
   },
 
   computed: {
+    typeHelp() {
+      const helpKeys = {
+        private: 'customer_lists.typeHelpPrivate',
+        public: 'customer_lists.typeHelpPublic',
+        pool: 'customer_lists.typeHelpPool',
+        pool_segment: 'customer_lists.typeHelpPoolSegment',
+      };
+      return this.$t(helpKeys[this.form.type] || 'customer_lists.typeHelpPrivate');
+    },
     ...mapState(['loading', 'profile']),
 
     isPlatformAdmin() {

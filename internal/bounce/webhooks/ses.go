@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/knadh/listmonk/models"
@@ -65,13 +66,34 @@ type sesMail struct {
 // SES handles SES/SNS webhook notifications including confirming SNS topic subscription
 // requests and bounce notifications.
 type SES struct {
-	certs map[string]*x509.Certificate
+	// The public webhook endpoint is anonymous and concurrency is unbounded, so
+	// every request that misses the cache would otherwise race on the map:
+	// concurrent reads and writes of a Go map are a fatal error, not just a
+	// stale value. certsMu guards certs; fetchMu serializes misses so a burst of
+	// notifications for an uncached certificate fetches it once.
+	certsMu sync.RWMutex
+	certs   map[string]*x509.Certificate
+	fetchMu sync.Mutex
+
+	// client bounds how long a certificate fetch may take. http.Get uses
+	// http.DefaultClient, which has no timeout at all.
+	client *http.Client
 }
+
+// maxSESCerts bounds the certificate cache. SNS has a handful of signing
+// certificates per partition, so this only stops a crafted URL from growing the
+// cache without limit.
+const maxSESCerts = 64
+
+// maxSESCertBytes bounds a fetched certificate. Signing certificates are a few
+// KB.
+const maxSESCertBytes = 64 << 10
 
 // NewSES returns a new SES instance.
 func NewSES() *SES {
 	return &SES{
-		certs: make(map[string]*x509.Certificate),
+		certs:  make(map[string]*x509.Certificate),
+		client: &http.Client{Timeout: 10 * time.Second},
 	}
 }
 
@@ -224,12 +246,22 @@ func (s *SES) getCert(certURL string) (*x509.Certificate, error) {
 	}
 
 	// Return if it's cached.
-	if c, ok := s.certs[u.Path]; ok {
-		return c, nil
+	if cert, ok := s.cachedCert(u.Path); ok {
+		return cert, nil
+	}
+
+	// Serialize misses so concurrent notifications for the same certificate do
+	// not each fetch it.
+	s.fetchMu.Lock()
+	defer s.fetchMu.Unlock()
+
+	// Another request may have populated the cache while this one waited.
+	if cert, ok := s.cachedCert(u.Path); ok {
+		return cert, nil
 	}
 
 	// Fetch the certificate.
-	resp, err := http.Get(certURL)
+	resp, err := s.client.Get(certURL)
 	if err != nil {
 		return nil, err
 	}
@@ -239,9 +271,12 @@ func (s *SES) getCert(certURL string) (*x509.Certificate, error) {
 		return nil, fmt.Errorf("invalid SNS certificate URL: %v", u.Host)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxSESCertBytes+1))
 	if err != nil {
 		return nil, err
+	}
+	if len(body) > maxSESCertBytes {
+		return nil, errors.New("SNS certificate is too large")
 	}
 
 	p, _ := pem.Decode(body)
@@ -250,11 +285,37 @@ func (s *SES) getCert(certURL string) (*x509.Certificate, error) {
 	}
 
 	cert, err := x509.ParseCertificate(p.Bytes)
+	if err != nil {
+		return nil, err
+	}
 
-	// Cache the cert in-memory.
-	s.certs[u.Path] = cert
+	// Cache the cert in-memory. A certificate that failed to parse is never
+	// cached: a cached nil would be returned as a valid hit later and panic the
+	// caller.
+	s.cacheCert(u.Path, cert)
 
-	return cert, err
+	return cert, nil
+}
+
+// cachedCert returns a cached signing certificate.
+func (s *SES) cachedCert(path string) (*x509.Certificate, bool) {
+	s.certsMu.RLock()
+	defer s.certsMu.RUnlock()
+
+	c, ok := s.certs[path]
+	return c, ok && c != nil
+}
+
+// cacheCert stores a signing certificate, leaving the cache untouched once it is
+// full.
+func (s *SES) cacheCert(path string, cert *x509.Certificate) {
+	s.certsMu.Lock()
+	defer s.certsMu.Unlock()
+
+	if _, ok := s.certs[path]; !ok && len(s.certs) >= maxSESCerts {
+		return
+	}
+	s.certs[path] = cert
 }
 
 func (st *sesTimestamp) UnmarshalJSON(b []byte) error {

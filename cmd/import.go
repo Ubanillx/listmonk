@@ -2,7 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -12,6 +15,11 @@ import (
 	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
 )
+
+// maxImportUploadSize caps the uploaded CSV/XLSX/ZIP itself. It mirrors the
+// transport limit for this route; the extraction limits in the subimporter
+// bound what an archive may expand to.
+const maxImportUploadSize = 64 << 20
 
 // ImportCustomers handles the uploading and bulk importing of
 // a ZIP file of one or more CSV files.
@@ -87,6 +95,18 @@ func (a *App) ImportCustomers(c echo.Context) error {
 			a.i18n.Ts("import.invalidFile", "error", err.Error()))
 	}
 
+	// Parsing a multipart upload larger than the in-memory threshold spills the
+	// part to a temporary file that net/http does not remove on its own. The
+	// contents are copied to our own temp file below, so the multipart copy can
+	// be reclaimed as soon as this handler returns.
+	if mf := c.Request().MultipartForm; mf != nil {
+		defer func() {
+			if err := mf.RemoveAll(); err != nil {
+				a.log.Printf("error removing multipart temporary files: %v", err)
+			}
+		}()
+	}
+
 	filename := strings.ToLower(file.Filename)
 	isCSV := strings.HasSuffix(filename, ".csv")
 	isXLSX := strings.HasSuffix(filename, ".xlsx")
@@ -96,32 +116,74 @@ func (a *App) ImportCustomers(c echo.Context) error {
 			a.i18n.T("import.invalidFile"))
 	}
 
+	// The transport limit already bounds this request, but checking the declared
+	// size here keeps the rejection independent of the route configuration and
+	// refuses the upload before it is copied to disk.
+	if file.Size > maxImportUploadSize {
+		return tooLargeErr(a, fmt.Sprintf("file (max %d MB)", maxImportUploadSize>>20))
+	}
+
 	src, err := file.Open()
 	if err != nil {
 		return err
 	}
 	defer src.Close()
 
-	// Copy it to a temp location.
+	// Everything created for this import has to outlive the request and be
+	// removed once the import finishes, fails or is stopped. tempPaths is
+	// appended to before the cleanup watcher is armed, and read by the watcher
+	// only after the session's completion signal fires. This cleanup is
+	// registered before the temp file is opened so that it runs after the file
+	// handle is closed (deferred calls run last-registered-first; Windows cannot
+	// remove an open file).
+	var (
+		tempPaths []string
+		armed     bool
+	)
+	defer func() {
+		// An early return leaves the paths unclaimed by the watcher: remove them
+		// here instead of leaking them.
+		if !armed {
+			removeTempPaths(a.log, tempPaths...)
+		}
+	}()
+
+	// Copy it to a temp location. The copy is bounded as well, so a part whose
+	// declared size understates its content cannot fill the disk.
 	out, err := os.CreateTemp("", "listmonk")
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError,
 			a.i18n.Ts("import.errorCopyingFile", "error", err.Error()))
 	}
 	defer out.Close()
+	tempPaths = append(tempPaths, out.Name())
 
-	if _, err = io.Copy(out, src); err != nil {
+	if _, err := io.Copy(out, io.LimitReader(src, maxImportUploadSize+1)); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError,
 			a.i18n.Ts("import.errorCopyingFile", "error", err.Error()))
 	}
 
-	// Start the importer session.
+	// Start the importer session. NewSession is the single admission point, so
+	// the pre-check above can lose the race to a concurrent request that was
+	// admitted first. That loser has to report the same condition the same way
+	// the pre-check does (403 for another workspace's import, 400 for one that
+	// is already running) instead of a generic "error starting import".
 	opt.Filename = file.Filename
 	sess, err := a.importer.NewSession(opt)
 	if err != nil {
+		if errors.Is(err, subimporter.ErrIsImporting) {
+			if err := a.requireImportAccess(access); err != nil {
+				return err
+			}
+			return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("import.alreadyRunning"))
+		}
 		return echo.NewHTTPError(http.StatusInternalServerError,
 			a.i18n.Ts("import.errorStarting", "error", err.Error()))
 	}
+
+	// Capture this session's completion signal before the loaders run, so the
+	// cleanup below can never observe a later session's signal.
+	done := a.importer.Done()
 	go sess.Start()
 
 	if isCSV {
@@ -140,11 +202,33 @@ func (a *App) ImportCustomers(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusInternalServerError,
 				a.i18n.Ts("import.errorProcessingZIP", "error", err.Error()))
 		}
+		tempPaths = append(tempPaths, dir)
 
 		go sess.LoadCSV(dir + "/" + files[0])
 	}
 
+	// The import now owns the temp paths for as long as it runs.
+	armed = true
+	go func() {
+		<-done
+		removeTempPaths(a.log, tempPaths...)
+	}()
+
 	return c.JSON(http.StatusOK, okResp{a.importer.GetStats()})
+}
+
+// removeTempPaths removes files and directories created for an import. Removing
+// them is best effort: a failure is logged rather than returned, because the
+// import result has already been reported to the caller.
+func removeTempPaths(logger *log.Logger, paths ...string) {
+	for _, p := range paths {
+		if p == "" {
+			continue
+		}
+		if err := os.RemoveAll(p); err != nil {
+			logger.Printf("error removing import temporary path '%s': %v", p, err)
+		}
+	}
 }
 
 // GetImportCustomers returns import statistics.

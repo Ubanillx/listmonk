@@ -29,6 +29,8 @@ SELECT url FROM links WHERE uuid = $1;
 -- campaign recipient. Aggregate tracking omits the customer UUID and still
 -- records a campaign-level click. Existing campaigns are marked legacy by the
 -- migration so their historical links remain valid without a new relation.
+-- The binding rule, including the historical fallback, lives in
+-- resolve_campaign_recipient (see schema.sql).
 WITH link AS (
     SELECT id, url FROM links WHERE uuid = $1
 ),
@@ -36,41 +38,8 @@ campaign AS (
     SELECT id, organization_id, owner_user_id, tracking_links_mapped
     FROM campaigns WHERE uuid = $2::UUID
 ),
-customer AS (
-    SELECT id, organization_id, owner_user_id
-    FROM customers
-    WHERE id IN (
-        SELECT id FROM customers WHERE uuid = NULLIF($3::TEXT, '')::UUID
-        UNION
-        SELECT customer_id FROM customer_uuid_aliases WHERE uuid = NULLIF($3::TEXT, '')::UUID
-    )
-),
-snapshot_recipient AS (
-    SELECT c.id AS campaign_id, s.id AS customer_id
-    FROM campaign c
-    JOIN customer s ON TRUE
-    WHERE EXISTS (
-        SELECT 1 FROM campaign_recipients cr
-        WHERE cr.campaign_id = c.id AND cr.customer_id = s.id
-    )
-),
-legacy_recipient AS (
-    SELECT c.id AS campaign_id, s.id AS customer_id
-    FROM campaign c
-    JOIN customer s ON TRUE
-    WHERE NOT EXISTS (SELECT 1 FROM campaign_recipients cr WHERE cr.campaign_id = c.id)
-        AND s.organization_id IS NOT DISTINCT FROM c.organization_id
-        AND s.owner_user_id IS NOT DISTINCT FROM c.owner_user_id
-        AND EXISTS (
-            SELECT 1 FROM campaign_customer_lists cl
-            JOIN customer_list_memberships sl ON sl.customer_list_id = cl.customer_list_id
-            WHERE cl.campaign_id = c.id AND sl.customer_id = s.id
-        )
-),
 recipient AS (
-    SELECT campaign_id, customer_id FROM snapshot_recipient
-    UNION ALL
-    SELECT campaign_id, customer_id FROM legacy_recipient
+    SELECT * FROM resolve_campaign_recipient($2::UUID, $3::TEXT)
 )
 INSERT INTO link_clicks (campaign_id, customer_id, link_id)
     SELECT c.id,

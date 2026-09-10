@@ -2,6 +2,10 @@ package main
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
+	"image"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -22,6 +26,27 @@ const (
 	thumbPrefix   = "thumb_"
 	thumbnailSize = 250
 )
+
+// Media upload limits.
+//
+// processImage decodes and resamples the whole image, so the cost of an upload
+// is driven by the image's declared dimensions rather than by its file size: a
+// few KB of highly compressed PNG can declare tens of thousands of pixels per
+// side. Dimensions are read from the header and validated before any pixels are
+// decoded, which is what bounds the memory and CPU a single upload can demand.
+const (
+	// maxMediaUploadSize caps one uploaded media file.
+	maxMediaUploadSize = 32 << 20
+	// maxMediaImageDimension caps either side of an uploaded image.
+	maxMediaImageDimension = 20000
+	// maxMediaImagePixels caps the width multiplied by the height of an uploaded
+	// image.
+	maxMediaImagePixels = 50 * 1000 * 1000
+)
+
+// errMediaTooLarge reports an upload or image that exceeds the media limits.
+// Callers map it to a 413 instead of a generic failure.
+var errMediaTooLarge = errors.New("uploaded media exceeds the allowed size")
 
 var (
 	vectorExts = []string{"svg"}
@@ -44,6 +69,20 @@ func (a *App) UploadMedia(c echo.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest,
 			a.i18n.Ts("media.invalidFile", "error", err.Error()))
+	}
+
+	// A multipart upload larger than the in-memory threshold is spilled by
+	// net/http to a temporary file it does not remove on its own.
+	if mf := c.Request().MultipartForm; mf != nil {
+		defer func() {
+			if err := mf.RemoveAll(); err != nil {
+				a.log.Printf("error removing multipart temporary files: %v", err)
+			}
+		}()
+	}
+
+	if file.Size > maxMediaUploadSize {
+		return tooLargeErr(a, fmt.Sprintf("file (max %d MB)", maxMediaUploadSize>>20))
 	}
 
 	// Read the file from the HTTP form.
@@ -135,6 +174,10 @@ func (a *App) UploadMedia(c echo.Context) error {
 		thumbFile, wi, he, err := processImage(file)
 		if err != nil {
 			cleanUp = true
+			if errors.Is(err, errMediaTooLarge) {
+				a.log.Printf("rejecting media upload: %v", err)
+				return tooLargeErr(a, err.Error())
+			}
 			a.log.Printf("error resizing image: %v", err)
 			return echo.NewHTTPError(http.StatusInternalServerError,
 				a.i18n.Ts("media.errorResizing", "error", err.Error()))
@@ -416,14 +459,47 @@ func workspaceMediaFileURL(filename string) string {
 
 // processImage reads the image file and returns thumbnail bytes and
 // the original image's width, and height.
+//
+// The image is validated from its header before the pixels are decoded: a
+// decode allocates the full bitmap, so an image that declares an enormous
+// canvas has to be refused while only its header has been read. Returns an
+// error wrapping errMediaTooLarge for uploads and images over the limits.
 func processImage(file *multipart.FileHeader) (*bytes.Reader, int, int, error) {
+	if file.Size > maxMediaUploadSize {
+		return nil, 0, 0, fmt.Errorf("%w: file is larger than %d bytes", errMediaTooLarge, maxMediaUploadSize)
+	}
+
 	src, err := file.Open()
 	if err != nil {
 		return nil, 0, 0, err
 	}
 	defer src.Close()
 
-	img, err := imaging.Decode(src)
+	// Read the upload once, bounded: the declared size of a multipart part is
+	// not authoritative, and both the header check and the decode below need the
+	// bytes.
+	raw, err := io.ReadAll(io.LimitReader(src, maxMediaUploadSize+1))
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	if len(raw) > maxMediaUploadSize {
+		return nil, 0, 0, fmt.Errorf("%w: file is larger than %d bytes", errMediaTooLarge, maxMediaUploadSize)
+	}
+
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(raw))
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	if cfg.Width > maxMediaImageDimension || cfg.Height > maxMediaImageDimension {
+		return nil, 0, 0, fmt.Errorf("%w: image is larger than %d pixels per side (%d x %d)",
+			errMediaTooLarge, maxMediaImageDimension, cfg.Width, cfg.Height)
+	}
+	if cfg.Width*cfg.Height > maxMediaImagePixels {
+		return nil, 0, 0, fmt.Errorf("%w: image is larger than %d pixels (%d x %d)",
+			errMediaTooLarge, maxMediaImagePixels, cfg.Width, cfg.Height)
+	}
+
+	img, err := imaging.Decode(bytes.NewReader(raw))
 	if err != nil {
 		return nil, 0, 0, err
 	}

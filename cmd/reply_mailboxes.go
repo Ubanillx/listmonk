@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/mail"
@@ -169,9 +170,20 @@ func (a *App) TestReplyMailbox(c echo.Context) error {
 		host = "pop." + strings.TrimPrefix(host, "imap.")
 		port = 995
 	}
-	client := pop3.New(pop3.Opt{Host: host, Port: port, TLSEnabled: true})
+	// Refuse a blocked target before any connection is attempted, and let the
+	// dialer apply the same policy with the address it validated.
+	if _, err := resolveMailboxHost(c.Request().Context(), host); err != nil {
+		if errors.Is(err, errMailboxHostBlocked) {
+			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+		}
+		return echo.NewHTTPError(http.StatusBadGateway, err.Error())
+	}
+	client := pop3.New(pop3.Opt{Host: host, Port: port, TLSEnabled: true, Dialer: &mailboxPolicyDialer{}})
 	conn, err := client.NewConn()
 	if err != nil {
+		if errors.Is(err, errMailboxHostBlocked) {
+			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+		}
 		return echo.NewHTTPError(http.StatusBadGateway, fmt.Sprintf("mailbox connection failed: %v", err))
 	}
 	defer conn.Quit()

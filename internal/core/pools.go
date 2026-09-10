@@ -577,9 +577,111 @@ func (c *Core) ValidatePoolCampaignAudience(campaignID int) error {
 	return nil
 }
 
-// EnsurePoolCampaignRecipients materializes the current pool membership into
-// an immutable campaign snapshot. It is idempotent and deduplicates by the
-// pool contact's stable internal ID.
+// poolRecipientMembershipSQL is the single definition of a deliverable pool
+// recipient: an active pool member whose organization allocation is still
+// active, which that organization has not excluded, and whose pool contact row
+// is still active. The first-level resolve, the secondary-list resolve and the
+// campaign snapshot writer all embed exactly this fragment, so a new exclusion
+// source or contact status cannot be added to one audience path while another
+// silently keeps sending to the contact.
+//
+// Positional parameter contract for every embedder:
+//
+//	$1 = first-level pool ID
+//	$2 = organization ID
+//	$3 = pool_segments ID restricting the read to one secondary list, or NULL to
+//	     accept every secondary list the organization owns in that pool (the
+//	     schema allows at most one per organization)
+//
+// An embedder that needs further parameters must number them from $4 upwards.
+const poolRecipientMembershipSQL = `
+	FROM pool_segments s
+	JOIN pool_segment_members sm ON sm.segment_id=s.id AND sm.status='active'
+	JOIN pool_members pm ON pm.pool_id=s.pool_id AND pm.contact_id=sm.contact_id
+	JOIN pool_contacts pc ON pc.id=sm.contact_id
+	LEFT JOIN pool_segment_exclusions ex ON ex.pool_id=s.pool_id AND ex.organization_id=s.organization_id AND ex.contact_id=pc.id AND ex.restored_at IS NULL
+	WHERE s.pool_id=$1 AND s.organization_id=$2 AND ($3::BIGINT IS NULL OR s.id=$3::BIGINT) AND ex.contact_id IS NULL AND pc.status='active'`
+
+// poolRecipientSelectSQL reads the deliverable members of one pool audience. It
+// is the read half of the shared rule and is deduplicated by the pool contact's
+// stable internal ID, which is also the snapshot's primary key.
+const poolRecipientSelectSQL = `SELECT DISTINCT ON (pc.id) pc.id,pc.customer_code,pc.company_name,pc.email,pc.name,pc.status,s.id AS segment_id,s.organization_id,s.reply_mailbox_id` + poolRecipientMembershipSQL + ` ORDER BY pc.id,s.id`
+
+// poolSnapshotRefreshStatuses lists the snapshot statuses a refresh owns: a row
+// in one of these states has not been handed to delivery yet, so the refresh may
+// still rewrite or remove it. Rows that are already queued for a worker, sent,
+// or cancelled by an unsubscribe are delivery history and are never rewritten or
+// deleted. The prune and the upsert share this one predicate so they can never
+// disagree about which rows the refresh owns.
+const poolSnapshotRefreshStatuses = `('pending','deferred')`
+
+// poolRecipientSnapshotUpsertSQL writes the snapshot rows of one pool audience
+// from the shared membership rule.
+//
+// This is DO UPDATE and not DO NOTHING, because both callers are refreshes and
+// not first writes: EnsurePoolCampaignRecipients runs on every scheduler tick
+// for a campaign that is already scheduled or running, and AttachPoolToCampaign
+// re-runs whenever a draft audience is saved. DO NOTHING keeps the older email
+// address, name and reply mailbox of a contact that was edited or re-resolved
+// after the first snapshot was written, which is exactly the drift this path
+// exists to prevent.
+//
+// The WHERE clause restricts the rewrite to the rows a refresh owns, so the
+// snapshot of a row that was already queued or sent stays exactly what was
+// handed to delivery. A contact that was excluded after the snapshot was written
+// no longer matches the shared rule, so this statement does not write it again;
+// its owned rows are removed by poolRecipientSnapshotPruneSQL and its
+// already-delivered rows are kept as history.
+//
+// Embedder positions continue after the rule's parameters:
+//
+//	$4 = campaign ID
+//	$5 = audience reply mailbox, or NULL to keep the per-secondary-list mailbox
+//	     of each resolved row
+const poolRecipientSnapshotUpsertSQL = `INSERT INTO campaign_pool_recipients AS cpr(campaign_id,pool_contact_id,pool_id,segment_id,organization_id,reply_mailbox_id,email_snapshot,name_snapshot)
+	SELECT $4,pc.id,$1,s.id,$2,COALESCE($5::INT,s.reply_mailbox_id),pc.email,pc.name` + poolRecipientMembershipSQL + `
+	ON CONFLICT(campaign_id,pool_contact_id) DO UPDATE SET
+		email_snapshot=EXCLUDED.email_snapshot,
+		name_snapshot=EXCLUDED.name_snapshot,
+		pool_id=EXCLUDED.pool_id,
+		segment_id=EXCLUDED.segment_id,
+		organization_id=EXCLUDED.organization_id,
+		reply_mailbox_id=EXCLUDED.reply_mailbox_id,
+		updated_at=NOW()
+	WHERE cpr.status IN ` + poolSnapshotRefreshStatuses
+
+// poolRecipientSnapshotPruneSQL removes the snapshot rows a refresh still owns
+// that its audience no longer delivers to: the contact was excluded, its
+// allocation was removed, or its pool contact row was archived. Without this
+// step a stale pending row would keep the campaign's unsent count above zero
+// forever, because the queue path refuses to hand it over. Rows that were
+// already queued, sent, or cancelled are delivery history and are preserved, so
+// the status predicate matches poolRecipientSnapshotUpsertSQL exactly.
+//
+// Parameters: $1 = campaign ID, $2 = pool ID, $3 = organization ID,
+// $4 = pool_segments ID or NULL for the whole organization scope,
+// $5 = the pool contact IDs that are still deliverable.
+const poolRecipientSnapshotPruneSQL = `DELETE FROM campaign_pool_recipients
+	WHERE campaign_id=$1 AND pool_id=$2 AND organization_id=$3 AND ($4::BIGINT IS NULL OR segment_id=$4::BIGINT)
+		AND status IN ` + poolSnapshotRefreshStatuses + ` AND NOT (pool_contact_id=ANY($5::BIGINT[]))`
+
+// poolAudience is the delivery scope of one pool relation on a campaign: the
+// first-level pool, the target organization, the explicitly selected secondary
+// list (nil when the audience selected the first-level pool) and the reply
+// mailbox resolved for the audience.
+type poolAudience struct {
+	poolID         int
+	organizationID int64
+	segmentID      *int64
+	mailboxID      *int64
+}
+
+// EnsurePoolCampaignRecipients refreshes the campaign's pool recipient snapshot
+// from the current membership of every resolved pool audience. It runs on each
+// scheduler tick, which is what stops an in-flight campaign from delivering to a
+// contact that was excluded, unassigned or archived after the snapshot was first
+// written. The snapshot is keyed by the pool contact's stable internal ID, so a
+// refresh never duplicates a recipient.
 func (c *Core) EnsurePoolCampaignRecipients(campaignID int) error {
 	var rows []struct {
 		PoolID         int           `db:"pool_id"`
@@ -587,70 +689,93 @@ func (c *Core) EnsurePoolCampaignRecipients(campaignID int) error {
 		OrganizationID sql.NullInt64 `db:"source_organization_id"`
 		MailboxID      sql.NullInt64 `db:"resolved_reply_mailbox_id"`
 	}
-	if err := c.db.Select(&rows, `SELECT pool_id,pool_segment_id,source_organization_id,resolved_reply_mailbox_id FROM campaign_customer_lists WHERE campaign_id=$1 AND pool_id IS NOT NULL`, campaignID); err != nil {
+	// Audiences are refreshed in a stable order. A campaign may select the same
+	// first-level pool and its secondary list, or two pools that share a contact;
+	// because the snapshot keeps one row per campaign and pool contact, a stable
+	// order keeps that row's audience label deterministic across ticks.
+	if err := c.db.Select(&rows, `SELECT pool_id,pool_segment_id,source_organization_id,resolved_reply_mailbox_id FROM campaign_customer_lists WHERE campaign_id=$1 AND pool_id IS NOT NULL ORDER BY pool_id,pool_segment_id NULLS FIRST`, campaignID); err != nil {
 		return err
 	}
 	for _, row := range rows {
 		if !row.OrganizationID.Valid || !row.MailboxID.Valid {
 			continue
 		}
-		var (
-			recipients []PoolRecipient
-			err        error
-		)
+		mailboxID := row.MailboxID.Int64
+		audience := poolAudience{poolID: row.PoolID, organizationID: row.OrganizationID.Int64, mailboxID: &mailboxID}
 		if row.SegmentID.Valid {
-			recipients, err = c.resolvePoolRecipientsForSegment(row.PoolID, row.OrganizationID.Int64, row.SegmentID.Int64)
+			segmentID := row.SegmentID.Int64
+			audience.segmentID = &segmentID
 		} else {
+			// A first-level selection resolves to the single secondary list the
+			// organization owns for the pool. Without exactly one, the audience
+			// stays unresolved and its snapshot must not be rewritten.
 			var segmentCount int
-			if err = c.db.Get(&segmentCount, `SELECT COUNT(*) FROM pool_segments WHERE pool_id=$1 AND organization_id=$2`, row.PoolID, row.OrganizationID.Int64); err == nil && segmentCount == 1 {
-				recipients, err = c.ResolvePoolRecipients(row.PoolID, row.OrganizationID.Int64)
-			} else if err == nil {
+			if err := c.db.Get(&segmentCount, `SELECT COUNT(*) FROM pool_segments WHERE pool_id=$1 AND organization_id=$2`, row.PoolID, row.OrganizationID.Int64); err != nil {
+				return err
+			}
+			if segmentCount != 1 {
 				continue
 			}
 		}
-		if err != nil {
+		if err := c.refreshPoolCampaignRecipients(campaignID, audience); err != nil {
 			return err
-		}
-		for _, r := range recipients {
-			if _, err := c.db.Exec(`INSERT INTO campaign_pool_recipients(campaign_id,pool_contact_id,pool_id,segment_id,organization_id,reply_mailbox_id,email_snapshot,name_snapshot) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(campaign_id,pool_contact_id) DO UPDATE SET email_snapshot=EXCLUDED.email_snapshot,name_snapshot=EXCLUDED.name_snapshot,reply_mailbox_id=EXCLUDED.reply_mailbox_id`, campaignID, r.ID, row.PoolID, r.SegmentID, row.OrganizationID.Int64, row.MailboxID.Int64, r.Email, r.Name); err != nil {
-				return err
-			}
 		}
 	}
 	return nil
 }
 
+// refreshPoolCampaignRecipients makes the campaign snapshot of one pool audience
+// equal the deliverable members of that audience. Both the resolve paths and the
+// snapshot writer consume poolRecipientMembershipSQL, so the three paths cannot
+// produce different recipient sets.
+func (c *Core) refreshPoolCampaignRecipients(campaignID int, aud poolAudience) error {
+	recipients, err := c.resolvePoolRecipients(aud.poolID, aud.organizationID, aud.segmentID)
+	if err != nil {
+		return err
+	}
+	ids := make(pq.Int64Array, 0, len(recipients))
+	for _, r := range recipients {
+		ids = append(ids, r.ID)
+	}
+	if _, err := c.db.Exec(poolRecipientSnapshotPruneSQL, campaignID, aud.poolID, aud.organizationID, aud.segmentID, ids); err != nil {
+		return err
+	}
+	if len(recipients) == 0 {
+		return nil
+	}
+	_, err = c.db.Exec(poolRecipientSnapshotUpsertSQL, aud.poolID, aud.organizationID, aud.segmentID, campaignID, aud.mailboxID)
+	return err
+}
+
+// resolvePoolRecipients reads the deliverable members of one pool audience. A
+// nil segmentID accepts every secondary list the organization owns in the pool,
+// which is how a first-level audience selection is resolved.
+func (c *Core) resolvePoolRecipients(poolID int, organizationID int64, segmentID *int64) ([]PoolRecipient, error) {
+	if err := c.ensurePool(poolID); err != nil {
+		return nil, err
+	}
+	var out []PoolRecipient
+	err := c.db.Select(&out, poolRecipientSelectSQL, poolID, organizationID, segmentID)
+	return out, err
+}
+
+// ResolvePoolRecipients resolves a first-level pool audience for one
+// organization. It shares its membership rule with the secondary-list resolve
+// and with the campaign snapshot writer.
 func (c *Core) ResolvePoolRecipients(poolID int, organizationID int64) ([]PoolRecipient, error) {
-	if err := c.ensurePool(poolID); err != nil {
-		return nil, err
-	}
-	var out []PoolRecipient
-	err := c.db.Select(&out, `SELECT DISTINCT ON (pc.id) pc.id,pc.customer_code,pc.company_name,pc.email,pc.name,pc.status,s.id AS segment_id,s.organization_id,s.reply_mailbox_id
-		FROM pool_members pm JOIN pool_contacts pc ON pc.id=pm.contact_id
-		JOIN pool_segments s ON s.pool_id=pm.pool_id
-		JOIN pool_segment_members sm ON sm.segment_id=s.id AND sm.contact_id=pc.id AND sm.status='active'
-		LEFT JOIN pool_segment_exclusions ex ON ex.pool_id=pm.pool_id AND ex.organization_id=s.organization_id AND ex.contact_id=pc.id AND ex.restored_at IS NULL
-		WHERE pm.pool_id=$1 AND s.organization_id=$2 AND ex.contact_id IS NULL AND pc.status='active' ORDER BY pc.id,s.id`, poolID, organizationID)
-	return out, err
+	return c.resolvePoolRecipients(poolID, organizationID, nil)
 }
 
+// resolvePoolRecipientsForSegment resolves one explicitly selected secondary
+// list for one organization.
 func (c *Core) resolvePoolRecipientsForSegment(poolID int, organizationID, segmentID int64) ([]PoolRecipient, error) {
-	if err := c.ensurePool(poolID); err != nil {
-		return nil, err
-	}
-	var out []PoolRecipient
-	err := c.db.Select(&out, `SELECT pc.id,pc.customer_code,pc.company_name,pc.email,pc.name,pc.status,s.id AS segment_id,s.organization_id,s.reply_mailbox_id
-		FROM pool_segments s JOIN pool_segment_members sm ON sm.segment_id=s.id AND sm.status='active'
-		JOIN pool_members pm ON pm.pool_id=s.pool_id AND pm.contact_id=sm.contact_id
-		JOIN pool_contacts pc ON pc.id=sm.contact_id
-		LEFT JOIN pool_segment_exclusions ex ON ex.pool_id=s.pool_id AND ex.organization_id=s.organization_id AND ex.contact_id=pc.id AND ex.restored_at IS NULL
-		WHERE s.id=$1 AND s.pool_id=$2 AND s.organization_id=$3 AND ex.contact_id IS NULL AND pc.status='active' ORDER BY pc.id`, segmentID, poolID, organizationID)
-	return out, err
+	return c.resolvePoolRecipients(poolID, organizationID, &segmentID)
 }
 
-// AttachPoolToCampaign records a pool/segment audience on a draft campaign.
-// The relation is intentionally metadata-only; recipient expansion occurs at
-// send snapshot time after organization exclusions and mailbox resolution.
+// AttachPoolToCampaign records a pool/segment audience on a draft campaign and
+// refreshes that audience's recipient snapshot from the shared membership rule.
+// Saving a draft audience again is a refresh: a contact that was excluded since
+// the previous save loses its snapshot row instead of keeping a stale one.
 func (c *Core) AttachPoolToCampaign(campaignID, poolID int, segmentID *int64, organizationID int64) error {
 	var err error
 	if err := c.ensurePool(poolID); err != nil {
@@ -670,7 +795,7 @@ func (c *Core) AttachPoolToCampaign(campaignID, poolID int, segmentID *int64, or
 	if err := c.db.Get(&name, `SELECT name FROM customer_lists WHERE id=$1`, poolID); err != nil {
 		return err
 	}
-	var mailbox any
+	var mailbox *int64
 	// Selecting a first-level pool resolves to the single effective secondary
 	// segment for the target organization. If none (or more than one) exists,
 	// retain an unresolved relation so drafts can be saved but preview/send will
@@ -693,7 +818,8 @@ func (c *Core) AttachPoolToCampaign(campaignID, poolID int, segmentID *int64, or
 			id := candidates[0].ID
 			segmentID = &id
 			if candidates[0].MailboxID.Valid {
-				mailbox = int(candidates[0].MailboxID.Int64)
+				mailboxID := candidates[0].MailboxID.Int64
+				mailbox = &mailboxID
 			} else {
 				unresolvedFirstLevel = true
 			}
@@ -707,17 +833,16 @@ func (c *Core) AttachPoolToCampaign(campaignID, poolID int, segmentID *int64, or
 			return echo.NewHTTPError(http.StatusBadRequest, "invalid pool segment")
 		}
 		if m.Valid && mailbox == nil {
-			mailbox = int(m.Int64)
+			mailboxID := m.Int64
+			mailbox = &mailboxID
 		}
 	} else if !unresolvedFirstLevel {
-		recipients, resolveErr := c.ResolvePoolRecipients(poolID, organizationID)
-		if resolveErr != nil {
-			return resolveErr
-		}
-		for _, r := range recipients {
-			if _, err = c.db.Exec(`INSERT INTO campaign_pool_recipients(campaign_id,pool_contact_id,pool_id,segment_id,organization_id,reply_mailbox_id,email_snapshot,name_snapshot) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(campaign_id,pool_contact_id) DO NOTHING`, campaignID, r.ID, poolID, r.SegmentID, organizationID, r.ReplyMailboxID, r.Email, r.Name); err != nil {
-				return err
-			}
+		// The audience selected the first-level pool and resolved to the single
+		// secondary list of the organization. It expands through the same
+		// snapshot refresh as every other path, with the reply mailbox of each
+		// resolved row.
+		if err := c.refreshPoolCampaignRecipients(campaignID, poolAudience{poolID: poolID, organizationID: organizationID}); err != nil {
+			return err
 		}
 	}
 	_, err = c.db.Exec(`INSERT INTO campaign_customer_lists(campaign_id,customer_list_id,customer_list_name,pool_id,pool_segment_id,source_organization_id,resolved_reply_mailbox_id)
@@ -726,11 +851,11 @@ func (c *Core) AttachPoolToCampaign(campaignID, poolID int, segmentID *int64, or
 		return err
 	}
 	if segmentID != nil {
-		_, err = c.db.Exec(`INSERT INTO campaign_pool_recipients(campaign_id,pool_contact_id,pool_id,segment_id,organization_id,reply_mailbox_id,email_snapshot,name_snapshot)
-			SELECT $1,pc.id,$2,s.id,$4,$5,pc.email,pc.name FROM pool_segments s JOIN pool_segment_members sm ON sm.segment_id=s.id AND sm.status='active' JOIN pool_contacts pc ON pc.id=sm.contact_id JOIN pool_members pm ON pm.pool_id=s.pool_id AND pm.contact_id=pc.id LEFT JOIN pool_segment_exclusions ex ON ex.pool_id=s.pool_id AND ex.organization_id=s.organization_id AND ex.contact_id=pc.id AND ex.restored_at IS NULL WHERE s.id=$3 AND ex.contact_id IS NULL AND pc.status='active'
-			ON CONFLICT(campaign_id,pool_contact_id) DO NOTHING`, campaignID, poolID, *segmentID, organizationID, mailbox)
+		if err := c.refreshPoolCampaignRecipients(campaignID, poolAudience{poolID: poolID, organizationID: organizationID, segmentID: segmentID, mailboxID: mailbox}); err != nil {
+			return err
+		}
 	}
-	return err
+	return nil
 }
 
 // ImportListIntoPool imports an ordinary customer list into a first-class pool.

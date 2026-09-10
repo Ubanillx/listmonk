@@ -272,6 +272,7 @@
     "globals.messages.permissionDenied": "权限被拒绝：{name}",
     "globals.messages.selectAll": "全选 {num}",
     "globals.messages.slowQueriesCached": "慢查询正在缓存中。此页面上的某些数字可能不是最新的。",
+    "globals.messages.tooLarge": "内容过大：{name}",
     "globals.messages.updated": "“{name}”已更新",
     "globals.months.1": "一月",
     "globals.months.10": "十月",

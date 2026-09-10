@@ -27,6 +27,16 @@ SET email = $3, name = $4, username = $5, imap_host = $6, imap_port = $7,
 	password = CASE WHEN $10 = '' THEN password ELSE $10 END,
 	is_default = $11,
 	ai_enabled = $12,
+	-- Any change to the connection parameters invalidates the previous
+	-- verification. The stored 'active' state used to survive a host/port edit,
+	-- so an endpoint that had never been tested (for example an internal
+	-- address) kept being polled as if it had passed.
+	status = CASE WHEN (imap_host, imap_port, imap_tls, folder, username) IS DISTINCT FROM ($6, $7, $8, $9, $5)
+	                   OR ($10 <> '' AND password IS DISTINCT FROM $10)
+	              THEN 'pending' ELSE status END,
+	verified_at = CASE WHEN (imap_host, imap_port, imap_tls, folder, username) IS DISTINCT FROM ($6, $7, $8, $9, $5)
+	                        OR ($10 <> '' AND password IS DISTINCT FROM $10)
+	                   THEN NULL ELSE verified_at END,
     updated_at = NOW()
 WHERE id = $1 AND user_id = $2 AND organization_id IS NOT DISTINCT FROM $13
 RETURNING id;

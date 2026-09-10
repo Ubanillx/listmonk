@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/mail"
 	"strings"
 	"sync"
 	"time"
@@ -23,12 +24,69 @@ import (
 )
 
 type OIDCclaim struct {
-	Email             string `json:"email"`
-	EmailVerified     bool   `json:"email_verified"`
+	Email string `json:"email"`
+	// EmailVerified is the provider's `email_verified` assertion. It is a
+	// pointer so that a claim that is absent entirely (nil) stays
+	// distinguishable from an explicit `false`; both are refused by
+	// VerifyOIDCEmailClaims.
+	EmailVerified     *bool  `json:"email_verified"`
 	Sub               string `json:"sub"`
 	Picture           string `json:"picture"`
 	Name              string `json:"name"`
 	PreferredUsername string `json:"preferred_username"`
+}
+
+// Errors returned by VerifyOIDCEmailClaims. Callers can use errors.Is to tell a
+// missing/invalid address apart from an unverified one.
+var (
+	// ErrOIDCEmailMissing is returned when the claims carry no e-mail address.
+	ErrOIDCEmailMissing = errors.New("OIDC claims do not contain an e-mail address")
+
+	// ErrOIDCEmailUnverified is returned when the provider did not assert
+	// `email_verified: true` for the e-mail address.
+	ErrOIDCEmailUnverified = errors.New("OIDC e-mail claim is not verified")
+
+	// ErrOIDCEmailInvalid is returned when the e-mail claim is not a valid address.
+	ErrOIDCEmailInvalid = errors.New("OIDC e-mail claim is not a valid e-mail address")
+)
+
+// VerifyOIDCEmailClaims validates the e-mail identity carried by OIDC claims and
+// returns the normalized (trimmed, lower-cased) address. It is a pure function so
+// that the login/auto-creation policy it encodes can be tested without a
+// database.
+//
+// The e-mail address is the only link between an OIDC login and an existing
+// account, so it may only be trusted when the provider asserts that it is
+// verified. `email_verified` is therefore required to be explicitly true:
+//
+//   - false  → refused. Never silently accepted, the address may belong to
+//     somebody else (this is the account takeover this function prevents).
+//   - absent → refused. OIDC makes the claim optional, so a provider may simply
+//     omit it. An absent assertion is not a verification, and the safe default
+//     for an optional security claim is to fail closed: accepting it would let
+//     any provider that does not implement the claim (or an attacker able to
+//     mutate it) bind a login to an arbitrary address. Deployments behind such a
+//     provider must configure the provider to publish `email_verified`, not
+//     weaken this check.
+//
+// A missing e-mail address, an unverified one and an unparseable one are all
+// refused; no failure mode falls through to a login.
+func VerifyOIDCEmailClaims(claims OIDCclaim) (string, error) {
+	email := strings.ToLower(strings.TrimSpace(claims.Email))
+	if email == "" {
+		return "", ErrOIDCEmailMissing
+	}
+
+	if claims.EmailVerified == nil || !*claims.EmailVerified {
+		return "", ErrOIDCEmailUnverified
+	}
+
+	em, err := mail.ParseAddress(email)
+	if err != nil {
+		return "", fmt.Errorf("%w: %v", ErrOIDCEmailInvalid, err)
+	}
+
+	return strings.ToLower(em.Address), nil
 }
 
 type OIDCConfig struct {
@@ -311,6 +369,17 @@ func (o *Auth) ExchangeOIDCToken(code, nonce string) (string, OIDCclaim, error) 
 			return "", OIDCclaim{}, errors.New("error parsing user info claims")
 		}
 	}
+
+	// Validate the e-mail identity before handing the claims to any caller that
+	// might authenticate or auto-create a user with them. This runs after the
+	// userinfo fallback so that the ID token path and the userinfo path are both
+	// covered by the same check, and it refuses unverified e-mail claims instead
+	// of silently accepting them (see VerifyOIDCEmailClaims).
+	email, err := VerifyOIDCEmailClaims(claims)
+	if err != nil {
+		return "", OIDCclaim{}, err
+	}
+	claims.Email = email
 
 	return rawIDTk, claims, nil
 }

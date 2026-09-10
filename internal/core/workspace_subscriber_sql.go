@@ -18,7 +18,7 @@ func (c *Core) QueryWorkspaceCustomersWithSQL(access models.WorkspaceAccess, sea
 	if customerListIDs == nil {
 		customerListIDs = []int{}
 	}
-	condition, err := workspaceCustomerSQLCondition(queryExp)
+	condition, err := c.workspaceCustomerSQLCondition(queryExp)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -84,7 +84,7 @@ func (c *Core) GetWorkspaceCustomerIDsWithSQL(access models.WorkspaceAccess, sea
 	if customerListIDs == nil {
 		customerListIDs = []int{}
 	}
-	condition, err := workspaceCustomerSQLCondition(queryExp)
+	condition, err := c.workspaceCustomerSQLCondition(queryExp)
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +138,7 @@ func (c *Core) exportWorkspaceCustomers(access models.WorkspaceAccess, search, q
 	if requestedIDs == nil {
 		requestedIDs = []int{-1}
 	}
-	condition, err := workspaceCustomerSQLCondition(queryExp)
+	condition, err := c.workspaceCustomerSQLCondition(queryExp)
 	if err != nil {
 		return nil, err
 	}
@@ -200,12 +200,19 @@ func rawWorkspaceCustomerQueryError(err error) error {
 	return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("invalid customer SQL expression: %s", err))
 }
 
-func workspaceCustomerSQLCondition(queryExp string) (string, error) {
+// workspaceCustomerSQLCondition turns a caller supplied boolean expression into
+// the parenthesized condition that is spliced into the outer workspace query.
+// Every caller expression is validated by the boundary guard in
+// customer_sql_guard.go before it reaches the statement.
+func (c *Core) workspaceCustomerSQLCondition(queryExp string) (string, error) {
 	queryExp = strings.TrimSpace(queryExp)
 	if queryExp == "" {
 		return "TRUE", nil
 	}
 	if err := validateWorkspaceCustomerSQLExpression(queryExp); err != nil {
+		return "", rawWorkspaceCustomerQueryError(err)
+	}
+	if err := validateCustomerSQLExpressionBoundary(c.db, queryExp); err != nil {
 		return "", rawWorkspaceCustomerQueryError(err)
 	}
 	return "(" + queryExp + ")", nil

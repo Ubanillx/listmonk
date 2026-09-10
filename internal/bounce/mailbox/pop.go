@@ -22,6 +22,13 @@ type POP struct {
 	lo     *log.Logger
 }
 
+// handoffTimeout bounds how long one message waits for the bounce processor.
+// The processor writes to the database synchronously, so a full queue means the
+// database is behind; waiting a while absorbs a burst, and giving up leaves the
+// message on the server for the next scan instead of losing it. It is a variable
+// so tests can shrink it.
+var handoffTimeout = 30 * time.Second
+
 type bounceHeaders struct {
 	Header string
 	Regexp *regexp.Regexp
@@ -105,12 +112,21 @@ func (p *POP) Scan(limit int, ch chan models.Bounce) error {
 		count = limit
 	}
 
-	// Download messages.
+	// Download messages. accepted records the IDs whose bounce reached the
+	// processor; only those are deleted from the server.
+	// deletable records the messages that may be removed from the server: those
+	// whose bounce reached the processor, plus those that yielded no bounce at
+	// all. A message that could not be read or parsed is removed as before, so a
+	// single malformed message cannot keep the mailbox from draining; what must
+	// never happen is deleting a message whose bounce was dropped because the
+	// processor was behind.
+	var deletable []int
 	for id := 1; id <= count; id++ {
 		// Retrieve the raw bytes of the message.
 		b, err := c.RetrRaw(id)
 		if err != nil {
 			p.lo.Printf("error retrieving bounce message %d: %v", id, err)
+			deletable = append(deletable, id)
 			continue
 		}
 
@@ -118,6 +134,7 @@ func (p *POP) Scan(limit int, ch chan models.Bounce) error {
 		m, err := message.Read(b)
 		if err != nil {
 			p.lo.Printf("error parsing bounce message %d: %v", id, err)
+			deletable = append(deletable, id)
 			continue
 		}
 
@@ -184,21 +201,37 @@ func (p *POP) Scan(limit int, ch chan models.Bounce) error {
 			ClassifyReason: bounceReason,
 		})
 
-		select {
-		case ch <- models.Bounce{
+		// Hand the bounce to the processor. The send blocks (up to a timeout)
+		// rather than dropping when the queue is full, and the message is only
+		// deleted from the server once the processor has accepted it: a slow
+		// database used to silently discard the evidence and then delete the
+		// source message anyway.
+		bounce := models.Bounce{
 			Type:         bounceType,
 			CampaignUUID: hdr[models.EmailHeaderCampaignUUID],
 			CustomerUUID: hdr[models.EmailHeaderCustomerUUID],
 			Source:       p.opt.Host,
 			CreatedAt:    date,
 			Meta:         meta,
-		}:
-		default:
+		}
+		select {
+		case ch <- bounce:
+			deletable = append(deletable, id)
+		case <-time.After(handoffTimeout):
+			// Stop the scan and leave this and the remaining messages in the
+			// mailbox for the next round. They are not deleted.
+			p.lo.Printf("timeout handing bounce message %d to the processor; leaving it and the remaining messages in the mailbox", id)
+			return p.deleteProcessed(c, deletable)
 		}
 	}
 
-	// Delete the downloaded messages.
-	for id := 1; id <= count; id++ {
+	return p.deleteProcessed(c, deletable)
+}
+
+// deleteProcessed marks the given messages for deletion, so a scan that stops
+// early cannot remove a message whose bounce was never handled.
+func (p *POP) deleteProcessed(c *pop3.Conn, ids []int) error {
+	for _, id := range ids {
 		if err := c.Dele(id); err != nil {
 			return err
 		}

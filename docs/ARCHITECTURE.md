@@ -43,6 +43,11 @@ Vue 2 管理端 ──────── REST `/api/*` ───────► 
 
 ## 权限控制算法
 
+### 首次管理员引导与 OIDC 身份绑定
+
+- 首次安装的管理员引导在数据库事务内串行化：`Core.FirstTimeSetup`（`internal/core/first_time_setup.go`）在同一事务中先取 `pg_advisory_xact_lock`，再检查是否已有用户并创建 Super Admin 角色、首个管理员及其资源归属，因此只有一个调用方能成功。并发失败方返回 `ErrFirstTimeSetupDone`，`cmd/auth.go` 的 `LoginSetupPage` 清除 `needsUserSetup` 后回退到普通登录流程（等价于“已完成设置”的行为），不会产生第二个 `role_id=1` 用户。`App.needsUserSetup` 只是内存提示，不承担互斥职责。
+- OIDC 登录只在 provider 明确断言 `email_verified: true` 时才绑定账号：`auth.VerifyOIDCEmailClaims`（`internal/auth/auth.go`）是纯函数，ID token 与 userinfo fallback 合并后的 claims 都必须通过它；`false` 和缺失（provider 未提供该 claim）一律拒绝，`cmd/auth.go` 的 OIDC 回调在登录与自动建号前再次校验。部署侧配置见 `docs/docs/content/oidc.md`。
+
 ### 认证兼容边界（v6.27.0+）
 
 v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求携带 `Authorization` 时，`internal/auth` 始终按显式 API 凭据认证；即使同时存在有效 `session` Cookie，也不会静默回退至 Cookie 会话。浏览器客户端必须移除缓存的旧 BasicAuth 凭据；失效凭据按 API 认证规则拒绝。Cookie 会话继续仅用于不携带 `Authorization` 的浏览器请求，`Basic`/`token` 和 Bearer 继续是 API 认证方式。
@@ -56,6 +61,14 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 5. **事务重验**：写入在事务内按稳定顺序锁定组织与资源，重验组织状态、成员资格、所有权和待转移状态，消除“检查后状态变化”的越权窗口。
 
 可见性为 `private`、`organization`、`global`。名单和订阅者始终是所有者私有的；媒体不能全局公开。组织成员可以读取组织共享资源，组织经理可审查同组织成员资源及待转移资源，但只能写自己的资源，不能使用他人的私有发送资源。v6.28.0 的专用导出 API 允许组织管理员导出本组织成员名单及营销数据，仍执行邮箱脱敏；它不扩大普通写入或发送权限。归档组织禁止普通写入及导出；仅平台管理员可执行受限的清理/转移流程。前端的 `$can*` 仅隐藏不允许的操作，Go 服务是唯一权威。
+
+#### 两层策略的维护规则（强制）
+
+工作区资源授权目前**同时**存在于两层：`cmd/workspace_permissions.go`（HTTP 边界的 `workspaceReadException`/`workspaceCopyException`/`canCopyWorkspaceResource`/`canCopyWorkspaceCampaign`）与 `internal/core/workspace.go`（Core 的 `read`/`use`/`copy`/`manage` 判定），其中 `cmd` 侧的活动复制策略刻意与 Core 的 `CanCopyCampaign` 互为镜像。两层重复是已知技术债，因此：
+
+- 任何接触工作区资源的新接口必须先取 `WorkspaceAccess`，再按需叠加传统角色/客户列表权限；不得只做其中一层。
+- 修改任一层的工作区规则时，必须同时检查另一层的对应函数，并在 `cmd/campaign_copy_policy_test.go`（记录了两层当前已知差异）或 `cmd/workspace_permissions_test.go` 中补边界测试。
+- 不要在已有门之后追加“若上一层不通过则回退到传统角色”的兜底分支：这类分支在硬门存在时恒不可达（`cmd/campaigns.go` 的 `CloneCampaign` 曾因此留下一段死代码，2026-09-10 删除），而且复活它只会**放宽**权限。若确实需要更宽的行为，应修改唯一一处策略函数并补测试。
 
 ### 管理员数据导出（v6.28.0）
 
@@ -80,7 +93,7 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 - 每个“一级公海 × 组织”至多绑定一个二级列表，以便一级公海投放能唯一解析该组织的回件邮箱。最高管理员或目标组织管理员在目标组织尚未绑定时创建并绑定二级列表；回件邮箱由组织管理员在组织工作区单独配置，创建二级列表时不要求最高管理员代填。
 - 最高管理员在一级公海管理窗口通过独立目标组织选择器查看该组织的现有二级列表；创建请求显式指向目标组织，不切换当前工作区，也不创建组织成员关系。普通组织用户没有跨组织目标选择能力，二级列表不能通过通用客户列表表单创建，也不存在二级合并一级流程。二级列表回件邮箱的维护入口只对组织工作区管理员开放。
 - 活动选择一级公海时，一级列表可作为受众选择项，但不授予详情、导出或客户明文邮箱访问；服务端按目标组织的二级分配解析收件人和统一回件邮箱，并在发送快照中记录一级/二级来源、组织和最终邮箱来源。活动选择二级列表时直接使用该二级列表的回件邮箱。回件邮箱是公司内部地址，可在管理端明文展示，不纳入客户邮箱脱敏。
-- 公海投递快照使用 `campaign_pool_recipients` 与联系人内部 ID 去重；公海退订、退信和回复 AI 事件写入 `pool_segment_exclusions` 的组织维度逻辑状态，并在 `bounces`/`reply_ai_events` 保留来源池、二级列表和组织字段，禁止改变一级主数据或其他组织分配。
+- 公海投递快照使用 `campaign_pool_recipients` 与联系人内部 ID 去重；公海退订、退信和回复 AI 事件写入 `pool_segment_exclusions` 的组织维度逻辑状态，并在 `bounces`/`reply_ai_events` 保留来源池、二级列表和组织字段，禁止改变一级主数据或其他组织分配。收件人判定（活跃公海联系人 × 有效二级分配 × 本组织未剔除）只在 `internal/core/pools.go` 的 `poolRecipientMembershipSQL` 定义一次，一级解析、二级解析与快照写入共用同一片段，因此三条路径不可能给出不同收件人集合。快照刷新采用 `DO UPDATE` 并清理本组织范围内、已不再可投递且尚未交给投递的 `pending`/`deferred` 行；已 `queued`/`sent`/`cancelled` 的行属于投递历史，不重写也不删除，退队路径另按 `pool_segment_exclusions` 重查剔除。
 - 客户回复、退订和投诉只能对实际投递来源组织的二级分配执行逻辑剔除，保留一级主数据和历史快照；最高管理员可跨组织审计，组织用户只能看本组织安全字段。
 
 ## AI 入站回信处理
@@ -91,9 +104,15 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 
 对接聚合网关（new-api、one-api、LiteLLM 等）时模型清单由网关决定，因此设置页提供两个只读探测端点：`POST /api/settings/reply-ai/models`（`GET {root}/models`，根地址未带 `/v1` 时回退尝试 `/v1/models`，返回模型清单、是否可对话的提示和实际生效的根地址）与 `POST /api/settings/reply-ai/test`（依次执行配置校验、网关连通、模型是否在清单中、真实分类往返四步，返回 `success`/`warning`/`failed` 与每步原因码）。两者都接受未保存的表单值，`api_key` 为空或全掩码时复用已保存密钥，密钥只出现在出站 `Authorization` 头中，不落库、不回显、不入日志；探测始终使用已配置的根地址发起分类调用，网关只在 `/v1` 上响应时通过 `suggested_base_url` 提示操作者改正地址，而不是静默替换。实现见 `internal/replyai/gateway.go` 与 `cmd/reply_ai_settings.go`，两者共用 `internal/replyai/client.go` 的提示词与响应校验。
 
-后台 worker 使用 POP3 非破坏性轮询已验证且已启用的回信邮箱；每轮通过 LIST 先获取邮件大小，仅处理最新的有限批次并跳过超大邮件，按邮箱并发执行且单邮箱有超时，把邮件按“邮箱 + Message-ID/内容哈希”写入持久化队列。只会在发件人地址能唯一匹配到该邮箱所属工作区、所有者的客户时调用模型；自动回复、未匹配地址、低置信度和非明确意图都只留下审计记录，不修改客户。模型返回固定结构的 `unsubscribe`、`complaint` 或 `other` 意图，邮件正文被视为不可信数据，终态记录会清除可发送给模型的正文，仅保留哈希和最小化审计字段。
+后台 worker 使用 POP3 非破坏性轮询已验证且已启用的回信邮箱；每轮通过 LIST 先获取邮件大小，仅处理最新的有限批次并跳过超大邮件，把邮件按“邮箱 + Message-ID/内容哈希”写入持久化队列。邮箱扫描走固定大小的 worker 池（`replyAIMaxConcurrent`，不按邮箱创建 goroutine），因此单个挂起的 POP 服务器最多占用一个 worker，其余邮箱仍会在同一轮内被扫描。由于 `go-pop3` 不提供读超时或 context，`cmd/reply_ai.go` 通过 `pop3.Opt.Dialer` 注入包装过的 `net.Conn`，为每次读写重新设置空闲读/写截止时间（`replyAIMailboxReadTimeout`，默认 30 秒），并在整轮邮箱扫描超过 `replyAIMailboxTimeout`（2 分钟）时强制关闭该连接，释放 worker 而不是泄漏 goroutine；日志会带上邮箱 ID 与服务器地址以区分“挂起”和“失败”。只会在发件人地址能唯一匹配到该邮箱所属工作区、所有者的客户时调用模型；自动回复、未匹配地址、低置信度和非明确意图都只留下审计记录，不修改客户。模型返回固定结构的 `unsubscribe`、`complaint` 或 `other` 意图，邮件正文被视为不可信数据，终态记录会清除可发送给模型的正文，仅保留哈希和最小化审计字段。
 
 明确退订和明确垃圾/滥用投诉均在同一工作区将匹配客户设为 `blocklisted` 并退订其全部名单；投诉另外以 `source=reply_ai` 写入 `bounces`，保留事件 ID、模型、置信度和原因代码。处理事务会再次锁定并验证工作区、成员资格和客户所有权；队列租约与唯一事件键保证重试不会重复投诉计数或跨工作区操作。
+
+## 客户回信转发
+
+`cmd/reply_forwarder.go` 以 POP3 非破坏性轮询保留（`retained`）回信邮箱，把客户回信转发到规则目标地址，源邮件永不删除。去重键 `reply_forward_messages(rule_id, message_key)`（Message-ID + 原文哈希）保证同一封回信只转发一次：每轮扫描先用单条 `INSERT ... ON CONFLICT DO UPDATE` 抢占该行（置 `pending`、递增 `attempts`），抢占提交后才投递，投递返回后才写终态，因此 `forwarded` 行永不会被再次抢占，而抢占行本身就是租约。
+
+投递失败（队列积压、管理器关闭或重启）记为 `failed`，下一轮按 `replyForwardRetryBackoff` 起的指数退避重试，直到 `replyForwardMaxAttempts`（默认 5 次）；到达上限后保持 `failed` 且不再重试，成为可查询的终态（`status = 'failed' AND attempts >= 上限`）并写日志，避免永久不可达的回信被无限重试或被静默吞掉。抢占后进程退出的行仍是 `pending`，只有超过 `replyForwardClaimLease`（默认 5 分钟）才会被下一轮接管；租约远长于单次投递（`PushMessage` 3 秒超时），所以租约过期只可能意味着持有者已死，从而在不重复投递的前提下恢复中断的转发。状态机与终态查询同时写在 `schema.sql` 的表注释里，未新增列、不需要迁移；回归测试见 `cmd/reply_forwarder_test.go`。
 
 ## 构建、测试与开发
 

@@ -17,6 +17,7 @@ import (
 	"log"
 	"net/mail"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -36,6 +37,14 @@ const (
 	// commitBatchSize is the number of inserts to commit in a single SQL transaction.
 	commitBatchSize = 10000
 )
+
+// closedDone is the completion signal reported by an importer that has no
+// session in flight (including a zero-value Importer).
+var closedDone = func() <-chan struct{} {
+	c := make(chan struct{})
+	close(c)
+	return c
+}()
 
 // Various import statuses.
 const (
@@ -66,6 +75,14 @@ type Importer struct {
 
 	stop   chan bool
 	status Status
+
+	// done is closed when the current session reaches a terminal status. Callers
+	// that hand resources to a session for the duration of an import (the
+	// uploaded copy, the extracted archive) wait on it to release them. The
+	// status transition is the only reliable completion signal: a loader that
+	// fails without closing its queue leaves Start blocked on it forever.
+	done chan struct{}
+
 	sync.RWMutex
 }
 
@@ -173,7 +190,11 @@ func New(opt Options, db *sql.DB, i *i18n.I18n) *Importer {
 		domainAllowlist: make(map[string]struct{}, len(opt.DomainAllowlist)),
 		status:          Status{Status: StatusNone, logBuf: bytes.NewBuffer(nil)},
 		stop:            make(chan bool, 1),
+		done:            make(chan struct{}),
 	}
+	// An idle importer has nothing in flight, so its completion signal is
+	// already closed. NewSession replaces it with a fresh open channel.
+	close(im.done)
 
 	// Domain blocklist.
 	mp, hasWildcards := makeDomainMap(opt.DomainBlocklist)
@@ -192,18 +213,15 @@ func New(opt Options, db *sql.DB, i *i18n.I18n) *Importer {
 
 // NewSession returns an new instance of Session. It takes the name
 // of the uploaded file, but doesn't do anything with it but retains it for stats.
+//
+// Admission and publication are a single critical section. This importer is a
+// process-wide singleton, so checking that no import is running and publishing
+// the new running status have to be atomic: otherwise two concurrent callers
+// both observe an idle importer and both publish a session, after which the
+// second one overwrites the global status, owner and log buffer of the first
+// while two loaders write to the same importer. Exactly one caller is admitted;
+// every other one gets ErrIsImporting.
 func (im *Importer) NewSession(opt SessionOpt) (*Session, error) {
-	if !im.isDone() {
-		return nil, errors.New("an import is already running")
-	}
-	// A stopped loader may leave the non-blocking signal buffered. Each new
-	// session starts cleanly and relies on the status transition for future
-	// cancellation checks.
-	select {
-	case <-im.stop:
-	default:
-	}
-
 	// For API backwards compatibility, if the old 'overwrite'
 	// field is set, set both overwrite fields to true.
 	if opt.Overwrite {
@@ -212,16 +230,38 @@ func (im *Importer) NewSession(opt SessionOpt) (*Session, error) {
 	}
 
 	im.Lock()
+	if !im.isDoneLocked() {
+		im.Unlock()
+		return nil, ErrIsImporting
+	}
+
+	// A stopped loader may leave the non-blocking signal buffered. Each new
+	// session starts cleanly and relies on the status transition for future
+	// cancellation checks.
+	select {
+	case <-im.stop:
+	default:
+	}
+
 	im.status = Status{Status: StatusImporting,
 		Name:           opt.Filename,
 		OwnerUserID:    opt.OwnerUserID,
 		OrganizationID: organizationID(opt.OrganizationID),
 		logBuf:         bytes.NewBuffer(nil)}
+	// A new session publishes a fresh completion signal, so a waiter from a
+	// previous session cannot observe this one's terminal state.
+	im.done = make(chan struct{})
+
+	// The session's logger has to be built from the buffer that was just
+	// published while the lock is still held: Stop() and a later session both
+	// replace im.status, so reading the buffer outside this section would race
+	// with them and could bind the session to another session's log.
+	logBuf := im.status.logBuf
 	im.Unlock()
 
 	s := &Session{
 		im:       im,
-		log:      log.New(im.status.logBuf, "", log.Ldate|log.Ltime|log.Lmicroseconds|log.Lshortfile),
+		log:      log.New(logBuf, "", log.Ldate|log.Ltime|log.Lmicroseconds|log.Lshortfile),
 		subQueue: make(chan SubReq, commitBatchSize),
 		opt:      opt,
 	}
@@ -261,7 +301,43 @@ func (im *Importer) GetLogs() []byte {
 func (im *Importer) setStatus(status string) {
 	im.Lock()
 	im.status.Status = status
+	im.closeDoneLocked()
 	im.Unlock()
+}
+
+// Done returns a channel that is closed when the importer's current session
+// reaches a terminal state. It is already closed when no import is running.
+func (im *Importer) Done() <-chan struct{} {
+	im.RLock()
+	defer im.RUnlock()
+
+	if im.done == nil {
+		// A zero-value Importer has no session in flight.
+		return closedDone
+	}
+
+	return im.done
+}
+
+// closeDoneLocked publishes the completion signal when the status is no longer
+// one of the running states. The caller must hold the write lock.
+func (im *Importer) closeDoneLocked() {
+	switch im.status.Status {
+	case StatusImporting, StatusStopping:
+		// Still running: the session may yet consume the resources it owns.
+		return
+	}
+
+	if im.done == nil {
+		return
+	}
+
+	select {
+	case <-im.done:
+		// Already closed.
+	default:
+		close(im.done)
+	}
 }
 
 // getStatus get's the Importer's status.
@@ -277,8 +353,16 @@ func (im *Importer) getStatus() string {
 // still draining can mix two workspaces in the singleton importer.
 func (im *Importer) isDone() bool {
 	im.RLock()
+	defer im.RUnlock()
+
+	return im.isDoneLocked()
+}
+
+// isDoneLocked is isDone for a caller that already holds the lock, so that the
+// check can share one critical section with the state it decides on. The caller
+// must hold the lock.
+func (im *Importer) isDoneLocked() bool {
 	status := im.status.Status
-	im.RUnlock()
 	return status != StatusImporting && status != StatusStopping
 }
 
@@ -441,17 +525,42 @@ func (s *Session) Stop() {
 	close(s.subQueue)
 }
 
+// ZIP extraction limits.
+//
+// An uploaded archive is only checked for its file extension, and a compressed
+// archive is small enough to pass the upload limit while expanding to an
+// arbitrary size. Both the size an entry declares and the bytes actually
+// written are therefore bounded: the declared check rejects a ZIP bomb before
+// anything reaches disk, and the bounded copy catches a header that understates
+// the real content.
+var (
+	// maxImportEntrySize caps the uncompressed size of a single extracted entry.
+	maxImportEntrySize int64 = 256 << 20
+	// maxImportUnzippedSize caps the total uncompressed bytes extracted from one
+	// archive.
+	maxImportUnzippedSize int64 = 512 << 20
+)
+
 // ExtractZIP takes a ZIP file's path and extracts all .csv files in it to
 // a temporary directory, and returns the name of the temp directory and the
 // customer_list of extracted .csv files.
+//
+// On success the caller owns the returned directory. On failure it is removed
+// here, because the caller never learns its path and so could not clean up.
 func (s *Session) ExtractZIP(srcPath string, maxCSVs int) (string, []string, error) {
 	if s.im.isDone() {
 		return "", nil, ErrIsImporting
 	}
 
+	var dir string
 	failed := true
 	defer func() {
 		if failed {
+			if dir != "" {
+				if err := os.RemoveAll(dir); err != nil {
+					s.log.Printf("error removing temporary extraction directory '%s': %v", dir, err)
+				}
+			}
 			s.im.setStatus(StatusFailed)
 		}
 	}()
@@ -463,13 +572,18 @@ func (s *Session) ExtractZIP(srcPath string, maxCSVs int) (string, []string, err
 	defer z.Close()
 
 	// Create a temporary directory to extract the files.
-	dir, err := os.MkdirTemp("", "listmonk")
+	dir, err = os.MkdirTemp("", "listmonk")
 	if err != nil {
 		s.log.Printf("error creating temporary directory for extracting ZIP: %v", err)
 		return "", nil, err
 	}
 
-	files := make([]string, 0, len(z.File))
+	var (
+		files = make([]string, 0, len(z.File))
+
+		// budget is how many more uncompressed bytes the archive may produce.
+		budget = maxImportUnzippedSize
+	)
 	for _, f := range z.File {
 		fName := f.FileInfo().Name()
 
@@ -485,25 +599,22 @@ func (s *Session) ExtractZIP(srcPath string, maxCSVs int) (string, []string, err
 			continue
 		}
 
+		// Refuse an entry that declares more than it is allowed to contribute
+		// before writing any of it to disk.
+		if int64(f.UncompressedSize64) > maxImportEntrySize {
+			return "", nil, fmt.Errorf("zip entry '%s' is too large (%d bytes, max %d)",
+				fName, f.UncompressedSize64, maxImportEntrySize)
+		}
+		if int64(f.UncompressedSize64) > budget {
+			return "", nil, fmt.Errorf("zip archive expands to more than %d bytes", maxImportUnzippedSize)
+		}
+
 		s.log.Printf("extracting '%s'", fName)
-		src, err := f.Open()
+		n, err := s.extractZipEntry(dir, f, min(budget, maxImportEntrySize))
 		if err != nil {
-			s.log.Printf("error opening '%s' from ZIP: '%v'", fName, err)
 			return "", nil, err
 		}
-		defer src.Close()
-
-		out, err := os.OpenFile(dir+"/"+fName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
-		if err != nil {
-			s.log.Printf("error creating '%s/%s': '%v'", dir, fName, err)
-			return "", nil, err
-		}
-		defer out.Close()
-
-		if _, err := io.Copy(out, src); err != nil {
-			s.log.Printf("error extracting to '%s/%s': '%v'", dir, fName, err)
-			return "", nil, err
-		}
+		budget -= n
 		s.log.Printf("extracted '%s'", fName)
 
 		files = append(files, fName)
@@ -520,6 +631,48 @@ func (s *Session) ExtractZIP(srcPath string, maxCSVs int) (string, []string, err
 
 	failed = false
 	return dir, files, nil
+}
+
+// extractZipEntry writes one ZIP entry into dir and returns the number of bytes
+// written. It refuses to write more than limit bytes even when the entry
+// declares less than it actually contains. Handles are closed before returning
+// instead of being deferred, so an archive with many entries cannot hold one
+// open file per entry at once.
+func (s *Session) extractZipEntry(dir string, f *zip.File, limit int64) (int64, error) {
+	fName := f.FileInfo().Name()
+
+	src, err := f.Open()
+	if err != nil {
+		s.log.Printf("error opening '%s' from ZIP: '%v'", fName, err)
+		return 0, err
+	}
+	defer src.Close()
+
+	out, err := os.OpenFile(filepath.Join(dir, fName), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
+	if err != nil {
+		s.log.Printf("error creating '%s/%s': '%v'", dir, fName, err)
+		return 0, err
+	}
+
+	// Read one byte past the allowance so that an entry filling it exactly is
+	// accepted while a larger one is detected.
+	n, err := io.Copy(out, io.LimitReader(src, limit+1))
+	if err != nil {
+		_ = out.Close()
+		s.log.Printf("error extracting to '%s/%s': '%v'", dir, fName, err)
+		return n, err
+	}
+	if err := out.Close(); err != nil {
+		s.log.Printf("error closing '%s/%s': '%v'", dir, fName, err)
+		return n, err
+	}
+	if n > limit {
+		err := fmt.Errorf("zip entry '%s' expands to more than %d bytes", fName, limit)
+		s.log.Printf("%v", err)
+		return n, err
+	}
+
+	return n, nil
 }
 
 // LoadCSV loads a CSV file and validates and imports the customer entries in it.
@@ -660,7 +813,10 @@ func (s *Session) LoadXLSX(srcPath string) error {
 		}
 	}()
 
-	xl, err := excelize.OpenFile(srcPath)
+	// An XLSX is a ZIP archive, so its extraction has to be bounded as well:
+	// excelize's default limit is 16 GB, which a small upload could otherwise
+	// expand into on disk.
+	xl, err := excelize.OpenFile(srcPath, excelize.Options{UnzipSizeLimit: maxImportUnzippedSize})
 	if err != nil {
 		return err
 	}
@@ -748,6 +904,7 @@ func (im *Importer) Stop() {
 		return
 	default:
 		im.status = Status{Status: StatusNone}
+		im.closeDoneLocked()
 		im.Unlock()
 	}
 }

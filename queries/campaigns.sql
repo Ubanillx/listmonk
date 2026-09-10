@@ -120,27 +120,12 @@ SELECT id FROM camp;
 -- with every resultant row.
 SELECT  c.*,
         COALESCE((SELECT rm.email FROM reply_mailboxes rm WHERE rm.id = c.reply_mailbox_id), '') AS reply_mailbox_email,
-        CASE
-            WHEN EXISTS (
-                SELECT 1
-                FROM campaign_recipients crx
-                JOIN customers sx ON sx.id = crx.customer_id
-                WHERE crx.campaign_id = c.id
-                    AND sx.organization_id IS NOT DISTINCT FROM c.organization_id
-                    AND sx.owner_user_id = c.owner_user_id
-                    AND sx.transfer_pending_at IS NULL
-            ) THEN (
-                SELECT COUNT(*)
-                FROM campaign_recipients cr
-                JOIN customers sr ON sr.id = cr.customer_id
-                WHERE cr.campaign_id = c.id
-                    AND cr.status = ANY('{pending,queued,deferred}'::campaign_recipient_status[])
-                    AND sr.organization_id IS NOT DISTINCT FROM c.organization_id
-                    AND sr.owner_user_id = c.owner_user_id
-                    AND sr.transfer_pending_at IS NULL
-            )
-            ELSE GREATEST(c.to_send - c.sent, 0)
-        END AS unsent_count,
+        -- The effective unsent count (customer and pool recipients under the same
+        -- validity rules the sender applies, with the persisted to_send/sent
+        -- fallback only for campaigns without a snapshot) comes from
+        -- campaign_send_counts, so the UI, the scheduler and the completed-state
+        -- logic cannot disagree. See schema.sql.
+        COALESCE((SELECT sc.unsent_count FROM campaign_send_counts sc WHERE sc.campaign_id = c.id), 0) AS unsent_count,
         COUNT(*) OVER () AS total,
         (
             SELECT COALESCE(ARRAY_TO_JSON(ARRAY_AGG(l)), '[]') FROM (
@@ -166,27 +151,11 @@ ORDER BY %order% OFFSET $7 LIMIT (CASE WHEN $8 < 1 THEN NULL ELSE $8 END);
 SELECT campaigns.*,
     COALESCE(owner_user.attribs, '{}'::jsonb) AS owner_user_attribs,
     COALESCE((SELECT rm.email FROM reply_mailboxes rm WHERE rm.id = campaigns.reply_mailbox_id), '') AS reply_mailbox_email,
-    CASE
-        WHEN EXISTS (
-            SELECT 1
-            FROM campaign_recipients crx
-            JOIN customers sx ON sx.id = crx.customer_id
-            WHERE crx.campaign_id = campaigns.id
-                AND sx.organization_id IS NOT DISTINCT FROM campaigns.organization_id
-                AND sx.owner_user_id = campaigns.owner_user_id
-                AND sx.transfer_pending_at IS NULL
-        ) THEN (
-            SELECT COUNT(*)
-            FROM campaign_recipients cr
-            JOIN customers sr ON sr.id = cr.customer_id
-            WHERE cr.campaign_id = campaigns.id
-                AND cr.status = ANY('{pending,queued,deferred}'::campaign_recipient_status[])
-                AND sr.organization_id IS NOT DISTINCT FROM campaigns.organization_id
-                AND sr.owner_user_id = campaigns.owner_user_id
-                AND sr.transfer_pending_at IS NULL
-        )
-        ELSE GREATEST(campaigns.to_send - campaigns.sent, 0)
-    END AS unsent_count,
+    -- The effective unsent count (customer and pool recipients under the same
+    -- validity rules the sender applies, with the persisted to_send/sent fallback
+    -- only for campaigns without a snapshot) comes from campaign_send_counts, so
+    -- the UI, the scheduler and the completed-state logic cannot disagree.
+    COALESCE((SELECT sc.unsent_count FROM campaign_send_counts sc WHERE sc.campaign_id = campaigns.id), 0) AS unsent_count,
     COALESCE(templates.name_fallback, (
         SELECT fallback.name_fallback FROM templates fallback
             WHERE fallback.is_default = true
@@ -262,51 +231,14 @@ SELECT campaigns.*,
         ));
 
 -- name: get-public-campaign-recipient
-WITH campaign AS (
-    SELECT id, organization_id, owner_user_id
-    FROM campaigns WHERE uuid = $1::UUID
-),
-customer AS (
-    SELECT id, organization_id, owner_user_id
-    FROM customers
-    WHERE id IN (
-        SELECT id FROM customers WHERE uuid = $2::UUID
-        UNION
-        SELECT customer_id FROM customer_uuid_aliases WHERE uuid = $2::UUID
-    )
-),
-snapshot_recipient AS (
-    -- A recipient snapshot is the authority for a sent message. Resource
-    -- ownership can legitimately change after delivery (for example, when a
-    -- departing member's resources are transferred), so do not bind this
-    -- branch to the current owner or organization fields.
-    SELECT c.id AS campaign_id, s.id AS customer_id
-    FROM campaign c
-    JOIN customer s ON TRUE
-    WHERE EXISTS (
-        SELECT 1 FROM campaign_recipients cr
-        WHERE cr.campaign_id = c.id AND cr.customer_id = s.id
-    )
-),
-legacy_recipient AS (
-    -- Old campaigns created before recipient snapshots existed can only use
-    -- the historical campaign-customer_list relationship, which must remain in the
-    -- same current owner/workspace boundary.
-    SELECT c.id AS campaign_id, s.id AS customer_id
-    FROM campaign c
-    JOIN customer s ON TRUE
-    WHERE NOT EXISTS (SELECT 1 FROM campaign_recipients cr WHERE cr.campaign_id = c.id)
-        AND s.organization_id IS NOT DISTINCT FROM c.organization_id
-        AND s.owner_user_id IS NOT DISTINCT FROM c.owner_user_id
-        AND EXISTS (
-            SELECT 1 FROM campaign_customer_lists cl
-            JOIN customer_list_memberships sl ON sl.customer_list_id = cl.customer_list_id
-            WHERE cl.campaign_id = c.id AND sl.customer_id = s.id
-        )
-)
-SELECT campaign_id, customer_id FROM snapshot_recipient
-UNION ALL
-SELECT campaign_id, customer_id FROM legacy_recipient
+-- The binding rule for a public bearer lives in resolve_campaign_recipient
+-- (see schema.sql): a recipient snapshot is authoritative for a sent message,
+-- and campaigns that predate snapshots fall back to the historical
+-- campaign-customer_list relationship inside the same owner/workspace boundary.
+-- An empty customer reference resolves to no rows instead of raising an invalid
+-- UUID cast. Keep this query free of its own copy of the rule.
+SELECT campaign_id, customer_id
+FROM resolve_campaign_recipient($1::UUID, $2::TEXT)
 LIMIT 1;
 
 -- name: get-public-pool-campaign-recipient
@@ -320,27 +252,11 @@ LIMIT 1;
 
 -- name: get-archived-campaigns
 SELECT COUNT(*) OVER () AS total, campaigns.*,
-    CASE
-        WHEN EXISTS (
-            SELECT 1
-            FROM campaign_recipients crx
-            JOIN customers sx ON sx.id = crx.customer_id
-            WHERE crx.campaign_id = campaigns.id
-                AND sx.organization_id IS NOT DISTINCT FROM campaigns.organization_id
-                AND sx.owner_user_id = campaigns.owner_user_id
-                AND sx.transfer_pending_at IS NULL
-        ) THEN (
-            SELECT COUNT(*)
-            FROM campaign_recipients cr
-            JOIN customers sr ON sr.id = cr.customer_id
-            WHERE cr.campaign_id = campaigns.id
-                AND cr.status = ANY('{pending,queued,deferred}'::campaign_recipient_status[])
-                AND sr.organization_id IS NOT DISTINCT FROM campaigns.organization_id
-                AND sr.owner_user_id = campaigns.owner_user_id
-                AND sr.transfer_pending_at IS NULL
-        )
-        ELSE GREATEST(campaigns.to_send - campaigns.sent, 0)
-    END AS unsent_count,
+    -- The effective unsent count (customer and pool recipients under the same
+    -- validity rules the sender applies, with the persisted to_send/sent fallback
+    -- only for campaigns without a snapshot) comes from campaign_send_counts, so
+    -- the UI, the scheduler and the completed-state logic cannot disagree.
+    COALESCE((SELECT sc.unsent_count FROM campaign_send_counts sc WHERE sc.campaign_id = campaigns.id), 0) AS unsent_count,
     COALESCE(templates.name_fallback, (
         SELECT fallback.name_fallback FROM templates fallback
             WHERE fallback.is_default = true
@@ -453,27 +369,10 @@ ORDER BY ARRAY_POSITION($1, id);
 -- name: get-campaign-for-preview
 SELECT campaigns.*,
 COALESCE(owner_user.attribs, '{}'::jsonb) AS owner_user_attribs,
-CASE
-    WHEN EXISTS (
-        SELECT 1
-        FROM campaign_recipients crx
-        JOIN customers sx ON sx.id = crx.customer_id
-        WHERE crx.campaign_id = campaigns.id
-            AND sx.organization_id IS NOT DISTINCT FROM campaigns.organization_id
-            AND sx.owner_user_id = campaigns.owner_user_id
-            AND sx.transfer_pending_at IS NULL
-    ) THEN (
-        SELECT COUNT(*)
-        FROM campaign_recipients cr
-        JOIN customers sr ON sr.id = cr.customer_id
-        WHERE cr.campaign_id = campaigns.id
-            AND cr.status = ANY('{pending,queued,deferred}'::campaign_recipient_status[])
-            AND sr.organization_id IS NOT DISTINCT FROM campaigns.organization_id
-            AND sr.owner_user_id = campaigns.owner_user_id
-            AND sr.transfer_pending_at IS NULL
-    )
-    ELSE GREATEST(campaigns.to_send - campaigns.sent, 0)
-END AS unsent_count,
+-- The effective unsent count (customer and pool recipients under the same
+-- validity rules the sender applies) comes from campaign_send_counts, so the
+-- preview, the scheduler and the completed-state logic cannot disagree.
+COALESCE((SELECT sc.unsent_count FROM campaign_send_counts sc WHERE sc.campaign_id = campaigns.id), 0) AS unsent_count,
 COALESCE(templates.name_fallback, '{}'::jsonb) AS template_name_fallback,
 COALESCE(templates.body, '') AS template_body,
 COALESCE((
@@ -507,27 +406,9 @@ WHERE campaigns.id = $1;
 
 -- name: get-campaign-status
 SELECT id, status, to_send, sent,
-    CASE
-        WHEN EXISTS (
-            SELECT 1
-            FROM campaign_recipients crx
-            JOIN customers sx ON sx.id = crx.customer_id
-            WHERE crx.campaign_id = campaigns.id
-                AND sx.organization_id IS NOT DISTINCT FROM campaigns.organization_id
-                AND sx.owner_user_id = campaigns.owner_user_id
-                AND sx.transfer_pending_at IS NULL
-        ) THEN (
-            SELECT COUNT(*)
-            FROM campaign_recipients cr
-            JOIN customers sr ON sr.id = cr.customer_id
-            WHERE cr.campaign_id = campaigns.id
-                AND cr.status = ANY('{pending,queued,deferred}'::campaign_recipient_status[])
-                AND sr.organization_id IS NOT DISTINCT FROM campaigns.organization_id
-                AND sr.owner_user_id = campaigns.owner_user_id
-                AND sr.transfer_pending_at IS NULL
-        )
-        ELSE GREATEST(to_send - sent, 0)
-    END AS unsent_count,
+    -- Same single definition as every other projection; the completed-state check
+    -- reads the same effective recipient set the sender uses.
+    COALESCE((SELECT sc.unsent_count FROM campaign_send_counts sc WHERE sc.campaign_id = campaigns.id), 0) AS unsent_count,
     next_resume_at,
     started_at,
     updated_at
@@ -550,27 +431,10 @@ WITH camps AS (
     SELECT campaigns.*,
         COALESCE(owner_user.attribs, '{}'::jsonb) AS owner_user_attribs,
         COALESCE((SELECT rm.email FROM reply_mailboxes rm WHERE rm.id = campaigns.reply_mailbox_id), '') AS reply_mailbox_email,
-        CASE
-            WHEN EXISTS (
-                SELECT 1
-                FROM campaign_recipients crx
-                JOIN customers sx ON sx.id = crx.customer_id
-                WHERE crx.campaign_id = campaigns.id
-                    AND sx.organization_id IS NOT DISTINCT FROM campaigns.organization_id
-                    AND sx.owner_user_id = campaigns.owner_user_id
-                    AND sx.transfer_pending_at IS NULL
-            ) THEN (
-                SELECT COUNT(*)
-                FROM campaign_recipients cr
-                JOIN customers sr ON sr.id = cr.customer_id
-                WHERE cr.campaign_id = campaigns.id
-                    AND cr.status = ANY('{pending,queued,deferred}'::campaign_recipient_status[])
-                    AND sr.organization_id IS NOT DISTINCT FROM campaigns.organization_id
-                    AND sr.owner_user_id = campaigns.owner_user_id
-                    AND sr.transfer_pending_at IS NULL
-            )
-            ELSE GREATEST(campaigns.to_send - campaigns.sent, 0)
-        END AS unsent_count,
+        -- The effective unsent count (customer and pool recipients under the same
+        -- validity rules the sender applies) comes from campaign_send_counts, so
+        -- the scheduler's view of what is left cannot disagree with the sender.
+        COALESCE((SELECT sc.unsent_count FROM campaign_send_counts sc WHERE sc.campaign_id = campaigns.id), 0) AS unsent_count,
         COALESCE(templates.name_fallback, (
             SELECT fallback.name_fallback FROM templates fallback
             WHERE fallback.is_default = TRUE
@@ -1168,22 +1032,10 @@ ORDER BY %order%, email ASC
 OFFSET $9 LIMIT (CASE WHEN $10 < 1 THEN NULL ELSE $10 END);
 
 -- name: get-campaign-send-state
-WITH valid_recipients AS (
-    SELECT cr.*
-    FROM campaign_recipients cr
-    JOIN campaigns c ON c.id = cr.campaign_id
-    JOIN customers s ON s.id = cr.customer_id
-    WHERE c.id = $1
-        AND s.organization_id IS NOT DISTINCT FROM c.organization_id
-        AND s.owner_user_id = c.owner_user_id
-        AND s.transfer_pending_at IS NULL
-), valid_pool_recipients AS (
-    SELECT cpr.*
-    FROM campaign_pool_recipients cpr
-    JOIN campaigns c ON c.id = cpr.campaign_id
-    WHERE cpr.campaign_id = $1
-      AND cpr.organization_id IS NOT DISTINCT FROM c.organization_id
-)
+-- The queued and pending recipient counts come from campaign_send_counts, the
+-- single definition of a campaign's effective recipient set (see schema.sql).
+-- unsent_snapshot_count is used here rather than unsent_count so the sender keeps
+-- reading raw snapshot rows and never the persisted to_send/sent fallback.
 SELECT campaigns.id AS campaign_id,
     campaigns.type AS campaign_type,
     campaigns.status,
@@ -1202,15 +1054,10 @@ SELECT campaigns.id AS campaign_id,
         SELECT sent_count FROM campaign_daily_usage
         WHERE campaign_id = campaigns.id AND usage_date = $2::DATE
     ), 0) AS daily_sent_count,
-    COALESCE((
-        SELECT COUNT(*) FROM valid_recipients
-        WHERE status = 'queued'
-    ) + COALESCE((SELECT COUNT(*) FROM valid_pool_recipients WHERE status='queued'), 0), 0) AS queued_count,
-    COALESCE((
-        SELECT COUNT(*) FROM valid_recipients
-        WHERE status = ANY('{pending,queued,deferred}'::campaign_recipient_status[])
-    ) + COALESCE((SELECT COUNT(*) FROM valid_pool_recipients WHERE status=ANY('{pending,queued,deferred}'::campaign_recipient_status[])), 0), 0) AS unsent_count
+    COALESCE(sc.queued_count, 0) AS queued_count,
+    COALESCE(sc.unsent_snapshot_count, 0) AS unsent_count
 FROM campaigns
+LEFT JOIN campaign_send_counts sc ON sc.campaign_id = campaigns.id
 WHERE campaigns.id = $1;
 
 -- name: has-campaign-recipients
@@ -1281,34 +1128,16 @@ JOIN customers s ON s.id = subs.customer_id
 ON CONFLICT (campaign_id, customer_id) DO NOTHING;
 
 -- name: sync-campaign-progress
-WITH customer_counts AS (
-    SELECT
-        COUNT(*) AS total,
-        COUNT(*) FILTER (WHERE cr.status = 'sent') AS sent
-    FROM campaign_recipients cr
-    JOIN campaigns c ON c.id = cr.campaign_id
-    JOIN customers s ON s.id = cr.customer_id
-    WHERE cr.campaign_id = $1
-        AND s.organization_id IS NOT DISTINCT FROM c.organization_id
-        AND s.owner_user_id = c.owner_user_id
-        AND s.transfer_pending_at IS NULL
-), pool_counts AS (
-    SELECT
-        COUNT(*) AS total,
-        COUNT(*) FILTER (WHERE cpr.status = 'sent') AS sent
-    FROM campaign_pool_recipients cpr
-    JOIN campaigns c ON c.id = cpr.campaign_id
-    WHERE cpr.campaign_id = $1
-        AND cpr.organization_id IS NOT DISTINCT FROM c.organization_id
-)
+-- to_send and sent are derived from campaign_send_counts, the single definition
+-- of a campaign's effective recipient set (see schema.sql), so the persisted
+-- totals cannot drift from the set the sender actually works through.
 UPDATE campaigns
-SET to_send = COALESCE((SELECT total FROM customer_counts), 0)
-        + COALESCE((SELECT total FROM pool_counts), 0),
-    sent = COALESCE((SELECT sent FROM customer_counts), 0)
-        + COALESCE((SELECT sent FROM pool_counts), 0),
+SET to_send = COALESCE(sc.total_count, 0),
+    sent = COALESCE(sc.sent_count, 0),
     started_at = CASE WHEN started_at IS NULL THEN NOW() ELSE started_at END,
     updated_at = NOW()
-WHERE id = $1
+FROM campaign_send_counts sc
+WHERE campaigns.id = $1 AND sc.campaign_id = campaigns.id
 RETURNING to_send, sent, started_at;
 
 -- name: snapshot-campaign-recipients
@@ -1636,47 +1465,14 @@ AND (
 -- name: register-campaign-view
 -- When individual tracking is enabled, only record a view for a recipient
 -- relation belonging to this campaign. Without individual tracking, retain
--- the aggregate campaign-level event with a NULL customer ID. The fallback
--- covers historical campaigns created before recipient snapshots existed.
+-- the aggregate campaign-level event with a NULL customer ID. The binding rule,
+-- including the fallback for campaigns that predate recipient snapshots, lives
+-- in resolve_campaign_recipient (see schema.sql).
 WITH campaign AS (
-    SELECT id, organization_id, owner_user_id
-    FROM campaigns WHERE uuid = $1::UUID
-),
-customer AS (
-    SELECT id, organization_id, owner_user_id
-    FROM customers
-    WHERE id IN (
-        SELECT id FROM customers WHERE uuid = NULLIF($2::TEXT, '')::UUID
-        UNION
-        SELECT customer_id FROM customer_uuid_aliases WHERE uuid = NULLIF($2::TEXT, '')::UUID
-    )
-),
-snapshot_recipient AS (
-    SELECT c.id AS campaign_id, s.id AS customer_id
-    FROM campaign c
-    JOIN customer s ON TRUE
-    WHERE EXISTS (
-        SELECT 1 FROM campaign_recipients cr
-        WHERE cr.campaign_id = c.id AND cr.customer_id = s.id
-    )
-),
-legacy_recipient AS (
-    SELECT c.id AS campaign_id, s.id AS customer_id
-    FROM campaign c
-    JOIN customer s ON TRUE
-    WHERE NOT EXISTS (SELECT 1 FROM campaign_recipients cr WHERE cr.campaign_id = c.id)
-        AND s.organization_id IS NOT DISTINCT FROM c.organization_id
-        AND s.owner_user_id IS NOT DISTINCT FROM c.owner_user_id
-        AND EXISTS (
-            SELECT 1 FROM campaign_customer_lists cl
-            JOIN customer_list_memberships sl ON sl.customer_list_id = cl.customer_list_id
-            WHERE cl.campaign_id = c.id AND sl.customer_id = s.id
-        )
+    SELECT id FROM campaigns WHERE uuid = $1::UUID
 ),
 recipient AS (
-    SELECT campaign_id, customer_id FROM snapshot_recipient
-    UNION ALL
-    SELECT campaign_id, customer_id FROM legacy_recipient
+    SELECT * FROM resolve_campaign_recipient($1::UUID, $2::TEXT)
 ),
 view AS (
     SELECT c.id AS campaign_id,

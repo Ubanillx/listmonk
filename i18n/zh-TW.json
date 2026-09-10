@@ -226,6 +226,7 @@
     "globals.messages.permissionDenied": "權限拒絕: {name}",
     "globals.messages.selectAll": "選擇全部 {num} 個",
     "globals.messages.slowQueriesCached": "正在進行慢速查詢。此頁面上的部分數字可能不是最新的。",
+    "globals.messages.tooLarge": "內容過大：{name}",
     "globals.messages.updated": "“{name}”已更新",
     "globals.months.1": "一月",
     "globals.months.10": "十月",

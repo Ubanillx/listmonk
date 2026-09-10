@@ -322,10 +322,15 @@ func (a *App) BounceWebhook(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.Ts("bounces.unknownService"))
 	}
 
-	// Insert bounces into the DB.
+	// Queue the bounces for the database writer. A full queue is answered with an
+	// error so the sender retries the delivery: replying 200 after dropping an
+	// event loses it silently, because SNS and the other services only retry on
+	// an error response. Bounces already queued in this batch may be delivered
+	// twice by that retry, which is harmless: recording a bounce is idempotent.
 	for _, b := range bounces {
 		if err := a.bounce.Record(b); err != nil {
 			a.log.Printf("error recording bounce: %v", err)
+			return echo.NewHTTPError(http.StatusServiceUnavailable, a.i18n.T("globals.messages.internalError"))
 		}
 	}
 

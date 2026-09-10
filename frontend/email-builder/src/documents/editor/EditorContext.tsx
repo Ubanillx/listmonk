@@ -33,7 +33,10 @@ export function useDocument() {
 }
 
 export function subscribeDocument (listener: (selectedState: TEditorConfiguration, previousSelectedState: TEditorConfiguration) => void) {
-  editorStateStore.subscribe((state) => state.document, listener)
+  // Return the unsubscribe function. Callers that dropped it accumulated one
+  // listener per render, so a single document change invoked the onChange
+  // callback (and re-rendered the parent) once per accumulated listener.
+  return editorStateStore.subscribe((state) => state.document, listener);
 }
 
 export function useSelectedBlockId() {

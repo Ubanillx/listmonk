@@ -95,6 +95,8 @@ func fakePOP(t *testing.T, mode, scenario string) (Opt, <-chan []string) {
 					}
 					fmt.Fprint(c, "+OK message\r\n"+raw+".\r\n")
 				}
+			case strings.HasPrefix(line, "DELE "):
+				fmt.Fprint(c, "+OK deleted\r\n")
 			case line == "QUIT":
 				fmt.Fprint(c, "+OK bye\r\n")
 				return

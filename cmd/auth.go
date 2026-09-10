@@ -8,12 +8,12 @@ import (
 	"fmt"
 	"image/png"
 	"net/http"
-	"net/mail"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/knadh/listmonk/internal/auth"
+	"github.com/knadh/listmonk/internal/core"
 	"github.com/knadh/listmonk/internal/i18n"
 	"github.com/knadh/listmonk/internal/notifs"
 	"github.com/knadh/listmonk/internal/tmptokens"
@@ -81,14 +81,27 @@ var (
 	}
 )
 
+// setNeedsUserSetup sets the in-memory first-time setup hint. It is only an
+// optimization: the authoritative check-and-create is serialized in the database
+// (see core.FirstTimeSetup), so the flag can never allow a second bootstrap.
+func (a *App) setNeedsUserSetup(v bool) {
+	a.Lock()
+	a.needsUserSetup = v
+	a.Unlock()
+}
+
+// getNeedsUserSetup reports whether the app still believes the first-time setup
+// has to be run.
+func (a *App) getNeedsUserSetup() bool {
+	a.Lock()
+	defer a.Unlock()
+	return a.needsUserSetup
+}
+
 // LoginPage renders the login page and handles the login form.
 func (a *App) LoginPage(c echo.Context) error {
 	// Has the user been setup?
-	a.Lock()
-	needsUserSetup := a.needsUserSetup
-	a.Unlock()
-
-	if needsUserSetup {
+	if a.getNeedsUserSetup() {
 		return a.LoginSetupPage(c)
 	}
 
@@ -112,10 +125,25 @@ func (a *App) LoginSetupPage(c echo.Context) error {
 	if c.Request().Method == http.MethodPost {
 		loginErr = a.doFirstTimeSetup(c)
 		if loginErr == nil {
-			a.Lock()
-			a.needsUserSetup = false
-			a.Unlock()
+			a.setNeedsUserSetup(false)
 			return c.Redirect(http.StatusFound, a.workspaceSelectURI(c.FormValue("next")))
+		}
+
+		// Another request bootstrapped the first user while this one was in
+		// flight. Creating a second super admin would be a privilege
+		// escalation, so fall back to exactly what a POST to /admin/login does
+		// on a deployment that is already set up: a normal login with the
+		// submitted credentials. Two tabs submitting the same credentials end up
+		// logged in; anything else gets the regular login error.
+		if errors.Is(loginErr, core.ErrFirstTimeSetupDone) {
+			a.setNeedsUserSetup(false)
+
+			loginErr = a.doLogin(c)
+			if loginErr == nil {
+				return c.Redirect(http.StatusFound, a.workspaceSelectURI(c.FormValue("next")))
+			}
+
+			return a.renderLoginPage(c, loginErr)
 		}
 	}
 
@@ -229,16 +257,20 @@ func (a *App) OIDCFinish(c echo.Context) error {
 		return a.renderLoginPage(c, echo.NewHTTPError(http.StatusUnauthorized, a.i18n.T("users.invalidRequest")))
 	}
 
-	// Validate e-mail from the claim.
-	email := strings.TrimSpace(claims.Email)
-	if email == "" {
-		return a.renderLoginPage(c, errors.New(a.i18n.Ts("globals.messages.invalidFields", "name", "email")))
-	}
-	em, err := mail.ParseAddress(email)
+	// Validate the e-mail identity from the claims. The address has to be
+	// present, parseable and asserted as verified by the provider
+	// (`email_verified: true`); a provider that hands out unverified or mutable
+	// e-mail claims must not be able to log in as (or auto-create an account for)
+	// an address that belongs to somebody else. The claims are checked again
+	// here, where login and auto-creation happen, in addition to the check
+	// ExchangeOIDCToken performs on both the ID token and the userinfo fallback.
+	email, err := auth.VerifyOIDCEmailClaims(claims)
 	if err != nil {
+		if errors.Is(err, auth.ErrOIDCEmailMissing) {
+			err = errors.New(a.i18n.Ts("globals.messages.invalidFields", "name", "email"))
+		}
 		return a.renderLoginPage(c, err)
 	}
-	email = strings.ToLower(em.Address)
 	claims.Email = email
 
 	// Get the user by e-mail received from OIDC.
@@ -520,23 +552,15 @@ func (a *App) doFirstTimeSetup(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("users.passwordMismatch"))
 	}
 
-	// Create the default "Super Admin" with all permissions if it doesn't exist.
-	if _, err := a.core.GetRole(auth.SuperAdminRoleID); err != nil {
-		r := auth.Role{
-			Type: auth.RoleTypeUser,
-			Name: null.NewString("Super Admin", true),
-		}
-		for p := range a.cfg.Permissions {
-			r.Permissions = append(r.Permissions, p)
-		}
-
-		// Create the role in the DB.
-		if _, err := a.core.CreateRole(r); err != nil {
-			return err
-		}
+	// Create the default "Super Admin" role and the user in one transaction that
+	// is guarded by a PostgreSQL advisory lock, so two concurrent setup requests
+	// on a fresh deployment cannot each bootstrap a super admin. The caller that
+	// loses the race gets core.ErrFirstTimeSetupDone.
+	permissions := make([]string, 0, len(a.cfg.Permissions))
+	for p := range a.cfg.Permissions {
+		permissions = append(permissions, p)
 	}
 
-	// Create the super admin user in the DB.
 	u := auth.User{
 		Type:          auth.UserTypeUser,
 		HasPassword:   true,
@@ -548,11 +572,7 @@ func (a *App) doFirstTimeSetup(c echo.Context) error {
 		UserRoleID:    auth.SuperAdminRoleID,
 		Status:        auth.UserStatusEnabled,
 	}
-	created, err := a.core.CreateUser(u)
-	if err != nil {
-		return err
-	}
-	if err := a.core.ClaimUnownedResources(created.ID); err != nil {
+	if _, err := a.core.FirstTimeSetup(u, permissions); err != nil {
 		return err
 	}
 

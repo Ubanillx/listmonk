@@ -96,3 +96,15 @@ customers.status = 'blocklisted' AND
 ```
 
 To learn how to write SQL expressions to do advancd querying on JSON attributes, refer to the Postgres [JSONB documentation](https://www.postgresql.org/docs/11/functions-json.html).
+
+## Query boundaries
+
+Advanced expressions are evaluated inside the caller's workspace, and every part of an expression has to stay inside it. The following rules are enforced before an expression runs (see `internal/core/customer_sql_guard.go`):
+
+- **Only the caller's own customer activity tables may be referenced in subqueries**: `campaign_views`, `link_clicks`, `bounces` and `customer_list_memberships`. Each reference must be correlated with the outer customer row, for example `campaign_views.customer_id = customers.id`. An uncorrelated subquery evaluates identically for every customer and would turn the result count into a yes/no answer about other workspaces, so it is rejected.
+- **Tables that are global or shared are not available to expressions**: `users`, `campaigns`, `links`, `customer_lists`, `campaign_customer_lists`, a second `customers` join, and any table outside the allowlist. Resolve the campaign, link or customer_list you are interested in to its ID first (for example through the API or the admin UI), then filter on `campaign_id`, `link_id` or `customer_list_id` in the activity table. The `customer_list_id` and `subscription_status` request parameters cover the common membership filters.
+- **Credential and secret columns are rejected** wherever they appear (`password`, `twofa_key`, `token_hash`, ...), as are whole row references such as `to_jsonb(u)`, which would read every column of a row.
+- **Blocking, stateful, filesystem and statistics constructs are rejected**: `pg_sleep`, advisory locks, `FOR UPDATE`/`FOR SHARE`, set returning functions such as `generate_series`, `pg_read_file`, `dblink`, `set_config`, and size or row count functions such as `pg_total_relation_size` or `pg_stat_get_live_tuples`.
+- A query over an unlisted table, or an expression that does not parse, returns `400 Bad Request` with `invalid customer SQL expression: ...`.
+
+The owner of each customer is available through the `u` alias (`u.username`, `u.name`), and the customer row through its own columns (`customers.email`, `customers.status`, `customers.attribs`, ...).

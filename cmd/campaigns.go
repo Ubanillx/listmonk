@@ -425,11 +425,14 @@ func (a *App) CloneCampaign(c echo.Context) error {
 	if err := requireWritableWorkspace(target); err != nil {
 		return err
 	}
-	if !canCopyWorkspaceCampaign(access, scope) && !workspaceCopyException(access, scope) {
-		if err := requireLegacyPermission(auth.GetUser(c), auth.PermCampaignsManageAll, auth.PermCampaignsManage); err != nil {
-			return err
-		}
-	}
+	// The copy policy above is the only gate. A legacy fallback that let the
+	// campaigns:manage role bypass it used to sit here, written as
+	// `!canCopyWorkspaceCampaign(...) && !workspaceCopyException(...)`; it was
+	// unreachable, because the check above returns 403 whenever the campaign policy
+	// denies the copy. It is deleted rather than restored because reviving it would
+	// widen copying: a non-owner member could then duplicate a colleague's published
+	// campaign, which the campaign policy deliberately denies (see
+	// TestCampaignCopyPolicyIsStricterThanPublishedResourceException).
 	if req.Name != "" && !strHasLen(strings.TrimSpace(req.Name), 1, stdInputMaxLen) {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("campaigns.fieldInvalidName"))
 	}

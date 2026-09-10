@@ -88,6 +88,9 @@ func (c *Core) FindReplyAIWorkspaceCustomer(access models.WorkspaceAccess, email
 // exactly one bounce row tied to the durable queue event, making retries safe.
 // The terminal queue update runs in the same transaction, so a crash cannot
 // leave a completed blocklist action eligible for another complaint attempt.
+// Pool replies follow the same rule: the leased event row is locked before any
+// side effect is written, and a terminal update that does not affect exactly
+// one row rolls everything back and leaves the event for the next retry.
 func (c *Core) ApplyReplyAIAction(access models.WorkspaceAccess, action ReplyAIAction) error {
 	if action.EventID < 1 || (action.CustomerID < 1 && action.PoolContactID < 1) {
 		return fmt.Errorf("reply AI action requires an event and customer")
@@ -108,8 +111,18 @@ func (c *Core) ApplyReplyAIAction(access models.WorkspaceAccess, action ReplyAIA
 			return err
 		}
 		defer tx.Rollback()
+		// Lock the leased event row before writing any side effect. Under READ
+		// COMMITTED a locking read re-checks the predicate against the newest
+		// row version, so a concurrent reclaim that rotated the lease token
+		// while the classifier ran fails this claim instead of letting both
+		// workers commit.
 		var held bool
-		if err := tx.Get(&held, `SELECT EXISTS(SELECT 1 FROM reply_ai_events WHERE id=$1 AND status='processing' AND lease_token=$2::UUID)`, action.EventID, action.LeaseToken); err != nil {
+		if err := tx.Get(&held, `
+			SELECT EXISTS(
+				SELECT 1 FROM reply_ai_events
+				WHERE id = $1 AND status = 'processing' AND lease_token = $2::UUID
+				FOR UPDATE)`,
+			action.EventID, action.LeaseToken); err != nil {
 			return err
 		}
 		if !held {
@@ -117,15 +130,25 @@ func (c *Core) ApplyReplyAIAction(access models.WorkspaceAccess, action ReplyAIA
 		}
 		meta, _ := json.Marshal(map[string]any{"event_id": action.EventID, "intent": action.Intent, "confidence": action.Confidence, "reason_code": action.ReasonCode, "model": action.Model})
 		if action.Intent == models.ReplyAIIntentComplaint {
-			if _, err := tx.Exec(`INSERT INTO bounces(pool_contact_id,type,source,meta,created_at,source_pool_id,source_segment_id,source_organization_id) VALUES($1,'complaint',$2,$3,$4,$5,NULLIF($6,0),$7)`, action.PoolContactID, models.ReplyAISource, meta, action.OccurredAt, action.PoolID, action.SourceSegmentID, action.SourceOrganizationID); err != nil {
+			// The event id is the idempotency key, exactly as in the customer
+			// branch: complaint counts must not double when the same durable
+			// event is applied more than once.
+			if _, err := tx.Exec(`INSERT INTO bounces(pool_contact_id,type,source,meta,created_at,source_pool_id,source_segment_id,source_organization_id,reply_ai_event_id) VALUES($1,'complaint',$2,$3,$4,$5,NULLIF($6,0),$7,$8) ON CONFLICT (reply_ai_event_id) DO NOTHING`, action.PoolContactID, models.ReplyAISource, meta, action.OccurredAt, action.PoolID, action.SourceSegmentID, action.SourceOrganizationID, action.EventID); err != nil {
 				return err
 			}
 		}
 		if _, err := tx.Exec(`INSERT INTO pool_segment_exclusions(pool_id,organization_id,contact_id,segment_id,reason,source) VALUES($1,$2,$3,NULLIF($4,0),$5,'reply_ai') ON CONFLICT(pool_id,organization_id,contact_id) DO UPDATE SET reason=EXCLUDED.reason,source='reply_ai',removed_at=NOW(),restored_at=NULL`, action.PoolID, action.SourceOrganizationID, action.PoolContactID, action.SourceSegmentID, action.Intent); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(`UPDATE reply_ai_events SET pool_contact_id=$2,pool_id=$3,source_segment_id=$4,source_organization_id=$5,intent=$6,confidence=$7,reason_code=$8,model=$9,action='blocklisted',status='processed',body='',classified_at=NOW(),actioned_at=NOW(),lease_expires_at=NULL,lease_token=NULL,updated_at=NOW() WHERE id=$1 AND status='processing' AND lease_token=$10::UUID`, action.EventID, action.PoolContactID, action.PoolID, action.SourceSegmentID, action.SourceOrganizationID, action.Intent, action.Confidence, action.ReasonCode, action.Model, action.LeaseToken); err != nil {
+		res, err := tx.Exec(`UPDATE reply_ai_events SET pool_contact_id=$2,pool_id=$3,source_segment_id=$4,source_organization_id=$5,intent=$6,confidence=$7,reason_code=$8,model=$9,action='blocklisted',status='processed',body='',classified_at=NOW(),actioned_at=NOW(),lease_expires_at=NULL,lease_token=NULL,updated_at=NOW() WHERE id=$1 AND status='processing' AND lease_token=$10::UUID`, action.EventID, action.PoolContactID, action.PoolID, action.SourceSegmentID, action.SourceOrganizationID, action.Intent, action.Confidence, action.ReasonCode, action.Model, action.LeaseToken)
+		if err != nil {
 			return err
+		}
+		// The terminal transition is the commit gate: if it did not update the
+		// leased row, this worker lost the lease, so the side effects written
+		// above must roll back and the event stays claimable.
+		if n, _ := res.RowsAffected(); n != 1 {
+			return ErrReplyAILeaseLost
 		}
 		return tx.Commit()
 	}

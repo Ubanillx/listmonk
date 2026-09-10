@@ -360,47 +360,11 @@ UPDATE customer_list_memberships SET status='unsubscribed', updated_at=NOW()
 -- and all existing subscriptions, irrespective of customer_lists, unsubscribed.
 -- The campaign and customer UUIDs come from a bearer unsubscribe link. They
 -- must be linked by an actual campaign recipient before either the profile or
--- its subscriptions can be changed. The legacy fallback is restricted to the
--- same owner/workspace and only applies when no recipient snapshot exists.
-WITH campaign AS (
-    SELECT id, organization_id, owner_user_id
-    FROM campaigns WHERE uuid = $1::UUID
-),
-customer AS (
-    SELECT id, organization_id, owner_user_id
-    FROM customers
-    WHERE id IN (
-        SELECT id FROM customers WHERE uuid = $2::UUID
-        UNION
-        SELECT customer_id FROM customer_uuid_aliases WHERE uuid = $2::UUID
-    )
-),
-snapshot_recipient AS (
-    SELECT c.id AS campaign_id, s.id AS customer_id
-    FROM campaign c
-    JOIN customer s ON TRUE
-    WHERE EXISTS (
-        SELECT 1 FROM campaign_recipients cr
-        WHERE cr.campaign_id = c.id AND cr.customer_id = s.id
-    )
-),
-legacy_recipient AS (
-    SELECT c.id AS campaign_id, s.id AS customer_id
-    FROM campaign c
-    JOIN customer s ON TRUE
-    WHERE NOT EXISTS (SELECT 1 FROM campaign_recipients cr WHERE cr.campaign_id = c.id)
-        AND s.organization_id IS NOT DISTINCT FROM c.organization_id
-        AND s.owner_user_id IS NOT DISTINCT FROM c.owner_user_id
-        AND EXISTS (
-            SELECT 1 FROM campaign_customer_lists cl
-            JOIN customer_list_memberships sl ON sl.customer_list_id = cl.customer_list_id
-            WHERE cl.campaign_id = c.id AND sl.customer_id = s.id
-        )
-),
-recipient AS (
-    SELECT campaign_id, customer_id FROM snapshot_recipient
-    UNION ALL
-    SELECT campaign_id, customer_id FROM legacy_recipient
+-- its subscriptions can be changed; that binding rule lives in
+-- resolve_campaign_recipient (see schema.sql) so the bearer cannot be judged
+-- differently here than on the view/click/render paths.
+WITH recipient AS (
+    SELECT * FROM resolve_campaign_recipient($1::UUID, $2::TEXT)
 ),
 customer_lists AS (
     SELECT cl.customer_list_id FROM campaign_customer_lists cl

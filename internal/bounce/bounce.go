@@ -39,6 +39,16 @@ type Opt struct {
 	RecordBounceCB func(models.Bounce) error
 }
 
+// queueSize is the number of bounce events buffered between the producers
+// (webhooks and the mailbox scanner) and the single database writer.
+const queueSize = 1000
+
+// queueSendTimeout bounds how long a producer waits for room in the queue.
+// Producers are HTTP handlers, so the wait has to be short enough to answer the
+// sender rather than hold the request open. It is a variable so tests can shrink
+// it.
+var queueSendTimeout = 5 * time.Second
+
 // Manager handles e-mail bounces.
 type Manager struct {
 	queue        chan models.Bounce
@@ -63,7 +73,7 @@ func New(opt Opt, q *Queries, lo *log.Logger) (*Manager, error) {
 	m := &Manager{
 		opt:     opt,
 		queries: q,
-		queue:   make(chan models.Bounce, 1000),
+		queue:   make(chan models.Bounce, queueSize),
 		log:     lo,
 	}
 
@@ -135,7 +145,17 @@ func (m *Manager) runMailboxScanner() {
 }
 
 // Record records a new bounce event given the customer's email or UUID.
+//
+// This is called from the public webhook handlers, where unbounded blocking
+// means request pile-up and goroutine growth when the database falls behind.
+// The wait is bounded instead, and a full queue is reported to the caller so the
+// sender can retry (SNS and the other services retry on a 5xx) rather than the
+// event being silently dropped.
 func (m *Manager) Record(b models.Bounce) error {
-	m.queue <- b
-	return nil
+	select {
+	case m.queue <- b:
+		return nil
+	case <-time.After(queueSendTimeout):
+		return errors.New("bounce queue is full, try again")
+	}
 }

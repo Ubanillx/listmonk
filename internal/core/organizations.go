@@ -1156,21 +1156,41 @@ func (c *Core) PurgeArchivedOrganization(orgID int) error {
 	return nil
 }
 
+// unownedResourceTables are the tables seeded by --install whose rows are
+// claimed for the first system administrator.
+var unownedResourceTables = []string{"customer_lists", "customers", "templates", "campaigns", "media"}
+
 // ClaimUnownedResources assigns resources created during first-time setup to
 // the initial system administrator. This is needed on fresh installs because
-// seed data is installed before the first user record exists.
+// seed data is installed before the first user record exists. Core.FirstTimeSetup
+// performs the same assignment inside its transaction; this entry point is for
+// callers that have to claim resources outside of the initial bootstrap.
 func (c *Core) ClaimUnownedResources(userID int) error {
+	if err := claimUnownedResources(context.Background(), c.db, userID); err != nil {
+		if _, ok := err.(*echo.HTTPError); ok {
+			return err
+		}
+		return c.organizationDBErr("claiming initial resources", err)
+	}
+
+	return nil
+}
+
+// claimUnownedResources assigns the resources seeded by --install to the given
+// user. It runs against either the pool or an open transaction, so first-time
+// setup can create the initial account and claim its resources atomically.
+func claimUnownedResources(ctx context.Context, q sqlx.ExtContext, userID int) error {
 	if userID < 1 {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid resource owner")
 	}
 
-	for _, table := range []string{"customer_lists", "customers", "templates", "campaigns", "media"} {
+	for _, table := range unownedResourceTables {
 		stmt := fmt.Sprintf(`
 			UPDATE %s
 			SET owner_user_id = $1, original_owner_user_id = $1
 			WHERE owner_user_id IS NULL AND organization_id IS NULL`, table)
-		if _, err := c.db.Exec(stmt, userID); err != nil {
-			return c.organizationDBErr("claiming initial resources", err)
+		if _, err := q.ExecContext(ctx, stmt, userID); err != nil {
+			return err
 		}
 	}
 

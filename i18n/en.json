@@ -270,6 +270,7 @@
     "globals.messages.passwordChangeFull": "Clear and re-enter the full password in '{name}'.",
     "globals.messages.permissionDenied": "Permission denied: {name}",
     "globals.messages.slowQueriesCached": "Slow queries are being cached. Some numbers on this page will not be up-to-date.",
+    "globals.messages.tooLarge": "Too large: {name}",
     "globals.messages.updated": "\"{name}\" updated",
     "globals.months.1": "Jan",
     "globals.months.10": "Oct",

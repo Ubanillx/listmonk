@@ -15,6 +15,14 @@ import (
 	"github.com/xuri/excelize/v2"
 )
 
+// Pool allocation file limits. The upload is a CSV or XLSX holding
+// customer_code/email pairs for one segment; the archive limits bound what an
+// XLSX may expand to, since a spreadsheet is a ZIP archive.
+const (
+	maxPoolAllocationUploadSize = 25 << 20
+	maxPoolAllocationUnzipSize  = 256 << 20
+)
+
 func (a *App) GetPoolContacts(c echo.Context) error {
 	access, err := a.workspaceAccess(c)
 	if err != nil {
@@ -383,7 +391,18 @@ func (a *App) ImportPoolSegmentMembers(c echo.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "file is required")
 	}
-	if file.Size > 25<<20 {
+
+	// A multipart upload larger than the in-memory threshold is spilled by
+	// net/http to a temporary file it does not remove on its own.
+	if mf := c.Request().MultipartForm; mf != nil {
+		defer func() {
+			if err := mf.RemoveAll(); err != nil {
+				a.log.Printf("error removing multipart temporary files: %v", err)
+			}
+		}()
+	}
+
+	if file.Size > maxPoolAllocationUploadSize {
 		return echo.NewHTTPError(http.StatusRequestEntityTooLarge, "allocation file must be 25 MB or smaller")
 	}
 	rows, err := parsePoolAllocationFile(file)
@@ -417,7 +436,9 @@ func parsePoolAllocationFile(file *multipart.FileHeader) ([]models.PoolImportRow
 		return parsePoolAllocationRows(header, func() ([]string, error) { return reader.Read() })
 	}
 	if strings.HasSuffix(name, ".xlsx") {
-		workbook, err := excelize.OpenReader(src)
+		// An XLSX is a ZIP archive: bound its extraction rather than accepting
+		// excelize's 16 GB default.
+		workbook, err := excelize.OpenReader(src, excelize.Options{UnzipSizeLimit: maxPoolAllocationUnzipSize})
 		if err != nil {
 			return nil, fmt.Errorf("invalid XLSX file: %w", err)
 		}

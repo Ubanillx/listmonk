@@ -32,6 +32,38 @@ type replyForwardSource struct {
 	TargetUserID int    `db:"target_user_id"`
 }
 
+// Retry policy for one forwarded customer reply.
+//
+// Forwarding hands the message to the in-process queue, so a queue backlog, a
+// manager that is shutting down or a restart can fail the hand-off without the
+// reply ever having been sent. Those failures must be retried, while a reply
+// that can never be delivered must stop being retried and stay visible as a
+// terminal failure. Both are decided by the row in reply_forward_messages:
+//
+//	pending  + recent updated_at  -> a live claim, owned by one scan round
+//	pending  + stale updated_at   -> the owner died mid-attempt; retryable
+//	failed   + attempts < max     -> retried with exponential backoff
+//	failed   + attempts >= max    -> terminal, never claimed again
+//	forwarded                     -> done, never claimed again
+//
+// Declared as variables so tests can shrink the intervals.
+var (
+	// replyForwardMaxAttempts is the total number of send attempts (the first
+	// attempt included) before a reply is left terminally failed.
+	replyForwardMaxAttempts = 5
+
+	// replyForwardRetryBackoff is the delay before the second attempt. It
+	// doubles per failed attempt up to replyForwardRetryMaxBackoff.
+	replyForwardRetryBackoff    = time.Minute
+	replyForwardRetryMaxBackoff = 16 * time.Minute
+
+	// replyForwardClaimLease bounds how long one attempt owns its row. It is
+	// several orders of magnitude longer than an attempt can take (PushMessage
+	// gives up after 3s), so a lease can only expire when its owner died
+	// between claiming the row and recording the outcome.
+	replyForwardClaimLease = 5 * time.Minute
+)
+
 // runReplyForwarder keeps retained 263 customer-reply mailboxes usable after
 // a member leaves. It deliberately runs independently of bounce processing:
 // reply messages are never deleted from the source mailbox.
@@ -103,6 +135,17 @@ func (a *App) scanOneReplyForwardSource(source replyForwardSource) error {
 	return nil
 }
 
+// forwardOneReply forwards one source message exactly once.
+//
+// The dedupe row is claimed by a single statement that is also the duplicate
+// guard: (rule_id, message_key) admits one row per source message, and the
+// claim is committed before the message is pushed, so any other scan round (in
+// this process or another) sees a live claim and cannot send the same reply.
+// The outcome is recorded after the push returns. Because a claim is therefore
+// the only thing that authorises a send, a claim that outlived its lease means
+// the previous attempt died mid-flight and nothing else holds it, so the next
+// round may take it over — that is how a failed or interrupted forward becomes
+// retryable without ever letting a finished one be sent twice.
 func (a *App) forwardOneReply(source replyForwardSource, raw []byte) error {
 	entity, err := message.Read(bytes.NewReader(raw))
 	if err != nil {
@@ -117,17 +160,46 @@ func (a *App) forwardOneReply(source replyForwardSource, raw []byte) error {
 	hash := sha256.Sum256(raw)
 	key := messageID + ":" + hex.EncodeToString(hash[:])
 
-	var eventID int64
+	// Insert the dedupe row, or re-claim an existing one that is allowed to be
+	// retried. ON CONFLICT DO UPDATE with a WHERE clause returns no row when the
+	// conflicting reply is already forwarded, is owned by a live claim, or has
+	// exhausted its attempts, which preserves the old "DO NOTHING" behaviour for
+	// every case that must not be sent again.
+	var (
+		eventID  int64
+		attempts int
+	)
 	err = a.db.QueryRow(`
-		INSERT INTO reply_forward_messages (rule_id, message_key, from_email, subject, status, received_at)
-		VALUES ($1, $2, $3, $4, 'pending', NOW())
-		ON CONFLICT (rule_id, message_key) DO NOTHING
-		RETURNING id`, source.RuleID, key, from, subject).Scan(&eventID)
+		INSERT INTO reply_forward_messages
+			(rule_id, message_key, from_email, subject, status, attempts, received_at, updated_at)
+		VALUES ($1, $2, $3, $4, 'pending', 1, NOW(), NOW())
+		ON CONFLICT (rule_id, message_key) DO UPDATE
+		SET status = 'pending',
+		    attempts = reply_forward_messages.attempts + 1,
+		    updated_at = NOW()
+		WHERE (
+		        -- A recorded failure is retried with exponential backoff until
+		        -- the attempt ceiling is reached.
+		        reply_forward_messages.status = 'failed'
+		        AND reply_forward_messages.attempts < $5
+		        AND reply_forward_messages.updated_at <= NOW() - INTERVAL '1 second' *
+		            (LEAST(power(2, reply_forward_messages.attempts - 1), $6::float8) * $7::float8)
+		      )
+		   OR (
+		        -- A claim that outlived its lease was interrupted mid-flight.
+		        reply_forward_messages.status = 'pending'
+		        AND reply_forward_messages.updated_at <= NOW() - INTERVAL '1 second' * $8::float8
+		      )
+		RETURNING id, attempts`, source.RuleID, key, from, subject,
+		replyForwardMaxAttempts, replyForwardBackoffCap(), replyForwardRetryBackoff.Seconds(), replyForwardClaimLease.Seconds()).Scan(&eventID, &attempts)
 	if err == sql.ErrNoRows {
 		return nil
 	}
 	if err != nil {
 		return err
+	}
+	if attempts > 1 {
+		a.log.Printf("retrying reply forward for rule %d (%s), attempt %d of %d", source.RuleID, key, attempts, replyForwardMaxAttempts)
 	}
 
 	body, contentType := inboundBody(entity)
@@ -154,13 +226,73 @@ func (a *App) forwardOneReply(source replyForwardSource, raw []byte) error {
 		},
 	}
 	if err := a.manager.PushMessage(msg); err != nil {
-		_, _ = a.db.Exec(`UPDATE reply_forward_messages SET status = 'failed', attempts = attempts + 1, last_error = $2, updated_at = NOW() WHERE id = $1`, eventID, err.Error())
+		a.recordReplyForwardFailure(eventID, attempts, err)
+		if attempts >= replyForwardMaxAttempts {
+			a.log.Printf("reply forwarding rule %d gives up on %s after %d attempts: %v", source.RuleID, key, attempts, err)
+		}
 		return err
 	}
-	_, _ = a.db.Exec(`UPDATE reply_forward_messages SET status = 'forwarded', attempts = attempts + 1, forwarded_at = NOW(), updated_at = NOW(), last_error = '' WHERE id = $1`, eventID)
+	// The reply is only recorded as forwarded after the manager accepted the
+	// message, so a 'forwarded' row always means the message was handed over and
+	// is never claimed again.
+	recorded, err := a.recordReplyForwardSuccess(eventID, attempts)
+	if err != nil {
+		return err
+	}
+	if !recorded {
+		// A newer attempt re-claimed this row (only possible when the lease of
+		// this one expired) and already recorded the outcome.
+		a.log.Printf("reply forward %d was taken over by a newer attempt; not counting it twice", eventID)
+		return nil
+	}
 	_, _ = a.db.Exec(`UPDATE reply_mailboxes SET forward_count = forward_count + 1, updated_at = NOW() WHERE id = $1`, source.MailboxID)
 	_, _ = a.db.Exec(`UPDATE reply_forward_rules SET last_forward_at = NOW(), last_error = '', updated_at = NOW() WHERE id = $1`, source.RuleID)
 	return nil
+}
+
+// recordReplyForwardFailure marks a claimed attempt as failed so the next round
+// can retry it once the backoff has elapsed. The update is fenced on the claim
+// it belongs to, so an attempt that was overtaken after its lease expired cannot
+// overwrite the row the newer attempt is working on. If the update itself fails,
+// the row stays 'pending' and the lease recovers it instead of losing the reply.
+func (a *App) recordReplyForwardFailure(eventID int64, attempts int, cause error) {
+	res, err := a.db.Exec(`UPDATE reply_forward_messages
+		SET status = 'failed', last_error = $2, updated_at = NOW()
+		WHERE id = $1 AND status = 'pending' AND attempts = $3`, eventID, cause.Error(), attempts)
+	if err != nil {
+		a.log.Printf("error recording the failed reply forward %d: %v", eventID, err)
+		return
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		a.log.Printf("reply forward %d was taken over by a newer attempt; not recording this failure", eventID)
+	}
+}
+
+// recordReplyForwardSuccess records a completed forward. It reports false when
+// the row no longer belongs to this attempt, which keeps forward_count and the
+// rule bookkeeping consistent with the row that actually reached 'forwarded'.
+func (a *App) recordReplyForwardSuccess(eventID int64, attempts int) (bool, error) {
+	res, err := a.db.Exec(`UPDATE reply_forward_messages
+		SET status = 'forwarded', forwarded_at = NOW(), updated_at = NOW(), last_error = ''
+		WHERE id = $1 AND status = 'pending' AND attempts = $2`, eventID, attempts)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
+// replyForwardBackoffCap returns the multiplier at which the retry backoff stops
+// growing, expressed as a factor of replyForwardRetryBackoff.
+func replyForwardBackoffCap() float64 {
+	if replyForwardRetryBackoff <= 0 {
+		return 1
+	}
+	cap := replyForwardRetryMaxBackoff.Seconds() / replyForwardRetryBackoff.Seconds()
+	if cap < 1 {
+		return 1
+	}
+	return cap
 }
 
 func inboundBody(entity *message.Entity) ([]byte, string) {

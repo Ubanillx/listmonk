@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/textproto"
 	"strings"
@@ -14,6 +15,30 @@ import (
 	"github.com/knadh/listmonk/internal/messenger/email"
 	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
+)
+
+// Transactional message limits.
+//
+// /api/tx is reachable by any holder of tx:send, and neither its attachments
+// nor its recipient lists were previously bounded: every multipart file was
+// read into memory and retained for the life of the request, and every
+// recipient became a queued message. These caps keep one request from
+// exhausting the process heap or saturating the send queue. Sizes are checked
+// against the declared multipart part size before the buffer is allocated, and
+// re-checked in validateTxMessage, which also covers the JSON path where
+// attachments arrive base64-encoded.
+const (
+	// maxTxAttachments caps the number of files per message.
+	maxTxAttachments = 20
+	// maxTxAttachmentSize caps one attachment. This is above what most
+	// receiving mail servers accept.
+	maxTxAttachmentSize = 10 << 20
+	// maxTxAttachmentsTotal caps all attachments of one message together.
+	maxTxAttachmentsTotal = 20 << 20
+	// maxTxRecipients caps the combined customer_emails and customer_ids lists.
+	// Transactional sends are per-recipient by nature; bulk sending belongs to
+	// campaigns, which queue and throttle independently.
+	maxTxRecipients = 5000
 )
 
 // SendTxMessage handles the sending of a transactional message.
@@ -49,19 +74,28 @@ func (a *App) SendTxMessage(c echo.Context) error {
 				a.i18n.Ts("globals.messages.invalidFields", "name", fmt.Sprintf("data: %s", err.Error())))
 		}
 
-		// Attach files.
-		for _, f := range form.File["file"] {
-			file, err := f.Open()
-			if err != nil {
-				return echo.NewHTTPError(http.StatusInternalServerError,
-					a.i18n.Ts("globals.messages.invalidFields", "name", fmt.Sprintf("file: %s", err.Error())))
-			}
-			defer file.Close()
+		// Attach files. Over-sized and over-count uploads are rejected before
+		// being read into memory: the declared part size is available without
+		// buffering the file.
+		files := form.File["file"]
+		if len(files) > maxTxAttachments {
+			return echo.NewHTTPError(http.StatusBadRequest,
+				a.i18n.Ts("globals.messages.invalidFields", "name",
+					fmt.Sprintf("file (max %d attachments)", maxTxAttachments)))
+		}
 
-			b, err := io.ReadAll(file)
+		var totalAttachments int64
+		for _, f := range files {
+			if f.Size > maxTxAttachmentSize {
+				return tooLargeErr(a, fmt.Sprintf("file %s (max %d MB)", f.Filename, maxTxAttachmentSize>>20))
+			}
+			if totalAttachments += f.Size; totalAttachments > maxTxAttachmentsTotal {
+				return tooLargeErr(a, fmt.Sprintf("attachments (max %d MB total)", maxTxAttachmentsTotal>>20))
+			}
+
+			b, err := a.readTxAttachment(f)
 			if err != nil {
-				return echo.NewHTTPError(http.StatusInternalServerError,
-					a.i18n.Ts("globals.messages.invalidFields", "name", fmt.Sprintf("file: %s", err.Error())))
+				return err
 			}
 
 			m.Attachments = append(m.Attachments, models.Attachment{
@@ -289,6 +323,35 @@ func (a *App) SendTxMessage(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{true})
 }
 
+// tooLargeErr builds a 413 response for a payload that exceeds a size limit.
+func tooLargeErr(a *App, name string) error {
+	return echo.NewHTTPError(http.StatusRequestEntityTooLarge, a.i18n.Ts("globals.messages.tooLarge", "name", name))
+}
+
+// readTxAttachment opens one multipart attachment and reads it whole, bounding
+// the read so that a part declaring a small size cannot be buffered beyond the
+// limit. The handle is closed before returning instead of accumulating defers
+// for every file in the request.
+func (a *App) readTxAttachment(f *multipart.FileHeader) ([]byte, error) {
+	file, err := f.Open()
+	if err != nil {
+		return nil, echo.NewHTTPError(http.StatusInternalServerError,
+			a.i18n.Ts("globals.messages.invalidFields", "name", fmt.Sprintf("file: %s", err.Error())))
+	}
+	defer file.Close()
+
+	b, err := io.ReadAll(io.LimitReader(file, maxTxAttachmentSize+1))
+	if err != nil {
+		return nil, echo.NewHTTPError(http.StatusInternalServerError,
+			a.i18n.Ts("globals.messages.invalidFields", "name", fmt.Sprintf("file: %s", err.Error())))
+	}
+	if int64(len(b)) > maxTxAttachmentSize {
+		return nil, tooLargeErr(a, fmt.Sprintf("file %s (max %d MB)", f.Filename, maxTxAttachmentSize>>20))
+	}
+
+	return b, nil
+}
+
 // validateTxMessage validates the tx message fields.
 func (a *App) validateTxMessage(m models.TxMessage) (models.TxMessage, error) {
 	if len(m.CustomerEmails) > 0 && m.CustomerEmail != "" {
@@ -306,6 +369,28 @@ func (a *App) validateTxMessage(m models.TxMessage) (models.TxMessage, error) {
 
 	if m.CustomerID != 0 {
 		m.CustomerIDs = append(m.CustomerIDs, m.CustomerID)
+	}
+
+	// Bound recipients and attachments for both request encodings. The multipart
+	// path rejects over-sized parts before buffering them; this is the
+	// authoritative check because the JSON path arrives already base64-decoded.
+	if n := len(m.CustomerEmails) + len(m.CustomerIDs); n > maxTxRecipients {
+		return m, echo.NewHTTPError(http.StatusBadRequest,
+			a.i18n.Ts("globals.messages.invalidFields", "name", fmt.Sprintf("recipients (max %d)", maxTxRecipients)))
+	}
+
+	if len(m.Attachments) > maxTxAttachments {
+		return m, echo.NewHTTPError(http.StatusBadRequest,
+			a.i18n.Ts("globals.messages.invalidFields", "name", fmt.Sprintf("attachments (max %d)", maxTxAttachments)))
+	}
+	var totalAttachments int
+	for _, at := range m.Attachments {
+		if len(at.Content) > maxTxAttachmentSize {
+			return m, tooLargeErr(a, fmt.Sprintf("attachment %s (max %d MB)", at.Name, maxTxAttachmentSize>>20))
+		}
+		if totalAttachments += len(at.Content); totalAttachments > maxTxAttachmentsTotal {
+			return m, tooLargeErr(a, fmt.Sprintf("attachments (max %d MB total)", maxTxAttachmentsTotal>>20))
+		}
 	}
 
 	// Validate customer_mode.

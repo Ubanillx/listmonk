@@ -7,7 +7,9 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"html"
+	"net"
 	"net/mail"
 	"regexp"
 	"strings"
@@ -27,9 +29,33 @@ const (
 	replyAIMaxRunes        = 6000
 	replyAIMaxMessages     = 200
 	replyAIMaxMessageBytes = 5 << 20
-	replyAIMailboxTimeout  = 2 * time.Minute
-	replyAIMaxConcurrent   = 4
+
+	// replyAIMailboxTimeout is the hard cap for one entire mailbox scan,
+	// including every message download.
+	replyAIMailboxTimeout = 2 * time.Minute
+
+	// replyAIMaxConcurrent is the number of mailboxes scanned at a time. One
+	// slow server can therefore only ever occupy a single worker.
+	replyAIMaxConcurrent = 4
+
+	// replyAIScanCloseGrace bounds how long a scan that exhausted its budget
+	// waits for the forced connection close to unwind the reader.
+	replyAIScanCloseGrace = 5 * time.Second
 )
+
+// The dial and per-operation read deadlines are variables so tests can shrink
+// them; production runs with the values below. The go-pop3 client exposes no
+// read deadline and no context (NewConn, Auth and RetrRaw block inside
+// bufio.Reader.ReadLine), so both bounds are installed through its Opt.Dialer
+// hook and a watchdog that force-closes the connection.
+var (
+	replyAIMailboxDialTimeout = 10 * time.Second
+	replyAIMailboxReadTimeout = 30 * time.Second
+)
+
+// errReplyAIScanTimeout marks a mailbox scan that exceeded its budget and had
+// its connection torn down: the server is hung rather than failing.
+var errReplyAIScanTimeout = errors.New("mailbox scan timed out")
 
 var htmlTagPattern = regexp.MustCompile(`(?s)<[^>]*>`)
 
@@ -68,32 +94,117 @@ func (a *App) scanReplyAIMailboxes() {
 		a.log.Printf("error loading reply AI mailboxes: %v", err)
 		return
 	}
-	sem := make(chan struct{}, replyAIMaxConcurrent)
+	runReplyAIMailboxPool(sources, replyAIMaxConcurrent, a.scanReplyAIMailbox)
+}
+
+// runReplyAIMailboxPool scans the mailboxes with a fixed number of workers, so
+// an unresponsive server occupies at most one worker and the remaining
+// mailboxes keep being scanned in the same round. No goroutine is created per
+// mailbox.
+func runReplyAIMailboxPool(sources []replyAIMailboxSource, workers int, scan func(replyAIMailboxSource)) {
+	if workers > len(sources) {
+		workers = len(sources)
+	}
+	if workers < 1 {
+		return
+	}
+	jobs := make(chan replyAIMailboxSource)
 	var wg sync.WaitGroup
-	for _, source := range sources {
-		source := source
+	for i := 0; i < workers; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			done := make(chan error, 1)
-			go func() { done <- a.scanOneReplyAIMailbox(source) }()
-			select {
-			case err := <-done:
-				if err != nil {
-					a.log.Printf("reply AI mailbox %d scan failed: %v", source.ID, err)
-					_, _ = a.queries.UpdateReplyAIMailboxSync.Exec(source.ID, replyAIErrorText(err))
-				}
-			case <-time.After(replyAIMailboxTimeout):
-				a.log.Printf("reply AI mailbox %d scan timed out", source.ID)
+			for source := range jobs {
+				scan(source)
 			}
 		}()
 	}
+	for _, source := range sources {
+		jobs <- source
+	}
+	close(jobs)
 	wg.Wait()
 }
 
-func (a *App) scanOneReplyAIMailbox(source replyAIMailboxSource) error {
+// scanReplyAIMailbox scans one mailbox and records the outcome for operators.
+func (a *App) scanReplyAIMailbox(source replyAIMailboxSource) {
+	budget := replyAIDefaultScanBudget()
+	err := a.scanOneReplyAIMailbox(source, budget)
+	if err == nil {
+		_, _ = a.queries.UpdateReplyAIMailboxSync.Exec(source.ID, "")
+		return
+	}
+	a.log.Printf("%s", replyAIMailboxFailureMessage(source, err, budget.scan))
+	_, _ = a.queries.UpdateReplyAIMailboxSync.Exec(source.ID, replyAIErrorText(err))
+}
+
+// replyAIMailboxFailureMessage names the mailbox and the server it points at,
+// so a hung server is distinguishable from a failing one in the logs.
+func replyAIMailboxFailureMessage(source replyAIMailboxSource, err error, budget time.Duration) string {
+	if errors.Is(err, errReplyAIScanTimeout) {
+		return fmt.Sprintf("reply AI mailbox %d (%s:%d) scan timed out after %s and its connection was closed; the server is unresponsive",
+			source.ID, source.Host, source.Port, budget)
+	}
+	return fmt.Sprintf("reply AI mailbox %d (%s:%d) scan failed: %v", source.ID, source.Host, source.Port, err)
+}
+
+// scanOneReplyAIMailbox keeps the mailbox semantics unchanged: it never deletes
+// source messages, and every message goes through the durable event queue so
+// deduplication and leasing stay in the database.
+func (a *App) scanOneReplyAIMailbox(source replyAIMailboxSource, budget replyAIScanBudget) error {
+	return fetchReplyAIMailbox(source, budget, func(id int, raw []byte) {
+		if err := a.ingestReplyAIMessage(source, raw); err != nil {
+			a.log.Printf("reply AI mailbox %d message %d ingest failed: %v", source.ID, id, err)
+		}
+	})
+}
+
+// replyAIScanBudget bounds a single mailbox scan.
+type replyAIScanBudget struct {
+	dial time.Duration // TCP connect budget
+	read time.Duration // idle deadline re-armed before every connection read and write
+	scan time.Duration // hard cap for the whole scan
+}
+
+func replyAIDefaultScanBudget() replyAIScanBudget {
+	return replyAIScanBudget{dial: replyAIMailboxDialTimeout, read: replyAIMailboxReadTimeout, scan: replyAIMailboxTimeout}
+}
+
+// fetchReplyAIMailbox scans one mailbox within the given budget. The client
+// calls run in their own goroutine so the caller can abandon a hung exchange:
+// once the budget expires the connection is force-closed, which unblocks the
+// pending read and releases the worker instead of leaking it.
+func fetchReplyAIMailbox(source replyAIMailboxSource, budget replyAIScanBudget, handle func(id int, raw []byte)) error {
+	dialer := &replyAIDialer{dialTimeout: budget.dial, readTimeout: budget.read}
+	done := make(chan error, 1)
+	go func() { done <- fetchReplyAIMessages(source, dialer, handle) }()
+
+	if budget.scan <= 0 {
+		return <-done
+	}
+	timer := time.NewTimer(budget.scan)
+	defer timer.Stop()
+	select {
+	case err := <-done:
+		return err
+	case <-timer.C:
+	}
+
+	_ = dialer.Close()
+	grace := time.NewTimer(replyAIScanCloseGrace)
+	defer grace.Stop()
+	select {
+	case <-done:
+	case <-grace.C:
+	}
+	return fmt.Errorf("%w after %s", errReplyAIScanTimeout, budget.scan)
+}
+
+// fetchReplyAIMessages dials the mailbox and hands every message that may be
+// processed to handle, preserving the previous per-mailbox behaviour (no
+// deletion, newest replyAIMaxMessages messages, size cap, individual read
+// failures skipped).
+func fetchReplyAIMessages(source replyAIMailboxSource, dialer *replyAIDialer, handle func(id int, raw []byte)) error {
 	host, port := source.Host, source.Port
 	if strings.HasPrefix(strings.ToLower(host), "imap.") {
 		host = "pop." + strings.TrimPrefix(host, "imap.")
@@ -102,7 +213,7 @@ func (a *App) scanOneReplyAIMailbox(source replyAIMailboxSource) error {
 	if port == 0 {
 		port = 995
 	}
-	client := pop3.New(pop3.Opt{Host: host, Port: port, TLSEnabled: source.TLSEnabled})
+	client := pop3.New(pop3.Opt{Host: host, Port: port, TLSEnabled: source.TLSEnabled, Dialer: dialer})
 	conn, err := client.NewConn()
 	if err != nil {
 		return err
@@ -111,8 +222,7 @@ func (a *App) scanOneReplyAIMailbox(source replyAIMailboxSource) error {
 	if err := conn.Auth(source.Username, source.Password); err != nil {
 		return err
 	}
-	_, _, err = conn.Stat()
-	if err != nil {
+	if _, _, err := conn.Stat(); err != nil {
 		return err
 	}
 	ids, err := conn.List(0)
@@ -124,20 +234,82 @@ func (a *App) scanOneReplyAIMailbox(source replyAIMailboxSource) error {
 		start = len(ids) - replyAIMaxMessages
 	}
 	for _, msg := range ids[start:] {
-		id := msg.ID
 		if msg.Size > replyAIMaxMessageBytes {
 			continue
 		}
-		raw, err := conn.RetrRaw(id)
+		raw, err := conn.RetrRaw(msg.ID)
 		if err != nil {
 			continue
 		}
-		if err := a.ingestReplyAIMessage(source, raw.Bytes()); err != nil {
-			a.log.Printf("reply AI mailbox %d message %d ingest failed: %v", source.ID, id, err)
-		}
+		handle(msg.ID, raw.Bytes())
 	}
-	_, _ = a.queries.UpdateReplyAIMailboxSync.Exec(source.ID, "")
 	return nil
+}
+
+// replyAIDeadlineConn re-arms an idle deadline before every read and write, so
+// a server that stops talking mid-exchange fails with a timeout instead of
+// blocking the scan forever. The library keeps the net.Conn returned by the
+// dialer (wrapping it for TLS, which forwards deadlines to the same conn),
+// which makes this wrapper the only place a deadline can be installed.
+type replyAIDeadlineConn struct {
+	net.Conn
+	idle time.Duration
+}
+
+func (c *replyAIDeadlineConn) Read(b []byte) (int, error) {
+	if err := c.Conn.SetReadDeadline(time.Now().Add(c.idle)); err != nil {
+		return 0, err
+	}
+	return c.Conn.Read(b)
+}
+
+func (c *replyAIDeadlineConn) Write(b []byte) (int, error) {
+	if err := c.Conn.SetWriteDeadline(time.Now().Add(c.idle)); err != nil {
+		return 0, err
+	}
+	return c.Conn.Write(b)
+}
+
+// replyAIDialer dials a connection with bounded deadlines and remembers it, so
+// a scan that overruns its budget can tear the connection down while the client
+// is parked in a read.
+type replyAIDialer struct {
+	dialTimeout time.Duration
+	readTimeout time.Duration
+
+	mu   sync.Mutex
+	conn net.Conn
+}
+
+func (d *replyAIDialer) Dial(network, address string) (net.Conn, error) {
+	// dialMailbox resolves the target, refuses blocked addresses (loopback,
+	// link-local, cloud metadata) and dials the address it validated. Enforcing
+	// the policy at the socket means the background scanner obeys it even for a
+	// mailbox row that predates the check or was written straight to the
+	// database.
+	conn, err := dialMailbox(context.Background(), network, address, d.dialTimeout)
+	if err != nil {
+		return nil, err
+	}
+	if d.readTimeout > 0 {
+		conn = &replyAIDeadlineConn{Conn: conn, idle: d.readTimeout}
+	}
+	d.mu.Lock()
+	d.conn = conn
+	d.mu.Unlock()
+	return conn, nil
+}
+
+// Close force-closes the connection established by this dialer.
+func (d *replyAIDialer) Close() error {
+	d.mu.Lock()
+	conn := d.conn
+	d.conn = nil
+	d.mu.Unlock()
+	if conn == nil {
+		return nil
+	}
+	return conn.Close()
 }
 
 func (a *App) ingestReplyAIMessage(source replyAIMailboxSource, raw []byte) error {

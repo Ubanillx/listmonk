@@ -233,10 +233,7 @@ func (c *Core) QueryWorkspaceCampaigns(access models.WorkspaceAccess, search str
 	first := len(args) + 1
 	stmt := fmt.Sprintf(`
 		SELECT c.*, COALESCE(rm.email, '') AS reply_mailbox_email, COALESCE(u.username, '') AS owner_username, COALESCE(u.name, '') AS owner_name,
-			CASE WHEN EXISTS (SELECT 1 FROM campaign_recipients crx WHERE crx.campaign_id = c.id)
-				THEN (SELECT COUNT(*) FROM campaign_recipients cr WHERE cr.campaign_id = c.id
-					AND cr.status = ANY('{pending,queued,deferred}'::campaign_recipient_status[]))
-				ELSE GREATEST(c.to_send - c.sent, 0) END AS unsent_count,
+			COALESCE((SELECT sc.unsent_count FROM campaign_send_counts sc WHERE sc.campaign_id = c.id), 0) AS unsent_count,
 			COUNT(*) OVER() AS total,
 			(SELECT COALESCE(ARRAY_TO_JSON(ARRAY_AGG(l)), '[]') FROM (
 				SELECT COALESCE(cl.customer_list_id, 0) AS id, cl.customer_list_name AS name
@@ -312,14 +309,7 @@ func (c *Core) GetWorkspaceCampaign(access models.WorkspaceAccess, id int) (mode
 		SELECT campaigns.*, COALESCE(rm.email, '') AS reply_mailbox_email,
 			COALESCE(campaign_owner.username, '') AS owner_username,
 			COALESCE(campaign_owner.name, '') AS owner_name,
-			CASE
-				WHEN EXISTS (SELECT 1 FROM campaign_recipients crx WHERE crx.campaign_id = campaigns.id) THEN (
-					SELECT COUNT(*) FROM campaign_recipients cr
-					WHERE cr.campaign_id = campaigns.id
-						AND cr.status = ANY('{pending,queued,deferred}'::campaign_recipient_status[])
-				)
-				ELSE GREATEST(campaigns.to_send - campaigns.sent, 0)
-			END AS unsent_count,
+			COALESCE((SELECT sc.unsent_count FROM campaign_send_counts sc WHERE sc.campaign_id = campaigns.id), 0) AS unsent_count,
 			COALESCE(templates.name_fallback, (
 				SELECT fallback.name_fallback FROM templates fallback
 				WHERE fallback.is_default = TRUE
@@ -413,14 +403,7 @@ func (c *Core) GetWorkspaceCampaignForPreview(access models.WorkspaceAccess, id,
 		SELECT campaigns.*, COALESCE(rm.email, '') AS reply_mailbox_email,
 			COALESCE(campaign_owner.username, '') AS owner_username,
 			COALESCE(campaign_owner.name, '') AS owner_name,
-			CASE
-				WHEN EXISTS (SELECT 1 FROM campaign_recipients crx WHERE crx.campaign_id = campaigns.id) THEN (
-					SELECT COUNT(*) FROM campaign_recipients cr
-					WHERE cr.campaign_id = campaigns.id
-						AND cr.status = ANY('{pending,queued,deferred}'::campaign_recipient_status[])
-				)
-				ELSE GREATEST(campaigns.to_send - campaigns.sent, 0)
-			END AS unsent_count,
+			COALESCE((SELECT sc.unsent_count FROM campaign_send_counts sc WHERE sc.campaign_id = campaigns.id), 0) AS unsent_count,
 			COALESCE(templates.name_fallback, '{}'::jsonb) AS template_name_fallback,
 			COALESCE(templates.body, '') AS template_body,
 			COALESCE((

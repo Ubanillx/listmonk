@@ -626,6 +626,15 @@ CREATE TABLE reply_forward_rules (
 );
 CREATE INDEX idx_reply_forward_rules_active ON reply_forward_rules(status, reply_mailbox_id);
 
+-- (rule_id, message_key) is the dedupe key: one row per source message, and a
+-- send only ever happens for a row that a scan round successfully claimed.
+-- Claiming sets status = 'pending' and bumps attempts, so the row doubles as the
+-- lease: while updated_at is recent, no other round may take it over. A recorded
+-- failure ('failed') is retried with exponential backoff until attempts reaches
+-- the ceiling in cmd/reply_forwarder.go (replyForwardMaxAttempts); from there
+-- the row is terminal and is left as an inspectable failure:
+--   SELECT * FROM reply_forward_messages
+--   WHERE status = 'failed' AND attempts >= 5 ORDER BY updated_at DESC;
 CREATE TABLE reply_forward_messages (
     id                BIGSERIAL PRIMARY KEY,
     rule_id           INTEGER NOT NULL REFERENCES reply_forward_rules(id) ON DELETE CASCADE ON UPDATE CASCADE,
@@ -743,6 +752,68 @@ CREATE TABLE sessions (
     created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL
 );
 DROP INDEX IF EXISTS idx_sessions; CREATE INDEX idx_sessions ON sessions (id, created_at);
+
+-- resolve_campaign_recipient binds a public bearer (campaign UUID + customer
+-- UUID) to an actual recipient of that campaign. It is the single definition of
+-- that rule: the archive render lookup, view registration, link-click recording
+-- and the bearer unsubscribe all consume it instead of each repeating the CTE,
+-- so the four security-sensitive paths cannot drift apart.
+--
+-- A recipient snapshot is the authority for a sent message. Resource ownership
+-- can legitimately change after delivery (for example when a departing member's
+-- resources are transferred), so the snapshot branch is deliberately not bound
+-- to the current owner or organization fields. Campaigns created before
+-- recipient snapshots existed fall back to the historical
+-- campaign-customer_list relationship, which must stay inside the same current
+-- owner/workspace boundary.
+--
+-- An empty customer reference means "no customer" and resolves to no rows
+-- instead of raising an invalid UUID cast, which the aggregate tracking paths
+-- rely on.
+DROP FUNCTION IF EXISTS resolve_campaign_recipient(UUID, TEXT);
+CREATE FUNCTION resolve_campaign_recipient(campaign_uuid UUID, customer_ref TEXT)
+RETURNS TABLE (campaign_id INT, customer_id INT)
+AS $$
+    WITH campaign AS (
+        SELECT id, organization_id, owner_user_id
+        FROM campaigns WHERE uuid = campaign_uuid
+    ),
+    customer AS (
+        SELECT id, organization_id, owner_user_id
+        FROM customers
+        WHERE id IN (
+            SELECT id FROM customers WHERE uuid = NULLIF(customer_ref, '')::UUID
+            UNION
+            SELECT customer_id FROM customer_uuid_aliases WHERE uuid = NULLIF(customer_ref, '')::UUID
+        )
+    ),
+    snapshot_recipient AS (
+        SELECT c.id AS campaign_id, s.id AS customer_id
+        FROM campaign c
+        JOIN customer s ON TRUE
+        WHERE EXISTS (
+            SELECT 1 FROM campaign_recipients cr
+            WHERE cr.campaign_id = c.id AND cr.customer_id = s.id
+        )
+    ),
+    legacy_recipient AS (
+        SELECT c.id AS campaign_id, s.id AS customer_id
+        FROM campaign c
+        JOIN customer s ON TRUE
+        WHERE NOT EXISTS (SELECT 1 FROM campaign_recipients cr WHERE cr.campaign_id = c.id)
+            AND s.organization_id IS NOT DISTINCT FROM c.organization_id
+            AND s.owner_user_id IS NOT DISTINCT FROM c.owner_user_id
+            AND EXISTS (
+                SELECT 1 FROM campaign_customer_lists cl
+                JOIN customer_list_memberships sl ON sl.customer_list_id = cl.customer_list_id
+                WHERE cl.campaign_id = c.id AND sl.customer_id = s.id
+            )
+    )
+    SELECT campaign_id, customer_id FROM snapshot_recipient
+    UNION ALL
+    SELECT campaign_id, customer_id FROM legacy_recipient;
+$$ LANGUAGE SQL STABLE;
+
 
 -- materialized views
 
@@ -973,3 +1044,62 @@ CREATE TABLE IF NOT EXISTS data_export_chunks (
  content BYTEA NOT NULL,
  PRIMARY KEY(job_id, sequence)
 );
+
+-- campaign_send_counts reads campaign_recipients, customers and
+-- campaign_pool_recipients, so it has to be defined after every table above.
+-- campaign_send_counts is the single definition of a campaign's effective
+-- recipient set and the counters derived from it. Before this, the "valid
+-- recipients" rules existed in four places: the list/detail/scheduler
+-- projections counted customer snapshot rows only (and skipped the ownership
+-- and transfer checks on some paths), the send-state query added pool
+-- recipients, and sync-campaign-progress had its own copy of both rules. A
+-- campaign whose audience includes pools therefore showed one unsent count in
+-- the UI and another one to the sender.
+--
+-- Rules, applied to both relations:
+--   * a customer snapshot row counts only while the customer still belongs to
+--     the campaign's owner in the same workspace (a moved or transfer-pending
+--     customer will never be sent to),
+--   * a pool snapshot row counts only while it still belongs to the campaign's
+--     organization,
+--   * unsent_count applies the persisted to_send/sent fallback only when the
+--     campaign has no valid snapshot rows at all, which is the state of a draft
+--     that has not been expanded yet.
+DROP VIEW IF EXISTS campaign_send_counts CASCADE;
+CREATE VIEW campaign_send_counts AS
+SELECT
+    c.id AS campaign_id,
+    COALESCE(cu.total, 0) + COALESCE(po.total, 0) AS total_count,
+    COALESCE(cu.sent, 0) + COALESCE(po.sent, 0) AS sent_count,
+    COALESCE(cu.queued, 0) + COALESCE(po.queued, 0) AS queued_count,
+    COALESCE(cu.unsent, 0) + COALESCE(po.unsent, 0) AS unsent_snapshot_count,
+    CASE
+        WHEN COALESCE(cu.total, 0) + COALESCE(po.total, 0) > 0
+            THEN COALESCE(cu.unsent, 0) + COALESCE(po.unsent, 0)
+        ELSE GREATEST(c.to_send - c.sent, 0)
+    END AS unsent_count,
+    (COALESCE(cu.total, 0) + COALESCE(po.total, 0)) > 0 AS has_snapshot
+FROM campaigns c
+LEFT JOIN LATERAL (
+    SELECT
+        COUNT(*) AS total,
+        COUNT(*) FILTER (WHERE cr.status = 'sent') AS sent,
+        COUNT(*) FILTER (WHERE cr.status = 'queued') AS queued,
+        COUNT(*) FILTER (WHERE cr.status = ANY('{pending,queued,deferred}'::campaign_recipient_status[])) AS unsent
+    FROM campaign_recipients cr
+    JOIN customers s ON s.id = cr.customer_id
+    WHERE cr.campaign_id = c.id
+        AND s.organization_id IS NOT DISTINCT FROM c.organization_id
+        AND s.owner_user_id = c.owner_user_id
+        AND s.transfer_pending_at IS NULL
+) cu ON TRUE
+LEFT JOIN LATERAL (
+    SELECT
+        COUNT(*) AS total,
+        COUNT(*) FILTER (WHERE cpr.status = 'sent') AS sent,
+        COUNT(*) FILTER (WHERE cpr.status = 'queued') AS queued,
+        COUNT(*) FILTER (WHERE cpr.status = ANY('{pending,queued,deferred}'::campaign_recipient_status[])) AS unsent
+    FROM campaign_pool_recipients cpr
+    WHERE cpr.campaign_id = c.id
+        AND cpr.organization_id IS NOT DISTINCT FROM c.organization_id
+) po ON TRUE;

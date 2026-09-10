@@ -6,6 +6,13 @@ Listmonk supports single sign-on with OIDC (OpenID Connect). Any standards compl
 ### User auto-creation
 If `Settings -> Security -> OIDC -> Auto-create users` is turned on, when users login via OIDC, an account is auto-created if an existing account is not found (based on the OIDC e-mail ID).
 
+### E-mail verification
+A login is only accepted when the provider asserts that the e-mail address is verified, that is `email_verified: true`. The same rule applies when the e-mail is read from the provider's userinfo endpoint because the ID token carries none.
+
+The e-mail address is what links an SSO login to a listmonk account, so an unverified address is refused instead of trusted: a provider that lets users set an arbitrary, unverified address would otherwise let them log in as (or auto-create an account bound to) an address that belongs to somebody else. A claim that is absent entirely is refused as well, because an absent assertion is not a verification.
+
+If logins fail with `OIDC e-mail claim is not verified`, configure the provider to publish the `email_verified` claim (most providers have a setting, scope or mapper for it) instead of relying on the claim being absent.
+
 # Tutorials
 
 Tutorials for configuring listmonk SSO with popular OIDC providers.

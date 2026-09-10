@@ -31,6 +31,11 @@ var (
 
 // registerHandlers registers HTTP handlers.
 func initHTTPHandlers(e *echo.Echo, a *App) {
+	// Bound request bodies for every route, including the ones registered
+	// outside this function. Without this, Echo accepts bodies of any size and
+	// handlers buffer them in memory or spill them to disk.
+	e.Use(bodyLimitMiddleware())
+
 	// Default error handler.
 	e.HTTPErrorHandler = func(err error, c echo.Context) {
 		// Generic, non-echo error. Log it.

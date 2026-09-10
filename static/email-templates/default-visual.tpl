@@ -20,24 +20,20 @@
                 </p>
                 <p>
                   Here is a
-                  <a href="https://listmonk.app@TrackLink" target="_blank">tracked link</a>.
+                  <a href="https://example.com@TrackLink" target="_blank">tracked link</a>.
                 </p>
                 <p>
                   Use the link icon in the editor toolbar or when writing raw
                   HTML or Markdown, simply suffix @TrackLink to the end of a URL
                   to turn it into a tracking link. Example:
                 </p>
-                <p><a href="https:/‌/listmonk.app@TrackLink"></a></p>
-                <p>
-                  For help, refer to the
-                  <a href="https://listmonk.app/docs" target="_blank">documentation</a>.
-                </p>
+                <p><a href="https:/‌/example.com@TrackLink"></a></p>
               </div>
               <div style="padding:16px 0px 16px 0px">
                 <hr style="width:100%;border:none;border-top:1px solid #CCCCCC;margin:0"/>
               </div>
               <div style="padding:16px 24px 16px 24px">
-                <a href="https://listmonk.app"
+                <a href="https://example.com"
                   style="color:#FFFFFF;font-size:16px;font-weight:bold;background-color:#0055d4;border-radius:4px;display:inline-block;padding:12px 20px;text-decoration:none"
                   target="_blank">
                   <span><!--[if mso]><i style="letter-spacing: 20px;mso-font-width:-100%;mso-text-raise:30" hidden>&nbsp;</i><![endif]--></span>

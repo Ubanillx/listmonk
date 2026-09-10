@@ -69,6 +69,7 @@ type smtpMessengers struct {
 
 // UrlConfig contains various URL constants used in the app.
 type UrlConfig struct {
+	SiteName     string `koanf:"site_name"`
 	RootURL      string `koanf:"root_url"`
 	LogoURL      string `koanf:"logo_url"`
 	FaviconURL   string `koanf:"favicon_url"`
@@ -434,6 +435,7 @@ func initUrlConfig(ko *koanf.Koanf) *UrlConfig {
 	root := strings.TrimSuffix(ko.String("app.root_url"), "/")
 
 	return &UrlConfig{
+		SiteName:   ko.String("app.site_name"),
 		RootURL:    root,
 		LogoURL:    ko.String("app.logo_url"),
 		FaviconURL: ko.String("app.favicon_url"),
@@ -1103,6 +1105,9 @@ func awaitReload(sigChan chan os.Signal, closerWait chan bool, closer func()) ch
 // functions and sprig template functions.
 func initTplFuncs(i *i18n.I18n, u *UrlConfig) template.FuncMap {
 	funcs := template.FuncMap{
+		"SiteName": func() string {
+			return u.SiteName
+		},
 		"RootURL": func() string {
 			return u.RootURL
 		},

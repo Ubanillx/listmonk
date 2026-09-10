@@ -139,10 +139,6 @@
       </div><!-- tile block -->
       <p v-if="settings['app.cache_slow_queries']" class="has-text-grey">
         *{{ $t('globals.messages.slowQueriesCached') }}
-        <a href="https://listmonk.app/docs/maintenance/performance/" target="_blank" rel="noopener noreferer"
-          class="has-text-grey">
-          <b-icon icon="link-variant" /> {{ $t('globals.buttons.learnMore') }}
-        </a>
       </p>
     </section>
   </section>

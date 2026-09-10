@@ -13,6 +13,7 @@ import (
 )
 
 type serverConfig struct {
+	SiteName           string `json:"site_name"`
 	RootURL            string `json:"root_url"`
 	FromEmail          string `json:"from_email"`
 	PublicSubscription struct {
@@ -40,6 +41,7 @@ type serverConfig struct {
 // GetServerConfig returns general server config.
 func (a *App) GetServerConfig(c echo.Context) error {
 	out := serverConfig{
+		SiteName:      a.cfg.SiteName,
 		RootURL:       a.urlCfg.RootURL,
 		FromEmail:     a.cfg.FromEmail,
 		Lang:          a.cfg.Lang,

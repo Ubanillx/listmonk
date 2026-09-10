@@ -122,7 +122,7 @@ export default Vue.extend({
       ];
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Users');
-      XLSX.writeFile(workbook, 'listmonk-users-import-template.xlsx');
+      XLSX.writeFile(workbook, 'users-import-template.xlsx');
     },
 
     clearFile() {

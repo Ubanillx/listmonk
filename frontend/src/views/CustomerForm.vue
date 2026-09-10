@@ -155,9 +155,6 @@
           <div>
             <h5>{{ $t('globals.terms.attribs') }}</h5>
             <b-input v-model="form.strAttribs" name="attribs" type="textarea" :disabled="!canEdit" />
-            <a href="https://listmonk.app/docs/concepts" target="_blank" rel="noopener noreferrer" class="is-size-7">
-              {{ $t('globals.buttons.learnMore') }} <b-icon icon="link-variant" size="is-small" />
-            </a>
           </div>
         </b-field>
       </section>

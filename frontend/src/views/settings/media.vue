@@ -26,7 +26,7 @@
       <b-field :label="$t('settings.media.upload.path')" label-position="on-border"
         :message="$t('settings.media.upload.pathHelp')">
         <b-input v-model="data['upload.filesystem.upload_path']" name="app.upload_path"
-          placeholder="/home/listmonk/uploads" :maxlength="200" required />
+          placeholder="/home/app/uploads" :maxlength="200" required />
       </b-field>
 
       <b-field :label="$t('settings.media.upload.uri')" label-position="on-border"
@@ -51,7 +51,7 @@
                 :maxlength="200" />
             </b-field>
             <b-field :label="$t('settings.media.s3.secret')" label-position="on-border" expanded
-              message="Enter a value to change.">
+              :message="$t('globals.messages.passwordChange')">
               <b-input v-model="data['upload.s3.aws_secret_access_key']" name="upload.s3.aws_secret_access_key"
                 type="password" :maxlength="200" />
             </b-field>

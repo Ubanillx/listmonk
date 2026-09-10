@@ -45,10 +45,6 @@
       <b-field :label="$t('settings.bounces.enableWebhooks')" data-cy="btn-enable-bounce-webhook">
         <b-switch v-model="data['bounce.webhooks_enabled']" :disabled="!data['bounce.enabled']" name="webhooks_enabled"
           :native-value="true" data-cy="btn-enable-bounce-webhook" />
-        <p class="has-text-grey">
-          <a href="https://listmonk.app/docs/bounces" target="_blank" rel="noopener noreferer">{{
-            $t('globals.buttons.learnMore') }} &rarr;</a>
-        </p>
       </b-field>
       <div class="box" v-if="data['bounce.webhooks_enabled']">
         <div class="columns">

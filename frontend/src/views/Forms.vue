@@ -67,7 +67,7 @@ export default Vue.extend({
 
   methods: {
     renderHTML() {
-      let h = `<form method="post" action="${this.serverConfig.root_url}/subscription/form" class="listmonk-form">\n`
+      let h = `<form method="post" action="${this.serverConfig.root_url}/subscription/form" class="platform-form">\n`
         + '  <div>\n'
         + `    <h3>${this.$t('public.sub')}</h3>\n`
         + '    <input type="hidden" name="nonce" />\n\n'

@@ -1109,7 +1109,7 @@ paths:
                 params:
                   type: string
                   description: JSON string containing import parameters for more detail https://listmonk.app/docs/apis/import/#params-json-string
-                  example: '{"mode":"subscribe", "subscription_status":"confirmed", "delim":",", "customerLists":[1, 2], "overwrite": true}'
+                  example: '{"mode":"subscribe", "subscription_status":"confirmed", "customerLists":[1, 2], "overwrite": true}'
                 file:
                   type: string
                   format: binary
@@ -2888,10 +2888,6 @@ components:
               type: string
             import.blocklist:
               type: string
-            import.csvDelim:
-              type: string
-            import.csvDelimHelp:
-              type: string
             import.csvExample:
               type: string
             import.csvFile:
@@ -2910,9 +2906,9 @@ components:
               type: string
             import.instructions:
               type: string
-            import.instructionsHelp:
+            import.statusHelp:
               type: string
-            import.invalidDelim:
+            import.instructionsHelp:
               type: string
             import.invalidFile:
               type: string

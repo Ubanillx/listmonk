@@ -130,8 +130,8 @@ subs AS (
 SELECT id from sub;
 
 -- name: upsert-customer
--- Upserts a customer where existing customers get their names and attributes overwritten.
--- If $7 = true, update name/attribs. If $8 = true, update subscription status.
+-- Upserts a customer while preserving existing attributes.
+-- If $7 = true, update name. If $8 = true, update subscription status.
 -- $9 = customer_code (always overwritten when non-empty).
 WITH sub AS (
     INSERT INTO customers as s (uuid, email, name, attribs, status, customer_code)
@@ -140,7 +140,6 @@ WITH sub AS (
         WHERE owner_user_id IS NOT NULL
     DO UPDATE SET
         name=(CASE WHEN $7 THEN $3 ELSE s.name END),
-        attribs=(CASE WHEN $7 THEN $4 ELSE s.attribs END),
         customer_code=(CASE WHEN $9 != '' THEN $9 ELSE s.customer_code END),
         updated_at=NOW()
     RETURNING uuid, id, status
@@ -157,7 +156,7 @@ SELECT uuid, id from sub;
 
 -- name: upsert-blocklist-customer
 -- Upserts a customer where the update will only set the status to blocklisted
--- unlike upsert-customers where name and attributes are updated. In addition, all
+-- unlike upsert-customers where names can be updated. In addition, all
 -- existing subscriptions are marked as 'unsubscribed'.
 -- This is used in the bulk importer.
 WITH sub AS (
@@ -197,7 +196,6 @@ WITH active_membership AS (
         WHERE owner_user_id IS NOT NULL
     DO UPDATE SET
         name=(CASE WHEN $7 THEN $3 ELSE s.name END),
-        attribs=(CASE WHEN $7 THEN $4 ELSE s.attribs END),
         customer_code=(CASE WHEN $12 != '' THEN $12 ELSE s.customer_code END),
         updated_at=NOW()
     RETURNING uuid, id, status

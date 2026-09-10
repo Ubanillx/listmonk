@@ -40,10 +40,9 @@ func (a *App) ImportCustomers(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest,
 			a.i18n.Ts("import.invalidParams", "error", err.Error()))
 	}
-	// Reject mappings for fields that have not been defined by the platform
-	// administrator. Built-in email/name/attributes are always allowed.
+	// Reject mappings for unsupported import fields.
 	if len(opt.FieldMap) > 0 {
-		allowed := map[string]bool{"email": true, "name": true, "attributes": true, "customer_code": true}
+		allowed := map[string]bool{"email": true, "name": true, "customer_code": true}
 		for key := range opt.FieldMap {
 			if !allowed[strings.ToLower(strings.TrimSpace(key))] {
 				return echo.NewHTTPError(http.StatusBadRequest, "unknown custom field: "+key)
@@ -97,10 +96,6 @@ func (a *App) ImportCustomers(c echo.Context) error {
 			a.i18n.T("import.invalidFile"))
 	}
 
-	if (isCSV || isZIP) && len(opt.Delim) != 1 {
-		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("import.invalidDelim"))
-	}
-
 	src, err := file.Open()
 	if err != nil {
 		return err
@@ -130,7 +125,7 @@ func (a *App) ImportCustomers(c echo.Context) error {
 	go sess.Start()
 
 	if isCSV {
-		go sess.LoadCSV(out.Name(), rune(opt.Delim[0]))
+		go sess.LoadCSV(out.Name())
 	} else if isXLSX {
 		go sess.LoadXLSX(out.Name())
 	} else {
@@ -146,7 +141,7 @@ func (a *App) ImportCustomers(c echo.Context) error {
 				a.i18n.Ts("import.errorProcessingZIP", "error", err.Error()))
 		}
 
-		go sess.LoadCSV(dir+"/"+files[0], rune(opt.Delim[0]))
+		go sess.LoadCSV(dir + "/" + files[0])
 	}
 
 	return c.JSON(http.StatusOK, okResp{a.importer.GetStats()})

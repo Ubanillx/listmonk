@@ -136,12 +136,10 @@ def write_batch_import_csv(source_rows: customer_list[dict[str, Any]], *, custom
 
             email = "" if customer.get("email") is None else str(customer.get("email")).strip()
             name = "" if customer.get("name") is None else str(customer.get("name")).strip()
-            attribs = customer.get("attribs")
-            attribs_json = ""
-            if attribs not in (None, "", {}):
-                attribs_json = json.dumps(attribs, ensure_ascii=False, separators=(",", ":"))
-
-            writer.writerow([email, name, attribs_json])
+            customer_code = str(customer.get("customer_code") or "").strip()
+            if not customer_code:
+                raise ValueError(f"Customer row {row} requires customer_code")
+            writer.writerow([email, name, customer_code])
             line_map[line_number] = row
     finally:
         handle.close()
@@ -153,14 +151,13 @@ def build_batch_import_params(*, customer_list_id: int, preconfirm_subscriptions
     return {
         "mode": "subscribe",
         "subscription_status": "confirmed" if preconfirm_subscriptions else "unconfirmed",
-        "delim": ",",
-        "customerLists": [customer_list_id],
+        "customer_list_ids": [customer_list_id],
         "overwrite_userinfo": False,
         "overwrite_subscription_status": True,
         "field_map": {
             "email": "A",
             "name": "B",
-            "attributes": "C",
+            "customer_code": "C",
         },
     }
 

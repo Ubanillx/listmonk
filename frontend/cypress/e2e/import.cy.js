@@ -79,14 +79,13 @@ describe('Import', () => {
     cy.wait(1000);
     cy.loginAndVisit('/admin/customers/import');
 
-    // Use the blocklist mode: it has no customer-code requirement, so the
-    // deliberately wrong delimiter is what trips the server-side parse error.
+    // Blocklist mode permits uploading a file without a customer-code mapping.
     cy.get('[data-cy=check-blocklist] .check').click();
-    cy.get('input[name=delim]').clear().type('|');
+    cy.get('input[name=delim]').should('not.exist');
 
     cy.fixture('subs.csv').then((data) => {
       cy.get('input[type="file"]').attachFile({
-        fileContent: data.toString(),
+        fileContent: data.toString().replace(/^email,name,customer_code.*\r?\n/, 'invalid_header\n'),
         fileName: 'subs.csv',
         mimeType: 'text/csv',
       });

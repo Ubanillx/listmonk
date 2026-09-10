@@ -38,13 +38,7 @@
                   data-cy="check-unsubscribed">
                   {{ $t('customers.status.unsubscribed') }}
                 </b-radio>
-              </b-field>
-            </div>
-
-            <div class="column">
-              <b-field :label="$t('import.csvDelim')" :message="$t('import.csvDelimHelp')" class="delimiter"
-                v-if="requiresDelimiter()">
-                <b-input v-model="form.delim" name="delim" placeholder="," maxlength="1" required />
+                <p v-if="form.mode === 'subscribe'" class="help">{{ $t('import.statusHelp') }}</p>
               </b-field>
             </div>
           </div>
@@ -93,16 +87,6 @@
                 <b-select v-model="form.fieldMap.name" expanded>
                   <option value="">{{ $t('globals.terms.none') }}</option>
                   <option v-for="col in preview.columns" :key="`name-${col.value}`" :value="col.value">
-                    {{ col.label }}
-                  </option>
-                </b-select>
-              </b-field>
-            </div>
-            <div class="column">
-              <b-field :label="$t('import.mapAttributesField')">
-                <b-select v-model="form.fieldMap.attributes" expanded>
-                  <option value="">{{ $t('globals.terms.none') }}</option>
-                  <option v-for="col in preview.columns" :key="`attributes-${col.value}`" :value="col.value">
                     {{ col.label }}
                   </option>
                 </b-select>
@@ -188,7 +172,7 @@
         <p>{{ $t('import.instructionsHelp') }}</p>
         <br />
         <blockquote class="csv-example">
-          <code class="csv-headers"> <span>email,</span> <span>name,</span> <span>attributes</span></code>
+          <code class="csv-headers"> <span>email,</span> <span>name,</span> <span>customer_code</span></code>
         </blockquote>
 
         <hr />
@@ -250,7 +234,6 @@ export default Vue.extend({
       form: {
         mode: 'subscribe',
         subStatus: 'unconfirmed',
-        delim: ',',
         customer_lists: [],
         overwriteUserInfo: false,
         overwriteSubStatus: false,
@@ -258,7 +241,6 @@ export default Vue.extend({
         fieldMap: {
           email: '',
           name: '',
-          attributes: '',
           customer_code: '',
         },
         example: '',
@@ -303,21 +285,9 @@ export default Vue.extend({
       this.previewFromFile();
     },
 
-    'form.delim': function onDelimiterChanged() {
-      if (this.form.file && this.requiresDelimiter()) {
-        this.previewFromFile();
-      }
-    },
   },
 
   methods: {
-    requiresDelimiter() {
-      if (!this.form.file || !this.form.file.name) {
-        return true;
-      }
-      return !String(this.form.file.name).toLowerCase().endsWith('.xlsx');
-    },
-
     clearFile() {
       this.form.file = null;
       this.clearPreview();
@@ -330,7 +300,6 @@ export default Vue.extend({
       this.preview.error = '';
       this.form.fieldMap.email = '';
       this.form.fieldMap.name = '';
-      this.form.fieldMap.attributes = '';
       this.form.fieldMap.customer_code = '';
     },
 
@@ -400,7 +369,6 @@ export default Vue.extend({
       const keyMap = {
         email: ['email', 'e-mail', 'mail'],
         name: ['name', 'fullname', 'full name'],
-        attributes: ['attributes', 'attribs', 'meta', 'metadata'],
         customer_code: ['customer_code', 'customer code', 'customercode', '客户编码'],
       };
 
@@ -434,7 +402,6 @@ export default Vue.extend({
 
       this.form.fieldMap.email = '';
       this.form.fieldMap.name = '';
-      this.form.fieldMap.attributes = '';
       this.form.fieldMap.customer_code = '';
       this.autoMapFields();
     },
@@ -442,7 +409,6 @@ export default Vue.extend({
     parseCSVRows(file) {
       return new Promise((resolve, reject) => {
         Papa.parse(file, {
-          delimiter: this.form.delim || ',',
           skipEmptyLines: true,
           complete: (res) => {
             if (res.errors && res.errors.length > 0) {
@@ -592,9 +558,9 @@ export default Vue.extend({
     },
 
     renderExample() {
-      const h = 'email,name,customer_code,attributes\n'
-        + 'user1@mail.com,"User One",CUST-001,"{""age"": 42, ""planet"": ""Mars""}"\n'
-        + 'user2@mail.com,"User Two",CUST-002,"{""age"": 24, ""job"": ""Time Traveller""}"';
+      const h = 'email,name,customer_code\n'
+        + 'user1@example.com,"User One",CUST-001\n'
+        + 'user2@example.com,"User Two",CUST-002';
 
       this.example = h;
     },
@@ -606,11 +572,9 @@ export default Vue.extend({
       this.form.file = null;
       this.form.customer_lists = [];
       this.form.subStatus = 'unconfirmed';
-      this.form.delim = ',';
       this.form.fieldMap = {
         email: '',
         name: '',
-        attributes: '',
         customer_code: '',
       };
       this.clearPreview();
@@ -633,14 +597,12 @@ export default Vue.extend({
       params.set('params', JSON.stringify({
         mode: this.form.mode,
         subscription_status: this.form.subStatus,
-        delim: this.form.delim,
         customer_list_ids: this.form.customer_lists.map((l) => l.id),
         overwrite_userinfo: this.form.overwriteUserInfo,
         overwrite_subscription_status: this.form.overwriteSubStatus,
         field_map: {
           email: this.form.fieldMap.email,
           name: this.form.fieldMap.name,
-          attributes: this.form.fieldMap.attributes,
           customer_code: this.form.fieldMap.customer_code,
         },
       }));

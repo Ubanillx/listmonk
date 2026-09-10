@@ -11,7 +11,6 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/csv"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -78,7 +77,6 @@ type Options struct {
 	WorkspaceBlocklistStmt *sql.Stmt
 	UpdateListDateStmt     *sql.Stmt
 	PostCB                 func(subject string, data any) error
-	ValidateAttribs        func(models.JSON) error
 
 	DomainBlocklist []string
 	DomainAllowlist []string
@@ -101,7 +99,6 @@ type SessionOpt struct {
 	Overwrite          bool              `json:"overwrite"`
 	OverwriteUserInfo  bool              `json:"overwrite_userinfo"`
 	OverwriteSubStatus bool              `json:"overwrite_subscription_status"`
-	Delim              string            `json:"delim"`
 	FieldMap           map[string]string `json:"field_map"`
 	CustomerListIDs    []int             `json:"customer_list_ids"`
 
@@ -147,7 +144,6 @@ var (
 	csvHeaders = map[string]bool{
 		"email":         true,
 		"name":          true,
-		"attributes":    true,
 		"customer_code": true}
 
 	regexCleanStr = regexp.MustCompile("[[:^ascii:]]")
@@ -527,7 +523,7 @@ func (s *Session) ExtractZIP(srcPath string, maxCSVs int) (string, []string, err
 }
 
 // LoadCSV loads a CSV file and validates and imports the customer entries in it.
-func (s *Session) LoadCSV(srcPath string, delim rune) error {
+func (s *Session) LoadCSV(srcPath string) error {
 	if s.im.isDone() {
 		return ErrIsImporting
 	}
@@ -545,6 +541,7 @@ func (s *Session) LoadCSV(srcPath string, delim rune) error {
 	if err != nil {
 		return err
 	}
+	defer f.Close()
 
 	// Count the total number of lines in the file. This doesn't distinguish
 	// between "blank" and non "blank" lines, and is only used to derive
@@ -562,7 +559,6 @@ func (s *Session) LoadCSV(srcPath string, delim rune) error {
 	// Rewind, now that we've done a linecount on the same handler.
 	_, _ = f.Seek(0, 0)
 	rd := csv.NewReader(f)
-	rd.Comma = delim
 
 	// Read the header.
 	csvHdr, err := rd.Read()
@@ -1004,31 +1000,7 @@ func (s *Session) enqueueRow(cols []string, keyMap map[string]int, line int) err
 		return err
 	}
 
-	// JSON attributes.
-	if rawAttribs := getMappedValue(cols, keyMap, "attributes"); rawAttribs != "" {
-		var attribs models.JSON
-		if err := json.Unmarshal([]byte(rawAttribs), &attribs); err != nil {
-			s.log.Printf("skipping invalid attributes JSON on line %d for '%s': %v", line, sub.Email, err)
-		} else {
-			sub.Attribs = attribs
-		}
-	}
-	if sub.Attribs == nil {
-		sub.Attribs = models.JSON{}
-	}
-	for key := range keyMap {
-		if key == "email" || key == "name" || key == "attributes" || key == "customer_code" {
-			continue
-		}
-		if value := getMappedValue(cols, keyMap, key); value != "" {
-			sub.Attribs[key] = value
-		}
-	}
-	if s.im.opt.ValidateAttribs != nil {
-		if err := s.im.opt.ValidateAttribs(sub.Attribs); err != nil {
-			return err
-		}
-	}
+	sub.Attribs = models.JSON{}
 
 	if s.im.getStatus() == StatusStopping {
 		return errImportStopped

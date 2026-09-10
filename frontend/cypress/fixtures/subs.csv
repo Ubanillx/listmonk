@@ -1,101 +1,101 @@
-email,name,customer_code,attributes
-user0@mail.com,First0 Last0,CUST-001,"{""age"": 29, ""city"": ""Bangalore"", ""clientId"": ""DAXX79""}"
-user1@mail.com,First1 Last1,CUST-002,"{""age"": 43, ""city"": ""Bangalore"", ""clientId"": ""DAXX71""}"
-user2@mail.com,First2 Last2,CUST-003,"{""age"": 47, ""city"": ""Bangalore"", ""clientId"": ""DAXX70""}"
-user3@mail.com,First3 Last3,CUST-004,"{""age"": 67, ""city"": ""Bangalore"", ""clientId"": ""DAXX32""}"
-user4@mail.com,First4 Last4,CUST-005,"{""age"": 63, ""city"": ""Bangalore"", ""clientId"": ""DAXX30""}"
-user5@mail.com,First5 Last5,CUST-006,"{""age"": 69, ""city"": ""Bangalore"", ""clientId"": ""DAXX64""}"
-user6@mail.com,First6 Last6,CUST-007,"{""age"": 68, ""city"": ""Bangalore"", ""clientId"": ""DAXX22""}"
-user7@mail.com,First7 Last7,CUST-008,"{""age"": 56, ""city"": ""Bangalore"", ""clientId"": ""DAXX54""}"
-user8@mail.com,First8 Last8,CUST-009,"{""age"": 58, ""city"": ""Bangalore"", ""clientId"": ""DAXX65""}"
-user9@mail.com,First9 Last9,CUST-010,"{""age"": 51, ""city"": ""Bangalore"", ""clientId"": ""DAXX66""}"
-user10@mail.com,First10 Last10,CUST-011,"{""age"": 53, ""city"": ""Bangalore"", ""clientId"": ""DAXX31""}"
-user11@mail.com,First11 Last11,CUST-012,"{""age"": 46, ""city"": ""Bangalore"", ""clientId"": ""DAXX59""}"
-user12@mail.com,First12 Last12,CUST-013,"{""age"": 41, ""city"": ""Bangalore"", ""clientId"": ""DAXX80""}"
-user13@mail.com,First13 Last13,CUST-014,"{""age"": 27, ""city"": ""Bangalore"", ""clientId"": ""DAXX96""}"
-user14@mail.com,First14 Last14,CUST-015,"{""age"": 51, ""city"": ""Bangalore"", ""clientId"": ""DAXX22""}"
-user15@mail.com,First15 Last15,CUST-016,"{""age"": 31, ""city"": ""Bangalore"", ""clientId"": ""DAXX97""}"
-user16@mail.com,First16 Last16,CUST-017,"{""age"": 59, ""city"": ""Bangalore"", ""clientId"": ""DAXX41""}"
-user17@mail.com,First17 Last17,CUST-018,"{""age"": 29, ""city"": ""Bangalore"", ""clientId"": ""DAXX93""}"
-user18@mail.com,First18 Last18,CUST-019,"{""age"": 39, ""city"": ""Bangalore"", ""clientId"": ""DAXX35""}"
-user19@mail.com,First19 Last19,CUST-020,"{""age"": 67, ""city"": ""Bangalore"", ""clientId"": ""DAXX21""}"
-user20@mail.com,First20 Last20,CUST-021,"{""age"": 66, ""city"": ""Bangalore"", ""clientId"": ""DAXX56""}"
-user21@mail.com,First21 Last21,CUST-022,"{""age"": 39, ""city"": ""Bangalore"", ""clientId"": ""DAXX26""}"
-user22@mail.com,First22 Last22,CUST-023,"{""age"": 44, ""city"": ""Bangalore"", ""clientId"": ""DAXX98""}"
-user23@mail.com,First23 Last23,CUST-024,"{""age"": 66, ""city"": ""Bangalore"", ""clientId"": ""DAXX64""}"
-user24@mail.com,First24 Last24,CUST-025,"{""age"": 48, ""city"": ""Bangalore"", ""clientId"": ""DAXX41""}"
-user25@mail.com,First25 Last25,CUST-026,"{""age"": 38, ""city"": ""Bangalore"", ""clientId"": ""DAXX80""}"
-user26@mail.com,First26 Last26,CUST-027,"{""age"": 27, ""city"": ""Bangalore"", ""clientId"": ""DAXX26""}"
-user27@mail.com,First27 Last27,CUST-028,"{""age"": 59, ""city"": ""Bangalore"", ""clientId"": ""DAXX55""}"
-user28@mail.com,First28 Last28,CUST-029,"{""age"": 49, ""city"": ""Bangalore"", ""clientId"": ""DAXX45""}"
-user29@mail.com,First29 Last29,CUST-030,"{""age"": 45, ""city"": ""Bangalore"", ""clientId"": ""DAXX74""}"
-user30@mail.com,First30 Last30,CUST-031,"{""age"": 47, ""city"": ""Bangalore"", ""clientId"": ""DAXX27""}"
-user31@mail.com,First31 Last31,CUST-032,"{""age"": 21, ""city"": ""Bangalore"", ""clientId"": ""DAXX37""}"
-user32@mail.com,First32 Last32,CUST-033,"{""age"": 21, ""city"": ""Bangalore"", ""clientId"": ""DAXX50""}"
-user33@mail.com,First33 Last33,CUST-034,"{""age"": 70, ""city"": ""Bangalore"", ""clientId"": ""DAXX29""}"
-user34@mail.com,First34 Last34,CUST-035,"{""age"": 59, ""city"": ""Bangalore"", ""clientId"": ""DAXX95""}"
-user35@mail.com,First35 Last35,CUST-036,"{""age"": 36, ""city"": ""Bangalore"", ""clientId"": ""DAXX79""}"
-user36@mail.com,First36 Last36,CUST-037,"{""age"": 47, ""city"": ""Bangalore"", ""clientId"": ""DAXX30""}"
-user37@mail.com,First37 Last37,CUST-038,"{""age"": 36, ""city"": ""Bangalore"", ""clientId"": ""DAXX92""}"
-user38@mail.com,First38 Last38,CUST-039,"{""age"": 29, ""city"": ""Bangalore"", ""clientId"": ""DAXX48""}"
-user39@mail.com,First39 Last39,CUST-040,"{""age"": 23, ""city"": ""Bangalore"", ""clientId"": ""DAXX12""}"
-user40@mail.com,First40 Last40,CUST-041,"{""age"": 39, ""city"": ""Bangalore"", ""clientId"": ""DAXX40""}"
-user41@mail.com,First41 Last41,CUST-042,"{""age"": 41, ""city"": ""Bangalore"", ""clientId"": ""DAXX51""}"
-user42@mail.com,First42 Last42,CUST-043,"{""age"": 22, ""city"": ""Bangalore"", ""clientId"": ""DAXX49""}"
-user43@mail.com,First43 Last43,CUST-044,"{""age"": 68, ""city"": ""Bangalore"", ""clientId"": ""DAXX58""}"
-user44@mail.com,First44 Last44,CUST-045,"{""age"": 45, ""city"": ""Bangalore"", ""clientId"": ""DAXX15""}"
-user45@mail.com,First45 Last45,CUST-046,"{""age"": 44, ""city"": ""Bangalore"", ""clientId"": ""DAXX75""}"
-user46@mail.com,First46 Last46,CUST-047,"{""age"": 42, ""city"": ""Bangalore"", ""clientId"": ""DAXX99""}"
-user47@mail.com,First47 Last47,CUST-048,"{""age"": 61, ""city"": ""Bangalore"", ""clientId"": ""DAXX39""}"
-user48@mail.com,First48 Last48,CUST-049,"{""age"": 57, ""city"": ""Bangalore"", ""clientId"": ""DAXX13""}"
-user49@mail.com,First49 Last49,CUST-050,"{""age"": 28, ""city"": ""Bangalore"", ""clientId"": ""DAXX97""}"
-user50@mail.com,First50 Last50,CUST-051,"{""age"": 61, ""city"": ""Bangalore"", ""clientId"": ""DAXX75""}"
-user51@mail.com,First51 Last51,CUST-052,"{""age"": 27, ""city"": ""Bangalore"", ""clientId"": ""DAXX55""}"
-user52@mail.com,First52 Last52,CUST-053,"{""age"": 62, ""city"": ""Bangalore"", ""clientId"": ""DAXX35""}"
-user53@mail.com,First53 Last53,CUST-054,"{""age"": 24, ""city"": ""Bangalore"", ""clientId"": ""DAXX67""}"
-user54@mail.com,First54 Last54,CUST-055,"{""age"": 25, ""city"": ""Bangalore"", ""clientId"": ""DAXX36""}"
-user55@mail.com,First55 Last55,CUST-056,"{""age"": 39, ""city"": ""Bangalore"", ""clientId"": ""DAXX74""}"
-user56@mail.com,First56 Last56,CUST-057,"{""age"": 53, ""city"": ""Bangalore"", ""clientId"": ""DAXX28""}"
-user57@mail.com,First57 Last57,CUST-058,"{""age"": 32, ""city"": ""Bangalore"", ""clientId"": ""DAXX36""}"
-user58@mail.com,First58 Last58,CUST-059,"{""age"": 64, ""city"": ""Bangalore"", ""clientId"": ""DAXX44""}"
-user59@mail.com,First59 Last59,CUST-060,"{""age"": 47, ""city"": ""Bangalore"", ""clientId"": ""DAXX65""}"
-user60@mail.com,First60 Last60,CUST-061,"{""age"": 62, ""city"": ""Bangalore"", ""clientId"": ""DAXX11""}"
-user61@mail.com,First61 Last61,CUST-062,"{""age"": 24, ""city"": ""Bangalore"", ""clientId"": ""DAXX55""}"
-user62@mail.com,First62 Last62,CUST-063,"{""age"": 61, ""city"": ""Bangalore"", ""clientId"": ""DAXX49""}"
-user63@mail.com,First63 Last63,CUST-064,"{""age"": 52, ""city"": ""Bangalore"", ""clientId"": ""DAXX83""}"
-user64@mail.com,First64 Last64,CUST-065,"{""age"": 38, ""city"": ""Bangalore"", ""clientId"": ""DAXX16""}"
-user65@mail.com,First65 Last65,CUST-066,"{""age"": 48, ""city"": ""Bangalore"", ""clientId"": ""DAXX54""}"
-user66@mail.com,First66 Last66,CUST-067,"{""age"": 35, ""city"": ""Bangalore"", ""clientId"": ""DAXX74""}"
-user67@mail.com,First67 Last67,CUST-068,"{""age"": 70, ""city"": ""Bangalore"", ""clientId"": ""DAXX22""}"
-user68@mail.com,First68 Last68,CUST-069,"{""age"": 21, ""city"": ""Bangalore"", ""clientId"": ""DAXX98""}"
-user69@mail.com,First69 Last69,CUST-070,"{""age"": 46, ""city"": ""Bangalore"", ""clientId"": ""DAXX24""}"
-user70@mail.com,First70 Last70,CUST-071,"{""age"": 58, ""city"": ""Bangalore"", ""clientId"": ""DAXX75""}"
-user71@mail.com,First71 Last71,CUST-072,"{""age"": 50, ""city"": ""Bangalore"", ""clientId"": ""DAXX57""}"
-user72@mail.com,First72 Last72,CUST-073,"{""age"": 63, ""city"": ""Bangalore"", ""clientId"": ""DAXX30""}"
-user73@mail.com,First73 Last73,CUST-074,"{""age"": 54, ""city"": ""Bangalore"", ""clientId"": ""DAXX77""}"
-user74@mail.com,First74 Last74,CUST-075,"{""age"": 67, ""city"": ""Bangalore"", ""clientId"": ""DAXX91""}"
-user75@mail.com,First75 Last75,CUST-076,"{""age"": 61, ""city"": ""Bangalore"", ""clientId"": ""DAXX30""}"
-user76@mail.com,First76 Last76,CUST-077,"{""age"": 50, ""city"": ""Bangalore"", ""clientId"": ""DAXX28""}"
-user77@mail.com,First77 Last77,CUST-078,"{""age"": 62, ""city"": ""Bangalore"", ""clientId"": ""DAXX41""}"
-user78@mail.com,First78 Last78,CUST-079,"{""age"": 66, ""city"": ""Bangalore"", ""clientId"": ""DAXX18""}"
-user79@mail.com,First79 Last79,CUST-080,"{""age"": 40, ""city"": ""Bangalore"", ""clientId"": ""DAXX89""}"
-user80@mail.com,First80 Last80,CUST-081,"{""age"": 21, ""city"": ""Bangalore"", ""clientId"": ""DAXX72""}"
-user81@mail.com,First81 Last81,CUST-082,"{""age"": 43, ""city"": ""Bangalore"", ""clientId"": ""DAXX31""}"
-user82@mail.com,First82 Last82,CUST-083,"{""age"": 33, ""city"": ""Bangalore"", ""clientId"": ""DAXX89""}"
-user83@mail.com,First83 Last83,CUST-084,"{""age"": 38, ""city"": ""Bangalore"", ""clientId"": ""DAXX88""}"
-user84@mail.com,First84 Last84,CUST-085,"{""age"": 24, ""city"": ""Bangalore"", ""clientId"": ""DAXX77""}"
-user85@mail.com,First85 Last85,CUST-086,"{""age"": 27, ""city"": ""Bangalore"", ""clientId"": ""DAXX40""}"
-user86@mail.com,First86 Last86,CUST-087,"{""age"": 67, ""city"": ""Bangalore"", ""clientId"": ""DAXX46""}"
-user87@mail.com,First87 Last87,CUST-088,"{""age"": 20, ""city"": ""Bangalore"", ""clientId"": ""DAXX53""}"
-user88@mail.com,First88 Last88,CUST-089,"{""age"": 45, ""city"": ""Bangalore"", ""clientId"": ""DAXX79""}"
-user89@mail.com,First89 Last89,CUST-090,"{""age"": 31, ""city"": ""Bangalore"", ""clientId"": ""DAXX11""}"
-user90@mail.com,First90 Last90,CUST-091,"{""age"": 51, ""city"": ""Bangalore"", ""clientId"": ""DAXX71""}"
-user91@mail.com,First91 Last91,CUST-092,"{""age"": 49, ""city"": ""Bangalore"", ""clientId"": ""DAXX20""}"
-user92@mail.com,First92 Last92,CUST-093,"{""age"": 26, ""city"": ""Bangalore"", ""clientId"": ""DAXX20""}"
-user93@mail.com,First93 Last93,CUST-094,"{""age"": 67, ""city"": ""Bangalore"", ""clientId"": ""DAXX64""}"
-user94@mail.com,First94 Last94,CUST-095,"{""age"": 60, ""city"": ""Bangalore"", ""clientId"": ""DAXX53""}"
-user95@mail.com,First95 Last95,CUST-096,"{""age"": 64, ""city"": ""Bangalore"", ""clientId"": ""DAXX91""}"
-user96@mail.com,First96 Last96,CUST-097,"{""age"": 27, ""city"": ""Bangalore"", ""clientId"": ""DAXX53""}"
-user97@mail.com,First97 Last97,CUST-098,"{""age"": 29, ""city"": ""Bangalore"", ""clientId"": ""DAXX46""}"
-user98@mail.com,First98 Last98,CUST-099,"{""age"": 26, ""city"": ""Bangalore"", ""clientId"": ""DAXX49""}"
-user99@mail.com,First99 Last99,CUST-100,"{""age"": 49, ""city"": ""Bangalore"", ""clientId"": ""DAXX26""}"
+email,name,customer_code
+user0@mail.com,First0 Last0,CUST-001
+user1@mail.com,First1 Last1,CUST-002
+user2@mail.com,First2 Last2,CUST-003
+user3@mail.com,First3 Last3,CUST-004
+user4@mail.com,First4 Last4,CUST-005
+user5@mail.com,First5 Last5,CUST-006
+user6@mail.com,First6 Last6,CUST-007
+user7@mail.com,First7 Last7,CUST-008
+user8@mail.com,First8 Last8,CUST-009
+user9@mail.com,First9 Last9,CUST-010
+user10@mail.com,First10 Last10,CUST-011
+user11@mail.com,First11 Last11,CUST-012
+user12@mail.com,First12 Last12,CUST-013
+user13@mail.com,First13 Last13,CUST-014
+user14@mail.com,First14 Last14,CUST-015
+user15@mail.com,First15 Last15,CUST-016
+user16@mail.com,First16 Last16,CUST-017
+user17@mail.com,First17 Last17,CUST-018
+user18@mail.com,First18 Last18,CUST-019
+user19@mail.com,First19 Last19,CUST-020
+user20@mail.com,First20 Last20,CUST-021
+user21@mail.com,First21 Last21,CUST-022
+user22@mail.com,First22 Last22,CUST-023
+user23@mail.com,First23 Last23,CUST-024
+user24@mail.com,First24 Last24,CUST-025
+user25@mail.com,First25 Last25,CUST-026
+user26@mail.com,First26 Last26,CUST-027
+user27@mail.com,First27 Last27,CUST-028
+user28@mail.com,First28 Last28,CUST-029
+user29@mail.com,First29 Last29,CUST-030
+user30@mail.com,First30 Last30,CUST-031
+user31@mail.com,First31 Last31,CUST-032
+user32@mail.com,First32 Last32,CUST-033
+user33@mail.com,First33 Last33,CUST-034
+user34@mail.com,First34 Last34,CUST-035
+user35@mail.com,First35 Last35,CUST-036
+user36@mail.com,First36 Last36,CUST-037
+user37@mail.com,First37 Last37,CUST-038
+user38@mail.com,First38 Last38,CUST-039
+user39@mail.com,First39 Last39,CUST-040
+user40@mail.com,First40 Last40,CUST-041
+user41@mail.com,First41 Last41,CUST-042
+user42@mail.com,First42 Last42,CUST-043
+user43@mail.com,First43 Last43,CUST-044
+user44@mail.com,First44 Last44,CUST-045
+user45@mail.com,First45 Last45,CUST-046
+user46@mail.com,First46 Last46,CUST-047
+user47@mail.com,First47 Last47,CUST-048
+user48@mail.com,First48 Last48,CUST-049
+user49@mail.com,First49 Last49,CUST-050
+user50@mail.com,First50 Last50,CUST-051
+user51@mail.com,First51 Last51,CUST-052
+user52@mail.com,First52 Last52,CUST-053
+user53@mail.com,First53 Last53,CUST-054
+user54@mail.com,First54 Last54,CUST-055
+user55@mail.com,First55 Last55,CUST-056
+user56@mail.com,First56 Last56,CUST-057
+user57@mail.com,First57 Last57,CUST-058
+user58@mail.com,First58 Last58,CUST-059
+user59@mail.com,First59 Last59,CUST-060
+user60@mail.com,First60 Last60,CUST-061
+user61@mail.com,First61 Last61,CUST-062
+user62@mail.com,First62 Last62,CUST-063
+user63@mail.com,First63 Last63,CUST-064
+user64@mail.com,First64 Last64,CUST-065
+user65@mail.com,First65 Last65,CUST-066
+user66@mail.com,First66 Last66,CUST-067
+user67@mail.com,First67 Last67,CUST-068
+user68@mail.com,First68 Last68,CUST-069
+user69@mail.com,First69 Last69,CUST-070
+user70@mail.com,First70 Last70,CUST-071
+user71@mail.com,First71 Last71,CUST-072
+user72@mail.com,First72 Last72,CUST-073
+user73@mail.com,First73 Last73,CUST-074
+user74@mail.com,First74 Last74,CUST-075
+user75@mail.com,First75 Last75,CUST-076
+user76@mail.com,First76 Last76,CUST-077
+user77@mail.com,First77 Last77,CUST-078
+user78@mail.com,First78 Last78,CUST-079
+user79@mail.com,First79 Last79,CUST-080
+user80@mail.com,First80 Last80,CUST-081
+user81@mail.com,First81 Last81,CUST-082
+user82@mail.com,First82 Last82,CUST-083
+user83@mail.com,First83 Last83,CUST-084
+user84@mail.com,First84 Last84,CUST-085
+user85@mail.com,First85 Last85,CUST-086
+user86@mail.com,First86 Last86,CUST-087
+user87@mail.com,First87 Last87,CUST-088
+user88@mail.com,First88 Last88,CUST-089
+user89@mail.com,First89 Last89,CUST-090
+user90@mail.com,First90 Last90,CUST-091
+user91@mail.com,First91 Last91,CUST-092
+user92@mail.com,First92 Last92,CUST-093
+user93@mail.com,First93 Last93,CUST-094
+user94@mail.com,First94 Last94,CUST-095
+user95@mail.com,First95 Last95,CUST-096
+user96@mail.com,First96 Last96,CUST-097
+user97@mail.com,First97 Last97,CUST-098
+user98@mail.com,First98 Last98,CUST-099
+user99@mail.com,First99 Last99,CUST-100

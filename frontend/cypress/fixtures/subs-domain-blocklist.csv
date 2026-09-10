@@ -1,5 +1,5 @@
-email,name,customer_code,attributes
-noban1-import@mail.com,First0 Last0,CUST-B001,"{""age"": 29, ""city"": ""Bangalore"", ""clientId"": ""DAXX79""}"
-ban1-import@BAN.net,First1 Last1,CUST-B002,"{""age"": 43, ""city"": ""Bangalore"", ""clientId"": ""DAXX71""}"
-noban2-import1@mail.com,First2 Last2,CUST-B003,"{""age"": 47, ""city"": ""Bangalore"", ""clientId"": ""DAXX70""}"
-ban2-import@ban.ORG,First1 Last1,CUST-B004,"{""age"": 43, ""city"": ""Bangalore"", ""clientId"": ""DAXX71""}"
+email,name,customer_code
+noban1-import@mail.com,First0 Last0,CUST-B001
+ban1-import@BAN.net,First1 Last1,CUST-B002
+noban2-import1@mail.com,First2 Last2,CUST-B003
+ban2-import@ban.ORG,First1 Last1,CUST-B004

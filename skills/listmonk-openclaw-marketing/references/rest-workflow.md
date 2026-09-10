@@ -223,7 +223,7 @@ The skill now converts JSON or Excel input into a temporary CSV and uses listmon
 ```shell
 curl -X POST -H "Authorization: Bearer $TOKEN" \
   "$BASE_URL/api/import/customers" \
-  -F 'params={"mode":"subscribe","subscription_status":"confirmed","delim":",","customerLists":[12],"overwrite_userinfo":false,"overwrite_subscription_status":true,"field_map":{"email":"A","name":"B","attributes":"C"}}' \
+  -F 'params={"mode":"subscribe","subscription_status":"confirmed","customer_list_ids":[12],"overwrite_userinfo":false,"overwrite_subscription_status":true,"field_map":{"email":"A","name":"B","customer_code":"C"}}' \
   -F "file=@/tmp/customers.csv"
 ```
 

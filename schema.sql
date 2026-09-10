@@ -106,6 +106,7 @@ DROP INDEX IF EXISTS idx_sub_lists_status; CREATE INDEX idx_sub_lists_status ON 
 -- templates
 DROP TABLE IF EXISTS templates CASCADE;
 CREATE TABLE templates (
+    name_fallback JSONB NOT NULL DEFAULT '{}'::jsonb,
     id              SERIAL PRIMARY KEY,
     name            TEXT NOT NULL,
     type            template_type NOT NULL DEFAULT 'campaign',
@@ -122,6 +123,7 @@ CREATE UNIQUE INDEX ON templates (is_default) WHERE is_default = true;
 -- campaigns
 DROP TABLE IF EXISTS campaigns CASCADE;
 CREATE TABLE campaigns (
+    name_fallback JSONB NOT NULL DEFAULT '{}'::jsonb,
     id               SERIAL PRIMARY KEY,
     uuid uuid        NOT NULL UNIQUE,
     name             TEXT NOT NULL,

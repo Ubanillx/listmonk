@@ -15,6 +15,7 @@
             <input v-if="templateType" type="hidden" name="template_type" :value="templateType" />
             <input v-if="archiveMeta" type="hidden" name="archive_meta" :value="archiveMeta" />
             <input v-if="autoTrackLinks !== null" type="hidden" name="auto_track_links" :value="autoTrackLinks" />
+            <input v-if="nameFallback" type="hidden" name="name_fallback" :value="JSON.stringify(nameFallback)" />
             <input v-if="body" type="hidden" name="body" :value="body" />
           </form>
 
@@ -52,6 +53,7 @@ export default {
 
     archiveMeta: { type: String, default: null },
 
+    nameFallback: { type: Object, default: null },
     body: { type: String, default: '' },
     contentType: { type: String, default: '' },
     templateId: { type: [Number, null], default: null },

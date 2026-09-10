@@ -372,6 +372,7 @@ func (c *Core) CreateCampaignInWorkspace(access models.WorkspaceAccess, o models
 		return models.Campaign{}, echo.NewHTTPError(http.StatusInternalServerError,
 			c.i18n.Ts("globals.messages.errorUUID", "error", err.Error()))
 	}
+	o.NameFallback = models.NameFallback{}
 	var newID int
 	err = c.withWorkspaceCreation(access, func(tx *sqlx.Tx) error {
 		// A visual template is imported into the campaign body and is not kept
@@ -385,6 +386,7 @@ func (c *Core) CreateCampaignInWorkspace(access models.WorkspaceAccess, o models
 			if err != nil {
 				return err
 			}
+			o.NameFallback = snapshot.NameFallback
 			o.Body = snapshot.Body
 			o.BodySource = snapshot.BodySource
 			o.AltBody = snapshot.AltBody
@@ -448,6 +450,10 @@ func (c *Core) CreateCampaignInWorkspace(access models.WorkspaceAccess, o models
 				return echo.NewHTTPError(http.StatusBadRequest, c.i18n.T("campaigns.noSubs"))
 			}
 			return workspaceQueryError("creating campaign", err)
+		}
+		if o.ContentType == models.CampaignContentTypeVisual {
+			_, err := tx.Exec("UPDATE campaigns SET name_fallback = $2::jsonb WHERE id = $1", newID, o.NameFallback.ValueForDB())
+			return err
 		}
 		return nil
 	})

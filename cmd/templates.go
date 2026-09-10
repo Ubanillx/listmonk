@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"html/template"
 	"net/http"
 	"regexp"
@@ -43,18 +44,19 @@ type templateCloneReq struct {
 // templateReq keeps the API's write representation of media (a customer_list of IDs)
 // separate from Template.Media, which is the read representation sent to the UI.
 type templateReq struct {
-	ID         int         `json:"id"`
-	Name       string      `json:"name"`
-	Subject    string      `json:"subject"`
-	Type       string      `json:"type"`
-	Body       string      `json:"body"`
-	BodySource null.String `json:"body_source"`
-	MediaIDs   []int       `json:"media"`
-	Visibility string      `json:"visibility"`
+	ID           int                  `json:"id"`
+	Name         string               `json:"name"`
+	Subject      string               `json:"subject"`
+	Type         string               `json:"type"`
+	Body         string               `json:"body"`
+	BodySource   null.String          `json:"body_source"`
+	MediaIDs     []int                `json:"media"`
+	Visibility   string               `json:"visibility"`
+	NameFallback *models.NameFallback `json:"name_fallback"`
 }
 
 func (r templateReq) template() models.Template {
-	return models.Template{
+	out := models.Template{
 		Base:       models.Base{ID: r.ID},
 		Name:       r.Name,
 		Subject:    r.Subject,
@@ -62,6 +64,10 @@ func (r templateReq) template() models.Template {
 		Body:       r.Body,
 		BodySource: r.BodySource,
 	}
+	if r.NameFallback != nil {
+		out.NameFallback = *r.NameFallback
+	}
+	return out
 }
 
 func (r templateReq) mediaIDs() pq.Int64Array {
@@ -163,6 +169,15 @@ func (a *App) PreviewTemplateBody(c echo.Context) error {
 		Body: c.FormValue("body"),
 	}
 
+	if raw := c.FormValue("name_fallback"); raw != "" {
+		if err := json.Unmarshal([]byte(raw), &tpl.NameFallback); err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, "invalid name_fallback")
+		}
+	}
+	if err := tpl.NameFallback.Validate(); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
 	// Body is posted with the request.
 	if tpl.Type == "" {
 		tpl.Type = models.TemplateTypeCampaign
@@ -174,7 +189,11 @@ func (a *App) PreviewTemplateBody(c echo.Context) error {
 	}
 
 	// Render the template.
-	out, err := a.previewTemplate(tpl)
+	customer := dummyCustomer
+	if c.FormValue("preview_name_mode") == "custom" {
+		customer.Name = c.FormValue("preview_name")
+	}
+	out, err := a.previewTemplate(tpl, customer)
 	if err != nil {
 		return err
 	}
@@ -215,7 +234,7 @@ func (a *App) CreateTemplate(c echo.Context) error {
 	}
 
 	// Create the template the in the DB.
-	out, err := a.core.CreateTemplateInWorkspace(access, o.Name, o.Type, o.Subject, []byte(o.Body), o.BodySource, req.mediaIDs(), core.ApplyWorkspaceScope(access, visibility))
+	out, err := a.core.CreateTemplateInWorkspace(access, o.Name, o.Type, o.Subject, []byte(o.Body), o.BodySource, req.mediaIDs(), core.ApplyWorkspaceScope(access, visibility), req.NameFallback)
 	if err != nil {
 		return err
 	}
@@ -270,7 +289,7 @@ func (a *App) UpdateTemplate(c echo.Context) error {
 			}
 		}
 	}
-	out, err := a.core.UpdateTemplateInWorkspace(access, id, o.Name, o.Subject, []byte(o.Body), o.BodySource, req.mediaIDs(), visibility)
+	out, err := a.core.UpdateTemplateInWorkspace(access, id, o.Name, o.Subject, []byte(o.Body), o.BodySource, req.mediaIDs(), visibility, req.NameFallback)
 	if err != nil {
 		return err
 	}
@@ -430,6 +449,9 @@ func (a *App) prepareTemplate(o models.Template) (models.Template, error) {
 
 // compileTemplate validates template fields.
 func (a *App) validateTemplate(o models.Template) error {
+	if err := o.NameFallback.Validate(); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
 	if !strHasLen(o.Name, 1, stdInputMaxLen) {
 		// Invalid input must remain a client error. Returning a plain Go error
 		// here makes Echo serialize a malformed template as HTTP 500, which is
@@ -451,16 +473,21 @@ func (a *App) validateTemplate(o models.Template) error {
 }
 
 // previewTemplate renders the HTML preview of a template.
-func (a *App) previewTemplate(tpl models.Template) ([]byte, error) {
+func (a *App) previewTemplate(tpl models.Template, samples ...models.Customer) ([]byte, error) {
+	customer := dummyCustomer
+	if len(samples) > 0 {
+		customer = samples[0]
+	}
 	var out []byte
 	if tpl.Type == models.TemplateTypeCampaign || tpl.Type == models.TemplateTypeCampaignVisual {
 		camp := models.Campaign{
-			UUID:         dummyUUID,
-			Name:         a.i18n.T("templates.dummyName"),
-			Subject:      a.i18n.T("templates.dummySubject"),
-			FromEmail:    "dummy-campaign@listmonk.app",
-			TemplateBody: tpl.Body,
-			Body:         dummyTpl,
+			UUID:                 dummyUUID,
+			Name:                 a.i18n.T("templates.dummyName"),
+			Subject:              a.i18n.T("templates.dummySubject"),
+			FromEmail:            "dummy-campaign@listmonk.app",
+			TemplateNameFallback: tpl.NameFallback,
+			TemplateBody:         tpl.Body,
+			Body:                 dummyTpl,
 		}
 
 		if err := camp.CompileTemplate(a.manager.TemplateFuncs(&camp)); err != nil {
@@ -469,7 +496,7 @@ func (a *App) previewTemplate(tpl models.Template) ([]byte, error) {
 		}
 
 		// Render the message body.
-		msg, err := a.manager.NewCampaignMessage(&camp, dummyCustomer)
+		msg, err := a.manager.NewCampaignMessage(&camp, customer)
 		if err != nil {
 			return nil, echo.NewHTTPError(http.StatusBadRequest,
 				a.i18n.Ts("templates.errorRendering", "error", err.Error()))
@@ -486,7 +513,7 @@ func (a *App) previewTemplate(tpl models.Template) ([]byte, error) {
 		}
 
 		// Render the message.
-		if err := m.Render(dummyCustomer, &tpl, a.manager.GenericTemplateFuncs()); err != nil {
+		if err := m.Render(customer, &tpl, a.manager.GenericTemplateFuncs()); err != nil {
 			return nil, echo.NewHTTPError(http.StatusBadRequest, err.Error())
 		}
 		out = m.Body

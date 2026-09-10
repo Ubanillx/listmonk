@@ -178,3 +178,14 @@ To edit the appearance of the public pages using CSS and Javascript, head to Set
 
 !!! info
     To turn system e-mail templates to plaintext, remove `<!doctype html>` from base.html and remove all HTML tags from the templates while retaining the Go templating code.
+
+
+## 客户称呼为空时的备选文字
+
+在「邮件模板 → 新建/编辑」的「变量为空时」区域，选择「使用备选文字」，填写 `Sir or Madam` 或「尊敬的客户」。邮件正文仍使用 `Dear {{ .Customer.Name }},` 等原有姓名变量，不必编写条件判断。备选文字只填称呼，`Dear`、逗号等保留在正文中。
+
+系统优先使用去除首尾空格后的姓名；空字符串、纯空白及配置的额外无效值使用备选文字。额外无效值每行一个，忽略大小写、去除首尾空格后完整匹配，最多 50 项。不会自动判断公司名、邮箱或其他非空文字是否为真实姓名。备选文字最多 200 字符且不能换行。
+
+设置仅影响模板渲染中的客户姓名（包括主题和替代正文），不修改客户记录、收件地址或投递信封。关闭处理恢复原始姓名行为；没有配置的旧模板保持原行为。可通过「有姓名/无姓名」示例及两种邮件预览检查效果。
+
+HTML 活动使用其所选模板的规则；可视化模板导入活动时复制规则，后续修改源模板不会改变已导入活动。复制模板或活动同样保留各自的规则。已经启动并加载到发送队列的活动不保证实时采用模板修改，应在发送前完成配置。手写的 `default` 表达式会接收到已应用本设置的姓名值。

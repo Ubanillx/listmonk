@@ -52,7 +52,7 @@ func (c *Core) CreateTemplate(name, typ, subject string, body []byte, bodySource
 
 // CreateTemplateInWorkspace keeps template creation and media association
 // inside the active workspace mutation transaction.
-func (c *Core) CreateTemplateInWorkspace(access models.WorkspaceAccess, name, typ, subject string, body []byte, bodySource null.String, mediaIDs pq.Int64Array, scope models.ResourceScope) (models.Template, error) {
+func (c *Core) CreateTemplateInWorkspace(access models.WorkspaceAccess, name, typ, subject string, body []byte, bodySource null.String, mediaIDs pq.Int64Array, scope models.ResourceScope, fallback *models.NameFallback) (models.Template, error) {
 	var newID int
 	err := c.withWorkspaceCreation(access, func(tx *sqlx.Tx) error {
 		if err := c.lockWorkspaceUsableResources(tx, access, resourceMedia, int64IDs(mediaIDs)); err != nil {
@@ -63,7 +63,7 @@ func (c *Core) CreateTemplateInWorkspace(access models.WorkspaceAccess, name, ty
 			return echo.NewHTTPError(http.StatusInternalServerError,
 				c.i18n.Ts("globals.messages.errorCreating", "name", "{globals.terms.template}", "error", pqErrMsg(err)))
 		}
-		return nil
+		return saveTemplateNameFallback(tx, newID, fallback)
 	})
 	if err != nil {
 		return models.Template{}, err
@@ -92,7 +92,7 @@ func (c *Core) UpdateTemplate(id int, name, subject string, body []byte, bodySou
 // behind the workspace mutation lock. The caller may use organization-shared
 // media, but a private media row belonging to another member is rejected again
 // inside the write transaction.
-func (c *Core) UpdateTemplateInWorkspace(access models.WorkspaceAccess, id int, name, subject string, body []byte, bodySource null.String, mediaIDs pq.Int64Array, visibility string) (models.Template, error) {
+func (c *Core) UpdateTemplateInWorkspace(access models.WorkspaceAccess, id int, name, subject string, body []byte, bodySource null.String, mediaIDs pq.Int64Array, visibility string, fallback *models.NameFallback) (models.Template, error) {
 	err := c.withWorkspaceResourceMutation(access, resourceTemplates, []int{id}, func(tx *sqlx.Tx) error {
 		if visibility != "" {
 			if err := validateResourceVisibility(resourceTemplates, visibility); err != nil {
@@ -115,7 +115,7 @@ func (c *Core) UpdateTemplateInWorkspace(access models.WorkspaceAccess, id int, 
 				return workspaceQueryError("updating template visibility", err)
 			}
 		}
-		return nil
+		return saveTemplateNameFallback(tx, id, fallback)
 	})
 	if err != nil {
 		return models.Template{}, err
@@ -240,4 +240,15 @@ func (c *Core) deleteTemplateTx(tx *sqlx.Tx, id int) error {
 			c.i18n.Ts("globals.messages.errorDeleting", "name", "{globals.terms.template}", "error", pqErrMsg(err)))
 	}
 	return nil
+}
+
+func saveTemplateNameFallback(tx *sqlx.Tx, id int, fallback *models.NameFallback) error {
+	if fallback == nil {
+		return nil
+	}
+	if err := fallback.Validate(); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	_, err := tx.Exec("UPDATE templates SET name_fallback = $2::jsonb WHERE id = $1", id, fallback.ValueForDB())
+	return err
 }

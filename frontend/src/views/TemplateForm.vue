@@ -50,11 +50,11 @@
             </div>
           </div>
 
-          <b-field label="可见范围" label-position="on-border">
+          <b-field :label="$t('visibility.label')" label-position="on-border">
             <b-select v-model="form.visibility" :disabled="!canSave || !$can('templates:manage')" expanded>
-              <option value="private">个人私有</option>
-              <option v-if="workspace.organizationId" value="organization">当前组织共享</option>
-              <option value="global">全体共享</option>
+              <option value="private">{{ $t('visibility.private') }}</option>
+              <option v-if="workspace.organizationId" value="organization">{{ $t('visibility.organization') }}</option>
+              <option value="global">{{ $t('visibility.global') }}</option>
             </b-select>
           </b-field>
 
@@ -72,6 +72,8 @@
             </div>
           </div>
 
+          <name-fallback-settings v-model="form.nameFallback" :disabled="!canSave" />
+
           <template v-if="form.body !== null">
             <b-field v-if="form.type === 'campaign_visual'" label-position="on-border" class="mb-1">
               <visual-editor v-if="form.type === 'campaign_visual'" name="body" :source="form.bodySource" :disabled="!canSave"
@@ -87,9 +89,6 @@
             <template v-if="form.type === 'campaign'">
               {{ $t('templates.placeholderHelp', { placeholder: egPlaceholder }) }}
             </template>
-            <a target="_blank" rel="noopener noreferer" href="https://listmonk.app/docs/templating">
-              {{ $t('globals.buttons.learnMore') }}
-            </a>
           </p>
         </section>
         <footer class="modal-card-foot has-text-right">
@@ -110,7 +109,7 @@
       </div>
     </b-modal>
     <campaign-preview v-if="previewItem" is-post type="template" :title="previewItem.name"
-      :template-type="previewItem.type" :body="form.body" @close="onTogglePreview" />
+      :template-type="previewItem.type" :body="form.body" :name-fallback="fallbackPayload" @close="onTogglePreview" />
   </section>
 </template>
 
@@ -122,10 +121,12 @@ import CodeEditor from '../components/CodeEditor.vue';
 import VisualEditor from '../components/VisualEditor.vue';
 import CopyText from '../components/CopyText.vue';
 import Media from './Media.vue';
+import NameFallbackSettings from '../components/NameFallbackSettings.vue';
 
 export default Vue.extend({
   components: {
     CampaignPreview,
+    NameFallbackSettings,
     CopyText,
     Media,
     'code-editor': CodeEditor,
@@ -149,6 +150,7 @@ export default Vue.extend({
         bodySource: null,
         media: [],
         visibility: 'global',
+        nameFallback: { enabled: false, value: '', invalidValues: [] },
       },
       previewItem: null,
       egPlaceholder: '{{ template "content" . }}',
@@ -198,6 +200,7 @@ export default Vue.extend({
         body_source: this.form.bodySource,
         media: this.form.media.filter((m) => m.id).map((m) => m.id),
         visibility: this.form.visibility,
+        name_fallback: this.fallbackPayload,
       };
 
       this.$api.createTemplate(data).then((d) => {
@@ -217,6 +220,7 @@ export default Vue.extend({
         body_source: this.form.bodySource,
         media: this.form.media.filter((m) => m.id).map((m) => m.id),
         visibility: this.form.visibility,
+        name_fallback: this.fallbackPayload,
       };
 
       this.$api.updateTemplate(data).then((d) => {
@@ -235,6 +239,14 @@ export default Vue.extend({
   computed: {
     ...mapState(['loading', 'workspace']),
 
+    fallbackPayload() {
+      return {
+        enabled: this.form.nameFallback.enabled,
+        value: this.form.nameFallback.value,
+        invalid_values: (this.form.nameFallback.invalidValues || []).map((v) => v.trim()).filter(Boolean),
+      };
+    },
+
     canSave() {
       if (this.isEditing) {
         return this.$canManageTemplate(this.data);
@@ -249,6 +261,7 @@ export default Vue.extend({
       ...this.form,
       ...this.$props.data,
       body: this.$props.data.body || '',
+      nameFallback: { ...this.form.nameFallback, ...(this.$props.data.nameFallback || {}) },
       media: (this.$props.data.media || []).map((m) => (
         m.id ? m : { ...m, filename: `❌ ${m.filename}` }
       )),

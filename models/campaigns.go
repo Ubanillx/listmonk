@@ -81,11 +81,13 @@ type Campaign struct {
 	OwnerUserAttribs JSON `db:"owner_user_attribs" json:"-"`
 
 	// TemplateBody is joined in from templates by the next-campaigns query.
-	TemplateBody        string             `db:"template_body" json:"-"`
-	ArchiveTemplateBody string             `db:"archive_template_body" json:"-"`
-	Tpl                 *template.Template `json:"-"`
-	SubjectTpl          *txttpl.Template   `json:"-"`
-	AltBodyTpl          *template.Template `json:"-"`
+	NameFallback         NameFallback       `db:"name_fallback" json:"name_fallback"`
+	TemplateNameFallback NameFallback       `db:"template_name_fallback" json:"-"`
+	TemplateBody         string             `db:"template_body" json:"-"`
+	ArchiveTemplateBody  string             `db:"archive_template_body" json:"-"`
+	Tpl                  *template.Template `json:"-"`
+	SubjectTpl           *txttpl.Template   `json:"-"`
+	AltBodyTpl           *template.Template `json:"-"`
 
 	// CustomerList of media (attachment) IDs obtained from the next-campaign query
 	// while sending a campaign.

@@ -1,7 +1,7 @@
 -- templates
 -- name: get-templates
 -- Only if the second param ($2 - noBody) is true, body and body_source is returned.
-SELECT templates.id, templates.name, templates.type, templates.subject,
+SELECT templates.name_fallback, templates.id, templates.name, templates.type, templates.subject,
     (CASE WHEN $2 = false THEN templates.body ELSE '' END) as body,
     (CASE WHEN $2 = false THEN templates.body_source ELSE NULL END) as body_source,
     templates.is_default, templates.created_at, templates.updated_at,

@@ -293,10 +293,10 @@ func (c *Core) migratePersonalTemplatesToOrganization(sourceUserID, targetOrgani
 			}
 		} else if err := tx.Get(&targetID, `
 			INSERT INTO templates (
-				name, type, subject, body, body_source, is_default,
+				name, type, subject, body, body_source, name_fallback, is_default,
 				organization_id, owner_user_id, original_owner_user_id, visibility
 			)
-			SELECT name, type, subject, body, body_source, FALSE,
+			SELECT name, type, subject, body, body_source, name_fallback, FALSE,
 				$2, $3, $4, 'private'
 			FROM templates WHERE id = $1
 			RETURNING id`, sourceID, target.OrganizationID, target.OwnerUserID, target.OriginalOwnerUserID); err != nil {

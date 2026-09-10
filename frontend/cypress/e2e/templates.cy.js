@@ -43,6 +43,22 @@ describe('Templates', () => {
     cy.get('tbody td[data-label="Name"] a').contains('edited');
   });
 
+  it('Saves a template name fallback', () => {
+    cy.get('tbody td.actions [data-cy=btn-edit]').first().click();
+    cy.get('[data-cy=name-fallback-enabled]').click();
+    cy.get('[data-cy=name-fallback-value]').clear().type('Sir or Madam');
+    cy.intercept('PUT', '/api/templates/*').as('saveFallback');
+    cy.get('.template-modal-content .modal-card-foot button.is-primary').click();
+    cy.wait('@saveFallback').its('response.body.data.name_fallback').should('deep.equal', {
+      enabled: true, value: 'Sir or Madam', invalid_values: [],
+    });
+    cy.get('tbody td.actions [data-cy=btn-edit]').first().click();
+    cy.get('[data-cy=name-fallback-value]').should('have.value', 'Sir or Madam');
+    cy.get('[data-cy=name-fallback-enabled]').click();
+    cy.get('.template-modal-content .modal-card-foot button.is-primary').click();
+    cy.wait('@saveFallback').its('response.body.data.name_fallback.enabled').should('equal', false);
+  });
+
   it('Previews campaign templates', () => {
     // Edited one sould have a bare body.
     cy.get('tbody [data-cy=btn-preview').eq(0).click();

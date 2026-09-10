@@ -124,12 +124,12 @@ func (c *Core) CloneCampaignForWorkspaceWithSource(sourceID int, sourceAccess, t
 		var templateID int
 		if err := tx.Get(&templateID, `
 			INSERT INTO templates (
-				name, type, subject, body, body_source, is_default,
+				name, type, subject, body, body_source, name_fallback, is_default,
 				organization_id, owner_user_id, original_owner_user_id, visibility
-			) VALUES ($1, $2, $3, $4, $5, FALSE, $6, $7, $8, 'private')
+			) VALUES ($1, $2, $3, $4, $5, $9::jsonb, FALSE, $6, $7, $8, 'private')
 			RETURNING id`, sourceTemplate.Name+" (copy)", sourceTemplate.Type,
 			sourceTemplate.Subject, sourceTemplate.Body, sourceTemplate.BodySource,
-			targetScope.OrganizationID, targetScope.OwnerUserID, targetScope.OriginalOwnerUserID); err != nil {
+			targetScope.OrganizationID, targetScope.OwnerUserID, targetScope.OriginalOwnerUserID, sourceTemplate.NameFallback.ValueForDB()); err != nil {
 			return models.Campaign{}, workspaceQueryError("copying campaign template", err)
 		}
 		for _, association := range associations.Template {
@@ -159,21 +159,21 @@ func (c *Core) CloneCampaignForWorkspaceWithSource(sourceID int, sourceAccess, t
 			daily_resume_time, tags, messenger, template_id, to_send, sent,
 			max_customer_id, last_customer_id, archive, archive_slug,
 			archive_template_id, archive_meta, auto_track_links,
-			organization_id, owner_user_id, original_owner_user_id, visibility
+			organization_id, owner_user_id, original_owner_user_id, visibility, name_fallback
 		) VALUES (
 			$1, $2, $3, $4, '', $5, $6, $7,
 			$8, NULL, $9, $10, 'draft', $11,
 			$12, $13, $14, $15, 0, 0,
 			0, 0, FALSE, NULL,
 			NULL, '{}'::JSONB, $16,
-			$17, $18, $19, 'private'
+			$17, $18, $19, 'private', $20::jsonb
 		) RETURNING id`,
 		newUUID, source.Type, source.Name, source.Subject, source.Body,
 		source.BodySource, source.AltBody, source.ContentType, headers,
 		source.Attribs, dailySendLimit, source.DailyResumeTime,
 		pq.StringArray(normalizeTags(source.Tags)), messenger, newTemplateID,
 		source.AutoTrackLinks, targetScope.OrganizationID, targetScope.OwnerUserID,
-		targetScope.OriginalOwnerUserID); err != nil {
+		targetScope.OriginalOwnerUserID, source.NameFallback.ValueForDB()); err != nil {
 		return models.Campaign{}, workspaceQueryError("creating campaign clone", err)
 	}
 
@@ -216,10 +216,11 @@ type cloneMediaAssociations struct {
 // copied IDs and rewritten bodies together prevents a request from committing
 // a body that still points at another user's binary.
 type visualCampaignMediaSnapshot struct {
-	MediaIDs   []int
-	Body       string
-	BodySource null.String
-	AltBody    null.String
+	NameFallback models.NameFallback
+	MediaIDs     []int
+	Body         string
+	BodySource   null.String
+	AltBody      null.String
 }
 
 // snapshotVisualCampaignMedia validates a visual template and snapshots the
@@ -244,20 +245,21 @@ func (c *Core) snapshotVisualCampaignMedia(tx *sqlx.Tx, access models.WorkspaceA
 	}
 
 	var source struct {
-		Type              string      `db:"type"`
-		OrganizationID    null.Int    `db:"organization_id"`
-		OwnerUserID       null.Int    `db:"owner_user_id"`
-		OriginalOwnerID   null.Int    `db:"original_owner_user_id"`
-		Visibility        string      `db:"visibility"`
-		TransferPendingAt null.Time   `db:"transfer_pending_at"`
-		OrganizationState string      `db:"organization_state"`
-		Body              string      `db:"body"`
-		BodySource        null.String `db:"body_source"`
+		Type              string              `db:"type"`
+		OrganizationID    null.Int            `db:"organization_id"`
+		OwnerUserID       null.Int            `db:"owner_user_id"`
+		OriginalOwnerID   null.Int            `db:"original_owner_user_id"`
+		Visibility        string              `db:"visibility"`
+		TransferPendingAt null.Time           `db:"transfer_pending_at"`
+		OrganizationState string              `db:"organization_state"`
+		Body              string              `db:"body"`
+		BodySource        null.String         `db:"body_source"`
+		NameFallback      models.NameFallback `db:"name_fallback"`
 	}
 	if err := tx.Get(&source, `
 		SELECT t.type, t.organization_id, t.owner_user_id,
 			t.original_owner_user_id, t.visibility, t.transfer_pending_at,
-			t.body, t.body_source,
+			t.body, t.body_source, t.name_fallback,
 			CASE WHEN t.organization_id IS NULL THEN 'active'
 				 ELSE COALESCE(o.status, 'archived') END AS organization_state
 		FROM templates t
@@ -281,6 +283,8 @@ func (c *Core) snapshotVisualCampaignMedia(tx *sqlx.Tx, access models.WorkspaceA
 	if source.Type != models.TemplateTypeCampaignVisual || !c.CanUseResource(access, sourceScope) {
 		return out, echo.NewHTTPError(http.StatusForbidden, "visual template cannot be used in the active workspace")
 	}
+
+	out.NameFallback = source.NameFallback
 
 	// lockTemplateCloneMedia locks every association and validates that each
 	// binary belongs to the template's workspace/owner graph. This is stricter
@@ -417,11 +421,11 @@ func (c *Core) CloneTemplateForWorkspaceWithSource(sourceID int, sourceAccess, t
 	var newID int
 	if err := tx.Get(&newID, `
 		INSERT INTO templates (
-			name, type, subject, body, body_source, is_default,
+			name, type, subject, body, body_source, name_fallback, is_default,
 			organization_id, owner_user_id, original_owner_user_id, visibility
-		) VALUES ($1, $2, $3, $4, $5, FALSE, $6, $7, $8, 'private')
+		) VALUES ($1, $2, $3, $4, $5, $9::jsonb, FALSE, $6, $7, $8, 'private')
 		RETURNING id`, clone.Name, clone.Type, clone.Subject, clone.Body, clone.BodySource,
-		targetScope.OrganizationID, targetScope.OwnerUserID, targetScope.OriginalOwnerUserID); err != nil {
+		targetScope.OrganizationID, targetScope.OwnerUserID, targetScope.OriginalOwnerUserID, clone.NameFallback.ValueForDB()); err != nil {
 		return models.Template{}, workspaceQueryError("creating template clone", err)
 	}
 	for _, association := range associations {

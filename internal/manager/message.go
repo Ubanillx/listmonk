@@ -31,7 +31,7 @@ func (m *Manager) NewCampaignMessage(c *models.Campaign, s models.Customer) (Cam
 		s.Attribs = merged
 	}
 	msg := CampaignMessage{
-		Campaign:   c,
+		Campaign: c,
 		Customer: s,
 
 		subject:  c.Subject,
@@ -112,11 +112,18 @@ func (m *Manager) isCampaignTrackingURL(url, campUUID, subUUID string) bool {
 // render takes a Message, executes its pre-compiled Campaign.Tpl
 // and applies the resultant bytes to Message.body to be used in messages.
 func (m *CampaignMessage) render() error {
+	// Render a copy so envelopes, tracking and stored customer data retain the original name.
+	data := *m
+	rule := m.Campaign.TemplateNameFallback
+	if m.Campaign.ContentType == models.CampaignContentTypeVisual {
+		rule = m.Campaign.NameFallback
+	}
+	data.Customer.Name = rule.Resolve(data.Customer.Name)
 	out := bytes.Buffer{}
 
 	// Render the subject if it's a template.
 	if m.Campaign.SubjectTpl != nil {
-		if err := m.Campaign.SubjectTpl.ExecuteTemplate(&out, models.ContentTpl, m); err != nil {
+		if err := m.Campaign.SubjectTpl.ExecuteTemplate(&out, models.ContentTpl, &data); err != nil {
 			return err
 		}
 		m.subject = out.String()
@@ -124,7 +131,7 @@ func (m *CampaignMessage) render() error {
 	}
 
 	// Compile the main template.
-	if err := m.Campaign.Tpl.ExecuteTemplate(&out, models.BaseTpl, m); err != nil {
+	if err := m.Campaign.Tpl.ExecuteTemplate(&out, models.BaseTpl, &data); err != nil {
 		return err
 	}
 	m.body = out.Bytes()
@@ -133,7 +140,7 @@ func (m *CampaignMessage) render() error {
 	if m.Campaign.ContentType != models.CampaignContentTypePlain && m.Campaign.AltBody.Valid {
 		if m.Campaign.AltBodyTpl != nil {
 			b := bytes.Buffer{}
-			if err := m.Campaign.AltBodyTpl.ExecuteTemplate(&b, models.ContentTpl, m); err != nil {
+			if err := m.Campaign.AltBodyTpl.ExecuteTemplate(&b, models.ContentTpl, &data); err != nil {
 				return err
 			}
 			m.altBody = b.Bytes()

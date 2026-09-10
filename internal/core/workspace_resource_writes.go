@@ -68,6 +68,9 @@ func (c *Core) UpdateCampaignInWorkspace(access models.WorkspaceAccess, id int, 
 			if err != nil {
 				return err
 			}
+			if _, err := tx.Exec("UPDATE campaigns SET name_fallback = $2::jsonb WHERE id = $1", id, snapshot.NameFallback.ValueForDB()); err != nil {
+				return err
+			}
 			o.Body = snapshot.Body
 			o.BodySource = snapshot.BodySource
 			o.AltBody = snapshot.AltBody

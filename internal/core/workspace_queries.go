@@ -320,6 +320,28 @@ func (c *Core) GetWorkspaceCampaign(access models.WorkspaceAccess, id int) (mode
 				)
 				ELSE GREATEST(campaigns.to_send - campaigns.sent, 0)
 			END AS unsent_count,
+			COALESCE(templates.name_fallback, (
+				SELECT fallback.name_fallback FROM templates fallback
+				WHERE fallback.is_default = TRUE
+					AND fallback.transfer_pending_at IS NULL
+					AND (fallback.organization_id IS NULL OR EXISTS (
+						SELECT 1 FROM organizations fallback_org
+						WHERE fallback_org.id = fallback.organization_id
+							AND fallback_org.status = 'active'
+					))
+				AND (
+					(fallback.organization_id IS NOT DISTINCT FROM campaigns.organization_id
+						AND (fallback.owner_user_id = campaigns.owner_user_id
+							OR fallback.visibility = 'organization'))
+					OR fallback.visibility = 'global'
+				)
+				ORDER BY CASE WHEN fallback.organization_id IS NOT DISTINCT FROM campaigns.organization_id
+					AND fallback.owner_user_id = campaigns.owner_user_id THEN 0
+					WHEN fallback.organization_id IS NOT DISTINCT FROM campaigns.organization_id
+						AND fallback.visibility = 'organization' THEN 1
+					ELSE 2 END, fallback.id
+				LIMIT 1
+			), '{}'::jsonb) AS template_name_fallback,
 			COALESCE(templates.body, (
 				SELECT fallback.body FROM templates fallback
 				WHERE fallback.is_default = TRUE
@@ -399,6 +421,7 @@ func (c *Core) GetWorkspaceCampaignForPreview(access models.WorkspaceAccess, id,
 				)
 				ELSE GREATEST(campaigns.to_send - campaigns.sent, 0)
 			END AS unsent_count,
+			COALESCE(templates.name_fallback, '{}'::jsonb) AS template_name_fallback,
 			COALESCE(templates.body, '') AS template_body,
 			COALESCE((
 				SELECT ARRAY_AGG(DISTINCT x.media_id ORDER BY x.media_id)::INT[]
@@ -517,7 +540,7 @@ func (c *Core) GetWorkspaceTemplate(access models.WorkspaceAccess, id int, noBod
 	bodyArg := idArg + 1
 	stmt := fmt.Sprintf(`
 		SELECT t.id, t.name, t.type, t.subject,
-			(CASE WHEN $%d THEN '' ELSE t.body END) AS body,
+			t.name_fallback, (CASE WHEN $%d THEN '' ELSE t.body END) AS body,
 			(CASE WHEN $%d THEN NULL ELSE t.body_source END) AS body_source,
 			t.is_default, t.created_at, t.updated_at,
 			t.organization_id, t.owner_user_id, t.original_owner_user_id,
@@ -557,7 +580,7 @@ func (c *Core) GetWorkspaceTemplates(access models.WorkspaceAccess, status strin
 	first := len(args) + 1
 	stmt := fmt.Sprintf(`
 		SELECT t.id, t.name, t.type, t.subject,
-			(CASE WHEN $%d THEN '' ELSE t.body END) AS body,
+			t.name_fallback, (CASE WHEN $%d THEN '' ELSE t.body END) AS body,
 			(CASE WHEN $%d THEN NULL ELSE t.body_source END) AS body_source,
 			t.is_default, t.created_at, t.updated_at,
 			t.organization_id, t.owner_user_id, t.original_owner_user_id, t.visibility, t.transfer_pending_at,

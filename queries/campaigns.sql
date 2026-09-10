@@ -26,6 +26,7 @@ tpl AS (
         -- body and its block source as the campaign's block source,
         -- and don't set a template_id in the campaigns table, as it's essentially an
         -- HTML template body "import" during creation.
+        name_fallback,
         id AS source_id,
         (CASE WHEN type = 'campaign_visual' THEN NULL ELSE id END) AS id,
         (CASE WHEN type = 'campaign_visual' THEN body ELSE '' END) AS body,
@@ -62,7 +63,7 @@ camp AS (
     INSERT INTO campaigns (uuid, type, name, subject, from_email, body, altbody,
         content_type, daily_send_limit, daily_resume_time, send_at, headers, attribs, tags, messenger, template_id, to_send,
         max_customer_id, archive, archive_slug, archive_template_id, archive_meta, body_source, auto_track_links,
-        organization_id, owner_user_id, original_owner_user_id, visibility)
+        organization_id, owner_user_id, original_owner_user_id, visibility, name_fallback)
         SELECT $1, $2, $3, $4, $5,
             -- body
             COALESCE(NULLIF($6, ''), (SELECT body FROM tpl), ''),
@@ -81,7 +82,7 @@ camp AS (
             -- body_source
             COALESCE($23, (SELECT body_source FROM tpl)),
             $24,
-            $25, $26, $27, $28
+            $25, $26, $27, $28, COALESCE((SELECT name_fallback FROM tpl), '{}'::jsonb)
         WHERE (SELECT valid FROM valid_lists)
         RETURNING id
 ),
@@ -186,6 +187,25 @@ SELECT campaigns.*,
         )
         ELSE GREATEST(campaigns.to_send - campaigns.sent, 0)
     END AS unsent_count,
+    COALESCE(templates.name_fallback, (
+        SELECT fallback.name_fallback FROM templates fallback
+            WHERE fallback.is_default = true
+            AND fallback.transfer_pending_at IS NULL
+            AND (fallback.organization_id IS NULL OR EXISTS (
+                SELECT 1 FROM organizations fallback_organization
+                WHERE fallback_organization.id = fallback.organization_id
+                    AND fallback_organization.status = 'active'
+            ))
+            AND (
+                (fallback.organization_id IS NOT DISTINCT FROM campaigns.organization_id
+                    AND (fallback.owner_user_id = campaigns.owner_user_id
+                        OR fallback.visibility = 'organization'))
+                OR fallback.visibility = 'global'
+            )
+        ORDER BY CASE WHEN fallback.organization_id IS NOT DISTINCT FROM campaigns.organization_id
+            AND fallback.owner_user_id = campaigns.owner_user_id THEN 0 ELSE 1 END, fallback.id
+        LIMIT 1
+    ), '{}'::jsonb) AS template_name_fallback,
     COALESCE(templates.body, (
         SELECT fallback.body FROM templates fallback
             WHERE fallback.is_default = true
@@ -321,6 +341,25 @@ SELECT COUNT(*) OVER () AS total, campaigns.*,
         )
         ELSE GREATEST(campaigns.to_send - campaigns.sent, 0)
     END AS unsent_count,
+    COALESCE(templates.name_fallback, (
+        SELECT fallback.name_fallback FROM templates fallback
+            WHERE fallback.is_default = true
+            AND fallback.transfer_pending_at IS NULL
+            AND (fallback.organization_id IS NULL OR EXISTS (
+                SELECT 1 FROM organizations fallback_organization
+                WHERE fallback_organization.id = fallback.organization_id
+                    AND fallback_organization.status = 'active'
+            ))
+            AND (
+                (fallback.organization_id IS NOT DISTINCT FROM campaigns.organization_id
+                    AND (fallback.owner_user_id = campaigns.owner_user_id
+                        OR fallback.visibility = 'organization'))
+                OR fallback.visibility = 'global'
+            )
+        ORDER BY CASE WHEN fallback.organization_id IS NOT DISTINCT FROM campaigns.organization_id
+            AND fallback.owner_user_id = campaigns.owner_user_id THEN 0 ELSE 1 END, fallback.id
+        LIMIT 1
+    ), '{}'::jsonb) AS template_name_fallback,
     COALESCE(templates.body, (
         SELECT fallback.body FROM templates fallback
             WHERE fallback.is_default = true
@@ -435,6 +474,7 @@ CASE
     )
     ELSE GREATEST(campaigns.to_send - campaigns.sent, 0)
 END AS unsent_count,
+COALESCE(templates.name_fallback, '{}'::jsonb) AS template_name_fallback,
 COALESCE(templates.body, '') AS template_body,
 COALESCE((
     SELECT ARRAY_AGG(DISTINCT x.media_id ORDER BY x.media_id)::INT[]
@@ -531,6 +571,28 @@ WITH camps AS (
             )
             ELSE GREATEST(campaigns.to_send - campaigns.sent, 0)
         END AS unsent_count,
+        COALESCE(templates.name_fallback, (
+            SELECT fallback.name_fallback FROM templates fallback
+            WHERE fallback.is_default = TRUE
+                AND fallback.transfer_pending_at IS NULL
+                AND (fallback.organization_id IS NULL OR EXISTS (
+                    SELECT 1 FROM organizations fallback_organization
+                    WHERE fallback_organization.id = fallback.organization_id
+                        AND fallback_organization.status = 'active'
+                ))
+                AND (
+                    (fallback.organization_id IS NOT DISTINCT FROM campaigns.organization_id
+                        AND (fallback.owner_user_id = campaigns.owner_user_id
+                            OR fallback.visibility = 'organization'))
+                    OR fallback.visibility = 'global'
+                )
+            ORDER BY CASE WHEN fallback.organization_id IS NOT DISTINCT FROM campaigns.organization_id
+                AND fallback.owner_user_id = campaigns.owner_user_id THEN 0
+                WHEN fallback.organization_id IS NOT DISTINCT FROM campaigns.organization_id
+                    AND fallback.visibility = 'organization' THEN 1
+                ELSE 2 END, fallback.id
+            LIMIT 1
+        ), '{}'::jsonb) AS template_name_fallback,
         COALESCE(templates.body, (
             SELECT fallback.body FROM templates fallback
             WHERE fallback.is_default = TRUE

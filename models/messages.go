@@ -20,7 +20,7 @@ type Message struct {
 	Headers     textproto.MIMEHeader
 	Attachments []Attachment
 
-	Customer   Customer
+	Customer     Customer
 	UseSMTPFrom  bool
 	UseSMTPQuota bool
 
@@ -85,9 +85,10 @@ type TxMessage struct {
 }
 
 func (m *TxMessage) Render(sub Customer, tpl *Template, funcs txttpl.FuncMap) error {
+	sub.Name = tpl.NameFallback.Resolve(sub.Name)
 	data := struct {
 		Customer Customer
-		Tx         *TxMessage
+		Tx       *TxMessage
 	}{sub, m}
 
 	// Render the body.

@@ -25,6 +25,8 @@ type Template struct {
 	Base
 	ResourceScope
 
+	NameFallback NameFallback `db:"name_fallback" json:"name_fallback"`
+
 	Name string `db:"name" json:"name"`
 	// Subject is only for type=tx.
 	Subject    string      `db:"subject" json:"subject"`
@@ -47,13 +49,16 @@ type Template struct {
 // Only transactional templates allow overriding the fixed subject.
 func (t Template) Clone(name, subject string) Template {
 	out := Template{
-		Name:       strings.TrimSpace(name),
-		Type:       t.Type,
-		Subject:    t.Subject,
-		Body:       t.Body,
-		BodySource: t.BodySource,
-		MediaIDs:   append(pq.Int64Array(nil), t.MediaIDs...),
+		NameFallback: t.NameFallback,
+		Name:         strings.TrimSpace(name),
+		Type:         t.Type,
+		Subject:      t.Subject,
+		Body:         t.Body,
+		BodySource:   t.BodySource,
+		MediaIDs:     append(pq.Int64Array(nil), t.MediaIDs...),
 	}
+
+	out.NameFallback.InvalidValues = append([]string(nil), t.NameFallback.InvalidValues...)
 
 	if t.Type == TemplateTypeTx && strings.TrimSpace(subject) != "" {
 		out.Subject = strings.TrimSpace(subject)

@@ -182,8 +182,8 @@ func (a *App) PreviewCampaign(c echo.Context) error {
 		contentType = c.FormValue("content_type")
 		tplID, _    = strconv.Atoi(c.FormValue("template_id"))
 	)
-	// For visual content, template ID for previewing is irrelevant.
-	if contentType == models.CampaignContentTypeVisual || tplID < 1 {
+	// A visual import uses its source template rule, but never its wrapper body.
+	if tplID < 1 {
 		tplID = 0
 	} else if _, err := a.requireReadableWorkspaceResource(c, access, resourceTemplates, tplID, auth.PermTemplatesGet); err != nil {
 		return err
@@ -209,6 +209,9 @@ func (a *App) PreviewCampaign(c echo.Context) error {
 		// For visual campaigns, template body from the DB shouldn't be used.
 		if contentType == models.CampaignContentTypeVisual {
 			camp.TemplateBody = ""
+			if tplID > 0 {
+				camp.NameFallback = camp.TemplateNameFallback
+			}
 		}
 	}
 
@@ -934,6 +937,9 @@ func (a *App) TestCampaign(c echo.Context) error {
 	camp.ContentType = req.ContentType
 	camp.Headers = req.Headers
 	camp.TemplateID = req.TemplateID
+	if camp.ContentType == models.CampaignContentTypeVisual && tplID > 0 {
+		camp.NameFallback = camp.TemplateNameFallback
+	}
 	// For a test send the submitted media customer_list is authoritative. The preview
 	// query also includes the campaign's saved associations, which would make a
 	// media item that the user just removed reappear in the test message. Start

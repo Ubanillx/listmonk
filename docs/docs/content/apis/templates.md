@@ -271,3 +271,22 @@ curl -u "api_user:token" -X DELETE 'http://localhost:9000/api/templates/35'
     "data": true
 }
 ```
+
+
+## Name fallback
+
+Template create/update requests and template responses support `name_fallback`:
+
+```json
+{
+  "name_fallback": {
+    "enabled": true,
+    "value": "Sir or Madam",
+    "invalid_values": ["N/A", "未知", "-"]
+  }
+}
+```
+
+An omitted or null field preserves the saved setting on update; `enabled: false` disables it. A nonblank, single-line value of at most 200 characters is required when enabled. `invalid_values` accepts at most 50 single-line strings of up to 200 characters. Invalid settings return HTTP 400. Matching trims whitespace and compares full values case-insensitively. Only the rendered customer name changes; customer records and delivery addresses do not.
+
+The raw-template preview form accepts JSON-encoded `name_fallback`, plus `preview_name_mode=custom` and `preview_name` (including an empty string). These inputs affect preview only. Visual imports and template/campaign copies retain their rules. Configuration writes follow the existing template ownership/workspace permissions.

@@ -68,11 +68,11 @@
                     :placeholder="$t('globals.fields.name')" required autofocus />
                 </b-field>
 
-                <b-field label="可见范围" label-position="on-border">
+                <b-field :label="$t('visibility.label')" label-position="on-border">
                   <b-select v-model="form.visibility" :disabled="!canEdit" expanded>
-                    <option value="private">个人私有</option>
-                    <option v-if="workspace.organizationId" value="organization">当前组织共享</option>
-                    <option value="global">全体登录用户可见</option>
+                    <option value="private">{{ $t('visibility.private') }}</option>
+                    <option v-if="workspace.organizationId" value="organization">{{ $t('visibility.organization') }}</option>
+                    <option value="global">{{ $t('visibility.global') }}</option>
                   </b-select>
                 </b-field>
 
@@ -90,21 +90,21 @@
                   <b-input :value="smtpFromPreview" disabled />
                 </b-field>
 
-                <b-field v-if="isSMTPMessenger" label="客户回信邮箱" label-position="on-border"
-                  message="客户回复会直接进入所选企业邮箱；未验证邮箱时不能排期或发送">
+                <b-field v-if="isSMTPMessenger" :label="$t('campaigns.replyMailbox')" label-position="on-border"
+                  :message="$t('campaigns.replyMailboxHelp')">
                   <b-select v-model="form.replyMailboxId" :disabled="!canEdit || activeReplyMailboxes.length === 0" expanded>
-                    <option :value="null">不设置回信邮箱</option>
+                    <option :value="null">{{ $t('campaigns.replyMailboxNone') }}</option>
                     <option v-if="form.replyMailboxId && !activeReplyMailboxes.some((mailbox) => mailbox.id === Number(form.replyMailboxId))"
                       :value="form.replyMailboxId" disabled>
-                      {{ form.replyMailboxEmail || data.replyMailboxEmail || '历史回信邮箱' }}（当前不可选择）
+                      {{ form.replyMailboxEmail || data.replyMailboxEmail || $t('campaigns.replyMailboxLegacy') }}
                     </option>
                     <option v-for="mailbox in activeReplyMailboxes" :key="mailbox.id" :value="mailbox.id">
-                      {{ mailbox.name || mailbox.email }}{{ mailbox.isDefault ? '（默认）' : '' }}
+                      {{ mailbox.name || mailbox.email }}{{ mailbox.isDefault ? $t('campaigns.replyMailboxDefaultTag') : '' }}
                     </option>
                   </b-select>
                 </b-field>
                 <p v-if="isSMTPMessenger && replyMailboxesLoaded && activeReplyMailboxes.length === 0" class="help is-warning mb-4">
-                  尚未配置已验证的回信邮箱；如需让客户直接回复到工作邮箱，请先在个人资料中完成配置。
+                  {{ $t('campaigns.replyMailboxMissing') }}
                 </p>
 
                 <customer-list-selector v-model="form.customer_lists" :selected="form.customer_lists" :all="availableLists" :disabled="!canEdit || listsLocked"
@@ -112,11 +112,11 @@
 
                 <b-notification v-if="poolRoutingRows.length" type="is-info" :closable="false"
                   class="pool-routing-notice" data-cy="pool-routing-notice">
-                  <strong>公海回件路由（发送时生效）</strong>
+                  <strong>{{ $t('campaigns.poolRouteTitle') }}</strong>
                   <ul>
                     <li v-for="(pool, index) in poolRoutingRows" :key="`pool-route-${pool.poolId || pool.pool_id}-${index}`">
-                      {{ pool.name || `一级公海 #${pool.poolId || pool.pool_id}` }} →
-                      {{ pool.replyMailboxEmail || pool.reply_mailbox_email || '按目标组织二级列表解析（未配置时阻断发送）' }}
+                      {{ pool.name || $t('campaigns.poolFallback', { id: pool.poolId || pool.pool_id }) }} →
+                      {{ pool.replyMailboxEmail || pool.reply_mailbox_email || $t('campaigns.poolRouteUnresolved') }}
                     </li>
                   </ul>
                 </b-notification>
@@ -291,9 +291,7 @@
             </b-field>
           </div>
           <div class="column has-text-right">
-            <a href="https://listmonk.app/docs/templating/#template-expressions" target="_blank"
-              rel="noopener noreferer">
-              <b-icon icon="code" /> {{ $t('campaigns.templatingRef') }}</a>
+            <span><b-icon icon="code" /> {{ $t('campaigns.templatingRef') }}</span>
             <div v-if="customFields.length" class="is-size-7 has-text-grey mt-2">
               {{ $t('customFields.placeholder') }}:
               <code v-for="field in customFields" :key="field.key" class="ml-2">{{ field.placeholder }}</code>

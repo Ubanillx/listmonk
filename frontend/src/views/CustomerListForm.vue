@@ -31,12 +31,12 @@
               {{ $t('customer_lists.types.public') }}
             </option>
             <option v-if="isPlatformAdmin" value="pool">
-              {{ $t('customer_lists.types.pool') || '公海' }}
+              {{ $t('customer_lists.types.pool') }}
             </option>
             <!-- Secondary public-pool lists are created only from a first-level
               pool's split workflow, never as standalone lists. -->
             <option v-if="isEditing && data.type === 'pool_segment'" value="pool_segment">
-              {{ $t('customer_lists.types.pool_segment') || '二级公海列表' }}
+              {{ $t('customer_lists.types.pool_segment') }}
             </option>
           </b-select>
         </b-field>

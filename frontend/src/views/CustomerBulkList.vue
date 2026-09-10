@@ -8,7 +8,7 @@
       </header>
 
       <section expanded class="modal-card-body">
-        <b-field label="Action">
+        <b-field :label="$t('customers.action')">
           <div>
             <b-radio v-model="form.action" name="action" native-value="add" data-cy="check-customer_list-add">
               {{ $t('globals.buttons.add') }}
@@ -22,7 +22,7 @@
           </div>
         </b-field>
 
-        <customer-list-selector label="Target customer_lists" placeholder="CustomerLists to apply to" v-model="form.customer_lists" :selected="form.customer_lists"
+        <customer-list-selector :label="$t('globals.terms.customer_lists')" :placeholder="$t('customers.listsPlaceholder')" v-model="form.customer_lists" :selected="form.customer_lists"
           :all="customer_lists.results" />
 
         <b-field :message="$t('customers.preconfirmHelp')">

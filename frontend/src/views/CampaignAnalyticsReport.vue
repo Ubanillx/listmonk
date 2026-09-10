@@ -23,7 +23,7 @@
       <div class="columns is-variable is-6 is-multiline is-vcentered">
         <div class="column is-6-desktop">
           <p class="is-size-7 has-text-weight-semibold has-text-grey campaign-selector-label">
-            {{ translateOr('analytics.selectedCampaigns', '已选营销活动', 'Selected campaigns') }}
+            {{ $t('analytics.selectedCampaigns') }}
           </p>
           <div class="campaign-selector-tags">
             <b-tag
@@ -32,7 +32,7 @@
               size="is-medium"
               class="campaign-scope-tag"
             >
-              {{ translateOr('analytics.allCampaigns', '全部营销活动', 'All campaigns') }}
+              {{ $t('analytics.allCampaigns') }}
             </b-tag>
             <b-tag
               v-for="campaign in form.campaigns"
@@ -50,9 +50,9 @@
 
         <div class="column is-6-desktop">
           <b-field
-            :label="translateOr('analytics.campaignSearch', '搜索并添加营销活动', 'Search and add campaigns')"
+            :label="$t('analytics.campaignSearch')"
             label-position="on-border"
-            :message="translateOr('analytics.allCampaignsHint', '未选择营销活动时，默认显示全部营销活动数据。', 'Shows all campaigns by default when no campaign is selected.')"
+            :message="$t('analytics.allCampaignsHint')"
           >
             <b-autocomplete
               v-model="campaignQuery"
@@ -63,7 +63,7 @@
               open-on-focus
               :data="availableCampaignOptions"
               :loading="isSearchLoading"
-              :placeholder="translateOr('analytics.campaignSearchPlaceholder', '输入名称搜索营销活动', 'Type to search campaigns')"
+              :placeholder="$t('analytics.campaignSearchPlaceholder')"
               @focus="onCampaignSearchFocus"
               @typing="queryCampaigns"
               @select="selectCampaign"
@@ -76,7 +76,7 @@
               :disabled="form.campaigns.length === 0"
               @click="clearCampaignSelection"
             >
-              {{ translateOr('analytics.clearCampaignSelection', '查看全部营销活动', 'View all campaigns') }}
+              {{ $t('analytics.clearCampaignSelection') }}
             </b-button>
           </div>
         </div>
@@ -133,7 +133,7 @@
     <section class="report-section">
       <div class="columns is-vcentered">
         <div class="column">
-          <h4 class="title is-5">{{ translateOr('analytics.breakdown', '占比概览', 'Breakdown') }}</h4>
+          <h4 class="title is-5">{{ $t('analytics.breakdown') }}</h4>
         </div>
       </div>
 
@@ -169,8 +169,8 @@
         </div>
         <div class="column is-7-tablet is-8-desktop">
           <div class="breakdown-empty-copy">
-            <h5 class="title is-6">{{ translateOr('analytics.breakdown', '占比概览', 'Breakdown') }}</h5>
-            <p>{{ translateOr('analytics.breakdownUnavailable', '暂无', 'Breakdown is unavailable until unique open and click data is available.') }}</p>
+            <h5 class="title is-6">{{ $t('analytics.breakdown') }}</h5>
+            <p>{{ $t('analytics.breakdownUnavailable') }}</p>
           </div>
         </div>
       </div>
@@ -466,7 +466,7 @@ export default Vue.extend({
 
     activeScopeLabel() {
       if (this.form.campaigns.length === 0) {
-        return this.translateOr('analytics.allCampaigns', '全部营销活动', 'All campaigns');
+        return this.$t('analytics.allCampaigns');
       }
 
       if (this.form.campaigns.length === 1) {
@@ -512,28 +512,28 @@ export default Vue.extend({
       return [
         {
           key: 'clicked',
-          label: this.translateOr('analytics.breakdownClicked', '已点击', 'Clicked'),
+          label: this.$t('analytics.breakdownClicked'),
           value: clicked,
           color: breakdownColors.clicked,
           percentage: total > 0 ? (clicked / total) * 100 : 0,
         },
         {
           key: 'openedOnly',
-          label: this.translateOr('analytics.breakdownOpenedOnly', '已打开未点击', 'Opened, no click'),
+          label: this.$t('analytics.breakdownOpenedOnly'),
           value: openedOnly,
           color: breakdownColors.openedOnly,
           percentage: total > 0 ? (openedOnly / total) * 100 : 0,
         },
         {
           key: 'unopened',
-          label: this.translateOr('analytics.breakdownUnopened', '已送达未打开', 'Delivered, no open'),
+          label: this.$t('analytics.breakdownUnopened'),
           value: unopened,
           color: breakdownColors.unopened,
           percentage: total > 0 ? (unopened / total) * 100 : 0,
         },
         {
           key: 'bounced',
-          label: this.translateOr('analytics.breakdownBounced', '退信', 'Bounced'),
+          label: this.$t('analytics.breakdownBounced'),
           value: bounced,
           color: breakdownColors.bounced,
           percentage: total > 0 ? (bounced / total) * 100 : 0,
@@ -558,7 +558,7 @@ export default Vue.extend({
 
     breakdownEmptyChartData() {
       return {
-        labels: [this.translateOr('analytics.breakdownUnavailable', '暂无占比数据', 'No breakdown data')],
+        labels: [this.$t('analytics.noBreakdownData')],
         datasets: [{
           data: [1],
           backgroundColor: ['#e5e7eb'],
@@ -600,15 +600,6 @@ export default Vue.extend({
   },
 
   methods: {
-    translateOr(key, zhFallback, enFallback = zhFallback) {
-      if (this.$te(key)) {
-        return this.$t(key);
-      }
-
-      const locale = (this.$i18n?.locale || '').toLowerCase();
-      return locale.startsWith('zh') ? zhFallback : enFallback;
-    },
-
     defaultDateRange() {
       const now = dayjs().set('hour', 23).set('minute', 59).set('seconds', 0);
       const weekAgo = now.subtract(7, 'day').set('hour', 0).set('minute', 0);

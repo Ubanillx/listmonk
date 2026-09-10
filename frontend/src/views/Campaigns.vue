@@ -109,11 +109,11 @@
           </b-taglist>
         </div>
       </b-table-column>
-      <b-table-column v-slot="props" field="ownerUsername" label="所属用户" width="12%">
+      <b-table-column v-slot="props" field="ownerUsername" :label="$t('shared.owner')" width="12%">
         <span>{{ ownerLabel(props.row) }}</span>
         <b-tag size="is-small" class="is-light">{{ visibilityLabel(props.row.visibility) }}</b-tag>
         <b-tag v-if="transferPendingAt(props.row)" size="is-small" type="is-warning" class="is-light">
-          待转移 {{ $utils.niceDate(transferPendingAt(props.row), true) }}
+          {{ $t('shared.transferPending', { date: $utils.niceDate(transferPendingAt(props.row), true) }) }}
         </b-tag>
       </b-table-column>
       <b-table-column v-slot="props" cell-class="customer_lists" field="customerLists" :label="$t('globals.terms.customer_lists')" width="15%">
@@ -291,14 +291,14 @@
 
     <b-modal scroll="keep" :aria-modal="true" :active.sync="isCloneFormVisible" :width="520">
       <div class="modal-card content" style="width: auto">
-        <header class="modal-card-head"><h4>复制营销活动</h4></header>
+        <header class="modal-card-head"><h4>{{ $t('campaigns.copyTitle') }}</h4></header>
         <section class="modal-card-body">
           <b-field :label="$t('globals.fields.name')" label-position="on-border">
             <b-input v-model.trim="cloneForm.name" maxlength="200" required />
           </b-field>
-          <b-field label="目标位置" label-position="on-border">
+          <b-field :label="$t('campaigns.targetLocation')" label-position="on-border">
             <b-select v-model.number="cloneForm.targetOrganizationID" expanded>
-              <option :value="0">个人空间</option>
+              <option :value="0">{{ $t('organizations.personalSpace') }}</option>
               <option v-for="organization in organizations" :key="organization.id" :value="organization.id">
                 {{ organization.name }}
               </option>
@@ -505,10 +505,10 @@ export default Vue.extend({
 
     visibilityLabel(visibility) {
       return {
-        private: '个人私有',
-        organization: '组织共享',
-        global: '全体共享',
-      }[visibility] || '个人私有';
+        private: this.$t('visibility.private'),
+        organization: this.$t('visibility.organization'),
+        global: this.$t('visibility.global'),
+      }[visibility] || this.$t('visibility.private');
     },
 
     transferPendingAt(resource) {

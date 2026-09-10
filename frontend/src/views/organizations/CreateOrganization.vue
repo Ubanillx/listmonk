@@ -2,49 +2,49 @@
   <section class="organizations">
     <header class="columns page-header">
       <div class="column">
-        <h1 class="title is-4">创建组织</h1>
+        <h1 class="title is-4">{{ $t('organizations.createTitle') }}</h1>
       </div>
     </header>
 
     <section class="section-mini mb-6">
       <form @submit.prevent="submitOrganizationRequest">
-        <b-field label="组织名称" label-position="on-border">
+        <b-field :label="$t('organizations.name')" label-position="on-border">
           <b-input ref="nameInput" v-model.trim="requestForm.name" maxlength="200" required />
         </b-field>
-        <b-field label="说明" label-position="on-border">
+        <b-field :label="$t('organizations.description')" label-position="on-border">
           <b-input v-model.trim="requestForm.description" type="textarea" maxlength="2000" />
         </b-field>
-        <b-button native-type="submit" type="is-primary" icon-left="file-send-outline">提交申请</b-button>
+        <b-button native-type="submit" type="is-primary" icon-left="file-send-outline">{{ $t('organizations.submitRequest') }}</b-button>
       </form>
     </section>
 
     <section>
-      <h2 class="title is-5">我的申请</h2>
+      <h2 class="title is-5">{{ $t('organizations.myRequests') }}</h2>
       <b-table :data="requests" :mobile-cards="false">
-        <b-table-column v-slot="props" field="requestedName" label="组织">
+        <b-table-column v-slot="props" field="requestedName" :label="$t('organizations.columnOrg')">
           <strong>{{ props.row.requestedName }}</strong>
           <p v-if="props.row.description" class="has-text-grey is-size-7">{{ props.row.description }}</p>
         </b-table-column>
-        <b-table-column v-slot="props" field="status" label="状态">
+        <b-table-column v-slot="props" field="status" :label="$t('organizations.status')">
           <b-tag :type="statusType(props.row.status)">{{ statusLabel(props.row.status) }}</b-tag>
         </b-table-column>
-        <b-table-column v-slot="props" field="createdAt" label="申请时间">
+        <b-table-column v-slot="props" field="createdAt" :label="$t('organizations.requestTime')">
           {{ $utils.niceDate(props.row.createdAt, true) }}
         </b-table-column>
-        <b-table-column v-slot="props" field="reviewNote" label="处理说明">
+        <b-table-column v-slot="props" field="reviewNote" :label="$t('organizations.requestNote')">
           {{ props.row.reviewNote || '-' }}
         </b-table-column>
-        <b-table-column v-slot="props" label="操作" numeric>
+        <b-table-column v-slot="props" :label="$t('organizations.columnActions')" numeric>
           <b-button v-if="props.row.status === 'pending'" size="is-small" type="is-text" icon-left="undo-variant"
             @click="withdrawRequest(props.row)">
-            撤回
+            {{ $t('organizations.withdraw') }}
           </b-button>
           <b-button v-if="props.row.status === 'rejected'" size="is-small" type="is-text" icon-left="content-copy"
             @click="copyRejectedRequest(props.row)">
-            复制后重新提交
+            {{ $t('organizations.resubmit') }}
           </b-button>
         </b-table-column>
-        <template #empty><span class="has-text-grey">尚未提交组织创建申请</span></template>
+        <template #empty><span class="has-text-grey">{{ $t('organizations.noCreateRequests') }}</span></template>
       </b-table>
     </section>
   </section>
@@ -70,11 +70,11 @@ export default Vue.extend({
       await this.$api.createOrganizationRequest(this.requestForm);
       this.requestForm = { name: '', description: '' };
       await this.refresh();
-      this.$utils.toast('组织创建申请已提交');
+      this.$utils.toast(this.$t('organizations.toastRequestSubmitted'));
     },
 
     withdrawRequest(request) {
-      this.$utils.confirm(`确认撤回“${request.requestedName}”创建申请？`, async () => {
+      this.$utils.confirm(this.$t('organizations.confirmWithdraw', { name: request.requestedName }), async () => {
         await this.$api.withdrawOrganizationRequest(request.id);
         await this.refresh();
       });
@@ -96,10 +96,10 @@ export default Vue.extend({
 
     statusLabel(status) {
       const labels = {
-        pending: '待处理',
-        approved: '已确认',
-        rejected: '已拒绝',
-        withdrawn: '已撤回',
+        pending: this.$t('organizations.statusPendingRequest'),
+        approved: this.$t('organizations.statusApproved'),
+        rejected: this.$t('organizations.statusRejected'),
+        withdrawn: this.$t('organizations.statusWithdrawn'),
       };
       return labels[status] || status;
     },

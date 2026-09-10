@@ -20,7 +20,7 @@
           </template>
           <b-navbar-item v-if="canPersonalWorkspace" tag="a" href="#" @click.prevent="switchWorkspace({ organizationId: 0, personal: true })">
             <b-icon icon="account-circle-outline" />
-            <span>个人空间</span>
+            <span>{{ $t('organizations.personalSpace') }}</span>
           </b-navbar-item>
           <b-navbar-item v-for="organization in organizations" :key="organization.id" tag="a" href="#"
             @click.prevent="switchWorkspace(organization)">
@@ -29,7 +29,7 @@
           </b-navbar-item>
           <b-navbar-item tag="router-link" to="/organizations/mine">
             <b-icon icon="account-group-outline" />
-            <span>组织</span>
+            <span>{{ $t('organizations.title') }}</span>
           </b-navbar-item>
         </b-navbar-dropdown>
 
@@ -116,8 +116,7 @@
             before removing them. Visit
             <router-link :to="{ name: 'users' }">
               Admin -> Settings -> Users
-            </router-link> dashboard. <a href="https://listmonk.app/docs/upgrade/#upgrading-to-v4xx" target="_blank"
-              rel="noopener noreferer">Learn more.</a>
+            </router-link> dashboard.
           </div>
         </div>
 
@@ -247,7 +246,7 @@ export default Vue.extend({
     },
 
     workspaceLabel() {
-      return this.workspace.organizationId ? this.workspace.organizationName : '个人空间';
+      return this.workspace.organizationId ? this.workspace.organizationName : this.$t('organizations.personalSpace');
     },
 
     workspaceIcon() {

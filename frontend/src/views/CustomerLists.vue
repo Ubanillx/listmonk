@@ -100,11 +100,11 @@
         </div>
       </b-table-column>
 
-      <b-table-column v-slot="props" field="ownerUsername" label="所属用户">
+      <b-table-column v-slot="props" field="ownerUsername" :label="$t('shared.owner')">
         {{ ownerLabel(props.row) }}
         <b-tag size="is-small" class="is-light">{{ visibilityLabel(props.row.visibility) }}</b-tag>
         <b-tag v-if="transferPendingAt(props.row)" size="is-small" type="is-warning" class="is-light">
-          待转移 {{ $utils.niceDate(transferPendingAt(props.row), true) }}
+          {{ $t('shared.transferPending', { date: $utils.niceDate(transferPendingAt(props.row), true) }) }}
         </b-tag>
       </b-table-column>
 
@@ -154,8 +154,8 @@
           </a>
 
           <a v-if="props.row.type === 'pool'" href="#" @click.prevent="showPoolManager(props.row)"
-            data-cy="btn-manage-pool" aria-label="管理公海">
-            <b-tooltip label="管理公海" type="is-dark">
+            data-cy="btn-manage-pool" :aria-label="$t('customer_lists.poolManage')">
+            <b-tooltip :label="$t('customer_lists.poolManage')" type="is-dark">
               <b-icon icon="database-cog-outline" size="is-small" />
             </b-tooltip>
           </a>
@@ -189,18 +189,14 @@
 
     <b-modal scroll="keep" :aria-modal="true" :active.sync="isPoolVisible" :width="960">
       <div class="modal-card pool-manager-modal" data-cy="pool-manager-modal">
-        <header class="modal-card-head"><h4>{{ poolItem && poolItem.name }} · 公海运营管理</h4></header>
+        <header class="modal-card-head"><h4>{{ poolItem && poolItem.name }} · {{ $t('customer_lists.poolManageTitle') }}</h4></header>
         <section class="modal-card-body"><pool-manager v-if="poolItem" :pool="poolItem" /></section>
-        <footer class="modal-card-foot"><b-button @click="isPoolVisible = false">关闭</b-button></footer>
+        <footer class="modal-card-foot"><b-button @click="isPoolVisible = false">{{ $t('globals.buttons.close') }}</b-button></footer>
       </div>
     </b-modal>
 
     <p v-if="settings['app.cache_slow_queries']" class="has-text-grey">
       *{{ $t('globals.messages.slowQueriesCached') }}
-      <a href="https://listmonk.app/docs/maintenance/performance/" target="_blank" rel="noopener noreferer"
-        class="has-text-grey">
-        <b-icon icon="link-variant" /> {{ $t('globals.buttons.learnMore') }}
-      </a>
     </p>
   </section>
 </template>
@@ -394,9 +390,9 @@ export default Vue.extend({
 
     visibilityLabel(visibility) {
       return {
-        private: '个人私有',
-        organization: '组织共享',
-      }[visibility] || '个人私有';
+        private: this.$t('visibility.private'),
+        organization: this.$t('visibility.organization'),
+      }[visibility] || this.$t('visibility.private');
     },
 
     transferPendingAt(resource) {

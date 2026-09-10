@@ -2,11 +2,11 @@
   <section class="organizations">
     <header class="columns page-header">
       <div class="column">
-        <h1 class="title is-4">管理组织</h1>
+        <h1 class="title is-4">{{ $t('organizations.manageTitle') }}</h1>
       </div>
     </header>
 
-    <b-field v-if="manageableOrganizations.length" label="管理的组织" label-position="on-border" class="section-mini mb-5">
+    <b-field v-if="manageableOrganizations.length" :label="$t('organizations.manageSelectLabel')" label-position="on-border" class="section-mini mb-5">
       <b-select v-model.number="selectedOrganizationID" expanded>
         <option v-for="organization in manageableOrganizations" :key="organization.id" :value="organization.id">
           {{ organization.name }}
@@ -15,71 +15,71 @@
     </b-field>
 
     <b-notification v-if="!selectedOrganizationID && !isPlatformAdmin" type="is-light" :closable="false">
-      你目前不是任何组织的管理员。
+      {{ $t('organizations.manageNotAdmin') }}
     </b-notification>
 
     <b-tabs v-if="selectedOrganizationID || isPlatformAdmin" type="is-boxed" :animated="false" v-model="activeTab">
-      <b-tab-item v-if="selectedOrganizationID" label="成员" icon="account-group-outline">
+      <b-tab-item v-if="selectedOrganizationID" :label="$t('organizations.tabMembers')" icon="account-group-outline">
         <section class="wrap">
           <form class="columns is-multiline" @submit.prevent="addMember">
             <div class="column is-6">
-              <b-field label="已注册账号或邮箱" label-position="on-border">
+              <b-field :label="$t('organizations.memberAccount')" label-position="on-border">
                 <b-input v-model.trim="memberForm.account" required />
               </b-field>
             </div>
             <div class="column is-3">
-              <b-field label="组织角色" label-position="on-border">
+              <b-field :label="$t('organizations.organizationRole')" label-position="on-border">
                 <b-select v-model="memberForm.role" expanded>
-                  <option value="member">普通成员</option>
-                  <option value="manager">管理员</option>
+                  <option value="member">{{ $t('organizations.roleMember') }}</option>
+                  <option value="manager">{{ $t('organizations.roleManager') }}</option>
                 </b-select>
               </b-field>
             </div>
             <div class="column is-3 is-flex is-align-items-flex-end">
-              <b-button native-type="submit" type="is-primary" expanded icon-left="account-plus-outline">添加</b-button>
+              <b-button native-type="submit" type="is-primary" expanded icon-left="account-plus-outline">{{ $t('organizations.add') }}</b-button>
             </div>
           </form>
 
           <b-table :data="activeMembers" :mobile-cards="false">
-            <b-table-column v-slot="props" field="username" label="账号">
+            <b-table-column v-slot="props" field="username" :label="$t('organizations.account')">
               <strong>{{ props.row.username }}</strong>
               <span v-if="props.row.name" class="has-text-grey"> {{ props.row.name }}</span>
             </b-table-column>
-            <b-table-column v-slot="props" field="email" label="邮箱">{{ props.row.email }}</b-table-column>
-            <b-table-column v-slot="props" field="role" label="角色">
+            <b-table-column v-slot="props" field="email" :label="$t('customers.email')">{{ props.row.email }}</b-table-column>
+            <b-table-column v-slot="props" field="role" :label="$t('organizations.role')">
               <b-select :value="props.row.role" size="is-small" @input="changeMemberRole(props.row, $event)">
-                <option value="member">普通成员</option>
-                <option value="manager">管理员</option>
+                <option value="member">{{ $t('organizations.roleMember') }}</option>
+                <option value="manager">{{ $t('organizations.roleManager') }}</option>
               </b-select>
             </b-table-column>
-            <b-table-column v-slot="props" label="操作" numeric>
+            <b-table-column v-slot="props" :label="$t('organizations.columnActions')" numeric>
               <b-button size="is-small" type="is-text" icon-left="account-remove-outline" @click="removeMember(props.row)">
-                移除
+                {{ $t('organizations.remove') }}
               </b-button>
             </b-table-column>
-            <template #empty><span class="has-text-grey">暂无成员</span></template>
+            <template #empty><span class="has-text-grey">{{ $t('organizations.noMembers') }}</span></template>
           </b-table>
         </section>
       </b-tab-item>
 
-      <b-tab-item v-if="selectedOrganizationID" label="邀请码" icon="key-outline">
+      <b-tab-item v-if="selectedOrganizationID" :label="$t('organizations.tabInvites')" icon="key-outline">
         <section class="wrap">
           <form class="columns is-multiline" @submit.prevent="createInvite">
             <div class="column is-4">
-              <b-field label="名称" label-position="on-border"><b-input v-model.trim="inviteForm.name" /></b-field>
+              <b-field :label="$t('organizations.inviteName')" label-position="on-border"><b-input v-model.trim="inviteForm.name" /></b-field>
             </div>
             <div class="column is-4">
-              <b-field label="有效期" label-position="on-border">
+              <b-field :label="$t('organizations.expiry')" label-position="on-border">
                 <b-input v-model="inviteForm.expiresAt" type="datetime-local" />
               </b-field>
             </div>
             <div class="column is-2">
-              <b-field label="最大使用次数" label-position="on-border">
+              <b-field :label="$t('organizations.maxUses')" label-position="on-border">
                 <b-input v-model.number="inviteForm.maxUses" type="number" min="1" />
               </b-field>
             </div>
             <div class="column is-2 is-flex is-align-items-flex-end">
-              <b-button native-type="submit" type="is-primary" expanded icon-left="key-plus">创建</b-button>
+              <b-button native-type="submit" type="is-primary" expanded icon-left="key-plus">{{ $t('organizations.create') }}</b-button>
             </div>
           </form>
 
@@ -88,32 +88,32 @@
           </b-notification>
 
           <b-table :data="invites" :mobile-cards="false">
-            <b-table-column v-slot="props" field="name" label="名称">{{ props.row.name || '邀请码' }}</b-table-column>
-            <b-table-column v-slot="props" field="useCount" label="使用次数">
+            <b-table-column v-slot="props" field="name" :label="$t('organizations.inviteName')">{{ props.row.name || $t('organizations.inviteCode') }}</b-table-column>
+            <b-table-column v-slot="props" field="useCount" :label="$t('organizations.uses')">
               {{ props.row.useCount }}<span v-if="props.row.maxUses"> / {{ props.row.maxUses }}</span>
             </b-table-column>
-            <b-table-column v-slot="props" field="expiresAt" label="有效期">
-              {{ props.row.expiresAt ? $utils.niceDate(props.row.expiresAt, true) : '长期有效' }}
+            <b-table-column v-slot="props" field="expiresAt" :label="$t('organizations.expiry')">
+              {{ props.row.expiresAt ? $utils.niceDate(props.row.expiresAt, true) : $t('organizations.noExpiry') }}
             </b-table-column>
-            <b-table-column v-slot="props" label="操作" numeric>
+            <b-table-column v-slot="props" :label="$t('organizations.columnActions')" numeric>
               <b-button v-if="!props.row.revokedAt" size="is-small" type="is-text" icon-left="cancel" @click="revokeInvite(props.row)">
-                撤销
+                {{ $t('organizations.revoke') }}
               </b-button>
-              <span v-else class="has-text-grey">已撤销</span>
+              <span v-else class="has-text-grey">{{ $t('organizations.revoked') }}</span>
             </b-table-column>
-            <template #empty><span class="has-text-grey">暂无邀请码</span></template>
+            <template #empty><span class="has-text-grey">{{ $t('organizations.noInvites') }}</span></template>
           </b-table>
         </section>
       </b-tab-item>
 
-      <b-tab-item v-if="selectedOrganizationID" label="待转移资源" icon="swap-horizontal">
+      <b-tab-item v-if="selectedOrganizationID" :label="$t('organizations.tabPending')" icon="swap-horizontal">
         <section class="wrap">
-          <p class="has-text-grey mb-4">成员离开后留下的组织资源会保留在组织中，仅组织管理员可将其转移给当前成员。</p>
+          <p class="has-text-grey mb-4">{{ $t('organizations.pendingHelp') }}</p>
           <div class="columns is-vcentered">
             <div class="column is-7">
-              <b-field label="接收成员" label-position="on-border">
-                <b-select v-model.number="transferTargetUserID" placeholder="选择接收成员" expanded>
-                  <option :value="null">请选择成员</option>
+              <b-field :label="$t('organizations.receiveMember')" label-position="on-border">
+                <b-select v-model.number="transferTargetUserID" :placeholder="$t('organizations.selectRecipient')" expanded>
+                  <option :value="null">{{ $t('organizations.selectMember') }}</option>
                   <option v-for="member in activeMembers" :key="member.userId" :value="member.userId">
                     {{ member.username }}
                   </option>
@@ -122,86 +122,86 @@
             </div>
             <div class="column is-3 is-flex is-align-items-flex-end">
               <b-button :disabled="!transferTargetUserID" icon-left="swap-horizontal" @click="transferPendingResources">
-                转移资源
+                {{ $t('organizations.transferResources') }}
               </b-button>
             </div>
           </div>
         </section>
       </b-tab-item>
 
-      <b-tab-item v-if="selectedOrganizationID" label="客户回信转发" icon="email-arrow-left-outline">
+      <b-tab-item v-if="selectedOrganizationID" :label="$t('organizations.tabReplyForward')" icon="email-arrow-left-outline">
         <section class="wrap">
-          <p class="has-text-grey mb-4">成员离组后，原回信邮箱仍会继续收信。这里可以暂停或恢复转发到组织管理员工作邮箱。</p>
+          <p class="has-text-grey mb-4">{{ $t('organizations.replyForwardHelp') }}</p>
           <b-table :data="replyForwardRules" :mobile-cards="false">
-            <b-table-column v-slot="props" field="sourceEmail" label="成员邮箱">
+            <b-table-column v-slot="props" field="sourceEmail" :label="$t('organizations.replyForwardSource')">
               <strong>{{ props.row.sourceEmail || props.row.sourceName || '-' }}</strong>
             </b-table-column>
-            <b-table-column v-slot="props" field="mailboxEmail" label="回信邮箱">{{ props.row.mailboxEmail }}</b-table-column>
-            <b-table-column v-slot="props" field="targetEmail" label="转发目标">{{ props.row.targetEmail }}</b-table-column>
-            <b-table-column v-slot="props" field="status" label="状态">
+            <b-table-column v-slot="props" field="mailboxEmail" :label="$t('organizations.replyForwardMailbox')">{{ props.row.mailboxEmail }}</b-table-column>
+            <b-table-column v-slot="props" field="targetEmail" :label="$t('organizations.replyForwardTarget')">{{ props.row.targetEmail }}</b-table-column>
+            <b-table-column v-slot="props" field="status" :label="$t('organizations.status')">
               <b-tag :type="props.row.status === 'active' ? 'is-success' : 'is-light'">
-                {{ props.row.status === 'active' ? '转发中' : '已停用' }}
+                {{ props.row.status === 'active' ? $t('organizations.replyForwardActive') : $t('organizations.replyForwardDisabled') }}
               </b-tag>
             </b-table-column>
-            <b-table-column v-slot="props" label="操作" numeric>
+            <b-table-column v-slot="props" :label="$t('organizations.columnActions')" numeric>
               <b-button size="is-small" type="is-text" :icon-left="props.row.status === 'active' ? 'pause-circle-outline' : 'play-circle-outline'"
                 @click="toggleReplyForwardRule(props.row)">
-                {{ props.row.status === 'active' ? '停用' : '恢复' }}
+                {{ props.row.status === 'active' ? $t('organizations.replyForwardToggle') : $t('organizations.replyForwardResume') }}
               </b-button>
             </b-table-column>
-            <template #empty><span class="has-text-grey">暂无离组成员回信转发规则</span></template>
+            <template #empty><span class="has-text-grey">{{ $t('organizations.noReplyForwardRules') }}</span></template>
           </b-table>
         </section>
       </b-tab-item>
 
-      <b-tab-item v-if="isPlatformAdmin" label="平台管理" icon="shield-crown-outline">
+      <b-tab-item v-if="isPlatformAdmin" :label="$t('organizations.tabPlatform')" icon="shield-crown-outline">
         <section class="mb-6">
-          <h2 class="title is-5">组织创建申请</h2>
+          <h2 class="title is-5">{{ $t('organizations.creationRequests') }}</h2>
           <b-table :data="requests" :mobile-cards="false">
-            <b-table-column v-slot="props" field="requestedName" label="组织">{{ props.row.requestedName }}</b-table-column>
-            <b-table-column v-slot="props" field="requestedByName" label="申请人">{{ props.row.requestedByName }}</b-table-column>
-            <b-table-column v-slot="props" field="description" label="说明">{{ props.row.description }}</b-table-column>
-            <b-table-column v-slot="props" field="createdAt" label="申请时间">{{ $utils.niceDate(props.row.createdAt, true) }}</b-table-column>
-            <b-table-column v-slot="props" label="操作" numeric>
-              <b-button size="is-small" type="is-primary" icon-left="check" @click="reviewRequest(props.row, true)">确认</b-button>
-              <b-button size="is-small" type="is-text" icon-left="close" @click="reviewRequest(props.row, false)">拒绝</b-button>
+            <b-table-column v-slot="props" field="requestedName" :label="$t('organizations.columnOrg')">{{ props.row.requestedName }}</b-table-column>
+            <b-table-column v-slot="props" field="requestedByName" :label="$t('organizations.requester')">{{ props.row.requestedByName }}</b-table-column>
+            <b-table-column v-slot="props" field="description" :label="$t('organizations.description')">{{ props.row.description }}</b-table-column>
+            <b-table-column v-slot="props" field="createdAt" :label="$t('organizations.requestTime')">{{ $utils.niceDate(props.row.createdAt, true) }}</b-table-column>
+            <b-table-column v-slot="props" :label="$t('organizations.columnActions')" numeric>
+              <b-button size="is-small" type="is-primary" icon-left="check" @click="reviewRequest(props.row, true)">{{ $t('organizations.approve') }}</b-button>
+              <b-button size="is-small" type="is-text" icon-left="close" @click="reviewRequest(props.row, false)">{{ $t('organizations.reject') }}</b-button>
             </b-table-column>
-            <template #empty><span class="has-text-grey">没有待处理申请</span></template>
+            <template #empty><span class="has-text-grey">{{ $t('organizations.noRequests') }}</span></template>
           </b-table>
         </section>
 
         <section>
-          <h2 class="title is-5">组织归档</h2>
+          <h2 class="title is-5">{{ $t('organizations.archiveSection') }}</h2>
           <b-table :data="platformOrganizations" :mobile-cards="false">
-            <b-table-column v-slot="props" field="name" label="组织">
+            <b-table-column v-slot="props" field="name" :label="$t('organizations.columnOrg')">
               <strong>{{ props.row.name }}</strong>
               <p v-if="props.row.description" class="has-text-grey is-size-7">{{ props.row.description }}</p>
             </b-table-column>
-            <b-table-column v-slot="props" field="memberCount" label="成员数" numeric>{{ props.row.memberCount }}</b-table-column>
-            <b-table-column v-slot="props" field="status" label="状态">
+            <b-table-column v-slot="props" field="memberCount" :label="$t('organizations.memberCount')" numeric>{{ props.row.memberCount }}</b-table-column>
+            <b-table-column v-slot="props" field="status" :label="$t('organizations.status')">
               <b-tag :type="props.row.status === 'archived' ? 'is-warning' : 'is-success'">
-                {{ props.row.status === 'archived' ? '已归档' : '正常' }}
+                {{ props.row.status === 'archived' ? $t('organizations.statusArchived') : $t('organizations.statusNormal') }}
               </b-tag>
             </b-table-column>
-            <b-table-column v-slot="props" field="archivedAt" label="归档时间">
+            <b-table-column v-slot="props" field="archivedAt" :label="$t('organizations.archivedAt')">
               {{ props.row.archivedAt ? $utils.niceDate(props.row.archivedAt, true) : '-' }}
             </b-table-column>
-            <b-table-column v-slot="props" label="操作" numeric>
+            <b-table-column v-slot="props" :label="$t('organizations.columnActions')" numeric>
               <b-button v-if="props.row.status !== 'archived'" size="is-small" type="is-text" icon-left="account-cog-outline"
                 @click="selectOrganization(props.row)">
-                管理
+                {{ $t('globals.buttons.manage') }}
               </b-button>
               <b-button v-if="props.row.status !== 'archived'" size="is-small" type="is-text" icon-left="archive-outline"
                 @click="archivePlatformOrganization(props.row)">
-                归档
+                {{ $t('organizations.archive') }}
               </b-button>
               <b-button v-if="props.row.status === 'archived'" size="is-small" type="is-text" icon-left="swap-horizontal"
                 @click="openArchiveTransfer(props.row)">
-                转移资源
+                {{ $t('organizations.transferResources') }}
               </b-button>
               <b-button v-if="props.row.status === 'archived'" size="is-small" type="is-text" icon-left="delete-forever-outline"
                 @click="purgePlatformOrganization(props.row)">
-                永久删除
+                {{ $t('organizations.deleteForever') }}
               </b-button>
             </b-table-column>
           </b-table>
@@ -211,23 +211,23 @@
 
     <b-modal scroll="keep" :aria-modal="true" :active.sync="isArchiveTransferVisible" :width="520">
       <div class="modal-card content" style="width: auto">
-        <header class="modal-card-head"><h4><b-icon icon="swap-horizontal" size="is-small" />转移归档资源</h4></header>
+        <header class="modal-card-head"><h4><b-icon icon="swap-horizontal" size="is-small" />{{ $t('organizations.transferArchivedTitle') }}</h4></header>
         <section class="modal-card-body">
           <p v-if="archiveTransferOrganization" class="mb-4">{{ archiveTransferOrganization.name }}</p>
-          <b-field label="接收成员" label-position="on-border">
+          <b-field :label="$t('organizations.receiveMember')" label-position="on-border">
             <b-select v-model.number="archiveTransferTargetUserID" expanded>
-              <option :value="null">请选择成员</option>
+              <option :value="null">{{ $t('organizations.selectMember') }}</option>
               <option v-for="member in archiveTransferMembers" :key="member.userId" :value="member.userId">
                 {{ member.username }}
               </option>
             </b-select>
           </b-field>
-          <p class="has-text-grey is-size-7">资源将转移到该成员的个人空间，组织共享资源会改为个人私有。</p>
+          <p class="has-text-grey is-size-7">{{ $t('organizations.transferToPersonalHelp') }}</p>
         </section>
         <footer class="modal-card-foot has-text-right">
           <b-button @click="isArchiveTransferVisible = false">{{ $t('globals.buttons.close') }}</b-button>
           <b-button type="is-primary" icon-left="swap-horizontal" :disabled="!archiveTransferTargetUserID" @click="transferArchivedResources">
-            转移
+            {{ $t('organizations.transfer') }}
           </b-button>
         </footer>
       </div>
@@ -348,7 +348,7 @@ export default Vue.extend({
     },
 
     removeMember(member) {
-      this.$utils.confirm(`移除 ${member.username} 后，其组织资源将转为待转移。`, async () => {
+      this.$utils.confirm(this.$t('organizations.confirmRemoveMember', { name: member.username }), async () => {
         await this.$api.removeOrganizationMember(member.userId, this.selectedOrganizationID);
         await this.refresh();
       });
@@ -379,7 +379,7 @@ export default Vue.extend({
     },
 
     transferPendingResources() {
-      this.$utils.confirm('待转移资源及关联客户将转移给所选成员。', async () => {
+      this.$utils.confirm(this.$t('organizations.confirmTransferPending'), async () => {
         await this.$api.transferPendingOrganizationResources({ target_user_id: this.transferTargetUserID }, this.selectedOrganizationID);
         this.transferTargetUserID = null;
         await this.refreshSelectedOrganization();
@@ -392,14 +392,14 @@ export default Vue.extend({
     },
 
     archivePlatformOrganization(organization) {
-      this.$utils.confirm(`确认归档组织“${organization.name}”？排期活动会转为草稿，正在发送的活动会立即停止。`, async () => {
+      this.$utils.confirm(this.$t('organizations.confirmArchive', { name: organization.name }), async () => {
         await this.$api.archiveOrganization(organization.id);
         await this.refresh();
       });
     },
 
     purgePlatformOrganization(organization) {
-      this.$utils.confirm(`确认永久删除组织“${organization.name}”？只有资源已全部转移或清理后才能完成。`, async () => {
+      this.$utils.confirm(this.$t('organizations.confirmPurge', { name: organization.name }), async () => {
         await this.$api.purgeArchivedOrganization(organization.id);
         await this.refresh();
       });

@@ -2,21 +2,21 @@
   <section class="organizations section-mini">
     <header class="columns page-header">
       <div class="column">
-        <h1 class="title is-4">加入组织</h1>
+        <h1 class="title is-4">{{ $t('organizations.joinTitleShort') }}</h1>
       </div>
     </header>
 
     <form @submit.prevent="joinOrganization">
-      <b-field label="邀请码" label-position="on-border">
+      <b-field :label="$t('organizations.inviteCode')" label-position="on-border">
         <b-input v-model.trim="joinCode" icon="key-outline" maxlength="500" required autofocus />
       </b-field>
-      <b-button native-type="submit" type="is-primary" icon-left="account-plus-outline">加入组织</b-button>
+      <b-button native-type="submit" type="is-primary" icon-left="account-plus-outline">{{ $t('organizations.joinTitleShort') }}</b-button>
     </form>
 
     <b-notification v-if="joinedOrganization" class="mt-5" type="is-success" :closable="false">
-      已加入 {{ joinedOrganization.name }}
+      {{ $t('organizations.joined', { name: joinedOrganization.name }) }}
       <b-button class="ml-3" size="is-small" icon-left="login-variant" @click="switchWorkspace(joinedOrganization)">
-        进入组织
+        {{ $t('organizations.enterOrgShort') }}
       </b-button>
     </b-notification>
   </section>
@@ -44,7 +44,7 @@ export default Vue.extend({
       this.joinCode = '';
       this.joinedOrganization = organization;
       await this.refreshOrganizations();
-      this.$utils.toast(`已加入 ${organization.name}`);
+      this.$utils.toast(this.$t('organizations.toastJoined', { name: organization.name }));
     },
 
     switchWorkspace(organization) {

@@ -52,7 +52,7 @@
     <section class="report-section">
       <div class="columns is-vcentered">
         <div class="column">
-          <h4 class="title is-5">{{ translateOr('analytics.breakdown', '占比概览', 'Breakdown') }}</h4>
+          <h4 class="title is-5">{{ $t('analytics.breakdown') }}</h4>
         </div>
       </div>
 
@@ -88,8 +88,8 @@
         </div>
         <div class="column is-7-tablet is-8-desktop">
           <div class="breakdown-empty-copy">
-            <h5 class="title is-6">{{ translateOr('analytics.breakdown', '占比概览', 'Breakdown') }}</h5>
-            <p>{{ translateOr('analytics.breakdownUnavailable', '暂无', 'Breakdown is unavailable until unique open and click data is available.') }}</p>
+            <h5 class="title is-6">{{ $t('analytics.breakdown') }}</h5>
+            <p>{{ $t('analytics.breakdownUnavailable') }}</p>
           </div>
         </div>
       </div>
@@ -399,28 +399,28 @@ export default Vue.extend({
       return [
         {
           key: 'clicked',
-          label: this.translateOr('analytics.breakdownClicked', 'Clicked'),
+          label: this.$t('analytics.breakdownClicked'),
           value: clicked,
           color: breakdownColors.clicked,
           percentage: total > 0 ? (clicked / total) * 100 : 0,
         },
         {
           key: 'openedOnly',
-          label: this.translateOr('analytics.breakdownOpenedOnly', 'Opened, no click'),
+          label: this.$t('analytics.breakdownOpenedOnly'),
           value: openedOnly,
           color: breakdownColors.openedOnly,
           percentage: total > 0 ? (openedOnly / total) * 100 : 0,
         },
         {
           key: 'unopened',
-          label: this.translateOr('analytics.breakdownUnopened', 'Delivered, no open'),
+          label: this.$t('analytics.breakdownUnopened'),
           value: unopened,
           color: breakdownColors.unopened,
           percentage: total > 0 ? (unopened / total) * 100 : 0,
         },
         {
           key: 'bounced',
-          label: this.translateOr('analytics.breakdownBounced', 'Bounced'),
+          label: this.$t('analytics.breakdownBounced'),
           value: bounced,
           color: breakdownColors.bounced,
           percentage: total > 0 ? (bounced / total) * 100 : 0,
@@ -445,7 +445,7 @@ export default Vue.extend({
 
     breakdownEmptyChartData() {
       return {
-        labels: [this.translateOr('analytics.breakdownUnavailable', '暂无占比数据', 'No breakdown data')],
+        labels: [this.$t('analytics.noBreakdownData')],
         datasets: [{
           data: [1],
           backgroundColor: ['#e5e7eb'],
@@ -561,15 +561,6 @@ export default Vue.extend({
 
     formatPercent(value) {
       return `${value.toFixed(1)}%`;
-    },
-
-    translateOr(key, zhFallback, enFallback = zhFallback) {
-      if (this.$te(key)) {
-        return this.$t(key);
-      }
-
-      const locale = (this.$i18n?.locale || '').toLowerCase();
-      return locale.startsWith('zh') ? zhFallback : enFallback;
     },
 
     buildChartData(series) {

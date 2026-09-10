@@ -110,31 +110,31 @@ const routes = [
   {
     path: '/organizations',
     name: 'organizations',
-    meta: { title: '组织', group: 'organizations' },
+    meta: { title: 'organizations.title', group: 'organizations' },
     redirect: { name: 'organizationMine' },
   },
   {
     path: '/organizations/mine',
     name: 'organizationMine',
-    meta: { title: '我参与的组织', group: 'organizations' },
+    meta: { title: 'organizations.joinedTitle', group: 'organizations' },
     component: () => import('../views/organizations/MyOrganizations.vue'),
   },
   {
     path: '/organizations/join',
     name: 'organizationJoin',
-    meta: { title: '加入组织', group: 'organizations' },
+    meta: { title: 'organizations.joinTitle', group: 'organizations' },
     component: () => import('../views/organizations/JoinOrganization.vue'),
   },
   {
     path: '/organizations/create',
     name: 'organizationCreate',
-    meta: { title: '创建组织', group: 'organizations' },
+    meta: { title: 'organizations.createTitle', group: 'organizations' },
     component: () => import('../views/organizations/CreateOrganization.vue'),
   },
   {
     path: '/organizations/manage',
     name: 'organizationManage',
-    meta: { title: '管理组织', group: 'organizations', organizationManager: true },
+    meta: { title: 'organizations.manageTitle', group: 'organizations', organizationManager: true },
     component: () => import('../views/organizations/ManageOrganizations.vue'),
   },
   {

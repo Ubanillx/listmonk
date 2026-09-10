@@ -50,15 +50,15 @@
 
     <b-menu-item :expanded="activeGroup.organizations" :active="activeGroup.organizations"
       data-cy="organizations" @update:active="(state) => toggleGroup('organizations', state)" icon="office-building-outline"
-      label="组织">
+      :label="$t('organizations.title')">
       <b-menu-item :to="{ name: 'organizationMine' }" tag="router-link" :active="activeItem.organizationMine"
-        data-cy="organization-mine" icon="office-building-outline" label="我参与的组织" />
+        data-cy="organization-mine" icon="office-building-outline" :label="$t('organizations.joinedTitle')" />
       <b-menu-item :to="{ name: 'organizationJoin' }" tag="router-link" :active="activeItem.organizationJoin"
-        data-cy="organization-join" icon="account-plus-outline" label="加入组织" />
+        data-cy="organization-join" icon="account-plus-outline" :label="$t('organizations.joinTitle')" />
       <b-menu-item :to="{ name: 'organizationCreate' }" tag="router-link" :active="activeItem.organizationCreate"
-        data-cy="organization-create" icon="file-document-edit-outline" label="创建组织" />
+        data-cy="organization-create" icon="file-document-edit-outline" :label="$t('organizations.createTitle')" />
       <b-menu-item v-if="canManageOrganizations" :to="{ name: 'organizationManage' }" tag="router-link" :active="activeItem.organizationManage"
-        data-cy="organization-manage" icon="account-cog-outline" label="管理组织" />
+        data-cy="organization-manage" icon="account-cog-outline" :label="$t('organizations.manageTitle')" />
     </b-menu-item><!-- organizations -->
 
     <b-menu-item v-if="$can('users:*', 'roles:*')" :expanded="activeGroup.users" :active="activeGroup.users"

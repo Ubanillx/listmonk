@@ -1,50 +1,53 @@
 <template>
   <span v-if="allowed" class="export-action">
-    <b-button icon-left="download" data-cy="export-open" @click="open">导出</b-button>
+    <b-button icon-left="download" data-cy="export-open" @click="open">{{ $t('export.open') }}</b-button>
     <b-modal :active.sync="active" has-modal-card :can-cancel="!busy">
       <form class="modal-card has-text-left" style="width: 560px; max-width: 95vw" @submit.prevent="submit">
-        <header class="modal-card-head"><p class="modal-card-title">导出数据</p></header>
+        <header class="modal-card-head"><p class="modal-card-title">{{ $t('export.title') }}</p></header>
         <section class="modal-card-body">
           <div v-if="jobs.length || jobError" ref="exportResults" class="mb-4" data-cy="export-results" aria-live="polite">
-            <p class="has-text-weight-semibold mb-2">最近导出</p>
+            <p class="has-text-weight-semibold mb-2">{{ $t('export.recent') }}</p>
             <div v-for="job in jobs" :key="job.id" class="box p-3">
               <p style="overflow-wrap: anywhere">{{ job.filename }}</p>
-              <p class="help">{{ jobStatus(job) }} · {{ job.rowCount }} 行</p>
-              <b-button v-if="jobStatus(job) === '已完成'" tag="a" :href="downloadURL(job)" size="is-small" icon-left="download" data-cy="export-download">下载文件</b-button>
+              <p class="help">{{ jobStatus(job) }} · {{ job.rowCount }} {{ $t('export.rows') }}</p>
+              <b-button
+                v-if="jobStatus(job) === $t('export.statusComplete')"
+                tag="a" :href="downloadURL(job)" size="is-small" icon-left="download"
+                data-cy="export-download">{{ $t('export.download') }}</b-button>
               <p v-if="job.error" class="help is-danger">{{ job.error }}</p>
             </div>
-            <p v-if="jobError" class="help is-danger">{{ jobError }} <a href="#" @click.prevent="refreshJobs">重试</a></p>
+            <p v-if="jobError" class="help is-danger">{{ jobError }} <a href="#" @click.prevent="refreshJobs">{{ $t('export.retry') }}</a></p>
           </div>
-          <b-field label="数据类型"><b-select v-model="form.type" expanded data-cy="export-type">
-            <option v-for="(label, key) in types" :key="key" :value="key">{{ label }}</option>
+          <b-field :label="$t('export.typeLabel')"><b-select v-model="form.type" expanded data-cy="export-type">
+            <option v-for="(label, key) in types" :key="key" :value="key">{{ $t(label) }}</option>
           </b-select></b-field>
-          <b-field label="文件格式"><b-select v-model="form.format" expanded data-cy="export-format">
+          <b-field :label="$t('export.formatLabel')"><b-select v-model="form.format" expanded data-cy="export-format">
             <option value="xlsx">Excel (.xlsx)</option><option value="csv">CSV (.csv)</option>
           </b-select></b-field>
-          <b-field v-if="selected.length" label="数据范围"><b-select v-model="selection" expanded>
-            <option value="filtered">当前筛选条件下的全部结果</option><option value="selected">仅勾选的 {{ selected.length }} 条</option>
+          <b-field v-if="selected.length" :label="$t('export.scopeLabel')"><b-select v-model="selection" expanded>
+            <option value="filtered">{{ $t('export.scopeFiltered') }}</option><option value="selected">{{ $t('export.scopeSelected', { count: selected.length }) }}</option>
           </b-select></b-field>
-          <p class="mb-3">工作区：{{ workspace.organizationName || '个人空间' }}。导出全部筛选结果，不受分页限制。</p>
-          <p v-if="form.query" class="notification is-info">已带入高级客户筛选：{{ form.query }}</p>
-          <b-field label="搜索（客户编码、名称）"><b-input v-model="form.search" maxlength="500" /></b-field>
-          <b-field v-if="['customers', 'blocklist'].includes(form.type)" label="客户状态">
-            <b-select v-model="form.status" expanded><option value="">全部</option><option value="enabled">启用</option>
-              <option value="disabled">禁用</option><option value="blocklisted">黑名单</option></b-select>
+          <p class="mb-3">{{ $t('export.workspaceNote', { name: workspace.organizationName || $t('organizations.personalSpace') }) }}</p>
+          <p v-if="form.query" class="notification is-info">{{ $t('export.queryNote', { query: form.query }) }}</p>
+          <b-field :label="$t('export.searchLabel')"><b-input v-model="form.search" maxlength="500" /></b-field>
+          <b-field v-if="['customers', 'blocklist'].includes(form.type)" :label="$t('export.statusLabel')">
+            <b-select v-model="form.status" expanded><option value="">{{ $t('globals.terms.all') }}</option><option value="enabled">{{ $t('export.statusEnabled') }}</option>
+              <option value="disabled">{{ $t('export.statusDisabled') }}</option><option value="blocklisted">{{ $t('export.statusBlocklisted') }}</option></b-select>
           </b-field>
-          <customer-list-selector label="筛选列表" placeholder="搜索列表名称，留空为全部" :all="options.lists" :selected="selectedLists" @input="selectedLists = $event" />
+          <customer-list-selector :label="$t('export.filterLists')" :placeholder="$t('export.filterListsPlaceholder')" :all="options.lists" :selected="selectedLists" @input="selectedLists = $event" />
           <customer-list-selector v-if="['campaigns', 'activity', 'bounces', 'bounce_customers'].includes(form.type)"
-            label="筛选营销活动" placeholder="搜索活动名称，留空为全部" :all="options.campaigns" :selected="selectedCampaigns" @input="selectedCampaigns = $event" />
+            :label="$t('export.filterCampaigns')" :placeholder="$t('export.filterCampaignsPlaceholder')" :all="options.campaigns" :selected="selectedCampaigns" @input="selectedCampaigns = $event" />
           <template v-if="dateSupported">
-            <b-field label="开始时间（北京时间）"><b-input v-model="fromText" type="datetime-local" /></b-field>
-            <b-field label="结束时间（北京时间）"><b-input v-model="toText" type="datetime-local" /></b-field>
-            <p class="help">客户名单按创建时间；营销明细和退信按事件时间。留空表示不限制。</p>
+            <b-field :label="$t('export.fromLabel')"><b-input v-model="fromText" type="datetime-local" /></b-field>
+            <b-field :label="$t('export.toLabel')"><b-input v-model="toText" type="datetime-local" /></b-field>
+            <p class="help">{{ $t('export.dateHelp') }}</p>
           </template>
-          <p class="help mt-3">文件生成后在本弹窗下载，保留 7 天。关闭弹窗不会中止生成，再次点击导出可查看最近文件。单次最多 100 万行或 256 MiB 文本数据。</p>
-          <p v-if="form.type === 'campaigns'" class="help">公海发送仅提供累计已发送量；历史退订事件不完整时留空。发送不代表进入收件箱。</p>
+          <p class="help mt-3">{{ $t('export.retentionHelp') }}</p>
+          <p v-if="form.type === 'campaigns'" class="help">{{ $t('export.poolHelp') }}</p>
         </section>
         <footer class="modal-card-foot">
-          <b-button native-type="submit" type="is-primary" :loading="busy" data-cy="export-submit">生成文件</b-button>
-          <b-button :disabled="busy" @click="active = false">关闭</b-button>
+          <b-button native-type="submit" type="is-primary" :loading="busy" data-cy="export-submit">{{ $t('export.submit') }}</b-button>
+          <b-button :disabled="busy" @click="active = false">{{ $t('globals.buttons.close') }}</b-button>
         </footer>
       </form>
     </b-modal>
@@ -104,9 +107,13 @@ export default {
   methods: {
     stopPolling() { window.clearTimeout(this.pollTimer); this.generation += 1; },
     jobStatus(job) {
-      if (new Date(job.expiresAt) <= new Date()) return '已过期';
+      if (new Date(job.expiresAt) <= new Date()) return this.$t('export.statusExpired');
       return {
-        pending: '排队中', running: '生成中', complete: '已完成', failed: '失败', expired: '已过期',
+        pending: this.$t('export.statusPending'),
+        running: this.$t('export.statusRunning'),
+        complete: this.$t('export.statusComplete'),
+        failed: this.$t('export.statusFailed'),
+        expired: this.$t('export.statusExpired'),
       }[job.status];
     },
     downloadURL(job) { return `/api/exports/${job.id}/download?organization_id=${this.organizationID}`; },
@@ -128,7 +135,7 @@ export default {
           this.pollTimer = window.setTimeout(() => this.refreshJobs(), 3000);
         }
       } catch (error) {
-        if (generation === this.generation) this.jobError = '无法获取生成进度，请重试。';
+        if (generation === this.generation) this.jobError = this.$t('export.jobError');
       }
     },
     async open() {
@@ -151,8 +158,8 @@ export default {
       const options = await this.$api.getExportOptions();
       if (generation !== this.generation || !this.allowed) return;
       this.options = options;
-      this.selectedLists = lists.map((id) => options.lists.find((l) => l.id === Number(id)) || { id: Number(id), name: `列表 #${id}` });
-      this.selectedCampaigns = campaigns.map((id) => options.campaigns.find((l) => l.id === Number(id)) || { id: Number(id), name: `活动 #${id}` });
+      this.selectedLists = lists.map((id) => options.lists.find((l) => l.id === Number(id)) || { id: Number(id), name: this.$t('export.listFallback', { id }) });
+      this.selectedCampaigns = campaigns.map((id) => options.campaigns.find((l) => l.id === Number(id)) || { id: Number(id), name: this.$t('export.campaignFallback', { id }) });
       this.fromText = localText(f.from); this.toText = localText(f.to);
       this.selection = this.selected.length ? 'selected' : 'filtered'; this.active = true;
       this.refreshJobs(true);
@@ -175,13 +182,13 @@ export default {
           if (!payload.list_ids.length) {
             payload.list_ids = this.options.lists.filter((l) => (!this.filters.status || l.status === this.filters.status)
               && (!this.filters.query || l.name.toLowerCase().includes(this.filters.query.toLowerCase()))).map((l) => l.id);
-            if (!payload.list_ids.length) throw new Error('当前列表筛选无结果');
+            if (!payload.list_ids.length) throw new Error(this.$t('export.noFilterResults'));
           }
           payload.status = ''; payload.search = '';
         }
         await this.$api.createExport(payload);
         if (organizationID !== this.organizationID || !this.active || !this.allowed) return;
-        this.$utils.toast('正在生成文件，完成后可在本弹窗下载');
+        this.$utils.toast(this.$t('export.toastQueued'));
         await this.refreshJobs(true);
         this.$emit('created');
       } catch (error) { if (!error.response) this.$utils.toast(error.message, 'is-danger'); } finally { this.busy = false; }

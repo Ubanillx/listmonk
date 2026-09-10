@@ -2,69 +2,73 @@
   <section class="organizations org-page">
     <header class="columns page-header org-page-header">
       <div class="column is-10">
-        <h1 class="title is-4">我参与的组织</h1>
-        <p class="org-subtitle">{{ canPersonalWorkspace ? '管理你加入的工作空间，并将个人资源安全地迁移到组织。' : '管理你加入的工作空间。' }}</p>
+        <h1 class="title is-4">{{ $t('organizations.joinedTitle') }}</h1>
+        <p class="org-subtitle">{{ canPersonalWorkspace ? $t('organizations.joinedSubtitlePersonal') : $t('organizations.joinedSubtitle') }}</p>
       </div>
       <div class="column org-header-meta">
-        <span class="org-meta-label">当前空间</span>
-        <strong>{{ workspace.organizationId ? workspace.organizationName : '个人空间' }}</strong>
+        <span class="org-meta-label">{{ $t('organizations.currentSpace') }}</span>
+        <strong>{{ workspace.organizationId ? workspace.organizationName : $t('organizations.personalSpace') }}</strong>
       </div>
     </header>
 
-    <section class="org-overview" :class="{ 'org-overview-compact': !canPersonalWorkspace }" aria-label="组织概览">
+    <section class="org-overview" :class="{ 'org-overview-compact': !canPersonalWorkspace }" :aria-label="$t('organizations.overviewAria')">
       <div class="org-stat">
         <span class="org-stat-icon is-blue"><b-icon icon="office-building-outline" /></span>
-        <div><span class="org-stat-label">已加入组织</span><strong>{{ organizations.length }}</strong></div>
+        <div><span class="org-stat-label">{{ $t('organizations.statJoined') }}</span><strong>{{ organizations.length }}</strong></div>
       </div>
       <div class="org-stat">
         <span class="org-stat-icon is-green"><b-icon icon="account-multiple-outline" /></span>
-        <div><span class="org-stat-label">可协作成员</span><strong>{{ organizationMemberTotal }}</strong></div>
+        <div><span class="org-stat-label">{{ $t('organizations.statMembers') }}</span><strong>{{ organizationMemberTotal }}</strong></div>
       </div>
       <div v-if="canPersonalWorkspace" class="org-stat">
         <span class="org-stat-icon is-orange"><b-icon icon="folder-move-outline" /></span>
-        <div><span class="org-stat-label">待迁移资源</span><strong>{{ personalResourceTotal }}</strong></div>
+        <div><span class="org-stat-label">{{ $t('organizations.statPendingMigration') }}</span><strong>{{ personalResourceTotal }}</strong></div>
       </div>
     </section>
 
     <section class="org-panel">
       <div class="org-panel-heading">
         <div>
-          <h2>组织列表</h2>
-          <p>进入组织后即可使用该空间的列表、活动与模板。</p>
+          <h2>{{ $t('organizations.listTitle') }}</h2>
+          <p>{{ $t('organizations.listHelp') }}</p>
         </div>
-        <b-tag type="is-light" rounded>{{ organizations.length }} 个组织</b-tag>
+        <b-tag type="is-light" rounded>{{ $t('organizations.countTag', { count: organizations.length }) }}</b-tag>
       </div>
       <b-table :data="organizations" :mobile-cards="false" class="org-table">
-        <b-table-column v-slot="props" field="name" label="组织">
+        <b-table-column v-slot="props" field="name" :label="$t('organizations.columnOrg')">
           <div class="org-name-cell">
             <span class="org-avatar"><b-icon icon="office-building-outline" size="is-small" /></span>
             <div><strong>{{ props.row.name }}</strong><p v-if="props.row.description">{{ props.row.description }}</p></div>
           </div>
         </b-table-column>
-        <b-table-column v-slot="props" field="myRole" label="我的角色">
+        <b-table-column v-slot="props" field="myRole" :label="$t('organizations.columnMyRole')">
           <b-tag :type="props.row.myRole === 'manager' ? 'is-primary is-light' : 'is-light'" rounded>
             {{ roleLabel(props.row.myRole) }}
           </b-tag>
         </b-table-column>
-        <b-table-column v-slot="props" field="memberCount" label="成员数">
+        <b-table-column v-slot="props" field="memberCount" :label="$t('organizations.columnMembers')">
           <span class="member-count"><b-icon icon="account-multiple-outline" size="is-small" />{{ props.row.memberCount }}</span>
         </b-table-column>
-        <b-table-column v-slot="props" label="状态">
-          <span v-if="isActiveOrganization(props.row)" class="status-current"><i />当前空间</span>
-          <span v-else class="has-text-grey-light">未使用</span>
+        <b-table-column v-slot="props" :label="$t('organizations.columnStatus')">
+          <span v-if="isActiveOrganization(props.row)" class="status-current"><i />{{ $t('organizations.statusCurrent') }}</span>
+          <span v-else class="has-text-grey-light">{{ $t('organizations.statusUnused') }}</span>
         </b-table-column>
-        <b-table-column v-slot="props" label="操作" numeric>
+        <b-table-column v-slot="props" :label="$t('organizations.columnActions')" numeric>
           <div class="org-actions">
             <b-button v-if="!isActiveOrganization(props.row)" size="is-small" type="is-primary" outlined icon-left="login-variant" @click="switchWorkspace(props.row)">
-              进入
+              {{ $t('organizations.enter') }}
             </b-button>
             <b-button size="is-small" type="is-text" class="leave-action" icon-left="logout-variant" @click="leaveOrganization(props.row)">
-              离开
+              {{ $t('organizations.leaveOrg') }}
             </b-button>
           </div>
         </b-table-column>
         <template #empty>
-          <div class="org-empty"><b-icon icon="office-building-outline" size="is-medium" /><strong>尚未加入组织</strong><span>加入组织后，可在这里切换工作空间。</span></div>
+          <div class="org-empty">
+            <b-icon icon="office-building-outline" size="is-medium" />
+            <strong>{{ $t('organizations.emptyJoined') }}</strong>
+            <span>{{ $t('organizations.emptyJoinedHelp') }}</span>
+          </div>
         </template>
       </b-table>
     </section>
@@ -72,79 +76,91 @@
     <details v-if="organizations.length && canPersonalWorkspace" class="migration-panel" data-cy="personal-migration">
       <summary class="org-panel-heading migration-heading">
         <div>
-          <span class="step-kicker">资源整理</span>
-          <h2>迁移个人资源</h2>
-          <p>先选择目标组织，再选择要复制或移动的资源。</p>
+          <span class="step-kicker">{{ $t('organizations.resourceTidy') }}</span>
+          <h2>{{ $t('organizations.migrationTitle') }}</h2>
+          <p>{{ $t('organizations.migrationHelp') }}</p>
         </div>
         <div class="migration-heading-actions">
-          <div class="migration-summary"><span>已选择</span><strong>{{ selectedResourceTotal }}</strong><span>项资源</span></div>
-          <span class="migration-expand">展开 ▾</span><span class="migration-collapse">收起 ▴</span>
+          <div class="migration-summary"><span>{{ $t('organizations.migrationSelected') }}</span><strong>{{ selectedResourceTotal }}</strong><span>{{ $t('organizations.migrationItems') }}</span></div>
+          <span class="migration-expand">{{ $t('organizations.migrationExpand') }}</span><span class="migration-collapse">{{ $t('organizations.migrationCollapse') }}</span>
         </div>
       </summary>
 
       <div class="migration-target">
         <span class="step-number">1</span>
-        <div class="target-copy"><strong>选择目标组织</strong><span>资源将迁移到所选组织中</span></div>
-        <b-field class="target-field" label="目标组织" label-position="on-border">
+        <div class="target-copy"><strong>{{ $t('organizations.migrationTarget') }}</strong><span>{{ $t('organizations.migrationTargetHelp') }}</span></div>
+        <b-field class="target-field" :label="$t('organizations.migrationOrgField')" label-position="on-border">
           <b-select v-model.number="migrationOrganizationID" expanded>
-            <option :value="null">请选择组织</option>
+            <option :value="null">{{ $t('organizations.migrationSelectOrg') }}</option>
             <option v-for="organization in organizations" :key="organization.id" :value="organization.id">{{ organization.name }}</option>
           </b-select>
         </b-field>
       </div>
 
-      <div class="resource-step-label"><span class="step-number">2</span><div><strong>选择资源并执行操作</strong><span>复制会保留个人空间中的原始资源，移动后原资源将不再保留</span></div></div>
+      <div class="resource-step-label">
+        <span class="step-number">2</span>
+        <div>
+          <strong>{{ $t('organizations.migrationStep2') }}</strong>
+          <span>{{ $t('organizations.migrationStep2Help') }}</span>
+        </div>
+      </div>
       <div class="resource-grid">
         <article class="resource-card resource-customer_list-card">
           <div class="resource-card-top">
             <span class="resource-icon"><b-icon icon="format-list-bulleted-square" /></span>
-            <div><h3>个人客户列表</h3><span>{{ personalLists.length }} 项可迁移</span></div>
+            <div><h3>{{ $t('organizations.migrationPersonalLists') }}</h3><span>{{ $t('organizations.migrationItemsAvailable', { count: personalLists.length }) }}</span></div>
             <b-button class="resource-preview-button" size="is-small" type="is-text"
               icon-left="file-find-outline" :disabled="!personalCustomerListIDs.length"
               @click="previewResource('customer_lists', personalCustomerListIDs, personalLists)">
-              预览内容
+              {{ $t('organizations.migrationPreview') }}
             </b-button>
           </div>
           <b-field class="resource-field">
-            <b-select v-model="personalCustomerListIDs" multiple expanded :disabled="!personalLists.length" placeholder="选择列表">
+            <b-select v-model="personalCustomerListIDs" multiple expanded :disabled="!personalLists.length" :placeholder="$t('organizations.migrationSelectLists')">
               <option v-for="customerList in personalLists" :key="customerList.id" :value="customerList.id">{{ customerList.name }}</option>
             </b-select>
           </b-field>
           <div class="resource-card-footer">
-            <span>{{ personalCustomerListIDs.length }} 项已选</span>
+            <span>{{ $t('organizations.migrationSelectedCount', { count: personalCustomerListIDs.length }) }}</span>
             <div>
-              <b-button size="is-small" type="is-light" icon-left="content-copy" :disabled="!canMigrate(personalCustomerListIDs)" @click="migrateLists('copy')">复制</b-button>
-              <b-button size="is-small" type="is-primary" icon-left="folder-move" :disabled="!canMigrate(personalCustomerListIDs)" @click="migrateLists('move')">移动</b-button>
+              <b-button size="is-small" type="is-light" icon-left="content-copy"
+                :disabled="!canMigrate(personalCustomerListIDs)" @click="migrateLists('copy')">
+                {{ $t('organizations.migrationCopy') }}
+              </b-button>
+              <b-button size="is-small" type="is-primary" icon-left="folder-move"
+                :disabled="!canMigrate(personalCustomerListIDs)" @click="migrateLists('move')">
+                {{ $t('organizations.migrationMove') }}
+              </b-button>
             </div>
           </div>
         </article>
         <article class="resource-card resource-template-card">
           <div class="resource-card-top">
             <span class="resource-icon"><b-icon icon="email-outline" /></span>
-            <div><h3>邮件模板</h3><span>{{ personalTemplates.length }} 项可迁移</span></div>
+            <div><h3>{{ $t('globals.terms.templates') }}</h3><span>{{ $t('organizations.migrationItemsAvailable', { count: personalTemplates.length }) }}</span></div>
             <b-button class="resource-preview-button" size="is-small" type="is-text"
               icon-left="file-find-outline" :disabled="!personalTemplateIDs.length"
               @click="previewResource('templates', personalTemplateIDs, personalTemplates)">
-              预览内容
+              {{ $t('organizations.migrationPreview') }}
             </b-button>
           </div>
           <b-field class="resource-field">
-            <b-select v-model="personalTemplateIDs" multiple expanded :disabled="!personalTemplates.length" placeholder="选择模板">
+            <b-select v-model="personalTemplateIDs" multiple expanded :disabled="!personalTemplates.length" :placeholder="$t('organizations.personalTemplates')">
               <option v-for="template in personalTemplates" :key="template.id" :value="template.id">{{ template.name }}</option>
             </b-select>
           </b-field>
           <div class="resource-card-footer">
-            <span>{{ personalTemplateIDs.length }} 项已选</span>
+            <span>{{ $t('organizations.migrationSelectedCount', { count: personalTemplateIDs.length }) }}</span>
             <div>
               <b-button size="is-small" type="is-light" icon-left="content-copy"
                 :disabled="!canMigrate(personalTemplateIDs)"
                 @click="migrateResource('templates', personalTemplateIDs, 'copy')">
-                复制
+                {{ $t('organizations.migrationCopy') }}
               </b-button>
               <b-button size="is-small" type="is-primary" icon-left="folder-move"
                 :disabled="!canMigrate(personalTemplateIDs)"
                 @click="migrateResource('templates', personalTemplateIDs, 'move')">
-                移动
+                {{ $t('organizations.migrationMove') }}
               </b-button>
             </div>
           </div>
@@ -152,30 +168,30 @@
         <article class="resource-card resource-campaign-card">
           <div class="resource-card-top">
             <span class="resource-icon"><b-icon icon="rocket-launch-outline" /></span>
-            <div><h3>营销活动</h3><span>{{ personalCampaigns.length }} 项可迁移</span></div>
+            <div><h3>{{ $t('globals.terms.campaigns') }}</h3><span>{{ $t('organizations.migrationItemsAvailable', { count: personalCampaigns.length }) }}</span></div>
             <b-button class="resource-preview-button" size="is-small" type="is-text"
               icon-left="file-find-outline" :disabled="!personalCampaignIDs.length"
               @click="previewResource('campaigns', personalCampaignIDs, personalCampaigns)">
-              预览内容
+              {{ $t('organizations.migrationPreview') }}
             </b-button>
           </div>
           <b-field class="resource-field">
-            <b-select v-model="personalCampaignIDs" multiple expanded :disabled="!personalCampaigns.length" placeholder="选择活动">
+            <b-select v-model="personalCampaignIDs" multiple expanded :disabled="!personalCampaigns.length" :placeholder="$t('organizations.personalCampaigns')">
               <option v-for="campaign in personalCampaigns" :key="campaign.id" :value="campaign.id">{{ campaign.name }} ({{ campaign.status }})</option>
             </b-select>
           </b-field>
           <div class="resource-card-footer">
-            <span>{{ personalCampaignIDs.length }} 项已选</span>
+            <span>{{ $t('organizations.migrationSelectedCount', { count: personalCampaignIDs.length }) }}</span>
             <div>
               <b-button size="is-small" type="is-light" icon-left="content-copy"
                 :disabled="!canMigrate(personalCampaignIDs)"
                 @click="migrateResource('campaigns', personalCampaignIDs, 'copy')">
-                复制
+                {{ $t('organizations.migrationCopy') }}
               </b-button>
               <b-button size="is-small" type="is-primary" icon-left="folder-move"
                 :disabled="!canMigrate(personalCampaignIDs)"
                 @click="migrateResource('campaigns', personalCampaignIDs, 'move')">
-                移动
+                {{ $t('organizations.migrationMove') }}
               </b-button>
             </div>
           </div>
@@ -183,28 +199,34 @@
         <article class="resource-card resource-media-card">
           <div class="resource-card-top">
             <span class="resource-icon"><b-icon icon="image-multiple-outline" /></span>
-            <div><h3>媒体文件</h3><span>{{ personalMedia.length }} 项可迁移</span></div>
+            <div><h3>{{ $t('organizations.personalMedia') }}</h3><span>{{ $t('organizations.migrationItemsAvailable', { count: personalMedia.length }) }}</span></div>
             <b-button class="resource-preview-button" size="is-small" type="is-text"
               icon-left="file-find-outline" :disabled="!personalMediaIDs.length"
               @click="previewResource('media', personalMediaIDs, personalMedia)">
-              预览内容
+              {{ $t('organizations.migrationPreview') }}
             </b-button>
           </div>
           <b-field class="resource-field">
-            <b-select v-model="personalMediaIDs" multiple expanded :disabled="!personalMedia.length" placeholder="选择文件">
+            <b-select v-model="personalMediaIDs" multiple expanded :disabled="!personalMedia.length" :placeholder="$t('organizations.personalMedia')">
               <option v-for="media in personalMedia" :key="media.id" :value="media.id">{{ media.filename }}</option>
             </b-select>
           </b-field>
           <div class="resource-card-footer">
-            <span>{{ personalMediaIDs.length }} 项已选</span>
+            <span>{{ $t('organizations.migrationSelectedCount', { count: personalMediaIDs.length }) }}</span>
             <div>
-              <b-button size="is-small" type="is-light" icon-left="content-copy" :disabled="!canMigrate(personalMediaIDs)" @click="migrateResource('media', personalMediaIDs, 'copy')">复制</b-button>
-              <b-button size="is-small" type="is-primary" icon-left="folder-move" :disabled="!canMigrate(personalMediaIDs)" @click="migrateResource('media', personalMediaIDs, 'move')">移动</b-button>
+              <b-button size="is-small" type="is-light" icon-left="content-copy"
+                :disabled="!canMigrate(personalMediaIDs)" @click="migrateResource('media', personalMediaIDs, 'copy')">
+                {{ $t('organizations.migrationCopy') }}
+              </b-button>
+              <b-button size="is-small" type="is-primary" icon-left="folder-move"
+                :disabled="!canMigrate(personalMediaIDs)" @click="migrateResource('media', personalMediaIDs, 'move')">
+                {{ $t('organizations.migrationMove') }}
+              </b-button>
             </div>
           </div>
         </article>
       </div>
-      <div class="migration-tip"><b-icon icon="information-outline" size="is-small" /><span>迁移只会处理“个人”可见资源，组织共享资源不会出现在列表中。</span></div>
+      <div class="migration-tip"><b-icon icon="information-outline" size="is-small" /><span>{{ $t('organizations.migrationTip') }}</span></div>
     </details>
 
     <b-modal :active.sync="isPreviewVisible" :width="760" scroll="keep" :aria-modal="true">
@@ -212,30 +234,42 @@
         <header class="resource-preview-header">
           <div class="resource-preview-title">
             <span class="resource-icon"><b-icon :icon="previewIcon" /></span>
-            <div><span class="preview-kicker">内容预览</span><h2>{{ previewItem.name || previewItem.filename }}</h2></div>
+            <div><span class="preview-kicker">{{ $t('organizations.previewTitle') }}</span><h2>{{ previewItem.name || previewItem.filename }}</h2></div>
           </div>
-          <b-button type="is-text" icon-left="close" aria-label="关闭预览" @click="closePreview" />
+          <b-button type="is-text" icon-left="close" :aria-label="$t('organizations.previewClose')" @click="closePreview" />
         </header>
         <section v-if="previewResourceType === 'customer_lists'" class="resource-preview-body">
           <div class="preview-facts">
-            <div><span>客户</span><strong>{{ previewItem.customerCount || 0 }}</strong></div>
-            <div><span>客户列表类型</span><strong>{{ previewItem.type === 'public' ? '公开' : '私有' }}</strong></div>
-            <div><span>状态</span><strong>{{ previewItem.status === 'active' ? '正常' : '已归档' }}</strong></div>
+            <div>
+              <span>{{ $t('organizations.previewCustomers') }}</span>
+              <strong>{{ previewItem.customerCount || 0 }}</strong>
+            </div>
+            <div>
+              <span>{{ $t('organizations.previewListType') }}</span>
+              <strong>{{ previewItem.type === 'public' ? $t('organizations.previewTypePublic') : $t('organizations.previewTypePrivate') }}</strong>
+            </div>
+            <div>
+              <span>{{ $t('organizations.previewStatus') }}</span>
+              <strong>{{ previewItem.status === 'active' ? $t('organizations.previewActive') : $t('organizations.previewArchived') }}</strong>
+            </div>
           </div>
-          <div class="preview-copy"><span class="preview-label">客户列表说明</span><p>{{ previewItem.description || '暂无客户列表说明。' }}</p></div>
+          <div class="preview-copy">
+            <span class="preview-label">{{ $t('organizations.previewListDescription') }}</span>
+            <p>{{ previewItem.description || $t('organizations.previewNoDescription') }}</p>
+          </div>
         </section>
         <section v-else-if="previewResourceType === 'media'" class="resource-preview-body">
           <div v-if="previewItem.thumbUrl || previewItem.url" class="media-preview-image"><img :src="previewItem.thumbUrl || previewItem.url" :alt="previewItem.filename" /></div>
           <div class="preview-copy">
-            <span class="preview-label">文件名</span><p>{{ previewItem.filename }}</p>
-            <span class="preview-label">文件类型</span><p>{{ previewItem.contentType || previewItem.mimeType || '媒体文件' }}</p>
+            <span class="preview-label">{{ $t('organizations.previewFilename') }}</span><p>{{ previewItem.filename }}</p>
+            <span class="preview-label">{{ $t('organizations.previewFileType') }}</span><p>{{ previewItem.contentType || previewItem.mimeType || $t('organizations.personalMedia') }}</p>
           </div>
         </section>
         <section v-else class="resource-preview-body">
-          <div class="preview-copy"><span class="preview-label">主题</span><p>{{ previewItem.subject || '无主题' }}</p></div>
+          <div class="preview-copy"><span class="preview-label">{{ $t('organizations.previewSubject') }}</span><p>{{ previewItem.subject || $t('organizations.previewNoSubject') }}</p></div>
           <div class="preview-frame-wrap"><iframe :srcdoc="previewDocument" sandbox="" :title="previewItem.name" /></div>
         </section>
-        <footer class="resource-preview-footer"><b-button @click="closePreview">关闭</b-button></footer>
+        <footer class="resource-preview-footer"><b-button @click="closePreview">{{ $t('organizations.previewCloseButton') }}</b-button></footer>
       </div>
     </b-modal>
   </section>
@@ -284,7 +318,7 @@ export default Vue.extend({
       if (!this.previewItem) {
         return '';
       }
-      let body = this.previewItem.body || '<p class="empty">暂无正文内容。</p>';
+      let body = this.previewItem.body || `<p class="empty">${this.$t('organizations.previewNoBody')}</p>`;
       if (this.previewItem.contentType === 'plain' || this.previewItem.contentType === 'markdown') {
         body = `<pre>${this.escapePreviewHtml(body)}</pre>`;
       } else {
@@ -363,7 +397,7 @@ export default Vue.extend({
     },
 
     roleLabel(role) {
-      return role === 'manager' ? '管理员' : '普通成员';
+      return role === 'manager' ? this.$t('organizations.roleManager') : this.$t('organizations.roleMember');
     },
 
     isActiveOrganization(organization) {
@@ -377,7 +411,7 @@ export default Vue.extend({
     },
 
     leaveOrganization(organization) {
-      this.$utils.confirm(`离开“${organization.name}”后，该组织中属于你的资源会进入待转移状态。`, async () => {
+      this.$utils.confirm(this.$t('organizations.confirmLeaveOrg', { name: organization.name }), async () => {
         await this.$api.leaveOrganization(organization.id);
         if (this.isActiveOrganization(organization)) {
           this.$store.commit('setWorkspace', { organizationId: 0, personal: true });
@@ -421,8 +455,8 @@ export default Vue.extend({
 
     migrateLists(mode) {
       const customerListIDs = [...this.personalCustomerListIDs];
-      const action = mode === 'move' ? '移动' : '复制';
-      this.$utils.confirm(`确认${action}所选个人客户列表？`, async () => {
+      const action = mode === 'move' ? this.$t('organizations.migrationMove') : this.$t('organizations.migrationCopy');
+      this.$utils.confirm(this.$t('organizations.confirmMigrateListsShort', { action }), async () => {
         await this.$api.migratePersonalLists({
           customer_list_ids: customerListIDs,
           mode,
@@ -437,17 +471,17 @@ export default Vue.extend({
     migrateResource(resource, selectedIDs, mode) {
       const ids = [...selectedIDs];
       const labels = {
-        templates: '邮件模板',
-        campaigns: '营销活动',
-        media: '媒体文件',
+        templates: this.$t('globals.terms.templates'),
+        campaigns: this.$t('globals.terms.campaigns'),
+        media: this.$t('organizations.personalMedia'),
       };
       const selectedKey = {
         templates: 'personalTemplateIDs',
         campaigns: 'personalCampaignIDs',
         media: 'personalMediaIDs',
       }[resource];
-      const action = mode === 'move' ? '移动' : '复制';
-      this.$utils.confirm(`确认${action}所选${labels[resource]}？`, async () => {
+      const action = mode === 'move' ? this.$t('organizations.migrationMove') : this.$t('organizations.migrationCopy');
+      this.$utils.confirm(this.$t('organizations.confirmMigrateResourcesShort', { action, label: labels[resource] }), async () => {
         await this.$api.migratePersonalResources({
           resource,
           ids,

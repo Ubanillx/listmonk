@@ -92,7 +92,7 @@
             <p class="date">{{ $utils.niceDate(item.createdAt, false) }}</p>
             <p v-if="item.ownerName || item.ownerUsername" class="date">{{ ownerLabel(item) }}</p>
             <b-tag v-if="transferPendingAt(item)" size="is-small" type="is-warning" class="is-light">
-              待转移 {{ $utils.niceDate(transferPendingAt(item), true) }}
+              {{ $t('shared.transferPending', { date: $utils.niceDate(transferPendingAt(item), true) }) }}
             </b-tag>
           </div>
         </div>

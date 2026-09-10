@@ -2,70 +2,70 @@
   <section class="reply-mailboxes mt-6">
     <div class="reply-mailboxes-header level mb-5">
       <div>
-        <h2 class="title is-5 mb-1"><b-icon icon="email-arrow-left-outline" size="is-small" /> 客户回信邮箱</h2>
-        <p class="help">客户回复邮件时，用于接收回信的邮箱。</p>
+        <h2 class="title is-5 mb-1"><b-icon icon="email-arrow-left-outline" size="is-small" /> {{ $t('replyMailbox.title') }}</h2>
+        <p class="help">{{ $t('replyMailbox.help') }}</p>
       </div>
-      <b-button type="is-primary" icon-left="plus" @click="addMailbox">新增回信邮箱</b-button>
+      <b-button type="is-primary" icon-left="plus" @click="addMailbox">{{ $t('replyMailbox.add') }}</b-button>
     </div>
 
     <div v-if="mailboxes.length === 0" class="notification is-light reply-empty-state">
       <b-icon icon="email-off-outline" size="is-small" />
-      <span>尚未配置客户回信邮箱。</span>
+      <span>{{ $t('replyMailbox.empty') }}</span>
     </div>
 
     <div v-for="(mailbox, index) in mailboxes" :key="mailbox.id || `new-${index}`" class="box reply-mailbox-card">
       <div class="reply-card-header">
         <div>
           <div class="reply-card-title">
-            {{ mailbox.name || mailbox.email || `回信邮箱 #${index + 1}` }}
+            {{ mailbox.name || mailbox.email || `${$t('replyMailbox.fallbackName', { n: index + 1 })}` }}
             <b-tag v-if="mailbox.id" rounded size="is-small" :type="statusType(mailbox.status)">
               {{ statusLabel(mailbox.status) }}
             </b-tag>
-            <b-tag v-if="mailbox.isDefault" type="is-info" rounded size="is-small">默认</b-tag>
+            <b-tag v-if="mailbox.isDefault" type="is-info" rounded size="is-small">{{ $t('replyMailbox.defaultTag') }}</b-tag>
           </div>
-          <p class="reply-card-subtitle">{{ mailbox.email || '填写客户回信邮箱地址' }}</p>
+          <p class="reply-card-subtitle">{{ mailbox.email || $t('replyMailbox.noEmail') }}</p>
         </div>
         <b-button v-if="mailbox.id" type="is-danger" outlined size="is-small" icon-left="trash-can-outline"
           @click="disableMailbox(mailbox, index)">
-          停用
+          {{ $t('replyMailbox.disable') }}
         </b-button>
       </div>
 
       <div class="columns is-multiline reply-grid">
         <div class="column is-6">
-          <b-field label="邮箱地址" label-position="on-border">
+          <b-field :label="$t('replyMailbox.emailLabel')" label-position="on-border">
             <b-input v-model.trim="mailbox.email" type="email" required placeholder="employee@company.example" />
           </b-field>
         </div>
         <div class="column is-6">
-          <b-field label="显示名称" label-position="on-border">
-            <b-input v-model="mailbox.name" maxlength="100" placeholder="客户回信" />
+          <b-field :label="$t('replyMailbox.nameLabel')" label-position="on-border">
+            <b-input v-model="mailbox.name" maxlength="100" :placeholder="$t('replyMailbox.nameLabel')" />
           </b-field>
         </div>
         <div class="column is-6">
-          <b-field label="登录账号" label-position="on-border" message="通常与邮箱地址相同">
+          <b-field :label="$t('replyMailbox.usernameLabel')" label-position="on-border" :message="$t('replyMailbox.usernameHelp')">
             <b-input v-model.trim="mailbox.username" placeholder="employee@company.example" />
           </b-field>
         </div>
         <div class="column is-6">
-          <b-field label="密码" label-position="on-border"
-            message="填写邮箱密码或客户端授权码">
+          <b-field :label="$t('replyMailbox.passwordLabel')" label-position="on-border"
+            :message="$t('replyMailbox.passwordHelp')">
             <b-input v-model="mailbox.password" type="password" password-reveal
-              :placeholder="mailbox.id ? '已保存，留空表示不修改' : '输入邮箱密码或客户端授权码'" />
+              :placeholder="mailbox.id ? $t('replyMailbox.passwordSaved') : $t('replyMailbox.passwordPlaceholder')" />
           </b-field>
         </div>
         <div class="column is-6">
-          <b-field label="IMAP 服务器" label-position="on-border">
+          <b-field :label="$t('replyMailbox.imapHostLabel')" label-position="on-border">
             <b-input v-model.trim="mailbox.imapHost" placeholder="imap.example.com" />
           </b-field>
         </div>
         <div class="column is-3">
-          <b-field label="端口" label-position="on-border">
+          <b-field :label="$t('replyMailbox.portLabel')" label-position="on-border">
             <b-numberinput v-model="mailbox.imapPort" min="1" max="65535" controls-position="compact" />
           </b-field>
         </div>
         <div class="column is-3">
-          <b-field label="文件夹" label-position="on-border">
+          <b-field :label="$t('replyMailbox.folderLabel')" label-position="on-border">
             <b-input v-model.trim="mailbox.folder" placeholder="INBOX" />
           </b-field>
         </div>
@@ -74,21 +74,21 @@
       <div class="reply-card-footer">
         <div class="reply-card-ai-toggle">
           <b-checkbox v-model="mailbox.aiEnabled">
-            启用 AI 自动处理回信
+            {{ $t('replyMailbox.aiToggle') }}
           </b-checkbox>
           <p class="help" v-if="mailbox.aiEnabled">
-            自动处理客户回信中的退订和投诉。
+            {{ $t('replyMailbox.aiHelp') }}
           </p>
         </div>
         <div class="reply-card-default-toggle">
-          <b-checkbox v-model="mailbox.isDefault">设为默认回信邮箱</b-checkbox>
+          <b-checkbox v-model="mailbox.isDefault">{{ $t('replyMailbox.setDefault') }}</b-checkbox>
         </div>
         <div class="buttons mb-0">
           <b-button type="is-light" icon-left="connection" :loading="testing === index" @click="testMailbox(mailbox, index)">
-            测试连接
+            {{ $t('replyMailbox.testConnection') }}
           </b-button>
           <b-button type="is-primary" icon-left="content-save-outline" :loading="saving === index" @click="saveMailbox(mailbox, index)">
-            保存
+            {{ $t('globals.buttons.save') }}
           </b-button>
         </div>
       </div>
@@ -171,7 +171,10 @@ export default Vue.extend({
 
     statusLabel(status) {
       return ({
-        active: '已验证', retained: '离组保留', disabled: '已停用', pending: '待验证',
+        active: this.$t('replyMailbox.statusActive'),
+        retained: this.$t('replyMailbox.statusRetained'),
+        disabled: this.$t('replyMailbox.statusDisabled'),
+        pending: this.$t('replyMailbox.statusPending'),
       })[status] || status;
     },
 
@@ -193,7 +196,7 @@ export default Vue.extend({
 
     saveMailbox(mailbox, index) {
       if (!mailbox.email || (!mailbox.id && !mailbox.password)) {
-        this.$utils.toast('请填写邮箱地址和密码或客户端授权码', 'is-danger');
+        this.$utils.toast(this.$t('replyMailbox.toastMissingFields'), 'is-danger');
         return;
       }
       this.saving = index;
@@ -203,7 +206,7 @@ export default Vue.extend({
       request.then((data) => {
         const saved = this.normalize(data);
         this.$set(this.mailboxes, index, saved);
-        this.$utils.toast('回信邮箱已保存');
+        this.$utils.toast(this.$t('replyMailbox.toastSaved'));
       }).finally(() => {
         this.saving = null;
       });
@@ -211,7 +214,7 @@ export default Vue.extend({
 
     testMailbox(mailbox, index) {
       if (!mailbox.email || !mailbox.password) {
-        this.$utils.toast('测试连接需要邮箱地址和密码或客户端授权码', 'is-danger');
+        this.$utils.toast(this.$t('replyMailbox.toastTestMissing'), 'is-danger');
         return;
       }
       this.testing = index;
@@ -220,9 +223,9 @@ export default Vue.extend({
         id: mailbox.id || 0,
       }).then(() => {
         this.$set(mailbox, 'status', 'active');
-        this.$utils.toast('邮箱连接成功');
+        this.$utils.toast(this.$t('replyMailbox.toastTestSuccess'));
       }).catch((err) => {
-        const message = err.response?.data?.message || '邮箱连接失败';
+        const message = err.response?.data?.message || this.$t('replyMailbox.toastTestFailed');
         this.$utils.toast(message, 'is-danger');
       }).finally(() => {
         this.testing = null;
@@ -230,10 +233,10 @@ export default Vue.extend({
     },
 
     disableMailbox(mailbox, index) {
-      this.$utils.confirm('停用后，新的营销活动不能使用此回信邮箱。', () => {
+      this.$utils.confirm(this.$t('replyMailbox.confirmDisable'), () => {
         this.$api.deleteReplyMailbox(mailbox.id).then(() => {
           this.$set(this.mailboxes, index, { ...mailbox, status: 'disabled', isDefault: false });
-          this.$utils.toast('回信邮箱已停用');
+          this.$utils.toast(this.$t('replyMailbox.toastDisabled'));
         });
       });
     },

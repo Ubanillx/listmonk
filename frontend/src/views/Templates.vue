@@ -31,11 +31,11 @@
         </p>
       </b-table-column>
 
-      <b-table-column v-slot="props" field="ownerUsername" label="所属用户" sortable>
+      <b-table-column v-slot="props" field="ownerUsername" :label="$t('shared.owner')" sortable>
         {{ ownerLabel(props.row) }}
         <b-tag size="is-small" class="is-light">{{ visibilityLabel(props.row.visibility) }}</b-tag>
         <b-tag v-if="transferPendingAt(props.row)" size="is-small" type="is-warning" class="is-light">
-          待转移 {{ $utils.niceDate(transferPendingAt(props.row), true) }}
+          {{ $t('shared.transferPending', { date: $utils.niceDate(transferPendingAt(props.row), true) }) }}
         </b-tag>
       </b-table-column>
 
@@ -84,8 +84,8 @@
             </b-tooltip>
           </a>
           <a v-if="canManageOrganizationTemplate(props.row)" href="#"
-            @click.prevent="showOrganizationTemplateActions(props.row)" aria-label="管理组织共享模板">
-            <b-tooltip label="管理组织共享模板" type="is-dark">
+            @click.prevent="showOrganizationTemplateActions(props.row)" :aria-label="$t('templates.orgSharedTitle')">
+            <b-tooltip :label="$t('templates.orgSharedTitle')" type="is-dark">
               <b-icon icon="account-cog-outline" size="is-small" />
             </b-tooltip>
           </a>
@@ -128,14 +128,14 @@
 
     <b-modal scroll="keep" :aria-modal="true" :active.sync="isCloneFormVisible" :width="520">
       <div class="modal-card content" style="width: auto">
-        <header class="modal-card-head"><h4>复制邮件模板</h4></header>
+        <header class="modal-card-head"><h4>{{ $t('templates.copyTitle') }}</h4></header>
         <section class="modal-card-body">
           <b-field :label="$t('globals.fields.name')" label-position="on-border">
             <b-input v-model.trim="cloneForm.name" maxlength="200" required />
           </b-field>
-          <b-field label="目标位置" label-position="on-border">
+          <b-field :label="$t('campaigns.targetLocation')" label-position="on-border">
             <b-select v-model.number="cloneForm.targetOrganizationID" expanded>
-              <option :value="0">个人空间</option>
+              <option :value="0">{{ $t('organizations.personalSpace') }}</option>
               <option v-for="organization in organizations" :key="organization.id" :value="organization.id">
                 {{ organization.name }}
               </option>
@@ -145,20 +145,20 @@
         <footer class="modal-card-foot has-text-right">
           <b-button @click="isCloneFormVisible = false">{{ $t('globals.buttons.close') }}</b-button>
           <b-button type="is-primary" :disabled="!cloneForm.name" @click="cloneTemplate">
-复制
-</b-button>
+            {{ $t('globals.buttons.copy') }}
+          </b-button>
         </footer>
       </div>
     </b-modal>
 
     <b-modal scroll="keep" :aria-modal="true" :active.sync="isOrganizationTemplateActionsVisible" :width="520">
       <div class="modal-card content" style="width: auto">
-        <header class="modal-card-head"><h4>管理组织共享模板</h4></header>
+        <header class="modal-card-head"><h4>{{ $t('templates.orgSharedTitle') }}</h4></header>
         <section class="modal-card-body">
           <p v-if="organizationTemplate" class="mb-4">{{ organizationTemplate.name }}</p>
-          <b-field label="转移给成员" label-position="on-border">
+          <b-field :label="$t('templates.transferToMember')" label-position="on-border">
             <b-select v-model.number="organizationTemplateTargetUserID" expanded>
-              <option :value="null">请选择成员</option>
+              <option :value="null">{{ $t('organizations.selectMember') }}</option>
               <option v-for="member in activeOrganizationMembers" :key="member.userId" :value="member.userId">
                 {{ member.username }}
               </option>
@@ -166,13 +166,13 @@
           </b-field>
         </section>
         <footer class="modal-card-foot is-justify-content-space-between">
-          <b-button type="is-text" @click="unpublishOrganizationTemplate">下架为个人私有</b-button>
+          <b-button type="is-text" @click="unpublishOrganizationTemplate">{{ $t('templates.unpublish') }}</b-button>
           <div>
             <b-button @click="isOrganizationTemplateActionsVisible = false">{{ $t('globals.buttons.close') }}</b-button>
             <b-button type="is-primary" :disabled="!organizationTemplateTargetUserID"
               @click="transferOrganizationTemplate">
-转移
-</b-button>
+              {{ $t('organizations.transfer') }}
+            </b-button>
           </div>
         </footer>
       </div>
@@ -321,10 +321,10 @@ export default Vue.extend({
 
     visibilityLabel(visibility) {
       return {
-        private: '个人私有',
-        organization: '组织共享',
-        global: '全体共享',
-      }[visibility] || '个人私有';
+        private: this.$t('visibility.private'),
+        organization: this.$t('visibility.organization'),
+        global: this.$t('visibility.global'),
+      }[visibility] || this.$t('visibility.private');
     },
 
     makeTemplateDefault(tpl) {

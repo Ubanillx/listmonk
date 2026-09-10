@@ -44,11 +44,7 @@
                   ref="queryExp" placeholder="customers.name LIKE '%user%' or customers.status='blocklisted'"
                   data-cy="query" />
                 <span class="is-size-6 has-text-grey">
-                  {{ $t('customers.advancedQueryHelp') }}.{{ ' ' }}
-                  <a href="https://listmonk.app/docs/querying-and-segmentation" target="_blank"
-                    rel="noopener noreferrer">
-                    {{ $t('globals.buttons.learnMore') }}.
-                  </a>
+                  {{ $t('customers.advancedQueryHelp') }}.
                 </span>
                 <div class="buttons">
                   <b-button native-type="submit" type="is-primary" icon-left="magnify" data-cy="btn-query">
@@ -142,10 +138,10 @@
         </ul>
       </b-table-column>
 
-      <b-table-column v-slot="props" field="ownerUsername" label="所属用户">
+      <b-table-column v-slot="props" field="ownerUsername" :label="$t('shared.owner')">
         {{ ownerLabel(props.row) }}
         <b-tag v-if="transferPendingAt(props.row)" size="is-small" type="is-warning" class="is-light">
-          待转移 {{ $utils.niceDate(transferPendingAt(props.row), true) }}
+          {{ $t('shared.transferPending', { date: $utils.niceDate(transferPendingAt(props.row), true) }) }}
         </b-tag>
       </b-table-column>
 

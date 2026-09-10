@@ -13,8 +13,12 @@ Negative tone, questions, ambiguous content, and every other reply is ignored an
 
 ### Configuration
 
-1. **Settings -> Reply AI classification**: enable classification and configure a base URL of an OpenAI-compatible API (for example `https://api.openai.com/v1`; `/chat/completions` is appended automatically), an API key, the model name, the request timeout, and the minimum confidence. Keys are masked after saving; leave the field blank to keep the stored key.
-2. **Profile -> Reply mailboxes**: enable "AI automatic reply processing" on each verified mailbox individually. Only mailboxes that are explicitly enabled AND verified are scanned, and only when the global setting above is enabled.
+1. **Settings -> Reply AI classification**: fill in the API root of the OpenAI-compatible gateway (for example `https://api.openai.com/v1` or a self-hosted `new-api`/`one-api`/`LiteLLM` gateway such as `http://gateway.internal:3000/v1`; `/chat/completions` is appended automatically) together with the API key, then click **Load models** to read the gateway catalogue. Pick the model from that list (or type an id the gateway does not list), set the request timeout and the minimum confidence, and click **Test model**.
+2. **Test model** pings the gateway, checks that the selected model is advertised, and sends one sample reply through the real classification prompt. Each of the four steps (configuration, gateway, model availability, model reply) reports its own status and reason, so a rejected key, a wrong root, an unreachable gateway, or a model that cannot return the bounded JSON is visible before automation is switched on. Leave the sample blank to send the built-in unsubscribe sample, or write your own body and pick the intent you expect. Nothing is saved by loading models or testing a model.
+3. If the gateway answers on a different mount than the configured root (typically `/v1`), the result offers to use that address; classification calls always use the configured root, so save the suggested address before enabling.
+4. Enable classification, then **Profile -> Reply mailboxes**: enable "AI automatic reply processing" on each verified mailbox individually. Only mailboxes that are explicitly enabled AND verified are scanned, and only when the global setting above is enabled.
+
+Keys are masked after saving; leave the field untouched to keep the stored key. Loading models and testing a model reuse that stored key, and the key is only ever sent in the outbound `Authorization` header — it is never returned to the browser, stored elsewhere, or logged.
 
 The mailbox is polled with POP3 without deleting messages; classification is queued per message (`Message-ID` plus content hash) so retries and restarts never double-process a reply.
 

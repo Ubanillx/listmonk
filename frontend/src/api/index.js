@@ -854,6 +854,21 @@ export const testBounceMailbox = (data) => http.post(
   { disableToast: true },
 );
 
+// Reply-AI gateway probing. Both endpoints accept the unsaved settings form so
+// a model can be discovered and tested before saving; a blank or masked API key
+// means "use the stored key". Errors are rendered inline by the settings page.
+export const listReplyAIModels = (data) => http.post(
+  '/api/settings/reply-ai/models',
+  data,
+  { disableToast: true },
+);
+
+export const testReplyAIModel = (data) => http.post(
+  '/api/settings/reply-ai/test',
+  data,
+  { disableToast: true },
+);
+
 // Dedicated 263 customer-reply mailboxes. Credentials are accepted only on
 // create/update/test and are never returned by the API.
 export const getReplyMailboxes = () => http.get(

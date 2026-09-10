@@ -115,6 +115,10 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.PUT("/api/settings/:key", pm(a.UpdateSettingsByKey, "settings:manage"))
 		g.POST("/api/settings/smtp/test", pm(a.TestSMTPSettings, "settings:manage"))
 		g.POST("/api/settings/bounce/mailbox/test", pm(a.TestBounceMailbox, "settings:manage"))
+		// Reply-AI gateway probing: model discovery and a full model test
+		// against the unsaved settings form. Both never persist credentials.
+		g.POST("/api/settings/reply-ai/models", pm(a.ListReplyAIModels, "settings:manage"))
+		g.POST("/api/settings/reply-ai/test", pm(a.TestReplyAIModel, "settings:manage"))
 		g.POST("/api/admin/reload", pm(a.ReloadApp, "settings:manage"))
 		g.GET("/api/logs", pm(a.GetLogs, "settings:get"))
 		g.GET("/api/events", pm(a.EventStream, "settings:get"))

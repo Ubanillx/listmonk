@@ -67,32 +67,73 @@ func New(opt Options) (*Client, error) {
 		return c, nil
 	}
 
-	baseURL := strings.TrimRight(strings.TrimSpace(opt.BaseURL), "/")
+	baseURL := strings.TrimSpace(opt.BaseURL)
 	if baseURL == "" || c.model == "" || strings.TrimSpace(opt.APIKey) == "" {
 		return nil, errors.New("enabled reply AI requires base URL, API key, and model")
 	}
-	u, err := url.Parse(baseURL)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return nil, errors.New("reply AI base URL must be an absolute HTTP(S) URL")
-	}
-	if !strings.HasSuffix(u.Path, "/chat/completions") {
-		baseURL += "/chat/completions"
+	endpoint, err := chatEndpointURL(baseURL)
+	if err != nil {
+		return nil, err
 	}
 	if c.minConfidence <= 0 || c.minConfidence > 1 {
 		return nil, errors.New("reply AI minimum confidence must be greater than 0 and at most 1")
 	}
-
-	timeout := 15 * time.Second
-	if strings.TrimSpace(opt.Timeout) != "" {
-		timeout, err = time.ParseDuration(opt.Timeout)
-		if err != nil || timeout < time.Second || timeout > 2*time.Minute {
-			return nil, errors.New("reply AI timeout must be between 1s and 2m")
-		}
+	timeout, err := resolveTimeout(opt.Timeout)
+	if err != nil {
+		return nil, err
 	}
 
-	c.endpoint = baseURL
+	c.endpoint = endpoint
 	c.apiKey = strings.TrimSpace(opt.APIKey)
-	c.client = &http.Client{
+	c.client = newHTTPClient(timeout)
+	return c, nil
+}
+
+// apiRoot normalizes a configured base URL into an OpenAI-compatible API root:
+// no trailing slash and no /chat/completions suffix. The same root is the base
+// for chat completions and for gateway model discovery, so both the classifier
+// and the settings-page probe agree on what the operator configured.
+func apiRoot(baseURL string) (string, error) {
+	base := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	u, err := url.Parse(base)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return "", errors.New("reply AI base URL must be an absolute HTTP(S) URL")
+	}
+	if strings.HasSuffix(u.Path, "/chat/completions") {
+		u.Path = strings.TrimSuffix(strings.TrimRight(u.Path, "/"), "/chat/completions")
+		base = strings.TrimRight(u.String(), "/")
+	}
+	return base, nil
+}
+
+// chatEndpointURL resolves a configured base URL to the chat-completions
+// endpoint, appending the path only when it is not already present.
+func chatEndpointURL(baseURL string) (string, error) {
+	base, err := apiRoot(baseURL)
+	if err != nil {
+		return "", err
+	}
+	if strings.HasSuffix(base, "/chat/completions") {
+		return base, nil
+	}
+	return base + "/chat/completions", nil
+}
+
+// resolveTimeout applies the shared 1s–2m bound with a 15s default.
+func resolveTimeout(raw string) (time.Duration, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 15 * time.Second, nil
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil || d < time.Second || d > 2*time.Minute {
+		return 0, errors.New("reply AI timeout must be between 1s and 2m")
+	}
+	return d, nil
+}
+
+func newHTTPClient(timeout time.Duration) *http.Client {
+	return &http.Client{
 		Timeout: timeout,
 		Transport: &http.Transport{
 			MaxIdleConnsPerHost:   4,
@@ -101,7 +142,6 @@ func New(opt Options) (*Client, error) {
 			IdleConnTimeout:       timeout,
 		},
 	}
-	return c, nil
 }
 
 // Enabled reports whether an external model can be called.
@@ -140,8 +180,17 @@ type chatResponse struct {
 	Choices []struct {
 		Message struct {
 			Content string `json:"content"`
+			// Aggregator gateways proxy reasoning models whose visible answer
+			// lives in content while reasoning_content carries the scratchpad.
+			ReasoningContent string `json:"reasoning_content"`
 		} `json:"message"`
 	} `json:"choices"`
+}
+
+// chatResult is the assistant message of a single completion call.
+type chatResult struct {
+	Content   string
+	Reasoning string
 }
 
 const classifierPrompt = `Classify exactly one inbound customer e-mail reply for a mailing-list system.
@@ -154,28 +203,25 @@ Use "complaint" only for an explicit allegation of spam, abuse, harassment, or a
 Negative tone, insults, questions, delivery failures, automatic replies, quoted text, ambiguous messages, and all other content must be "other".
 For unsubscribe use reason_code "explicit_unsubscribe"; for complaint use "explicit_spam_or_abuse"; otherwise use "none".`
 
-// Classify sends normalized reply text to the configured model and strictly
-// validates its bounded JSON response. It never logs the e-mail content.
-func (c *Client) Classify(ctx context.Context, text string) (Decision, error) {
-	if !c.Enabled() {
-		return Decision{}, ErrDisabled
-	}
-
+// chat sends one bounded classification request to the endpoint and returns the
+// assistant message. Failures carry the redacted gateway excerpt so operators
+// can diagnose a bad model name or a rejected key without ever seeing secrets.
+func (c *Client) chat(ctx context.Context, userContent string) (chatResult, error) {
 	body, err := json.Marshal(chatRequest{
 		Model:       c.model,
 		Temperature: 0,
 		Messages: []chatMessage{
 			{Role: "system", Content: classifierPrompt},
-			{Role: "user", Content: "Untrusted reply body follows:\n---\n" + text + "\n---"},
+			{Role: "user", Content: userContent},
 		},
 	})
 	if err != nil {
-		return Decision{}, err
+		return chatResult{}, err
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint, bytes.NewReader(body))
 	if err != nil {
-		return Decision{}, err
+		return chatResult{}, err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	req.Header.Set("Content-Type", "application/json")
@@ -183,34 +229,58 @@ func (c *Client) Classify(ctx context.Context, text string) (Decision, error) {
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return Decision{}, fmt.Errorf("calling reply AI: %w", err)
+		return chatResult{}, fmt.Errorf("calling reply AI: %w", err)
 	}
 	defer resp.Body.Close()
 
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return Decision{}, err
+		return chatResult{}, err
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return Decision{}, fmt.Errorf("reply AI returned HTTP %d", resp.StatusCode)
+		return chatResult{}, fmt.Errorf("reply AI returned %w", gatewayError(resp.StatusCode, data, c.apiKey))
 	}
 
 	var out chatResponse
 	if err := json.Unmarshal(data, &out); err != nil {
-		return Decision{}, errors.New("reply AI returned an invalid response")
+		return chatResult{}, errors.New("reply AI returned an invalid response")
 	}
-	if len(out.Choices) == 0 || strings.TrimSpace(out.Choices[0].Message.Content) == "" {
-		return Decision{}, errors.New("reply AI returned no classification")
+	if len(out.Choices) == 0 {
+		return chatResult{}, errors.New("reply AI returned no classification")
 	}
+	return chatResult{
+		Content:   strings.TrimSpace(out.Choices[0].Message.Content),
+		Reasoning: strings.TrimSpace(out.Choices[0].Message.ReasoningContent),
+	}, nil
+}
 
+// decodeDecision strictly parses and validates a bounded classification.
+func decodeDecision(content string) (Decision, error) {
 	var decision Decision
-	if err := json.Unmarshal([]byte(extractJSON(out.Choices[0].Message.Content)), &decision); err != nil {
+	if err := json.Unmarshal([]byte(extractJSON(content)), &decision); err != nil {
 		return Decision{}, errors.New("reply AI did not return a JSON classification")
 	}
 	if err := validateDecision(decision); err != nil {
 		return Decision{}, err
 	}
 	return decision, nil
+}
+
+// Classify sends normalized reply text to the configured model and strictly
+// validates its bounded JSON response. It never logs the e-mail content.
+func (c *Client) Classify(ctx context.Context, text string) (Decision, error) {
+	if !c.Enabled() {
+		return Decision{}, ErrDisabled
+	}
+
+	out, err := c.chat(ctx, "Untrusted reply body follows:\n---\n"+text+"\n---")
+	if err != nil {
+		return Decision{}, err
+	}
+	if out.Content == "" {
+		return Decision{}, errors.New("reply AI returned no classification")
+	}
+	return decodeDecision(out.Content)
 }
 
 func extractJSON(s string) string {

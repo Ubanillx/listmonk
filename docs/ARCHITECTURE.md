@@ -67,6 +67,8 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 
 ### 订阅者客户编码与邮箱打码（v6.21.0+）
 
+- 客户批量导入仅支持邮箱、姓名、客户编码映射；CSV（包括 ZIP 内 CSV）固定逗号分隔，XLSX 保持支持。导入 API 不再接受属性映射，也不再读取 `delim` 参数。覆盖用户信息仅更新姓名与客户编码，保留已有属性。
+
 - `customers.customer_code`（v6.21.0 迁移新增）：客户编码，必填但不唯一。仅管理端新增/编辑（`cmd/customers.go`）与导入路径（`internal/subimporter`）校验必填；公开订阅入口可选。列允许空串并带普通索引。
 - `customer_lists.mask_emails`（v6.21.0 迁移新增）：客户列表级“打码邮箱”开关。无敏感数据访问权的查看者，在当前查看客户列表开启打码时看到打码邮箱；客户列表未开启或无上下文时维持原置空行为。打码覆盖客户列表/详情、API 响应及范围 CSV 导出，搜索仍按完整邮箱匹配。CSV 导出额外输出 `customer_code` 列。
 
@@ -121,3 +123,8 @@ Go 测试放在实现附近的 `*_test.go`；修改工作区、权限、导入�
 ## 文档同步规则（强制）
 
 提交前逐项检查：目录职责或模块移动更新本文；路由、数据模型、工作区/权限语义变化更新本文及 `docs/docs/content/roles-and-permissions.md` 或相关 API 文档；构建、测试、CI、Docker、Jenkins 或部署脚本变化更新本文、`docs/docs/content/developer-setup.md` 和/或 `deploy/README.md`。不得保留与代码、`Makefile`、Compose 或流水线不一致的命令、端口、服务名、权限描述或示例。
+
+
+## 模板称呼兜底（v6.29.0）
+
+`templates.name_fallback` 是模板所属工作区内的 JSON 配置（enabled/value/invalid_values）；`models.NameFallback` 负责校验及完整值匹配。模板更新在原工作区事务内写入，API 未传字段保留已有配置。`internal/manager/message.go` 和 `models/messages.go` 在渲染用的客户副本上应用规则，不改变数据库、投递信封或追踪对象。活动查询按与 template_body 相同的授权条件读取 template_name_fallback；HTML 活动随模板加载，visual 活动使用 `campaigns.name_fallback` 导入快照。模板/活动复制、工作区迁移复制保留配置。初始 schema 与 v6.29.0 幂等迁移均默认 `{}`，保持旧行为。入口为 `TemplateForm.vue` / `NameFallbackSettings.vue`，预览接受未保存规则和空姓名样本。

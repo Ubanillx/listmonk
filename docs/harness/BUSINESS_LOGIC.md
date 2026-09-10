@@ -49,3 +49,11 @@
 - 普通邮件属于读取成功但未识别退信，空邮箱单独提示；不会把通知发件人或普通 To 字段当成失败收件人。
 - DSN 各收件人块优先 Final-Recipient，再 Original-Recipient，再 X-Failed-Recipients；正文推断明确标记 body_inferred。摘要取外层邮件，日期优先 Received，缺失则以 Date 标记回退，未知不补当前时间。
 - `starttls` 与 `tls_enabled` 互斥；旧配置缺失 `starttls` 时视为 false，不需要迁移。检测和保存后的后台收信使用同一连接模式。
+
+
+## 称呼兜底
+
+- 模板称呼规则仅修改渲染副本；不修改客户资料、真实收件人或邮件信封。
+- 未启用规则保持原值；启用后空白及指定无效值使用备选称呼，其他姓名优先保留。规则不猜测真实人名。
+- HTML 活动按已授权模板解析规则；可视化导入、模板/活动复制保留独立规则，旧 API 更新未传规则时不得清空。
+- 来源：`models/name_fallback.go`、`internal/manager/message.go`、`internal/core/workspace_actions.go`、`internal/core/templates.go`。

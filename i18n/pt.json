@@ -533,7 +533,7 @@
     "settings.privacy.domainBlocklistHelp": "Endereços de email com estes domínios não podem efetuar subscrições. Insira um domínio por linha, e.g. somesite.com",
     "settings.privacy.individualSubTracking": "Tracking individual de subscritores",
     "settings.privacy.individualSubTrackingHelp": "Track visualizações e clicked ao nível do subscritor. Quando desligado, visualizações e track de clicks continuam, mas sem estarem associadas a nenhum subscritor.",
-    "settings.privacy.listUnsubHeader": "Incluir header `CustomerList-Unsubscribe`",
+    "settings.privacy.listUnsubHeader": "Incluir header `List-Unsubscribe`",
     "settings.privacy.listUnsubHeaderHelp": "Incluir headers de cancelamento de subscrição que permite aos clientes de email permitir ao utilizadores cancelar a subscrição num único clique.",
     "settings.privacy.name": "Privacidade",
     "settings.privacy.recordOptinIP": "Registrar endereço de IP de opt-in",

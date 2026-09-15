@@ -533,7 +533,7 @@
     "settings.privacy.domainBlocklistHelp": "E-Mail Adressen dieser Domains sind vom Abonnieren ausgeschlossen.  Eine Domain pro Zeile, z.B. somesite.com",
     "settings.privacy.individualSubTracking": "Einzelabonnenten Tracking",
     "settings.privacy.individualSubTrackingHelp": "Abonnentenviews und Klicks werden einzeln getrackt. Wenn deaktiviert, werden die Daten ohne Zuordnung zu Abonnenten gespeichert.",
-    "settings.privacy.listUnsubHeader": "Inkludiere `CustomerList-Unsubscribe` (von CustomerListe abmelden) Header",
+    "settings.privacy.listUnsubHeader": "Inkludiere `List-Unsubscribe` (von CustomerListe abmelden) Header",
     "settings.privacy.listUnsubHeaderHelp": "Inkludiere Header zum einfachen Abmelden in den E-Mails. Erlaubt es, den E-Mail Clients der Nutzer eine \",Ein Klick\"-Abmeldung anzubieten.",
     "settings.privacy.name": "Privatsphäre",
     "settings.privacy.recordOptinIP": "Opt-in-IP-Adresse protokollieren",

@@ -533,7 +533,7 @@
     "settings.privacy.domainBlocklistHelp": "Endereços de e-mail com estes domínios serão proibidos de se cadastrarem. Um domínio por linha, ex: somesite.com",
     "settings.privacy.individualSubTracking": "Rastreamento individual de inscrito",
     "settings.privacy.individualSubTrackingHelp": "Rastrear visualizações e cliques de cada inscrito. Quando desativado, o rastreio da visualizações e clique continuar sem estar associado a nenhuma inscrição.",
-    "settings.privacy.listUnsubHeader": "Incluir cabeçalho `CustomerList-Unsubscribe`",
+    "settings.privacy.listUnsubHeader": "Incluir cabeçalho `List-Unsubscribe`",
     "settings.privacy.listUnsubHeaderHelp": "Incluir cabeçalhos de desinscrição que permitem aos clientes de e-mail cancelem a inscrição em um único clique.",
     "settings.privacy.name": "Privacidade",
     "settings.privacy.recordOptinIP": "Registrar endereço IP de aceitação",

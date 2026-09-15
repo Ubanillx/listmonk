@@ -533,7 +533,7 @@
     "settings.privacy.domainBlocklistHelp": "A felsorolt domainekhez tartozó e-mail címekkel nem lehet feliratkozni. Soronként egy domaint adjon meg, pl.: teszt.hu",
     "settings.privacy.individualSubTracking": "Megtekintések és kattintások tagokhoz kötése",
     "settings.privacy.individualSubTrackingHelp": "Ha ki van kacspolva, a megtekintések és kattintások száma csak összesítve gyűlik.",
-    "settings.privacy.listUnsubHeader": "`CustomerList-Unsubscribe` fejléc",
+    "settings.privacy.listUnsubHeader": "`List-Unsubscribe` fejléc",
     "settings.privacy.listUnsubHeaderHelp": "Ha be van kapcsolva, egyes e-mail kliensek lehetővé teszik az egykattintásos leiratkozást.",
     "settings.privacy.name": "Adatvédelem",
     "settings.privacy.recordOptinIP": "IP-cím rögzítésére feliratkozás",

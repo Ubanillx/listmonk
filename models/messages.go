@@ -36,6 +36,13 @@ type Message struct {
 	OwnerUserID int
 }
 
+// SetListUnsubscribeHeaders adds the RFC 8058 one-click unsubscribe headers
+// for a message-specific unsubscribe URL.
+func SetListUnsubscribeHeaders(h textproto.MIMEHeader, unsubscribeURL string) {
+	h.Set(EmailHeaderListUnsubscribe, "<"+unsubscribeURL+">")
+	h.Set(EmailHeaderListUnsubscribePost, EmailHeaderListUnsubscribePostValue)
+}
+
 // Attachment represents a file or blob attachment that can be
 // sent along with a message by a Messenger.
 type Attachment struct {

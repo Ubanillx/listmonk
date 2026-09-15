@@ -533,7 +533,7 @@
     "settings.privacy.domainBlocklistHelp": "E-mailové adresy z těchto domén se nemohou přihlásit k odběru. Uveďte jednu doménu na řádek, např.: example.com",
     "settings.privacy.individualSubTracking": "Sledování jednotlivých odběratelů",
     "settings.privacy.individualSubTrackingHelp": "Sledovat kliknutí a pohledy na kampaně na úrovni odběratelů. Je-li to zakázáno, sledování kliknutí a pohledů pokračuje, aniž by bylo propojeno s jednotlivými odběrateli.",
-    "settings.privacy.listUnsubHeader": "Zahrnout záhlaví `CustomerList-Unsubscribe`",
+    "settings.privacy.listUnsubHeader": "Zahrnout záhlaví `List-Unsubscribe`",
     "settings.privacy.listUnsubHeaderHelp": "Zahrnout záhlaví zrušení odběrů, která umožňují e-mailovým klientům, aby povolili uživatelům zrušit odběr jediným kliknutím.",
     "settings.privacy.name": "Soukromí",
     "settings.privacy.recordOptinIP": "Zaznamenávat IP adresy pro opt-in",

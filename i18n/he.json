@@ -533,7 +533,7 @@
     "settings.privacy.domainBlocklistHelp": "כתובות דואר אלקטרוני באמצעות שמן נאסר על הרשות להרשים. שמות התחומים יבשים על כל שורה. לדוגמה: somesite.com",
     "settings.privacy.individualSubTracking": "מעקב אישי של המנויים",
     "settings.privacy.individualSubTrackingHelp": "רישום תצורה יחידה למוניטים השליחים ולחיצה. בתיבת סימונים שיגורה, המודולים ימשיכו כאב צמיחה גבול תצורה יחידה.",
-    "settings.privacy.listUnsubHeader": "כלול את הכותרת 'הרשם לרשימה' ב־'CustomerList-Unsubscribe'",
+    "settings.privacy.listUnsubHeader": "כלול את הכותרת 'הרשם לרשימה' ב־'List-Unsubscribe'",
     "settings.privacy.listUnsubHeaderHelp": "כותרות המערכת שמאפשרות ללקוחות הדואר האלקטרוני ללחוץ לביטול הרישום.",
     "settings.privacy.name": "פרטיות",
     "settings.privacy.recordOptinIP": "תצורת דין רישום IP הפעילה",

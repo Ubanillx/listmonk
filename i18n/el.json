@@ -533,7 +533,7 @@
     "settings.privacy.domainBlocklistHelp": "Οι διευθύνσεις ηλεκτρονικού ταχυδρομείου σε αυτά τα domain δεν μπορούν να εγγραφούν. Εισάγετε ένα domain ανά γραμμή, π.χ.: somesite.com",
     "settings.privacy.individualSubTracking": "Παρακολούθηση μεμονωμένων συνδρομητών",
     "settings.privacy.individualSubTrackingHelp": "Παρακολουθήστε τις προβολές και τα κλικ σε επίπεδο συνδρομητή. Όταν είναι απενεργοποιημένη, η παρακολούθηση προβολών και κλικ συνεχίζεται χωρίς να συνδέεται με μεμονωμένους συνδρομητές.",
-    "settings.privacy.listUnsubHeader": "Να περιλαμβάνεται η κεφαλίδα `CustomerList-Unsubscribe`",
+    "settings.privacy.listUnsubHeader": "Να περιλαμβάνεται η κεφαλίδα `List-Unsubscribe`",
     "settings.privacy.listUnsubHeaderHelp": "Να συμπεριλαμβάνονται επικεφαλίδες διαγραφής που επιτρέπουν σε χρήστες προγραμμάτων ηλεκτρονικού ταχυδρομείου να διαγραφούν από τη λίστα με ένα μόνο κλικ.",
     "settings.privacy.name": "Ιδιωτικότητα",
     "settings.privacy.recordOptinIP": "Καταγραφή διεύθυνσης IP με τη συγκατάθεση",

@@ -533,7 +533,7 @@
     "settings.privacy.domainBlocklistHelp": "Адреса электронной почты с этими доменами не могут подписываться. Введите по одному домену на строку, например: somesite.com",
     "settings.privacy.individualSubTracking": "Индивидуальное отслеживание подписчиков",
     "settings.privacy.individualSubTrackingHelp": "Отслеживать просмотры кампаний и клики на уровне подписчиков. При отключении отслеживание просмотров и кликов продолжается без привязки к отдельным подписчикам.",
-    "settings.privacy.listUnsubHeader": "Включить заголовок `CustomerList-Unsubscribe`",
+    "settings.privacy.listUnsubHeader": "Включить заголовок `List-Unsubscribe`",
     "settings.privacy.listUnsubHeaderHelp": "Включить заголовки отписки, которые позволяют почтовым клиентам предоставлять пользователям возможность отписаться одним кликом.",
     "settings.privacy.name": "Конфиденциальность",
     "settings.privacy.recordOptinIP": "Записывать IP-адрес подтверждения подписки",

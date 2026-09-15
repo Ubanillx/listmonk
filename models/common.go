@@ -17,15 +17,18 @@ import (
 const (
 	// Headers attached to e-mails for bounce tracking.
 	EmailHeaderCustomerUUID = "X-Listmonk-Customer"
-	EmailHeaderCampaignUUID   = "X-Listmonk-Campaign"
+	EmailHeaderCampaignUUID = "X-Listmonk-Campaign"
 
 	// Standard e-mail headers.
-	EmailHeaderDate        = "Date"
-	EmailHeaderFrom        = "From"
-	EmailHeaderSubject     = "Subject"
-	EmailHeaderMessageId   = "Message-Id"
-	EmailHeaderDeliveredTo = "Delivered-To"
-	EmailHeaderReceived    = "Received"
+	EmailHeaderDate                     = "Date"
+	EmailHeaderFrom                     = "From"
+	EmailHeaderSubject                  = "Subject"
+	EmailHeaderMessageId                = "Message-Id"
+	EmailHeaderDeliveredTo              = "Delivered-To"
+	EmailHeaderReceived                 = "Received"
+	EmailHeaderListUnsubscribe          = "List-Unsubscribe"
+	EmailHeaderListUnsubscribePost      = "List-Unsubscribe-Post"
+	EmailHeaderListUnsubscribePostValue = "List-Unsubscribe=One-Click"
 
 	// TwoFA types.
 	TwofaTypeNone = "none"

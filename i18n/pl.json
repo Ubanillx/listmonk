@@ -533,7 +533,7 @@
     "settings.privacy.domainBlocklistHelp": "Adresy e-mail z tymi domenami nie mogą subskrybować. Wprowadź jedną domenę w każdym wierszu, np.: domena.com",
     "settings.privacy.individualSubTracking": "Śledzenie indywidualnych subskrybentów",
     "settings.privacy.individualSubTrackingHelp": "Śledź dane wyświetleń i kliknięć na poziomie pojedynczego subskrybenta. Jeśli wyłączone dane będą nadal zbierane, ale niepowiązane ze subskrybentami.",
-    "settings.privacy.listUnsubHeader": "Dodawaj nagłówek `CustomerList-Unsubscribe`",
+    "settings.privacy.listUnsubHeader": "Dodawaj nagłówek `List-Unsubscribe`",
     "settings.privacy.listUnsubHeaderHelp": "Dodaj nagłówki do wypisania się z subskrypcji. Niektóre programy pocztowe umożliwiają wypisanie się jednym kliknięciem.",
     "settings.privacy.name": "Prywatność",
     "settings.privacy.recordOptinIP": "Zapisz adres IP zgody na otrzymywanie",

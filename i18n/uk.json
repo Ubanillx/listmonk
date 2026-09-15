@@ -533,7 +533,7 @@
     "settings.privacy.domainBlocklistHelp": "Адресам е-пошти з цих доменів заборонено підписуватись. Уводьте кожен домен з нового рядка, наприклад: example.org",
     "settings.privacy.individualSubTracking": "Відстежувати окремих підписни_ць",
     "settings.privacy.individualSubTrackingHelp": "Деталізувати перегляди й переходи кампаній за підписни_цею. Коли вимкнено, перегляди й переходи відстежуються без прив'язки до окремих підписни_ць.",
-    "settings.privacy.listUnsubHeader": "Заголовок `CustomerList-Unsubscribe`",
+    "settings.privacy.listUnsubHeader": "Заголовок `List-Unsubscribe`",
     "settings.privacy.listUnsubHeaderHelp": "Додавати заголовки відписки, за допомогою яких підписни_ці можуть відписуватись одним натиском стандартних засобів клієнтів е-пошти.",
     "settings.privacy.name": "Приватність",
     "settings.privacy.recordOptinIP": "Записувати IP-адресу згоди",

@@ -718,7 +718,7 @@
     "settings.privacy.disableTrackingHelp": "Completely disable view and click tracking from campaigns.",
     "settings.privacy.individualSubTracking": "Individual customer tracking",
     "settings.privacy.individualSubTrackingHelp": "Track customer-level campaign views and clicks. When disabled, view and click tracking continue without being linked to individual customers.",
-    "settings.privacy.listUnsubHeader": "Include `CustomerList-Unsubscribe` header",
+    "settings.privacy.listUnsubHeader": "Include `List-Unsubscribe` header",
     "settings.privacy.listUnsubHeaderHelp": "Include headers that let e-mail clients offer one-click unsubscribe.",
     "settings.privacy.name": "Privacy",
     "settings.privacy.recordOptinIP": "Record opt-in IP address",

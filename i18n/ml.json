@@ -533,7 +533,7 @@
     "settings.privacy.domainBlocklistHelp": "ഈ ഡൊമെയ്‌നുകളുള്ള ഇമെയിൽ വിലാസങ്ങൾ സബ്‌സ്‌ക്രൈബുചെയ്യുന്നതിൽ നിന്ന് അനുവദനീയമല്ല. ഓരോ വരിയിലും ഒരു ഡൊമെയ്ൻ നൽകുക. ഉദാ: somesite.com",
     "settings.privacy.individualSubTracking": "വ്യക്തിഗത വരിക്കാരെ പിൻതുടരുക",
     "settings.privacy.individualSubTrackingHelp": "ഉപഭോക്തൃ തലത്തിലുള്ള ക്യാമ്പെയ്ൻ കാഴ്ചകളും കണ്ണിയിലെ ക്ലിക്കുകളും പിൻതുടരുക. അപ്രാപ്‌തമാക്കിയാൽ ക്യാമ്പെയ്ൻ കാഴ്ചകളും കണ്ണികളിന്മേലുള്ള ക്ലിക്കുകളുടെ വിവരങ്ങളും രേഖപ്പെടുത്തുമെങ്കുലും ഉപഭോക്താക്കളുടെ വിവരങ്ങളോട് ചേർക്കില്ല.",
-    "settings.privacy.listUnsubHeader": "`CustomerList-Unsubscribe` തലക്കെട്ട് കൂട്ടിച്ചേർക്കുക",
+    "settings.privacy.listUnsubHeader": "`List-Unsubscribe` തലക്കെട്ട് കൂട്ടിച്ചേർക്കുക",
     "settings.privacy.listUnsubHeaderHelp": "ഒറ്റ ക്ലിക്കിലൂടെ വരിക്കാനല്ലാതാക്കാൻ ഇ-മെയിൽ ക്ലൈന്റിൽ വരിക്കാരനല്ലാതാക്കാനുള്ള തലക്കെട്ട് കൂട്ടിച്ചേർക്കുക.",
     "settings.privacy.name": "സ്വകാര്യത",
     "settings.privacy.recordOptinIP": "ഓപ്റ്റ്-ഇന്‍ IP വിലാസം രേഖപ്പെടുത്തൂ",

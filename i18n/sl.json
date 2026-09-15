@@ -533,7 +533,7 @@
     "settings.privacy.domainBlocklistHelp": "Na e-poštne naslove s temi domenami ni dovoljeno naročanje. V vsako vrstico vnesite eno domeno, npr. somesite.com",
     "settings.privacy.individualSubTracking": "Sledenje posameznim naročnikom",
     "settings.privacy.individualSubTrackingHelp": "Sledite ogledom in klikom oglaševalske akcije na ravni naročnika. Ko je onemogočeno, se sledenje ogledom in klikom nadaljuje, ne da bi bilo povezano s posameznimi naročniki.",
-    "settings.privacy.listUnsubHeader": "Vključi glavo `CustomerList-Unsubscribe`",
+    "settings.privacy.listUnsubHeader": "Vključi glavo `List-Unsubscribe`",
     "settings.privacy.listUnsubHeaderHelp": "Vključi glave za odjavo, ki omogočajo e-poštnim odjemalcem, da uporabnikom omogočijo odjavo z enim klikom.",
     "settings.privacy.name": "Zasebnost",
     "settings.privacy.recordOptinIP": "Zabeleži IP naslov za privolitev",

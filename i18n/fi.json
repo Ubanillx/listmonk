@@ -533,7 +533,7 @@
     "settings.privacy.domainBlocklistHelp": "Tilaajien sähköpostiosoitteet näistä verkkotunnuksista estetään liittymästä postituslistoille. Lisää yksi verkkotunnus per rivi, esim: esimerkki.fi",
     "settings.privacy.individualSubTracking": "Yksittäinen tilaajatason seuranta",
     "settings.privacy.individualSubTrackingHelp": "Seuraa tilaajan tason kampanjakatseluita ja linkkiklikkauksia. Kun tämä on poistettu käytöstä, seuranta jatkuu katseluja ja klikkauksia suoritettaessa ilman tilaajan liittämistä.",
-    "settings.privacy.listUnsubHeader": "Sisällytä `CustomerList-Unsubscribe` otsake",
+    "settings.privacy.listUnsubHeader": "Sisällytä `List-Unsubscribe` otsake",
     "settings.privacy.listUnsubHeaderHelp": "Lisää sähköposteihin perumis-otsikkeet, joiden avulla sähköpostiohjelmat sallivat käyttäjien perua tilauksiaan yhdellä klikkauksella.",
     "settings.privacy.name": "Yksityisyys",
     "settings.privacy.recordOptinIP": "Kirjaa tilauksen IP-osoite",

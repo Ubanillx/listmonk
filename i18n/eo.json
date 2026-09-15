@@ -533,7 +533,7 @@
     "settings.privacy.domainBlocklistHelp": "No es permet la subscripció a les adreces de correu electrònic amb aquests dominis. Introduïu un domini per línia, per exemple: somesite.com",
     "settings.privacy.individualSubTracking": "Seguiment individual de subscriptors",
     "settings.privacy.individualSubTrackingHelp": "Feu un seguiment de les visualitzacions i dels clics de la campanya a nivell de subscriptor. Quan està desactivat, el seguiment de visualitzacions i de clics continua disponible sense estar enllaçat a subscriptors individuals.",
-    "settings.privacy.listUnsubHeader": "Inclou la capçalera `CustomerList-Unsubscribe`",
+    "settings.privacy.listUnsubHeader": "Inclou la capçalera `List-Unsubscribe`",
     "settings.privacy.listUnsubHeaderHelp": "Inclou capçaleres de cancel·lació de subscripció que permetin als clients de correu electrònic permetre als usuaris donar-se de baixa amb un sol clic.",
     "settings.privacy.name": "Privadesa",
     "settings.privacy.recordOptinIP": "Registra l'adreça IP de l'opt-in",

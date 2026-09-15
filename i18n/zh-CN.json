@@ -747,7 +747,7 @@
     "settings.privacy.disableTrackingHelp": "完全禁用营销活动的浏览和点击跟踪。",
     "settings.privacy.individualSubTracking": "客户级跟踪",
     "settings.privacy.individualSubTrackingHelp": "跟踪每个客户的浏览和点击。关闭后不再关联到具体客户。",
-    "settings.privacy.listUnsubHeader": "包括 `CustomerList-Unsubscribe` 标头",
+    "settings.privacy.listUnsubHeader": "包括 `List-Unsubscribe` 标头",
     "settings.privacy.listUnsubHeaderHelp": "添加邮件头部，让邮件客户端支持一键退订。",
     "settings.privacy.name": "隐私",
     "settings.privacy.recordOptinIP": "记录订阅确认 IP 地址",

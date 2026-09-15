@@ -533,7 +533,7 @@
     "settings.privacy.domainBlocklistHelp": "Имейл адреси с тези домейни не могат да се абонират. Въведете по един домейн на ред, напр.: somesite.com",
     "settings.privacy.individualSubTracking": "Индивидуално проследяване на абонати",
     "settings.privacy.individualSubTrackingHelp": "Проследяване на прегледи на кампании и кликове на ниво абонат. Когато е деактивирано, проследяването на прегледи и кликове продължава, без да бъде свързано с индивидуални абонати.",
-    "settings.privacy.listUnsubHeader": "Включване на хедър `CustomerList-Unsubscribe`",
+    "settings.privacy.listUnsubHeader": "Включване на хедър `List-Unsubscribe`",
     "settings.privacy.listUnsubHeaderHelp": "Включване на хедъри за отписване, които позволяват на имейл клиентите да позволяват на потребителите да се отпишат с един клик.",
     "settings.privacy.name": "Поверителност",
     "settings.privacy.recordOptinIP": "Записване на IP адреса на opt-in",

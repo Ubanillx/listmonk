@@ -533,7 +533,7 @@
     "settings.privacy.domainBlocklistHelp": "E-mailové adresy z týchto domén sa nemôžu prihlásiť na odber. Uveďte jednu doménu na riadok, napr: somesite.com",
     "settings.privacy.individualSubTracking": "Sledovanie jednotlivých odberateľov",
     "settings.privacy.individualSubTrackingHelp": "Sledovať kliknutia a pozretia kampane na úrovni odberateľov. Ak to je zakázané, sledovanie kliknutí a pozretí pokračuje bez prepojenia s odberateľmi.",
-    "settings.privacy.listUnsubHeader": "Nastaviť hlavičku `CustomerList-Unsubscribe`",
+    "settings.privacy.listUnsubHeader": "Nastaviť hlavičku `List-Unsubscribe`",
     "settings.privacy.listUnsubHeaderHelp": "Nastaví hlavičku zrušenia odberov, ktorá umožňuje e-mailovým klientom, aby povolili používateľom zrušiť odber jedným kliknutím.",
     "settings.privacy.name": "Súkromie",
     "settings.privacy.recordOptinIP": "Zaznamenávať IP adresu opt-in",

@@ -533,7 +533,7 @@
     "settings.privacy.domainBlocklistHelp": "Bu alan adlarına sahip e-posta adreslerinin abone olmasına izin verilmez. Her satıra bir alan adı girin, örneğin: somesite.com",
     "settings.privacy.individualSubTracking": "Bireysel üye takibi",
     "settings.privacy.individualSubTrackingHelp": "Abone düzeyinde kampanya görüntülemelerini ve tıklamalarını izleyin. Devre dışı bırakıldığında, bireysel abonelere bağlanmadan görüntüleme ve tıklama izleme devam eder.",
-    "settings.privacy.listUnsubHeader": " `CustomerList-Unsubscribe` Başlık bilgisini ekle",
+    "settings.privacy.listUnsubHeader": " `List-Unsubscribe` Başlık bilgisini ekle",
     "settings.privacy.listUnsubHeaderHelp": "E-posta istemcilerinin kullanıcıların tek bir tıklamayla abonelikten çıkmalarına olanak tanıyan abonelik iptal başlıklarını ekleyin.",
     "settings.privacy.name": "Gizlilik",
     "settings.privacy.recordOptinIP": "Opt-in IP adresini kaydet",

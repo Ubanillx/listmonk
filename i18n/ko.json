@@ -533,7 +533,7 @@
     "settings.privacy.domainBlocklistHelp": "이 도메인의 이메일 주소는 구독할 수 없습니다. 한 줄에 하나씩 입력. 예: example.com",
     "settings.privacy.individualSubTracking": "개별 구독자 추적",
     "settings.privacy.individualSubTrackingHelp": "구독자별 캠페인 조회 및 클릭을 추적합니다. 비활성화 시 개별 구독자와 연결되지 않은 채로 추적됩니다.",
-    "settings.privacy.listUnsubHeader": "`CustomerList-Unsubscribe` 헤더 포함",
+    "settings.privacy.listUnsubHeader": "`List-Unsubscribe` 헤더 포함",
     "settings.privacy.listUnsubHeaderHelp": "이메일 클라이언트에서 한 번의 클릭으로 구독 해지할 수 있도록 해더를 포함합니다.",
     "settings.privacy.name": "개인정보",
     "settings.privacy.recordOptinIP": "옵트인 IP 기록",

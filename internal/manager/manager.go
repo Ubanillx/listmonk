@@ -935,10 +935,9 @@ func (m *Manager) worker() {
 			h.Set(models.EmailHeaderCampaignUUID, msg.Campaign.UUID)
 			h.Set(models.EmailHeaderCustomerUUID, msg.Customer.UUID)
 
-			// Attach CustomerList-Unsubscribe headers?
+			// Attach RFC 8058 one-click unsubscribe headers.
 			if m.cfg.UnsubHeader {
-				h.Set("CustomerList-Unsubscribe-Post", "CustomerList-Unsubscribe=One-Click")
-				h.Set("CustomerList-Unsubscribe", `<`+msg.unsubURL+`>`)
+				models.SetListUnsubscribeHeaders(h, msg.unsubURL)
 			}
 
 			// Attach any custom headers.

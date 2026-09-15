@@ -533,7 +533,7 @@
     "settings.privacy.domainBlocklistHelp": "Le caselle di posta di questi domini sono vietate dalla iscrizione. Inserire un dominio per riga, ad esempio: pincopallino.com",
     "settings.privacy.individualSubTracking": "Follow-up individuale degli abbonati",
     "settings.privacy.individualSubTrackingHelp": "Monitora le visualizzazioni e i clic della campagna per iscritto. Quando è disabilitato, il follow-up delle visualizzazioni e dei clic, si effettua senza essere legato agli iscritti individuali.",
-    "settings.privacy.listUnsubHeader": "Includere l'intestazione `CustomerList-Unsubscribe`",
+    "settings.privacy.listUnsubHeader": "Includere l'intestazione `List-Unsubscribe`",
     "settings.privacy.listUnsubHeaderHelp": "Includere intestazioni di annullamento dell'iscrizione che consentono agli utenti di annullare l'iscrizione con un clic dal proprio client di posta elettronica.",
     "settings.privacy.name": "Privacy",
     "settings.privacy.recordOptinIP": "Registra l'indirizzo IP di consenso",

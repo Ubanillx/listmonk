@@ -533,7 +533,7 @@
     "settings.privacy.domainBlocklistHelp": "E-mail adressen met deze domeinen kunnen zich niet inschrijven. Geef een domein in per regel, bv.: somesite.com",
     "settings.privacy.individualSubTracking": "Individuele abonnees volgen",
     "settings.privacy.individualSubTrackingHelp": "Track campagneviews en -clicks per abonnee. Als dit uitgeschakeld is, worden views en kliks bijgehouden zonder aan individuele abonnees gelinkt te worden.",
-    "settings.privacy.listUnsubHeader": "Voeg `CustomerList-Unsubscribe` header toe",
+    "settings.privacy.listUnsubHeader": "Voeg `List-Unsubscribe` header toe",
     "settings.privacy.listUnsubHeaderHelp": "Voeg header toe zodat e-mailprogramma's gebruikers zich kunnen laten uitschrijven in een klik.",
     "settings.privacy.name": "Privacy",
     "settings.privacy.recordOptinIP": "Opt-in IP-adres registreren",

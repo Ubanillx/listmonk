@@ -533,7 +533,7 @@
     "settings.privacy.domainBlocklistHelp": "E-postadresser med disse domenene er ikke tillatt å abonnere. Skriv inn ett domene per linje, f.eks. somesite.com",
     "settings.privacy.individualSubTracking": "Individuell abonnentsporing",
     "settings.privacy.individualSubTrackingHelp": "Spor abonnent-nivå kampanjevisninger og klikk. Når deaktivert, fortsetter sporingen av visninger og klikk uten å være koblet til individuelle abonnenter.",
-    "settings.privacy.listUnsubHeader": "Inkluder `CustomerList-Unsubscribe`-header",
+    "settings.privacy.listUnsubHeader": "Inkluder `List-Unsubscribe`-header",
     "settings.privacy.listUnsubHeaderHelp": "Inkluder avmeldingsoverskrifter som lar e-postklienter gi brukere mulighet til å melde seg av med ett klikk.",
     "settings.privacy.name": "Personvern",
     "settings.privacy.recordOptinIP": "Registrer opt-in IP-adresse",

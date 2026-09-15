@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/knadh/listmonk/internal/auth"
@@ -46,6 +47,7 @@ func (a *App) CreateUserRole(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	setAuditObjectID(c, strconv.Itoa(out.ID))
 
 	return c.JSON(http.StatusOK, okResp{out})
 }
@@ -65,6 +67,7 @@ func (a *App) CreateListRole(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	setAuditObjectID(c, strconv.Itoa(out.ID))
 
 	return c.JSON(http.StatusOK, okResp{out})
 }

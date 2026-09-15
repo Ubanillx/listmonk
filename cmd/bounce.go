@@ -113,9 +113,9 @@ func (a *App) redactWorkspaceBounceSensitiveFields(access models.WorkspaceAccess
 		return
 	}
 	scope := models.ResourceScope{
-		OrganizationID:      bounce.OrganizationID,
-		OwnerUserID:         bounce.OwnerUserID,
-		TransferPendingAt:   bounce.TransferPendingAt,
+		OrganizationID:    bounce.OrganizationID,
+		OwnerUserID:       bounce.OwnerUserID,
+		TransferPendingAt: bounce.TransferPendingAt,
 	}
 	if a.core.CanSeeSensitiveResource(access, scope) {
 		return
@@ -333,6 +333,10 @@ func (a *App) BounceWebhook(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusServiceUnavailable, a.i18n.T("globals.messages.internalError"))
 		}
 	}
+	a.recordBackgroundAudit("webhook", "bounce.received", "bounce_webhook", service, nil, map[string]any{
+		"bounce_count": len(bounces),
+		"source":       service,
+	})
 
 	return c.JSON(http.StatusOK, okResp{true})
 }

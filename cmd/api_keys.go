@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,9 +14,9 @@ import (
 const (
 	apiKeyScopeListsRead           = "customer_lists:read"
 	apiKeyScopeListsWrite          = "customer_lists:write"
-	apiKeyScopeCustomersRead     = "customers:read"
-	apiKeyScopeCustomersWrite    = "customers:write"
-	apiKeyScopeCustomersImport   = "customers:import"
+	apiKeyScopeCustomersRead       = "customers:read"
+	apiKeyScopeCustomersWrite      = "customers:write"
+	apiKeyScopeCustomersImport     = "customers:import"
 	apiKeyScopeTemplatesRead       = "templates:read"
 	apiKeyScopeTemplatesWrite      = "templates:write"
 	apiKeyScopeMediaRead           = "media:read"
@@ -164,6 +165,9 @@ func (a *App) CreatePersonalAPIKey(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	setAuditOrganizationID(c, req.WorkspaceOrganizationID)
+	setAuditObjectID(c, strconv.Itoa(out.ID))
+	setAuditMetadata(c, map[string]any{"scope_count": len(scopes)})
 	if _, err := cacheUsers(a.core, a.auth); err != nil {
 		return err
 	}

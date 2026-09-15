@@ -72,7 +72,7 @@
         data-cy="customerListRoles" icon="format-list-bulleted-square" :label="$t('users.customerListRoles')" />
     </b-menu-item><!-- users -->
 
-    <b-menu-item v-if="$can('settings:*')" :expanded="activeGroup.settings" :active="activeGroup.settings"
+    <b-menu-item v-if="$can('settings:*', 'audit:get')" :expanded="activeGroup.settings" :active="activeGroup.settings"
       data-cy="settings" @update:active="(state) => toggleGroup('settings', state)" icon="cog-outline"
       :label="$t('menu.settings')">
       <b-menu-item v-if="$can('settings:get')" :to="{ name: 'settings' }" tag="router-link"
@@ -81,6 +81,8 @@
         :active="activeItem.maintenance" data-cy="maintenance" icon="wrench-outline" :label="$t('menu.maintenance')" />
       <b-menu-item v-if="$can('settings:get')" :to="{ name: 'logs' }" tag="router-link" :active="activeItem.logs"
         data-cy="logs" icon="format-list-bulleted-square" :label="$t('menu.logs')" />
+      <b-menu-item v-if="$can('audit:get')" :to="{ name: 'audit' }" tag="router-link" :active="activeItem.audit"
+        data-cy="audit" icon="clipboard-text-clock-outline" :label="$t('menu.audit')" />
     </b-menu-item><!-- settings -->
   </b-menu-list>
 </template>

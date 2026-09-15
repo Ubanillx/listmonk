@@ -131,6 +131,7 @@ func (a *App) CreateCustomField(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return err
 	}
+	setAuditObjectID(c, strings.ToLower(strings.TrimSpace(req.Key)))
 	return a.saveCustomFields(c, func(fields []models.CustomFieldDefinition) ([]models.CustomFieldDefinition, error) {
 		if err := validateCustomField(&req); err != nil {
 			return nil, err
@@ -147,6 +148,7 @@ func (a *App) CreateCustomField(c echo.Context) error {
 
 func (a *App) UpdateCustomField(c echo.Context) error {
 	id := c.Param("key")
+	setAuditObjectID(c, id)
 	var req models.CustomFieldDefinition
 	if err := c.Bind(&req); err != nil {
 		return err
@@ -181,6 +183,7 @@ func (a *App) UpdateCustomField(c echo.Context) error {
 
 func (a *App) DeleteCustomField(c echo.Context) error {
 	id := c.Param("key")
+	setAuditObjectID(c, id)
 	return a.saveCustomFields(c, func(fields []models.CustomFieldDefinition) ([]models.CustomFieldDefinition, error) {
 		found := false
 		for i := range fields {

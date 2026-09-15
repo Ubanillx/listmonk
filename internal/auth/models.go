@@ -78,6 +78,7 @@ const (
 	PermSettingsGet           = "settings:get"
 	PermSettingsManage        = "settings:manage"
 	PermSettingsMaintain      = "settings:maintain"
+	PermAuditGet              = "audit:get"
 	PermWorkspacesPersonal    = "workspaces:personal"
 )
 

@@ -20,6 +20,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- reference user IDs. Drop them explicitly on a destructive fresh install.
 DROP TABLE IF EXISTS data_export_chunks CASCADE;
 DROP TABLE IF EXISTS data_export_jobs CASCADE;
+DROP TABLE IF EXISTS audit_events CASCADE;
 DROP TABLE IF EXISTS reply_ai_events CASCADE;
 DROP TABLE IF EXISTS reply_forward_messages CASCADE;
 DROP TABLE IF EXISTS reply_forward_rules CASCADE;
@@ -1044,6 +1045,33 @@ CREATE TABLE IF NOT EXISTS data_export_chunks (
  content BYTEA NOT NULL,
  PRIMARY KEY(job_id, sequence)
 );
+
+-- Durable, privacy-safe business operation audit events. High-frequency
+-- delivery/open/click facts remain in their dedicated tables.
+CREATE TABLE audit_events (
+    id BIGSERIAL PRIMARY KEY,
+    occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    -- 0 is the personal workspace. Keep organization IDs after deletion so
+    -- organization history cannot fall into personal workspace queries.
+    organization_id BIGINT NOT NULL DEFAULT 0,
+    actor_type TEXT NOT NULL CHECK (actor_type IN ('user','api_key','system','webhook','customer','anonymous')),
+    actor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    actor_token_id INTEGER REFERENCES integration_tokens(id) ON DELETE SET NULL,
+    action TEXT NOT NULL,
+    object_type TEXT NOT NULL,
+    object_id TEXT NOT NULL DEFAULT '',
+    result TEXT NOT NULL DEFAULT 'success' CHECK (result IN ('success','failed','denied')),
+    reason_code TEXT NOT NULL DEFAULT '',
+    request_id TEXT NOT NULL DEFAULT '',
+    metadata JSONB NOT NULL DEFAULT '{}'::JSONB,
+    ip INET,
+    user_agent TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX idx_audit_events_org_time ON audit_events(organization_id, occurred_at DESC, id DESC);
+CREATE INDEX idx_audit_events_action_time ON audit_events(action, occurred_at DESC, id DESC);
+CREATE INDEX idx_audit_events_object ON audit_events(object_type, object_id, occurred_at DESC);
+CREATE INDEX idx_audit_events_actor ON audit_events(actor_user_id, occurred_at DESC, id DESC);
+CREATE INDEX idx_audit_events_request ON audit_events(request_id) WHERE request_id <> '';
 
 -- campaign_send_counts reads campaign_recipients, customers and
 -- campaign_pool_recipients, so it has to be defined after every table above.

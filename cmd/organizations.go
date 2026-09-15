@@ -22,11 +22,11 @@ const (
 
 	// Resource identifiers are kept local to cmd so handlers do not need to
 	// depend on core's internal implementation constants.
-	resourceLists       = "customer_lists"
+	resourceLists     = "customer_lists"
 	resourceCustomers = "customers"
-	resourceTemplates   = "templates"
-	resourceCampaigns   = "campaigns"
-	resourceMedia       = "media"
+	resourceTemplates = "templates"
+	resourceCampaigns = "campaigns"
+	resourceMedia     = "media"
 )
 
 type organizationRequestInput struct {
@@ -60,7 +60,7 @@ type organizationTransferInput struct {
 }
 
 type organizationListMigrationInput struct {
-	CustomerListIDs              []int  `json:"customer_list_ids"`
+	CustomerListIDs      []int  `json:"customer_list_ids"`
 	Mode                 string `json:"mode"`
 	TargetOrganizationID *int   `json:"target_organization_id"`
 }
@@ -331,6 +331,7 @@ func (a *App) CreateOrganizationRequest(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	setAuditObjectID(c, strconv.Itoa(out.ID))
 	return c.JSON(http.StatusCreated, okResp{out})
 }
 
@@ -376,6 +377,9 @@ func (a *App) ReviewOrganizationRequest(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	if out.OrganizationID.Valid {
+		setAuditOrganizationID(c, out.OrganizationID.Int)
+	}
 	return c.JSON(http.StatusOK, okResp{out})
 }
 
@@ -384,6 +388,7 @@ func (a *App) ArchiveOrganization(c echo.Context) error {
 		return err
 	}
 	orgID := getID(c)
+	setAuditOrganizationID(c, orgID)
 	stopped, err := a.core.ArchiveOrganization(orgID)
 	if err != nil {
 		return err
@@ -423,7 +428,9 @@ func (a *App) PurgeArchivedOrganization(c echo.Context) error {
 	if err := a.requirePlatformAdmin(c); err != nil {
 		return err
 	}
-	if err := a.core.PurgeArchivedOrganization(getID(c)); err != nil {
+	orgID := getID(c)
+	setAuditOrganizationID(c, orgID)
+	if err := a.core.PurgeArchivedOrganization(orgID); err != nil {
 		return err
 	}
 	return c.JSON(http.StatusOK, okResp{true})
@@ -441,6 +448,8 @@ func (a *App) JoinOrganizationByInvite(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	setAuditOrganizationID(c, out.ID)
+	setAuditObjectID(c, strconv.Itoa(out.ID))
 	return c.JSON(http.StatusOK, okResp{out})
 }
 
@@ -479,6 +488,8 @@ func (a *App) AddOrganizationMember(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	setAuditOrganizationID(c, ws.OrganizationID)
+	setAuditObjectID(c, strconv.Itoa(req.UserID))
 	return c.JSON(http.StatusCreated, okResp{out})
 }
 
@@ -498,6 +509,7 @@ func (a *App) UpdateOrganizationMember(c echo.Context) error {
 	if err := a.core.UpdateOrganizationMemberRole(ws.OrganizationID, userID, req.Role); err != nil {
 		return err
 	}
+	setAuditOrganizationID(c, ws.OrganizationID)
 	return c.JSON(http.StatusOK, okResp{true})
 }
 
@@ -518,6 +530,7 @@ func (a *App) RemoveOrganizationMember(c echo.Context) error {
 	if err := a.activateReplyForwardingForMember(ws.OrganizationID, userID); err != nil {
 		return err
 	}
+	setAuditOrganizationID(c, ws.OrganizationID)
 	// Stop manager goroutines after the transaction committed. The records are
 	// already paused in the DB, so they cannot be picked up by a new worker.
 	for _, campaign := range stopped {
@@ -547,6 +560,7 @@ func (a *App) LeaveOrganization(c echo.Context) error {
 	if err := a.activateReplyForwardingForMember(ws.OrganizationID, auth.GetUser(c).ID); err != nil {
 		return err
 	}
+	setAuditOrganizationID(c, ws.OrganizationID)
 	for _, campaign := range stopped {
 		if campaign.Status == models.CampaignStatusPaused && a.manager != nil {
 			a.manager.StopCampaign(campaign.ID, models.CampaignStatusPaused)
@@ -567,6 +581,8 @@ func (a *App) TransferPendingOrganizationResources(c echo.Context) error {
 	if req.TargetUserID < 1 {
 		return echo.NewHTTPError(http.StatusBadRequest, "target user is required")
 	}
+	setAuditOrganizationID(c, ws.OrganizationID)
+	setAuditMetadata(c, map[string]any{"target_user_id": req.TargetUserID})
 	if err := a.core.TransferPendingOrganizationResources(ws.OrganizationID, req.TargetUserID); err != nil {
 		return err
 	}
@@ -589,6 +605,8 @@ func (a *App) TransferArchivedOrganizationResources(c echo.Context) error {
 	if req.TargetUserID < 1 {
 		return echo.NewHTTPError(http.StatusBadRequest, "target user is required")
 	}
+	setAuditOrganizationID(c, getID(c))
+	setAuditMetadata(c, map[string]any{"target_user_id": req.TargetUserID})
 	if err := a.core.TransferArchivedOrganizationResourcesToPersonal(getID(c), req.TargetUserID); err != nil {
 		return err
 	}
@@ -628,6 +646,8 @@ func (a *App) TransferOrganizationTemplate(c echo.Context) error {
 	if err := a.core.TransferOrganizationTemplate(ws.OrganizationID, getID(c), req.TargetUserID); err != nil {
 		return err
 	}
+	setAuditOrganizationID(c, ws.OrganizationID)
+	setAuditMetadata(c, map[string]any{"target_user_id": req.TargetUserID})
 	return c.JSON(http.StatusOK, okResp{true})
 }
 
@@ -639,6 +659,7 @@ func (a *App) UnpublishOrganizationTemplate(c echo.Context) error {
 	if err := a.core.UnpublishOrganizationTemplate(ws.OrganizationID, getID(c)); err != nil {
 		return err
 	}
+	setAuditOrganizationID(c, ws.OrganizationID)
 	return c.JSON(http.StatusOK, okResp{true})
 }
 
@@ -672,6 +693,7 @@ func (a *App) MigratePersonalListsToOrganization(c echo.Context) error {
 	if !target.IsOrganization() {
 		return echo.NewHTTPError(http.StatusBadRequest, "select an organization destination")
 	}
+	setAuditOrganizationID(c, target.OrganizationID)
 	if err := requireWritableWorkspace(target); err != nil {
 		return err
 	}
@@ -697,7 +719,7 @@ func (a *App) MigratePersonalListsToOrganization(c echo.Context) error {
 	a.core.RefreshMatViews(true)
 	return c.JSON(http.StatusOK, okResp{struct {
 		CustomerListIDs []int  `json:"customer_list_ids"`
-		Mode    string `json:"mode"`
+		Mode            string `json:"mode"`
 	}{CustomerListIDs: customerListIDs, Mode: req.Mode}})
 }
 
@@ -720,12 +742,20 @@ func (a *App) MigratePersonalResourcesToOrganization(c echo.Context) error {
 		req.Resource != resourceCampaigns && req.Resource != resourceMedia {
 		return echo.NewHTTPError(http.StatusBadRequest, "unsupported personal resource type")
 	}
+	if req.Resource == resourceMedia {
+		setAuditAction(c, "media.migrated")
+	}
 	if len(req.IDs) == 0 {
 		return echo.NewHTTPError(http.StatusBadRequest, "at least one resource is required")
 	}
 	if req.Mode != "copy" && req.Mode != "move" {
 		return echo.NewHTTPError(http.StatusBadRequest, "migration mode must be copy or move")
 	}
+	setAuditMetadata(c, map[string]any{
+		"resource":       req.Resource,
+		"resource_count": len(req.IDs),
+		"mode":           req.Mode,
+	})
 
 	target := active
 	if req.TargetOrganizationID != nil {
@@ -737,6 +767,7 @@ func (a *App) MigratePersonalResourcesToOrganization(c echo.Context) error {
 	if !target.IsOrganization() {
 		return echo.NewHTTPError(http.StatusBadRequest, "select an organization destination")
 	}
+	setAuditOrganizationID(c, target.OrganizationID)
 	if err := requireWritableWorkspace(target); err != nil {
 		return err
 	}
@@ -863,6 +894,8 @@ func (a *App) CreateOrganizationInvite(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	setAuditOrganizationID(c, ws.OrganizationID)
+	setAuditObjectID(c, strconv.Itoa(out.ID))
 	out.Code = code
 	return c.JSON(http.StatusCreated, okResp{out})
 }
@@ -876,6 +909,7 @@ func (a *App) RevokeOrganizationInvite(c echo.Context) error {
 	if err := a.core.RevokeOrganizationInvite(ws.OrganizationID, id); err != nil {
 		return err
 	}
+	setAuditOrganizationID(c, ws.OrganizationID)
 	return c.JSON(http.StatusOK, okResp{true})
 }
 

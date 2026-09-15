@@ -15,6 +15,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/v2"
+	auditlog "github.com/knadh/listmonk/internal/audit"
 	"github.com/knadh/listmonk/internal/auth"
 	"github.com/knadh/listmonk/internal/bounce"
 	"github.com/knadh/listmonk/internal/buflog"
@@ -45,6 +46,7 @@ type App struct {
 	emailMsgr  *email.Emailer
 	importer   *subimporter.Importer
 	auth       *auth.Auth
+	audit      auditRecorder
 	media      media.Store
 	bounce     *bounce.Manager
 	replyAI    *replyai.Client
@@ -242,8 +244,38 @@ func main() {
 
 	// Initialize the bounce manager that processes bounces from webhooks and
 	// POP3 mailbox scanning.
+	auditWriter := auditlog.New(db, lo)
 	if ko.Bool("bounce.enabled") {
-		bounce = initBounceManager(core.RecordBounce, queries.RecordBounce, lo, ko)
+		bounce = initBounceManager(func(b models.Bounce) error {
+			err := core.RecordBounce(b)
+			result := "success"
+			reasonCode := ""
+			if err != nil {
+				result = "failed"
+				reasonCode = "bounce_persist_failed"
+			}
+			var organizationID *int64
+			if b.SourceOrganizationID.Valid && b.SourceOrganizationID.Int > 0 {
+				id := int64(b.SourceOrganizationID.Int)
+				organizationID = &id
+			}
+			if auditErr := auditWriter.Record(context.Background(), auditlog.Event{
+				OrganizationID: organizationID,
+				ActorType:      "system",
+				Action:         "bounce.policy_applied",
+				ObjectType:     "bounce",
+				ObjectID:       fmt.Sprintf("%d", b.CustomerID),
+				Result:         result,
+				ReasonCode:     reasonCode,
+				Metadata: map[string]any{
+					"type":   b.Type,
+					"source": b.Source,
+				},
+			}); auditErr != nil {
+				lo.Printf("error recording bounce audit event: %v", auditErr)
+			}
+			return err
+		}, queries.RecordBounce, lo, ko)
 	}
 
 	// Initialize the global admin/sub e-mail notifier.
@@ -279,6 +311,7 @@ func main() {
 		emailMsgr:  smtpMsgrs.primary,
 		importer:   importer,
 		auth:       auth,
+		audit:      auditWriter,
 		media:      media,
 		bounce:     bounce,
 		replyAI:    replyAI,

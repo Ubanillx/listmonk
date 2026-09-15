@@ -284,6 +284,20 @@ func (a *App) SubscriptionPrefs(c echo.Context) error {
 		subUUID   = c.Param("subUUID")
 		blocklist = a.cfg.Privacy.AllowBlocklist && req.Blocklist
 	)
+	setAuditCustomerContext(c, 0, subUUID, map[string]any{
+		"channel":     "public_self_service",
+		"campaign_id": campUUID,
+	})
+	setAuditAction(c, "subscription.preferences_updated")
+	if customer, lookupErr := a.core.GetCustomer(0, subUUID, ""); lookupErr == nil {
+		organizationID := 0
+		if customer.OrganizationID.Valid {
+			organizationID = customer.OrganizationID.Int
+		}
+		setAuditCustomerContext(c, organizationID, customer.UUID, nil)
+	} else if recipient, lookupErr := a.core.GetPublicPoolCampaignRecipient(campUUID, subUUID); lookupErr == nil && recipient.OrganizationID.Valid {
+		setAuditCustomerContext(c, int(recipient.OrganizationID.Int), subUUID, nil)
+	}
 	if campUUID != dummyUUID {
 		if ok, err := a.core.IsPublicCampaignRecipient(campUUID, subUUID); err != nil {
 			return c.Render(http.StatusInternalServerError, tplMessage,
@@ -294,6 +308,8 @@ func (a *App) SubscriptionPrefs(c echo.Context) error {
 		}
 	}
 	if !req.Manage || blocklist {
+		setAuditAction(c, "subscription.unsubscribed")
+		setAuditMetadata(c, map[string]any{"blocklist": blocklist})
 		if campUUID == dummyUUID {
 			// Opt-in e-mails use the long-standing dummy campaign UUID because
 			// they are not sent by a campaign. Keep their self-service page
@@ -386,6 +402,10 @@ func (a *App) SubscriptionPrefs(c echo.Context) error {
 			makeMsgTpl(a.i18n.T("public.errorTitle"), "", a.i18n.T("public.errorProcessingRequest")))
 
 	}
+	setAuditMetadata(c, map[string]any{
+		"selected_list_count":     len(req.CustomerListUUIDs),
+		"unsubscribed_list_count": len(unsubUUIDs),
+	})
 
 	return c.Render(http.StatusOK, tplMessage,
 		makeMsgTpl(a.i18n.T("globals.messages.done"), "", a.i18n.T("public.prefsSaved")))
@@ -429,6 +449,8 @@ func (a *App) OptinPage(c echo.Context) error {
 
 	// Confirm.
 	if confirm {
+		setAuditAction(c, "subscription.optin_confirmed")
+		setAuditMetadata(c, map[string]any{"list_count": len(customer_lists)})
 		meta := models.JSON{}
 		if a.cfg.Privacy.RecordOptinIP {
 			if h := c.Request().Header.Get("X-Forwarded-For"); h != "" {
@@ -646,6 +668,8 @@ func (a *App) RegisterCampaignView(c echo.Context) error {
 // to the customer. This is a privacy feature and the data that's exported
 // is dependent on the configuration.
 func (a *App) SelfExportCustomerData(c echo.Context) error {
+	setAuditAction(c, "customer.data_exported")
+	setAuditMetadata(c, map[string]any{"channel": "public_self_service"})
 	// Is export allowed?
 	if !a.cfg.Privacy.AllowExport {
 		return c.Render(http.StatusBadRequest, tplMessage,
@@ -701,6 +725,8 @@ func (a *App) SelfExportCustomerData(c echo.Context) error {
 // profile and subscriptions are deleted, while the campaign_views and link
 // clicks remain as orphan data unconnected to any customer.
 func (a *App) WipeCustomerData(c echo.Context) error {
+	setAuditAction(c, "customer.data_erased")
+	setAuditMetadata(c, map[string]any{"channel": "public_self_service"})
 	// Is wiping allowed?
 	if !a.cfg.Privacy.AllowWipe {
 		return c.Render(http.StatusBadRequest, tplMessage,
@@ -808,13 +834,17 @@ func (a *App) processSubForm(c echo.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	setAuditCustomerContext(c, access.OrganizationID, "", map[string]any{
+		"channel":             "public_subscription",
+		"selected_list_count": len(customer_lists),
+	})
 	customerListIDs := make([]int, 0, len(customer_lists))
 	for _, customer_list := range customer_lists {
 		customerListIDs = append(customerListIDs, customer_list.ID)
 	}
 
 	// Insert or reuse a customer inside the owning user/workspace boundary.
-	_, hasOptin, err := a.core.UpsertPublicWorkspaceCustomer(access, models.Customer{
+	customer, hasOptin, err := a.core.UpsertPublicWorkspaceCustomer(access, models.Customer{
 		Name:   req.Name,
 		Email:  req.Email,
 		Status: models.CustomerStatusEnabled,
@@ -825,6 +855,9 @@ func (a *App) processSubForm(c echo.Context) (bool, error) {
 		}
 		return false, echo.NewHTTPError(http.StatusInternalServerError, a.i18n.T("public.errorProcessingRequest"))
 	}
+	setAuditCustomerContext(c, access.OrganizationID, customer.UUID, map[string]any{
+		"has_optin": hasOptin,
+	})
 	return hasOptin, nil
 }
 

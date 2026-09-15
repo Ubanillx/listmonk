@@ -115,6 +115,7 @@ func (a *App) CreateUser(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	setAuditObjectID(c, strconv.Itoa(user.ID))
 
 	// Blank out the password hash in the response.
 	if user.Type != auth.UserTypeAPI {
@@ -161,6 +162,7 @@ func (a *App) CreateUsers(c echo.Context) error {
 	if err := a.core.CreateUsers(users); err != nil {
 		return err
 	}
+	setAuditMetadata(c, map[string]any{"created_count": len(users)})
 
 	if _, err := cacheUsers(a.core, a.auth); err != nil {
 		return err
@@ -576,6 +578,10 @@ func (a *App) UpdateUserProfile(c echo.Context) error {
 
 	// Blank out the password hash in the response.
 	out.Password = null.String{}
+	setAuditObjectID(c, strconv.Itoa(user.ID))
+	if u.Password.String != "" {
+		setAuditAction(c, "auth.password_changed")
+	}
 
 	return c.JSON(http.StatusOK, okResp{out})
 }

@@ -103,6 +103,7 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 				}
 			})
 		)
+		g.Use(a.auditMiddleware)
 
 		// API endpoints.
 		g.GET("/api/health", a.HealthCheck)
@@ -127,6 +128,9 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.POST("/api/admin/reload", pm(a.ReloadApp, "settings:manage"))
 		g.GET("/api/logs", pm(a.GetLogs, "settings:get"))
 		g.GET("/api/events", pm(a.EventStream, "settings:get"))
+		g.GET("/api/audit-events", pm(a.GetAuditEvents, auth.PermAuditGet))
+		g.GET("/api/audit-events/export", pm(a.ExportAuditEvents, auth.PermAuditGet))
+		g.GET("/api/audit-events/:id", pm(a.GetAuditEvent, auth.PermAuditGet))
 		g.GET("/api/about", a.GetAboutInfo)
 		g.GET("/api/custom-fields", a.GetCustomFields)
 		g.POST("/api/custom-fields", a.CreateCustomField)
@@ -350,6 +354,7 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 	{
 		// Public unauthenticated endpoints.
 		g := e.Group("")
+		g.Use(a.auditMiddleware)
 
 		if a.cfg.BounceWebhooksEnabled {
 			// Public bounce endpoints for webservices like SES.
@@ -507,7 +512,8 @@ func (a *App) hasSub(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		subUUID := c.Param("subUUID")
 
-		if _, err := a.core.GetCustomer(0, subUUID, ""); err != nil {
+		customer, err := a.core.GetCustomer(0, subUUID, "")
+		if err != nil {
 			if er, ok := err.(*echo.HTTPError); ok && er.Code == http.StatusBadRequest {
 				return c.Render(http.StatusNotFound, tplMessage,
 					makeMsgTpl(a.i18n.T("public.notFoundTitle"), "", er.Message.(string)))
@@ -517,6 +523,13 @@ func (a *App) hasSub(next echo.HandlerFunc) echo.HandlerFunc {
 			return c.Render(http.StatusInternalServerError, tplMessage,
 				makeMsgTpl(a.i18n.T("public.errorTitle"), "", a.i18n.T("public.errorProcessingRequest")))
 		}
+		organizationID := 0
+		if customer.OrganizationID.Valid {
+			organizationID = customer.OrganizationID.Int
+		}
+		setAuditCustomerContext(c, organizationID, customer.UUID, map[string]any{
+			"channel": "public_self_service",
+		})
 
 		return next(c)
 	}

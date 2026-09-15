@@ -134,6 +134,15 @@ func (a *App) scanReplyAIMailbox(source replyAIMailboxSource) {
 		_, _ = a.queries.UpdateReplyAIMailboxSync.Exec(source.ID, "")
 		return
 	}
+	var orgID *int64
+	if source.OrganizationID.Valid && source.OrganizationID.Int > 0 {
+		id := int64(source.OrganizationID.Int)
+		orgID = &id
+	}
+	a.recordBackgroundAuditResult("system", "reply_ai.mailbox_scan_failed", "reply_mailbox", fmt.Sprintf("%d", source.ID), orgID, "failed", "mailbox_scan_failed", map[string]any{
+		"host": source.Host,
+		"port": source.Port,
+	})
 	a.log.Printf("%s", replyAIMailboxFailureMessage(source, err, budget.scan))
 	_, _ = a.queries.UpdateReplyAIMailboxSync.Exec(source.ID, replyAIErrorText(err))
 }
@@ -339,6 +348,16 @@ func (a *App) ingestReplyAIMessage(source replyAIMailboxSource, raw []byte) erro
 	if err == sql.ErrNoRows {
 		return nil
 	}
+	if err == nil {
+		var orgID *int64
+		if source.OrganizationID.Valid && source.OrganizationID.Int > 0 {
+			value := int64(source.OrganizationID.Int)
+			orgID = &value
+		}
+		a.recordBackgroundAudit("system", "reply_ai.received", "reply_ai_event", fmt.Sprintf("%d", id), orgID, map[string]any{
+			"mailbox_id": source.ID,
+		})
+	}
 	return err
 }
 
@@ -358,9 +377,24 @@ func (a *App) processReplyAIEvents() {
 				continue
 			}
 			a.log.Printf("reply AI event %d failed: %v", event.ID, err)
+			a.recordBackgroundAuditResult("system", "reply_ai.processing_failed", "reply_ai_event", fmt.Sprintf("%d", event.ID), replyAIEventOrganizationID(event), "failed", "processing_failed", map[string]any{
+				"mailbox_id": event.ReplyMailboxID,
+			})
 			_, _ = a.queries.FailReplyAIEvent.Exec(event.ID, replyAIErrorText(err), event.LeaseToken)
+		} else {
+			a.recordBackgroundAudit("system", "reply_ai.processed", "reply_ai_event", fmt.Sprintf("%d", event.ID), replyAIEventOrganizationID(event), map[string]any{
+				"mailbox_id": event.ReplyMailboxID,
+			})
 		}
 	}
+}
+
+func replyAIEventOrganizationID(event models.ReplyAIEvent) *int64 {
+	if event.SourceOrganizationID.Valid && event.SourceOrganizationID.Int > 0 {
+		id := int64(event.SourceOrganizationID.Int)
+		return &id
+	}
+	return nil
 }
 
 func (a *App) processReplyAIEvent(event models.ReplyAIEvent) error {

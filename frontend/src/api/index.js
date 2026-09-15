@@ -52,6 +52,12 @@ http.interceptors.response.use((resp) => {
     store.commit('setLoading', { model: resp.config.loading, status: false });
   }
 
+  // Binary downloads (for example audit CSV exports) must bypass the normal
+  // { data: ... } API envelope and camel-case conversion.
+  if (resp.config.responseType === 'blob' || resp.config.rawResponse) {
+    return resp.data;
+  }
+
   let data = {};
   if (typeof resp.data.data === 'object') {
     if (resp.data.data.constructor === Object) {
@@ -697,6 +703,21 @@ export const testSMTP = async (data) => http.post(
 export const getLogs = async () => http.get(
   '/api/logs',
   { loading: models.logs, camelCase: false },
+);
+
+export const getAuditEvents = async (params = {}) => http.get(
+  '/api/audit-events',
+  { params, loading: models.auditEvents },
+);
+
+export const getAuditEvent = async (id) => http.get(
+  `/api/audit-events/${id}`,
+  { loading: models.auditEvents },
+);
+
+export const exportAuditEvents = async (params = {}) => http.get(
+  '/api/audit-events/export',
+  { params, responseType: 'blob', loading: models.auditEvents },
 );
 
 export const getLang = async (lang) => http.get(

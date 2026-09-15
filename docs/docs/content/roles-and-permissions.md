@@ -56,7 +56,13 @@ A user role is a collection of user related permissions. User roles are attached
 | settings    | settings:get            | Get system settings                                                                                                                                                                                                                  |
 |             | settings:manage         | Modify system configuration                                                                                                                                                                                                          |
 |             | settings:maintain       | Perform system maintenance tasks                                                                                                                                                                                                     |
+| audit       | audit:get               | View business audit events in the active workspace                                                                                                                                                                                   |
 | workspaces  | workspaces:personal     | Enter the personal workspace. Without this permission the account can only enter organization workspaces; platform administrators always retain the personal workspace. |
+
+The business audit page uses server-side filtering and pagination. Users with
+`audit:get` can export selected events from the currently loaded page or export
+all events matching the current filters; both exports remain limited to the
+active workspace.
 
 ## Personal workspace capability
 

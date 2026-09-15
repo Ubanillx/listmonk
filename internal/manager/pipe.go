@@ -323,6 +323,7 @@ func (p *pipe) cleanup() {
 			p.m.log.Printf("error updating campaign (%s) status to %s: %v", p.camp.Name, models.CampaignStatusPaused, err)
 		} else {
 			p.m.log.Printf("set campaign (%s) to %s", p.camp.Name, models.CampaignStatusPaused)
+			p.m.auditCampaign("campaign.paused", p.camp, map[string]any{"reason": "send_errors"})
 		}
 
 		_ = p.m.sendNotif(p.camp, models.CampaignStatusPaused, "Too many errors")
@@ -336,6 +337,7 @@ func (p *pipe) cleanup() {
 			if err := p.m.store.ResetCampaignQueuedRecipients(p.camp.ID, models.CampaignRecipientStatusPending); err != nil {
 				p.m.log.Printf("error resetting queued recipients (%s): %v", p.camp.Name, err)
 			}
+			p.m.auditCampaign("campaign.paused", p.camp, map[string]any{"reason": "manual"})
 		case stopReasonPersonalSMTP:
 			// Persist the stop atomically with recipient reset and scheduling
 			// timestamp cleanup when the database store supports it. This closes
@@ -360,12 +362,14 @@ func (p *pipe) cleanup() {
 				p.m.log.Printf("error fetching campaign (%s) after personal SMTP failure: %v", p.camp.Name, err)
 			} else if current.Status == models.CampaignStatusPaused {
 				p.m.log.Printf("paused campaign (%s): personal SMTP unavailable", p.camp.Name)
+				p.m.auditCampaign("campaign.paused", current, map[string]any{"reason": "personal_smtp_unavailable"})
 				_ = p.m.sendNotif(current, models.CampaignStatusPaused, "Personal SMTP unavailable")
 			}
 		case stopReasonDeferred:
 			if err := p.m.store.ResetCampaignQueuedRecipients(p.camp.ID, models.CampaignRecipientStatusDeferred); err != nil {
 				p.m.log.Printf("error deferring queued recipients (%s): %v", p.camp.Name, err)
 			}
+			p.m.auditCampaign("campaign.deferred", p.camp, map[string]any{"reason": "daily_limit"})
 		case stopReasonCancelled:
 			if err := p.m.store.UpdateCampaignRecipientStatuses(p.camp.ID, models.CampaignRecipientStatusCancelled, []string{
 				models.CampaignRecipientStatusPending,
@@ -374,6 +378,7 @@ func (p *pipe) cleanup() {
 			}); err != nil {
 				p.m.log.Printf("error cancelling queued recipients (%s): %v", p.camp.Name, err)
 			}
+			p.m.auditCampaign("campaign.cancelled", p.camp, map[string]any{"reason": "manual"})
 		}
 		p.m.log.Printf("stop processing campaign (%s)", p.camp.Name)
 		return
@@ -387,6 +392,7 @@ func (p *pipe) cleanup() {
 			p.m.log.Printf("error deferring queued recipients (%s): %v", p.camp.Name, err)
 		}
 		p.m.log.Printf("deferred campaign (%s) until the next daily resume time", p.camp.Name)
+		p.m.auditCampaign("campaign.deferred", p.camp, map[string]any{"reason": "daily_limit"})
 		return
 	}
 
@@ -405,6 +411,7 @@ func (p *pipe) cleanup() {
 			p.m.log.Printf("error finishing campaign (%s): %v", p.camp.Name, err)
 		} else {
 			p.m.log.Printf("campaign (%s) finished", p.camp.Name)
+			p.m.auditCampaign("campaign.finished", c, map[string]any{"status": models.CampaignStatusFinished})
 		}
 	} else {
 		p.m.log.Printf("finish processing campaign (%s)", p.camp.Name)

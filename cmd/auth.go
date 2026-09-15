@@ -112,6 +112,8 @@ func (a *App) LoginPage(c echo.Context) error {
 		if loginErr == nil {
 			return c.Redirect(http.StatusFound, a.workspaceSelectURI(c.FormValue("next")))
 		}
+		setAuditAction(c, "auth.login_failed")
+		setAuditOutcome(c, "failed", "login_failed")
 	}
 
 	// Render the page, with or without POST.
@@ -126,8 +128,11 @@ func (a *App) LoginSetupPage(c echo.Context) error {
 		loginErr = a.doFirstTimeSetup(c)
 		if loginErr == nil {
 			a.setNeedsUserSetup(false)
+			setAuditAction(c, "auth.bootstrap_completed")
 			return c.Redirect(http.StatusFound, a.workspaceSelectURI(c.FormValue("next")))
 		}
+		setAuditAction(c, "auth.bootstrap_failed")
+		setAuditOutcome(c, "failed", "bootstrap_failed")
 
 		// Another request bootstrapped the first user while this one was in
 		// flight. Creating a second super admin would be a privilege
@@ -140,6 +145,7 @@ func (a *App) LoginSetupPage(c echo.Context) error {
 
 			loginErr = a.doLogin(c)
 			if loginErr == nil {
+				setAuditAction(c, "auth.login_succeeded")
 				return c.Redirect(http.StatusFound, a.workspaceSelectURI(c.FormValue("next")))
 			}
 
@@ -156,6 +162,7 @@ func (a *App) TwofaPage(c echo.Context) error {
 	var token, next string
 
 	if c.Request().Method == http.MethodPost {
+		setAuditAction(c, "auth.two_factor_failed")
 		token = strings.TrimSpace(c.FormValue("token"))
 		next = utils.SanitizeURI(c.FormValue("next"))
 	} else {
@@ -165,6 +172,9 @@ func (a *App) TwofaPage(c echo.Context) error {
 
 	// If there's no token, redirect.
 	if len(token) < tmpAuthTokenLen {
+		if c.Request().Method == http.MethodPost {
+			setAuditOutcome(c, "failed", "invalid_two_factor_token")
+		}
 		return c.Redirect(http.StatusFound, uriAdmin)
 	}
 
@@ -175,11 +185,17 @@ func (a *App) TwofaPage(c echo.Context) error {
 	// Validate the 2FA temp token.
 	data, err := tmptokens.Check(token)
 	if err != nil {
+		if c.Request().Method == http.MethodPost {
+			setAuditOutcome(c, "failed", "invalid_two_factor_token")
+		}
 		return c.Redirect(http.StatusFound, uriAdmin)
 	}
 
 	userID, ok := data.(int)
 	if !ok {
+		if c.Request().Method == http.MethodPost {
+			setAuditOutcome(c, "failed", "invalid_two_factor_token")
+		}
 		return a.renderTwofaPage(c, token, next, a.i18n.T("users.invalidRequest"))
 	}
 
@@ -203,6 +219,7 @@ func (a *App) Logout(c echo.Context) error {
 
 // OIDCLogin initializes an OIDC request and redirects to the OIDC provider for login.
 func (a *App) OIDCLogin(c echo.Context) error {
+	setAuditAction(c, "auth.oidc_started")
 	// Verify that the request came from the login page (CSRF).
 	nonce, err := c.Cookie("nonce")
 	if err != nil || nonce.Value == "" || nonce.Value != c.FormValue("nonce") {
@@ -230,6 +247,8 @@ func (a *App) OIDCLogin(c echo.Context) error {
 
 // OIDCFinish receives the redirect callback from the OIDC provider and completes the handshake.
 func (a *App) OIDCFinish(c echo.Context) error {
+	setAuditAction(c, "auth.oidc_login_failed")
+	setAuditOutcome(c, "failed", "oidc_login_failed")
 	// Verify that the request actually originated from the login request (which sets the nonce value).
 	nonce, err := c.Cookie("nonce")
 	if err != nil || nonce.Value == "" {
@@ -298,6 +317,8 @@ func (a *App) OIDCFinish(c echo.Context) error {
 	if err := a.auth.SaveSession(user, oidcToken, c); err != nil {
 		return a.renderLoginPage(c, err)
 	}
+	setAuditAction(c, "auth.oidc_login_succeeded")
+	setAuditOutcome(c, "success", "")
 
 	// Redirect to the workspace selection page.
 	return c.Redirect(http.StatusFound, a.workspaceSelectURI(state.Next))
@@ -519,6 +540,7 @@ func (a *App) doLogin(c echo.Context) error {
 		tmptokens.Set(token, twofaTokenTTL, user.ID)
 
 		// Redirect to 2FA page.
+		setAuditAction(c, "auth.login_challenge_issued")
 		next := utils.SanitizeURI(c.FormValue("next"))
 		return c.Redirect(http.StatusFound, fmt.Sprintf("%s/login/twofa?token=%s&next=%s", uriAdmin, token, url.QueryEscape(next)))
 	}
@@ -527,6 +549,7 @@ func (a *App) doLogin(c echo.Context) error {
 	if err := a.auth.SaveSession(user, "", c); err != nil {
 		return err
 	}
+	setAuditAction(c, "auth.login_succeeded")
 
 	return nil
 }
@@ -603,6 +626,7 @@ func (a *App) renderResetPasswordPage(c echo.Context, token, email, errMsg strin
 
 // doForgotPassword handles the forgot password form submission.
 func (a *App) doForgotPassword(c echo.Context) error {
+	setAuditMetadata(c, map[string]any{"channel": "password_reset"})
 	var (
 		email = strings.ToLower(strings.TrimSpace(c.FormValue("email")))
 	)
@@ -662,6 +686,7 @@ func (a *App) doForgotPassword(c echo.Context) error {
 		Body:    body,
 	}); err != nil {
 		a.log.Printf("error sending reset email: %s", err)
+		setAuditOutcome(c, "failed", "reset_email_delivery_failed")
 	}
 
 	// Show the success e-mail nonetheless to prevent e-mail enumeration.
@@ -670,6 +695,7 @@ func (a *App) doForgotPassword(c echo.Context) error {
 
 // doResetPassword handles the reset password form submission.
 func (a *App) doResetPassword(c echo.Context, token, email string) error {
+	setAuditMetadata(c, map[string]any{"channel": "password_reset"})
 	var (
 		password  = c.FormValue("password")
 		password2 = c.FormValue("password2")
@@ -715,6 +741,7 @@ func (a *App) doResetPassword(c echo.Context, token, email string) error {
 	if err := a.auth.SaveSession(user, "", c); err != nil {
 		return err
 	}
+	setAuditAction(c, "auth.password_reset_succeeded")
 
 	// Redirect to the workspace selection page.
 	return c.Redirect(http.StatusFound, a.workspaceSelectURI(uriAdmin))
@@ -738,23 +765,27 @@ func (a *App) doTwofaVerify(c echo.Context, token string, userID int, next strin
 
 	// Validate.
 	if !strHasLen(totpCode, 6, 6) {
+		setAuditOutcome(c, "failed", "invalid_totp")
 		return a.renderTwofaPage(c, token, next, a.i18n.T("globals.messages.invalidValue"))
 	}
 
 	// Get the user.
 	user, err := a.core.GetUser(userID, "", "")
 	if err != nil {
+		setAuditOutcome(c, "failed", "invalid_two_factor_user")
 		return a.renderTwofaPage(c, token, next, a.i18n.T("users.invalidRequest"))
 	}
 
 	// Verify that TOTP is actually enabled for the user.
 	if user.TwofaType != models.TwofaTypeTOTP {
+		setAuditOutcome(c, "failed", "two_factor_not_enabled")
 		return a.renderTwofaPage(c, token, next, a.i18n.T("users.twoFANotEnabled"))
 	}
 
 	// Verify the TOTP code.
 	valid := totp.Validate(totpCode, user.TwofaKey.String)
 	if !valid {
+		setAuditOutcome(c, "failed", "invalid_totp")
 		return a.renderTwofaPage(c, token, next, a.i18n.T("globals.messages.invalidValue"))
 	}
 
@@ -765,6 +796,7 @@ func (a *App) doTwofaVerify(c echo.Context, token string, userID int, next strin
 	if err := a.auth.SaveSession(user, "", c); err != nil {
 		return err
 	}
+	setAuditAction(c, "auth.two_factor_verified")
 
 	// Redirect to the next page.
 	return c.Redirect(http.StatusFound, a.workspaceSelectURI(next))

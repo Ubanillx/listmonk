@@ -302,6 +302,11 @@ type Config struct {
 	// PersonalSMTP resolves the enabled SMTP pool for an account. A nil
 	// resolver means account-owned campaign/transactional sends are disabled.
 	PersonalSMTP func(int) (*email.Emailer, error)
+
+	// AuditCampaign is called for low-volume campaign lifecycle transitions
+	// produced by the background sender. It is optional so the manager remains
+	// reusable in integrations and focused tests.
+	AuditCampaign func(action string, campaign *models.Campaign, metadata map[string]any)
 }
 
 var pushTimeout = time.Second * 3
@@ -341,6 +346,13 @@ func New(cfg Config, store Store, i *i18n.I18n, l *log.Logger) *Manager {
 	m.tplFuncs = m.makeGnericFuncMap()
 
 	return m
+}
+
+func (m *Manager) auditCampaign(action string, campaign *models.Campaign, metadata map[string]any) {
+	if m == nil || m.cfg.AuditCampaign == nil || campaign == nil {
+		return
+	}
+	m.cfg.AuditCampaign(action, campaign, metadata)
 }
 
 // AddMessenger adds a Messenger messaging backend to the manager.
@@ -842,9 +854,11 @@ func (m *Manager) scanCampaigns(tick time.Duration) {
 			p, err := m.newPipe(c)
 			if err != nil {
 				m.log.Printf("error processing campaign (%s): %v", c.Name, err)
+				m.auditCampaign("campaign.send_start_failed", c, map[string]any{"status": c.Status})
 				continue
 			}
 			m.log.Printf("start processing campaign (%s)", c.Name)
+			m.auditCampaign("campaign.send_started", c, map[string]any{"status": c.Status})
 
 			// If customer processing is busy, move on. Blocking and waiting
 			// can end up in a race condition where the waiting campaign's

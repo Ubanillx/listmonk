@@ -117,6 +117,85 @@ func (s *deferCaptureStore) ResetCampaignQueuedRecipients(_ int, toStatus string
 	return nil
 }
 
+type lifecycleAuditStore struct {
+	Store
+	campaign *models.Campaign
+	updated  []string
+}
+
+func (s *lifecycleAuditStore) GetCampaign(int) (*models.Campaign, error) {
+	return s.campaign, nil
+}
+
+func (s *lifecycleAuditStore) UpdateCampaignStatus(_ int, status string) error {
+	s.updated = append(s.updated, status)
+	s.campaign.Status = status
+	return nil
+}
+
+func (s *lifecycleAuditStore) ResetCampaignQueuedRecipients(int, string) error {
+	return nil
+}
+
+func (s *lifecycleAuditStore) UpdateCampaignRecipientStatuses(int, string, []string) error {
+	return nil
+}
+
+func TestPipeCleanupAuditsCampaignFinished(t *testing.T) {
+	store := &lifecycleAuditStore{campaign: &models.Campaign{
+		Base:   models.Base{ID: 21},
+		Name:   "finished",
+		Status: models.CampaignStatusRunning,
+	}}
+	m := newTestManager()
+	m.store = store
+	m.fnNotify = func(string, any) error { return nil }
+	var action string
+	var metadata map[string]any
+	m.cfg.AuditCampaign = func(gotAction string, _ *models.Campaign, gotMetadata map[string]any) {
+		action = gotAction
+		metadata = gotMetadata
+	}
+
+	p := &pipe{camp: &models.Campaign{Base: models.Base{ID: 21}, Name: "finished"}, m: m}
+	p.cleanup()
+
+	if action != "campaign.finished" || len(store.updated) != 1 || store.updated[0] != models.CampaignStatusFinished {
+		t.Fatalf("finish transition = action %q updates %v", action, store.updated)
+	}
+	if metadata["status"] != models.CampaignStatusFinished {
+		t.Fatalf("finish audit metadata = %#v", metadata)
+	}
+}
+
+func TestPipeCleanupAuditsCampaignPausedAfterErrors(t *testing.T) {
+	store := &lifecycleAuditStore{campaign: &models.Campaign{
+		Base:   models.Base{ID: 22},
+		Name:   "paused",
+		Status: models.CampaignStatusRunning,
+	}}
+	m := newTestManager()
+	m.store = store
+	m.fnNotify = func(string, any) error { return nil }
+	var action string
+	var metadata map[string]any
+	m.cfg.AuditCampaign = func(gotAction string, _ *models.Campaign, gotMetadata map[string]any) {
+		action = gotAction
+		metadata = gotMetadata
+	}
+
+	p := &pipe{camp: &models.Campaign{Base: models.Base{ID: 22}, Name: "paused"}, m: m}
+	p.withErrors.Store(true)
+	p.cleanup()
+
+	if action != "campaign.paused" || len(store.updated) != 1 || store.updated[0] != models.CampaignStatusPaused {
+		t.Fatalf("pause transition = action %q updates %v", action, store.updated)
+	}
+	if metadata["reason"] != "send_errors" {
+		t.Fatalf("pause audit metadata = %#v", metadata)
+	}
+}
+
 func TestPipeDeferPersistsNextDailyResumeAt(t *testing.T) {
 	oldLocal := time.Local
 	time.Local = time.UTC

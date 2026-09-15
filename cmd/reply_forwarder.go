@@ -227,6 +227,13 @@ func (a *App) forwardOneReply(source replyForwardSource, raw []byte) error {
 	}
 	if err := a.manager.PushMessage(msg); err != nil {
 		a.recordReplyForwardFailure(eventID, attempts, err)
+		orgID := int64(source.Organization)
+		a.recordBackgroundAuditResult("system", "reply.forward_failed", "reply_forward_message", fmt.Sprintf("%d", eventID), &orgID, "failed", "push_message_failed", map[string]any{
+			"rule_id":    source.RuleID,
+			"mailbox_id": source.MailboxID,
+			"attempt":    attempts,
+			"terminal":   attempts >= replyForwardMaxAttempts,
+		})
 		if attempts >= replyForwardMaxAttempts {
 			a.log.Printf("reply forwarding rule %d gives up on %s after %d attempts: %v", source.RuleID, key, attempts, err)
 		}
@@ -247,6 +254,12 @@ func (a *App) forwardOneReply(source replyForwardSource, raw []byte) error {
 	}
 	_, _ = a.db.Exec(`UPDATE reply_mailboxes SET forward_count = forward_count + 1, updated_at = NOW() WHERE id = $1`, source.MailboxID)
 	_, _ = a.db.Exec(`UPDATE reply_forward_rules SET last_forward_at = NOW(), last_error = '', updated_at = NOW() WHERE id = $1`, source.RuleID)
+	orgID := int64(source.Organization)
+	a.recordBackgroundAudit("system", "reply.forwarded", "reply_forward_message", fmt.Sprintf("%d", eventID), &orgID, map[string]any{
+		"rule_id":    source.RuleID,
+		"mailbox_id": source.MailboxID,
+		"attempt":    attempts,
+	})
 	return nil
 }
 

@@ -116,6 +116,8 @@ func (a *App) GrantPoolOrganization(c echo.Context) error {
 	if req.PoolID <= 0 || req.OrganizationID <= 0 {
 		return echo.NewHTTPError(http.StatusBadRequest, "pool_id and organization_id are required")
 	}
+	setAuditOrganizationID(c, int(req.OrganizationID))
+	setAuditObjectID(c, strconv.Itoa(req.PoolID))
 	if err := a.core.GrantPoolOrganization(req.PoolID, req.OrganizationID, u.ID); err != nil {
 		return err
 	}
@@ -130,6 +132,8 @@ func (a *App) RevokePoolOrganization(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return err
 	}
+	setAuditOrganizationID(c, int(req.OrganizationID))
+	setAuditObjectID(c, strconv.Itoa(req.PoolID))
 	if err := a.core.RevokePoolOrganization(req.PoolID, req.OrganizationID); err != nil {
 		return err
 	}
@@ -152,6 +156,8 @@ func (a *App) CreatePoolContact(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	setAuditObjectID(c, strconv.FormatInt(out.ID, 10))
+	setAuditMetadata(c, map[string]any{"pool_id": id})
 	// Never leak the source address through this endpoint to ordinary users.
 	if u := auth.GetUser(c); !u.IsPlatformAdmin() {
 		return c.JSON(http.StatusOK, okResp{out.Safe()})
@@ -178,6 +184,7 @@ func (a *App) ClearPoolContactEmail(c echo.Context) error {
 	if err := a.core.ClearPoolContactEmail(poolID, contactID, int64(access.OrganizationID), auth.GetUser(c).IsPlatformAdmin()); err != nil {
 		return err
 	}
+	setAuditMetadata(c, map[string]any{"pool_id": poolID})
 	return c.JSON(http.StatusOK, okResp{true})
 }
 
@@ -209,6 +216,7 @@ func (a *App) CreatePoolSegment(c echo.Context) error {
 	if !auth.GetUser(c).IsPlatformAdmin() && req.OrganizationID != int64(access.OrganizationID) {
 		return echo.NewHTTPError(http.StatusForbidden, "organization scope mismatch")
 	}
+	setAuditOrganizationID(c, int(req.OrganizationID))
 	if !auth.GetUser(c).IsPlatformAdmin() {
 		var permitted bool
 		if err := a.db.Get(&permitted, `SELECT EXISTS(
@@ -226,6 +234,7 @@ func (a *App) CreatePoolSegment(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	setAuditObjectID(c, strconv.FormatInt(out.ID, 10))
 	return c.JSON(http.StatusOK, okResp{out})
 }
 
@@ -297,6 +306,8 @@ func (a *App) ImportListIntoPool(c echo.Context) error {
 	if req.ListID <= 0 || req.PoolID <= 0 {
 		return echo.NewHTTPError(http.StatusBadRequest, "list_id and pool_id are required")
 	}
+	setAuditObjectID(c, strconv.Itoa(req.PoolID))
+	setAuditMetadata(c, map[string]any{"source_list_id": req.ListID})
 	if err := a.core.ImportListIntoPool(req.ListID, req.PoolID, auth.GetUser(c).ID); err != nil {
 		return err
 	}
@@ -344,6 +355,8 @@ func (a *App) AssignPoolContact(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return err
 	}
+	setAuditObjectID(c, strconv.FormatInt(req.ContactID, 10))
+	setAuditMetadata(c, map[string]any{"segment_id": req.SegmentID})
 	if !auth.GetUser(c).IsPlatformAdmin() {
 		var segmentOrg int64
 		if err := a.db.Get(&segmentOrg, `SELECT organization_id FROM pool_segments WHERE id=$1`, req.SegmentID); err != nil {
@@ -413,6 +426,17 @@ func (a *App) ImportPoolSegmentMembers(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	setAuditObjectID(c, strconv.FormatInt(segmentID, 10))
+	setAuditMetadata(c, map[string]any{
+		"total":       result.Total,
+		"valid":       result.Valid,
+		"created":     result.Created,
+		"reactivated": result.Reactivated,
+		"unmatched":   result.Unmatched,
+		"ambiguous":   result.Ambiguous,
+		"invalid":     result.Invalid,
+		"duplicates":  result.Duplicates,
+	})
 	return c.JSON(http.StatusOK, okResp{result})
 }
 
@@ -523,6 +547,8 @@ func (a *App) RemovePoolContact(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return err
 	}
+	setAuditObjectID(c, strconv.FormatInt(req.ContactID, 10))
+	setAuditMetadata(c, map[string]any{"segment_id": req.SegmentID})
 	u := auth.GetUser(c)
 	userID := 0
 	userID = u.ID
@@ -553,6 +579,8 @@ func (a *App) RestorePoolContact(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return err
 	}
+	setAuditObjectID(c, strconv.FormatInt(req.ContactID, 10))
+	setAuditMetadata(c, map[string]any{"segment_id": req.SegmentID})
 	if !auth.GetUser(c).IsPlatformAdmin() {
 		var segmentOrg int64
 		if err := a.db.Get(&segmentOrg, `SELECT organization_id FROM pool_segments WHERE id=$1`, req.SegmentID); err != nil {

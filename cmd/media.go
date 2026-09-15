@@ -220,6 +220,12 @@ func (a *App) UploadMedia(c echo.Context) error {
 		cleanUp = true
 		return err
 	}
+	setAuditObjectID(c, strconv.Itoa(m.ID))
+	setAuditMetadata(c, map[string]any{
+		"content_type":  contentType,
+		"extension":     ext,
+		"has_thumbnail": thumbfName != "",
+	})
 	// Keep the immediate upload response consistent with media customer_list responses.
 	// Editors should insert the protected application route, never a direct
 	// filesystem or object-store URL.

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/md5"
 	"database/sql"
 	"encoding/json"
@@ -32,6 +33,7 @@ import (
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/providers/posflag"
 	"github.com/knadh/koanf/v2"
+	auditlog "github.com/knadh/listmonk/internal/audit"
 	"github.com/knadh/listmonk/internal/auth"
 	"github.com/knadh/listmonk/internal/bounce"
 	"github.com/knadh/listmonk/internal/bounce/mailbox"
@@ -569,6 +571,7 @@ func initCampaignManager(msgrs []manager.Messenger, q *models.Queries, u *UrlCon
 	}
 
 	store := newManagerStore(q, co, md, db)
+	campaignAudit := auditlog.New(db, lo)
 	// Keep one quota tracker for the lifetime of the manager. SMTP pools are
 	// rebuilt when a user edits their configuration; sharing this tracker keeps
 	// in-flight reservations visible across that rebuild and prevents a brief
@@ -609,6 +612,30 @@ func initCampaignManager(msgrs []manager.Messenger, q *models.Queries, u *UrlCon
 			}
 			msgr.SetQuotaTracker(userSMTPQuota)
 			return msgr, nil
+		},
+		AuditCampaign: func(action string, campaign *models.Campaign, metadata map[string]any) {
+			var organizationID *int64
+			if campaign.OrganizationID.Valid && campaign.OrganizationID.Int > 0 {
+				id := int64(campaign.OrganizationID.Int)
+				organizationID = &id
+			}
+			var actorUserID *int
+			if campaign.OwnerUserID.Valid && campaign.OwnerUserID.Int > 0 {
+				id := campaign.OwnerUserID.Int
+				actorUserID = &id
+			}
+			if err := campaignAudit.Record(context.Background(), auditlog.Event{
+				OrganizationID: organizationID,
+				ActorType:      "system",
+				ActorUserID:    actorUserID,
+				Action:         action,
+				ObjectType:     "campaign",
+				ObjectID:       fmt.Sprintf("%d", campaign.ID),
+				Result:         "success",
+				Metadata:       metadata,
+			}); err != nil {
+				lo.Printf("error recording campaign audit event %s: %v", action, err)
+			}
 		},
 	}, store, i, lo)
 

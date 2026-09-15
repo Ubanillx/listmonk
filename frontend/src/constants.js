@@ -20,6 +20,7 @@ export const models = Object.freeze({
   customerListRoles: 'customerListRoles',
   settings: 'settings',
   logs: 'logs',
+  auditEvents: 'auditEvents',
   maintenance: 'maintenance',
   customFields: 'customFields',
 });

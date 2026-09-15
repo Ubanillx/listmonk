@@ -59,6 +59,16 @@ After making any changes you will need to run `sudo docker compose stop ; sudo d
 
 And under `https://listmonk.mysite.com/admin/settings` you put `/listmonk/uploads`. 
 
+#### Jenkins/systemd release deployments
+
+For the repository's Jenkins binary deployment, keep the filesystem upload
+path as the relative path `uploads`. The deployment keeps
+`<DEPLOY_DIR>/uploads` outside the versioned release directories and links
+each release's `uploads` path to it, so switching the `current` release does
+not hide existing media. Back up this directory together with the database.
+If you use an absolute upload path, keep that directory outside the release
+tree and manage its persistence and backup separately.
+
 #### Using volumes
 
 Using `docker volumes`, you can specify the name of volume and destination for the files to be uploaded inside the container.

@@ -62,12 +62,29 @@ The pipeline uses the `linux-docker` agent label. The selected agent needs
 Linux/x86_64, Go 1.26.1 or later, Node.js 22 or later, Yarn 1 or Corepack,
 Bash, Git, OpenSSH client tools, `tar`, `gzip`, `sha256sum`, and `curl`.
 
-Set `DEPLOY_TO_SERVER` to true to upload the two release artifacts over SSH.
+Leave `SKIP_DEPLOY` false (the default) to upload the two release artifacts
+over SSH. Set `SKIP_DEPLOY` to true only for an artifact-only build.
 The remote stage verifies the checksum, installs the files under
 `<DEPLOY_DIR>/releases/<release-id>`, atomically updates `<DEPLOY_DIR>/current`,
 creates/updates a systemd unit, runs database install/upgrade, and waits for
 `/admin/login` to respond. A failed health check restores the previous
 `current` release.
+
+### Filesystem media and release updates
+
+The Jenkins systemd deployment keeps filesystem media outside the versioned
+release directories at `<DEPLOY_DIR>/uploads`. Each release gets an
+`uploads` symlink to that directory, and the systemd working directory is the
+stable `<DEPLOY_DIR>`. Keep **Settings → Media → Upload path** as the relative
+path `uploads` for this deployment mode. The first deployment after this fix
+copies files from the old `<DEPLOY_DIR>/releases/<old-release>/uploads`
+directory into the persistent directory without overwriting existing files.
+
+Do not delete or replace `<DEPLOY_DIR>` as part of an upgrade. Back up
+`<DEPLOY_DIR>/uploads` together with the PostgreSQL database. If an absolute
+upload path is configured instead, that external directory must be persisted
+and backed up by the server operator; the Jenkins migration only handles the
+historical relative `uploads` path.
 
 Create these Jenkins credentials before enabling deployment:
 
@@ -79,7 +96,7 @@ Create these Jenkins credentials before enabling deployment:
 The pipeline deliberately does not use a stored server password. When using
 `root`, no sudo setup is required. If you later switch to a dedicated deploy
 account, it needs passwordless sudo for `install`, `rm`, `tar`, `chown`,
-`chmod`, `ln`, `mv`, `tee`, `systemctl`, and `journalctl` (or an equivalent
+`chmod`, `cp`, `ln`, `mv`, `tee`, `systemctl`, and `journalctl` (or an equivalent
 narrowly scoped sudoers rule). Prepare the
 remote `<DEPLOY_DIR>/config.toml` first; it contains the database settings and
 is never copied from Jenkins. The default health-check port is `9173` and can

@@ -30,6 +30,16 @@ docker-compose pull && docker-compose run --rm app ./listmonk --upgrade
 docker-compose up -d app db
 ```
 
+## Jenkins/systemd
+
+The Jenkins release deployment stores the application under
+`<DEPLOY_DIR>/releases/` and switches the `<DEPLOY_DIR>/current` symlink. Its
+filesystem media directory is `<DEPLOY_DIR>/uploads`, outside the release
+tree; each release links its relative `uploads` path to that directory. Keep
+the media directory when deploying a new build and back it up with PostgreSQL.
+The first deployment after the persistence fix automatically copies media
+from the previous release's `uploads` directory into the stable directory.
+
 ## Nightly
 See [here](installation.md#nightly) for instructions on how to access the nightly builds.
 

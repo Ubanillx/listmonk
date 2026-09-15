@@ -4,6 +4,9 @@
  * The Jenkins agent builds the Go binary and frontend assets locally, then
  * deploys the release over SSH unless SKIP_DEPLOY is selected. The remote
  * systemd service is activated after a successful upload.
+ * Filesystem media is kept in DEPLOY_DIR/uploads, outside versioned release
+ * directories; the first deployment with this pipeline migrates legacy media
+ * from the previous current release.
  *
  * Agent label: linux-docker
  * Required tools: Go 1.26.1+, Node.js 22+, Yarn 1.x (or Corepack), Make,
@@ -49,7 +52,7 @@ pipeline {
     string(
       name: 'DEPLOY_DIR',
       defaultValue: '/opt/listmonk',
-      description: 'Directory containing releases, current symlink and config.toml.'
+      description: 'Directory containing releases, current symlink, config.toml and persistent uploads.'
     )
     string(
       name: 'SERVICE_NAME',
@@ -250,6 +253,7 @@ binary_name="${BINARY_NAME:?}"
 frontend_archive_name="${FRONTEND_ARCHIVE_NAME:?}"
 release_dir="$deploy_dir/releases/$release_id"
 current_link="$deploy_dir/current"
+media_dir="$deploy_dir/uploads"
 service_file="/etc/systemd/system/${service_name}.service"
 config_file="$deploy_dir/config.toml"
 old_target=''
@@ -265,6 +269,10 @@ as_root() {
 
 case "$service_name" in
   (*[!A-Za-z0-9_.@-]*) echo "Invalid SERVICE_NAME" >&2; exit 1 ;;
+esac
+case "$deploy_dir" in
+  (/*) ;;
+  (*) echo "DEPLOY_DIR must be an absolute path: $deploy_dir" >&2; exit 1 ;;
 esac
 if [[ ! "$app_port" =~ ^[0-9]+$ ]] || (( app_port < 1 || app_port > 65535 )); then
   echo "Invalid APP_PORT: $app_port" >&2
@@ -296,6 +304,8 @@ command -v sha256sum >/dev/null
 command -v tar >/dev/null
 command -v curl >/dev/null
 command -v systemctl >/dev/null
+command -v cp >/dev/null
+command -v readlink >/dev/null
 test -d "$stage_dir"
 test -s "$stage_dir/$binary_name"
 test -s "$stage_dir/$frontend_archive_name"
@@ -315,7 +325,23 @@ fi
 
 deploy_group=$(id -gn "$deploy_user")
 as_root install -d -o "$deploy_user" -g "$deploy_group" -m 0755 \
-  "$deploy_dir" "$deploy_dir/releases"
+  "$deploy_dir" "$deploy_dir/releases" "$media_dir"
+
+# Stop before copying legacy media so an in-flight upload cannot be split
+# between the old release directory and the persistent directory.
+if as_root systemctl is-active --quiet "$service_name"; then
+  as_root systemctl stop "$service_name"
+fi
+
+# Before this fix, a relative upload path such as the default "uploads" was
+# resolved against DEPLOY_DIR/current. Preserve those files on the first fixed
+# deployment without overwriting anything already in the persistent store.
+if [ -n "$old_target" ] && [ -d "$old_target/uploads" ] && [ ! -L "$old_target/uploads" ]; then
+  echo "Migrating legacy filesystem media from $old_target/uploads to $media_dir"
+  as_root cp -a -n "$old_target/uploads/." "$media_dir/"
+fi
+as_root chown -R "$deploy_user:$deploy_group" "$media_dir"
+
 as_root rm -rf "$release_dir"
 as_root install -d -o "$deploy_user" -g "$deploy_group" -m 0755 \
   "$release_dir" "$release_dir/frontend"
@@ -323,6 +349,14 @@ as_root install -o "$deploy_user" -g "$deploy_group" -m 0755 \
   "$stage_dir/$binary_name" "$release_dir/listmonk"
 as_root tar -xzf "$stage_dir/$frontend_archive_name" -C "$release_dir/frontend"
 as_root chown -R "$deploy_user:$deploy_group" "$release_dir"
+
+# Keep the configured relative upload path stable across release swaps. The
+# symlink is created after chown so recursive ownership changes never traverse
+# into the persistent media directory. Removing a failed release removes only
+# this symlink, never the media it points to.
+as_root ln -s "$media_dir" "$release_dir/uploads"
+test -L "$release_dir/uploads"
+test "$(readlink "$release_dir/uploads")" = "$media_dir"
 
 as_root rm -f "$new_link"
 as_root ln -s "$release_dir" "$new_link"
@@ -348,7 +382,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=$deploy_user
-WorkingDirectory=$deploy_dir/current
+WorkingDirectory=$deploy_dir
 ExecStart=$deploy_dir/current/run-listmonk.sh
 Restart=on-failure
 RestartSec=5

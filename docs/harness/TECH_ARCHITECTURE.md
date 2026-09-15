@@ -17,6 +17,16 @@
 
 跨层变更必须同时检查 API、权限、迁移、测试和部署文档，不在此复制易过时的实现细节。
 
+## Jenkins filesystem media persistence
+
+`Jenkinsfile` 的 systemd 发布使用 `<DEPLOY_DIR>/releases/<release-id>` 保存
+不可变版本，并将 `<DEPLOY_DIR>/uploads` 作为版本外的持久化 filesystem media
+目录。每个新版本创建 `uploads` 符号链接，systemd 从稳定的 `<DEPLOY_DIR>` 运行，
+因此数据库中默认的相对路径 `uploads` 不会随 `current` 切换而改变解析位置。
+首次使用修复后的流水线时，部署脚本会在停机窗口内把旧版本的实际
+`current/uploads` 内容以不覆盖方式迁移到持久目录；失败回滚只清理新版本和符号
+链接，不清理持久媒体目录。
+
 ## 公海能力边界（已实施）
 
 - 一级公海主数据、一级成员关系、组织二级分配、组织剔除记录、一级投放授权和二级回件邮箱属于独立的领域边界；不得通过复制 `customers` 或现有普通 `customer_lists` 行来实现。

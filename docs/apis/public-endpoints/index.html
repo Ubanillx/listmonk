@@ -1,0 +1,2327 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+      
+        <link rel="prev" href="../system/">
+      
+      
+        <link rel="next" href="../../maintenance/performance/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Public endpoints - listmonk / Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../static/style.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="white" data-md-color-accent="red">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#api-public-endpoints" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="listmonk / Documentation" class="md-header__button md-logo" aria-label="listmonk / Documentation" data-md-component="logo">
+      
+  <img src="../../images/favicon.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            listmonk / Documentation
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Public endpoints
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="listmonk / Documentation" class="md-nav__button md-logo" aria-label="listmonk / Documentation" data-md-component="logo">
+      
+  <img src="../../images/favicon.png" alt="logo">
+
+    </a>
+    listmonk / Documentation
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Introduction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../upgrade/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Using listmonk
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Using listmonk
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../templating/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Templating
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../querying-and-segmentation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Querying and segmenting customers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../bounces/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bounce processing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../messengers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Messengers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../archives/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Archives
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../i18n/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Internationalization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../external-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrating with external systems
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roles-and-permissions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User roles and permissions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../oidc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OIDC SSO
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../apis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Introduction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sdks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SDKs and libs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../customers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Customers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../customer-lists/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CustomerLists
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Public pools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../organizations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Organizations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../import/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../campaigns/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Campaigns
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../media/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Media
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../templates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Templates
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api-keys/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Personal API keys
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../users/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Users
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../roles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../audit-events/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Audit events
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../transactional/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Transactional
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../bounces/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bounces
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../system/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Public endpoints
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Public endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#get-apipubliccustomer-lists" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/public/customer-lists
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#post-apipublicsubscription" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/public/subscription
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#get-apipubliccaptchaaltcha" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/public/captcha/altcha
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#get-apipublicarchive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/public/archive
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#get-apimediafilemedia_idfilename" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/media/file/{media_id}/{filename}
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#get-apimediafilefilename" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/media/file/{filename}
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#response-headers-for-media-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Response headers for media files
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#apipool-segments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /api/pool-segments/*
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adjacent-public-routes-not-under-apipublic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adjacent public routes (not under /api/public/)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Maintenance
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Maintenance
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../maintenance/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributions
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contributions
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Engineering architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../harness/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Engineering harness
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../developer-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../security-reports/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security reports
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#get-apipubliccustomer-lists" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/public/customer-lists
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#post-apipublicsubscription" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/public/subscription
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#get-apipubliccaptchaaltcha" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/public/captcha/altcha
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#get-apipublicarchive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/public/archive
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#get-apimediafilemedia_idfilename" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/media/file/{media_id}/{filename}
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#get-apimediafilefilename" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/media/file/{filename}
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#response-headers-for-media-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Response headers for media files
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#apipool-segments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /api/pool-segments/*
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adjacent-public-routes-not-under-apipublic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adjacent public routes (not under /api/public/)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="api-public-endpoints">API / Public endpoints<a class="headerlink" href="#api-public-endpoints" title="Permanent link">&para;</a></h1>
+<p>Public endpoints are the unauthenticated HTTP surface of the server. They are
+registered on a router group that carries <strong>no authentication middleware</strong>, no
+API-key scope check and no workspace middleware (<code>cmd/handlers.go</code>, the
+"Public API endpoints" block), so they accept requests without a session,
+<code>Authorization</code> header or API key.</p>
+<p>That is the main difference from the authenticated <code>/api/*</code> group described in
+<a href="../apis/">APIs</a>: the authenticated group resolves the caller before the handler
+runs and answers anonymous requests with a JSON error, while a public handler
+has to implement its own protection. The protections that exist are listed per
+endpoint below: the public-subscription honeypot/CAPTCHA gate, the
+<code>app.enable_public_subscription_page</code> and <code>app.enable_public_archive</code> settings,
+and, for media files, an explicit "this blob belongs to a live public archive
+campaign" check. No request-rate limiter is configured for these routes; the
+in-process throttle only guards admin login and 2FA verification
+(<code>cmd/auth.go</code>).</p>
+<p>Because every response is produced by the handler itself, the uniform
+<code>{"data": ...}</code> envelope of the authenticated API is <strong>not</strong> guaranteed on this
+surface; the shapes documented below are what each handler returns. Public
+requests are still written to the audit log (<code>cmd/audit.go</code>).</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Endpoint</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><a href="#get-apipubliccustomer-lists">/api/public/customer-lists</a></td>
+<td>List the customer lists available for public subscription</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><a href="#post-apipublicsubscription">/api/public/subscription</a></td>
+<td>Create a subscription from the public form or JSON API</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><a href="#get-apipubliccaptchaaltcha">/api/public/captcha/altcha</a></td>
+<td>Get an Altcha CAPTCHA challenge</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><a href="#get-apipublicarchive">/api/public/archive</a></td>
+<td>List campaigns published to the public archive</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><a href="#get-apimediafilemedia_idfilename">/api/media/file/{media_id}/{filename}</a></td>
+<td>Serve a media file by ID (canonical URL)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><a href="#get-apimediafilefilename">/api/media/file/{filename}</a></td>
+<td>Serve a media file by stored filename (legacy URL)</td>
+</tr>
+<tr>
+<td>POST, PUT, DELETE</td>
+<td><a href="#apipool-segments">/api/pool-segments/*</a></td>
+<td>Alias family for <code>/api/pools/segments/*</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h4 id="get-apipubliccustomer-lists">GET /api/public/customer-lists<a class="headerlink" href="#get-apipubliccustomer-lists" title="Permanent link">&para;</a></h4>
+<p>Return the customer lists a visitor may subscribe to: rows with
+<code>type = 'public'</code> and <code>status = 'active'</code> that have an owner and are not
+pending transfer (<code>internal/core/workspace_queries.go</code>, used by
+<code>cmd/public.go</code>). This is what the built-in subscription form renders.</p>
+<p>Unlike the rest of the API, the response is a <strong>bare JSON array</strong> of minimal
+objects, not a <code>data</code>-wrapped object:</p>
+<div class="highlight"><pre><span></span><code><span class="p">[</span>
+<span class="w">  </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"uuid"</span><span class="p">:</span><span class="w"> </span><span class="s2">"55e243af-80c6-4169-8d7f-bc571e0269e9"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Opt-in customer_list"</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">]</span>
+</code></pre></div>
+<p>The handler does not test <code>app.enable_public_subscription_page</code>, so the list
+stays readable even when the HTML subscription form is switched off. Use
+<a href="#post-apipublicsubscription">POST /api/public/subscription</a> to write.</p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span><span class="s1">'http://localhost:9000/api/public/customer-lists'</span>
+</code></pre></div>
+<p>See <a href="../customer-lists/#get-apipubliccustomer-lists">Public customer lists</a> for
+the matching entry in the authenticated customer-list API.</p>
+<hr />
+<h4 id="post-apipublicsubscription">POST /api/public/subscription<a class="headerlink" href="#post-apipublicsubscription" title="Permanent link">&para;</a></h4>
+<p>Create a subscription from the built-in public form or from a script. Accepts
+form-encoded and JSON bodies; the fields are <code>name</code>, <code>email</code> and the selected
+list UUIDs as the repeated form field <code>l</code> or the JSON array <code>list_uuids</code>.
+Multiple lists are allowed, but they must all belong to the same owner and
+workspace.</p>
+<p>The endpoint runs the same abuse guard as the HTML form:</p>
+<ul>
+<li>a filled-in hidden <code>nonce</code> honeypot field is rejected with HTTP 502;</li>
+<li>when a CAPTCHA is enabled, the solution must be posted as <code>altcha</code> (Altcha)
+  or <code>h-captcha-response</code> (hCaptcha). A missing or invalid solution is rejected
+  with HTTP 400, and an Altcha solution can only be used once.</li>
+</ul>
+<p>When <code>app.enable_public_subscription_page</code> is off, this endpoint answers HTTP
+400, while the built-in form page <code>/subscription/form</code> answers HTTP 404. The
+success response carries the double opt-in flag of the created subscription:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"has_optin"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Request and response examples are in
+<a href="../customers/#post-apipublicsubscription">Customers</a>.</p>
+<hr />
+<h4 id="get-apipubliccaptchaaltcha">GET /api/public/captcha/altcha<a class="headerlink" href="#get-apipubliccaptchaaltcha" title="Permanent link">&para;</a></h4>
+<p>Return a fresh Altcha CAPTCHA challenge for the built-in subscription form
+(<code>&lt;altcha-widget challengeurl=".../api/public/captcha/altcha"&gt;</code> in
+<code>static/public/templates/subscription-form.html</code>).</p>
+<p>The route is only served when Altcha is the active CAPTCHA provider. With no
+CAPTCHA configured, or with hCaptcha selected, it responds HTTP 404
+<code>captcha not enabled</code>. The body is the raw challenge JSON (again not wrapped in
+<code>data</code>) with the fields <code>algorithm</code>, <code>challenge</code>, <code>maxNumber</code>, <code>salt</code> and
+<code>signature</code>. The challenge is generated with SHA-256, <code>maxNumber</code> is the
+configured <code>security.captcha.altcha.complexity</code>, and it expires after 5 minutes.</p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span><span class="s1">'http://localhost:9000/api/public/captcha/altcha'</span>
+</code></pre></div>
+<p>Submitting the solved payload happens through
+<a href="#post-apipublicsubscription">POST /api/public/subscription</a> in the field
+<code>altcha</code>.</p>
+<hr />
+<h4 id="get-apipublicarchive">GET /api/public/archive<a class="headerlink" href="#get-apipublicarchive" title="Permanent link">&para;</a></h4>
+<p>List campaigns published to the public archive (Campaigns -&gt; Create new -&gt;
+Archive -&gt; Publish to public archive). This route is only registered when
+<code>app.enable_public_archive</code> is on; otherwise requests fall through to the
+<code>/api/*</code> not-found handler and return HTTP 404.</p>
+<p>The listing is paginated with the global pagination query parameters <code>page</code> and
+<code>per_page</code> (default 20, maximum 50) and returns the standard paginated
+envelope. Each result object contains:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Field</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>uuid</code></td>
+<td style="text-align: left;">Campaign UUID.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>subject</code></td>
+<td style="text-align: left;">Campaign subject, with template tags rendered.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>content</code></td>
+<td style="text-align: left;">Always empty in this listing; the RSS feed renders the body only when <code>app.enable_public_archive_rss_content</code> is on.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>created_at</code></td>
+<td style="text-align: left;">Campaign creation timestamp.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>send_at</code></td>
+<td style="text-align: left;">Campaign send timestamp.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>url</code></td>
+<td style="text-align: left;">Archive page URL, built from the configured archive URL and the campaign's archive slug, or its UUID when no slug is set.</td>
+</tr>
+</tbody>
+</table>
+<p>The envelope fields are <code>results</code>, <code>total</code>, <code>page</code> and <code>per_page</code>; the public
+archive does not parse the <code>search</code> and <code>query</code> parameters. An archive with no
+campaigns returns HTTP 200 with <code>results: []</code>.</p>
+<p>The corresponding HTML pages and the RSS feed are listed under
+<a href="#adjacent-public-routes-not-under-apipublic">Adjacent public routes</a> and
+described in <a href="../../archives/">Archives</a>.</p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span><span class="s1">'http://localhost:9000/api/public/archive?page=1&amp;per_page=20'</span>
+</code></pre></div>
+<hr />
+<h4 id="get-apimediafilemedia_idfilename">GET /api/media/file/{media_id}/{filename}<a class="headerlink" href="#get-apimediafilemedia_idfilename" title="Permanent link">&para;</a></h4>
+<p>Canonical media URL returned by the media library for newly stored files (in
+the route, the ID parameter is named <code>:id</code>). <code>{media_id}</code> is the media row ID
+and <code>{filename}</code> must match that row's stored filename or thumbnail name; a
+mismatch returns HTTP 404, so a media ID never grants access on its own.</p>
+<p>The route is deliberately registered outside the authenticated <code>/api</code> group so
+that an active public archive can render its linked images, but it is still
+wrapped in the session/API-key middleware with the <code>media:read</code> scope. An
+unauthenticated request is granted only when the blob is referenced by a
+campaign that is currently in the public archive <strong>and</strong>
+<code>app.enable_public_archive</code> is on; every other anonymous request is answered
+with HTTP 404. On the ID route every archive failure — public archive disabled,
+row missing, or filename mismatch — is collapsed into HTTP 404
+(<code>cmd/media.go:457</code>), while the filename route maps a missing mapping to HTTP
+404 only and returns other errors unchanged (<code>cmd/media.go:422</code>), so a lookup
+failure there can surface as a 5xx. Authenticated browser requests are resolved
+against the active workspace
+(using the <code>X-Listmonk-Organization-ID</code> header, the workspace cookie, or the
+<code>organization_id</code> query parameter), which is required for private and
+organization media.</p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span><span class="s1">'http://localhost:9000/api/media/file/12/logo.png'</span>
+</code></pre></div>
+<hr />
+<h4 id="get-apimediafilefilename">GET /api/media/file/{filename}<a class="headerlink" href="#get-apimediafilefilename" title="Permanent link">&para;</a></h4>
+<p>The historical, filename-only spelling of the same handler. It is kept for
+template and campaign bodies that already contain such URLs; new content should
+use the ID-qualified form above. Visibility, workspace resolution and response
+headers are identical, with one difference: because a filename may be shared by
+cloned media rows, the lookup resolves the caller's workspace row (or, for an
+anonymous public-archive request, the public archive row) rather than a
+particular ID. Filenames are accepted URL-escaped.</p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span><span class="s1">'http://localhost:9000/api/media/file/logo.png'</span>
+</code></pre></div>
+<hr />
+<h4 id="response-headers-for-media-files">Response headers for media files<a class="headerlink" href="#response-headers-for-media-files" title="Permanent link">&para;</a></h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Sniffed content</th>
+<th style="text-align: left;"><code>Content-Type</code></th>
+<th style="text-align: left;">Additional headers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">HTML / XHTML (<code>text/html</code>, <code>application/xhtml+xml</code>)</td>
+<td style="text-align: left;"><code>application/octet-stream</code></td>
+<td style="text-align: left;"><code>Content-Disposition: attachment</code> and <code>Content-Security-Policy: default-src 'none'; sandbox</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">XML (<code>text/xml</code>, <code>application/xml</code>, which covers SVG that sniffs as XML)</td>
+<td style="text-align: left;">the sniffed type</td>
+<td style="text-align: left;"><code>Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Anything else (for example <code>image/png</code>, <code>application/pdf</code>)</td>
+<td style="text-align: left;">the sniffed type</td>
+<td style="text-align: left;">none</td>
+</tr>
+</tbody>
+</table>
+<p>Every media response additionally sets <code>Cache-Control: private, max-age=300</code>
+and <code>X-Content-Type-Options: nosniff</code>, and the content type is always derived by
+sniffing the stored bytes, never from the type declared at upload. HTML and
+XHTML uploads are refused by the media library in the first place
+(<code>cmd/media.go</code>).</p>
+<p>Legacy storage URLs (<code>upload.filesystem.upload_uri</code>, or an S3 public URL below
+the root URL) are routed through the same compatibility handler and the same
+header policy (<code>cmd/init.go</code>).</p>
+<hr />
+<h4 id="apipool-segments">/api/pool-segments/*<a class="headerlink" href="#apipool-segments" title="Permanent link">&para;</a></h4>
+<p><code>/api/pool-segments/*</code> is a second, fully equivalent spelling of
+<code>/api/pools/segments/*</code>. Every pair below is registered on the same handler
+function with the same API-key scope (<code>customer_lists:read</code> /
+<code>customer_lists:write</code>), so requests and responses are identical — this is one
+resource with two route spellings, not two APIs:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;"><code>/api/pool-segments/*</code></th>
+<th style="text-align: left;"><code>/api/pools/segments/*</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>POST /api/pool-segments</code></td>
+<td style="text-align: left;"><code>POST /api/pools/segments</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>PUT /api/pool-segments/:id/reply-mailbox</code></td>
+<td style="text-align: left;"><code>PUT /api/pools/segments/:id/reply-mailbox</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>POST /api/pool-segments/members</code></td>
+<td style="text-align: left;"><code>POST /api/pools/segments/members</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>PUT /api/pool-segments/members</code></td>
+<td style="text-align: left;"><code>PUT /api/pools/segments/members</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>DELETE /api/pool-segments/members</code></td>
+<td style="text-align: left;"><code>DELETE /api/pools/segments/members</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>POST /api/pool-segments/:id/import-members</code></td>
+<td style="text-align: left;"><code>POST /api/pools/segments/:id/import-members</code></td>
+</tr>
+</tbody>
+</table>
+<p>Unlike the write routes, the read routes are not symmetrical: segments are
+listed by <code>GET /api/pools/:id/segments</code>, which is the same handler as
+<code>GET /api/customer-lists/:id/pool-segments</code>. There is no
+<code>GET /api/pool-segments/...</code> listing route. Both prefixes allow a 32 MB request
+body for segment member imports (<code>cmd/body_limit.go</code>).</p>
+<p>Payloads and pool semantics, including the highest-administrator and
+organization boundaries, are documented once in <a href="../pools/">Public pools</a>; this
+page does not repeat them.</p>
+<hr />
+<h2 id="adjacent-public-routes-not-under-apipublic">Adjacent public routes (not under /api/public/)<a class="headerlink" href="#adjacent-public-routes-not-under-apipublic" title="Permanent link">&para;</a></h2>
+<p>The public archive pages, subscription confirmation and click/view tracking are
+browser-facing routes registered on the same unauthenticated group but <strong>not</strong>
+below <code>/api/public/</code>. They return HTML, redirects or images rather than the API
+envelope.</p>
+<ul>
+<li><code>GET /subscription/form</code> and <code>POST /subscription/form</code> — the built-in
+  subscription form and its form-post target. Both return HTTP 404 when
+  <code>app.enable_public_subscription_page</code> is off. The JSON form-post counterpart
+  is <a href="#post-apipublicsubscription">POST /api/public/subscription</a>.</li>
+<li><code>GET|POST /subscription/optin/:subUUID</code> — the double opt-in confirmation page
+  reached from the "Confirm subscription" link; <code>confirm=true</code> confirms the
+  pending subscriptions.</li>
+<li><code>GET /subscription/:campUUID/:subUUID</code> and
+  <code>POST /subscription/:campUUID/:subUUID</code> — the subscription preferences /
+  unsubscribe page linked as <code>{{ UnsubscribeURL }}</code> in campaigns.</li>
+<li><code>POST /subscription/export/:subUUID</code> and <code>POST /subscription/wipe/:subUUID</code> —
+  customer self-service data export and erasure, gated by the privacy settings.</li>
+<li><code>GET /link/:linkUUID/:campUUID/:subUUID</code> — link click tracking; records the
+  click (unless tracking is disabled globally) and answers with a redirect to
+  the underlying URL.</li>
+<li><code>GET /campaign/:campUUID/:subUUID/px.png</code> — the open-tracking pixel; it always
+  returns the PNG, whether or not the view is recorded.</li>
+<li><code>GET /archive</code>, <code>GET /archive/:id</code>, <code>GET /archive/latest</code> and
+  <code>GET /archive.xml</code> — the public archive pages and RSS feed, all registered
+  only when <code>app.enable_public_archive</code> is on. The two single-campaign pages
+  render user-authored campaign HTML and therefore send
+  <code>Content-Security-Policy: sandbox</code> to isolate them from the application
+  origin; the archive listing page does not render campaign bodies and does not
+  set that header. See <a href="../../archives/">Archives</a>.</li>
+<li><code>GET /public/custom.css</code> and <code>GET /public/custom.js</code> — the appearance files
+  configured under Settings.</li>
+<li><code>POST /webhooks/service/:service</code> — inbound provider bounce webhooks, present
+  only when bounce webhooks are enabled. See <a href="../../bounces/">Bounces</a>.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      CC BY-SA 4.0
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.indexes", "navigation.sections", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

@@ -1,0 +1,6299 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+      
+        <link rel="prev" href="../pools/">
+      
+      
+        <link rel="next" href="../import/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Organizations - listmonk / Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../static/style.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="white" data-md-color-accent="red">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#api-organizations" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="listmonk / Documentation" class="md-header__button md-logo" aria-label="listmonk / Documentation" data-md-component="logo">
+      
+  <img src="../../images/favicon.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            listmonk / Documentation
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Organizations
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="listmonk / Documentation" class="md-nav__button md-logo" aria-label="listmonk / Documentation" data-md-component="logo">
+      
+  <img src="../../images/favicon.png" alt="logo">
+
+    </a>
+    listmonk / Documentation
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Introduction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../upgrade/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Using listmonk
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Using listmonk
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../templating/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Templating
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../querying-and-segmentation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Querying and segmenting customers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../bounces/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bounce processing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../messengers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Messengers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../archives/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Archives
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../i18n/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Internationalization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../external-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrating with external systems
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roles-and-permissions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User roles and permissions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../oidc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OIDC SSO
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../apis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Introduction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sdks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SDKs and libs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../customers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Customers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../customer-lists/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CustomerLists
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Public pools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Organizations
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Organizations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#workspace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Workspace
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Workspace">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get-apiworkspace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/workspace
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="GET /api/workspace">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#directory-and-membership" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Directory and membership
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Directory and membership">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get-apiorganizations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/organizations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="GET /api/organizations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-apiorganizationsme" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/organizations/me
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="GET /api/organizations/me">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#example-request_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-apiorganizationsmembers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/organizations/members
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="GET /api/organizations/members">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#example-request_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-apiorganizationsmembers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/organizations/members
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="POST /api/organizations/members">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#put-apiorganizationsmembersuser_id" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PUT /api/organizations/members/{user_id}
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="PUT /api/organizations/members/{user_id}">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delete-apiorganizationsmembersuser_id" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DELETE /api/organizations/members/{user_id}
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DELETE /api/organizations/members/{user_id}">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-apiorganizationsidmembers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/organizations/{id}/members
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="GET /api/organizations/{id}/members">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-apiorganizations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/organizations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-apiorganizationsidmembersbulk" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/organizations/{id}/members/bulk
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#organization-requests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Organization requests
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Organization requests">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#post-apiorganizationsrequests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/organizations/requests
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="POST /api/organizations/requests">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-apiorganizationsrequestsmine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/organizations/requests/mine
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="GET /api/organizations/requests/mine">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#example-request_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delete-apiorganizationsrequestsid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DELETE /api/organizations/requests/{id}
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DELETE /api/organizations/requests/{id}">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-apiorganizationsrequests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/organizations/requests
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="GET /api/organizations/requests">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#put-apiorganizationsrequestsid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PUT /api/organizations/requests/{id}
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="PUT /api/organizations/requests/{id}">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#joining-and-invitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Joining and invitations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Joining and invitations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#post-apiorganizationsjoin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/organizations/join
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="POST /api/organizations/join">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-apiorganizationsleave" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/organizations/leave
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="POST /api/organizations/leave">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#example-request_14" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-apiorganizationsinvites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/organizations/invites
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="GET /api/organizations/invites">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#example-request_15" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-apiorganizationsinvites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/organizations/invites
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="POST /api/organizations/invites">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_16" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delete-apiorganizationsinvitesid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DELETE /api/organizations/invites/{id}
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DELETE /api/organizations/invites/{id}">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_17" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_14" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#personal-resource-migration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Personal resource migration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Personal resource migration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#post-apiorganizationsresourcesmigrate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/organizations/resources/migrate
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="POST /api/organizations/resources/migrate">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_18" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_15" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-apiorganizationsresourcescustomer-listsmigrate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/organizations/resources/customer-lists/migrate
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="POST /api/organizations/resources/customer-lists/migrate">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_14" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_19" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_16" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resource-transfer-between-members" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resource transfer between members
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Resource transfer between members">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#post-apiorganizationsresourcestransfer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/organizations/resources/transfer
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="POST /api/organizations/resources/transfer">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_15" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_20" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_17" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-apiorganizationsidresourcestransfer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/organizations/{id}/resources/transfer
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="POST /api/organizations/{id}/resources/transfer">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_16" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_21" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_18" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-apiorganizationstemplatesidtransfer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/organizations/templates/{id}/transfer
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="POST /api/organizations/templates/{id}/transfer">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_17" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_22" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_19" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-apiorganizationstemplatesidunpublish" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/organizations/templates/{id}/unpublish
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="POST /api/organizations/templates/{id}/unpublish">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_18" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_23" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_20" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reply-forwarding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reply forwarding
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Reply forwarding">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get-apiorganizationsreply-forwarding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/organizations/reply-forwarding
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="GET /api/organizations/reply-forwarding">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#example-request_24" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_21" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#put-apiorganizationsreply-forwardingid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PUT /api/organizations/reply-forwarding/{id}
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="PUT /api/organizations/reply-forwarding/{id}">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_19" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_25" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_22" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delete-apiorganizationsreply-forwardingid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DELETE /api/organizations/reply-forwarding/{id}
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DELETE /api/organizations/reply-forwarding/{id}">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_20" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_26" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_23" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#organization-lifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Organization lifecycle
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Organization lifecycle">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#post-apiorganizationsidarchive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/organizations/{id}/archive
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="POST /api/organizations/{id}/archive">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_21" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_27" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_24" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delete-apiorganizationsid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DELETE /api/organizations/{id}
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DELETE /api/organizations/{id}">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_22" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_28" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_25" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../import/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Import
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../campaigns/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Campaigns
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../media/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Media
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../templates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Templates
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api-keys/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Personal API keys
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../users/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Users
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../roles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../audit-events/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Audit events
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../transactional/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Transactional
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../bounces/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bounces
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../system/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../public-endpoints/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Public endpoints
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Maintenance
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Maintenance
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../maintenance/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributions
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contributions
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Engineering architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../harness/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Engineering harness
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../developer-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../security-reports/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security reports
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#workspace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Workspace
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Workspace">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get-apiworkspace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/workspace
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="GET /api/workspace">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#directory-and-membership" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Directory and membership
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Directory and membership">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get-apiorganizations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/organizations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="GET /api/organizations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-apiorganizationsme" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/organizations/me
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="GET /api/organizations/me">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#example-request_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-apiorganizationsmembers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/organizations/members
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="GET /api/organizations/members">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#example-request_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-apiorganizationsmembers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/organizations/members
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="POST /api/organizations/members">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#put-apiorganizationsmembersuser_id" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PUT /api/organizations/members/{user_id}
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="PUT /api/organizations/members/{user_id}">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delete-apiorganizationsmembersuser_id" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DELETE /api/organizations/members/{user_id}
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DELETE /api/organizations/members/{user_id}">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-apiorganizationsidmembers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/organizations/{id}/members
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="GET /api/organizations/{id}/members">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-apiorganizations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/organizations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-apiorganizationsidmembersbulk" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/organizations/{id}/members/bulk
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#organization-requests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Organization requests
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Organization requests">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#post-apiorganizationsrequests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/organizations/requests
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="POST /api/organizations/requests">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-apiorganizationsrequestsmine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/organizations/requests/mine
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="GET /api/organizations/requests/mine">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#example-request_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delete-apiorganizationsrequestsid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DELETE /api/organizations/requests/{id}
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DELETE /api/organizations/requests/{id}">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-apiorganizationsrequests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/organizations/requests
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="GET /api/organizations/requests">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#put-apiorganizationsrequestsid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PUT /api/organizations/requests/{id}
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="PUT /api/organizations/requests/{id}">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#joining-and-invitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Joining and invitations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Joining and invitations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#post-apiorganizationsjoin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/organizations/join
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="POST /api/organizations/join">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-apiorganizationsleave" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/organizations/leave
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="POST /api/organizations/leave">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#example-request_14" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-apiorganizationsinvites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/organizations/invites
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="GET /api/organizations/invites">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#example-request_15" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-apiorganizationsinvites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/organizations/invites
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="POST /api/organizations/invites">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_16" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delete-apiorganizationsinvitesid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DELETE /api/organizations/invites/{id}
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DELETE /api/organizations/invites/{id}">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_17" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_14" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#personal-resource-migration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Personal resource migration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Personal resource migration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#post-apiorganizationsresourcesmigrate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/organizations/resources/migrate
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="POST /api/organizations/resources/migrate">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_18" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_15" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-apiorganizationsresourcescustomer-listsmigrate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/organizations/resources/customer-lists/migrate
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="POST /api/organizations/resources/customer-lists/migrate">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_14" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_19" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_16" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resource-transfer-between-members" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resource transfer between members
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Resource transfer between members">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#post-apiorganizationsresourcestransfer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/organizations/resources/transfer
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="POST /api/organizations/resources/transfer">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_15" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_20" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_17" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-apiorganizationsidresourcestransfer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/organizations/{id}/resources/transfer
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="POST /api/organizations/{id}/resources/transfer">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_16" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_21" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_18" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-apiorganizationstemplatesidtransfer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/organizations/templates/{id}/transfer
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="POST /api/organizations/templates/{id}/transfer">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_17" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_22" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_19" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-apiorganizationstemplatesidunpublish" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/organizations/templates/{id}/unpublish
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="POST /api/organizations/templates/{id}/unpublish">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_18" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_23" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_20" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reply-forwarding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reply forwarding
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Reply forwarding">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get-apiorganizationsreply-forwarding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/organizations/reply-forwarding
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="GET /api/organizations/reply-forwarding">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#example-request_24" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_21" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#put-apiorganizationsreply-forwardingid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PUT /api/organizations/reply-forwarding/{id}
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="PUT /api/organizations/reply-forwarding/{id}">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_19" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_25" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_22" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delete-apiorganizationsreply-forwardingid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DELETE /api/organizations/reply-forwarding/{id}
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DELETE /api/organizations/reply-forwarding/{id}">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_20" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_26" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_23" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#organization-lifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Organization lifecycle
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Organization lifecycle">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#post-apiorganizationsidarchive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/organizations/{id}/archive
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="POST /api/organizations/{id}/archive">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_21" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_27" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_24" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delete-apiorganizationsid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DELETE /api/organizations/{id}
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DELETE /api/organizations/{id}">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_22" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-request_28" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Request
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-response_25" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="api-organizations">API / Organizations<a class="headerlink" href="#api-organizations" title="Permanent link">&para;</a></h1>
+<p>Organizations are tenant workspaces that own customer lists, customers, campaigns,
+templates and media on behalf of their members. The authenticated admin API exposes
+them under <code>/api/organizations</code>, and the workspace a request actually runs in under
+<code>/api/workspace</code>.</p>
+<p>Authenticated requests are scoped by the active workspace, selected with the
+<code>X-Listmonk-Organization-ID</code> request header (the <code>organization_id</code> query parameter
+and the browser workspace cookie are fallbacks; an API token bound to a workspace
+supplies its own organization when the header is missing). See
+<a href="../apis/">Introduction</a> for authentication, response structure, timestamps and
+common HTTP error codes. The endpoints on this page are <strong>not</strong> part of the
+personal API key surface: personal keys are restricted to the business prefixes in
+<code>isPersonalAPIKeyBusinessPath</code> (<code>cmd/api_keys.go:107</code>), which does not include
+<code>/api/organizations</code> or <code>/api/workspace</code>, and are rejected with HTTP 403
+(<code>cmd/api_keys.go:98</code>).</p>
+<p>Two authorization levels appear throughout this page:</p>
+<ul>
+<li><strong>Workspace endpoints</strong> resolve the active organization and require an active
+  membership (or a platform administrator) — <code>cmd/organizations.go:156</code>.</li>
+<li><strong>Platform endpoints</strong> additionally require the built-in Super Admin or a role
+  holding <code>organizations:platform_manage</code> (<code>cmd/organizations.go:311</code>,
+  <code>internal/auth/models.go:96</code>), and answer HTTP 403
+  <code>platform organization management permission required</code> otherwise. An operator
+  holding that permission may also use the organization-management paths
+  (<code>members</code>, <code>resources/transfer</code>, <code>templates/*</code>, <code>reply-forwarding</code>, <code>invites</code>)
+  inside a selected organization without joining it — <code>cmd/organizations.go:194</code>.</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Method</th>
+<th style="text-align: left;">Endpoint</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">GET</td>
+<td style="text-align: left;"><a href="#get-apiworkspace">/api/workspace</a></td>
+<td style="text-align: left;">Resolve the active workspace of the request</td>
+</tr>
+<tr>
+<td style="text-align: left;">GET</td>
+<td style="text-align: left;"><a href="#get-apiorganizations">/api/organizations</a></td>
+<td style="text-align: left;">List all organizations (platform)</td>
+</tr>
+<tr>
+<td style="text-align: left;">POST</td>
+<td style="text-align: left;"><a href="#post-apiorganizations">/api/organizations</a></td>
+<td style="text-align: left;">Create an organization with initial members (platform)</td>
+</tr>
+<tr>
+<td style="text-align: left;">GET</td>
+<td style="text-align: left;"><a href="#get-apiorganizationsme">/api/organizations/me</a></td>
+<td style="text-align: left;">List the caller's active organizations</td>
+</tr>
+<tr>
+<td style="text-align: left;">GET</td>
+<td style="text-align: left;"><a href="#get-apiorganizationsmembers">/api/organizations/members</a></td>
+<td style="text-align: left;">List members of the active organization</td>
+</tr>
+<tr>
+<td style="text-align: left;">POST</td>
+<td style="text-align: left;"><a href="#post-apiorganizationsmembers">/api/organizations/members</a></td>
+<td style="text-align: left;">Add a member to the active organization</td>
+</tr>
+<tr>
+<td style="text-align: left;">PUT</td>
+<td style="text-align: left;"><a href="#put-apiorganizationsmembersuser_id">/api/organizations/members/{user_id}</a></td>
+<td style="text-align: left;">Change a member's organization role</td>
+</tr>
+<tr>
+<td style="text-align: left;">DELETE</td>
+<td style="text-align: left;"><a href="#delete-apiorganizationsmembersuser_id">/api/organizations/members/{user_id}</a></td>
+<td style="text-align: left;">Remove a member from the active organization</td>
+</tr>
+<tr>
+<td style="text-align: left;">GET</td>
+<td style="text-align: left;"><a href="#get-apiorganizationsidmembers">/api/organizations/{id}/members</a></td>
+<td style="text-align: left;">List members of any organization (platform)</td>
+</tr>
+<tr>
+<td style="text-align: left;">POST</td>
+<td style="text-align: left;"><a href="#post-apiorganizationsidmembersbulk">/api/organizations/{id}/members/bulk</a></td>
+<td style="text-align: left;">Bulk-add registered accounts to an organization (platform)</td>
+</tr>
+<tr>
+<td style="text-align: left;">POST</td>
+<td style="text-align: left;"><a href="#post-apiorganizationsrequests">/api/organizations/requests</a></td>
+<td style="text-align: left;">Request a new organization</td>
+</tr>
+<tr>
+<td style="text-align: left;">GET</td>
+<td style="text-align: left;"><a href="#get-apiorganizationsrequestsmine">/api/organizations/requests/mine</a></td>
+<td style="text-align: left;">List the caller's own organization requests</td>
+</tr>
+<tr>
+<td style="text-align: left;">DELETE</td>
+<td style="text-align: left;"><a href="#delete-apiorganizationsrequestsid">/api/organizations/requests/{id}</a></td>
+<td style="text-align: left;">Withdraw a pending organization request</td>
+</tr>
+<tr>
+<td style="text-align: left;">GET</td>
+<td style="text-align: left;"><a href="#get-apiorganizationsrequests">/api/organizations/requests</a></td>
+<td style="text-align: left;">List organization requests (platform)</td>
+</tr>
+<tr>
+<td style="text-align: left;">PUT</td>
+<td style="text-align: left;"><a href="#put-apiorganizationsrequestsid">/api/organizations/requests/{id}</a></td>
+<td style="text-align: left;">Approve or reject an organization request (platform)</td>
+</tr>
+<tr>
+<td style="text-align: left;">POST</td>
+<td style="text-align: left;"><a href="#post-apiorganizationsjoin">/api/organizations/join</a></td>
+<td style="text-align: left;">Join an organization with an invitation code</td>
+</tr>
+<tr>
+<td style="text-align: left;">POST</td>
+<td style="text-align: left;"><a href="#post-apiorganizationsleave">/api/organizations/leave</a></td>
+<td style="text-align: left;">Leave the active organization</td>
+</tr>
+<tr>
+<td style="text-align: left;">GET</td>
+<td style="text-align: left;"><a href="#get-apiorganizationsinvites">/api/organizations/invites</a></td>
+<td style="text-align: left;">List invitations of the active organization</td>
+</tr>
+<tr>
+<td style="text-align: left;">POST</td>
+<td style="text-align: left;"><a href="#post-apiorganizationsinvites">/api/organizations/invites</a></td>
+<td style="text-align: left;">Create an invitation for the active organization</td>
+</tr>
+<tr>
+<td style="text-align: left;">DELETE</td>
+<td style="text-align: left;"><a href="#delete-apiorganizationsinvitesid">/api/organizations/invites/{id}</a></td>
+<td style="text-align: left;">Revoke an invitation</td>
+</tr>
+<tr>
+<td style="text-align: left;">POST</td>
+<td style="text-align: left;"><a href="#post-apiorganizationsresourcesmigrate">/api/organizations/resources/migrate</a></td>
+<td style="text-align: left;">Copy or move personal resources into an organization</td>
+</tr>
+<tr>
+<td style="text-align: left;">POST</td>
+<td style="text-align: left;"><a href="#post-apiorganizationsresourcescustomer-listsmigrate">/api/organizations/resources/customer-lists/migrate</a></td>
+<td style="text-align: left;">Copy or move personal customer_lists into an organization</td>
+</tr>
+<tr>
+<td style="text-align: left;">POST</td>
+<td style="text-align: left;"><a href="#post-apiorganizationsresourcestransfer">/api/organizations/resources/transfer</a></td>
+<td style="text-align: left;">Transfer a former member's pending resources</td>
+</tr>
+<tr>
+<td style="text-align: left;">POST</td>
+<td style="text-align: left;"><a href="#post-apiorganizationsidresourcestransfer">/api/organizations/{id}/resources/transfer</a></td>
+<td style="text-align: left;">Transfer an archived organization's resources (platform)</td>
+</tr>
+<tr>
+<td style="text-align: left;">POST</td>
+<td style="text-align: left;"><a href="#post-apiorganizationstemplatesidtransfer">/api/organizations/templates/{id}/transfer</a></td>
+<td style="text-align: left;">Hand over an organization-shared template</td>
+</tr>
+<tr>
+<td style="text-align: left;">POST</td>
+<td style="text-align: left;"><a href="#post-apiorganizationstemplatesidunpublish">/api/organizations/templates/{id}/unpublish</a></td>
+<td style="text-align: left;">Unpublish an organization-shared template</td>
+</tr>
+<tr>
+<td style="text-align: left;">GET</td>
+<td style="text-align: left;"><a href="#get-apiorganizationsreply-forwarding">/api/organizations/reply-forwarding</a></td>
+<td style="text-align: left;">List reply-forwarding rules of the active organization</td>
+</tr>
+<tr>
+<td style="text-align: left;">PUT</td>
+<td style="text-align: left;"><a href="#put-apiorganizationsreply-forwardingid">/api/organizations/reply-forwarding/{id}</a></td>
+<td style="text-align: left;">Enable or disable a reply-forwarding rule</td>
+</tr>
+<tr>
+<td style="text-align: left;">DELETE</td>
+<td style="text-align: left;"><a href="#delete-apiorganizationsreply-forwardingid">/api/organizations/reply-forwarding/{id}</a></td>
+<td style="text-align: left;">Disable a reply-forwarding rule</td>
+</tr>
+<tr>
+<td style="text-align: left;">POST</td>
+<td style="text-align: left;"><a href="#post-apiorganizationsidarchive">/api/organizations/{id}/archive</a></td>
+<td style="text-align: left;">Archive an organization (platform)</td>
+</tr>
+<tr>
+<td style="text-align: left;">DELETE</td>
+<td style="text-align: left;"><a href="#delete-apiorganizationsid">/api/organizations/{id}</a></td>
+<td style="text-align: left;">Permanently delete an archived organization (platform)</td>
+</tr>
+</tbody>
+</table>
+<p>Every route above is registered on the authenticated API group
+(<code>cmd/handlers.go:93</code>) and passes through the audit middleware
+(<code>cmd/handlers.go:106</code>); audit action names exist for the mutating organization
+endpoints (<code>cmd/audit.go:269</code>–<code>cmd/audit.go:311</code>).</p>
+<hr />
+<h3 id="workspace">Workspace<a class="headerlink" href="#workspace" title="Permanent link">&para;</a></h3>
+<h4 id="get-apiworkspace">GET /api/workspace<a class="headerlink" href="#get-apiworkspace" title="Permanent link">&para;</a></h4>
+<p>Return the workspace the request resolves to. The resolver reads
+<code>X-Listmonk-Organization-ID</code> first, then the <code>organization_id</code> query parameter,
+then the browser workspace cookie (<code>listmonk_workspace_organization_id</code>). The
+workspace-bound fallback that resource endpoints apply to personal API keys does
+not reach this page: a personal API key is rejected on <code>/api/workspace</code> and on
+every <code>/api/organizations</code> route before the resolver runs. A missing header, <code>0</code>
+or <code>personal</code> selects the caller's personal workspace, which requires the
+<code>workspaces:personal</code> capability (Super Admin is exempt) and otherwise answers
+HTTP 403 <code>personal workspace is disabled for this account</code>. An organization
+workspace is re-validated on every request: non-admin members must still be
+active members, a non-admin request for an archived organization answers HTTP 409
+<code>organization is archived</code>, and only a platform administrator may select an
+archived organization (for resource transfer or cleanup). Source:
+<code>cmd/organizations.go:78</code>, <code>cmd/organizations.go:156</code>,
+<code>cmd/workspace_permissions.go:16</code>.
+workspace, which requires the <code>workspaces:personal</code> capability (Super Admin is
+exempt) and otherwise answers HTTP 403
+<code>personal workspace is disabled for this account</code>. An organization workspace is
+re-validated on every request: non-admin members must still be active members, a
+non-admin request for an archived organization answers HTTP 409
+<code>organization is archived</code>, and only a platform administrator may select an
+archived organization (for resource transfer or cleanup). Source:
+<code>cmd/organizations.go:78</code>, <code>cmd/organizations.go:156</code>,
+<code>cmd/workspace_permissions.go:16</code>.</p>
+<h5 id="parameters">Parameters<a class="headerlink" href="#parameters" title="Permanent link">&para;</a></h5>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Name</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Required</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">X-Listmonk-Organization-ID</td>
+<td style="text-align: left;">Header</td>
+<td style="text-align: left;">No</td>
+<td style="text-align: left;">Organization workspace ID; omit for the caller's personal workspace.</td>
+</tr>
+<tr>
+<td style="text-align: left;">organization_id</td>
+<td style="text-align: left;">Number</td>
+<td style="text-align: left;">No</td>
+<td style="text-align: left;">Query-parameter fallback used when the header is not sent.</td>
+</tr>
+</tbody>
+</table>
+<h5 id="example-request">Example Request<a class="headerlink" href="#example-request" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span><span class="s1">'http://localhost:9000/api/workspace'</span><span class="w"> </span><span class="se">\</span>
+--header<span class="w"> </span><span class="s1">'X-Listmonk-Organization-ID: 7'</span>
+</code></pre></div>
+<h5 id="example-response">Example Response<a class="headerlink" href="#example-response" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"organization_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">7</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"organization_name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Acme"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"role"</span><span class="p">:</span><span class="w"> </span><span class="s2">"manager"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"personal"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"platform_admin"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p><code>organization_name</code> and <code>role</code> are omitted when empty, and <code>archived</code> is only
+present for a platform administrator that selected an archived organization
+(<code>models/organizations.go:114</code>). The personal workspace answers with
+<code>organization_id: 0</code>, <code>personal: true</code> and no organization name or role.</p>
+<p>The same resolver backs every other workspace-scoped endpoint in this
+documentation set. One read-only exception applies to the personal workspace: the
+four list endpoints that back the personal-resource migration UI
+(<code>/api/customer-lists</code>, <code>/api/templates</code>, <code>/api/campaigns</code>, <code>/api/media</code>) are
+listed without the <code>workspaces:personal</code> capability, while every detail read,
+mutation and export still requires it (<code>cmd/organizations.go:111</code>,
+<code>cmd/workspace_permissions.go:43</code>).</p>
+<hr />
+<h3 id="directory-and-membership">Directory and membership<a class="headerlink" href="#directory-and-membership" title="Permanent link">&para;</a></h3>
+<h4 id="get-apiorganizations">GET /api/organizations<a class="headerlink" href="#get-apiorganizations" title="Permanent link">&para;</a></h4>
+<p>List organizations for platform administration. Available organizations are
+returned by default; pass <code>include_archived=true</code> to include archived ones.
+Requires platform administrator or <code>organizations:platform_manage</code>
+(<code>cmd/handlers.go:319</code>, <code>cmd/organizations.go:328</code>). The rows carry an empty
+<code>my_role</code> because the endpoint is not membership-scoped
+(<code>internal/core/organizations.go:57</code>).</p>
+<h5 id="parameters_1">Parameters<a class="headerlink" href="#parameters_1" title="Permanent link">&para;</a></h5>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Name</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Required</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">include_archived</td>
+<td style="text-align: left;">Boolean</td>
+<td style="text-align: left;">No</td>
+<td style="text-align: left;"><code>true</code> also returns archived organizations; default is active only.</td>
+</tr>
+</tbody>
+</table>
+<h5 id="example-request_1">Example Request<a class="headerlink" href="#example-request_1" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span><span class="s1">'http://localhost:9000/api/organizations?include_archived=true'</span>
+</code></pre></div>
+<h5 id="example-response_1">Example Response<a class="headerlink" href="#example-response_1" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="mi">7</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"created_at"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2025-01-01T09:00:00.000000+05:30"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"updated_at"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2025-01-01T09:00:00.000000+05:30"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Acme"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Acme marketing team"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"status"</span><span class="p">:</span><span class="w"> </span><span class="s2">"active"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"created_by_user_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"archived_at"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"member_count"</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"my_role"</span><span class="p">:</span><span class="w"> </span><span class="s2">""</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</code></pre></div>
+<h4 id="get-apiorganizationsme">GET /api/organizations/me<a class="headerlink" href="#get-apiorganizationsme" title="Permanent link">&para;</a></h4>
+<p>List the caller's own active organizations, ordered by name, with <code>my_role</code> and
+<code>member_count</code>. Archived organizations are excluded, so the response is a
+workspace-switcher list (<code>cmd/organizations.go:319</code>,
+<code>internal/core/organizations.go:37</code>). No extra permission is required beyond
+authentication.</p>
+<h5 id="example-request_2">Example Request<a class="headerlink" href="#example-request_2" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span><span class="s1">'http://localhost:9000/api/organizations/me'</span>
+</code></pre></div>
+<h5 id="example-response_2">Example Response<a class="headerlink" href="#example-response_2" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="mi">7</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Acme"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Acme marketing team"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"status"</span><span class="p">:</span><span class="w"> </span><span class="s2">"active"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"created_by_user_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"archived_at"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"member_count"</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"my_role"</span><span class="p">:</span><span class="w"> </span><span class="s2">"manager"</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</code></pre></div>
+<h4 id="get-apiorganizationsmembers">GET /api/organizations/members<a class="headerlink" href="#get-apiorganizationsmembers" title="Permanent link">&para;</a></h4>
+<p>List the members of the active organization workspace, including former members
+(<code>removed_at</code> is set for them), ordered by removal state, role and name. Requires
+an organization manager, a platform administrator, or
+<code>organizations:platform_manage</code>; a personal workspace answers HTTP 400
+<code>select an organization workspace</code> and an archived organization answers HTTP 409
+(<code>cmd/organizations.go:262</code>, <code>cmd/organizations.go:486</code>).</p>
+<h5 id="example-request_3">Example Request<a class="headerlink" href="#example-request_3" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span><span class="s1">'http://localhost:9000/api/organizations/members'</span><span class="w"> </span><span class="se">\</span>
+--header<span class="w"> </span><span class="s1">'X-Listmonk-Organization-ID: 7'</span>
+</code></pre></div>
+<h5 id="example-response_3">Example Response<a class="headerlink" href="#example-response_3" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"organization_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">7</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"user_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"role"</span><span class="p">:</span><span class="w"> </span><span class="s2">"manager"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"joined_at"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2025-01-01T09:00:00.000000+05:30"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"removed_at"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"removed_by_user_id"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"username"</span><span class="p">:</span><span class="w"> </span><span class="s2">"jane"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Jane Doe"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"email"</span><span class="p">:</span><span class="w"> </span><span class="s2">"jane@example.com"</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</code></pre></div>
+<h4 id="post-apiorganizationsmembers">POST /api/organizations/members<a class="headerlink" href="#post-apiorganizationsmembers" title="Permanent link">&para;</a></h4>
+<p>Add an existing account to the active organization directly, without consuming an
+invitation. Requires organization manager access. Re-adding a former member
+restores the relationship and its previous resources stay pending for transfer, so
+use the transfer endpoint below afterwards
+(<code>cmd/organizations.go:498</code>, <code>internal/core/organizations.go:425</code>).</p>
+<h5 id="parameters_2">Parameters<a class="headerlink" href="#parameters_2" title="Permanent link">&para;</a></h5>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Name</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Required</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">user_id</td>
+<td style="text-align: left;">Number</td>
+<td style="text-align: left;">No</td>
+<td style="text-align: left;">ID of the user to add. Required unless <code>account</code> is supplied.</td>
+</tr>
+<tr>
+<td style="text-align: left;">account</td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">No</td>
+<td style="text-align: left;">Registered username or e-mail address resolved to a user ID; HTTP 404 <code>registered account not found</code> otherwise.</td>
+</tr>
+<tr>
+<td style="text-align: left;">role</td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">No</td>
+<td style="text-align: left;"><code>member</code> (default) or <code>manager</code>; anything else answers HTTP 400 <code>invalid organization member role</code>.</td>
+</tr>
+</tbody>
+</table>
+<h5 id="example-request_4">Example Request<a class="headerlink" href="#example-request_4" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s1">'http://localhost:9000/api/organizations/members'</span><span class="w"> </span><span class="se">\</span>
+--header<span class="w"> </span><span class="s1">'X-Listmonk-Organization-ID: 7'</span><span class="w"> </span><span class="se">\</span>
+--header<span class="w"> </span><span class="s1">'Content-Type: application/json'</span><span class="w"> </span><span class="se">\</span>
+--data<span class="w"> </span><span class="s1">'{"account": "jane", "role": "manager"}'</span>
+</code></pre></div>
+<h5 id="example-response_4">Example Response<a class="headerlink" href="#example-response_4" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"organization_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">7</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"user_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"role"</span><span class="p">:</span><span class="w"> </span><span class="s2">"manager"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"joined_at"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2025-01-01T09:00:00.000000+05:30"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"removed_at"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"removed_by_user_id"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"username"</span><span class="p">:</span><span class="w"> </span><span class="s2">"jane"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Jane Doe"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"email"</span><span class="p">:</span><span class="w"> </span><span class="s2">"jane@example.com"</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>HTTP 201 is returned on success. Demoting the last remaining manager answers HTTP
+400 <code>an organization must retain at least one manager</code>.</p>
+<h4 id="put-apiorganizationsmembersuser_id">PUT /api/organizations/members/{user_id}<a class="headerlink" href="#put-apiorganizationsmembersuser_id" title="Permanent link">&para;</a></h4>
+<p>Change the organization role of one member of the active organization
+(<code>cmd/organizations.go:526</code>, <code>internal/core/organizations.go:497</code>). Requires
+organization manager access.</p>
+<h5 id="parameters_3">Parameters<a class="headerlink" href="#parameters_3" title="Permanent link">&para;</a></h5>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Name</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Required</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">user_id</td>
+<td style="text-align: left;">Number</td>
+<td style="text-align: left;">Yes</td>
+<td style="text-align: left;">ID of the organization member.</td>
+</tr>
+<tr>
+<td style="text-align: left;">role</td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">Yes</td>
+<td style="text-align: left;"><code>member</code> or <code>manager</code>; any other value answers HTTP 400.</td>
+</tr>
+</tbody>
+</table>
+<h5 id="example-request_5">Example Request<a class="headerlink" href="#example-request_5" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span>-X<span class="w"> </span>PUT<span class="w"> </span><span class="s1">'http://localhost:9000/api/organizations/members/4'</span><span class="w"> </span><span class="se">\</span>
+--header<span class="w"> </span><span class="s1">'X-Listmonk-Organization-ID: 7'</span><span class="w"> </span><span class="se">\</span>
+--header<span class="w"> </span><span class="s1">'Content-Type: application/json'</span><span class="w"> </span><span class="se">\</span>
+--data<span class="w"> </span><span class="s1">'{"role": "member"}'</span>
+</code></pre></div>
+<h5 id="example-response_5">Example Response<a class="headerlink" href="#example-response_5" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>A <code>user_id</code> that is not an active member answers HTTP 403
+<code>not an active organization member</code>, and demoting the last manager answers HTTP
+400 <code>an organization must retain at least one manager</code>.</p>
+<h4 id="delete-apiorganizationsmembersuser_id">DELETE /api/organizations/members/{user_id}<a class="headerlink" href="#delete-apiorganizationsmembersuser_id" title="Permanent link">&para;</a></h4>
+<p>Revoke a member's access to the active organization. The member's resources in
+that organization become pending-transfer rows, scheduled and deferred campaigns
+become drafts, running campaigns are paused, a pending import owned by that member
+is stopped, and their dedicated reply mailboxes are retained with a forwarding
+rule to the organization creator (or the first active manager)
+(<code>cmd/organizations.go:546</code>, <code>internal/core/organizations.go:538</code>,
+<code>cmd/reply_forward_rules.go:71</code>). Requires organization manager access.</p>
+<h5 id="parameters_4">Parameters<a class="headerlink" href="#parameters_4" title="Permanent link">&para;</a></h5>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Name</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Required</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">user_id</td>
+<td style="text-align: left;">Number</td>
+<td style="text-align: left;">Yes</td>
+<td style="text-align: left;">ID of the organization member.</td>
+</tr>
+</tbody>
+</table>
+<h5 id="example-request_6">Example Request<a class="headerlink" href="#example-request_6" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span>-X<span class="w"> </span>DELETE<span class="w"> </span><span class="s1">'http://localhost:9000/api/organizations/members/4'</span><span class="w"> </span><span class="se">\</span>
+--header<span class="w"> </span><span class="s1">'X-Listmonk-Organization-ID: 7'</span>
+</code></pre></div>
+<h5 id="example-response_6">Example Response<a class="headerlink" href="#example-response_6" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Removing the last manager answers HTTP 400 <code>an organization must retain at least
+one manager</code>. If no active manager with a work e-mail is left to receive the
+former member's replies, the membership is already removed when the request
+answers HTTP 409 <code>organization has no active manager with a work email for reply
+forwarding</code> (<code>cmd/organizations.go:560</code>, <code>cmd/reply_forward_rules.go:77</code>).</p>
+<h4 id="get-apiorganizationsidmembers">GET /api/organizations/{id}/members<a class="headerlink" href="#get-apiorganizationsidmembers" title="Permanent link">&para;</a></h4>
+<p>Platform variant of the member listing that addresses any organization by ID
+instead of the workspace header, and is used to pick a transfer target for an
+archived organization that can no longer be selected as a workspace. Requires
+platform administrator or <code>organizations:platform_manage</code>; an unknown organization
+answers HTTP 404 (<code>cmd/handlers.go:308</code>, <code>cmd/organizations.go:650</code>). The response
+body has the same shape as <code>GET /api/organizations/members</code>.</p>
+<h5 id="parameters_5">Parameters<a class="headerlink" href="#parameters_5" title="Permanent link">&para;</a></h5>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Name</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Required</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">id</td>
+<td style="text-align: left;">Number</td>
+<td style="text-align: left;">Yes</td>
+<td style="text-align: left;">Organization ID.</td>
+</tr>
+</tbody>
+</table>
+<h5 id="example-request_7">Example Request<a class="headerlink" href="#example-request_7" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span><span class="s1">'http://localhost:9000/api/organizations/7/members'</span>
+</code></pre></div>
+<h4 id="post-apiorganizations">POST /api/organizations<a class="headerlink" href="#post-apiorganizations" title="Permanent link">&para;</a></h4>
+<p>Create an active organization directly from the platform management surface.
+The request must include one <code>manager_user_id</code>; optional <code>members</code> and
+<code>member_user_ids</code> are added in the same transaction. The creator is recorded in
+<code>created_by_user_id</code> but is not implicitly added as a member. Requires Super
+Admin or <code>organizations:platform_manage</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Acme"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Acme marketing team"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"manager_user_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"members"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">"user_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span><span class="w"> </span><span class="nt">"role"</span><span class="p">:</span><span class="w"> </span><span class="s2">"member"</span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>The manager is always inserted with the <code>manager</code> organization role. User IDs
+must refer to existing accounts, roles may be <code>member</code> or <code>manager</code>, and the
+organization name is unique case-insensitively. Organization creation and all
+initial memberships roll back together on validation or database failure.</p>
+<h4 id="post-apiorganizationsidmembersbulk">POST /api/organizations/{id}/members/bulk<a class="headerlink" href="#post-apiorganizationsidmembersbulk" title="Permanent link">&para;</a></h4>
+<p>Add existing registered accounts to the selected active organization in one
+transaction. Requires Super Admin or <code>organizations:platform_manage</code>; the
+request is path-scoped and does not require switching into the organization.
+Rows accept <code>account</code> (username or email), optional <code>user_id</code>, and <code>role</code>
+(<code>member</code> or <code>manager</code>). <code>users</code> is accepted as an alias for <code>members</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"members"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">"account"</span><span class="p">:</span><span class="w"> </span><span class="s2">"jane"</span><span class="p">,</span><span class="w"> </span><span class="nt">"role"</span><span class="p">:</span><span class="w"> </span><span class="s2">"manager"</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">"account"</span><span class="p">:</span><span class="w"> </span><span class="s2">"alex@example.com"</span><span class="p">,</span><span class="w"> </span><span class="nt">"role"</span><span class="p">:</span><span class="w"> </span><span class="s2">"member"</span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Validation errors return HTTP 200 with <code>data.errors</code>, including the source row,
+field, and stable code (<code>missing_account</code>, <code>invalid_role</code>,
+<code>account_not_found</code>, or <code>duplicate_account</code>). No rows are written when any
+validation error is returned. Re-importing a former member restores the
+membership; the final organization state must retain at least one manager.</p>
+<hr />
+<h3 id="organization-requests">Organization requests<a class="headerlink" href="#organization-requests" title="Permanent link">&para;</a></h3>
+<h4 id="post-apiorganizationsrequests">POST /api/organizations/requests<a class="headerlink" href="#post-apiorganizationsrequests" title="Permanent link">&para;</a></h4>
+<p>Submit a request to create a new organization. Any authenticated user may ask; a
+platform administrator reviews the request later
+(<code>cmd/organizations.go:348</code>, <code>internal/core/organizations.go:118</code>). The response is
+the stored request with <code>status: pending</code>, returned with HTTP 201.</p>
+<h5 id="parameters_6">Parameters<a class="headerlink" href="#parameters_6" title="Permanent link">&para;</a></h5>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Name</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Required</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">name</td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">Yes</td>
+<td style="text-align: left;">Requested organization name, 2–2000 characters; HTTP 409 if the name is already used.</td>
+</tr>
+<tr>
+<td style="text-align: left;">description</td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">No</td>
+<td style="text-align: left;">Free-form description, up to 2000 characters.</td>
+</tr>
+</tbody>
+</table>
+<h5 id="example-request_8">Example Request<a class="headerlink" href="#example-request_8" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s1">'http://localhost:9000/api/organizations/requests'</span><span class="w"> </span><span class="se">\</span>
+--header<span class="w"> </span><span class="s1">'Content-Type: application/json'</span><span class="w"> </span><span class="se">\</span>
+--data<span class="w"> </span><span class="s1">'{"name": "Acme", "description": "Acme marketing team"}'</span>
+</code></pre></div>
+<h5 id="example-response_7">Example Response<a class="headerlink" href="#example-response_7" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"created_at"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2025-01-01T09:00:00.000000+05:30"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"updated_at"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2025-01-01T09:00:00.000000+05:30"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"requested_name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Acme"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Acme marketing team"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"status"</span><span class="p">:</span><span class="w"> </span><span class="s2">"pending"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"requested_by_user_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"reviewed_by_user_id"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"reviewed_at"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"review_note"</span><span class="p">:</span><span class="w"> </span><span class="s2">""</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"organization_id"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"requested_by_name"</span><span class="p">:</span><span class="w"> </span><span class="s2">""</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<h4 id="get-apiorganizationsrequestsmine">GET /api/organizations/requests/mine<a class="headerlink" href="#get-apiorganizationsrequestsmine" title="Permanent link">&para;</a></h4>
+<p>Return every organization-creation request submitted by the caller, including
+reviewed and withdrawn history, newest first
+(<code>cmd/organizations.go:381</code>, <code>internal/core/organizations.go:162</code>). No permission
+beyond authentication is required, and no other account's requests are visible.
+The response body has the same shape as <code>POST /api/organizations/requests</code>.</p>
+<h5 id="example-request_9">Example Request<a class="headerlink" href="#example-request_9" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span><span class="s1">'http://localhost:9000/api/organizations/requests/mine'</span>
+</code></pre></div>
+<h4 id="delete-apiorganizationsrequestsid">DELETE /api/organizations/requests/{id}<a class="headerlink" href="#delete-apiorganizationsrequestsid" title="Permanent link">&para;</a></h4>
+<p>Withdraw the caller's own pending organization request. The row is kept as history
+with <code>status: withdrawn</code>, so it can no longer be reviewed
+(<code>cmd/organizations.go:389</code>, <code>internal/core/organizations.go:179</code>).</p>
+<h5 id="parameters_7">Parameters<a class="headerlink" href="#parameters_7" title="Permanent link">&para;</a></h5>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Name</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Required</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">id</td>
+<td style="text-align: left;">Number</td>
+<td style="text-align: left;">Yes</td>
+<td style="text-align: left;">Organization request ID.</td>
+</tr>
+</tbody>
+</table>
+<h5 id="example-request_10">Example Request<a class="headerlink" href="#example-request_10" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span>-X<span class="w"> </span>DELETE<span class="w"> </span><span class="s1">'http://localhost:9000/api/organizations/requests/3'</span>
+</code></pre></div>
+<h5 id="example-response_8">Example Response<a class="headerlink" href="#example-response_8" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"requested_name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Acme"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Acme marketing team"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"status"</span><span class="p">:</span><span class="w"> </span><span class="s2">"withdrawn"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"requested_by_user_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"reviewed_by_user_id"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"reviewed_at"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"review_note"</span><span class="p">:</span><span class="w"> </span><span class="s2">""</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"organization_id"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"requested_by_name"</span><span class="p">:</span><span class="w"> </span><span class="s2">""</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>A request belonging to another account answers HTTP 404
+<code>organization request not found</code>, and a request that is no longer pending answers
+HTTP 400 <code>only pending organization requests can be withdrawn</code>. The
+<code>requested_by_name</code> field is only populated by the two listing endpoints, which
+join the requesting user; the create, withdraw and review responses return the
+stored row directly and leave it empty (<code>internal/core/organizations.go:274</code>,
+<code>internal/core/organizations.go:289</code>, <code>internal/core/organizations.go:396</code>).</p>
+<h4 id="get-apiorganizationsrequests">GET /api/organizations/requests<a class="headerlink" href="#get-apiorganizationsrequests" title="Permanent link">&para;</a></h4>
+<p>List organization requests for platform review. By default only pending requests
+are returned; pass <code>include_resolved=true</code> for the full history, newest first
+(<code>cmd/handlers.go:321</code>, <code>cmd/organizations.go:368</code>). Requires platform
+administrator or <code>organizations:platform_manage</code>.</p>
+<h5 id="parameters_8">Parameters<a class="headerlink" href="#parameters_8" title="Permanent link">&para;</a></h5>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Name</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Required</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">include_resolved</td>
+<td style="text-align: left;">Boolean</td>
+<td style="text-align: left;">No</td>
+<td style="text-align: left;"><code>true</code> also returns approved, rejected and withdrawn requests.</td>
+</tr>
+</tbody>
+</table>
+<h5 id="example-request_11">Example Request<a class="headerlink" href="#example-request_11" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span><span class="s1">'http://localhost:9000/api/organizations/requests?include_resolved=true'</span>
+</code></pre></div>
+<p>The response is an array of the request objects shown under
+<code>POST /api/organizations/requests</code>, each with <code>requested_by_name</code> populated.</p>
+<h4 id="put-apiorganizationsrequestsid">PUT /api/organizations/requests/{id}<a class="headerlink" href="#put-apiorganizationsrequestsid" title="Permanent link">&para;</a></h4>
+<p>Approve or reject an organization request. Approving creates the organization and
+inserts the requester as its first <code>manager</code> in the same transaction; rejecting
+records only the review. Requires platform administrator or
+<code>organizations:platform_manage</code>
+(<code>cmd/handlers.go:322</code>, <code>cmd/organizations.go:397</code>,
+<code>internal/core/organizations.go:215</code>).</p>
+<h5 id="parameters_9">Parameters<a class="headerlink" href="#parameters_9" title="Permanent link">&para;</a></h5>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Name</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Required</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">id</td>
+<td style="text-align: left;">Number</td>
+<td style="text-align: left;">Yes</td>
+<td style="text-align: left;">Organization request ID.</td>
+</tr>
+<tr>
+<td style="text-align: left;">approve</td>
+<td style="text-align: left;">Boolean</td>
+<td style="text-align: left;">Yes</td>
+<td style="text-align: left;"><code>true</code> creates the organization, <code>false</code> rejects the request.</td>
+</tr>
+<tr>
+<td style="text-align: left;">note</td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">No</td>
+<td style="text-align: left;">Review note stored on the request as <code>review_note</code>.</td>
+</tr>
+</tbody>
+</table>
+<h5 id="example-request_12">Example Request<a class="headerlink" href="#example-request_12" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span>-X<span class="w"> </span>PUT<span class="w"> </span><span class="s1">'http://localhost:9000/api/organizations/requests/3'</span><span class="w"> </span><span class="se">\</span>
+--header<span class="w"> </span><span class="s1">'Content-Type: application/json'</span><span class="w"> </span><span class="se">\</span>
+--data<span class="w"> </span><span class="s1">'{"approve": true, "note": "approved by ops"}'</span>
+</code></pre></div>
+<h5 id="example-response_9">Example Response<a class="headerlink" href="#example-response_9" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"requested_name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Acme"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Acme marketing team"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"status"</span><span class="p">:</span><span class="w"> </span><span class="s2">"approved"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"requested_by_user_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"reviewed_by_user_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"reviewed_at"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2025-01-02T09:00:00.000000+05:30"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"review_note"</span><span class="p">:</span><span class="w"> </span><span class="s2">"approved by ops"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"organization_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">7</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"requested_by_name"</span><span class="p">:</span><span class="w"> </span><span class="s2">""</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>A request that was already reviewed answers HTTP 400 <code>organization request has
+already been reviewed</code>, and approving with a name that is already taken answers
+HTTP 409 <code>organization name is already in use</code>. As with the withdrawal above, the
+<code>requested_by_name</code> field is empty in this response because the review returns the
+stored row.</p>
+<hr />
+<h3 id="joining-and-invitations">Joining and invitations<a class="headerlink" href="#joining-and-invitations" title="Permanent link">&para;</a></h3>
+<h4 id="post-apiorganizationsjoin">POST /api/organizations/join<a class="headerlink" href="#post-apiorganizationsjoin" title="Permanent link">&para;</a></h4>
+<p>Join an organization with an invitation code. The code is consumed atomically, and
+an account that previously left the organization has its membership restored as a
+<code>member</code>. The response is the joined organization with <code>my_role: "member"</code>
+(<code>cmd/organizations.go:469</code>, <code>internal/core/organizations.go:358</code>). The
+workspace-selection page posts to this endpoint with the invite-code form.</p>
+<h5 id="parameters_10">Parameters<a class="headerlink" href="#parameters_10" title="Permanent link">&para;</a></h5>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Name</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Required</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">code</td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">Yes</td>
+<td style="text-align: left;">Plaintext invitation code; HTTP 400 when empty.</td>
+</tr>
+</tbody>
+</table>
+<h5 id="example-request_13">Example Request<a class="headerlink" href="#example-request_13" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s1">'http://localhost:9000/api/organizations/join'</span><span class="w"> </span><span class="se">\</span>
+--header<span class="w"> </span><span class="s1">'Content-Type: application/json'</span><span class="w"> </span><span class="se">\</span>
+--data<span class="w"> </span><span class="s1">'{"code": "Gh3k...invite-code"}'</span>
+</code></pre></div>
+<h5 id="example-response_10">Example Response<a class="headerlink" href="#example-response_10" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="mi">7</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Acme"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Acme marketing team"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"status"</span><span class="p">:</span><span class="w"> </span><span class="s2">"active"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"created_by_user_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"archived_at"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"member_count"</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"my_role"</span><span class="p">:</span><span class="w"> </span><span class="s2">"member"</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Errors: HTTP 404 <code>invitation is invalid or revoked</code> (also when the organization is
+not active), HTTP 400 <code>invitation has expired</code>,
+<code>invitation has reached its usage limit</code>, or
+<code>user is already an organization member</code> (<code>internal/core/organizations.go:372</code>).</p>
+<h4 id="post-apiorganizationsleave">POST /api/organizations/leave<a class="headerlink" href="#post-apiorganizationsleave" title="Permanent link">&para;</a></h4>
+<p>Leave the organization selected by the workspace header. The caller's resources in
+that organization become pending-transfer rows and their campaigns are handled
+exactly like the manager-driven removal above
+(<code>cmd/organizations.go:574</code>). No permission beyond active membership is required.</p>
+<p>There is no request body.</p>
+<h5 id="example-request_14">Example Request<a class="headerlink" href="#example-request_14" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s1">'http://localhost:9000/api/organizations/leave'</span><span class="w"> </span><span class="se">\</span>
+--header<span class="w"> </span><span class="s1">'X-Listmonk-Organization-ID: 7'</span>
+</code></pre></div>
+<h5 id="example-response_11">Example Response<a class="headerlink" href="#example-response_11" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>A personal workspace answers HTTP 400 <code>select an organization workspace</code>, an
+archived organization answers HTTP 409 <code>organization is archived</code>, and the last
+remaining manager cannot leave (HTTP 400
+<code>an organization must retain at least one manager</code>).</p>
+<h4 id="get-apiorganizationsinvites">GET /api/organizations/invites<a class="headerlink" href="#get-apiorganizationsinvites" title="Permanent link">&para;</a></h4>
+<p>List the invitations of the active organization, newest first. Requires
+organization manager access (<code>cmd/organizations.go:882</code>,
+<code>internal/core/organizations.go:320</code>).</p>
+<p>The invitation hash is never serialized (<code>code_hash</code> has JSON tag <code>-</code>), and the
+plaintext <code>code</code> is only present in the creation response. Expiry and usage are
+reported through <code>expires_at</code>, <code>max_uses</code> and <code>use_count</code>
+(<code>models/organizations.go:77</code>).</p>
+<h5 id="example-request_15">Example Request<a class="headerlink" href="#example-request_15" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span><span class="s1">'http://localhost:9000/api/organizations/invites'</span><span class="w"> </span><span class="se">\</span>
+--header<span class="w"> </span><span class="s1">'X-Listmonk-Organization-ID: 7'</span>
+</code></pre></div>
+<h5 id="example-response_12">Example Response<a class="headerlink" href="#example-response_12" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="mi">12</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"created_at"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2025-01-01T09:00:00.000000+05:30"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"updated_at"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2025-01-01T09:00:00.000000+05:30"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"organization_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">7</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Field team"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"created_by_user_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"expires_at"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2025-02-01T09:00:00.000000+05:30"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"revoked_at"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"max_uses"</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"use_count"</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"organization_name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Acme"</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</code></pre></div>
+<h4 id="post-apiorganizationsinvites">POST /api/organizations/invites<a class="headerlink" href="#post-apiorganizationsinvites" title="Permanent link">&para;</a></h4>
+<p>Create a reusable invitation for the active organization. The plaintext code is
+generated server-side (24 random bytes, base64url encoded), stored only as a
+SHA-256 hash, and returned once in the response as <code>code</code>; it cannot be retrieved
+again. Requires organization manager access
+(<code>cmd/organizations.go:894</code>, <code>cmd/organizations.go:967</code>,
+<code>internal/core/organizations.go:267</code>).</p>
+<h5 id="parameters_11">Parameters<a class="headerlink" href="#parameters_11" title="Permanent link">&para;</a></h5>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Name</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Required</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">name</td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">No</td>
+<td style="text-align: left;">Label for the invitation.</td>
+</tr>
+<tr>
+<td style="text-align: left;">expires_at</td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">No</td>
+<td style="text-align: left;">Future RFC3339 timestamp; anything else answers HTTP 400 <code>expiration must be a future RFC3339 timestamp</code>.</td>
+</tr>
+<tr>
+<td style="text-align: left;">max_uses</td>
+<td style="text-align: left;">Number</td>
+<td style="text-align: left;">No</td>
+<td style="text-align: left;">Maximum number of uses; a value below 1 answers HTTP 400 <code>maximum uses must be greater than zero</code>. Omit for unlimited.</td>
+</tr>
+</tbody>
+</table>
+<h5 id="example-request_16">Example Request<a class="headerlink" href="#example-request_16" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s1">'http://localhost:9000/api/organizations/invites'</span><span class="w"> </span><span class="se">\</span>
+--header<span class="w"> </span><span class="s1">'X-Listmonk-Organization-ID: 7'</span><span class="w"> </span><span class="se">\</span>
+--header<span class="w"> </span><span class="s1">'Content-Type: application/json'</span><span class="w"> </span><span class="se">\</span>
+--data<span class="w"> </span><span class="s1">'{"name": "Field team", "expires_at": "2025-02-01T09:00:00+05:30", "max_uses": 10}'</span>
+</code></pre></div>
+<h5 id="example-response_13">Example Response<a class="headerlink" href="#example-response_13" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="mi">12</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"organization_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">7</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Field team"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"created_by_user_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"expires_at"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2025-02-01T09:00:00.000000+05:30"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"revoked_at"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"max_uses"</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"use_count"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"organization_name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Acme"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"code"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Gh3k...invite-code"</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>HTTP 201 is returned on success.</p>
+<h4 id="delete-apiorganizationsinvitesid">DELETE /api/organizations/invites/{id}<a class="headerlink" href="#delete-apiorganizationsinvitesid" title="Permanent link">&para;</a></h4>
+<p>Revoke an invitation of the active organization by stamping <code>revoked_at</code>. Requires
+organization manager access; an invitation that is not active (or belongs to
+another organization) answers HTTP 404
+<code>active organization invitation not found</code> (<code>cmd/organizations.go:933</code>,
+<code>internal/core/organizations.go:332</code>).</p>
+<h5 id="parameters_12">Parameters<a class="headerlink" href="#parameters_12" title="Permanent link">&para;</a></h5>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Name</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Required</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">id</td>
+<td style="text-align: left;">Number</td>
+<td style="text-align: left;">Yes</td>
+<td style="text-align: left;">Invitation ID.</td>
+</tr>
+</tbody>
+</table>
+<h5 id="example-request_17">Example Request<a class="headerlink" href="#example-request_17" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span>-X<span class="w"> </span>DELETE<span class="w"> </span><span class="s1">'http://localhost:9000/api/organizations/invites/12'</span><span class="w"> </span><span class="se">\</span>
+--header<span class="w"> </span><span class="s1">'X-Listmonk-Organization-ID: 7'</span>
+</code></pre></div>
+<h5 id="example-response_14">Example Response<a class="headerlink" href="#example-response_14" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="p">}</span>
+</code></pre></div>
+<hr />
+<h3 id="personal-resource-migration">Personal resource migration<a class="headerlink" href="#personal-resource-migration" title="Permanent link">&para;</a></h3>
+<p>Both migration endpoints copy or move the caller's own personal (<code>organization_id</code>
+NULL) resources into an organization. The destination defaults to the active
+workspace, which lets a client offer a direct "move to current organization"
+action; <code>target_organization_id</code> explicitly selects another organization and is
+validated through the same workspace resolver. The destination must be an
+organization workspace (HTTP 400 <code>select an organization destination</code>) and must not
+be archived (HTTP 409). Sources must be owned by the caller, and the legacy
+creation grant for the resource type is still required, so an organization
+boundary can never be widened by a global role
+(<code>cmd/organizations.go:696</code>, <code>cmd/organizations.go:832</code>).</p>
+<p>For templates, campaigns, and media only <code>visibility = 'private'</code> rows move, so a
+global asset cannot change its publication contract
+(<code>internal/core/workspace_migration.go:210</code>). Customer lists are owner-private by
+design: the migration takes the caller's own personal rows, normalizes them to
+<code>private</code>, and excludes first-level pools and secondary lists, which are platform
+assets rather than personal resources (<code>internal/core/workspace_migration.go:95</code>,
+<code>internal/core/workspace.go:384</code>; see <a href="../pools/">Public pools</a>).</p>
+<h4 id="post-apiorganizationsresourcesmigrate">POST /api/organizations/resources/migrate<a class="headerlink" href="#post-apiorganizationsresourcesmigrate" title="Permanent link">&para;</a></h4>
+<p>Copy or move personal templates, draft campaigns, media files or customer lists.
+Requires the matching legacy grant: <code>templates:manage</code>, <code>campaigns:manage</code>
+(any), <code>media:manage</code>, or <code>customer_lists:manage_all</code> respectively.</p>
+<h5 id="parameters_13">Parameters<a class="headerlink" href="#parameters_13" title="Permanent link">&para;</a></h5>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Name</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Required</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">resource</td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">Yes</td>
+<td style="text-align: left;"><code>customer_lists</code>, <code>templates</code>, <code>campaigns</code> or <code>media</code>; anything else answers HTTP 400 <code>unsupported personal resource type</code>.</td>
+</tr>
+<tr>
+<td style="text-align: left;">ids</td>
+<td style="text-align: left;">Array</td>
+<td style="text-align: left;">Yes</td>
+<td style="text-align: left;">Non-empty list of the caller's source resource IDs.</td>
+</tr>
+<tr>
+<td style="text-align: left;">mode</td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">Yes</td>
+<td style="text-align: left;"><code>copy</code> or <code>move</code>; anything else answers HTTP 400 <code>migration mode must be copy or move</code>.</td>
+</tr>
+<tr>
+<td style="text-align: left;">target_organization_id</td>
+<td style="text-align: left;">Number</td>
+<td style="text-align: left;">No</td>
+<td style="text-align: left;">Destination organization; defaults to the active workspace.</td>
+</tr>
+</tbody>
+</table>
+<h5 id="example-request_18">Example Request<a class="headerlink" href="#example-request_18" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s1">'http://localhost:9000/api/organizations/resources/migrate'</span><span class="w"> </span><span class="se">\</span>
+--header<span class="w"> </span><span class="s1">'X-Listmonk-Organization-ID: 7'</span><span class="w"> </span><span class="se">\</span>
+--header<span class="w"> </span><span class="s1">'Content-Type: application/json'</span><span class="w"> </span><span class="se">\</span>
+--data<span class="w"> </span><span class="s1">'{"resource": "templates", "ids": [12, 13], "mode": "move"}'</span>
+</code></pre></div>
+<h5 id="example-response_15">Example Response<a class="headerlink" href="#example-response_15" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"resource"</span><span class="p">:</span><span class="w"> </span><span class="s2">"templates"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"ids"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mi">12</span><span class="p">,</span><span class="w"> </span><span class="mi">13</span><span class="p">],</span>
+<span class="w">    </span><span class="nt">"mode"</span><span class="p">:</span><span class="w"> </span><span class="s2">"move"</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>The returned <code>ids</code> are the identifiers the resources have after the migration;
+migrated transactional templates are recompiled and cached
+(<code>cmd/organizations.go:854</code>).</p>
+<h4 id="post-apiorganizationsresourcescustomer-listsmigrate">POST /api/organizations/resources/customer-lists/migrate<a class="headerlink" href="#post-apiorganizationsresourcescustomer-listsmigrate" title="Permanent link">&para;</a></h4>
+<p>Customer-list-specific variant of the previous endpoint, kept for API
+compatibility. It uses the same core migration and subscription-merge guarantees
+but checks <code>customer_lists:manage_all</code> explicitly
+(<code>cmd/organizations.go:700</code>, <code>internal/core/workspace_migration.go:73</code>).</p>
+<h5 id="parameters_14">Parameters<a class="headerlink" href="#parameters_14" title="Permanent link">&para;</a></h5>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Name</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Required</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">customer_list_ids</td>
+<td style="text-align: left;">Array</td>
+<td style="text-align: left;">Yes</td>
+<td style="text-align: left;">Non-empty list of the caller's personal customer_list IDs; HTTP 400 <code>at least one customer_list is required</code>.</td>
+</tr>
+<tr>
+<td style="text-align: left;">mode</td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">Yes</td>
+<td style="text-align: left;"><code>copy</code> or <code>move</code>.</td>
+</tr>
+<tr>
+<td style="text-align: left;">target_organization_id</td>
+<td style="text-align: left;">Number</td>
+<td style="text-align: left;">No</td>
+<td style="text-align: left;">Destination organization; defaults to the active workspace.</td>
+</tr>
+</tbody>
+</table>
+<h5 id="example-request_19">Example Request<a class="headerlink" href="#example-request_19" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s1">'http://localhost:9000/api/organizations/resources/customer-lists/migrate'</span><span class="w"> </span><span class="se">\</span>
+--header<span class="w"> </span><span class="s1">'X-Listmonk-Organization-ID: 7'</span><span class="w"> </span><span class="se">\</span>
+--header<span class="w"> </span><span class="s1">'Content-Type: application/json'</span><span class="w"> </span><span class="se">\</span>
+--data<span class="w"> </span><span class="s1">'{"customer_list_ids": [3, 4], "mode": "copy"}'</span>
+</code></pre></div>
+<h5 id="example-response_16">Example Response<a class="headerlink" href="#example-response_16" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"customer_list_ids"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="mi">4</span><span class="p">],</span>
+<span class="w">    </span><span class="nt">"mode"</span><span class="p">:</span><span class="w"> </span><span class="s2">"copy"</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<hr />
+<h3 id="resource-transfer-between-members">Resource transfer between members<a class="headerlink" href="#resource-transfer-between-members" title="Permanent link">&para;</a></h3>
+<h4 id="post-apiorganizationsresourcestransfer">POST /api/organizations/resources/transfer<a class="headerlink" href="#post-apiorganizationsresourcestransfer" title="Permanent link">&para;</a></h4>
+<p>Give every pending resource left behind by a former member of the active
+organization to an active member of that organization. Customer conflicts are
+merged by scoped e-mail, preserving subscriptions and historical analytics, and
+customer lists are moved first so merged subscriptions point at the transferred
+lists. Requires organization manager (or platform) access
+(<code>cmd/organizations.go:602</code>, <code>internal/core/organizations.go:633</code>).</p>
+<h5 id="parameters_15">Parameters<a class="headerlink" href="#parameters_15" title="Permanent link">&para;</a></h5>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Name</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Required</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">target_user_id</td>
+<td style="text-align: left;">Number</td>
+<td style="text-align: left;">Yes</td>
+<td style="text-align: left;">Active organization member that receives the pending resources; HTTP 400 <code>target user is required</code> when missing or below 1.</td>
+</tr>
+</tbody>
+</table>
+<h5 id="example-request_20">Example Request<a class="headerlink" href="#example-request_20" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s1">'http://localhost:9000/api/organizations/resources/transfer'</span><span class="w"> </span><span class="se">\</span>
+--header<span class="w"> </span><span class="s1">'X-Listmonk-Organization-ID: 7'</span><span class="w"> </span><span class="se">\</span>
+--header<span class="w"> </span><span class="s1">'Content-Type: application/json'</span><span class="w"> </span><span class="se">\</span>
+--data<span class="w"> </span><span class="s1">'{"target_user_id": 4}'</span>
+</code></pre></div>
+<h5 id="example-response_17">Example Response<a class="headerlink" href="#example-response_17" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>A target that is not an active member answers HTTP 403
+<code>not an active organization member</code>, and an archived organization answers HTTP 409
+<code>archived organization resources must be transferred through the archive cleanup
+flow</code> (<code>internal/core/organizations.go:646</code>).</p>
+<h4 id="post-apiorganizationsidresourcestransfer">POST /api/organizations/{id}/resources/transfer<a class="headerlink" href="#post-apiorganizationsidresourcestransfer" title="Permanent link">&para;</a></h4>
+<p>Platform cleanup counterpart that moves the complete pending resource set of an
+<strong>archived</strong> organization into the personal workspace of one of its active
+members. It is path-based because an archived organization cannot be selected as a
+workspace. Requires platform administrator or <code>organizations:platform_manage</code>
+(<code>cmd/organizations.go:627</code>, <code>internal/core/organizations.go:722</code>).</p>
+<h5 id="parameters_16">Parameters<a class="headerlink" href="#parameters_16" title="Permanent link">&para;</a></h5>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Name</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Required</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">id</td>
+<td style="text-align: left;">Number</td>
+<td style="text-align: left;">Yes</td>
+<td style="text-align: left;">Organization ID.</td>
+</tr>
+<tr>
+<td style="text-align: left;">target_user_id</td>
+<td style="text-align: left;">Number</td>
+<td style="text-align: left;">Yes</td>
+<td style="text-align: left;">Active member that receives the resources; HTTP 400 when missing.</td>
+</tr>
+</tbody>
+</table>
+<h5 id="example-request_21">Example Request<a class="headerlink" href="#example-request_21" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s1">'http://localhost:9000/api/organizations/7/resources/transfer'</span><span class="w"> </span><span class="se">\</span>
+--header<span class="w"> </span><span class="s1">'Content-Type: application/json'</span><span class="w"> </span><span class="se">\</span>
+--data<span class="w"> </span><span class="s1">'{"target_user_id": 4}'</span>
+</code></pre></div>
+<h5 id="example-response_18">Example Response<a class="headerlink" href="#example-response_18" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>An organization that is not archived answers HTTP 409 <code>archive the organization
+before transferring its resources</code>, and a non-member target answers HTTP 403
+<code>not an active organization member</code>.</p>
+<h4 id="post-apiorganizationstemplatesidtransfer">POST /api/organizations/templates/{id}/transfer<a class="headerlink" href="#post-apiorganizationstemplatesidtransfer" title="Permanent link">&para;</a></h4>
+<p>Hand an organization-shared template to another active member of the active
+organization, as a complete ownership hand-off. Private media referenced by the
+template is cloned into the target's workspace so the new owner can edit and send
+it. Private and global templates deliberately do not use this path. Requires
+organization manager access (<code>cmd/organizations.go:664</code>,
+<code>internal/core/organizations.go:843</code>).</p>
+<h5 id="parameters_17">Parameters<a class="headerlink" href="#parameters_17" title="Permanent link">&para;</a></h5>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Name</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Required</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">id</td>
+<td style="text-align: left;">Number</td>
+<td style="text-align: left;">Yes</td>
+<td style="text-align: left;">Template ID.</td>
+</tr>
+<tr>
+<td style="text-align: left;">target_user_id</td>
+<td style="text-align: left;">Number</td>
+<td style="text-align: left;">Yes</td>
+<td style="text-align: left;">Active organization member that becomes the new owner; HTTP 400 when missing.</td>
+</tr>
+</tbody>
+</table>
+<h5 id="example-request_22">Example Request<a class="headerlink" href="#example-request_22" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s1">'http://localhost:9000/api/organizations/templates/9/transfer'</span><span class="w"> </span><span class="se">\</span>
+--header<span class="w"> </span><span class="s1">'X-Listmonk-Organization-ID: 7'</span><span class="w"> </span><span class="se">\</span>
+--header<span class="w"> </span><span class="s1">'Content-Type: application/json'</span><span class="w"> </span><span class="se">\</span>
+--data<span class="w"> </span><span class="s1">'{"target_user_id": 4}'</span>
+</code></pre></div>
+<h5 id="example-response_19">Example Response<a class="headerlink" href="#example-response_19" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>HTTP 404 <code>organization-shared template not found</code> is returned when the template is
+not organization-shared in the active organization or is already pending transfer,
+and an archived organization answers HTTP 409
+(<code>internal/core/organizations.go:856</code>).</p>
+<h4 id="post-apiorganizationstemplatesidunpublish">POST /api/organizations/templates/{id}/unpublish<a class="headerlink" href="#post-apiorganizationstemplatesidunpublish" title="Permanent link">&para;</a></h4>
+<p>Remove the organization-wide visibility of a shared template; the template stays
+with its current owner as a private template. Global templates cannot be
+unpublished here. Requires organization manager access
+(<code>cmd/organizations.go:684</code>, <code>internal/core/organizations.go:992</code>).</p>
+<h5 id="parameters_18">Parameters<a class="headerlink" href="#parameters_18" title="Permanent link">&para;</a></h5>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Name</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Required</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">id</td>
+<td style="text-align: left;">Number</td>
+<td style="text-align: left;">Yes</td>
+<td style="text-align: left;">Template ID.</td>
+</tr>
+</tbody>
+</table>
+<h5 id="example-request_23">Example Request<a class="headerlink" href="#example-request_23" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s1">'http://localhost:9000/api/organizations/templates/9/unpublish'</span><span class="w"> </span><span class="se">\</span>
+--header<span class="w"> </span><span class="s1">'X-Listmonk-Organization-ID: 7'</span>
+</code></pre></div>
+<h5 id="example-response_20">Example Response<a class="headerlink" href="#example-response_20" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>HTTP 404 <code>organization-shared template not found</code> is returned when the template is
+not organization-shared or is pending transfer.</p>
+<hr />
+<h3 id="reply-forwarding">Reply forwarding<a class="headerlink" href="#reply-forwarding" title="Permanent link">&para;</a></h3>
+<p>When a member leaves or is removed, the dedicated reply mailboxes used by their
+organization campaigns are retained (<code>status: retained</code>) and a server-side
+forwarding rule keeps customer replies flowing to the organization creator, or to
+the first active manager when the creator is gone. These three endpoints let an
+organization manager inspect, pause and resume that relay without exposing mailbox
+credentials (<code>cmd/reply_forward_rules.go:65</code>). All of them require organization
+manager access (<code>cmd/reply_forward_rules.go:131</code>).</p>
+<h4 id="get-apiorganizationsreply-forwarding">GET /api/organizations/reply-forwarding<a class="headerlink" href="#get-apiorganizationsreply-forwarding" title="Permanent link">&para;</a></h4>
+<p>List the forwarding rules of the active organization, active rules first, then the
+most recently updated ones. The rows combine the rule with the source mailbox and
+the former member that owned it
+(<code>cmd/reply_forward_rules.go:12</code>, <code>cmd/reply_forward_rules.go:131</code>).</p>
+<h5 id="example-request_24">Example Request<a class="headerlink" href="#example-request_24" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span><span class="s1">'http://localhost:9000/api/organizations/reply-forwarding'</span><span class="w"> </span><span class="se">\</span>
+--header<span class="w"> </span><span class="s1">'X-Listmonk-Organization-ID: 7'</span>
+</code></pre></div>
+<h5 id="example-response_21">Example Response<a class="headerlink" href="#example-response_21" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"created_at"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2025-01-01T09:00:00.000000+05:30"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"updated_at"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2025-01-01T09:00:00.000000+05:30"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"reply_mailbox_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"organization_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">7</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"target_user_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"target_email"</span><span class="p">:</span><span class="w"> </span><span class="s2">"owner@example.com"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"status"</span><span class="p">:</span><span class="w"> </span><span class="s2">"active"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"disabled_at"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"disabled_by"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"last_error"</span><span class="p">:</span><span class="w"> </span><span class="s2">""</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"last_forward_at"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2025-01-02T09:00:00.000000+05:30"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"mailbox_email"</span><span class="p">:</span><span class="w"> </span><span class="s2">"replies@example.com"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"mailbox_name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Replies"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"source_user_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"source_email"</span><span class="p">:</span><span class="w"> </span><span class="s2">"jane@example.com"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"source_name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Jane Doe"</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</code></pre></div>
+<h4 id="put-apiorganizationsreply-forwardingid">PUT /api/organizations/reply-forwarding/{id}<a class="headerlink" href="#put-apiorganizationsreply-forwardingid" title="Permanent link">&para;</a></h4>
+<p>Enable or disable a forwarding rule of the active organization. Enabling always
+re-resolves the target address, so a creator who has left is replaced by an active
+organization manager; disabling stamps <code>disabled_at</code>/<code>disabled_by</code> on the rule.
+Requires organization manager access (<code>cmd/reply_forward_rules.go:158</code>).</p>
+<h5 id="parameters_19">Parameters<a class="headerlink" href="#parameters_19" title="Permanent link">&para;</a></h5>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Name</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Required</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">id</td>
+<td style="text-align: left;">Number</td>
+<td style="text-align: left;">Yes</td>
+<td style="text-align: left;">Forwarding rule ID.</td>
+</tr>
+<tr>
+<td style="text-align: left;">status</td>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;">Yes</td>
+<td style="text-align: left;"><code>active</code> or <code>disabled</code>; anything else answers HTTP 400 <code>status must be active or disabled</code>.</td>
+</tr>
+</tbody>
+</table>
+<h5 id="example-request_25">Example Request<a class="headerlink" href="#example-request_25" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span>-X<span class="w"> </span>PUT<span class="w"> </span><span class="s1">'http://localhost:9000/api/organizations/reply-forwarding/5'</span><span class="w"> </span><span class="se">\</span>
+--header<span class="w"> </span><span class="s1">'X-Listmonk-Organization-ID: 7'</span><span class="w"> </span><span class="se">\</span>
+--header<span class="w"> </span><span class="s1">'Content-Type: application/json'</span><span class="w"> </span><span class="se">\</span>
+--data<span class="w"> </span><span class="s1">'{"status": "disabled"}'</span>
+</code></pre></div>
+<h5 id="example-response_22">Example Response<a class="headerlink" href="#example-response_22" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>A rule that does not exist in the active organization answers HTTP 404
+<code>reply forwarding rule not found</code>. Enabling answers HTTP 409
+<code>organization has no active manager with a work email for reply forwarding</code> when no
+target can be resolved.</p>
+<h4 id="delete-apiorganizationsreply-forwardingid">DELETE /api/organizations/reply-forwarding/{id}<a class="headerlink" href="#delete-apiorganizationsreply-forwardingid" title="Permanent link">&para;</a></h4>
+<p>Disable a forwarding rule of the active organization. The source mailbox and its
+original messages are intentionally retained; this is an explicit alias for
+<code>status: disabled</code> on the previous endpoint
+(<code>cmd/reply_forward_rules.go:202</code>, <code>cmd/reply_forward_rules.go:204</code>). Requires
+organization manager access.</p>
+<h5 id="parameters_20">Parameters<a class="headerlink" href="#parameters_20" title="Permanent link">&para;</a></h5>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Name</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Required</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">id</td>
+<td style="text-align: left;">Number</td>
+<td style="text-align: left;">Yes</td>
+<td style="text-align: left;">Forwarding rule ID.</td>
+</tr>
+</tbody>
+</table>
+<h5 id="example-request_26">Example Request<a class="headerlink" href="#example-request_26" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span>-X<span class="w"> </span>DELETE<span class="w"> </span><span class="s1">'http://localhost:9000/api/organizations/reply-forwarding/5'</span><span class="w"> </span><span class="se">\</span>
+--header<span class="w"> </span><span class="s1">'X-Listmonk-Organization-ID: 7'</span>
+</code></pre></div>
+<h5 id="example-response_23">Example Response<a class="headerlink" href="#example-response_23" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>HTTP 404 <code>reply forwarding rule not found</code> is returned when the rule does not exist
+in the active organization.</p>
+<hr />
+<h3 id="organization-lifecycle">Organization lifecycle<a class="headerlink" href="#organization-lifecycle" title="Permanent link">&para;</a></h3>
+<h4 id="post-apiorganizationsidarchive">POST /api/organizations/{id}/archive<a class="headerlink" href="#post-apiorganizationsidarchive" title="Permanent link">&para;</a></h4>
+<p>Archive an organization. Its resources become explicit cleanup items, scheduled and
+deferred campaigns become drafts, running campaigns are paused, a running
+organization import is stopped, retained reply mailboxes keep receiving customer
+replies through forwarding rules, and non-admin members can no longer select the
+organization as a workspace. Requires platform administrator or
+<code>organizations:platform_manage</code>
+(<code>cmd/handlers.go:323</code>, <code>cmd/organizations.go:416</code>,
+<code>internal/core/organizations.go:1028</code>).</p>
+<h5 id="parameters_21">Parameters<a class="headerlink" href="#parameters_21" title="Permanent link">&para;</a></h5>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Name</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Required</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">id</td>
+<td style="text-align: left;">Number</td>
+<td style="text-align: left;">Yes</td>
+<td style="text-align: left;">Organization ID.</td>
+</tr>
+</tbody>
+</table>
+<h5 id="example-request_27">Example Request<a class="headerlink" href="#example-request_27" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s1">'http://localhost:9000/api/organizations/7/archive'</span>
+</code></pre></div>
+<h5 id="example-response_24">Example Response<a class="headerlink" href="#example-response_24" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>An organization that is already archived answers HTTP 409
+<code>organization is already archived</code>.</p>
+<h4 id="delete-apiorganizationsid">DELETE /api/organizations/{id}<a class="headerlink" href="#delete-apiorganizationsid" title="Permanent link">&para;</a></h4>
+<p>Permanently delete an archived organization after its member data and resources
+have been transferred or cleaned up. The endpoint refuses an organization that is
+not archived (HTTP 409 <code>archive the organization before permanently deleting it</code>)
+and refuses an archived organization that still owns rows in <code>customer_lists</code>,
+<code>customers</code>, <code>templates</code>, <code>campaigns</code> or <code>media</code> (HTTP 409
+<code>transfer or clean all organization resources before permanently deleting it</code>).
+Invitations and memberships are deleted with it, and the creation request remains
+as an audit record. Requires platform administrator or
+<code>organizations:platform_manage</code> (<code>cmd/handlers.go:324</code>,
+<code>cmd/organizations.go:457</code>, <code>internal/core/organizations.go:1116</code>).</p>
+<h5 id="parameters_22">Parameters<a class="headerlink" href="#parameters_22" title="Permanent link">&para;</a></h5>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Name</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Required</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">id</td>
+<td style="text-align: left;">Number</td>
+<td style="text-align: left;">Yes</td>
+<td style="text-align: left;">Organization ID.</td>
+</tr>
+</tbody>
+</table>
+<h5 id="example-request_28">Example Request<a class="headerlink" href="#example-request_28" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span>-X<span class="w"> </span>DELETE<span class="w"> </span><span class="s1">'http://localhost:9000/api/organizations/7'</span>
+</code></pre></div>
+<h5 id="example-response_25">Example Response<a class="headerlink" href="#example-response_25" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="p">}</span>
+</code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      CC BY-SA 4.0
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.indexes", "navigation.sections", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

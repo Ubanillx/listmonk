@@ -38,6 +38,11 @@ Then, visit `http://localhost:9000` to create the Super Admin user and login.
 The docker-compose file includes all necessary listmonk configuration as environment variables, `LISTMONK_*`.
 If you would like to remove those and mount a config.toml instead:
 
+Only the `[app]` and `[db]` keys have to live in the file: every other setting is
+stored in the database and edited in the admin `Settings` dashboard. See
+[Configuration](configuration.md) for the list of keys that are configuration-file
+only.
+
 #### 1. Save the config.toml file on the host
 
 ```toml

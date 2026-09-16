@@ -1,16 +1,16 @@
 # API / Templates
 
-| Method | Endpoint                                                                      | Description                    |
-|:-------|:------------------------------------------------------------------------------|:-------------------------------|
-| GET    | [/api/templates](#get-apitemplates)                                           | Retrieve all templates         |
-| GET    | [/api/templates/{template_id}](#get-apitemplates-template_id)                 | Retrieve a template            |
-| GET    | [/api/templates/{template_id}/preview](#get-apitemplates-template_id-preview) | Retrieve template HTML preview |
-| POST   | [/api/templates](#post-apitemplates)                                          | Create a template              |
-| POST   | [/api/templates/{template_id}/clone](#post-apitemplates-template_id-clone)    | Clone a template               |
-| POST   | /api/templates/preview                                                        | Render and preview a template  |
-| PUT    | [/api/templates/{template_id}](#put-apitemplatestemplate_id)                  | Update a template              |
-| PUT    | [/api/templates/{template_id}/default](#put-apitemplates-template_id-default) | Set default template           |
-| DELETE | [/api/templates/{template_id}](#delete-apitemplates-template_id)              | Delete a template              |
+| Method | Endpoint | Description |
+| :----- | :------- | :---------- |
+| GET | [/api/templates](#get-apitemplates) | Retrieve all templates |
+| GET | [/api/templates/{template_id}](#get-apitemplatestemplate_id) | Retrieve a template |
+| GET | [/api/templates/{template_id}/preview](#get-apitemplatestemplate_idpreview) | Retrieve template HTML preview |
+| POST | [/api/templates](#post-apitemplates) | Create a template |
+| POST | [/api/templates/{template_id}/clone](#post-apitemplatestemplate_idclone) | Clone a template |
+| POST | /api/templates/preview | Render and preview a template |
+| PUT | [/api/templates/{template_id}](#put-apitemplatestemplate_id) | Update a template |
+| PUT | [/api/templates/{template_id}/default](#put-apitemplatestemplate_iddefault) | Set default template |
+| DELETE | [/api/templates/{template_id}](#delete-apitemplatestemplate_id) | Delete a template |
 
 ______________________________________________________________________
 

@@ -2,13 +2,13 @@
 
 It's best if the `listmonk/frontend` directory is opened in an IDE as a separate project where the frontend directory is the root of the project.
 
-For developer setup instructions, refer to the main project's README.
+For local development setup, refer to `../dev/README.md` (the local Compose development suite) and `../AGENTS.md` (repository conventions).
 
 ## Globals
 In `main.js`, Buefy and vue-i18n are attached globally. In addition:
 
 - `$api` (collection of API calls from `api/index.js`)
-- `$utils` (util functions from `util.js`). They are accessible within Vue as `this.$api` and `this.$utils`.
+- `$utils` (utility functions from `frontend/src/utils.js`). They are accessible within Vue as `this.$api` and `this.$utils`.
 
 Some constants are defined in `constants.js`.
 

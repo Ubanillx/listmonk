@@ -12,7 +12,7 @@ The app has two distinct components, the Go backend and the VueJS frontend. In t
 ### First time setup
 `git clone https://github.com/knadh/listmonk.git`. The project uses go.mod, so it's best to clone it outside the Go src path.
 
-1. Copy `config.toml.sample` as `config.toml` and add your config.
+1. Copy `config.toml.sample` as `config.toml` (or run `./listmonk --new-config`) and set your database credentials. Only `[app]` and `[db]` live in that file; the remaining settings are stored in the database and edited in the admin `Settings` dashboard — see [Configuration](configuration.md).
 2. `make dist` to build the listmonk binary. Once the binary is built, run `./listmonk --install` to run the DB setup. For subsequent dev runs, use `make run`.
 
 > [mailhog](https://github.com/mailhog/MailHog) is an excellent standalone mock SMTP server (with a UI) for testing and dev.
@@ -49,9 +49,10 @@ The local Vite server is available at `http://localhost:8080`; the containerized
     docker compose -f dev/docker-compose.yml ps
     ```
 
-    The containerized endpoints are `http://localhost:8181` (admin UI),
-    `http://localhost:9173` (backend), `http://localhost:8171` (Adminer),
-    `http://localhost:8265` (MailHog), and PostgreSQL on `localhost:5437`.
+    The containerized endpoints are `http://localhost:8181` (Vite dev server for
+    the admin UI), `http://localhost:9173` (backend, which also serves the built
+    admin UI), `http://localhost:8171` (Adminer), `http://localhost:8265`
+    (MailHog), and PostgreSQL on `localhost:5437`.
 
     To stop the suite without deleting its database volume, use
     `docker compose -f dev/docker-compose.yml down`. The `make rm-dev-docker`
@@ -62,6 +63,36 @@ The local Vite server is available at `http://localhost:8080`; the containerized
     - Open repo in vscode, open command palette, and select "Dev Containers: Rebuild and Reopen in Container".
 
 It will set up db, and start frontend/backend for you.
+
+
+### Keeping the running dev suite in sync
+
+The containerized suite mounts your working tree, so a local change needs an
+explicit restart instead of a rebuild. `dev/README.md` documents the steps per
+component: restart `dev-backend-1` after backend, query, or schema changes (it
+recompiles and applies pending migrations), and run `make build-frontend` before
+expecting frontend changes on the backend-served admin UI at `:9173` — the Vite
+server on `:8181` reloads on its own.
+
+
+### Tests, lint, and the email editor
+
+- `make test` runs the Go test suite (`go test ./...`).
+- `cd frontend && yarn lint` runs ESLint for the Vue admin UI.
+- `cd frontend && yarn cypress run` runs the end-to-end specs. It resets and
+  starts its own services, so run it in an isolated environment.
+- `make build-email-builder` builds `frontend/email-builder/`, the React +
+  TypeScript visual email editor, and copies its bundle into the admin UI.
+
+
+### Where the engineering documentation lives
+
+- [Engineering architecture](architecture.md) covers the repository layout, the
+  permission algorithm, and the build, test, and deployment commands.
+- [Engineering harness](harness.md) is the ledger of TODOs, plans, status,
+  technical debt, and business-logic invariants.
+- `docs/README.md` maps every documentation source in the repository, including
+  how to preview this documentation site locally.
 
 
 # Production build

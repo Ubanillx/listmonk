@@ -61,14 +61,20 @@ nav:
     - "Customers": apis/customers.md
     - "CustomerLists": apis/customer-lists.md
     - "Public pools": apis/pools.md
+    - "Organizations": apis/organizations.md
     - "Import": apis/import.md
     - "Campaigns": apis/campaigns.md
     - "Media": apis/media.md
     - "Templates": apis/templates.md
     - "Personal API keys": apis/api-keys.md
     - "Users": apis/users.md
+    - "Roles": apis/roles.md
+    - "Audit events": apis/audit-events.md
     - "Transactional": apis/transactional.md
     - "Bounces": apis/bounces.md
+    - "Settings": apis/settings.md
+    - "System": apis/system.md
+    - "Public endpoints": apis/public-endpoints.md
   - "Maintenance":
     - "Performance": maintenance/performance.md
   - "Contributions":

@@ -1,0 +1,32 @@
+name: Documentation Sanity Check
+
+on:
+    pull_request:
+      types:
+        - opened
+        - synchronize
+        - reopened
+      paths:
+        - 'docs/**'
+        - 'scripts/check_docs.py'
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Validate documentation structure
+        run: python scripts/check_docs.py
+
+      - name: Build documentation
+        run: |
+          python -m pip install -r docs/docs/requirements.txt
+          mkdocs build --strict --clean -f docs/docs/mkdocs.yml

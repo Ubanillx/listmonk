@@ -6,13 +6,18 @@ repeat), name, allocation department and real email server-side; all
 non-highest-administrator responses return a masked email. Internal reply
 mailbox addresses are not masked.
 
+First-level `pool` rows use the platform-wide `global` scope. A `pool_segment`
+row uses the selected organization's scope and exposes that organization's
+name as `organization_name`; the creating administrator remains available in
+the owner fields for audit purposes.
+
 Key endpoints:
 
 - `GET /api/pools/:id/contacts?customer_code=...` — locate pool contacts by imported code.
 - `POST /api/pools/:id/contacts` — legacy single-contact compatibility route
   (highest administrator); the product import entry is the unified customer
   import endpoint below.
-- `POST /api/pools/segments` — split a first-level pool into a new organization segment. The list, pool grant and binding are created atomically; the organization manager configures its reply mailbox separately in the organization workspace.
+- `POST /api/pools/segments` — split a first-level pool into a new organization segment. The list, pool grant and binding are created atomically; the organization manager configures its reply mailbox separately from **Organizations -> Manage organizations -> Organization reply mailboxes**.
 - `PUT /api/pools/segments/:id/reply-mailbox` — update the segment's internal reply mailbox (organization manager in the segment's organization only).
 - `POST|DELETE|PUT /api/pools/segments/members` — assign, logically remove, or restore a contact.
 - `POST /api/pools/segments/:id/import-members` — legacy compatibility route;
@@ -55,8 +60,12 @@ one **Create and bind** action. It creates the secondary list, grants delivery
 access and binds it to the open pool in one transaction. The target organization
 configures its internal reply mailbox from its own organization workspace. A secondary list cannot be created from the
 generic customer-list form, and there is no secondary-to-primary merge flow.
-An organization manager may perform the same split while working in that
-organization; ordinary organization members cannot create lists.
+A highest administrator performs the split through `POST /api/pool-segments`
+(the `/api/pools/segments` alias is equivalent) with the target organization's
+`organization_id`, without joining it. An organization manager may perform the
+same split for their own organization: the request must carry that organization's
+`organization_id`, and any other organization is rejected with `403`. Ordinary
+organization members cannot create lists.
 
 Each first-level pool can have one bound secondary list per organization. The
 dialog does not import contacts or allocate rows. Import the four-column pool

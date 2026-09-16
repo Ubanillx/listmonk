@@ -23,7 +23,7 @@ curl -LO https://github.com/knadh/listmonk/raw/master/docker-compose.yml
 # Run the services in the background.
 docker compose up -d
 ```
-Visit `http://localhost:9000`
+Visit `http://localhost:39100`
 
 See [installation docs](https://listmonk.app/docs/installation)
 
@@ -38,6 +38,17 @@ __________________
 See [installation docs](https://listmonk.app/docs/installation)
 __________________
 
+
+## Documentation
+- [docs/README.md](docs/README.md): map of all documentation in this repository.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): engineering architecture and operations guide.
+- [docs/harness/README.md](docs/harness/README.md): engineering tracking records (TODOs, plans, status, technical debt).
+- [listmonk.app/docs](https://listmonk.app/docs): user documentation.
+
+## Local development
+Use the Docker Compose suite in `dev/`: `make init-dev-docker` initializes the database and `make dev-docker` starts the stack. The admin UI is at http://localhost:9173 and the Vite frontend dev server is at http://localhost:8181; see `dev/README.md` for details.
+
+Common commands: `make build`, `make test`, `make build-frontend`, `make build-email-builder`, `cd frontend && yarn lint`. See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines and [frontend/email-builder/README.md](frontend/email-builder/README.md) for the email editor.
 
 ## Developers
 listmonk is free and open source software licensed under AGPLv3. If you are interested in contributing, refer to the [developer setup](https://listmonk.app/docs/developer-setup). The backend is written in Go and the frontend is Vue with Buefy for UI. 

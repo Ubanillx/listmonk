@@ -3311,7 +3311,7 @@ curl<span class="w"> </span>-u<span class="w"> </span><span class="s2">"api_user
 </code></pre></div>
 <hr />
 <h4 id="get-apicustomer-listscustomer_list_idpool-contacts">GET /api/customer-lists/{customer_list_id}/pool-contacts<a class="headerlink" href="#get-apicustomer-listscustomer_list_idpool-contacts" title="Permanent link">&para;</a></h4>
-<p>Retrieve the contacts of a <code>pool</code> customer_list. This is a compatibility alias of <code>GET /api/pools/:id/contacts</code>; see <a href="../pools/">Public pools</a> for masking and exclusion rules.</p>
+<p>Retrieve the contacts of a <code>pool</code> or <code>pool_segment</code> customer_list. This is a compatibility alias of <code>GET /api/pools/:id/contacts</code> for first-level pools; for a secondary list, the response is limited to that segment. See <a href="../pools/">Public pools</a> for masking and exclusion rules.</p>
 <p>Highest administrators receive complete contact records. Other callers receive only the contacts of their own organization's segment, with masked e-mail addresses.</p>
 <blockquote>
 <p><strong>Note:</strong> Requires the <code>customer_lists:read</code> API-key scope (<code>cmd/handlers.go:181</code>).</p>
@@ -3331,7 +3331,7 @@ curl<span class="w"> </span>-u<span class="w"> </span><span class="s2">"api_user
 <td style="text-align: left;">customer_list_id</td>
 <td style="text-align: left;">number</td>
 <td style="text-align: left;">Yes</td>
-<td style="text-align: left;">ID of the pool customer_list.</td>
+<td style="text-align: left;">ID of a <code>pool</code> or <code>pool_segment</code> customer_list.</td>
 </tr>
 <tr>
 <td style="text-align: left;">customer_code</td>

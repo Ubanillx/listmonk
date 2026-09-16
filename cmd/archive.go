@@ -170,6 +170,9 @@ func (a *App) CampaignArchivePage(c echo.Context) error {
 			makeMsgTpl(a.i18n.T("public.errorTitle"), "", a.i18n.Ts("public.errorFetchingCampaign")))
 	}
 
+	// The rendered body is user-authored HTML and is passed through literally.
+	// Isolate it from the application origin.
+	c.Response().Header().Set("Content-Security-Policy", cspSandbox)
 	return c.HTML(http.StatusOK, string(msg.Body()))
 }
 
@@ -187,6 +190,8 @@ func (a *App) CampaignArchivePageLatest(c echo.Context) error {
 	}
 	camp := camps[0]
 
+	// The content is user-authored HTML; isolate it from the application origin.
+	c.Response().Header().Set("Content-Security-Policy", cspSandbox)
 	return c.HTML(http.StatusOK, camp.Content)
 }
 
@@ -257,7 +262,7 @@ func (a *App) compileArchiveCampaigns(camps []models.Campaign) ([]manager.Campai
 		}
 
 		m := manager.CampaignMessage{
-			Campaign:   &camp,
+			Campaign: &camp,
 			Customer: sub,
 		}
 

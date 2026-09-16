@@ -1,12 +1,63 @@
 package bounce
 
 import (
+	"io"
+	"log"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/knadh/listmonk/models"
 )
+
+// TestNewRejectsMissingWebhookCredentials locks the fail-fast gate: an enabled
+// webhook provider without credentials would otherwise accept unauthenticated
+// (or trivially forgeable) bounce events on a public endpoint.
+func TestNewRejectsMissingWebhookCredentials(t *testing.T) {
+	newManager := func(mutate func(*Opt)) error {
+		opt := Opt{WebhooksEnabled: true}
+		mutate(&opt)
+		_, err := New(opt, &Queries{}, log.New(io.Discard, "", 0))
+		return err
+	}
+
+	for _, tc := range []struct {
+		name    string
+		mutate  func(*Opt)
+		wantErr bool
+	}{
+		{"postmark enabled without credentials", func(o *Opt) { o.Postmark.Enabled = true }, true},
+		{"postmark with username only", func(o *Opt) {
+			o.Postmark.Enabled = true
+			o.Postmark.Username = "user"
+		}, true},
+		{"postmark with both credentials", func(o *Opt) {
+			o.Postmark.Enabled = true
+			o.Postmark.Username = "user"
+			o.Postmark.Password = "pass"
+		}, false},
+		{"forwardemail enabled without key", func(o *Opt) { o.ForwardEmail.Enabled = true }, true},
+		{"forwardemail with key", func(o *Opt) {
+			o.ForwardEmail.Enabled = true
+			o.ForwardEmail.Key = "secret"
+		}, false},
+		{"sendgrid enabled without key", func(o *Opt) { o.SendgridEnabled = true }, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// The sendgrid case is validated by NewSendgrid itself; the key
+			// here is intentionally invalid so the test documents that a bad
+			// key fails startup instead of leaving a nil client behind.
+			tc := tc
+			err := newManager(tc.mutate)
+			if tc.wantErr && err == nil {
+				t.Fatal("expected initialization to fail")
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("expected initialization to succeed, got %v", err)
+			}
+		})
+	}
+}
 
 // TestRecordReportsFullQueue covers the webhook producer path. It must not block
 // indefinitely when the database writer falls behind: the request has to finish

@@ -15,6 +15,23 @@ var (
 	regexpSpaces = regexp.MustCompile(`[\s]+`)
 )
 
+// Content-Security-Policy values for responses that render user-authored
+// campaign or template HTML. The literal markup is passed through by the
+// template engine, so the response itself has to be isolated from the
+// application origin.
+const (
+	// cspSandbox renders the document in an opaque origin with scripts, forms,
+	// plugins and popups disabled. Used for public archive and recipient views,
+	// where mail HTML has no legitimate need for any of those.
+	cspSandbox = "sandbox"
+
+	// cspSandboxScripts keeps scripts working (the admin preview UI already
+	// runs them inside a sandboxed iframe) but still removes same-origin
+	// access, so opening a preview URL directly cannot read the admin session
+	// or call the API with its cookies.
+	cspSandboxScripts = "sandbox allow-scripts"
+)
+
 // inArray checks if a string is present in a customer_list of strings.
 func inArray(val string, vals []string) (ok bool) {
 	return slices.Contains(vals, val)
@@ -50,6 +67,15 @@ func makeMsgTpl(pageTitle, heading, msg string) msgTpl {
 	err.MessageTitle = heading
 	err.Message = msg
 	return err
+}
+
+// secureCookies reports whether the configured root URL is served over HTTPS,
+// in which case every authentication-related cookie must carry the Secure flag.
+func (a *App) secureCookies() bool {
+	if a.urlCfg == nil {
+		return false
+	}
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(a.urlCfg.RootURL)), "https://")
 }
 
 // parseStringIDs takes a slice of numeric string IDs and

@@ -12,12 +12,39 @@ import (
 	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
 	"github.com/pquerna/otp/totp"
+	"github.com/zerodha/simplesessions/v3"
 	"gopkg.in/volatiletech/null.v6"
 )
 
 var (
 	reUsername = regexp.MustCompile(`^[a-zA-Z0-9_\-\.@]+$`)
 )
+
+// requireRoleAssignmentAllowed rejects non-platform-administrators granting the
+// Super Admin role. Without this guard a user holding only `users:manage` can
+// promote itself (or anybody else) to platform administrator, which bypasses
+// every other permission check in the middleware.
+func requireRoleAssignmentAllowed(c echo.Context, roleID int) error {
+	if roleID == auth.SuperAdminRoleID && !auth.GetUser(c).IsPlatformAdmin() {
+		return echo.NewHTTPError(http.StatusForbidden,
+			"only platform administrators can assign the super admin role")
+	}
+
+	return nil
+}
+
+// requireSuperAdminManageable rejects non-platform-administrators modifying or
+// deleting a platform administrator account. Without this guard a user holding
+// only `users:manage` could reset the Super Admin's password, disable it, or
+// remove it.
+func requireSuperAdminManageable(c echo.Context, target auth.User) error {
+	if target.UserRoleID == auth.SuperAdminRoleID && !auth.GetUser(c).IsPlatformAdmin() {
+		return echo.NewHTTPError(http.StatusForbidden,
+			"only platform administrators can manage platform administrator accounts")
+	}
+
+	return nil
+}
 
 type bulkUserImportRequest struct {
 	Users []bulkUserImportRow `json:"users"`
@@ -108,6 +135,12 @@ func (a *App) CreateUser(c echo.Context) error {
 
 	if u.Name == "" {
 		u.Name = u.Username
+	}
+
+	// A user holding only `users:manage` must not be able to create a platform
+	// administrator. The role is otherwise accepted by the DB as-is.
+	if err := requireRoleAssignmentAllowed(c, u.UserRoleID); err != nil {
+		return err
 	}
 
 	// Create the user in the DB.
@@ -381,10 +414,38 @@ func (a *App) UpdateUser(c echo.Context) error {
 		u.Name = u.Username
 	}
 
+	// Managing a platform administrator (or turning an account into one) is
+	// reserved for platform administrators themselves. Without both checks a
+	// user holding only `users:manage` could reset the Super Admin's password,
+	// assign itself the Super Admin role, or delete administrators.
+	target, err := a.core.GetUser(id, "", "")
+	if err != nil {
+		return err
+	}
+	if err := requireSuperAdminManageable(c, target); err != nil {
+		return err
+	}
+	if err := requireRoleAssignmentAllowed(c, u.UserRoleID); err != nil {
+		return err
+	}
+
 	// Update the user in the DB.
 	user, err := a.core.UpdateUser(id, u)
 	if err != nil {
 		return err
+	}
+
+	// A password change must invalidate previously issued sessions. Keep the
+	// acting browser session usable when the account edited itself.
+	if u.Password.String != "" {
+		if err := a.auth.DestroyUserSessions(id); err != nil {
+			a.log.Printf("error invalidating sessions after password change: %v", err)
+		}
+		if _, ok := c.Get(auth.SessionKey).(*simplesessions.Session); ok && user.ID == auth.GetUser(c).ID {
+			if err := a.auth.SaveSession(user, "", c); err != nil {
+				return err
+			}
+		}
 	}
 
 	// Blank out the password hash in the response.
@@ -402,6 +463,18 @@ func (a *App) UpdateUser(c echo.Context) error {
 func (a *App) DeleteUser(c echo.Context) error {
 	// Delete the user(s) from the DB.
 	id := getID(c)
+
+	// Deleting a platform administrator is reserved for platform
+	// administrators; otherwise any user with `users:manage` could take the
+	// platform down or remove its owner.
+	target, err := a.core.GetUser(id, "", "")
+	if err != nil {
+		return err
+	}
+	if err := requireSuperAdminManageable(c, target); err != nil {
+		return err
+	}
+
 	// Serialize deletion with account-owned delivery. The manager closes all
 	// cached pools and holds its SMTP writer lock until the user row (and its
 	// cascaded SMTP credentials) has been removed, so an in-flight worker cannot
@@ -423,6 +496,26 @@ func (a *App) DeleteUsers(c echo.Context) error {
 	ids, err := getQueryInts("id", c.QueryParams())
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("globals.messages.invalidID"))
+	}
+
+	// Refuse bulk deletion that includes platform administrators unless the
+	// caller is one.
+	if !auth.GetUser(c).IsPlatformAdmin() {
+		users, err := a.core.GetUsers()
+		if err != nil {
+			return err
+		}
+		byID := make(map[int]auth.User, len(users))
+		for _, u := range users {
+			byID[u.ID] = u
+		}
+		for _, id := range ids {
+			if u, ok := byID[id]; ok {
+				if err := requireSuperAdminManageable(c, u); err != nil {
+					return err
+				}
+			}
+		}
 	}
 
 	// Delete the user(s) from the DB while account-owned SMTP delivery is
@@ -574,6 +667,20 @@ func (a *App) UpdateUserProfile(c echo.Context) error {
 	out, err := a.core.UpdateUserProfile(user.ID, u)
 	if err != nil {
 		return err
+	}
+
+	// A password change invalidates previously issued sessions for the account.
+	// The acting browser session is re-issued so the user is not logged out of
+	// the tab the change was made in; API-key callers have no cookie to renew.
+	if u.Password.String != "" {
+		if err := a.auth.DestroyUserSessions(user.ID); err != nil {
+			a.log.Printf("error invalidating sessions after password change: %v", err)
+		}
+		if _, ok := c.Get(auth.SessionKey).(*simplesessions.Session); ok {
+			if err := a.auth.SaveSession(out, "", c); err != nil {
+				return err
+			}
+		}
 	}
 
 	// Blank out the password hash in the response.

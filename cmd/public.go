@@ -176,6 +176,9 @@ func (a *App) ViewCampaignMessage(c echo.Context) error {
 			makeMsgTpl(a.i18n.T("public.errorTitle"), "", a.i18n.Ts("public.errorFetchingCampaign")))
 	}
 
+	// The message body is user-authored HTML; isolate it from the application
+	// origin so a campaign cannot run scripts against admin sessions.
+	c.Response().Header().Set("Content-Security-Policy", cspSandbox)
 	return c.HTML(http.StatusOK, string(msg.Body()))
 }
 
@@ -526,40 +529,14 @@ func (a *App) SubscriptionForm(c echo.Context) error {
 
 	}
 
-	// If there's a nonce value, a bot could've filled the form.
-	if c.FormValue("nonce") != "" {
-		return echo.NewHTTPError(http.StatusBadGateway, a.i18n.T("public.invalidFeature"))
-	}
-
-	// Process CAPTCHA.
-	if a.captcha.IsEnabled() {
-		var val string
-
-		// Get the appropriate captcha response field based on provider.
-		switch a.captcha.GetProvider() {
-		case captcha.ProviderHCaptcha:
-			val = c.FormValue("h-captcha-response")
-		case captcha.ProviderAltcha:
-			val = c.FormValue("altcha")
-		default:
-			return c.Render(http.StatusBadRequest, tplMessage,
-				makeMsgTpl(a.i18n.T("public.errorTitle"), "", a.i18n.T("public.invalidCaptcha")))
+	// Reject bots and CAPTCHA failures before processing the form.
+	if err := a.verifyPublicSubscriptionGuard(c); err != nil {
+		if httpErr, ok := err.(*echo.HTTPError); ok {
+			return c.Render(httpErr.Code, tplMessage,
+				makeMsgTpl(a.i18n.T("public.errorTitle"), "", fmt.Sprintf("%s", httpErr.Message)))
 		}
 
-		if val == "" {
-			return c.Render(http.StatusBadRequest, tplMessage,
-				makeMsgTpl(a.i18n.T("public.errorTitle"), "", a.i18n.T("public.invalidCaptcha")))
-		}
-
-		err, ok := a.captcha.Verify(val)
-		if err != nil {
-			a.log.Printf("captcha request failed: %v", err)
-		}
-
-		if !ok {
-			return c.Render(http.StatusBadRequest, tplMessage,
-				makeMsgTpl(a.i18n.T("public.errorTitle"), "", a.i18n.T("public.invalidCaptcha")))
-		}
+		return err
 	}
 
 	hasOptin, err := a.processSubForm(c)
@@ -589,6 +566,13 @@ func (a *App) PublicSubscription(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("public.invalidFeature"))
 	}
 
+	// The JSON API goes through the same honeypot and CAPTCHA gate as the HTML
+	// form. Without this a script could bypass a CAPTCHA the administrator
+	// explicitly enabled just by posting to the API instead of the form.
+	if err := a.verifyPublicSubscriptionGuard(c); err != nil {
+		return err
+	}
+
 	hasOptin, err := a.processSubForm(c)
 	if err != nil {
 		return err
@@ -597,6 +581,46 @@ func (a *App) PublicSubscription(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{struct {
 		HasOptin bool `json:"has_optin"`
 	}{hasOptin}})
+}
+
+// verifyPublicSubscriptionGuard enforces the honeypot field and the configured
+// CAPTCHA for any public subscription entry point. It returns an *echo.HTTPError
+// whose message is safe to render on the HTML form.
+func (a *App) verifyPublicSubscriptionGuard(c echo.Context) error {
+	// If there's a nonce value, a bot could've filled the form.
+	if c.FormValue("nonce") != "" {
+		return echo.NewHTTPError(http.StatusBadGateway, a.i18n.T("public.invalidFeature"))
+	}
+
+	// No CAPTCHA configured: nothing further to verify.
+	if !a.captcha.IsEnabled() {
+		return nil
+	}
+
+	// Get the appropriate captcha response field based on provider.
+	var val string
+	switch a.captcha.GetProvider() {
+	case captcha.ProviderHCaptcha:
+		val = c.FormValue("h-captcha-response")
+	case captcha.ProviderAltcha:
+		val = c.FormValue("altcha")
+	default:
+		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("public.invalidCaptcha"))
+	}
+
+	if val == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("public.invalidCaptcha"))
+	}
+
+	err, ok := a.captcha.Verify(val)
+	if err != nil {
+		a.log.Printf("captcha request failed: %v", err)
+	}
+	if !ok {
+		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("public.invalidCaptcha"))
+	}
+
+	return nil
 }
 
 // LinkRedirect redirects a link UUID to its original underlying link

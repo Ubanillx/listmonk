@@ -9,6 +9,7 @@ import (
 	"image/png"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -210,9 +211,11 @@ func (a *App) TwofaPage(c echo.Context) error {
 
 // Logout logs a user out.
 func (a *App) Logout(c echo.Context) error {
-	// Delete the session from the DB and cookie.
-	sess := c.Get(auth.SessionKey).(*simplesessions.Session)
-	_ = sess.Destroy()
+	// Delete the session from the DB and cookie. Bearer and BasicAuth requests
+	// never carry a cookie session, so the lookup must not assume one.
+	if sess, ok := c.Get(auth.SessionKey).(*simplesessions.Session); ok {
+		_ = sess.Destroy()
+	}
 
 	return c.JSON(http.StatusOK, okResp{true})
 }
@@ -306,6 +309,15 @@ func (a *App) OIDCFinish(c echo.Context) error {
 		} else {
 			return a.renderLoginPage(c, userErr)
 		}
+	}
+
+	// A disabled account must not be able to log in through the provider either.
+	// The password login path enforces this in SQL, but the OIDC path resolves
+	// the account by e-mail and would otherwise hand a session to a disabled
+	// user.
+	if user.Status != auth.UserStatusEnabled {
+		setAuditOutcome(c, "failed", "account_disabled")
+		return a.renderLoginPage(c, echo.NewHTTPError(http.StatusForbidden, a.i18n.T("users.accountDisabled")))
 	}
 
 	// Update the user login state (avatar, logged in date) in the DB.
@@ -435,6 +447,7 @@ func (a *App) renderLoginPage(c echo.Context, loginErr error) error {
 		Name:     "nonce",
 		Value:    nonce,
 		HttpOnly: true,
+		Secure:   a.secureCookies(),
 		Path:     "/",
 		SameSite: http.SameSiteLaxMode,
 	})
@@ -521,11 +534,21 @@ func (a *App) doLogin(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.Ts("globals.messages.invalidFields", "name", "password"))
 	}
 
+	// Refuse further attempts for a client/account pair that keeps failing.
+	// Success below clears the counter.
+	throttleKey := "login|" + c.RealIP() + "|" + strings.ToLower(username)
+	if !a.throttle.Allow(throttleKey) {
+		setAuditOutcome(c, "failed", "rate_limited")
+		return echo.NewHTTPError(http.StatusTooManyRequests, a.i18n.T("users.tooManyAttempts"))
+	}
+
 	// Log the user in by fetching and verifying credentials from the DB.
 	user, err := a.core.LoginUser(username, password)
 	if err != nil {
+		a.throttle.Failure(throttleKey)
 		return err
 	}
+	a.throttle.Success(throttleKey)
 
 	// If TOTP is enabled for the user, create a temp token and redirect to the 2FA page.
 	if user.TwofaType == models.TwofaTypeTOTP {
@@ -731,10 +754,37 @@ func (a *App) doResetPassword(c echo.Context, token, email string) error {
 		return c.Render(http.StatusBadRequest, tplMessage, makeMsgTpl(a.i18n.T("users.resetPassword"), "", a.i18n.T("public.invalidFeature")))
 	}
 
+	// A disabled account must not be able to regain access by resetting its
+	// password.
+	if user.Status != auth.UserStatusEnabled {
+		return c.Render(http.StatusBadRequest, tplMessage, makeMsgTpl(a.i18n.T("users.resetPassword"), "", a.i18n.T("users.accountDisabled")))
+	}
+
 	user.Password = null.NewString(password, true)
 	if _, err := a.core.UpdateUserProfile(user.ID, user); err != nil {
 		a.log.Printf("error updating user password: %v", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, a.i18n.T("globals.messages.internalError"))
+	}
+
+	// A password reset is the recovery path for a compromised account, so every
+	// session issued before it must stop working.
+	if err := a.auth.DestroyUserSessions(user.ID); err != nil {
+		a.log.Printf("error invalidating sessions after password reset: %v", err)
+	}
+
+	// Possession of the reset e-mail must not bypass the second factor. When
+	// TOTP is enabled, hand the login over to the regular 2FA challenge
+	// instead of creating a session.
+	if user.TwofaType == models.TwofaTypeTOTP {
+		token, err := generateRandomString(tmpAuthTokenLen)
+		if err != nil {
+			a.log.Printf("error generating 2FA token: %v", err)
+			return echo.NewHTTPError(http.StatusInternalServerError, a.i18n.T("globals.messages.internalError"))
+		}
+		tmptokens.Set(token, twofaTokenTTL, user.ID)
+		setAuditAction(c, "auth.password_reset_succeeded")
+
+		return c.Redirect(http.StatusFound, fmt.Sprintf("%s/login/twofa?token=%s&next=%s", uriAdmin, token, url.QueryEscape(uriAdmin)))
 	}
 
 	// Log the user in directly without forcing a manual login right after password change.
@@ -782,12 +832,29 @@ func (a *App) doTwofaVerify(c echo.Context, token string, userID int, next strin
 		return a.renderTwofaPage(c, token, next, a.i18n.T("users.twoFANotEnabled"))
 	}
 
+	// A disabled account must not complete the challenge either.
+	if user.Status != auth.UserStatusEnabled {
+		setAuditOutcome(c, "failed", "account_disabled")
+		return a.renderTwofaPage(c, token, next, a.i18n.T("users.accountDisabled"))
+	}
+
+	// Throttle repeated wrong codes for this account/client pair. Keying on the
+	// account rather than the temp token matters because a fresh login mints a
+	// new token and would otherwise reset a per-token counter.
+	throttleKey := "twofa|" + c.RealIP() + "|" + strconv.Itoa(user.ID)
+	if !a.throttle.Allow(throttleKey) {
+		setAuditOutcome(c, "failed", "rate_limited")
+		return a.renderTwofaPage(c, token, next, a.i18n.T("users.tooManyAttempts"))
+	}
+
 	// Verify the TOTP code.
 	valid := totp.Validate(totpCode, user.TwofaKey.String)
 	if !valid {
+		a.throttle.Failure(throttleKey)
 		setAuditOutcome(c, "failed", "invalid_totp")
 		return a.renderTwofaPage(c, token, next, a.i18n.T("globals.messages.invalidValue"))
 	}
+	a.throttle.Success(throttleKey)
 
 	// Invalidate the token.
 	tmptokens.Delete(token)

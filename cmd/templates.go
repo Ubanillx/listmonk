@@ -159,6 +159,9 @@ func (a *App) PreviewTemplate(c echo.Context) error {
 		return err
 	}
 
+	// Template previews render user-authored HTML. The UI sandboxes the iframe;
+	// the response header isolates direct navigation the same way.
+	c.Response().Header().Set("Content-Security-Policy", cspSandboxScripts)
 	return c.HTML(http.StatusOK, string(out))
 }
 
@@ -198,6 +201,8 @@ func (a *App) PreviewTemplateBody(c echo.Context) error {
 		return err
 	}
 
+	// See PreviewTemplate: the body is user-authored HTML from the request.
+	c.Response().Header().Set("Content-Security-Policy", cspSandboxScripts)
 	return c.HTML(http.StatusOK, string(out))
 }
 

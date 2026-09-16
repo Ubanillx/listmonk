@@ -237,6 +237,10 @@ func (a *App) PreviewCampaign(c echo.Context) error {
 		return c.String(http.StatusOK, string(msg.Body()))
 	}
 
+	// Preview renders user-authored HTML. The UI loads it in a sandboxed
+	// iframe; the response header applies the same isolation when the URL is
+	// opened directly.
+	c.Response().Header().Set("Content-Security-Policy", cspSandboxScripts)
 	return c.HTML(http.StatusOK, string(msg.Body()))
 }
 
@@ -283,6 +287,8 @@ func (a *App) PreviewCampaignArchive(c echo.Context) error {
 			makeMsgTpl(a.i18n.T("public.errorTitle"), "", a.i18n.Ts("public.errorFetchingCampaign")))
 	}
 
+	// Preview renders user-authored HTML; see PreviewCampaign.
+	c.Response().Header().Set("Content-Security-Policy", cspSandboxScripts)
 	return c.HTML(http.StatusOK, string(msg.Body()))
 }
 

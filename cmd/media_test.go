@@ -122,3 +122,68 @@ func TestProcessImageRejectsNonImage(t *testing.T) {
 		t.Fatal("a non-image must not be reported as too large")
 	}
 }
+
+// TestIsActiveDocumentType locks the classification used to refuse uploads and
+// to force downloads: sniffed HTML and XHTML are active documents, everything
+// else is not.
+func TestIsActiveDocumentType(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   string
+		want bool
+	}{
+		{"html with charset", "text/html; charset=utf-8", true},
+		{"bare html", "text/html", true},
+		{"xhtml", "application/xhtml+xml", true},
+		{"plain text", "text/plain; charset=utf-8", false},
+		{"xml", "text/xml; charset=utf-8", false},
+		{"png", "image/png", false},
+		{"octet stream", "application/octet-stream", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isActiveDocumentType(tc.in); got != tc.want {
+				t.Fatalf("isActiveDocumentType(%q) = %v, want %v", tc.in, got, tc.want)
+			}
+		})
+	}
+
+	// A realistic HTML payload must be detected by the sniffer the upload path
+	// uses, not only by the type-prefix check.
+	payload := []byte("<!DOCTYPE html><html><body><script>alert(1)</script></body></html>")
+	if !isActiveDocumentType(http.DetectContentType(payload)) {
+		t.Fatalf("expected an HTML payload to sniff as an active document, got %q", http.DetectContentType(payload))
+	}
+}
+
+// TestMediaServingPolicy locks how stored blobs are served: active documents
+// become opaque downloads, XML (including SVG) is sandboxed, and ordinary
+// media passes through unchanged.
+func TestMediaServingPolicy(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		sniffed    string
+		wantType   string
+		wantAttach bool
+		wantCSP    bool
+	}{
+		{"html is a download", "text/html; charset=utf-8", "application/octet-stream", true, true},
+		{"xhtml is a download", "application/xhtml+xml", "application/octet-stream", true, true},
+		{"xml is sandboxed inline", "text/xml; charset=utf-8", "text/xml; charset=utf-8", false, true},
+		{"plain text is untouched", "text/plain; charset=utf-8", "text/plain; charset=utf-8", false, false},
+		{"png is untouched", "image/png", "image/png", false, false},
+		{"gif is untouched", "image/gif", "image/gif", false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctype, attach, csp := mediaServingPolicy(tc.sniffed)
+			if ctype != tc.wantType {
+				t.Fatalf("content type = %q, want %q", ctype, tc.wantType)
+			}
+			if attach != tc.wantAttach {
+				t.Fatalf("attach = %v, want %v", attach, tc.wantAttach)
+			}
+			if (csp != "") != tc.wantCSP {
+				t.Fatalf("csp = %q, want non-empty: %v", csp, tc.wantCSP)
+			}
+		})
+	}
+}

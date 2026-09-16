@@ -545,6 +545,76 @@ func seedSuperAdminRole(t *testing.T, a *App) {
 	}
 }
 
+// TestOIDCLoginRejectsDisabledUser verifies that disabling an account stops
+// provider logins too. The password login path filters disabled users in SQL;
+// the OIDC path resolves the account by e-mail, so it has to check the status
+// explicitly or an offboarded account keeps working through its IdP.
+func TestOIDCLoginRejectsDisabledUser(t *testing.T) {
+	idp := oidctest.New(t)
+	a := newAdminAuthTestApp(t, idp)
+
+	seedAdmin(t, a, "owner", "owner@example.com")
+	u := seedUser(t, a, "offboarded", "offboarded@example.com")
+	if _, err := a.db.Exec(`UPDATE users SET status = 'disabled' WHERE id = $1`, u.ID); err != nil {
+		t.Fatalf("disabling the account: %v", err)
+	}
+
+	idp.IDTokenClaims = map[string]any{"email": "offboarded@example.com", "email_verified": true}
+
+	c, rec, rr := oidcRequest(t, idp.Nonce)
+	if err := a.OIDCFinish(c); err != nil {
+		t.Fatalf("OIDC callback returned an error: %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected the login page (200), got %d", rec.Code)
+	}
+	if rr.last() != "admin-login" {
+		t.Fatalf("expected the login page to be rendered, got %q", rr.last())
+	}
+	if got := countRows(t, a.db, `SELECT COUNT(*) FROM sessions`); got != 0 {
+		t.Fatalf("expected no session for a disabled account, got %d", got)
+	}
+	if got := countRows(t, a.db, `SELECT COUNT(*) FROM users WHERE id = $1 AND loggedin_at IS NULL`, u.ID); got != 1 {
+		t.Fatal("expected the disabled account to remain untouched")
+	}
+}
+
+// TestDestroyUserSessionsRevokesStoredLogins verifies the revocation used after
+// password changes and resets removes every stored session for the account.
+func TestDestroyUserSessionsRevokesStoredLogins(t *testing.T) {
+	a := newAdminAuthTestApp(t, nil)
+	u := seedAdmin(t, a, "owner", "owner@example.com")
+
+	e, _ := newTestEcho()
+	form := url.Values{
+		"username": {"owner"},
+		"password": {"password123"},
+		"next":     {uriAdmin},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/login", strings.NewReader(form.Encode()))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationForm)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := a.LoginPage(c); err != nil {
+		t.Fatalf("login returned an error: %v", err)
+	}
+	if rec.Code != http.StatusFound {
+		t.Fatalf("expected a login redirect, got %d", rec.Code)
+	}
+	if got := countRows(t, a.db, `SELECT COUNT(*) FROM sessions`); got != 1 {
+		t.Fatalf("expected one stored session after login, got %d", got)
+	}
+
+	if err := a.auth.DestroyUserSessions(u.ID); err != nil {
+		t.Fatalf("revoking sessions: %v", err)
+	}
+	if got := countRows(t, a.db, `SELECT COUNT(*) FROM sessions`); got != 0 {
+		t.Fatalf("expected no stored sessions after revocation, got %d", got)
+	}
+}
+
 // TestOIDCLoginRequiresVerifiedEmail drives the OIDC callback against a fake
 // provider for the cases that matter for account binding: a verified assertion, an
 // explicit `email_verified: false`, an absent claim, and the same three through the

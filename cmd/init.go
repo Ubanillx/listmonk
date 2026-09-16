@@ -1185,6 +1185,7 @@ func initAuth(co *core.Core, db *sql.DB, ko *koanf.Koanf) (bool, *auth.Auth) {
 	}
 
 	// Setup the sessio manager callbacks for getting and setting cookies.
+	secureCookies := strings.HasPrefix(strings.ToLower(strings.TrimSpace(ko.String("app.root_url"))), "https://")
 	cb := &auth.Callbacks{
 		GetCookie: func(name string, r any) (*http.Cookie, error) {
 			c := r.(echo.Context)
@@ -1194,6 +1195,10 @@ func initAuth(co *core.Core, db *sql.DB, ko *koanf.Koanf) (bool, *auth.Auth) {
 		SetCookie: func(cookie *http.Cookie, w any) error {
 			c := w.(echo.Context)
 			cookie.SameSite = http.SameSiteLaxMode
+			// Transport-level protection for the session cookie. It is derived
+			// from the configured root URL: an HTTPS deployment must never emit
+			// a cookie without Secure.
+			cookie.Secure = secureCookies
 			c.SetCookie(cookie)
 			return nil
 		},

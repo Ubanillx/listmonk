@@ -12,6 +12,7 @@ import (
 	"log"
 	"net/http"
 	"net/mail"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -131,6 +132,7 @@ type Auth struct {
 	sess      *simplesessions.Manager
 	sessStore *postgres.Store
 	cb        *Callbacks
+	db        *sql.DB
 	log       *log.Logger
 }
 
@@ -141,6 +143,7 @@ func New(cfg Config, db *sql.DB, cb *Callbacks, lo *log.Logger) (*Auth, error) {
 	a := &Auth{
 		cfg: cfg,
 		cb:  cb,
+		db:  db,
 		log: lo,
 
 		apiUsers:          map[string]User{},
@@ -164,12 +167,15 @@ func New(cfg Config, db *sql.DB, cb *Callbacks, lo *log.Logger) (*Auth, error) {
 	a.sess.UseStore(st)
 	a.sess.SetCookieHooks(cb.GetCookie, cb.SetCookie)
 
-	// Prune dead sessions from the DB periodically.
+	// Prune dead sessions from the DB periodically. The loop must not exit, or
+	// expired rows accumulate for the lifetime of the process.
 	go func() {
-		if err := st.Prune(); err != nil {
-			lo.Printf("error pruning login sessions: %v", err)
+		for {
+			if err := st.Prune(); err != nil {
+				lo.Printf("error pruning login sessions: %v", err)
+			}
+			time.Sleep(sessPruneInterval)
 		}
-		time.Sleep(sessPruneInterval)
 	}()
 
 	return a, nil
@@ -520,9 +526,33 @@ func (o *Auth) validateSession(c echo.Context) (*simplesessions.Session, User, e
 	user, err := o.cb.GetUser(userID)
 	if err != nil {
 		o.log.Printf("error fetching session user: %v", err)
+		return nil, User{}, echo.NewHTTPError(http.StatusForbidden, "invalid session")
 	}
 
-	return sess, user, err
+	// A disabled account must not keep working through an already issued
+	// session cookie. The status has to be re-checked on every request because
+	// the session row itself does not carry it and is not deleted when an
+	// administrator disables the account.
+	if user.Status != UserStatusEnabled {
+		return nil, User{}, echo.NewHTTPError(http.StatusForbidden, "account is disabled")
+	}
+
+	return sess, user, nil
+}
+
+// DestroyUserSessions removes every stored session belonging to the given user.
+// It is used to invalidate existing logins after a password change or reset, so
+// a leaked cookie does not outlive the credential change.
+func (o *Auth) DestroyUserSessions(userID int) error {
+	if o.db == nil {
+		return errors.New("auth: no database configured")
+	}
+
+	if _, err := o.db.Exec(`DELETE FROM sessions WHERE data->>'user_id' = $1`, strconv.Itoa(userID)); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // GetUser retrieves and returns the User object from an authenticated

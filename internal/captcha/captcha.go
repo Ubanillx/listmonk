@@ -15,9 +15,9 @@ import (
 	"github.com/knadh/listmonk/internal/tmptokens"
 )
 
-const (
-	hCaptchaURL = "https://hcaptcha.com/siteverify"
-)
+// hCaptchaURL is the siteverify endpoint. It is a variable so tests can point
+// the verifier at a local server.
+var hCaptchaURL = "https://hcaptcha.com/siteverify"
 
 type hCaptchaResp struct {
 	Success    bool     `json:"success"`
@@ -173,7 +173,10 @@ func (c *Captcha) verifyHCaptcha(token string) (error, bool) {
 
 	var r hCaptchaResp
 	if err := json.Unmarshal(body, &r); err != nil {
-		return err, true
+		// A response that cannot be parsed is a failed verification, not a
+		// success: an upstream error page or an intermediary injecting HTML
+		// must not be able to waive the CAPTCHA.
+		return fmt.Errorf("invalid hCaptcha response: %w", err), false
 	}
 
 	if !r.Success {

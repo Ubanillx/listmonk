@@ -108,6 +108,26 @@ func (a *App) UploadMedia(c echo.Context) error {
 		contentType = file.Header.Get("Content-Type")
 	)
 
+	// The extension and the declared Content-Type are both supplied by the
+	// client, so inspect the actual bytes as well. Active documents (HTML and
+	// XHTML) must never enter the media library: files are served from the
+	// application origin, where such a document would execute scripts with the
+	// viewer's session.
+	sample := make([]byte, 512)
+	n, err := io.ReadFull(src, sample)
+	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+		return echo.NewHTTPError(http.StatusInternalServerError,
+			a.i18n.Ts("media.errorReadingFile", "error", err.Error()))
+	}
+	if _, err := src.Seek(0, io.SeekStart); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError,
+			a.i18n.Ts("media.errorReadingFile", "error", err.Error()))
+	}
+	if isActiveDocumentType(http.DetectContentType(sample[:n])) {
+		return echo.NewHTTPError(http.StatusBadRequest,
+			a.i18n.Ts("media.unsupportedFileType", "type", ext))
+	}
+
 	// Validate file extension.
 	if !inArray("*", a.cfg.MediaUpload.Extensions) {
 		if ok := inArray(ext, a.cfg.MediaUpload.Extensions); !ok {
@@ -443,15 +463,50 @@ func mediaFilename(raw string) string {
 	return path.Base(raw)
 }
 
+// isActiveDocumentType reports whether a sniffed MIME type is a document that
+// browsers may execute (scripts, event handlers) when rendered. Such content is
+// refused on upload and never served inline from the application origin.
+func isActiveDocumentType(sniffed string) bool {
+	return strings.HasPrefix(sniffed, "text/html") ||
+		strings.HasPrefix(sniffed, "application/xhtml+xml")
+}
+
+// mediaServingPolicy maps a sniffed MIME type to the headers a stored media
+// blob is served with. Anything browsers may treat as an active document is
+// neutralised: active types are turned into an opaque download, XML (which
+// includes SVG) is sandboxed so a directly opened document cannot run scripts.
+// The returned contentType is the header value to serve, attach forces a
+// Content-Disposition: attachment, and csp, when non-empty, is the
+// Content-Security-Policy to set.
+func mediaServingPolicy(sniffed string) (contentType string, attach bool, csp string) {
+	switch {
+	case isActiveDocumentType(sniffed):
+		return "application/octet-stream", true, "default-src 'none'; sandbox"
+	case strings.HasPrefix(sniffed, "text/xml"), strings.HasPrefix(sniffed, "application/xml"):
+		return sniffed, false, "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+	default:
+		return sniffed, false, ""
+	}
+}
+
 func (a *App) streamMediaBlob(c echo.Context, filename string) error {
 	b, err := a.media.GetBlob(filename)
 	if err != nil {
 		a.log.Printf("error fetching media %s: %v", filename, err)
 		return echo.NewHTTPError(http.StatusNotFound, "media file not found")
 	}
+
+	ctype, attach, csp := mediaServingPolicy(http.DetectContentType(b))
 	c.Response().Header().Set("Cache-Control", "private, max-age=300")
 	c.Response().Header().Set("X-Content-Type-Options", "nosniff")
-	return c.Stream(http.StatusOK, http.DetectContentType(b), bytes.NewReader(b))
+	if attach {
+		c.Response().Header().Set("Content-Disposition", "attachment")
+	}
+	if csp != "" {
+		c.Response().Header().Set("Content-Security-Policy", csp)
+	}
+
+	return c.Stream(http.StatusOK, ctype, bytes.NewReader(b))
 }
 
 func (a *App) setWorkspaceMediaURLs(m *media.Media) {

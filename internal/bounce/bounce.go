@@ -3,6 +3,7 @@ package bounce
 import (
 	"errors"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -93,19 +94,38 @@ func New(opt Opt, q *Queries, lo *log.Logger) (*Manager, error) {
 		}
 
 		if opt.SendgridEnabled {
+			// An empty key would make every webhook request fail at signature
+			// verification, so refuse the configuration instead of starting a
+			// half-working endpoint.
+			if strings.TrimSpace(opt.SendgridKey) == "" {
+				return nil, errors.New("bounce: sendgrid webhooks are enabled but sendgrid_key is empty")
+			}
+
 			sg, err := webhooks.NewSendgrid(opt.SendgridKey)
 			if err != nil {
-				lo.Printf("error initializing sendgrid webhooks: %v", err)
-			} else {
-				m.Sendgrid = sg
+				return nil, errors.New("error initializing sendgrid webhooks: " + err.Error())
 			}
+			m.Sendgrid = sg
 		}
 
 		if opt.Postmark.Enabled {
+			// Postmark's verifier treats an empty username or password as
+			// "authentication not configured" and accepts the request. An
+			// enabled provider must carry both credentials.
+			if strings.TrimSpace(opt.Postmark.Username) == "" || strings.TrimSpace(opt.Postmark.Password) == "" {
+				return nil, errors.New("bounce: postmark webhooks are enabled but username or password is empty")
+			}
+
 			m.Postmark = webhooks.NewPostmark(opt.Postmark.Username, opt.Postmark.Password)
 		}
 
 		if opt.ForwardEmail.Enabled {
+			// An empty HMAC key makes the signature trivially forgeable by
+			// anybody who knows it is empty.
+			if strings.TrimSpace(opt.ForwardEmail.Key) == "" {
+				return nil, errors.New("bounce: forwardemail webhooks are enabled but key is empty")
+			}
+
 			fe := webhooks.NewForwardemail([]byte(opt.ForwardEmail.Key))
 			m.Forwardemail = fe
 		}

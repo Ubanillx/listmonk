@@ -57,6 +57,10 @@ type App struct {
 	log        *log.Logger
 	bufLog     *buflog.BufLog
 
+	// throttle limits repeated authentication failures. The zero value is
+	// ready to use; tests that build App literals need no setup.
+	throttle authThrottle
+
 	about         about
 	fnOptinNotify func(models.Customer, []int) (int, error)
 

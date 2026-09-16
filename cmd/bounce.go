@@ -275,6 +275,13 @@ func (a *App) BounceWebhook(c echo.Context) error {
 
 	// SendGrid.
 	case service == "sendgrid" && a.cfg.BounceSendgridEnabled:
+		// A key that failed to initialize at startup leaves the client nil; the
+		// endpoint must answer 400 rather than panic on every request.
+		if a.bounce == nil || a.bounce.Sendgrid == nil {
+			a.log.Printf("sendgrid webhook received but the sendgrid client is not initialized")
+			return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("globals.messages.invalidData"))
+		}
+
 		var (
 			sig = c.Request().Header.Get("X-Twilio-Email-Event-Webhook-Signature")
 			ts  = c.Request().Header.Get("X-Twilio-Email-Event-Webhook-Timestamp")

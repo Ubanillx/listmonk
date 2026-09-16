@@ -80,6 +80,8 @@ listmonk supports receiving bounce webhook events from the following SMTP provid
 | `https://listmonk.yoursite.com/webhooks/service/postmark`     | Postmark webhook                       | [More info](https://postmarkapp.com/developer/webhooks/webhooks-overview)                                             |
 | `https://listmonk.yoursite.com/webhooks/service/forwardemail` | Forward Email webhook                  | [More info](https://forwardemail.net/en/faq#do-you-support-bounce-webhooks)                                           |
 
+Each provider only accepts requests that carry a valid signature, so every enabled provider must have its signing credentials configured: SendGrid API key, Postmark username and password, or the Forward Email webhook key. Enabling a provider with missing credentials aborts startup with an explicit error instead of exposing an endpoint that accepts unauthenticated bounce events.
+
 ## Amazon Simple Email Service (SES)
 
 If using SES as your SMTP provider, automatic bounce processing is the recommended way to maintain your [sender reputation](https://docs.aws.amazon.com/ses/latest/dg/monitor-sender-reputation.html). The settings below are based on Amazon's [recommendations](https://docs.aws.amazon.com/ses/latest/dg/send-email-concepts-deliverability.html). Please note that your sending domain must be verified in SES before proceeding.

@@ -56,11 +56,12 @@ http.interceptors.response.use((resp) => {
   }
 
   let data = {};
-  if (typeof resp.data.data === 'object') {
-    if (resp.data.data.constructor === Object) {
-      data = { ...resp.data.data };
+  const responseData = resp.data && resp.data.data;
+  if (responseData !== null && typeof responseData === 'object') {
+    if (responseData.constructor === Object) {
+      data = { ...responseData };
     } else {
-      data = [...resp.data.data];
+      data = [...responseData];
     }
 
     // Transform keys to camelCase.
@@ -78,7 +79,7 @@ http.interceptors.response.use((resp) => {
         break;
     }
   } else {
-    data = resp.data.data;
+    data = responseData;
   }
 
   // Store the API response for a model.

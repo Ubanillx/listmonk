@@ -594,7 +594,7 @@ func (c *Core) GetWorkspaceTemplates(access models.WorkspaceAccess, status strin
 
 // QueryWorkspaceMedia returns media files visible in the active workspace.
 func (c *Core) QueryWorkspaceMedia(access models.WorkspaceAccess, provider string, s media.Store, query string, folderID *int, offset, limit int) ([]media.Media, int, error) {
-	scope, args := workspaceReadPredicate(access, "m", 1)
+	scope, args := workspaceMediaReadPredicate(access, "m", 1)
 	first := len(args) + 1
 	folderFilter := "TRUE"
 	folderArgs := []any{}

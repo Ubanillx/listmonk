@@ -43,10 +43,10 @@ func normalizeMediaFolderName(name string) (string, error) {
 	return name, nil
 }
 
-// mediaFolderWorkspacePredicate limits folders to the active workspace. A
-// platform administrator may inspect all workspaces, matching the existing
-// media library behavior; mutations still verify that source and destination
-// folders belong to the same workspace.
+// mediaFolderWorkspacePredicate limits folders to the selected workspace for
+// active sessions, including platform administrators. Archived platform
+// administrators retain broad visibility for cleanup flows; ordinary writes
+// are still rejected before a folder mutation can commit.
 func mediaFolderWorkspacePredicate(access models.WorkspaceAccess, alias string, firstArg int) (string, []any) {
 	field := func(name string) string {
 		if alias == "" {
@@ -54,7 +54,7 @@ func mediaFolderWorkspacePredicate(access models.WorkspaceAccess, alias string, 
 		}
 		return alias + "." + name
 	}
-	if access.PlatformAdmin {
+	if access.PlatformAdmin && access.Archived {
 		return "TRUE", nil
 	}
 	if access.IsOrganization() {
@@ -94,6 +94,39 @@ func mediaFolderMatchesResourceScope(scope models.ResourceScope, folder media.Me
 	}
 	return scope.OwnerUserID.Valid && folder.OwnerUserID.Valid &&
 		scope.OwnerUserID.Int == folder.OwnerUserID.Int
+}
+
+// workspaceMediaReadPredicate keeps the media library inside the selected
+// workspace for active platform-admin sessions. Platform administrators still
+// retain broad single-resource and mutation capabilities, but the media page
+// is also the source for logical-folder moves; showing media from every
+// workspace there would make a valid cross-workspace drag look actionable.
+// Archived platform-admin sessions retain broad visibility for cleanup flows,
+// while ordinary writes remain blocked by the handler/core mutation guards.
+func workspaceMediaReadPredicate(access models.WorkspaceAccess, alias string, firstArg int) (string, []any) {
+	if !access.PlatformAdmin || access.Archived {
+		return workspaceReadPredicate(access, alias, firstArg)
+	}
+
+	field := func(name string) string {
+		if alias == "" {
+			return name
+		}
+		return alias + "." + name
+	}
+	arg := fmt.Sprintf("$%d", firstArg)
+	if access.IsOrganization() {
+		return withActiveOrganizationPredicate(
+			fmt.Sprintf("%sorganization_id = %s", field(""), arg),
+			alias,
+		), []any{access.OrganizationID}
+	}
+
+	return withActiveOrganizationPredicate(
+		fmt.Sprintf("(%sorganization_id IS NULL AND %sowner_user_id = %s AND %stransfer_pending_at IS NULL)",
+			field(""), field(""), arg, field("")),
+		alias,
+	), []any{access.UserID}
 }
 
 func sameMediaFolderWorkspace(left, right media.MediaFolder) bool {

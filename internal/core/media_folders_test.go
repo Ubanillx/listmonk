@@ -56,3 +56,70 @@ func TestMediaFolderWorkspaceBoundaries(t *testing.T) {
 		t.Fatal("personal resource scope matching returned an unexpected result")
 	}
 }
+
+func TestMediaFolderWorkspacePredicateScopesActivePlatformAdmin(t *testing.T) {
+	organizationAdmin := models.WorkspaceAccess{
+		Workspace: models.Workspace{OrganizationID: 7, PlatformAdmin: true},
+		UserID:    10,
+	}
+	organizationPredicate, organizationArgs := mediaFolderWorkspacePredicate(organizationAdmin, "f", 3)
+	if len(organizationArgs) != 1 || organizationArgs[0] != 7 || organizationPredicate != "f.organization_id = $3" {
+		t.Fatalf("organization folder predicate = %q %#v, want selected organization scope", organizationPredicate, organizationArgs)
+	}
+
+	personalAdmin := models.WorkspaceAccess{
+		Workspace: models.Workspace{Personal: true, PlatformAdmin: true},
+		UserID:    10,
+	}
+	personalPredicate, personalArgs := mediaFolderWorkspacePredicate(personalAdmin, "f", 2)
+	if len(personalArgs) != 1 || personalArgs[0] != 10 ||
+		personalPredicate != "f.organization_id IS NULL AND f.owner_user_id = $2" {
+		t.Fatalf("personal folder predicate = %q %#v, want caller-owned personal scope", personalPredicate, personalArgs)
+	}
+
+	archivedAdmin := models.WorkspaceAccess{
+		Workspace: models.Workspace{OrganizationID: 7, PlatformAdmin: true, Archived: true},
+		UserID:    10,
+	}
+	archivedPredicate, archivedArgs := mediaFolderWorkspacePredicate(archivedAdmin, "f", 1)
+	if archivedPredicate != "TRUE" || len(archivedArgs) != 0 {
+		t.Fatalf("archived admin folder predicate = %q %#v, want broad cleanup visibility", archivedPredicate, archivedArgs)
+	}
+}
+
+func TestWorkspaceMediaReadPredicateScopesActivePlatformAdmin(t *testing.T) {
+	organizationAdmin := models.WorkspaceAccess{
+		Workspace: models.Workspace{OrganizationID: 7, PlatformAdmin: true},
+		UserID:    10,
+	}
+	organizationPredicate, organizationArgs := workspaceMediaReadPredicate(organizationAdmin, "m", 3)
+	if len(organizationArgs) != 1 || organizationArgs[0] != 7 {
+		t.Fatalf("organization predicate args = %#v, want [7]", organizationArgs)
+	}
+	if !strings.Contains(organizationPredicate, "m.organization_id = $3") ||
+		strings.Contains(organizationPredicate, "m.organization_id IS NULL AND") {
+		t.Fatalf("organization predicate = %q, want selected organization scope", organizationPredicate)
+	}
+
+	personalAdmin := models.WorkspaceAccess{
+		Workspace: models.Workspace{Personal: true, PlatformAdmin: true},
+		UserID:    10,
+	}
+	personalPredicate, personalArgs := workspaceMediaReadPredicate(personalAdmin, "m", 2)
+	if len(personalArgs) != 1 || personalArgs[0] != 10 {
+		t.Fatalf("personal predicate args = %#v, want [10]", personalArgs)
+	}
+	if !strings.Contains(personalPredicate, "m.organization_id IS NULL") ||
+		!strings.Contains(personalPredicate, "m.owner_user_id = $2") {
+		t.Fatalf("personal predicate = %q, want caller-owned personal scope", personalPredicate)
+	}
+
+	archivedAdmin := models.WorkspaceAccess{
+		Workspace: models.Workspace{OrganizationID: 7, PlatformAdmin: true, Archived: true},
+		UserID:    10,
+	}
+	archivedPredicate, archivedArgs := workspaceMediaReadPredicate(archivedAdmin, "m", 1)
+	if archivedPredicate != "TRUE" || len(archivedArgs) != 0 {
+		t.Fatalf("archived admin predicate = %q %#v, want broad cleanup visibility", archivedPredicate, archivedArgs)
+	}
+}

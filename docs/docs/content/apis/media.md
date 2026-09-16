@@ -97,6 +97,8 @@ ______________________________________________________________________
 Get uploaded media files. `folder_id=0` returns only root media,
 `folder_id={id}` returns media in that folder, and omitting `folder_id` keeps
 the legacy behavior of returning all media visible in the active workspace.
+For an active platform-admin session, the listing is also constrained to the
+selected workspace so folder drag-and-drop cannot cross workspace boundaries.
 
 ##### Example Request
 

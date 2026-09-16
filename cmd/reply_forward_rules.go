@@ -112,11 +112,13 @@ func (a *App) activateReplyForwardingForMember(orgID, userID int) error {
 
 // disableReplyForwardRule is used by the organization manager UI to stop a
 // retained mailbox from being relayed while leaving the source mailbox intact.
-func (a *App) disableReplyForwardRule(orgID, mailboxID, actorID int) error {
-	if orgID < 1 || mailboxID < 1 || actorID < 1 {
+// It addresses the rule by its own id, matching the resume path below and the
+// id the management UI sends for the toggle.
+func (a *App) disableReplyForwardRule(orgID, ruleID, actorID int) error {
+	if orgID < 1 || ruleID < 1 || actorID < 1 {
 		return sql.ErrNoRows
 	}
-	res, err := a.db.Exec(`UPDATE reply_forward_rules SET status = 'disabled', disabled_at = NOW(), disabled_by = $3, updated_at = NOW() WHERE organization_id = $1 AND reply_mailbox_id = $2`, orgID, mailboxID, actorID)
+	res, err := a.db.Exec(`UPDATE reply_forward_rules SET status = 'disabled', disabled_at = NOW(), disabled_by = $3, updated_at = NOW() WHERE organization_id = $1 AND id = $2`, orgID, ruleID, actorID)
 	if err != nil {
 		return err
 	}

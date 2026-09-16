@@ -397,6 +397,20 @@ func (c *Core) CreatePoolContact(poolID int, p models.PoolContact) (models.PoolC
 		if _, err = tx.Exec(`INSERT INTO pool_members(pool_id,contact_id) VALUES($1,$2) ON CONFLICT DO NOTHING`, poolID, id); err != nil {
 			return models.PoolContact{}, err
 		}
+		if p.AllocationDepartment != "" {
+			var organizationID int64
+			if err = tx.Get(&organizationID, `SELECT id FROM organizations WHERE status=$1 AND LOWER(name)=LOWER($2)`, models.OrganizationStatusActive, p.AllocationDepartment); err != nil {
+				return models.PoolContact{}, err
+			}
+			if _, err = tx.Exec(`
+				INSERT INTO pool_segment_members(segment_id,contact_id,status)
+				SELECT ps.id,$2,'active'
+				FROM pool_segments ps
+				WHERE ps.pool_id=$1 AND ps.organization_id=$3
+				ON CONFLICT (segment_id,contact_id) DO NOTHING`, poolID, id, organizationID); err != nil {
+				return models.PoolContact{}, err
+			}
+		}
 	}
 	if err = tx.Commit(); err != nil {
 		return models.PoolContact{}, err
@@ -427,13 +441,19 @@ func (c *Core) ImportPoolContacts(poolID, userID int, rows []models.PoolContactI
 	}
 	defer tx.Rollback()
 
-	var departmentNames []string
-	if err := tx.Select(&departmentNames, `SELECT name FROM organizations WHERE status=$1`, models.OrganizationStatusActive); err != nil {
+	var departments []struct {
+		ID   int64  `db:"id"`
+		Name string `db:"name"`
+	}
+	if err := tx.Select(&departments, `SELECT id,name FROM organizations WHERE status=$1`, models.OrganizationStatusActive); err != nil {
 		return result, err
 	}
-	validDepartments := make(map[string]struct{}, len(departmentNames))
-	for _, departmentName := range departmentNames {
-		validDepartments[normalizePoolAllocationDepartment(departmentName)] = struct{}{}
+	validDepartments := make(map[string]struct{}, len(departments))
+	departmentOrganizations := make(map[string]int64, len(departments))
+	for _, department := range departments {
+		key := normalizePoolAllocationDepartment(department.Name)
+		validDepartments[key] = struct{}{}
+		departmentOrganizations[key] = department.ID
 	}
 
 	seen := make(map[string]struct{}, len(rows))
@@ -530,6 +550,20 @@ func (c *Core) ImportPoolContacts(poolID, userID int, rows []models.PoolContactI
 		if _, err = tx.Exec(`INSERT INTO pool_members(pool_id,contact_id) VALUES($1,$2) ON CONFLICT DO NOTHING`, poolID, contactID); err != nil {
 			return result, err
 		}
+		// The imported department is the allocation target. If that
+		// organization already has a secondary list for this pool, make the
+		// contact a member of it immediately. Keep an existing removed row
+		// untouched so a deliberate organization-level exclusion is preserved.
+		if organizationID, ok := departmentOrganizations[normalizePoolAllocationDepartment(department)]; ok {
+			if _, err = tx.Exec(`
+				INSERT INTO pool_segment_members(segment_id,contact_id,status)
+				SELECT ps.id,$2,'active'
+				FROM pool_segments ps
+				WHERE ps.pool_id=$1 AND ps.organization_id=$3
+				ON CONFLICT (segment_id,contact_id) DO NOTHING`, poolID, contactID, organizationID); err != nil {
+				return result, err
+			}
+		}
 	}
 	if err = tx.Commit(); err != nil {
 		return result, err
@@ -602,6 +636,20 @@ func (c *Core) CreatePoolSegment(poolID int, organizationID int64, name string, 
 			RETURNING id,list_id,(SELECT name FROM customer_lists WHERE id=pool_segments.list_id) AS list_name,
 				pool_id,organization_id,(SELECT name FROM organizations WHERE id=pool_segments.organization_id) AS organization_name,reply_mailbox_id`,
 			listID, poolID, organizationID, replyMailboxID, userID); err != nil {
+			return err
+		}
+		// Existing contacts imported before this secondary list was created
+		// must be allocated from their validated department as well. This keeps
+		// the import order independent: create the segment first or import the
+		// pool first, the resulting membership is the same.
+		if _, err := tx.Exec(`
+			INSERT INTO pool_segment_members(segment_id,contact_id,status)
+			SELECT $1,pm.contact_id,'active'
+			FROM pool_members pm
+			JOIN pool_contacts pc ON pc.id=pm.contact_id
+			JOIN organizations o ON o.id=$2 AND o.status=$4
+			WHERE pm.pool_id=$3 AND LOWER(TRIM(pc.allocation_department))=LOWER(TRIM(o.name))
+			ON CONFLICT (segment_id,contact_id) DO NOTHING`, out.ID, organizationID, poolID, models.OrganizationStatusActive); err != nil {
 			return err
 		}
 		if replyMailboxID != nil {

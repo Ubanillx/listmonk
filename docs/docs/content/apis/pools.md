@@ -30,7 +30,10 @@ Key endpoints:
   Only the highest administrator may use this branch. `分配部门` must match an
   active `organizations.name`; unknown or archived departments are rejected
   row-by-row and are not written. A valid value is stored on the pool contact
-  and does not create or bind an organization.
+  and, when that organization already has a secondary list for the pool, also
+  creates the corresponding secondary-list membership. Creating the secondary
+  list later backfills existing matching contacts; it never creates an
+  organization.
 - `POST /api/pools/import` — legacy ordinary-list-to-pool compatibility route;
   new product flows use the unified customer import endpoint.
 - `GET /api/pools/:id/management-target?organization_id=...` — highest-admin-only target context: the target organization's existing segment state.
@@ -73,9 +76,11 @@ same split for their own organization: the request must carry that organization'
 organization members cannot create lists.
 
 Each first-level pool can have one bound secondary list per organization. The
-dialog does not import contacts or allocate rows. Import the four-column pool
-template from the unified **Customer import** page, then use this dialog only
-to select a target organization and create/bind its secondary list.
+dialog does not import contact files. Import the four-column pool template from
+the unified **Customer import** page; rows whose `分配部门` matches an existing
+secondary-list organization are allocated during import. If the secondary list
+is created afterwards, the create-and-bind transaction backfills those rows. The
+dialog is used to select a target organization and create/bind its secondary list.
 The customer-count link for a first-level or secondary list opens the dedicated
 pool contact view; it does not use the ordinary customer table. That view keeps
 the pool data model separate and applies the same masked DTO policy as the API.

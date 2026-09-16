@@ -10,7 +10,8 @@ import (
 // PoolContact is a contact imported into a first-class public customer pool.
 // CustomerCode is intentionally not unique; the contact ID is the stable key.
 // AllocationDepartment stores the validated active organization name supplied
-// by the source template; it is not a free-form department label.
+// by the source template. When a matching secondary list exists, the import
+// path also creates the corresponding pool-segment membership.
 type PoolContact struct {
 	ID                   int64                  `db:"id" json:"id"`
 	UUID                 string                 `db:"uuid" json:"uuid"`

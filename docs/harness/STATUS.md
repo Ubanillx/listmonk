@@ -2,6 +2,8 @@
 
 快照日期：2026-09-16
 
+- 公海分配部门自动归入二级列表（2026-09-16）：修复统一公海导入只写入 `pool_contacts`/`pool_members`、未写入已有 `pool_segment_members` 的问题。导入时按启用组织名称自动加入已绑定的同组织二级列表；先导入后创建二级列表时，`CreatePoolSegment` 在同一事务回填匹配联系人；v6.41.0 迁移补齐历史数据且保留既有 `removed` 状态。同步更新 API、架构、业务规则和界面说明。验证：公海回填迁移测试、`go test ./... -count=1`、前端 lint/build 通过；后端已重启，v6.41.0 已执行，9173 返回 200。
+
 - 导入与公海列表可见性修正（2026-09-16）：普通客户导入会忽略空的 `allocation_department` 映射，仍拒绝普通分支中的非空公海字段；公海/二级列表计数改读独立成员表，客户列表计数入口改为专用公海联系人视图，并让二级列表读取按 segment 限定且继续使用安全 DTO，不复制到普通 `customers`。来源：`cmd/import.go`、`internal/core/{pools,workspace_queries}.go`、`frontend/src/{router/index.js,views/{Import,CustomerLists,PoolContacts}.vue}`、`docs/ARCHITECTURE.md`、`docs/docs/content/apis/pools.md`。
 
 - 公海活动草稿回件路由与受众回显修正（2026-09-16）：预览/发送前会重新按当前二级列表配置解析 `resolved_reply_mailbox_id`，因此活动草稿在组织经理后来绑定有效回件邮箱后无需重建活动即可继续；未绑定组织二级列表或邮箱仍按不变量阻断预览/发送，不回退到个人或系统邮箱。活动统计响应补充 `customer_pools[].segment_list_id/segment_list_name`，编辑页据此保留显式二级列表受众，避免保存草稿时把二级列表降级成一级公海。新增真实 PostgreSQL 回归覆盖邮箱绑定前后及禁用邮箱，`go test ./... -count=1`、前端 lint/build 通过。来源：`internal/core/pools.go`、`internal/core/workspace_campaign_stats.go`、`queries/campaigns.sql`、`frontend/src/views/Campaign.vue`、`docs/docs/content/apis/pools.md`。

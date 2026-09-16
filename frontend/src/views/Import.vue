@@ -230,6 +230,13 @@
               </li>
             </ul>
           </div>
+          <p class="help">{{ $t('import.poolResultLocationHelp') }}</p>
+          <div class="buttons">
+            <b-button type="is-primary" icon-left="account-group-outline" data-cy="view-pool-contacts"
+              @click="viewImportedPool">
+              {{ $t('import.poolResultViewPool') }}
+            </b-button>
+          </div>
         </div>
       </article>
     </section><!-- upload //-->
@@ -763,6 +770,14 @@ export default Vue.extend({
         invalid_email: this.$t('import.poolIssueInvalidEmail'),
       };
       return labels[reason] || reason;
+    },
+
+    viewImportedPool() {
+      const poolID = Number(this.poolImportResult
+        && (this.poolImportResult.poolId || this.poolImportResult.pool_id));
+      if (poolID > 0) {
+        this.$router.push({ name: 'poolContacts', params: { customerListID: poolID } });
+      }
     },
   },
 

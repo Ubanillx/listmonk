@@ -47,6 +47,17 @@ SET status = 'disabled', is_default = FALSE, ai_enabled = FALSE, updated_at = NO
 WHERE id = $1 AND user_id = $2 AND organization_id IS NOT DISTINCT FROM $3
 RETURNING id;
 
+-- name: enable-reply-mailbox
+-- A disabled mailbox keeps its last successful verification. Restore that
+-- state without requiring the user to re-enter a password that is never
+-- returned to the browser. Unverified mailboxes remain pending until tested.
+UPDATE reply_mailboxes
+SET status = CASE WHEN verified_at IS NOT NULL THEN 'active' ELSE 'pending' END,
+    updated_at = NOW()
+WHERE id = $1 AND user_id = $2 AND organization_id IS NOT DISTINCT FROM $3
+  AND status = 'disabled'
+RETURNING id;
+
 -- name: get-reply-ai-mailboxes
 SELECT m.id, m.user_id, m.organization_id, m.email, m.username, m.password,
        m.imap_host, m.imap_port, m.imap_tls, m.folder

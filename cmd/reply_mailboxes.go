@@ -122,10 +122,27 @@ func (a *App) DisableReplyMailbox(c echo.Context) error {
 		return err
 	}
 	userID, id := auth.GetUser(c).ID, getID(c)
-	if _, err := a.queries.DisableReplyMailbox.Exec(id, userID, nullableOrganizationID(access.OrganizationID)); err != nil {
-		return err
+	var disabledID int
+	if err := a.queries.DisableReplyMailbox.Get(&disabledID, id, userID, nullableOrganizationID(access.OrganizationID)); err != nil {
+		return echo.NewHTTPError(http.StatusNotFound, "reply mailbox not found")
 	}
 	return c.JSON(http.StatusOK, okResp{true})
+}
+
+// EnableReplyMailbox restores a mailbox that was manually disabled. A
+// previously verified mailbox becomes active immediately; a mailbox that has
+// never passed a connection test remains pending and must be tested first.
+func (a *App) EnableReplyMailbox(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
+	userID, id := auth.GetUser(c).ID, getID(c)
+	var enabledID int
+	if err := a.queries.EnableReplyMailbox.Get(&enabledID, id, userID, nullableOrganizationID(access.OrganizationID)); err != nil {
+		return echo.NewHTTPError(http.StatusNotFound, "reply mailbox not found")
+	}
+	return a.getReplyMailboxResponse(c, userID, enabledID, access.OrganizationID)
 }
 
 // TestReplyMailbox verifies a 263 mailbox using POP3-over-TLS. 263 exposes

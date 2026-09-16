@@ -3,7 +3,7 @@
     <div class="reply-mailboxes-header level mb-5">
       <div>
         <h2 class="title is-5 mb-1"><b-icon icon="email-arrow-left-outline" size="is-small" /> {{ $t('replyMailbox.title') }}</h2>
-        <p class="help">{{ $t('replyMailbox.help') }}</p>
+        <p class="help">{{ organizationId ? $t('replyMailbox.organizationHelp') : $t('replyMailbox.help') }}</p>
       </div>
       <b-button type="is-primary" icon-left="plus" @click="addMailbox">{{ $t('replyMailbox.add') }}</b-button>
     </div>
@@ -25,9 +25,13 @@
           </div>
           <p class="reply-card-subtitle">{{ mailbox.email || $t('replyMailbox.noEmail') }}</p>
         </div>
-        <b-button v-if="mailbox.id" type="is-danger" outlined size="is-small" icon-left="trash-can-outline"
+        <b-button v-if="mailbox.id && mailbox.status !== 'disabled'" type="is-danger" outlined size="is-small" icon-left="trash-can-outline"
           @click="disableMailbox(mailbox, index)">
           {{ $t('replyMailbox.disable') }}
+        </b-button>
+        <b-button v-else-if="mailbox.id" type="is-primary" outlined size="is-small" icon-left="play-circle-outline"
+          :loading="enabling === index" @click="enableMailbox(mailbox, index)">
+          {{ $t('replyMailbox.enable') }}
         </b-button>
       </div>
 
@@ -124,11 +128,19 @@ function blankMailbox() {
 export default Vue.extend({
   name: 'ReplyMailboxSettings',
 
+  props: {
+    // Organization management can inspect a selected organization without
+    // changing the browser's active workspace. Personal profile usage omits
+    // this prop and follows the active workspace as before.
+    organizationId: { type: Number, default: null },
+  },
+
   data() {
     return {
       mailboxes: [],
       saving: null,
       testing: null,
+      enabling: null,
       loadedWorkspace: null,
     };
   },
@@ -136,7 +148,14 @@ export default Vue.extend({
   computed: {
     ...mapState(['workspace']),
     workspaceKey() {
+      if (Number.isInteger(this.organizationId) && this.organizationId > 0) {
+        return this.organizationId;
+      }
       return Number(this.workspace && this.workspace.organizationId) || 0;
+    },
+
+    apiOrganizationID() {
+      return this.organizationId || null;
     },
   },
 
@@ -153,7 +172,7 @@ export default Vue.extend({
 
     load() {
       this.loadedWorkspace = this.workspaceKey;
-      this.$api.getReplyMailboxes().then((data) => {
+      this.$api.getReplyMailboxes(this.apiOrganizationID).then((data) => {
         this.mailboxes = (Array.isArray(data) ? data : []).map(this.normalize);
       });
     },
@@ -201,8 +220,8 @@ export default Vue.extend({
       }
       this.saving = index;
       const request = mailbox.id
-        ? this.$api.updateReplyMailbox(mailbox.id, this.wire(mailbox))
-        : this.$api.createReplyMailbox(this.wire(mailbox));
+        ? this.$api.updateReplyMailbox(mailbox.id, this.wire(mailbox), this.apiOrganizationID)
+        : this.$api.createReplyMailbox(this.wire(mailbox), this.apiOrganizationID);
       request.then((data) => {
         const saved = this.normalize(data);
         this.$set(this.mailboxes, index, saved);
@@ -221,7 +240,7 @@ export default Vue.extend({
       this.$api.testReplyMailbox({
         ...this.wire(mailbox),
         id: mailbox.id || 0,
-      }).then(() => {
+      }, this.apiOrganizationID).then(() => {
         this.$set(mailbox, 'status', 'active');
         this.$utils.toast(this.$t('replyMailbox.toastTestSuccess'));
       }).catch((err) => {
@@ -234,10 +253,20 @@ export default Vue.extend({
 
     disableMailbox(mailbox, index) {
       this.$utils.confirm(this.$t('replyMailbox.confirmDisable'), () => {
-        this.$api.deleteReplyMailbox(mailbox.id).then(() => {
+        this.$api.deleteReplyMailbox(mailbox.id, this.apiOrganizationID).then(() => {
           this.$set(this.mailboxes, index, { ...mailbox, status: 'disabled', isDefault: false });
           this.$utils.toast(this.$t('replyMailbox.toastDisabled'));
         });
+      });
+    },
+
+    enableMailbox(mailbox, index) {
+      this.enabling = index;
+      this.$api.enableReplyMailbox(mailbox.id, this.apiOrganizationID).then((data) => {
+        this.$set(this.mailboxes, index, this.normalize(data));
+        this.$utils.toast(this.$t('replyMailbox.toastEnabled'));
+      }).finally(() => {
+        this.enabling = null;
       });
     },
   },

@@ -924,32 +924,38 @@ export const testReplyAIModel = (data) => http.post(
 
 // Dedicated 263 customer-reply mailboxes. Credentials are accepted only on
 // create/update/test and are never returned by the API.
-export const getReplyMailboxes = () => http.get(
+export const getReplyMailboxes = (organizationID) => http.get(
   '/api/profile/reply-mailboxes',
-  { loading: models.users },
+  { loading: models.users, ...organizationWorkspaceConfig(organizationID) },
 );
 
-export const createReplyMailbox = (data) => http.post(
+export const createReplyMailbox = (data, organizationID) => http.post(
   '/api/profile/reply-mailboxes',
   data,
-  { loading: models.users },
+  { loading: models.users, ...organizationWorkspaceConfig(organizationID) },
 );
 
-export const updateReplyMailbox = (id, data) => http.put(
+export const updateReplyMailbox = (id, data, organizationID) => http.put(
   `/api/profile/reply-mailboxes/${id}`,
   data,
-  { loading: models.users },
+  { loading: models.users, ...organizationWorkspaceConfig(organizationID) },
 );
 
-export const deleteReplyMailbox = (id) => http.delete(
+export const deleteReplyMailbox = (id, organizationID) => http.delete(
   `/api/profile/reply-mailboxes/${id}`,
-  { loading: models.users },
+  { loading: models.users, ...organizationWorkspaceConfig(organizationID) },
 );
 
-export const testReplyMailbox = (data) => http.post(
+export const enableReplyMailbox = (id, organizationID) => http.put(
+  `/api/profile/reply-mailboxes/${id}/enable`,
+  {},
+  { loading: models.users, ...organizationWorkspaceConfig(organizationID) },
+);
+
+export const testReplyMailbox = (data, organizationID) => http.post(
   '/api/profile/reply-mailboxes/test',
   data,
-  { loading: models.users, disableToast: true },
+  { loading: models.users, disableToast: true, ...organizationWorkspaceConfig(organizationID) },
 );
 
 export const getUserPersonalSMTP = (id) => http.get(

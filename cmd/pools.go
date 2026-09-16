@@ -376,20 +376,42 @@ type poolSegmentRequest struct {
 	ReplyMailboxID *int   `json:"reply_mailbox_id"`
 }
 
+// CreatePoolSegment splits a first-level public pool into a new organization
+// secondary list and binds both in a single transaction. Authorization is
+// two-tiered: a platform administrator may split a pool for any active
+// organization without being a member of it and without switching the current
+// workspace, while an organization manager may only split a pool for the
+// organization of the workspace it manages. Ordinary organization members and
+// non-members are rejected. The core layer re-verifies, while holding the
+// organization row lock, that the target organization is active and that a
+// non-platform-admin caller is an active member of it.
 func (a *App) CreatePoolSegment(c echo.Context) error {
-	if err := requirePoolAdministrator(c); err != nil {
-		return err
-	}
 	var req poolSegmentRequest
 	if err := c.Bind(&req); err != nil {
 		return err
 	}
 	u := auth.GetUser(c)
+	platformAdmin := u.IsPlatformAdmin()
 	if req.ReplyMailboxID != nil {
 		return echo.NewHTTPError(http.StatusForbidden, "reply mailbox must be configured in the organization workspace")
 	}
+	if !platformAdmin {
+		access, err := a.workspaceAccess(c)
+		if err != nil {
+			return err
+		}
+		if err := requireWritableWorkspace(access); err != nil {
+			return err
+		}
+		if !access.IsOrganization() || !access.IsOrganizationManager() {
+			return echo.NewHTTPError(http.StatusForbidden, "only a highest administrator or the target organization's manager may manage public pools")
+		}
+		if req.OrganizationID != int64(access.OrganizationID) {
+			return echo.NewHTTPError(http.StatusForbidden, "organization managers may only manage their own organization")
+		}
+	}
 	setAuditOrganizationID(c, int(req.OrganizationID))
-	out, err := a.core.CreatePoolSegment(req.PoolID, req.OrganizationID, req.Name, nil, u.ID, true)
+	out, err := a.core.CreatePoolSegment(req.PoolID, req.OrganizationID, req.Name, nil, u.ID, platformAdmin)
 	if err != nil {
 		return err
 	}

@@ -151,7 +151,7 @@
             </b-tooltip>
           </a>
 
-          <a v-if="props.row.type === 'pool' && isPlatformAdmin" href="#" @click.prevent="showPoolManager(props.row)"
+          <a v-if="props.row.type === 'pool' && canManagePool" href="#" @click.prevent="showPoolManager(props.row)"
             data-cy="btn-manage-pool" :aria-label="$t('customer_lists.poolManage')">
             <b-tooltip :label="$t('customer_lists.poolManage')" type="is-dark">
               <b-icon icon="database-cog-outline" size="is-small" />
@@ -442,6 +442,20 @@ export default Vue.extend({
 
     isPlatformAdmin() {
       return Number(this.profile && this.profile.userRole && this.profile.userRole.id) === 1;
+    },
+
+    // Organization admins split the primary pool inside their own
+    // organization, matching the workspace-scoped manager check used by
+    // Templates.vue. The personal workspace has no organization, so the entry
+    // stays highest-administrator only there.
+    isOrganizationManager() {
+      return this.workspace.organizationId > 0 && this.workspace.role === 'manager';
+    },
+
+    // Highest administrators manage any organization's pool; organization
+    // admins manage the one they are currently in.
+    canManagePool() {
+      return this.isPlatformAdmin || this.isOrganizationManager;
     },
 
     numSelectedLists() {

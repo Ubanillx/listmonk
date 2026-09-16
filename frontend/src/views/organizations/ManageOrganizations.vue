@@ -129,6 +129,12 @@
         </section>
       </b-tab-item>
 
+      <b-tab-item v-if="selectedOrganizationID" :label="$t('organizations.tabReplyMailboxes')" icon="email-multiple-outline">
+        <section class="wrap">
+          <reply-mailbox-settings :organization-id="Number(selectedOrganizationID)" />
+        </section>
+      </b-tab-item>
+
       <b-tab-item v-if="selectedOrganizationID" :label="$t('organizations.tabReplyForward')" icon="email-arrow-left-outline">
         <section class="wrap">
           <p class="has-text-grey mb-4">{{ $t('organizations.replyForwardHelp') }}</p>
@@ -239,9 +245,10 @@
 import Vue from 'vue';
 import { mapState } from 'vuex';
 import CopyText from '../../components/CopyText.vue';
+import ReplyMailboxSettings from '../../components/ReplyMailboxSettings.vue';
 
 export default Vue.extend({
-  components: { CopyText },
+  components: { CopyText, ReplyMailboxSettings },
 
   data() {
     return {

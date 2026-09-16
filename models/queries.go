@@ -149,6 +149,7 @@ type Queries struct {
 	CreateReplyMailbox       *sqlx.Stmt `query:"create-reply-mailbox"`
 	UpdateReplyMailbox       *sqlx.Stmt `query:"update-reply-mailbox"`
 	DisableReplyMailbox      *sqlx.Stmt `query:"disable-reply-mailbox"`
+	EnableReplyMailbox       *sqlx.Stmt `query:"enable-reply-mailbox"`
 	GetReplyAIMailboxes      *sqlx.Stmt `query:"get-reply-ai-mailboxes"`
 	GetReplyAIMailbox        *sqlx.Stmt `query:"get-reply-ai-mailbox"`
 	InsertReplyAIEvent       *sqlx.Stmt `query:"insert-reply-ai-event"`

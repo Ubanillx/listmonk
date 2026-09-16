@@ -265,6 +265,7 @@ var auditRoutes = map[string]auditRouteSpec{
 	"POST /api/profile/reply-mailboxes":                  {"reply_mailbox.created", "reply_mailbox", ""},
 	"PUT /api/profile/reply-mailboxes/:id":               {"reply_mailbox.updated", "reply_mailbox", "id"},
 	"DELETE /api/profile/reply-mailboxes/:id":            {"reply_mailbox.disabled", "reply_mailbox", "id"},
+	"PUT /api/profile/reply-mailboxes/:id/enable":        {"reply_mailbox.enabled", "reply_mailbox", "id"},
 	"POST /api/profile/reply-mailboxes/test":             {"reply_mailbox.tested", "reply_mailbox", ""},
 	"PUT /api/organizations/reply-forwarding/:id":        {"reply_forward_rule.updated", "reply_forward_rule", "id"},
 	"DELETE /api/organizations/reply-forwarding/:id":     {"reply_forward_rule.deleted", "reply_forward_rule", "id"},

@@ -66,7 +66,9 @@
 
     <personal-a-p-i-key-settings v-if="data.type === 'user'" />
 
-    <reply-mailbox-settings />
+    <!-- Personal reply mailboxes stay here only for the personal workspace.
+         Organization-scoped mailboxes are managed under Organizations. -->
+    <reply-mailbox-settings v-if="!workspace.organizationId" />
 
     <br /><br />
 
@@ -332,7 +334,7 @@ export default Vue.extend({
   },
 
   computed: {
-    ...mapState(['loading']),
+    ...mapState(['loading', 'workspace']),
   },
 
 });

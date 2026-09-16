@@ -91,9 +91,16 @@ describe('Public pools', function poolSuite() { // eslint-disable-line prefer-ar
     temporarySegmentListID = 0;
   });
 
-  it('hides first-level pool management from an organization user', () => {
+  it('lets an organization admin split the pool inside the current organization', () => {
     loginAs(Cypress.env('POOL_QA_USER') || 'wsqa_pool_manager');
-    cy.contains('a', 'wsqa-pool-primary').closest('tr').find('[data-cy=btn-manage-pool]').should('not.exist');
+    cy.contains('a', 'wsqa-pool-primary').closest('tr').find('[data-cy=btn-manage-pool]').click();
+    // The target organization is fixed to the caller's own workspace for an
+    // organization admin: the cross-organization selector is replaced by a
+    // read-only label showing that organization.
+    cy.get('[data-cy=pool-target-organization]').should('not.exist');
+    cy.get('[data-cy=pool-current-organization]').should('be.visible');
+    cy.get('[data-cy=pool-secondary-list-panel]').scrollIntoView().should('be.visible');
+    // Resolving an arbitrary organization's target stays highest-admin only.
     cy.request({
       url: `/api/pools/${poolID}/management-target?organization_id=1`,
       failOnStatusCode: false,

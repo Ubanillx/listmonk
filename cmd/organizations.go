@@ -238,9 +238,11 @@ func normalizeWorkspaceVisibility(access models.WorkspaceAccess, value string) (
 }
 
 // normalizeResourceVisibility additionally constrains the resource types that
-// can be published. CustomerLists and customers are always owned by one user. An
-// organization manager can inspect them, but ordinary members must never gain
-// access through a visibility flag.
+// can be published. Ordinary customer lists and customers are always owned by
+// one user. First-level public pools are the explicit exception: they are
+// global platform resources whose organization delivery permissions are stored
+// separately. An organization manager can inspect ordinary lists, but members
+// must never gain access through a visibility flag.
 func normalizeResourceVisibility(access models.WorkspaceAccess, resource, value string) (string, error) {
 	visibility, err := normalizeWorkspaceVisibility(access, value)
 	if err != nil {

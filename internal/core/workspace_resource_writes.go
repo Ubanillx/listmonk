@@ -278,6 +278,9 @@ func (c *Core) DeleteCampaignsInWorkspace(access models.WorkspaceAccess, ids []i
 
 func (c *Core) UpdateListInWorkspace(access models.WorkspaceAccess, id int, l models.CustomerList, visibility string) (models.CustomerList, error) {
 	err := c.withWorkspaceResourceMutation(access, resourceLists, []int{id}, func(tx *sqlx.Tx) error {
+		if l.Type == models.CustomerListTypePool {
+			visibility = models.ResourceVisibilityGlobal
+		}
 		if visibility != "" {
 			if err := validateResourceVisibility(resourceLists, visibility); err != nil {
 				return err
@@ -296,6 +299,9 @@ func (c *Core) UpdateListInWorkspace(access models.WorkspaceAccess, id int, l mo
 	})
 	if err != nil {
 		return models.CustomerList{}, err
+	}
+	if l.Type == models.CustomerListTypePool {
+		return c.GetList(id, "")
 	}
 	return c.GetWorkspaceList(access, id)
 }

@@ -95,6 +95,7 @@ type OrganizationInvite struct {
 // original_owner_user_id is retained for audit and transfer labels.
 type ResourceScope struct {
 	OrganizationID      null.Int  `db:"organization_id" json:"organization_id"`
+	OrganizationName    string    `db:"organization_name" json:"organization_name,omitempty"`
 	OwnerUserID         null.Int  `db:"owner_user_id" json:"owner_user_id"`
 	OriginalOwnerUserID null.Int  `db:"original_owner_user_id" json:"original_owner_user_id"`
 	Visibility          string    `db:"visibility" json:"visibility"`

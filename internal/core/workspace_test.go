@@ -436,4 +436,13 @@ func TestApplyWorkspaceScope(t *testing.T) {
 		organization.Visibility != models.ResourceVisibilityOrganization {
 		t.Fatalf("organization scope = %+v, want organization 7 owned by user 10", organization)
 	}
+
+	pool := ApplyPublicPoolScope(models.WorkspaceAccess{
+		Workspace: models.Workspace{OrganizationID: 7, PlatformAdmin: true},
+		UserID:    10,
+	})
+	if pool.OrganizationID.Valid || !pool.OwnerUserID.Valid || pool.OwnerUserID.Int != 10 ||
+		pool.Visibility != models.ResourceVisibilityGlobal {
+		t.Fatalf("public pool scope = %+v, want global pool owned by user 10", pool)
+	}
 }

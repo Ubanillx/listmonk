@@ -153,11 +153,22 @@ func (a *App) CreateList(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("customer_lists.invalidName"))
 	}
 
-	visibility, err := normalizeResourceVisibility(access, resourceLists, l.Visibility)
-	if err != nil {
-		return err
+	visibility := ""
+	if l.Type == models.CustomerListTypePool {
+		// A first-level public pool is platform-wide. Its organization-level
+		// delivery permissions are stored separately from the list scope.
+		visibility = models.ResourceVisibilityGlobal
+	} else {
+		visibility, err = normalizeResourceVisibility(access, resourceLists, l.Visibility)
+		if err != nil {
+			return err
+		}
 	}
-	out, err := a.core.CreateListInWorkspace(access, l, core.ApplyWorkspaceScope(access, visibility))
+	scope := core.ApplyWorkspaceScope(access, visibility)
+	if l.Type == models.CustomerListTypePool {
+		scope = core.ApplyPublicPoolScope(access)
+	}
+	out, err := a.core.CreateListInWorkspace(access, l, scope)
 	if err != nil {
 		return err
 	}
@@ -199,7 +210,11 @@ func (a *App) UpdateList(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("customer_lists.invalidName"))
 	}
 	visibility := ""
-	if l.Visibility != "" {
+	if l.Type == models.CustomerListTypePool {
+		// A first-level public pool is always platform-wide, regardless of the
+		// visibility value sent by the generic list form.
+		visibility = models.ResourceVisibilityGlobal
+	} else if l.Visibility != "" {
 		visibility, err = normalizeResourceVisibility(access, resourceLists, l.Visibility)
 		if err != nil {
 			return err

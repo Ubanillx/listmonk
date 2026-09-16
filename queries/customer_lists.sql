@@ -10,20 +10,27 @@ SELECT * FROM customer_lists WHERE (CASE WHEN $1 = '' THEN 1=1 ELSE type=$1::cus
 
 -- name: query-customer-lists
 WITH ls AS (
-    SELECT COUNT(*) OVER () AS total, customer_lists.* FROM customer_lists WHERE
+    SELECT COUNT(*) OVER () AS total, customer_lists.*,
+        COALESCE(o.name, '') AS organization_name,
+        COALESCE(u.username, '') AS owner_username,
+        COALESCE(u.name, '') AS owner_name
+    FROM customer_lists
+    LEFT JOIN organizations o ON o.id = customer_lists.organization_id
+    LEFT JOIN users u ON u.id = COALESCE(customer_lists.owner_user_id, customer_lists.original_owner_user_id)
+    WHERE
     CASE
-        WHEN $1 > 0 THEN id = $1
-        WHEN $2 != '' THEN uuid = $2::UUID
-        WHEN $3 != '' THEN (TO_TSVECTOR(name) @@ TO_TSQUERY ($3) OR name ILIKE $3)
+        WHEN $1 > 0 THEN customer_lists.id = $1
+        WHEN $2 != '' THEN customer_lists.uuid = $2::UUID
+        WHEN $3 != '' THEN (TO_TSVECTOR(customer_lists.name) @@ TO_TSQUERY ($3) OR customer_lists.name ILIKE $3)
         ELSE TRUE
     END
-    AND ($4 = '' OR type = $4::customer_list_type)
-    AND ($5 = '' OR optin = $5::customer_list_optin)
-    AND ($6 = '' OR status = $6::customer_list_status)
-    AND (CARDINALITY($7::VARCHAR(100)[]) = 0 OR $7 <@ tags)
+    AND ($4 = '' OR customer_lists.type = $4::customer_list_type)
+    AND ($5 = '' OR customer_lists.optin = $5::customer_list_optin)
+    AND ($6 = '' OR customer_lists.status = $6::customer_list_status)
+    AND (CARDINALITY($7::VARCHAR(100)[]) = 0 OR $7 <@ customer_lists.tags)
     AND CASE
         -- Optional customer_list IDs based on user permission.
-        WHEN $8 = TRUE THEN TRUE ELSE id = ANY($9::INT[])
+        WHEN $8 = TRUE THEN TRUE ELSE customer_lists.id = ANY($9::INT[])
     END
     OFFSET $10 LIMIT (CASE WHEN $11 < 1 THEN NULL ELSE $11 END)
 ),

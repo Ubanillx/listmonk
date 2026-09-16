@@ -158,8 +158,11 @@ func (c *Core) QueryAuthorizedPoolLists(access models.WorkspaceAccess) ([]models
 	if access.PlatformAdmin {
 		var out []models.CustomerList
 		err := c.db.Select(&out, `
-			SELECT l.*
+			SELECT l.*, COALESCE(o.name, '') AS organization_name,
+				COALESCE(u.username, '') AS owner_username, COALESCE(u.name, '') AS owner_name
 			FROM customer_lists l
+			LEFT JOIN organizations o ON o.id = l.organization_id
+			LEFT JOIN users u ON u.id = COALESCE(l.owner_user_id, l.original_owner_user_id)
 			WHERE l.type IN ('pool','pool_segment') AND l.status='active'
 			ORDER BY l.name, l.id`)
 		for i := range out {
@@ -172,8 +175,11 @@ func (c *Core) QueryAuthorizedPoolLists(access models.WorkspaceAccess) ([]models
 	}
 	var out []models.CustomerList
 	err := c.db.Select(&out, `
-		SELECT l.*
+		SELECT l.*, COALESCE(o.name, '') AS organization_name,
+			COALESCE(u.username, '') AS owner_username, COALESCE(u.name, '') AS owner_name
 		FROM customer_lists l
+		LEFT JOIN organizations o ON o.id = l.organization_id
+		LEFT JOIN users u ON u.id = COALESCE(l.owner_user_id, l.original_owner_user_id)
 		WHERE l.status='active' AND (
 			(l.type='pool' AND (EXISTS (
 				SELECT 1 FROM pool_organization_permissions p

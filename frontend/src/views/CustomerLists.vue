@@ -98,9 +98,9 @@
         </div>
       </b-table-column>
 
-      <b-table-column v-slot="props" field="ownerUsername" :label="$t('shared.owner')">
+      <b-table-column v-slot="props" field="ownerUsername" :label="$t('shared.ownerScope')">
         {{ ownerLabel(props.row) }}
-        <b-tag size="is-small" class="is-light">{{ visibilityLabel(props.row.visibility) }}</b-tag>
+        <b-tag size="is-small" class="is-light">{{ visibilityLabel(props.row.visibility, props.row.type) }}</b-tag>
         <b-tag v-if="transferPendingAt(props.row)" size="is-small" type="is-warning" class="is-light">
           {{ $t('shared.transferPending', { date: $utils.niceDate(transferPendingAt(props.row), true) }) }}
         </b-tag>
@@ -401,13 +401,20 @@ export default Vue.extend({
     },
 
     ownerLabel(resource) {
+      if (resource.type === 'pool_segment') {
+        return resource.organizationName || resource.organization_name || '-';
+      }
       return resource.ownerName || resource.ownerUsername || '-';
     },
 
-    visibilityLabel(visibility) {
+    visibilityLabel(visibility, type) {
+      if (type === 'pool') {
+        return this.$t('customer_lists.visibility.globalPool');
+      }
       return {
         private: this.$t('visibility.private'),
         organization: this.$t('visibility.organization'),
+        global: this.$t('visibility.global'),
       }[visibility] || this.$t('visibility.private');
     },
 

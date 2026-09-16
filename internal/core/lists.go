@@ -221,6 +221,9 @@ func (c *Core) CreateListInWorkspace(access models.WorkspaceAccess, l models.Cus
 	if err != nil {
 		return models.CustomerList{}, err
 	}
+	if l.Type == models.CustomerListTypePool {
+		return c.GetList(newID, "")
+	}
 	return c.GetWorkspaceList(access, newID)
 }
 

@@ -37,7 +37,8 @@ func (c *Core) GetResourceScope(resource string, id int) (models.ResourceScope, 
 	}
 	var out models.ResourceScope
 	q := fmt.Sprintf(`
-		SELECT r.organization_id, r.owner_user_id, r.original_owner_user_id, r.visibility, r.transfer_pending_at,
+		SELECT r.organization_id, COALESCE(o.name, '') AS organization_name,
+			r.owner_user_id, r.original_owner_user_id, r.visibility, r.transfer_pending_at,
 			(r.organization_id IS NOT NULL AND COALESCE(o.status, 'archived') <> 'active') AS organization_archived,
 			COALESCE(u.username, '') AS owner_username, COALESCE(u.name, '') AS owner_name
 		FROM %s r
@@ -373,6 +374,18 @@ func ApplyWorkspaceScope(access models.WorkspaceAccess, requestedVisibility stri
 		OwnerUserID:         nullInt(access.UserID),
 		OriginalOwnerUserID: nullInt(access.UserID),
 		Visibility:          visibility,
+	}
+}
+
+// ApplyPublicPoolScope stamps a first-level public pool with the platform-wide
+// scope. Organization delivery permissions are stored separately in
+// pool_organization_permissions and must not be represented as the pool's
+// resource organization.
+func ApplyPublicPoolScope(access models.WorkspaceAccess) models.ResourceScope {
+	return models.ResourceScope{
+		OwnerUserID:         nullInt(access.UserID),
+		OriginalOwnerUserID: nullInt(access.UserID),
+		Visibility:          models.ResourceVisibilityGlobal,
 	}
 }
 

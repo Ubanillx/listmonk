@@ -148,9 +148,11 @@ func (c *Core) QueryWorkspaceLists(access models.WorkspaceAccess, search, typ, o
 	stmt := fmt.Sprintf(`
 		WITH ls AS (
 			SELECT COUNT(*) OVER() AS total, l.*,
+				COALESCE(o.name, '') AS organization_name,
 				COALESCE(u.username, '') AS owner_username,
 				COALESCE(u.name, '') AS owner_name
 			FROM customer_lists l
+			LEFT JOIN organizations o ON o.id = l.organization_id
 			LEFT JOIN users u ON u.id = COALESCE(l.owner_user_id, l.original_owner_user_id)
 			WHERE (%s)
 				AND ($%d = '' OR l.name ILIKE $%d)
@@ -518,9 +520,11 @@ func (c *Core) GetWorkspaceList(access models.WorkspaceAccess, id int) (models.C
 		)
 		SELECT l.*, COALESCE(u.username, '') AS owner_username,
 			COALESCE(u.name, '') AS owner_name,
+			COALESCE(o.name, '') AS organization_name,
 			COALESCE(s.customer_statuses, '{}') AS customer_statuses,
 			COALESCE(s.customer_count, 0) AS customer_count
 		FROM customer_lists l
+		LEFT JOIN organizations o ON o.id = l.organization_id
 		LEFT JOIN users u ON u.id = COALESCE(l.owner_user_id, l.original_owner_user_id)
 		LEFT JOIN statuses s ON s.customer_list_id = l.id
 		WHERE l.id = $%d AND (%s)

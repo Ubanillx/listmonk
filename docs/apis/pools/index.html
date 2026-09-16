@@ -1782,7 +1782,10 @@ the owner fields for audit purposes.</p>
   Only the highest administrator may use this branch. <code>分配部门</code> must match an
   active <code>organizations.name</code>; unknown or archived departments are rejected
   row-by-row and are not written. A valid value is stored on the pool contact
-  and does not create or bind an organization.</li>
+  and, when that organization already has a secondary list for the pool, also
+  creates the corresponding secondary-list membership. Creating the secondary
+  list later backfills existing matching contacts; it never creates an
+  organization.</li>
 <li><code>POST /api/pools/import</code> — legacy ordinary-list-to-pool compatibility route;
   new product flows use the unified customer import endpoint.</li>
 <li><code>GET /api/pools/:id/management-target?organization_id=...</code> — highest-admin-only target context: the target organization's existing segment state.</li>
@@ -1820,9 +1823,11 @@ same split for their own organization: the request must carry that organization'
 <code>organization_id</code>, and any other organization is rejected with <code>403</code>. Ordinary
 organization members cannot create lists.</p>
 <p>Each first-level pool can have one bound secondary list per organization. The
-dialog does not import contacts or allocate rows. Import the four-column pool
-template from the unified <strong>Customer import</strong> page, then use this dialog only
-to select a target organization and create/bind its secondary list.
+dialog does not import contact files. Import the four-column pool template from
+the unified <strong>Customer import</strong> page; rows whose <code>分配部门</code> matches an existing
+secondary-list organization are allocated during import. If the secondary list
+is created afterwards, the create-and-bind transaction backfills those rows. The
+dialog is used to select a target organization and create/bind its secondary list.
 The customer-count link for a first-level or secondary list opens the dedicated
 pool contact view; it does not use the ordinary customer table. That view keeps
 the pool data model separate and applies the same masked DTO policy as the API.

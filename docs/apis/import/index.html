@@ -2193,7 +2193,10 @@ allocation department. The Chinese headers in the supplied workbook—<code>客�
 extra template columns are ignored. The allocation department must match an
 active organization name in the system; an unknown or archived department is
 reported as an invalid row and is not written to the pool. A valid department
-is saved on the pool contact but is not interpreted as an organization binding.
+is saved on the pool contact. If the matching organization already has a
+secondary list for the selected pool, the import also creates the contact's
+secondary-list membership. Creating that secondary list later backfills
+existing matching contacts; it does not create an organization.
 This branch is synchronous, does not support blocklist, overwrite, or ZIP
 uploads, and is restricted to the highest administrator.</p>
 <h5 id="parameters">Parameters<a class="headerlink" href="#parameters" title="Permanent link">&para;</a></h5>

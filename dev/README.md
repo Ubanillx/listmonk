@@ -72,14 +72,14 @@ Running this start your local development stack.
 make dev-docker
 ```
 
-Visit `http://localhost:8181` on your browser.
+Visit `http://localhost:8181` on your browser (the Vite dev server for the admin UI).
 
 The development suite exposes these local endpoints:
 
 | Service | URL |
 | --- | --- |
-| Admin UI | `http://localhost:8181` |
-| Backend | `http://localhost:9173` |
+| Admin UI (Vite dev server, hot reload) | `http://localhost:8181` |
+| Backend (also serves the built admin UI) | `http://localhost:9173` |
 | Adminer | `http://localhost:8171` |
 | MailHog UI | `http://localhost:8265` |
 | PostgreSQL | `localhost:5437` |
@@ -104,6 +104,14 @@ deleted. It also checks the `campaign_pool_recipients`
 snapshot directly through Docker PostgreSQL; set `POOL_QA_DB_CONTAINER`,
 `POOL_QA_DB_USER`, and `POOL_QA_DB_NAME` when the development database uses
 non-default names.
+
+The verifier signs in both as the fixture manager and as the highest
+administrator, so both credentials must work: `POOL_QA_PASSWORD` (default
+`Test@1234`) for the `wsqa_*` fixture users and `POOL_QA_SUPER_PASSWORD`
+(default `Test@1234`) for the `root` account. Both sessions are probed before
+the assertions, and the run aborts with guidance when either login fails.
+`LISTMONK_QA_BASE_URL` overrides the default base URL, and `POOL_QA_POOL_ID` /
+`POOL_QA_SEGMENT_ID` override the name-based fixture lookup.
 
 To exercise actual account-owned SMTP delivery, run the MailHog verifier after
 the same fixture. It requires the fixture manager to have no personal SMTP
@@ -142,8 +150,34 @@ To stop containers while preserving the database volume, run
 
 ### See local changes in action
 
-- Backend: Anytime you do a change to the Go app, it needs to be compiled. Just
-  run `make dev-docker` again and that should automatically handle it for you.
-- Frontend: Anytime you change the frontend code, you don't need to do anything.
-  Since `yarn` is watching for all the changes and we have mounted the code
-  inside the docker container, `yarn` server automatically restarts.
+The containers mount your working tree, so a local change never needs a
+`docker build`. What to do depends on which component you changed:
+
+- **Backend (Go, `cmd/`, `internal/`, `models/`, `queries/`, `schema.sql`,
+  `internal/migrations/`)**: restart the backend container to recompile it and
+  re-apply install and upgrades.
+
+  ```bash
+  docker restart dev-backend-1
+  ```
+
+  `dev/run-backend.sh` runs `go run ./cmd` from the mounted tree and re-runs the
+  idempotent install plus pending upgrades on every start, so schema and
+  migration changes are applied by the same restart. Verify with
+  `docker logs --tail 30 dev-backend-1` (expect `no upgrades to run` or
+  `upgrade complete`) and by loading `http://localhost:9173`.
+
+- **Frontend on the Vite dev server (`http://localhost:8181`)**: nothing to do.
+  `yarn` watches the mounted code and reloads it.
+
+- **Frontend on the admin UI served by the backend (`http://localhost:9173`)**:
+  the backend serves the pre-built assets in `frontend/dist`, which do not update
+  by themselves. Rebuild and restart to see frontend changes there:
+
+  ```bash
+  make build-frontend
+  docker restart dev-backend-1
+  ```
+
+- **Email editor (`frontend/email-builder/`)**: `make build-email-builder`
+  rebuilds the editor bundle that the admin UI loads.

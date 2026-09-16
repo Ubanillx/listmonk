@@ -56,6 +56,13 @@ $root = LoginUser 'root' $superPassword
 $manager = LoginUser 'wsqa_pool_manager'
 $otherOrg = LoginUser 'wsqa_multi'
 
+# A failed login leaves a session-less cookie jar, which would otherwise surface
+# as a confusing 403 in the assertions below. Probe both sessions up front.
+$managerProbe = Api 'GET' "/api/pools/$poolID/segments" $manager 1 $null
+if ($managerProbe.Status -ne 200) { throw "wsqa_pool_manager session is not authenticated (HTTP $($managerProbe.Status)); load dev/pools_e2e_seed.sql into the development database." }
+$rootProbe = Api 'GET' '/api/settings' $root 1 $null
+if ($rootProbe.Status -ne 200) { throw "highest-administrator session is not authenticated (HTTP $($rootProbe.Status)); set POOL_QA_SUPER_PASSWORD to the password of the 'root' account." }
+
 $contacts = Api 'GET' "/api/pools/$poolID/contacts" $root 1 $null
 Check 'highest administrator can read pool contacts' ($contacts.Status -eq 200)
 Check 'highest administrator sees source email' ($contacts.Raw.Contains('alpha-pool@example.test'))
@@ -78,18 +85,30 @@ Check 'organization without pool grant receives no contacts' ($otherRead.Status 
 $otherWrite = Api 'POST' '/api/pools/segments/members' $otherOrg 2 ([pscustomobject]@{ segment_id = $segmentID; contact_id = $removableContactID })
 Check 'cross-organization segment write is denied' ($otherWrite.Status -eq 403)
 
-# Remove and restore one member. The primary pool row remains present and is
-# annotated for the source organization; restore clears only that annotation.
-$restore = Api 'PUT' '/api/pools/segments/members' $manager 1 ([pscustomobject]@{ segment_id = $segmentID; contact_id = $removableContactID })
+# Contact maintenance is highest-administrator-only (see docs/ARCHITECTURE.md,
+# "一级公海与组织二级列表"): an organization manager can create and bind its
+# secondary list and maintain its reply mailbox, but every contact write is
+# rejected for it. The assertions below lock both sides of that boundary.
+$managerAssign = Api 'POST' '/api/pools/segments/members' $manager 1 ([pscustomobject]@{ segment_id = $segmentID; contact_id = $removableContactID })
+Check 'organization manager cannot assign pool contacts' ($managerAssign.Status -eq 403)
+$managerRemove = Api 'DELETE' '/api/pool-segments/members' $manager 1 ([pscustomobject]@{ segment_id = $segmentID; contact_id = $removableContactID; reason = 'e2e' })
+Check 'organization manager cannot remove pool contacts' ($managerRemove.Status -eq 403)
+$managerRestore = Api 'PUT' '/api/pools/segments/members' $manager 1 ([pscustomobject]@{ segment_id = $segmentID; contact_id = $removableContactID })
+Check 'organization manager cannot restore pool contacts' ($managerRestore.Status -eq 403)
+
+# The highest administrator performs the logical remove and restore. The primary
+# pool row remains present and is annotated for the source organization; restore
+# clears only that annotation. The manager keeps read access to its own view.
+$restore = Api 'PUT' '/api/pools/segments/members' $root 1 ([pscustomobject]@{ segment_id = $segmentID; contact_id = $removableContactID })
 Check 'fixture starts with restored member' ($restore.Status -eq 200)
-$remove = Api 'DELETE' '/api/pools/segments/members' $manager 1 ([pscustomobject]@{ segment_id = $segmentID; contact_id = $removableContactID; reason = 'e2e' })
-Check 'organization manager can logically remove member' ($remove.Status -eq 200)
+$remove = Api 'DELETE' '/api/pools/segments/members' $root 1 ([pscustomobject]@{ segment_id = $segmentID; contact_id = $removableContactID; reason = 'e2e' })
+Check 'highest administrator can logically remove member' ($remove.Status -eq 200)
 $marked = Api 'GET' "/api/pools/$poolID/contacts" $manager 1 $null
 $markedRow = @($marked.Json.data | Where-Object { $_.id -eq $removableContactID })[0]
 Check 'primary pool marks organization removal' ($markedRow.excluded -eq $true -and $markedRow.exclusion_reason -eq 'e2e')
-$restore = Api 'PUT' '/api/pools/segments/members' $manager 1 ([pscustomobject]@{ segment_id = $segmentID; contact_id = $removableContactID })
-Check 'organization manager can restore member' ($restore.Status -eq 200)
-$invalidRemove = Api 'DELETE' '/api/pools/segments/members' $manager 1 ([pscustomobject]@{ segment_id = $segmentID; contact_id = 999999; reason = 'e2e' })
+$restore = Api 'PUT' '/api/pools/segments/members' $root 1 ([pscustomobject]@{ segment_id = $segmentID; contact_id = $removableContactID })
+Check 'highest administrator can restore member' ($restore.Status -eq 200)
+$invalidRemove = Api 'DELETE' '/api/pools/segments/members' $root 1 ([pscustomobject]@{ segment_id = $segmentID; contact_id = 999999; reason = 'e2e' })
 Check 'unassigned contact cannot be logically removed' ($invalidRemove.Status -eq 400)
 
 # A first-level audience can be selected by an organization with delivery

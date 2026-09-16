@@ -83,6 +83,144 @@ func (c *Core) GetOrganization(id int) (models.Organization, error) {
 	return out, nil
 }
 
+// CreateOrganizationWithMembers provisions an organization and its initial
+// membership in one transaction. The caller is recorded as the creator, but
+// does not have to be a member; platform administrators may provision a
+// tenant for another administrator without switching workspaces.
+func (c *Core) CreateOrganizationWithMembers(createdBy int, name, description string, assignments []models.OrganizationMemberAssignment) (models.Organization, error) {
+	name = strings.TrimSpace(name)
+	description = strings.TrimSpace(description)
+	if name == "" {
+		return models.Organization{}, echo.NewHTTPError(http.StatusBadRequest, "organization name is required")
+	}
+	if len(assignments) == 0 {
+		return models.Organization{}, echo.NewHTTPError(http.StatusBadRequest, "at least one organization manager is required")
+	}
+
+	assignments, err := normalizeOrganizationMemberAssignments(assignments)
+	if err != nil {
+		return models.Organization{}, err
+	}
+	if !hasOrganizationManager(assignments) {
+		return models.Organization{}, echo.NewHTTPError(http.StatusBadRequest, "at least one organization manager is required")
+	}
+
+	tx, err := c.db.BeginTxx(context.Background(), nil)
+	if err != nil {
+		return models.Organization{}, c.organizationDBErr("starting organization creation", err)
+	}
+	defer tx.Rollback()
+
+	var orgID int
+	if err := tx.Get(&orgID, `
+		INSERT INTO organizations (name, description, created_by_user_id)
+		VALUES ($1, $2, $3) RETURNING id`, name, description, createdBy); err != nil {
+		if conflict := organizationNameConflictError(err); conflict != nil {
+			return models.Organization{}, conflict
+		}
+		return models.Organization{}, c.organizationDBErr("creating organization", err)
+	}
+
+	if err := c.insertOrganizationMemberAssignments(tx, orgID, assignments); err != nil {
+		return models.Organization{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return models.Organization{}, c.organizationDBErr("committing organization creation", err)
+	}
+	return c.GetOrganization(orgID)
+}
+
+// AddOrganizationMembersBulk restores or creates many memberships atomically.
+// Existing active memberships are updated to the imported role; former
+// memberships are restored. The final state must always retain a manager.
+func (c *Core) AddOrganizationMembersBulk(orgID int, assignments []models.OrganizationMemberAssignment) (int, error) {
+	assignments, err := normalizeOrganizationMemberAssignments(assignments)
+	if err != nil {
+		return 0, err
+	}
+	if len(assignments) == 0 {
+		return 0, echo.NewHTTPError(http.StatusBadRequest, "organization member import is empty")
+	}
+
+	tx, err := c.db.BeginTxx(context.Background(), nil)
+	if err != nil {
+		return 0, c.organizationDBErr("starting organization member import", err)
+	}
+	defer tx.Rollback()
+	if err := c.lockActiveOrganization(tx, orgID); err != nil {
+		return 0, err
+	}
+
+	if err := c.insertOrganizationMemberAssignments(tx, orgID, assignments); err != nil {
+		return 0, err
+	}
+	var managerCount int
+	if err := tx.Get(&managerCount, `
+		SELECT COUNT(*) FROM organization_members
+		WHERE organization_id = $1 AND removed_at IS NULL AND role = $2`,
+		orgID, models.OrganizationMemberRoleManager); err != nil {
+		return 0, c.organizationDBErr("checking organization managers", err)
+	}
+	if managerCount == 0 {
+		return 0, ErrLastOrganizationManager
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, c.organizationDBErr("committing organization member import", err)
+	}
+	return len(assignments), nil
+}
+
+func normalizeOrganizationMemberAssignments(assignments []models.OrganizationMemberAssignment) ([]models.OrganizationMemberAssignment, error) {
+	seen := make(map[int]struct{}, len(assignments))
+	out := make([]models.OrganizationMemberAssignment, 0, len(assignments))
+	for _, assignment := range assignments {
+		if assignment.UserID < 1 {
+			return nil, echo.NewHTTPError(http.StatusBadRequest, "organization member user id is required")
+		}
+		if assignment.Role == "" {
+			assignment.Role = models.OrganizationMemberRoleMember
+		}
+		if assignment.Role != models.OrganizationMemberRoleMember && assignment.Role != models.OrganizationMemberRoleManager {
+			return nil, echo.NewHTTPError(http.StatusBadRequest, "invalid organization member role")
+		}
+		if _, ok := seen[assignment.UserID]; ok {
+			return nil, echo.NewHTTPError(http.StatusBadRequest, "organization member is listed more than once")
+		}
+		seen[assignment.UserID] = struct{}{}
+		out = append(out, assignment)
+	}
+	return out, nil
+}
+
+func hasOrganizationManager(assignments []models.OrganizationMemberAssignment) bool {
+	for _, assignment := range assignments {
+		if assignment.Role == models.OrganizationMemberRoleManager {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Core) insertOrganizationMemberAssignments(tx *sqlx.Tx, orgID int, assignments []models.OrganizationMemberAssignment) error {
+	for _, assignment := range assignments {
+		var ignored int
+		err := tx.Get(&ignored, `
+			INSERT INTO organization_members (organization_id, user_id, role)
+			SELECT $1, u.id, $3 FROM users u WHERE u.id = $2
+			ON CONFLICT (organization_id, user_id) DO UPDATE
+			SET role = EXCLUDED.role, joined_at = NOW(), removed_at = NULL,
+				removed_by_user_id = NULL
+			RETURNING user_id`, orgID, assignment.UserID, assignment.Role)
+		if errors.Is(err, sql.ErrNoRows) {
+			return echo.NewHTTPError(http.StatusNotFound, "organization member user not found")
+		}
+		if err != nil {
+			return c.organizationDBErr("adding organization member assignment", err)
+		}
+	}
+	return nil
+}
+
 // GetOrganizationMembership returns an active membership only.
 func (c *Core) GetOrganizationMembership(orgID int, userID int) (models.OrganizationMember, error) {
 	var out models.OrganizationMember

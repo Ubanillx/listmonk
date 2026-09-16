@@ -34,6 +34,19 @@ type organizationRequestInput struct {
 	Description string `json:"description"`
 }
 
+type organizationCreateMemberInput struct {
+	UserID int    `json:"user_id"`
+	Role   string `json:"role"`
+}
+
+type organizationCreateInput struct {
+	Name          string                          `json:"name"`
+	Description   string                          `json:"description"`
+	ManagerUserID int                             `json:"manager_user_id"`
+	MemberUserIDs []int                           `json:"member_user_ids"`
+	Members       []organizationCreateMemberInput `json:"members"`
+}
+
 type organizationReviewInput struct {
 	Approve bool   `json:"approve"`
 	Note    string `json:"note"`
@@ -43,6 +56,29 @@ type organizationMemberInput struct {
 	UserID  int    `json:"user_id"`
 	Account string `json:"account"`
 	Role    string `json:"role"`
+}
+
+type organizationMemberBulkRow struct {
+	Account  string `json:"account"`
+	Username string `json:"username"`
+	UserID   int    `json:"user_id"`
+	Role     string `json:"role"`
+}
+
+type organizationMemberBulkRequest struct {
+	Members []organizationMemberBulkRow `json:"members"`
+	Users   []organizationMemberBulkRow `json:"users"`
+}
+
+type organizationMemberBulkIssue struct {
+	Row   int    `json:"row"`
+	Field string `json:"field"`
+	Code  string `json:"code"`
+}
+
+type organizationMemberBulkResponse struct {
+	Added  int                           `json:"added"`
+	Errors []organizationMemberBulkIssue `json:"errors"`
 }
 
 type organizationInviteInput struct {
@@ -335,6 +371,138 @@ func (a *App) GetOrganizations(c echo.Context) error {
 		return err
 	}
 	return c.JSON(http.StatusOK, okResp{out})
+}
+
+// CreateOrganization provisions an organization directly from the platform
+// management screen. The caller chooses the first organization manager and
+// may add initial members in the same transaction.
+func (a *App) CreateOrganization(c echo.Context) error {
+	if err := a.requirePlatformOrganizationAdmin(c); err != nil {
+		return err
+	}
+	var req organizationCreateInput
+	if err := c.Bind(&req); err != nil {
+		return err
+	}
+	req.Name = strings.TrimSpace(req.Name)
+	if !strHasLen(req.Name, 2, stdInputMaxLen) {
+		return echo.NewHTTPError(http.StatusBadRequest, "organization name must be between 2 and 2000 characters")
+	}
+	if len(req.Description) > stdInputMaxLen {
+		return echo.NewHTTPError(http.StatusBadRequest, "organization description is too long")
+	}
+	if req.ManagerUserID < 1 {
+		return echo.NewHTTPError(http.StatusBadRequest, "organization manager is required")
+	}
+
+	roles := make(map[int]string, len(req.MemberUserIDs)+len(req.Members)+1)
+	roles[req.ManagerUserID] = models.OrganizationMemberRoleManager
+	for _, userID := range req.MemberUserIDs {
+		if userID < 1 {
+			return echo.NewHTTPError(http.StatusBadRequest, "organization member user id is required")
+		}
+		if userID != req.ManagerUserID {
+			roles[userID] = models.OrganizationMemberRoleMember
+		}
+	}
+	for _, member := range req.Members {
+		if member.UserID < 1 {
+			return echo.NewHTTPError(http.StatusBadRequest, "organization member user id is required")
+		}
+		if member.UserID == req.ManagerUserID {
+			continue
+		}
+		roles[member.UserID] = member.Role
+	}
+	assignments := make([]models.OrganizationMemberAssignment, 0, len(roles))
+	for userID, role := range roles {
+		assignments = append(assignments, models.OrganizationMemberAssignment{UserID: userID, Role: role})
+	}
+
+	out, err := a.core.CreateOrganizationWithMembers(auth.GetUser(c).ID, req.Name, req.Description, assignments)
+	if err != nil {
+		return err
+	}
+	setAuditOrganizationID(c, out.ID)
+	setAuditObjectID(c, strconv.Itoa(out.ID))
+	setAuditMetadata(c, map[string]any{"member_count": len(assignments)})
+	return c.JSON(http.StatusCreated, okResp{out})
+}
+
+// AddOrganizationMembersBulk imports existing platform accounts into a
+// selected organization. It resolves usernames/e-mail addresses server-side
+// and commits the complete batch only after every row is valid.
+func (a *App) AddOrganizationMembersBulk(c echo.Context) error {
+	if err := a.requirePlatformOrganizationAdmin(c); err != nil {
+		return err
+	}
+	orgID, err := strconv.Atoi(c.Param("id"))
+	if err != nil || orgID < 1 {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid organization id")
+	}
+	var req organizationMemberBulkRequest
+	if err := c.Bind(&req); err != nil {
+		return err
+	}
+	rows := req.Members
+	if len(rows) == 0 {
+		rows = req.Users
+	}
+	if len(rows) == 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, "organization member import is empty")
+	}
+
+	assignments := make([]models.OrganizationMemberAssignment, 0, len(rows))
+	issues := make([]organizationMemberBulkIssue, 0)
+	seen := make(map[int]struct{}, len(rows))
+	for i, row := range rows {
+		rowNumber := i + 2
+		role := strings.ToLower(strings.TrimSpace(row.Role))
+		if role == "" {
+			role = models.OrganizationMemberRoleMember
+		}
+		if role != models.OrganizationMemberRoleMember && role != models.OrganizationMemberRoleManager {
+			issues = append(issues, organizationMemberBulkIssue{Row: rowNumber, Field: "role", Code: "invalid_role"})
+			continue
+		}
+
+		account := strings.TrimSpace(row.Account)
+		if account == "" {
+			account = strings.TrimSpace(row.Username)
+		}
+		userID := row.UserID
+		if userID < 1 && account == "" {
+			issues = append(issues, organizationMemberBulkIssue{Row: rowNumber, Field: "account", Code: "missing_account"})
+			continue
+		}
+		if userID < 1 {
+			userID, err = a.core.FindUserIDByAccount(account)
+			if err != nil {
+				if httpErr, ok := err.(*echo.HTTPError); ok && httpErr.Code == http.StatusNotFound {
+					issues = append(issues, organizationMemberBulkIssue{Row: rowNumber, Field: "account", Code: "account_not_found"})
+					continue
+				}
+				return err
+			}
+		}
+		if _, ok := seen[userID]; ok {
+			issues = append(issues, organizationMemberBulkIssue{Row: rowNumber, Field: "account", Code: "duplicate_account"})
+			continue
+		}
+		seen[userID] = struct{}{}
+		assignments = append(assignments, models.OrganizationMemberAssignment{UserID: userID, Role: role})
+	}
+	if len(issues) > 0 {
+		return c.JSON(http.StatusOK, okResp{organizationMemberBulkResponse{Errors: issues}})
+	}
+
+	added, err := a.core.AddOrganizationMembersBulk(orgID, assignments)
+	if err != nil {
+		return err
+	}
+	setAuditOrganizationID(c, orgID)
+	setAuditMetadata(c, map[string]any{"added_count": added})
+	return c.JSON(http.StatusOK, okResp{organizationMemberBulkResponse{Added: added, Errors: []organizationMemberBulkIssue{}}})
 }
 
 func (a *App) GetCurrentWorkspace(c echo.Context) error {

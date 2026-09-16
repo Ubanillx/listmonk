@@ -298,6 +298,8 @@ var auditRoutes = map[string]auditRouteSpec{
 	"POST /api/organizations/join":                             {"organization.joined", "organization", ""},
 	"POST /api/organizations/leave":                            {"organization.left", "organization", ""},
 	"POST /api/organizations/members":                          {"organization.member_added", "organization_member", ""},
+	"POST /api/organizations":                                  {"organization.created", "organization", ""},
+	"POST /api/organizations/:id/members/bulk":                 {"organization.members_bulk_added", "organization", "id"},
 	"PUT /api/organizations/members/:user_id":                  {"organization.member_updated", "organization_member", "user_id"},
 	"DELETE /api/organizations/members/:user_id":               {"organization.member_removed", "organization_member", "user_id"},
 	"POST /api/organizations/resources/migrate":                {"organization.resources_migrated", "organization", ""},

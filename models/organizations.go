@@ -23,6 +23,14 @@ const (
 	ResourceVisibilityGlobal       = "global"
 )
 
+// OrganizationMemberAssignment is used by platform-level organization
+// provisioning and bulk membership imports. The global user role remains
+// independent from this organization-scoped role.
+type OrganizationMemberAssignment struct {
+	UserID int    `json:"user_id"`
+	Role   string `json:"role"`
+}
+
 // Organization is a tenant that can contain member-owned mailing resources.
 // An archived organization remains available to platform administrators for
 // resource transfers, but cannot be selected as an active workspace.

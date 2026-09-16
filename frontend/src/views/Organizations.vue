@@ -241,7 +241,22 @@
     </div>
 
     <section v-if="isPlatformAdmin" class="mt-6">
-      <h2 class="title is-5"><b-icon icon="file-document-edit-outline" size="is-small" />{{ $t('organizations.creationRequests') }}</h2>
+      <div class="level mb-4">
+        <div class="level-left">
+          <h2 class="title is-5 mb-0"><b-icon icon="shield-account-outline" size="is-small" />{{ $t('organizations.tabPlatform') }}</h2>
+        </div>
+        <div class="level-right">
+          <b-button type="is-primary" icon-left="office-building-plus" @click="openPlatformCreate">
+            {{ $t('organizations.directCreate') }}
+          </b-button>
+        </div>
+      </div>
+
+      <b-message type="is-info" :closable="false" class="mb-5">
+        {{ $t('organizations.platformHelp') }}
+      </b-message>
+
+      <h2 class="title is-6"><b-icon icon="file-document-edit-outline" size="is-small" />{{ $t('organizations.creationRequests') }}</h2>
       <b-table :data="requests" :mobile-cards="false">
         <b-table-column v-slot="props" field="requestedName" :label="$t('organizations.columnOrg')">{{ props.row.requestedName }}</b-table-column>
         <b-table-column v-slot="props" field="requestedByName" :label="$t('organizations.requester')">{{ props.row.requestedByName }}</b-table-column>
@@ -269,6 +284,10 @@
             @click="switchWorkspace(props.row)">
             {{ $t('organizations.enterOrg') }}
           </b-button>
+          <b-button v-if="props.row.status !== 'archived'" size="is-small" type="is-text" icon-left="account-group-outline"
+            @click="openPlatformManage(props.row)">
+            {{ $t('organizations.manageMembers') }}
+          </b-button>
           <b-button v-if="props.row.status !== 'archived'" size="is-small" type="is-text" icon-left="archive-outline"
             @click="archivePlatformOrganization(props.row)">
 {{ $t('organizations.archive') }}
@@ -284,6 +303,103 @@
         </b-table-column>
       </b-table>
     </section>
+
+    <b-modal scroll="keep" :aria-modal="true" :active.sync="isPlatformCreateVisible" :width="680">
+      <form class="modal-card content" style="width: auto" @submit.prevent="createPlatformOrganization">
+        <header class="modal-card-head"><h4><b-icon icon="office-building-plus" size="is-small" />{{ $t('organizations.directCreateTitle') }}</h4></header>
+        <section class="modal-card-body">
+          <b-field :label="$t('organizations.name')" label-position="on-border">
+            <b-input v-model.trim="platformCreateForm.name" maxlength="200" required />
+          </b-field>
+          <b-field :label="$t('organizations.description')" label-position="on-border">
+            <b-input v-model.trim="platformCreateForm.description" type="textarea" maxlength="2000" />
+          </b-field>
+          <b-field :label="$t('organizations.managerAccount')" label-position="on-border">
+            <b-select v-model.number="platformCreateForm.managerUserID" expanded required>
+              <option :value="null">{{ $t('organizations.selectManager') }}</option>
+              <option v-for="user in platformUsers" :key="user.id" :value="user.id">
+                {{ user.username }}<span v-if="user.name"> — {{ user.name }}</span>
+              </option>
+            </b-select>
+          </b-field>
+          <b-field :label="$t('organizations.initialMembers')" label-position="on-border">
+            <b-select v-model="platformCreateForm.memberUserIDs" multiple expanded>
+              <option v-for="user in platformUsers" :key="user.id" :value="user.id">
+                {{ user.username }}<span v-if="user.name"> — {{ user.name }}</span>
+              </option>
+            </b-select>
+          </b-field>
+          <p class="help">{{ $t('organizations.initialMembersHelp') }}</p>
+        </section>
+        <footer class="modal-card-foot has-text-right">
+          <b-button @click="isPlatformCreateVisible = false">{{ $t('globals.buttons.close') }}</b-button>
+          <b-button native-type="submit" type="is-primary" icon-left="check" :loading="isPlatformCreating"
+            :disabled="!platformCreateForm.name || !platformCreateForm.managerUserID">
+            {{ $t('organizations.directCreate') }}
+          </b-button>
+        </footer>
+      </form>
+    </b-modal>
+
+    <b-modal scroll="keep" :aria-modal="true" :active.sync="isPlatformManageVisible" :width="900">
+      <div class="modal-card content" style="width: auto">
+        <header class="modal-card-head">
+          <h4><b-icon icon="account-group-outline" size="is-small" />{{ $t('organizations.manageMembersTitle') }}</h4>
+        </header>
+        <section class="modal-card-body">
+          <p v-if="selectedPlatformOrganization" class="mb-4">
+            <strong>{{ selectedPlatformOrganization.name }}</strong>
+            <span class="has-text-grey">{{ $t('organizations.platformMemberHelp') }}</span>
+          </p>
+          <form class="columns is-multiline" @submit.prevent="addPlatformMember">
+            <div class="column is-6">
+              <b-field :label="$t('organizations.memberAccount')" label-position="on-border">
+                <b-input v-model.trim="platformMemberForm.account" required />
+              </b-field>
+            </div>
+            <div class="column is-3">
+              <b-field :label="$t('organizations.organizationRole')" label-position="on-border">
+                <b-select v-model="platformMemberForm.role" expanded>
+                  <option value="member">{{ $t('organizations.roleMember') }}</option>
+                  <option value="manager">{{ $t('organizations.roleManager') }}</option>
+                </b-select>
+              </b-field>
+            </div>
+            <div class="column is-3 is-flex is-align-items-flex-end">
+              <b-button native-type="submit" type="is-primary" expanded icon-left="account-plus-outline">
+                {{ $t('organizations.add') }}
+              </b-button>
+            </div>
+          </form>
+          <b-table :data="platformMembers" :mobile-cards="false" :loading="isPlatformMembersLoading">
+            <b-table-column v-slot="props" field="username" :label="$t('organizations.account')">
+              <strong>{{ props.row.username }}</strong><span v-if="props.row.name" class="has-text-grey"> {{ props.row.name }}</span>
+            </b-table-column>
+            <b-table-column v-slot="props" field="role" :label="$t('organizations.role')">
+              <b-select :value="props.row.role" size="is-small" @input="changePlatformMemberRole(props.row, $event)">
+                <option value="member">{{ $t('organizations.roleMember') }}</option>
+                <option value="manager">{{ $t('organizations.roleManager') }}</option>
+              </b-select>
+            </b-table-column>
+            <b-table-column v-slot="props" :label="$t('organizations.columnActions')" numeric>
+              <b-button size="is-small" type="is-text" icon-left="account-remove-outline" @click="removePlatformMember(props.row)">
+                {{ $t('organizations.remove') }}
+              </b-button>
+            </b-table-column>
+            <template #empty><span class="has-text-grey">{{ $t('organizations.noMembers') }}</span></template>
+          </b-table>
+        </section>
+        <footer class="modal-card-foot has-text-right">
+          <b-button icon-left="file-upload-outline" @click="openPlatformBulkImport">{{ $t('organizations.bulkImport') }}</b-button>
+          <b-button @click="isPlatformManageVisible = false">{{ $t('globals.buttons.close') }}</b-button>
+        </footer>
+      </div>
+    </b-modal>
+
+    <b-modal scroll="keep" :aria-modal="true" :active.sync="isPlatformBulkImportVisible" :width="850">
+      <organization-member-bulk-import v-if="selectedPlatformOrganization" :organization-id="selectedPlatformOrganization.id"
+        @finished="refreshPlatformMembers" />
+    </b-modal>
 
     <b-modal scroll="keep" :aria-modal="true" :active.sync="isArchiveTransferVisible" :width="520">
       <div class="modal-card content" style="width: auto">
@@ -315,9 +431,10 @@
 import Vue from 'vue';
 import { mapState } from 'vuex';
 import CopyText from '../components/CopyText.vue';
+import OrganizationMemberBulkImport from './OrganizationMemberBulkImport.vue';
 
 export default Vue.extend({
-  components: { CopyText },
+  components: { CopyText, OrganizationMemberBulkImport },
 
   data() {
     return {
@@ -325,6 +442,18 @@ export default Vue.extend({
       invites: [],
       requests: [],
       platformOrganizations: [],
+      platformUsers: [],
+      platformMembers: [],
+      selectedPlatformOrganization: null,
+      isPlatformCreateVisible: false,
+      isPlatformCreating: false,
+      isPlatformManageVisible: false,
+      isPlatformBulkImportVisible: false,
+      isPlatformMembersLoading: false,
+      platformCreateForm: {
+        name: '', description: '', managerUserID: null, memberUserIDs: [],
+      },
+      platformMemberForm: { account: '', role: 'member' },
       isArchiveTransferVisible: false,
       archiveTransferOrganization: null,
       archiveTransferMembers: [],
@@ -370,7 +499,7 @@ export default Vue.extend({
   methods: {
     async refresh() {
       const [organizations, workspace] = await Promise.all([
-        this.$api.getMyOrganizations(),
+        this.isPlatformAdmin ? this.$api.getOrganizations() : this.$api.getMyOrganizations(),
         this.$api.getCurrentWorkspace(),
       ]);
       this.$store.commit('setOrganizations', organizations);
@@ -408,15 +537,18 @@ export default Vue.extend({
         this.personalMediaIDs = [];
       }
       if (this.isPlatformAdmin) {
-        const [requests, platformOrganizations] = await Promise.all([
+        const [requests, platformOrganizations, platformUsers] = await Promise.all([
           this.$api.getOrganizationRequests(),
           this.$api.getOrganizations(true),
+          this.$api.getUsers(),
         ]);
         this.requests = requests;
         this.platformOrganizations = platformOrganizations;
+        this.platformUsers = platformUsers.filter((user) => user.status !== 'disabled');
       } else {
         this.requests = [];
         this.platformOrganizations = [];
+        this.platformUsers = [];
       }
     },
 
@@ -541,6 +673,77 @@ export default Vue.extend({
     async reviewRequest(request, approve) {
       await this.$api.reviewOrganizationRequest(request.id, { approve, note: '' });
       await this.refresh();
+    },
+
+    openPlatformCreate() {
+      this.platformCreateForm = {
+        name: '', description: '', managerUserID: null, memberUserIDs: [],
+      };
+      this.isPlatformCreateVisible = true;
+    },
+
+    async createPlatformOrganization() {
+      if (!this.platformCreateForm.managerUserID) return;
+      this.isPlatformCreating = true;
+      try {
+        const members = this.platformCreateForm.memberUserIDs
+          .filter((userID) => Number(userID) !== Number(this.platformCreateForm.managerUserID))
+          .map((userID) => ({ user_id: Number(userID), role: 'member' }));
+        await this.$api.createOrganization({
+          name: this.platformCreateForm.name,
+          description: this.platformCreateForm.description,
+          manager_user_id: Number(this.platformCreateForm.managerUserID),
+          members,
+        });
+        this.isPlatformCreateVisible = false;
+        this.$utils.toast(this.$t('organizations.directCreateSuccess'));
+        await this.refresh();
+      } finally {
+        this.isPlatformCreating = false;
+      }
+    },
+
+    async openPlatformManage(organization) {
+      this.selectedPlatformOrganization = organization;
+      this.platformMemberForm = { account: '', role: 'member' };
+      this.isPlatformManageVisible = true;
+      await this.refreshPlatformMembers();
+    },
+
+    async refreshPlatformMembers() {
+      if (!this.selectedPlatformOrganization) return;
+      this.isPlatformMembersLoading = true;
+      try {
+        this.platformMembers = await this.$api.getOrganizationMembersByID(this.selectedPlatformOrganization.id);
+        await this.refresh();
+      } finally {
+        this.isPlatformMembersLoading = false;
+      }
+    },
+
+    openPlatformBulkImport() {
+      this.isPlatformManageVisible = false;
+      this.isPlatformBulkImportVisible = true;
+    },
+
+    async addPlatformMember() {
+      if (!this.selectedPlatformOrganization) return;
+      await this.$api.addOrganizationMember(this.platformMemberForm, this.selectedPlatformOrganization.id);
+      this.platformMemberForm = { account: '', role: 'member' };
+      await this.refreshPlatformMembers();
+    },
+
+    async changePlatformMemberRole(member, role) {
+      if (!this.selectedPlatformOrganization) return;
+      await this.$api.updateOrganizationMember(member.userId, { role }, this.selectedPlatformOrganization.id);
+      await this.refreshPlatformMembers();
+    },
+
+    removePlatformMember(member) {
+      this.$utils.confirm(this.$t('organizations.confirmRemoveMember', { name: member.username }), async () => {
+        await this.$api.removeOrganizationMember(member.userId, this.selectedPlatformOrganization.id);
+        await this.refreshPlatformMembers();
+      });
     },
 
     archivePlatformOrganization(organization) {

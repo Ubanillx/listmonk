@@ -351,6 +351,10 @@ export const getOrganizations = (includeArchived = false) => http.get('/api/orga
   params: { include_archived: includeArchived },
 });
 
+export const createOrganization = (data) => http.post('/api/organizations', data);
+
+export const addOrganizationMembersBulk = (id, data) => http.post(`/api/organizations/${id}/members/bulk`, data);
+
 export const archiveOrganization = (id) => http.post(`/api/organizations/${id}/archive`);
 
 export const purgeArchivedOrganization = (id) => http.delete(`/api/organizations/${id}`);

@@ -106,7 +106,7 @@ func (c *Core) InsertMedia(fileName, thumbName, contentType string, meta models.
 	// Write to the DB.
 	var newID int
 	if err := c.q.InsertMedia.Get(&newID, uu, fileName, thumbName, contentType, provider, meta,
-		scope.OrganizationID, scope.OwnerUserID, scope.OriginalOwnerUserID, scope.Visibility); err != nil {
+		scope.OrganizationID, scope.OwnerUserID, scope.OriginalOwnerUserID, scope.Visibility, nil); err != nil {
 		c.log.Printf("error inserting uploaded file to db: %v", err)
 		return media.Media{}, echo.NewHTTPError(http.StatusInternalServerError,
 			c.i18n.Ts("globals.messages.errorCreating", "name", "{globals.terms.media}", "error", pqErrMsg(err)))
@@ -119,7 +119,10 @@ func (c *Core) InsertMedia(fileName, thumbName, contentType string, meta models.
 // organization is locked and the caller's membership is still active. The
 // binary itself is written by the handler before this method; a failed insert
 // is reported so the handler can remove that unreferenced object.
-func (c *Core) InsertMediaInWorkspace(access models.WorkspaceAccess, fileName, thumbName, contentType string, meta models.JSON, provider string, scope models.ResourceScope, s media.Store) (media.Media, error) {
+func (c *Core) InsertMediaInWorkspace(access models.WorkspaceAccess, fileName, thumbName, contentType string, meta models.JSON, provider string, folderID int, scope models.ResourceScope, s media.Store) (media.Media, error) {
+	if folderID < 0 {
+		return media.Media{}, echo.NewHTTPError(http.StatusBadRequest, "invalid media folder")
+	}
 	uu, err := uuid.NewV4()
 	if err != nil {
 		return media.Media{}, echo.NewHTTPError(http.StatusInternalServerError,
@@ -127,9 +130,20 @@ func (c *Core) InsertMediaInWorkspace(access models.WorkspaceAccess, fileName, t
 	}
 	var out media.Media
 	err = c.withWorkspaceCreation(access, func(tx *sqlx.Tx) error {
+		var folder any
+		if folderID > 0 {
+			folderRow, err := c.lockMediaFolderForWorkspace(tx, access, folderID)
+			if err != nil {
+				return err
+			}
+			if !mediaFolderMatchesResourceScope(scope, folderRow) {
+				return echo.NewHTTPError(http.StatusBadRequest, "media folder is outside the active workspace")
+			}
+			folder = folderID
+		}
 		var newID int
 		if err := tx.Stmtx(c.q.InsertMedia).Get(&newID, uu, fileName, thumbName, contentType, provider, meta,
-			scope.OrganizationID, scope.OwnerUserID, scope.OriginalOwnerUserID, scope.Visibility); err != nil {
+			scope.OrganizationID, scope.OwnerUserID, scope.OriginalOwnerUserID, scope.Visibility, folder); err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError,
 				c.i18n.Ts("globals.messages.errorCreating", "name", "{globals.terms.media}", "error", pqErrMsg(err)))
 		}

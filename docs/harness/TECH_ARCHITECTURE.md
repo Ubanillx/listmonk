@@ -27,6 +27,13 @@
 `current/uploads` 内容以不覆盖方式迁移到持久目录；失败回滚只清理新版本和符号
 链接，不清理持久媒体目录。
 
+## 媒体逻辑文件夹（v6.37.0）
+
+- `media_folders` 保存工作区目录树，`media.folder_id IS NULL` 为根目录；provider 文件名保持平铺，不执行物理搬移，因此 filesystem、S3 和历史媒体 URL 都兼容。
+- `cmd/media_folders.go` 注册目录查询、创建、改名、移动、空目录删除和媒体归属移动接口；目录操作使用 `media:manage`，媒体移动额外经过 `RequireManageResource` 的所有者边界。
+- `internal/core/media_folders.go` 负责名称校验、工作区过滤、目录计数、唯一名称、循环检测和带组织锁的事务写入；`internal/migrations/v6.37.0.go` 与 `schema.sql` 保持安装/升级一致。
+- `frontend/src/views/Media.vue` 以面包屑和当前层级网格展示目录，支持目录嵌套、媒体拖入目录、本地文件拖入目录上传，以及改名和空目录删除。`frontend/src/api/index.js` 只发送 snake_case 写入字段。
+
 ## 公海能力边界（已实施）
 
 - 一级公海主数据、一级成员关系、组织二级分配、组织剔除记录、一级投放授权和二级回件邮箱属于独立的领域边界；不得通过复制 `customers` 或现有普通 `customer_lists` 行来实现。

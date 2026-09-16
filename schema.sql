@@ -240,6 +240,7 @@ DROP INDEX IF EXISTS idx_views_customer_id; CREATE INDEX idx_views_customer_id O
 DROP INDEX IF EXISTS idx_views_date; CREATE INDEX idx_views_date ON campaign_views(created_at);
 
 -- media
+DROP TABLE IF EXISTS media_folders CASCADE;
 DROP TABLE IF EXISTS media CASCADE;
 CREATE TABLE media (
     id               SERIAL PRIMARY KEY,
@@ -725,7 +726,37 @@ ALTER TABLE media
     ADD COLUMN owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     ADD COLUMN original_owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('private', 'organization', 'global')),
-    ADD COLUMN transfer_pending_at TIMESTAMP WITH TIME ZONE;
+    ADD COLUMN transfer_pending_at TIMESTAMP WITH TIME ZONE,
+    ADD COLUMN folder_id INTEGER;
+
+-- Media folders are logical workspace containers. Provider object names stay
+-- flat so historical /uploads links and cloned media remain valid. Personal
+-- folders are private to their owner; organization folders are visible to
+-- every member of that organization.
+CREATE TABLE media_folders (
+    id                SERIAL PRIMARY KEY,
+    name              TEXT NOT NULL CHECK (name <> ''),
+    parent_id         INTEGER NULL REFERENCES media_folders(id) ON DELETE SET NULL,
+    organization_id   BIGINT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    owner_user_id     INTEGER NULL REFERENCES users(id) ON DELETE SET NULL,
+    created_by_user_id INTEGER NULL REFERENCES users(id) ON DELETE SET NULL,
+    created_at        TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    CHECK (organization_id IS NOT NULL OR owner_user_id IS NOT NULL)
+);
+
+ALTER TABLE media
+    ADD CONSTRAINT media_folder_id_fkey
+    FOREIGN KEY (folder_id) REFERENCES media_folders(id) ON DELETE SET NULL;
+
+CREATE INDEX idx_media_folder_id ON media(folder_id);
+CREATE INDEX idx_media_folders_parent_id ON media_folders(parent_id);
+CREATE UNIQUE INDEX idx_media_folders_org_parent_name
+    ON media_folders (organization_id, COALESCE(parent_id, 0), LOWER(name))
+    WHERE organization_id IS NOT NULL;
+CREATE UNIQUE INDEX idx_media_folders_personal_parent_name
+    ON media_folders (owner_user_id, COALESCE(parent_id, 0), LOWER(name))
+    WHERE organization_id IS NULL;
 
 CREATE INDEX idx_lists_workspace_owner ON customer_lists(organization_id, owner_user_id);
 CREATE INDEX idx_customers_workspace_owner ON customers(organization_id, owner_user_id);

@@ -2,8 +2,8 @@
 -- name: insert-media
 INSERT INTO media (
     uuid, filename, thumb, content_type, provider, meta, created_at,
-    organization_id, owner_user_id, original_owner_user_id, visibility
-) VALUES($1, $2, $3, $4, $5, $6, NOW(), $7, $8, $9, $10) RETURNING id;
+    organization_id, owner_user_id, original_owner_user_id, visibility, folder_id
+) VALUES($1, $2, $3, $4, $5, $6, NOW(), $7, $8, $9, $10, $11) RETURNING id;
 
 -- name: query-media
 SELECT COUNT(*) OVER () AS total, * FROM media

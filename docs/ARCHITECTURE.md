@@ -62,6 +62,14 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 
 可见性为 `private`、`organization`、`global`。名单和订阅者始终是所有者私有的；媒体不能全局公开。组织成员可以读取组织共享资源，组织经理可审查同组织成员资源及待转移资源，但只能写自己的资源，不能使用他人的私有发送资源。v6.28.0 的专用导出 API 允许组织管理员导出本组织成员名单及营销数据，仍执行邮箱脱敏；它不扩大普通写入或发送权限。归档组织禁止普通写入及导出；仅平台管理员可执行受限的清理/转移流程。前端的 `$can*` 仅隐藏不允许的操作，Go 服务是唯一权威。
 
+### 媒体逻辑文件夹（v6.37.0）
+
+媒体文件夹是工作区内的数据库逻辑容器，不改变 filesystem 或 S3 provider 中的对象名。这样历史邮件正文中的媒体 URL、缩略图和跨 provider 行为不受影响。`media.folder_id` 指向 `media_folders`；`NULL` 表示根目录，`parent_id` 只形成同一工作区的树。个人文件夹按 `owner_user_id` 隔离，组织文件夹按 `organization_id` 对组织成员可见。
+
+`GET /api/media/folders` 返回当前工作区可见的目录及文件/子目录计数；创建、改名、移动和删除目录沿用 `media:manage`，删除只允许空目录，移动会拒绝自身或子孙目录。`PUT /api/media/:id/folder` 将媒体移入目录或根目录，但仍执行媒体资源原所有者的 `manage` 边界，组织经理不能借文件夹权限修改他人媒体。上传与 `GET /api/media` 支持 `folder_id`，旧请求不带该参数时继续返回工作区内全部媒体。
+
+目录写入在 `internal/core/media_folders.go` 与工作区事务中重验活动组织、成员资格、所有权和目录边界；归档工作区禁止普通目录/媒体写入。初始结构和 `v6.37.0` 幂等迁移同步创建目录表、媒体外键、根目录级大小写不敏感唯一约束和索引。管理端 `Media.vue` 提供面包屑、嵌套目录、新建/改名/空目录删除，以及媒体/目录和本地文件拖放上传。
+
 #### 两层策略的维护规则（强制）
 
 工作区资源授权目前**同时**存在于两层：`cmd/workspace_permissions.go`（HTTP 边界的 `workspaceReadException`/`workspaceCopyException`/`canCopyWorkspaceResource`/`canCopyWorkspaceCampaign`）与 `internal/core/workspace.go`（Core 的 `read`/`use`/`copy`/`manage` 判定），其中 `cmd` 侧的活动复制策略刻意与 Core 的 `CanCopyCampaign` 互为镜像。两层重复是已知技术债，因此：

@@ -615,6 +615,11 @@ export const deleteCampaigns = (params) => http.delete(
 );
 
 // Media.
+export const getMediaFolders = () => http.get(
+  '/api/media/folders',
+  { loading: models.media },
+);
+
 export const getMedia = async (params) => http.get(
   '/api/media',
   { params, loading: models.media, store: models.media },
@@ -628,6 +633,35 @@ export const uploadMedia = (data) => http.post(
 
 export const deleteMedia = (id) => http.delete(
   `/api/media/${id}`,
+  { loading: models.media },
+);
+
+export const createMediaFolder = (data) => http.post(
+  '/api/media/folders',
+  data,
+  { loading: models.media },
+);
+
+export const renameMediaFolder = (id, data) => http.put(
+  `/api/media/folders/${id}`,
+  data,
+  { loading: models.media },
+);
+
+export const deleteMediaFolder = (id) => http.delete(
+  `/api/media/folders/${id}`,
+  { loading: models.media },
+);
+
+export const moveMediaFolder = (id, parentID) => http.put(
+  `/api/media/folders/${id}/move`,
+  { parent_id: parentID || null },
+  { loading: models.media },
+);
+
+export const moveMediaToFolder = (id, folderID) => http.put(
+  `/api/media/${id}/folder`,
+  { folder_id: folderID || null },
   { loading: models.media },
 );
 

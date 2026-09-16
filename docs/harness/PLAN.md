@@ -9,6 +9,15 @@
 3. 为工作区资源的 `read`、`use`、`copy`、`manage` 边界持续补充 API 与事务并发测试。
 4. 已在当前环境和 CI 检查清单执行 `cd docs/docs && mkdocs build --strict --clean`；后续仅维护依赖和链接。
 
+## 已实施：媒体逻辑文件夹（v6.37.0）
+
+- [x] `media_folders` 表、媒体 `folder_id`、根目录语义、工作区唯一目录名约束和幂等升级迁移。
+- [x] 目录查询/创建/改名/空目录删除/嵌套移动、媒体移入目录接口；沿用 `media:manage`，并在 Core 事务内复核工作区、成员资格、所有权和循环边界。
+- [x] 管理端面包屑、当前层级目录网格、拖拽媒体/目录、本地文件拖拽上传、多语言文案和媒体样式。
+- [x] API 文档、架构台账、业务不变量及名称/工作区边界测试同步更新。
+
+来源：`cmd/media.go`、`cmd/media_folders.go`、`internal/core/media_folders.go`、`internal/media/media.go`、`schema.sql`、`internal/migrations/v6.37.0.go`、`frontend/src/views/Media.vue`。
+
 ## 已实施：业务审计日志（v6.32.0）
 
 > 实现进度（2026-09-15）：新增 `audit_events` 与幂等迁移 `internal/migrations/v6.32.0.go`，加入 `audit:get` 权限、当前工作区服务端分页查询 API、选择/全量 CSV 导出和管理端审计页。认证 API 中间件覆盖活动、客户/名单、导入、退信、模板、SMTP、回复邮箱/转发、事务邮件及导出等核心动作；活动发送器、退信 webhook、回信转发和回信 AI 补记后台生命周期。打开/点击等高频事实保留在原表，审计元数据禁止密码、令牌、正文和附件。当前写入为业务提交后的 best-effort；需要同事务强一致时复用 `RecordTx`。

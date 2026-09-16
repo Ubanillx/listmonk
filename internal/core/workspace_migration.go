@@ -396,6 +396,7 @@ func (c *Core) migratePersonalMediaToOrganization(sourceUserID, targetOrganizati
 		if _, err := tx.Exec(`
 			UPDATE media SET organization_id = $2, owner_user_id = $3,
 				original_owner_user_id = COALESCE(original_owner_user_id, owner_user_id),
+				folder_id = NULL,
 				visibility = 'private', transfer_pending_at = NULL, updated_at = NOW()
 			WHERE id = ANY($1::INT[])`, pq.Array(sourceIDs), targetOrganizationID, targetUserID); err != nil {
 			return nil, workspaceQueryError("moving media", err)

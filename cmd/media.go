@@ -70,6 +70,15 @@ func (a *App) UploadMedia(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest,
 			a.i18n.Ts("media.invalidFile", "error", err.Error()))
 	}
+	folderID, err := parseMediaFolderID(c.FormValue("folder_id"))
+	if err != nil {
+		return err
+	}
+	if folderID > 0 {
+		if err := a.core.RequireReadableMediaFolder(access, folderID); err != nil {
+			return err
+		}
+	}
 
 	// A multipart upload larger than the in-memory threshold is spilled by
 	// net/http to a temporary file it does not remove on its own.
@@ -215,7 +224,7 @@ func (a *App) UploadMedia(c echo.Context) error {
 		return err
 	}
 	scope := core.ApplyWorkspaceScope(access, visibility)
-	m, err := a.core.InsertMediaInWorkspace(access, fName, thumbfName, contentType, meta, a.cfg.MediaUpload.Provider, scope, a.media)
+	m, err := a.core.InsertMediaInWorkspace(access, fName, thumbfName, contentType, meta, a.cfg.MediaUpload.Provider, folderID, scope, a.media)
 	if err != nil {
 		cleanUp = true
 		return err
@@ -251,8 +260,17 @@ func (a *App) GetAllMedia(c echo.Context) error {
 
 		pg = a.pg.NewFromURL(c.Request().URL.Query())
 	)
+	folderID, err := parseMediaFolderFilter(c.QueryParam("folder_id"))
+	if err != nil {
+		return err
+	}
+	if folderID != nil && *folderID > 0 {
+		if err := a.core.RequireReadableMediaFolder(access, *folderID); err != nil {
+			return err
+		}
+	}
 	// Fetch the media items from the DB.
-	res, total, err := a.core.QueryWorkspaceMedia(access, a.cfg.MediaUpload.Provider, a.media, query, pg.Offset, pg.Limit)
+	res, total, err := a.core.QueryWorkspaceMedia(access, a.cfg.MediaUpload.Provider, a.media, query, folderID, pg.Offset, pg.Limit)
 	if err != nil {
 		return err
 	}

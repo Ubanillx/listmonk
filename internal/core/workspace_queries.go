@@ -593,26 +593,52 @@ func (c *Core) GetWorkspaceTemplates(access models.WorkspaceAccess, status strin
 }
 
 // QueryWorkspaceMedia returns media files visible in the active workspace.
-func (c *Core) QueryWorkspaceMedia(access models.WorkspaceAccess, provider string, s media.Store, query string, offset, limit int) ([]media.Media, int, error) {
+func (c *Core) QueryWorkspaceMedia(access models.WorkspaceAccess, provider string, s media.Store, query string, folderID *int, offset, limit int) ([]media.Media, int, error) {
 	scope, args := workspaceReadPredicate(access, "m", 1)
 	first := len(args) + 1
+	folderFilter := "TRUE"
+	folderArgs := []any{}
+	nextArg := first + 2
+	if folderID != nil {
+		folderArg := nextArg
+		nextArg++
+		if *folderID == 0 {
+			folderFilter = fmt.Sprintf(`($%d = 0 AND m.folder_id IS NULL)`, folderArg)
+		} else {
+			folderScope, argsForFolder := mediaFolderWorkspacePredicate(access, "media_folder", nextArg)
+			folderArgs = argsForFolder
+			folderFilter = fmt.Sprintf(`$%d > 0 AND m.folder_id = $%d AND EXISTS (
+				SELECT 1 FROM media_folders media_folder
+				WHERE media_folder.id = m.folder_id AND (%s)
+			)`, folderArg, folderArg, folderScope)
+		}
+		nextArg += len(folderArgs)
+	}
+	offsetArg := nextArg
+	limitArg := nextArg + 1
 	stmt := fmt.Sprintf(`
 		SELECT COUNT(*) OVER() AS total, m.*, COALESCE(u.username, '') AS owner_username,
 			COALESCE(u.name, '') AS owner_name
 		FROM media m
 		LEFT JOIN users u ON u.id = COALESCE(m.owner_user_id, m.original_owner_user_id)
 		WHERE (%s) AND ($%d = '' OR m.filename ILIKE $%d) AND m.provider = $%d
+			AND %s
 		-- paginator encodes per_page=all as a zero limit. PostgreSQL's
 		-- literal LIMIT 0 would incorrectly return an empty media library, so
 		-- normalize non-positive limits to an unbounded LIMIT just like the
 		-- other workspace customer_list queries.
 		ORDER BY m.created_at DESC OFFSET $%d LIMIT (CASE WHEN $%d < 1 THEN NULL ELSE $%d END)`,
-		scope, first, first, first+1, first+2, first+3, first+3)
+		scope, first, first, first+1, folderFilter, offsetArg, limitArg, limitArg)
 	query = strings.TrimSpace(query)
 	if query != "" {
 		query = "%" + query + "%"
 	}
-	args = append(args, query, provider, offset, limit)
+	args = append(args, query, provider)
+	if folderID != nil {
+		args = append(args, *folderID)
+		args = append(args, folderArgs...)
+	}
+	args = append(args, offset, limit)
 
 	var out []media.Media
 	if err := c.db.Select(&out, stmt, args...); err != nil {

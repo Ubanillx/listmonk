@@ -2,6 +2,8 @@
 
 快照日期：2026-09-15
 
+- 媒体逻辑文件夹（2026-09-16）：新增 `media_folders` 与 `media.folder_id`，文件夹作为工作区内的逻辑目录，不改变 filesystem/S3 对象名；新增目录 CRUD、嵌套移动、媒体归属移动、按目录上传/查询和审计路由。管理端支持面包屑、目录网格、媒体/目录拖放及本地文件拖入目录上传；删除仅允许空目录，跨工作区和循环移动由 Core 事务拒绝。迁移版本为 v6.37.0。验证：`go test ./... -count=1`、`go vet ./...`、前端 `yarn lint`/`yarn build` 通过；开发库已执行 v6.37.0，真实 API 冒烟覆盖创建/子目录/改名/移动/按目录查询、重复名称 409、循环 400、非空删除 409，临时数据已清理；重启 `dev-backend-1` 后 9173 返回 200，日志无错误。
+
 - Jenkins filesystem 媒体持久化修复（2026-09-15）：`Jenkinsfile` 不再让相对上传路径 `uploads` 随 `<DEPLOY_DIR>/current` 进入版本目录；每个 release 的 `uploads` 链接到版本外的 `<DEPLOY_DIR>/uploads`，systemd 从稳定部署根目录运行，首次修复发布会在停机窗口内以不覆盖方式迁移旧 `current/uploads` 文件。失败回滚不会删除持久媒体目录。同步更新 `deploy/README.md`、`docs/ARCHITECTURE.md`、配置与升级文档；临时目录迁移/不覆盖行为测试、Jenkins 远端脚本 `bash -n`、filesystem provider 单元测试、`go test ./...` 和 `git diff --check` 均通过。文档构建因本机未安装 Python/MkDocs 未执行，Docker Desktop 未运行因此未做容器健康检查。
 
 - 业务审计日志第一阶段（2026-09-15）：新增 `audit_events` 表及 v6.32.0 迁移，字段覆盖工作区（个人空间使用 `organization_id=0`，避免组织删除后的历史事件串入个人视图）、用户/API Key/系统或 webhook 操作者、稳定动作名、对象、结果、固定原因码、请求 ID、IP、User-Agent 和 JSONB 元数据；新增 `audit:get`、`GET /api/audit-events`、`GET /api/audit-events/:id` 与管理端“业务审计”页面。认证 API 中间件覆盖活动、客户/名单、导入、退信、模板、SMTP、回复邮箱/转发、事务邮件和导出等 P0 操作；活动发送器、退信 webhook、回信转发及回信 AI 补记后台事件。明确不把打开/点击等高频事实复制到审计表，也不记录密码、令牌、邮件正文、附件或完整收件人集合。验证：`go test ./...`、`cd frontend && yarn lint`、`cd frontend && yarn build` 通过；Docker 已启动全部开发服务，日志确认执行 `v6.32.0` 且 `upgrade complete`，`audit_events` 表的 15 个字段和 5 个业务索引已核对，`http://localhost:9173` 返回 200。

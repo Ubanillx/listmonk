@@ -1756,6 +1756,121 @@ section.analytics {
     }
   }
 
+  .media-breadcrumb {
+    margin-bottom: 0.5rem;
+
+    li {
+      &.drop-target > a {
+        background: $primary;
+        color: $white;
+      }
+    }
+
+    a {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      border-radius: 4px;
+      transition: background-color 0.15s ease, color 0.15s ease;
+    }
+  }
+
+  .media-folder-help {
+    margin-top: -0.5rem;
+  }
+
+  .folder-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 1rem;
+    padding: 1rem 0;
+  }
+
+  .folder-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    padding: 0.85rem 2.5rem 0.85rem 1rem;
+    border: 1px solid #e6e6e6;
+    border-radius: 8px;
+    background: $white;
+    box-shadow: 2px 2px 0 #f3f3f3;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.15s ease, background-color 0.15s ease;
+
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 2px 2px 5px #eee;
+
+      .folder-actions {
+        opacity: 1;
+      }
+    }
+
+    &[draggable='true']:active {
+      cursor: grabbing;
+    }
+
+    &.is-drop-target {
+      border-color: $primary;
+      background: lighten($primary, 45%);
+    }
+  }
+
+  .folder-icon {
+    flex: 0 0 auto;
+    margin-right: 0.75rem;
+    color: $primary;
+  }
+
+  .folder-info {
+    min-width: 0;
+  }
+
+  .folder-name {
+    margin-bottom: 0.2rem;
+    overflow: hidden;
+    font-size: 0.95rem;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .folder-meta {
+    margin-bottom: 0;
+    color: $grey-light;
+    font-size: 0.75rem;
+  }
+
+  .folder-actions {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    display: flex;
+    gap: 0.25rem;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+
+    a {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      border-radius: 4px;
+
+      &:hover {
+        background: $grey-lighter;
+      }
+
+      &.disabled {
+        pointer-events: none;
+        opacity: 0.35;
+      }
+    }
+  }
+
   .grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));

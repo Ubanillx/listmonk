@@ -1456,7 +1456,7 @@ func (c *Core) InsertWorkspaceCustomer(access models.WorkspaceAccess, sub models
 		INSERT INTO customers (
 			uuid, email, name, status, attribs, customer_code,
 			organization_id, owner_user_id, original_owner_user_id, visibility
-		) VALUES ($1, $2, $3, $4, $5, $10, $6, $7, $8, $9)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id`, uu, sub.Email, strings.TrimSpace(sub.Name), sub.Status, sub.Attribs, sub.CustomerCode,
 		scope.OrganizationID, scope.OwnerUserID, scope.OriginalOwnerUserID, scope.Visibility)
 	if err != nil {

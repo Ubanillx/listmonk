@@ -293,9 +293,7 @@ export default Vue.extend({
     },
 
     onDeleteMedia(id) {
-      this.$api.deleteMedia(id).then(() => {
-        this.refreshLibrary();
-      });
+      return this.$api.deleteMedia(id).then(() => this.refreshLibrary());
     },
 
     onCreateFolder() {
@@ -305,7 +303,7 @@ export default Vue.extend({
         this.$api.createMediaFolder({
           name,
           parent_id: this.currentFolderId || null,
-        }).then(() => this.loadFolders());
+        }).then(() => this.refreshLibrary());
       });
     },
 
@@ -314,7 +312,7 @@ export default Vue.extend({
         placeholder: this.$t('media.folderNamePlaceholder'),
         value: folder.name,
       }, (name) => {
-        this.$api.renameMediaFolder(folder.id, { name }).then(() => this.loadFolders());
+        this.$api.renameMediaFolder(folder.id, { name }).then(() => this.refreshLibrary());
       });
     },
 
@@ -426,8 +424,9 @@ export default Vue.extend({
         this.uploaded = 0;
         this.form.files = [];
 
-        this.refreshLibrary();
+        return this.refreshLibrary();
       }
+      return null;
     },
 
     onPageChange(p) {

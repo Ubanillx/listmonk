@@ -265,6 +265,7 @@ func (a *App) UploadMedia(c echo.Context) error {
 
 // GetAllMedia handles retrieval of uploaded media.
 func (a *App) GetAllMedia(c echo.Context) error {
+	c.Response().Header().Set(echo.HeaderCacheControl, "no-store")
 	access, err := a.workspaceAccess(c)
 	if err != nil {
 		return err

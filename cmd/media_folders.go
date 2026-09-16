@@ -47,6 +47,7 @@ func parseMediaFolderFilter(raw string) (*int, error) {
 }
 
 func (a *App) GetMediaFolders(c echo.Context) error {
+	c.Response().Header().Set(echo.HeaderCacheControl, "no-store")
 	access, err := a.workspaceAccess(c)
 	if err != nil {
 		return err

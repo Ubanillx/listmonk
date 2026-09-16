@@ -1047,7 +1047,10 @@ func (s *Session) resolveMappings(firstRow []string) (map[string]int, bool, erro
 
 	headerIdx := make(map[string]int, len(firstRow))
 	for i, h := range firstRow {
-		h := strings.ToLower(strings.TrimSpace(regexCleanStr.ReplaceAllString(h, "")))
+		// Preserve Unicode headers so explicit mappings from localized
+		// templates (for example "邮箱" and "客户编号") can resolve to the
+		// correct columns. Only strip a possible BOM and surrounding spaces.
+		h := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(h, "\ufeff")))
 		if h != "" {
 			headerIdx[h] = i
 		}
@@ -1099,7 +1102,7 @@ func parseColumnRef(ref string) (int, bool) {
 
 	col := 0
 	for _, r := range ref {
-		if !unicode.IsLetter(r) {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') {
 			return 0, false
 		}
 		col = col*26 + int(unicode.ToUpper(r)-'A'+1)

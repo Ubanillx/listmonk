@@ -14,6 +14,32 @@ import (
 	"testing"
 )
 
+func TestResolveMappingsSupportsUnicodeHeaders(t *testing.T) {
+	s := &Session{opt: SessionOpt{FieldMap: map[string]string{
+		"email":         "邮箱",
+		"name":          "姓名",
+		"customer_code": "客户编号",
+	}}}
+
+	got, hasHeader, err := s.resolveMappings([]string{"客户编号", "注册名称", "姓名", "邮箱"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasHeader {
+		t.Fatal("localized header mapping was not recognized as a header")
+	}
+	want := map[string]int{"customer_code": 0, "name": 2, "email": 3}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("resolved mappings = %v, want %v", got, want)
+	}
+}
+
+func TestParseColumnRefRejectsUnicodeHeaderAsColumnRef(t *testing.T) {
+	if _, ok := parseColumnRef("邮箱"); ok {
+		t.Fatal("localized header was accepted as an Excel column reference")
+	}
+}
+
 func TestCSVImportIgnoresRemovedAttributesColumn(t *testing.T) {
 	s := &Session{
 		im:       &Importer{stop: make(chan bool, 1), status: Status{Status: StatusImporting}},

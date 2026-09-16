@@ -383,6 +383,16 @@ export default Vue.extend({
     onDropOnFolder(folderID, event) {
       this.dragOverFolderId = null;
       const targetID = Number(folderID) || 0;
+      const payload = this.dragPayload(event);
+      if (payload) {
+        if (payload.type === 'media') {
+          this.$api.moveMediaToFolder(payload.id, targetID).then(() => this.refreshLibrary());
+        } else if (payload.type === 'folder' && payload.id !== targetID) {
+          this.$api.moveMediaFolder(payload.id, targetID).then(() => this.refreshLibrary());
+        }
+        return;
+      }
+
       const files = event.dataTransfer && event.dataTransfer.files
         ? Array.from(event.dataTransfer.files)
         : [];
@@ -390,17 +400,6 @@ export default Vue.extend({
         this.form.files = files;
         this.showUploadForm = true;
         this.uploadFiles(files, targetID);
-        return;
-      }
-
-      const payload = this.dragPayload(event);
-      if (!payload) {
-        return;
-      }
-      if (payload.type === 'media') {
-        this.$api.moveMediaToFolder(payload.id, targetID).then(() => this.refreshLibrary());
-      } else if (payload.type === 'folder' && payload.id !== targetID) {
-        this.$api.moveMediaFolder(payload.id, targetID).then(() => this.refreshLibrary());
       }
     },
 

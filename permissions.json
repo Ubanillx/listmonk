@@ -14,8 +14,19 @@
             "customers:get",
             "customers:get_all",
             "customers:manage",
+            "customers:delete",
+            "customers:blocklist",
+            "customers:membership_manage",
             "customers:import",
-            "customers:sql_query",
+            "customers:export",
+            "customers:sensitive_read",
+            "customers:sql_query"
+        ]
+    },
+    {
+        "group": "transactional",
+        "permissions":
+        [
             "tx:send"
         ]
     },
@@ -27,7 +38,12 @@
             "campaigns:get_all",
             "campaigns:get_analytics",
             "campaigns:manage",
-            "campaigns:manage_all"
+            "campaigns:manage_all",
+            "campaigns:send",
+            "campaigns:test",
+            "campaigns:schedule",
+            "campaigns:control",
+            "campaigns:recipients"
         ]
     },
     {
@@ -36,6 +52,8 @@
         [
             "bounces:get",
             "bounces:manage",
+            "bounces:delete",
+            "bounces:blocklist",
             "webhooks:post_bounce"
         ]
     },
@@ -61,6 +79,7 @@
         [
             "users:get",
             "users:manage",
+            "users:tokens",
             "roles:get",
             "roles:manage"
         ]
@@ -86,6 +105,13 @@
         "permissions":
         [
             "workspaces:personal"
+        ]
+    },
+    {
+        "group": "organizations",
+        "permissions":
+        [
+            "organizations:platform_manage"
         ]
     }
 ]

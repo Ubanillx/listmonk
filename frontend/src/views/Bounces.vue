@@ -8,21 +8,19 @@
         </h1>
       </div>
     </header>
-    <div class="mb-4"><export-button kind="bounces" :filters="{ ...queryParams, ...$route.query }" :selected="bulk.all ? [] : bulk.checked" /></div>
-
-    <b-table :data="bounces.results" :hoverable="true" :loading="loading.bounces" default-sort="createdAt" :checkable="canManageBounces"
-      :is-row-checkable="canManageBounce"
+    <b-table :data="bounces.results" :hoverable="true" :loading="loading.bounces" default-sort="createdAt" :checkable="canSelectBounces"
+      :is-row-checkable="canSelectBounce"
       @check-all="onTableCheck" @check="onTableCheck" :checked-rows.sync="bulk.checked" detailed show-detail-icon
       paginated backend-pagination pagination-position="both" @page-change="onPageChange"
       :current-page="queryParams.page" :per-page="bounces.perPage" :total="bounces.total" backend-sorting
       @sort="onSort">
       <template #top-left>
         <div class="actions">
-          <template v-if="canManageBounces && bulk.checked.length > 0">
-            <a class="a" href="#" @click.prevent="$utils.confirm(null, () => deleteBounces())" data-cy="btn-delete">
+          <template v-if="bulk.checked.length > 0">
+            <a v-if="canDeleteBounces" class="a" href="#" @click.prevent="$utils.confirm(null, () => deleteBounces())" data-cy="btn-delete">
               <b-icon icon="trash-can-outline" size="is-small" /> {{ $t('globals.buttons.delete') }}
             </a>
-            <a class="a" href="#" @click.prevent="$utils.confirm(null, () => blocklistCustomers())"
+            <a v-if="canBlocklistBounces" class="a" href="#" @click.prevent="$utils.confirm(null, () => blocklistCustomers())"
               data-cy="btn-manage-blocklist">
               <b-icon icon="account-off-outline" size="is-small" /> {{ $t('import.blocklist') }}
             </a>
@@ -74,7 +72,7 @@
 
       <b-table-column v-slot="props" cell-class="actions" align="right">
         <div>
-          <a v-if="canManageBounce(props.row) && !props.row.isDefault" href="#" @click.prevent="$utils.confirm(null, () => deleteBounce(props.row))"
+          <a v-if="canDeleteBounce(props.row) && !props.row.isDefault" href="#" @click.prevent="$utils.confirm(null, () => deleteBounce(props.row))"
             data-cy="btn-delete" :aria-label="$t('globals.buttons.delete')">
             <b-tooltip :label="$t('globals.buttons.delete')" type="is-dark">
               <b-icon icon="trash-can-outline" size="is-small" />
@@ -129,8 +127,16 @@ export default Vue.extend({
   },
 
   methods: {
-    canManageBounce(bounce) {
-      return this.$canManageResource(bounce, 'bounces:manage');
+    canDeleteBounce(bounce) {
+      return this.$canManageResource(bounce, 'bounces:delete');
+    },
+
+    canBlocklistBounce(bounce) {
+      return this.$canManageResource(bounce, 'bounces:blocklist');
+    },
+
+    canSelectBounce(bounce) {
+      return this.canDeleteBounce(bounce) || this.canBlocklistBounce(bounce);
     },
 
     onSort(field, direction) {
@@ -145,7 +151,7 @@ export default Vue.extend({
     },
     // Mark all bounces in the query as selected.
     selectAllBounces() {
-      if (this.canManageAllBounces) {
+      if (this.canManageAllBounces && this.canSelectBounces) {
         this.bulk.all = true;
       }
     },
@@ -182,7 +188,7 @@ export default Vue.extend({
       const params = {};
       if (!this.bulk.all && this.bulk.checked.length > 0) {
         params.id = this.bulk.checked.map((s) => s.id);
-      } else if (this.bulk.all && this.canManageAllBounces) {
+      } else if (this.bulk.all && this.canManageAllBounces && this.canDeleteBounces) {
         params.all = true;
       }
 
@@ -207,7 +213,7 @@ export default Vue.extend({
         return;
       }
 
-      if (this.bulk.all && this.canManageAllBounces) {
+      if (this.bulk.all && this.canManageAllBounces && this.canBlocklistBounces) {
         this.$api.blocklistBouncedCustomers({ all: true }).then(cb);
       }
     },
@@ -216,8 +222,18 @@ export default Vue.extend({
   computed: {
     ...mapState(['templates', 'loading', 'profile']),
 
-    canManageBounces() {
-      return this.$canCreateWorkspaceResource('bounces:manage');
+    canSelectBounces() {
+      return this.$canCreateWorkspaceResource('bounces:delete', 'bounces:blocklist');
+    },
+
+    canDeleteBounces() {
+      return this.$canCreateWorkspaceResource('bounces:delete')
+        && (!this.bulk.checked.length || this.bulk.checked.every((bounce) => this.canDeleteBounce(bounce)));
+    },
+
+    canBlocklistBounces() {
+      return this.$canCreateWorkspaceResource('bounces:blocklist')
+        && (!this.bulk.checked.length || this.bulk.checked.every((bounce) => this.canBlocklistBounce(bounce)));
     },
 
     canManageAllBounces() {

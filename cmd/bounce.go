@@ -127,7 +127,7 @@ func (a *App) redactWorkspaceBounceSensitiveFields(access models.WorkspaceAccess
 
 // Organization managers are explicitly allowed to inspect member details
 // and statistics. The legacy bounces:get role remains required for ordinary
-// members, while mutation handlers continue to require bounces:manage.
+// members, while mutation handlers use their dedicated action permissions.
 func (a *App) requireBounceReadPermission(c echo.Context, access models.WorkspaceAccess) error {
 	if access.PlatformAdmin || (access.IsOrganization() && access.IsOrganizationManager()) {
 		return nil
@@ -144,7 +144,7 @@ func (a *App) DeleteBounces(c echo.Context) error {
 	if err := requireWritableWorkspace(access); err != nil {
 		return err
 	}
-	if err := requireLegacyPermission(auth.GetUser(c), auth.PermBouncesManage); err != nil {
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermBouncesDelete); err != nil {
 		return err
 	}
 	all, _ := strconv.ParseBool(c.QueryParam("all"))
@@ -180,7 +180,7 @@ func (a *App) DeleteBounce(c echo.Context) error {
 	if err := requireWritableWorkspace(access); err != nil {
 		return err
 	}
-	if err := requireLegacyPermission(auth.GetUser(c), auth.PermBouncesManage); err != nil {
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermBouncesDelete); err != nil {
 		return err
 	}
 	// Delete bounces from the DB.
@@ -201,7 +201,7 @@ func (a *App) BlocklistBouncedCustomers(c echo.Context) error {
 	if err := requireWritableWorkspace(access); err != nil {
 		return err
 	}
-	if err := requireLegacyPermission(auth.GetUser(c), auth.PermBouncesManage); err != nil {
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermBouncesBlocklist); err != nil {
 		return err
 	}
 	if err := a.core.BlocklistWorkspaceBouncedCustomers(access); err != nil {

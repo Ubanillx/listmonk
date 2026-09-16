@@ -242,7 +242,7 @@
                 </b-field>
                 <b-field>
                   <b-button @click="() => onSubmit('test')" :loading="loading.campaigns"
-                    :disabled="isNew || !canSendCampaign || (isSMTPMessenger && !personalSMTPAvailable)"
+                    :disabled="isNew || !canTestCampaign || (isSMTPMessenger && !personalSMTPAvailable)"
                     type="is-primary" icon-left="email-outline">
                     {{ $t('campaigns.send') }}
                   </b-button>
@@ -610,7 +610,7 @@ export default Vue.extend({
 
     onSubmit(typ) {
       if (typ === 'test') {
-        if (!this.canSendCampaign) {
+        if (!this.canTestCampaign) {
           this.$utils.toast(this.$t('campaigns.onlyOwnerCanSend'), 'is-danger');
           return;
         }
@@ -961,6 +961,20 @@ export default Vue.extend({
       if (!this.canManage) {
         return false;
       }
+      if (!this.$can('campaigns:send')) {
+        return false;
+      }
+      if (this.isNew) {
+        return true;
+      }
+      const ownerID = Number(this.data.ownerUserId || this.data.owner_user_id) || 0;
+      return ownerID > 0 && ownerID === Number(this.profile && this.profile.id);
+    },
+
+    canTestCampaign() {
+      if (!this.canManage || !this.$can('campaigns:test')) {
+        return false;
+      }
       if (this.isNew) {
         return true;
       }
@@ -969,14 +983,17 @@ export default Vue.extend({
     },
 
     canSchedule() {
-      return this.canSendCampaign
+      const ownerID = Number(this.data.ownerUserId || this.data.owner_user_id) || 0;
+      return this.canManage
+        && this.$can('campaigns:schedule')
+        && (this.isNew || (ownerID > 0 && ownerID === Number(this.profile && this.profile.id)))
         && (!this.isSMTPMessenger || this.personalSMTPAvailable)
         && (this.data.status === 'draft' || this.data.status === 'paused' || this.data.status === 'deferred')
         && (this.form.sendLater && this.form.sendAtDate);
     },
 
     canUnSchedule() {
-      return this.data.status === 'scheduled';
+      return this.canManage && this.$can('campaigns:control') && this.data.status === 'scheduled';
     },
 
     canStart() {
@@ -987,7 +1004,8 @@ export default Vue.extend({
     },
 
     canArchive() {
-      return this.canManage && this.data.status !== 'cancelled' && this.data.type !== 'optin';
+      return this.canManage && this.$can('campaigns:control')
+        && this.data.status !== 'cancelled' && this.data.type !== 'optin';
     },
 
     canViewAnalytics() {

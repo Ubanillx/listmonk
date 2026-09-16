@@ -86,7 +86,7 @@ func (a *App) GetCustomer(c echo.Context) error {
 	// export/bulk operations still require ownership), but the detail and customer_list
 	// views must include the recipient identity and attributes so managers can
 	// administer the organization's audiences and understand ownership.
-	a.redactWorkspaceCustomerSensitiveFields(access, masked, &out)
+	a.redactWorkspaceCustomerSensitiveFields(access, masked, &out, auth.GetUser(c))
 
 	return c.JSON(http.StatusOK, okResp{out})
 }
@@ -168,7 +168,7 @@ func (a *App) QueryCustomers(c echo.Context) error {
 		return err
 	}
 	for i := range res {
-		a.redactWorkspaceCustomerSensitiveFields(access, masked, &res[i])
+		a.redactWorkspaceCustomerSensitiveFields(access, masked, &res[i], auth.GetUser(c))
 	}
 
 	out := models.PageResults{
@@ -201,8 +201,8 @@ func (a *App) requestMaskedLists(c echo.Context, access models.WorkspaceAccess, 
 // exportMasked decides whether a CSV export should mask e-mail addresses. It
 // applies when the exported customer_list scope contains customer_lists with masking enabled and
 // the caller has neither a legacy customer_list-manage grant nor workspace ownership of
-// those customer_lists. Owners, customer_list managers and platform administrators always
-// receive the complete record.
+// those customer_lists. Owners, customer_list managers, users with the dedicated sensitive
+// customer permission, and platform administrators always receive the complete record.
 func (a *App) exportMasked(c echo.Context, access models.WorkspaceAccess, CustomerListIDs []int) (bool, error) {
 	masked, err := a.core.MaskedCustomerListIDs(CustomerListIDs)
 	if err != nil {
@@ -212,7 +212,7 @@ func (a *App) exportMasked(c echo.Context, access models.WorkspaceAccess, Custom
 		return false, nil
 	}
 	user := auth.GetUser(c)
-	if user.IsPlatformAdmin() || user.HasPerm(auth.PermListManageAll) {
+	if user.IsPlatformAdmin() || user.HasPerm(auth.PermCustomersSensitiveRead) || user.HasPerm(auth.PermListManageAll) {
 		return false, nil
 	}
 	for id := range masked {
@@ -249,15 +249,17 @@ func maskEmail(email string) string {
 // redactWorkspaceCustomerSensitiveFields is retained for callers that may
 // fetch a customer through a non-workspace path. In the active organization,
 // managers have the documented read-only right to see member customer
-// details, including e-mail, attributes, and customer_list memberships. They still
+// details, including e-mail, attributes, and customer_list memberships. Users with
+// customers:sensitive_read receive the same sensitive-field visibility for records
+// they can otherwise read. Managers still
 // cannot mutate or export those rows: the corresponding handlers use the
 // stricter managed/export predicates before reaching this response layer.
 //
 // Viewers without sensitive-data access see a masked e-mail when the currently
 // viewed customer_list has e-mail masking enabled; otherwise the pre-existing
 // redaction (empty e-mail) is retained.
-func (a *App) redactWorkspaceCustomerSensitiveFields(access models.WorkspaceAccess, maskedLists map[int]bool, sub *models.Customer) {
-	if sub == nil || a.core.CanSeeSensitiveResource(access, sub.ResourceScope) ||
+func (a *App) redactWorkspaceCustomerSensitiveFields(access models.WorkspaceAccess, maskedLists map[int]bool, sub *models.Customer, user auth.User) {
+	if sub == nil || user.HasPerm(auth.PermCustomersSensitiveRead) || a.core.CanSeeSensitiveResource(access, sub.ResourceScope) ||
 		(access.IsOrganizationManager() && access.IsOrganization() &&
 			sub.OrganizationID.Valid && int(sub.OrganizationID.Int) == access.OrganizationID &&
 			!sub.OrganizationArchived) {
@@ -275,12 +277,14 @@ func (a *App) redactWorkspaceCustomerSensitiveFields(access models.WorkspaceAcce
 
 // ExportCustomers handles querying customers based on an arbitrary SQL expression.
 func (a *App) ExportCustomers(c echo.Context) error {
-	if _, err := a.exportAccess(c); err != nil {
-		return err
-	}
 	access, err := a.workspaceAccess(c)
 	if err != nil {
 		return err
+	}
+	if !access.IsOrganizationManager() {
+		if err := requireLegacyPermission(auth.GetUser(c), auth.PermCustomersExport); err != nil {
+			return err
+		}
 	}
 	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCustomersGetAll, auth.PermCustomersGet); err != nil {
 		return err
@@ -517,7 +521,8 @@ func (a *App) BlocklistCustomer(c echo.Context) error {
 		return err
 	}
 	id := getID(c)
-	if _, err := a.requireManagedWorkspaceCustomer(c, access, id); err != nil {
+	if _, err := a.requireManagedWorkspaceCustomerWithPermissions(c, access, id,
+		auth.PermCustomersBlocklist); err != nil {
 		return err
 	}
 	if err := a.core.BlocklistCustomersInWorkspace(access, []int{id}); err != nil {
@@ -543,7 +548,8 @@ func (a *App) BlocklistCustomers(c echo.Context) error {
 			a.i18n.Ts("globals.messages.errorInvalidIDs", "error", "ids"))
 	}
 	for _, id := range req.CustomerIDs {
-		if _, err := a.requireManagedWorkspaceCustomer(c, access, id); err != nil {
+		if _, err := a.requireManagedWorkspaceCustomerWithPermissions(c, access, id,
+			auth.PermCustomersBlocklist); err != nil {
 			return err
 		}
 	}
@@ -594,7 +600,8 @@ func (a *App) ManageCustomerListMemberships(c echo.Context) error {
 	}
 
 	for _, id := range subIDs {
-		if _, err := a.requireManagedWorkspaceCustomer(c, access, id); err != nil {
+		if _, err := a.requireManagedWorkspaceCustomerWithPermissions(c, access, id,
+			auth.PermCustomersMembershipManage); err != nil {
 			return err
 		}
 	}
@@ -628,7 +635,8 @@ func (a *App) DeleteCustomer(c echo.Context) error {
 		return err
 	}
 	id := getID(c)
-	if _, err := a.requireManagedWorkspaceCustomer(c, access, id); err != nil {
+	if _, err := a.requireManagedWorkspaceCustomerWithPermissions(c, access, id,
+		auth.PermCustomersDelete); err != nil {
 		return err
 	}
 	if err := a.core.DeleteCustomersInWorkspace(access, []int{id}); err != nil {
@@ -655,7 +663,8 @@ func (a *App) DeleteCustomers(c echo.Context) error {
 			a.i18n.Ts("globals.messages.errorInvalidIDs", "error", "ids"))
 	}
 	for _, id := range ids {
-		if _, err := a.requireManagedWorkspaceCustomer(c, access, id); err != nil {
+		if _, err := a.requireManagedWorkspaceCustomerWithPermissions(c, access, id,
+			auth.PermCustomersDelete); err != nil {
 			return err
 		}
 	}
@@ -678,7 +687,7 @@ func (a *App) DeleteCustomersByQuery(c echo.Context) error {
 	if err := requireWritableWorkspace(access); err != nil {
 		return err
 	}
-	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCustomersManage); err != nil {
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCustomersDelete); err != nil {
 		return err
 	}
 
@@ -737,7 +746,7 @@ func (a *App) BlocklistCustomersByQuery(c echo.Context) error {
 	if err := requireWritableWorkspace(access); err != nil {
 		return err
 	}
-	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCustomersManage); err != nil {
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCustomersBlocklist); err != nil {
 		return err
 	}
 
@@ -795,7 +804,7 @@ func (a *App) ManageCustomerListMembershipsByQuery(c echo.Context) error {
 	if err := requireWritableWorkspace(access); err != nil {
 		return err
 	}
-	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCustomersManage); err != nil {
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCustomersMembershipManage); err != nil {
 		return err
 	}
 
@@ -875,9 +884,15 @@ func (a *App) DeleteCustomerBounces(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := requireWritableWorkspace(access); err != nil {
+		return err
+	}
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermBouncesDelete); err != nil {
+		return err
+	}
 	// Delete the bounces from the DB.
 	id := getID(c)
-	if _, err := a.requireManagedWorkspaceCustomer(c, access, id); err != nil {
+	if _, err := a.core.RequireManageResource(access, resourceCustomers, id); err != nil {
 		return err
 	}
 	if err := a.core.DeleteCustomerBouncesInWorkspace(access, id); err != nil {
@@ -892,12 +907,14 @@ func (a *App) DeleteCustomerBounces(c echo.Context) error {
 // a JSON report. This is a privacy feature and depends on the
 // configuration in a.Constants.Privacy.
 func (a *App) ExportCustomerData(c echo.Context) error {
-	if _, err := a.exportAccess(c); err != nil {
-		return err
-	}
 	access, err := a.workspaceAccess(c)
 	if err != nil {
 		return err
+	}
+	if !access.IsOrganizationManager() {
+		if err := requireLegacyPermission(auth.GetUser(c), auth.PermCustomersExport); err != nil {
+			return err
+		}
 	}
 	// Get the customer's data. A single query that gets the profile,
 	// customer_list subscriptions, campaign views, and link clicks. Names of

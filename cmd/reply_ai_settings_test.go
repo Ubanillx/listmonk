@@ -76,7 +76,7 @@ func TestNormalizeReplyAIProbe(t *testing.T) {
 		t.Fatalf("timeout = %q, want the shared 15s default", req.Timeout)
 	}
 
-	for _, intent := range []string{"", "unsubscribe", "complaint", "other"} {
+	for _, intent := range []string{"", "unsubscribe", "complaint", "product_complaint", "other"} {
 		req := replyAIProbeRequest{BaseURL: "https://gateway.example.com/v1", ExpectedIntent: strings.ToUpper(intent)}
 		if err := normalizeReplyAIProbe(&req); err != nil {
 			t.Fatalf("intent %q: %v", intent, err)

@@ -172,6 +172,9 @@ export default Vue.extend({
       if (!this.isEditing) {
         return this.$canCreateWorkspaceResource('customer_lists:manage_all');
       }
+      if (this.data.type === 'pool' && !this.isPlatformAdmin) {
+        return false;
+      }
       return this.$canManageResource(this.data) && this.$canList(this.data.id, 'customer_list:manage');
     },
 

@@ -16,9 +16,6 @@ const http = axios.create({
 });
 
 const utils = new Utils();
-export const createExport = (data) => http.post('/api/exports', data);
-export const getExports = (page = 1) => http.get('/api/exports', { params: { page } });
-export const getExportOptions = () => http.get('/api/exports/options');
 const workspaceHeader = 'X-Listmonk-Organization-ID';
 
 // Intercept requests to set the 'loading' state of a model.

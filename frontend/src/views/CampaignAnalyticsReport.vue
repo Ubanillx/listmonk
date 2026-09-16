@@ -10,8 +10,6 @@
         </h1>
       </div>
     </header>
-    <div class="mb-4"><export-button kind="campaigns" :filters="{ from: filters.from, to: filters.to, campaign_ids: form.campaigns.map(c => c.id) }" /></div>
-
     <div class="notification is-info" v-if="trackingDisabled">
       {{ $t('analytics.trackingDisabled') }}
     </div>
@@ -450,7 +448,7 @@ export default Vue.extend({
     },
 
     canReadCustomers() {
-      return this.$can('campaigns:get_analytics')
+      return this.$can('campaigns:recipients')
         && this.$can('customers:get_all', 'customers:get')
         && this.form.campaigns.every((campaign) => this.$canViewCampaignAnalytics(campaign)
           && this.$canManageResource(campaign));

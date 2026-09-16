@@ -4,6 +4,7 @@
 //   - contains "unsubscribe me"           -> unsubscribe 0.99
 //   - contains "remove me from your mailing list" -> unsubscribe 0.99 (built-in probe sample)
 //   - contains "report spam"              -> complaint   0.99
+//   - contains "product quality"           -> product_complaint 0.99
 //   - contains "no idea"                  -> other        0.5
 //   - contains "maybe unsubscribe"        -> unsubscribe 0.5 (below threshold)
 // It also serves GET /models (and /v1/models) for the settings-page gateway
@@ -65,7 +66,9 @@ http.createServer((req, res) => {
     let confidence = 0.5;
     try {
       const body = JSON.parse(raw);
-      const text = JSON.stringify(body.messages || body).toLowerCase();
+      const messages = body.messages || [];
+      const lastMessage = messages.length > 0 ? messages[messages.length - 1] : body;
+      const text = JSON.stringify(lastMessage).toLowerCase();
       if (text.includes('maybe unsubscribe')) {
         intent = 'unsubscribe';
         reason = 'explicit_unsubscribe';
@@ -78,6 +81,10 @@ http.createServer((req, res) => {
         intent = 'complaint';
         reason = 'explicit_spam_or_abuse';
         confidence = 0.99;
+      } else if (text.includes('product quality') || text.includes('产品质量有问题')) {
+        intent = 'product_complaint';
+        reason = 'product_or_service_complaint';
+        confidence = 0.99;
       }
     } catch (err) {
       // Treat unparseable bodies as other.
@@ -89,4 +96,3 @@ http.createServer((req, res) => {
 }).listen(PORT, '0.0.0.0', () => {
   console.log(`mock openai listening on ${PORT}`);
 });
-

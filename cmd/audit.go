@@ -47,8 +47,6 @@ type auditRecorder interface {
 // raw HTTP paths. The list is kept close to the route registration so adding a
 // new business mutation requires an explicit audit decision.
 var auditRoutes = map[string]auditRouteSpec{
-	"POST /api/exports":                      {"export.created", "export", ""},
-	"GET /api/exports/:id/download":          {"export.downloaded", "export", "id"},
 	"GET /api/audit-events/export":           {"audit.exported", "audit_event", ""},
 	"PUT /api/settings":                      {"settings.updated", "settings", ""},
 	"PUT /api/settings/:key":                 {"settings.updated", "settings", "key"},

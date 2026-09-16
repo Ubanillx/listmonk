@@ -61,6 +61,7 @@ func TestClassifyAcceptsBoundedDecisions(t *testing.T) {
 	}{
 		{"explicit unsubscribe", `{"intent":"unsubscribe","confidence":0.99,"reason_code":"explicit_unsubscribe"}`, IntentUnsubscribe, ReasonExplicitUnsubscribe},
 		{"explicit complaint", `{"intent":"complaint","confidence":0.98,"reason_code":"explicit_spam_or_abuse"}`, IntentComplaint, ReasonExplicitComplaint},
+		{"product complaint", `{"intent":"product_complaint","confidence":0.98,"reason_code":"product_or_service_complaint"}`, IntentProductComplaint, ReasonProductServiceComplaint},
 		{"other with none reason", `{"intent":"other","confidence":0.5,"reason_code":"none"}`, IntentOther, ReasonNone},
 		{"code fence wrapped json", "```json\n{\"intent\":\"unsubscribe\",\"confidence\":0.95,\"reason_code\":\"explicit_unsubscribe\"}\n```", IntentUnsubscribe, ReasonExplicitUnsubscribe},
 		{"prose around json", `Sure. {"intent":"complaint","confidence":0.97,"reason_code":"explicit_spam_or_abuse"} here.`, IntentComplaint, ReasonExplicitComplaint},
@@ -103,6 +104,7 @@ func TestClassifyRejectsAnythingBeyondTheSchema(t *testing.T) {
 		{"unknown intent", `{"intent":"angry","confidence":0.9,"reason_code":"none"}`},
 		{"unsubscribe without explicit reason", `{"intent":"unsubscribe","confidence":0.9,"reason_code":"none"}`},
 		{"complaint with wrong reason", `{"intent":"complaint","confidence":0.9,"reason_code":"explicit_unsubscribe"}`},
+		{"product complaint with wrong reason", `{"intent":"product_complaint","confidence":0.9,"reason_code":"none"}`},
 		{"other with actionable reason", `{"intent":"other","confidence":0.9,"reason_code":"explicit_unsubscribe"}`},
 		{"confidence out of range", `{"intent":"unsubscribe","confidence":2,"reason_code":"explicit_unsubscribe"}`},
 		{"negative confidence", `{"intent":"other","confidence":-1,"reason_code":"none"}`},
@@ -117,6 +119,14 @@ func TestClassifyRejectsAnythingBeyondTheSchema(t *testing.T) {
 				t.Fatalf("expected error for %q", c.content)
 			}
 		})
+	}
+}
+
+func TestClassifierPromptSeparatesProductComplaintsFromSpamComplaints(t *testing.T) {
+	for _, want := range []string{"product_complaint", "产品质量有问题", "must never be treated as spam/abuse"} {
+		if !strings.Contains(classifierPrompt, want) {
+			t.Fatalf("classifier prompt does not contain %q", want)
+		}
 	}
 }
 

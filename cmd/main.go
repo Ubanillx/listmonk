@@ -72,6 +72,11 @@ type App struct {
 
 	// Global state that stores data on an available remote update.
 	update *AppUpdate
+
+	// poolImportMu serializes the synchronous public-pool branch of the unified
+	// customer import endpoint. The regular customer importer has its own
+	// admission control; pool imports write directly in one transaction.
+	poolImportMu sync.Mutex
 	sync.Mutex
 }
 
@@ -342,9 +347,6 @@ func main() {
 	// bounce mailbox. The worker never deletes source messages and forwards
 	// them through the platform system SMTP.
 	go runReplyForwarder(app)
-	exportCtx, stopExports := context.WithCancel(context.Background())
-	defer stopExports()
-	go app.exportService().Run(exportCtx)
 	if app.replyAI.Enabled() {
 		go runReplyAIProcessor(app)
 	}
@@ -374,7 +376,6 @@ func main() {
 		mgr.Close()
 
 		// Close the DB pool.
-		stopExports()
 		db.Close()
 
 		// Close the messenger pool.

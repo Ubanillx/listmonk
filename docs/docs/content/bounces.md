@@ -25,8 +25,8 @@ The mailbox is polled with POP3 without deleting messages; classification is que
 ### Actions
 
 - The sender address is matched **only inside the mailbox owner's workspace**, and only when it resolves to exactly one customer. Unmatched or ambiguous senders are ignored and audited.
-- For both actionable intents the matched customer is globally **blocklisted** and unsubscribed from all of their lists.
-- An explicit complaint additionally records a bounce entry with source `reply_ai` and metadata holding the queue event id, model, confidence, and reason, so provider feedback (`ses`, `postmark`, ...) and AI-derived complaints remain distinguishable.
+- For both actionable intents (`unsubscribe` and spam/abuse `complaint`) the matched customer is globally **blocklisted** and unsubscribed from all of their lists.
+- An explicit spam/abuse complaint additionally records a bounce entry with source `reply_ai` and metadata holding the queue event id, model, confidence, and reason, so provider feedback (`ses`, `postmark`, ...) and AI-derived complaints remain distinguishable. Product/service complaints are retained as `product_complaint` classifications but do not trigger an automatic action.
 - Only the normalized, trimmed latest reply text is sent to the model; attachments and quoted history are never sent. After classification the retained text is removed from the queue and only the hash plus the bounded decision fields are kept for the customer activity audit ("AI reply classifications" on the customer's Activity tab).
 
 

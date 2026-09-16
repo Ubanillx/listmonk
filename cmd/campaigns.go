@@ -586,6 +586,22 @@ func (a *App) UpdateCampaign(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{out})
 }
 
+// campaignStatusPermission maps each user-triggered campaign transition to
+// the business action that authorizes it. Invalid transitions are left to Core
+// so callers receive the existing status validation error.
+func campaignStatusPermission(status string) string {
+	switch status {
+	case models.CampaignStatusScheduled:
+		return auth.PermCampaignsSchedule
+	case models.CampaignStatusRunning:
+		return auth.PermCampaignsSend
+	case models.CampaignStatusDraft, models.CampaignStatusPaused, models.CampaignStatusCancelled:
+		return auth.PermCampaignsControl
+	default:
+		return ""
+	}
+}
+
 // UpdateCampaignStatus handles campaign status modification.
 func (a *App) UpdateCampaignStatus(c echo.Context) error {
 	access, err := a.workspaceAccess(c)
@@ -609,11 +625,17 @@ func (a *App) UpdateCampaignStatus(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	user := auth.GetUser(c)
+	if permission := campaignStatusPermission(req.Status); permission != "" {
+		if err := requireLegacyPermission(user, permission); err != nil {
+			return err
+		}
+	}
 	if req.Status == models.CampaignStatusScheduled || req.Status == models.CampaignStatusRunning {
 		if err := requireAPIKeyScope(c, apiKeyScopeCampaignsSend); err != nil {
 			return err
 		}
-		if err := requireCampaignSendOwnership(auth.GetUser(c), current); err != nil {
+		if err := requireCampaignSendOwnership(user, current); err != nil {
 			return err
 		}
 	}
@@ -654,6 +676,9 @@ func (a *App) UpdateCampaignArchive(c echo.Context) error {
 	id := getID(c)
 
 	if _, err := a.requireManagedWorkspaceCampaign(c, access, id); err != nil {
+		return err
+	}
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCampaignsControl); err != nil {
 		return err
 	}
 
@@ -857,6 +882,9 @@ func (a *App) TestCampaign(c echo.Context) error {
 	id := getID(c)
 
 	if _, err := a.requireManagedWorkspaceCampaign(c, access, id); err != nil {
+		return err
+	}
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCampaignsTest); err != nil {
 		return err
 	}
 
@@ -1196,6 +1224,9 @@ func (a *App) GetCampaignReportRecipients(c echo.Context) error {
 	if _, err := a.requireSensitiveWorkspaceCampaign(c, access, id); err != nil {
 		return err
 	}
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCampaignsRecipients); err != nil {
+		return err
+	}
 	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCustomersGetAll, auth.PermCustomersGet); err != nil {
 		return err
 	}
@@ -1241,6 +1272,9 @@ func (a *App) GetCampaignReportRecipients(c echo.Context) error {
 func (a *App) GetCampaignsReportRecipients(c echo.Context) error {
 	access, err := a.workspaceAccess(c)
 	if err != nil {
+		return err
+	}
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCampaignsRecipients); err != nil {
 		return err
 	}
 	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCustomersGetAll, auth.PermCustomersGet); err != nil {

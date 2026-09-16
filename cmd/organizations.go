@@ -191,12 +191,35 @@ func (a *App) workspaceAccessForOrganizationWithPersonal(c echo.Context, orgID i
 	if org.Status != models.OrganizationStatusActive {
 		return models.WorkspaceAccess{}, echo.NewHTTPError(http.StatusConflict, "organization is archived")
 	}
+	// Platform organization operators may manage an organization selected by
+	// the management screen without becoming a member or receiving access to
+	// its campaigns, customers, templates, or other workspace resources.
+	if user.HasPerm(auth.PermOrganizationsPlatformManage) && isOrganizationManagementPath(c.Path()) {
+		return models.WorkspaceAccess{Workspace: ws, UserID: user.ID}, nil
+	}
 	membership, err := a.core.GetOrganizationMembership(orgID, user.ID)
 	if err != nil {
 		return models.WorkspaceAccess{}, err
 	}
 	ws.Role = membership.Role
 	return models.WorkspaceAccess{Workspace: ws, UserID: user.ID}, nil
+}
+
+func isOrganizationManagementPath(path string) bool {
+	switch path {
+	case "/api/organizations/members",
+		"/api/organizations/members/:user_id",
+		"/api/organizations/resources/transfer",
+		"/api/organizations/templates/:id/transfer",
+		"/api/organizations/templates/:id/unpublish",
+		"/api/organizations/reply-forwarding",
+		"/api/organizations/reply-forwarding/:id",
+		"/api/organizations/invites",
+		"/api/organizations/invites/:id":
+		return true
+	default:
+		return false
+	}
 }
 
 func normalizeWorkspaceVisibility(access models.WorkspaceAccess, value string) (string, error) {
@@ -245,7 +268,9 @@ func (a *App) requireOrganizationManager(c echo.Context) (models.Workspace, erro
 	if ws.Archived {
 		return ws, echo.NewHTTPError(http.StatusConflict, "organization is archived")
 	}
-	if !ws.PlatformAdmin && ws.Role != models.OrganizationMemberRoleManager {
+	user := auth.GetUser(c)
+	if !ws.PlatformAdmin && ws.Role != models.OrganizationMemberRoleManager &&
+		!user.HasPerm(auth.PermOrganizationsPlatformManage) {
 		return ws, echo.NewHTTPError(http.StatusForbidden, "organization manager permission required")
 	}
 	return ws, nil
@@ -266,7 +291,9 @@ func (a *App) requireOrganizationTransferManager(c echo.Context) (models.Workspa
 	if ws.Archived && !ws.PlatformAdmin {
 		return ws, echo.NewHTTPError(http.StatusConflict, "organization is archived")
 	}
-	if !ws.PlatformAdmin && ws.Role != models.OrganizationMemberRoleManager {
+	user := auth.GetUser(c)
+	if !ws.PlatformAdmin && ws.Role != models.OrganizationMemberRoleManager &&
+		!user.HasPerm(auth.PermOrganizationsPlatformManage) {
 		return ws, echo.NewHTTPError(http.StatusForbidden, "organization manager permission required")
 	}
 	return ws, nil
@@ -279,9 +306,10 @@ func requireWritableWorkspace(access models.WorkspaceAccess) error {
 	return nil
 }
 
-func (a *App) requirePlatformAdmin(c echo.Context) error {
-	if !auth.GetUser(c).IsPlatformAdmin() {
-		return echo.NewHTTPError(http.StatusForbidden, "platform administrator permission required")
+func (a *App) requirePlatformOrganizationAdmin(c echo.Context) error {
+	user := auth.GetUser(c)
+	if !user.IsPlatformAdmin() && !user.HasPerm(auth.PermOrganizationsPlatformManage) {
+		return echo.NewHTTPError(http.StatusForbidden, "platform organization management permission required")
 	}
 	return nil
 }
@@ -296,7 +324,7 @@ func (a *App) GetMyOrganizations(c echo.Context) error {
 }
 
 func (a *App) GetOrganizations(c echo.Context) error {
-	if err := a.requirePlatformAdmin(c); err != nil {
+	if err := a.requirePlatformOrganizationAdmin(c); err != nil {
 		return err
 	}
 	includeArchived := c.QueryParam("include_archived") == "true"
@@ -336,7 +364,7 @@ func (a *App) CreateOrganizationRequest(c echo.Context) error {
 }
 
 func (a *App) GetOrganizationRequests(c echo.Context) error {
-	if err := a.requirePlatformAdmin(c); err != nil {
+	if err := a.requirePlatformOrganizationAdmin(c); err != nil {
 		return err
 	}
 	out, err := a.core.GetOrganizationRequests(c.QueryParam("include_resolved") == "true")
@@ -365,7 +393,7 @@ func (a *App) WithdrawOrganizationRequest(c echo.Context) error {
 }
 
 func (a *App) ReviewOrganizationRequest(c echo.Context) error {
-	if err := a.requirePlatformAdmin(c); err != nil {
+	if err := a.requirePlatformOrganizationAdmin(c); err != nil {
 		return err
 	}
 	id := getID(c)
@@ -384,7 +412,7 @@ func (a *App) ReviewOrganizationRequest(c echo.Context) error {
 }
 
 func (a *App) ArchiveOrganization(c echo.Context) error {
-	if err := a.requirePlatformAdmin(c); err != nil {
+	if err := a.requirePlatformOrganizationAdmin(c); err != nil {
 		return err
 	}
 	orgID := getID(c)
@@ -425,7 +453,7 @@ func (a *App) ArchiveOrganization(c echo.Context) error {
 // PurgeArchivedOrganization permanently removes organization metadata only
 // after all scoped resources have been transferred or cleaned up.
 func (a *App) PurgeArchivedOrganization(c echo.Context) error {
-	if err := a.requirePlatformAdmin(c); err != nil {
+	if err := a.requirePlatformOrganizationAdmin(c); err != nil {
 		return err
 	}
 	orgID := getID(c)
@@ -595,7 +623,7 @@ func (a *App) TransferPendingOrganizationResources(c echo.Context) error {
 // platform-admin operation because archived organizations cannot be selected
 // as ordinary workspaces.
 func (a *App) TransferArchivedOrganizationResources(c echo.Context) error {
-	if err := a.requirePlatformAdmin(c); err != nil {
+	if err := a.requirePlatformOrganizationAdmin(c); err != nil {
 		return err
 	}
 	var req organizationTransferInput
@@ -618,7 +646,7 @@ func (a *App) TransferArchivedOrganizationResources(c echo.Context) error {
 // archived organization only to platform administrators. Active organization
 // managers continue to use the workspace-scoped member endpoint.
 func (a *App) GetOrganizationMembersForPlatform(c echo.Context) error {
-	if err := a.requirePlatformAdmin(c); err != nil {
+	if err := a.requirePlatformOrganizationAdmin(c); err != nil {
 		return err
 	}
 	if _, err := a.core.GetOrganization(getID(c)); err != nil {

@@ -211,8 +211,8 @@ export default Vue.extend({
       result: null,
       sample: '',
       expectedIntent: '',
-      // The three intents the classifier can return, for the expectation select.
-      intentOptions: ['unsubscribe', 'complaint', 'other'],
+      // The four intents the classifier can return, for the expectation select.
+      intentOptions: ['unsubscribe', 'complaint', 'product_complaint', 'other'],
     };
   },
 

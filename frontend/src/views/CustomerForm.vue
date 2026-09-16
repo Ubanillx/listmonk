@@ -115,7 +115,7 @@
           <b-tab-item :label="`${$t('globals.terms.bounces')} (${bounces.length})`" class="bounces"
             :disabled="bounces.length === 0">
             <a href="#" class="is-size-6 is-pulled-right" disabed="true" @click.prevent="deleteBounces"
-               v-if="isBounceVisible && canEdit">
+               v-if="isBounceVisible && canDeleteBounces">
               <b-icon icon="trash-can-outline" />
               {{ $t('globals.buttons.delete') }}
             </a>
@@ -342,6 +342,10 @@ export default Vue.extend({
       return !this.isEditing
         ? this.$canCreateWorkspaceResource('customers:manage')
         : this.$canManageResource(this.data, 'customers:manage');
+    },
+
+    canDeleteBounces() {
+      return this.canEdit && this.$canCreateWorkspaceResource('bounces:manage', 'bounces:delete');
     },
 
     hasOptinList() {

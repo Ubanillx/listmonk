@@ -14,7 +14,7 @@ import (
 // validation itself testable without a translator.
 var (
 	errReplyAIBaseURLMissing = errors.New("reply AI base URL is required")
-	errReplyAIExpectedIntent = errors.New("reply AI expected intent must be empty, unsubscribe, complaint, or other")
+	errReplyAIExpectedIntent = errors.New("reply AI expected intent must be empty, unsubscribe, complaint, product_complaint, or other")
 )
 
 // replyAIProbeRequest is the unsaved reply-AI form as submitted by the settings
@@ -40,7 +40,7 @@ func normalizeReplyAIProbe(req *replyAIProbeRequest) error {
 	req.ExpectedIntent = strings.ToLower(strings.TrimSpace(req.ExpectedIntent))
 
 	switch req.ExpectedIntent {
-	case "", replyai.IntentUnsubscribe, replyai.IntentComplaint, replyai.IntentOther:
+	case "", replyai.IntentUnsubscribe, replyai.IntentComplaint, replyai.IntentProductComplaint, replyai.IntentOther:
 	default:
 		return errReplyAIExpectedIntent
 	}

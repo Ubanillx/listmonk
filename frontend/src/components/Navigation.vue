@@ -121,7 +121,9 @@ export default {
         && this.profile.userRole
         && Number(this.profile.userRole.id) === 1;
       const organizations = Array.isArray(this.organizations) ? this.organizations : [];
-      return isPlatformAdmin || organizations.some((organization) => organization.myRole === 'manager');
+      return isPlatformAdmin
+        || this.$can('organizations:platform_manage')
+        || organizations.some((organization) => organization.myRole === 'manager');
     },
   },
 

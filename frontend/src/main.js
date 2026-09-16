@@ -8,9 +8,6 @@ import router from './router';
 import store from './store';
 import * as api from './api';
 import Utils from './utils';
-import ExportButton from './components/ExportButton.vue';
-
-Vue.component('ExportButton', ExportButton);
 
 // Internationalisation.
 Vue.use(VueI18n);
@@ -29,6 +26,10 @@ function organizationManagerAccess() {
   }
 
   if (Number(profile.userRole.id) === 1) {
+    return true;
+  }
+
+  if ((profile.userRole.permissions || []).includes('organizations:platform_manage')) {
     return true;
   }
 
@@ -209,10 +210,11 @@ async function initConfig(app) {
   );
 
   // Recipient rows contain personal data. The server requires an owner-bound
-  // campaign plus both campaign analytics and customer-read capability.
+  // campaign plus the dedicated recipient and customer-read capabilities.
   Vue.prototype.$canReadCampaignRecipients = (campaign) => (
     Vue.prototype.$canManageResource(campaign)
     && Vue.prototype.$can('campaigns:get_analytics')
+    && Vue.prototype.$can('campaigns:recipients')
     && Vue.prototype.$can('customers:get_all', 'customers:get')
   );
 

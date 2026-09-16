@@ -14,11 +14,11 @@
       </b-select>
     </b-field>
 
-    <b-notification v-if="!selectedOrganizationID && !isPlatformAdmin" type="is-light" :closable="false">
+    <b-notification v-if="!selectedOrganizationID && !canManageAllOrganizations" type="is-light" :closable="false">
       {{ $t('organizations.manageNotAdmin') }}
     </b-notification>
 
-    <b-tabs v-if="selectedOrganizationID || isPlatformAdmin" type="is-boxed" :animated="false" v-model="activeTab">
+    <b-tabs v-if="selectedOrganizationID || canManageAllOrganizations" type="is-boxed" :animated="false" v-model="activeTab">
       <b-tab-item v-if="selectedOrganizationID" :label="$t('organizations.tabMembers')" icon="account-group-outline">
         <section class="wrap">
           <form class="columns is-multiline" @submit.prevent="addMember">
@@ -154,7 +154,7 @@
         </section>
       </b-tab-item>
 
-      <b-tab-item v-if="isPlatformAdmin" :label="$t('organizations.tabPlatform')" icon="shield-crown-outline">
+      <b-tab-item v-if="canManageAllOrganizations" :label="$t('organizations.tabPlatform')" icon="shield-crown-outline">
         <section class="mb-6">
           <h2 class="title is-5">{{ $t('organizations.creationRequests') }}</h2>
           <b-table :data="requests" :mobile-cards="false">
@@ -266,12 +266,13 @@ export default Vue.extend({
   computed: {
     ...mapState(['organizations', 'profile']),
 
-    isPlatformAdmin() {
-      return this.profile.userRole && Number(this.profile.userRole.id) === 1;
+    canManageAllOrganizations() {
+      return this.profile.userRole && (Number(this.profile.userRole.id) === 1
+        || (this.profile.userRole.permissions || []).includes('organizations:platform_manage'));
     },
 
     manageableOrganizations() {
-      if (this.isPlatformAdmin) {
+      if (this.canManageAllOrganizations) {
         return this.platformOrganizations.filter((organization) => organization.status === 'active');
       }
       return this.organizations.filter((organization) => organization.myRole === 'manager');
@@ -293,7 +294,7 @@ export default Vue.extend({
     async refresh() {
       const organizations = await this.$api.getMyOrganizations();
       this.$store.commit('setOrganizations', organizations);
-      if (this.isPlatformAdmin) {
+      if (this.canManageAllOrganizations) {
         const [requests, platformOrganizations] = await Promise.all([
           this.$api.getOrganizationRequests(),
           this.$api.getOrganizations(true),

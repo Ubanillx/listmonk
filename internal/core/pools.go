@@ -3,6 +3,7 @@ package core
 import (
 	"database/sql"
 	"net/http"
+	"net/mail"
 	"strconv"
 	"strings"
 
@@ -19,6 +20,10 @@ type PoolRecipient struct {
 	SegmentID      int64 `db:"segment_id" json:"segment_id"`
 	OrganizationID int64 `db:"organization_id" json:"organization_id"`
 	ReplyMailboxID *int  `db:"reply_mailbox_id" json:"reply_mailbox_id,omitempty"`
+}
+
+func normalizePoolAllocationDepartment(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
 }
 
 // UpdatePoolSegmentReplyMailbox changes the internal reply destination for an
@@ -125,7 +130,7 @@ func (c *Core) HasPoolOrganizationPermission(poolID int, organizationID int64) (
 
 func (c *Core) GetPoolContactByUUID(rawUUID string) (models.PoolContact, error) {
 	var p models.PoolContact
-	if err := c.db.Get(&p, `SELECT id,uuid,customer_code,company_name,email,name,attribs,status,created_at,updated_at FROM pool_contacts WHERE uuid=$1::uuid`, rawUUID); err != nil {
+	if err := c.db.Get(&p, `SELECT id,uuid,customer_code,company_name,email,name,allocation_department,attribs,status,created_at,updated_at FROM pool_contacts WHERE uuid=$1::uuid`, rawUUID); err != nil {
 		return p, err
 	}
 	return p, nil
@@ -210,11 +215,11 @@ func (c *Core) QueryPoolContacts(poolID int, organizationID int, platformAdmin b
 		placeholder := len(args)
 		where += " AND pc.customer_code ILIKE $" + strconv.Itoa(placeholder)
 	}
-	q := `SELECT pc.id, pc.uuid, pc.customer_code, pc.company_name, pc.email, pc.name, pc.status
+	q := `SELECT pc.id, pc.uuid, pc.customer_code, pc.company_name, pc.email, pc.name, pc.allocation_department, pc.status
 		FROM pool_contacts pc JOIN pool_members pm ON pm.contact_id=pc.id` + join + `
 		WHERE pm.pool_id=$1` + where + ` ORDER BY pc.id`
 	if !platformAdmin {
-		q = `SELECT DISTINCT ON (pc.id) pc.id, pc.uuid, pc.customer_code, pc.company_name, pc.email, pc.name, pc.status,
+		q = `SELECT DISTINCT ON (pc.id) pc.id, pc.uuid, pc.customer_code, pc.company_name, pc.email, pc.name, pc.allocation_department, pc.status,
 			(psm.status='removed' OR ex.contact_id IS NOT NULL) AS excluded, COALESCE(NULLIF(psm.removed_reason,''), ex.reason, '') AS exclusion_reason
 			FROM pool_contacts pc JOIN pool_members pm ON pm.contact_id=pc.id` + join + `
 			WHERE pm.pool_id=$1` + where + ` ORDER BY pc.id, psm.updated_at DESC`
@@ -268,7 +273,12 @@ func (c *Core) CreatePoolContact(poolID int, p models.PoolContact) (models.PoolC
 			return models.PoolContact{}, err
 		}
 	}
-	if strings.TrimSpace(p.Email) == "" {
+	p.CustomerCode = strings.TrimSpace(p.CustomerCode)
+	p.CompanyName = strings.TrimSpace(p.CompanyName)
+	p.Email = strings.TrimSpace(p.Email)
+	p.Name = strings.TrimSpace(p.Name)
+	p.AllocationDepartment = strings.TrimSpace(p.AllocationDepartment)
+	if p.Email == "" {
 		return models.PoolContact{}, echo.NewHTTPError(http.StatusBadRequest, "email is required")
 	}
 	tx, err := c.db.Beginx()
@@ -276,8 +286,19 @@ func (c *Core) CreatePoolContact(poolID int, p models.PoolContact) (models.PoolC
 		return models.PoolContact{}, err
 	}
 	defer tx.Rollback()
+	if p.AllocationDepartment != "" {
+		var exists bool
+		if err = tx.Get(&exists, `SELECT EXISTS(
+			SELECT 1 FROM organizations WHERE status=$1 AND LOWER(name)=LOWER($2)
+		)`, models.OrganizationStatusActive, p.AllocationDepartment); err != nil {
+			return models.PoolContact{}, err
+		}
+		if !exists {
+			return models.PoolContact{}, echo.NewHTTPError(http.StatusBadRequest, "allocation department does not exist")
+		}
+	}
 	var id int64
-	if err = tx.Get(&id, `INSERT INTO pool_contacts(customer_code,company_name,email,name,attribs) VALUES($1,$2,$3,$4,$5::jsonb) RETURNING id`, p.CustomerCode, p.CompanyName, p.Email, p.Name, `{}`); err != nil {
+	if err = tx.Get(&id, `INSERT INTO pool_contacts(customer_code,company_name,email,name,allocation_department,attribs) VALUES($1,$2,$3,$4,$5,$6::jsonb) RETURNING id`, p.CustomerCode, p.CompanyName, p.Email, p.Name, p.AllocationDepartment, `{}`); err != nil {
 		return models.PoolContact{}, err
 	}
 	if poolID > 0 {
@@ -292,6 +313,136 @@ func (c *Core) CreatePoolContact(poolID int, p models.PoolContact) (models.PoolC
 	_ = c.db.Get(&p.UUID, `SELECT uuid FROM pool_contacts WHERE id=$1`, id)
 	p.Status = "active"
 	return p, nil
+}
+
+// ImportPoolContacts imports the four business fields used by the unified
+// public-pool import. Additional source columns are intentionally ignored by
+// the HTTP parser. A contact is reused when all imported identity fields
+// match; same-code differences are retained as separate contacts and written
+// to the pool conflict audit table, matching the existing pool merge policy.
+func (c *Core) ImportPoolContacts(poolID, userID int, rows []models.PoolContactImportRow) (models.PoolContactImportResult, error) {
+	result := models.PoolContactImportResult{Target: models.CustomerListTypePool, PoolID: poolID, Total: len(rows)}
+	if poolID <= 0 {
+		return result, echo.NewHTTPError(http.StatusBadRequest, "pool_id is required")
+	}
+	if err := c.ensurePool(poolID); err != nil {
+		return result, err
+	}
+
+	tx, err := c.db.Beginx()
+	if err != nil {
+		return result, err
+	}
+	defer tx.Rollback()
+
+	var departmentNames []string
+	if err := tx.Select(&departmentNames, `SELECT name FROM organizations WHERE status=$1`, models.OrganizationStatusActive); err != nil {
+		return result, err
+	}
+	validDepartments := make(map[string]struct{}, len(departmentNames))
+	for _, departmentName := range departmentNames {
+		validDepartments[normalizePoolAllocationDepartment(departmentName)] = struct{}{}
+	}
+
+	seen := make(map[string]struct{}, len(rows))
+	addIssue := func(issue models.PoolContactImportIssue) {
+		if len(result.Issues) < 200 {
+			result.Issues = append(result.Issues, issue)
+		}
+	}
+	for _, row := range rows {
+		code := strings.TrimSpace(row.CustomerCode)
+		name := strings.TrimSpace(row.Name)
+		email := strings.TrimSpace(row.Email)
+		department := strings.TrimSpace(row.AllocationDepartment)
+		issue := models.PoolContactImportIssue{Row: row.Row, CustomerCode: code, AllocationDepartment: department}
+		switch {
+		case code == "":
+			result.Invalid++
+			issue.Reason = "customer_code_required"
+			addIssue(issue)
+			continue
+		case name == "":
+			result.Invalid++
+			issue.Reason = "name_required"
+			addIssue(issue)
+			continue
+		case email == "":
+			result.Invalid++
+			issue.Reason = "email_required"
+			addIssue(issue)
+			continue
+		case department == "":
+			result.Invalid++
+			issue.Reason = "allocation_department_required"
+			addIssue(issue)
+			continue
+		}
+		if _, ok := validDepartments[normalizePoolAllocationDepartment(department)]; !ok {
+			result.Invalid++
+			issue.Reason = "allocation_department_not_found"
+			addIssue(issue)
+			continue
+		}
+		parsed, parseErr := mail.ParseAddress(email)
+		if parseErr != nil || !strings.EqualFold(parsed.Address, email) || !strings.Contains(parsed.Address, "@") {
+			result.Invalid++
+			issue.Reason = "invalid_email"
+			addIssue(issue)
+			continue
+		}
+
+		key := code + "\x00" + strings.ToLower(email) + "\x00" + name + "\x00" + department
+		if _, ok := seen[key]; ok {
+			result.Duplicates++
+			continue
+		}
+		seen[key] = struct{}{}
+		result.Valid++
+
+		var contactID int64
+		err = tx.Get(&contactID, `SELECT id FROM pool_contacts
+			WHERE customer_code=$1 AND LOWER(email)=LOWER($2) AND name=$3 AND allocation_department=$4
+			ORDER BY id LIMIT 1`, code, email, name, department)
+		if err == nil {
+			if _, err = tx.Exec(`UPDATE pool_contacts SET status='active',updated_at=NOW() WHERE id=$1`, contactID); err != nil {
+				return result, err
+			}
+			result.Existing++
+		} else if err != sql.ErrNoRows {
+			return result, err
+		} else {
+			var existingID int64
+			codeErr := tx.Get(&existingID, `SELECT id FROM pool_contacts WHERE customer_code=$1 ORDER BY id LIMIT 1`, code)
+			hasConflict := codeErr == nil
+			if codeErr != nil && codeErr != sql.ErrNoRows {
+				return result, codeErr
+			}
+			if err = tx.Get(&contactID, `INSERT INTO pool_contacts(customer_code,company_name,email,name,allocation_department,attribs)
+				VALUES($1,'',$2,$3,$4,'{}'::jsonb) RETURNING id`, code, email, name, department); err != nil {
+				return result, err
+			}
+			result.Created++
+			if hasConflict {
+				if _, err = tx.Exec(`INSERT INTO pool_merge_conflicts(pool_id,contact_id,customer_code,existing_snapshot,incoming_snapshot,created_by_user_id)
+					VALUES($1,$2,$3,
+						(SELECT jsonb_build_object('email',email,'name',name,'allocation_department',allocation_department) FROM pool_contacts WHERE id=$2),
+						jsonb_build_object('email',$4::text,'name',$5::text,'allocation_department',$6::text),$7)`,
+					poolID, existingID, code, email, name, department, userID); err != nil {
+					return result, err
+				}
+				result.Conflicts++
+			}
+		}
+
+		if _, err = tx.Exec(`INSERT INTO pool_members(pool_id,contact_id) VALUES($1,$2) ON CONFLICT DO NOTHING`, poolID, contactID); err != nil {
+			return result, err
+		}
+	}
+	if err = tx.Commit(); err != nil {
+		return result, err
+	}
+	return result, nil
 }
 
 // CreatePoolSegment splits a first-level pool into one organization-owned

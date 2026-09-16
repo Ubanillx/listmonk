@@ -40,7 +40,8 @@
               </div>
             </div>
             <span
-              v-if="form.customer_lists.length > 0 && (form.permissions['customer_lists:get_all'] || form.permissions['customer_lists:manage_all'])"
+              v-if="form.customer_lists.length > 0 && Array.isArray(form.permissions)
+                && (form.permissions.includes('customer_lists:get_all') || form.permissions.includes('customer_lists:manage_all'))"
               class="is-size-6 has-text-danger">
               <b-icon icon="warning-empty" />
               {{ $t('users.customerListPermsWarning') }}
@@ -92,14 +93,22 @@
             </b-table-column>
 
             <b-table-column v-slot="props" field="permissions" label="Permissions">
-              <div v-for="p in props.row.permissions" :key="p">
+              <div v-for="p in props.row.permissions" :key="p" class="permission-row">
                 <b-checkbox v-model="form.permissions" :native-value="p" :disabled="disabled">
-                  {{ p }}
-                  <span v-if="p === 'customers:sql_query'" :title="$t('users.highRiskPermission')"
+                  {{ permissionLabel(p) }}
+                  <span v-if="isHighRiskPermission(p)"
+                    :title="$t('users.highRiskPermission')"
                     :aria-label="$t('users.highRiskPermission')">
                     <b-icon icon="warning-empty" type="is-danger" size="is-small" />
                   </span>
                 </b-checkbox>
+                <b-tooltip :label="permissionDescription(p)" type="is-dark" position="is-right" multilined>
+                  <span class="permission-help" tabindex="0" role="button"
+                    :aria-label="$t('users.permissionHelp.label')"
+                    :title="$t('users.permissionHelp.label')">
+                    <b-icon icon="help-circle-outline" size="is-small" />
+                  </span>
+                </b-tooltip>
               </div>
             </b-table-column>
           </b-table>
@@ -151,6 +160,28 @@ export default Vue.extend({
   },
 
   methods: {
+    permissionLabel(permission) {
+      const key = `users.permission.${permission}`;
+      return this.$te(key) ? this.$t(key) : permission;
+    },
+
+    permissionDescription(permission) {
+      const key = `users.permissionHelp.${permission}`;
+      return this.$te(key)
+        ? this.$t(key)
+        : this.$t('users.permissionHelp.default', { permission: this.permissionLabel(permission) });
+    },
+
+    isHighRiskPermission(permission) {
+      return [
+        'customers:sql_query', 'customers:delete', 'customers:blocklist', 'customers:membership_manage',
+        'customers:export', 'customers:sensitive_read', 'campaigns:send', 'campaigns:test',
+        'campaigns:schedule', 'campaigns:control', 'campaigns:recipients', 'bounces:delete',
+        'bounces:blocklist', 'users:tokens',
+        'organizations:platform_manage',
+      ].includes(permission);
+    },
+
     onAddListPerm() {
       const customerList = this.customer_lists.results.find((l) => l.id === this.form.curList);
       this.form.customer_lists.push({ id: customerList.id, name: customerList.name, permissions: ['customer_list:get', 'customer_list:manage'] });
@@ -257,12 +288,29 @@ export default Vue.extend({
       }
     } else {
       const skip = ['admin', 'users'];
+      const defaultDisabled = [
+        'customers:sql_query',
+        'customers:delete',
+        'customers:blocklist',
+        'customers:membership_manage',
+        'customers:export',
+        'customers:sensitive_read',
+        'campaigns:send',
+        'campaigns:test',
+        'campaigns:schedule',
+        'campaigns:control',
+        'campaigns:recipients',
+        'bounces:delete',
+        'bounces:blocklist',
+        'users:tokens',
+        'organizations:platform_manage',
+      ];
       this.form.permissions = this.serverConfig.permissions.reduce((acc, item) => {
         if (skip.includes(item.group)) {
           return acc;
         }
         item.permissions.forEach((p) => {
-          if (p !== 'customers:sql_query' && !p.startsWith('customer_lists:') && !p.startsWith('settings:')) {
+          if (!defaultDisabled.includes(p) && !p.startsWith('customer_lists:') && !p.startsWith('settings:')) {
             acc.push(p);
           }
         });
@@ -279,3 +327,25 @@ export default Vue.extend({
   },
 });
 </script>
+
+<style scoped>
+.permission-row {
+  display: flex;
+  align-items: center;
+  min-height: 2rem;
+}
+
+.permission-help {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.25rem;
+  color: #7a7a7a;
+  cursor: help;
+}
+
+.permission-help:focus {
+  color: #3273dc;
+  outline: 1px dotted currentColor;
+  outline-offset: 2px;
+}
+</style>

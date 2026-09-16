@@ -22,8 +22,6 @@
         </b-field>
       </div>
     </header>
-    <div class="mb-4"><export-button ref="exportButton" kind="customers" :filters="queryParams" :selected="bulk.all ? [] : bulk.checked" /></div>
-
     <section class="customers-controls">
       <div class="columns">
         <div class="column is-8">
@@ -72,25 +70,25 @@
     <b-table :data="customers.results ?? []" :loading="loading.customers" @check-all="onTableCheck"
       @check="onTableCheck" :checked-rows.sync="bulk.checked" paginated backend-pagination pagination-position="both"
       @page-change="onPageChange" :current-page="queryParams.page" :per-page="customers.perPage"
-      :total="customers.total" hoverable :checkable="canManageCustomers"
-      :is-row-checkable="canManageCustomer" backend-sorting @sort="onSort">
+      :total="customers.total" hoverable :checkable="canSelectCustomerRows"
+      :is-row-checkable="canSelectCustomerRow" backend-sorting @sort="onSort">
       <template #top-left>
         <div class="actions">
           <a v-if="canExportCustomers" class="a" href="#" @click.prevent="exportCustomers" data-cy="btn-export-customers">
             <b-icon icon="cloud-download-outline" size="is-small" />
             {{ $t('customers.export') }}
           </a>
-          <template v-if="canManageCustomers && bulk.checked.length > 0">
-            <a class="a" href="#" @click.prevent="showBulkListForm" data-cy="btn-manage-customer_lists">
+          <template v-if="bulk.checked.length > 0">
+            <a v-if="canManageMemberships" class="a" href="#" @click.prevent="showBulkListForm" data-cy="btn-manage-customer_lists">
               <b-icon icon="format-list-bulleted-square" size="is-small" /> Manage customer_lists
             </a>
-            <a class="a" href="#" @click.prevent="deleteCustomers" data-cy="btn-delete-customers">
+            <a v-if="canDeleteCustomers" class="a" href="#" @click.prevent="deleteCustomers" data-cy="btn-delete-customers">
               <b-icon icon="trash-can-outline" size="is-small" /> Delete
             </a>
-            <a class="a" href="#" @click.prevent="blocklistCustomers" data-cy="btn-manage-blocklist">
+            <a v-if="canBlocklistCustomers" class="a" href="#" @click.prevent="blocklistCustomers" data-cy="btn-manage-blocklist">
               <b-icon icon="account-off-outline" size="is-small" /> Blocklist
             </a>
-            <span class="a">
+            <span v-if="canManageMemberships || canDeleteCustomers || canBlocklistCustomers" class="a">
               {{ $t('globals.messages.numSelected', { num: numSelectedCustomers }) }}
               <span v-if="canSelectAll && !bulk.all && customers.total > customers.perPage">
                 &mdash;
@@ -157,7 +155,7 @@
 
       <b-table-column v-slot="props" cell-class="actions" align="right">
         <div>
-          <a v-if="canExportCustomers && canManageCustomer(props.row)" :href="customerExportURL(props.row.id)" data-cy="btn-download"
+          <a v-if="canExportCustomers && canExportCustomer(props.row)" :href="customerExportURL(props.row.id)" data-cy="btn-download"
             :aria-label="$t('customers.downloadData')">
             <b-tooltip :label="$t('customers.downloadData')" type="is-dark">
               <b-icon icon="cloud-download-outline" size="is-small" />
@@ -169,7 +167,7 @@
               <b-icon icon="pencil-outline" size="is-small" />
             </b-tooltip>
           </a>
-          <a v-if="canManageCustomer(props.row)" href="#" @click.prevent="deleteCustomer(props.row)"
+          <a v-if="canDeleteCustomer(props.row)" href="#" @click.prevent="deleteCustomer(props.row)"
             data-cy="btn-delete" :aria-label="$t('globals.buttons.delete')">
             <b-tooltip :label="$t('globals.buttons.delete')" type="is-dark">
               <b-icon icon="trash-can-outline" size="is-small" />
@@ -198,6 +196,7 @@
 <script>
 import Vue from 'vue';
 import { mapState } from 'vuex';
+import { uris } from '../constants';
 import EmptyPlaceholder from '../components/EmptyPlaceholder.vue';
 import CustomerBulkList from './CustomerBulkList.vue';
 import CustomerForm from './CustomerForm.vue';
@@ -247,6 +246,29 @@ export default Vue.extend({
   methods: {
     canManageCustomer(customer) {
       return this.$canManageResource(customer, 'customers:manage');
+    },
+
+    canDeleteCustomer(customer) {
+      return this.$canManageResource(customer, 'customers:delete');
+    },
+
+    canBlocklistCustomer(customer) {
+      return this.$canManageResource(customer, 'customers:blocklist');
+    },
+
+    canManageMembership(customer) {
+      return this.$canManageResource(customer, 'customers:membership_manage');
+    },
+
+    canExportCustomer(customer) {
+      return this.$canManageResource(customer) && this.$can('customers:get_all', 'customers:get');
+    },
+
+    canSelectCustomerRow(customer) {
+      return this.canManageCustomer(customer)
+        || this.canDeleteCustomer(customer)
+        || this.canBlocklistCustomer(customer)
+        || this.canManageMembership(customer);
     },
 
     ownerLabel(resource) {
@@ -422,7 +444,36 @@ export default Vue.extend({
     },
 
     exportCustomers() {
-      this.$refs.exportButton.open();
+      const num = !this.bulk.all && this.bulk.checked.length > 0
+        ? this.bulk.checked.length : this.customers.total;
+
+      this.$utils.confirm(this.$t('customers.confirmExport', { num }), () => {
+        const q = new URLSearchParams();
+
+        if (this.queryParams.search) {
+          q.append('search', this.queryParams.search);
+        } else if (this.queryParams.queryExp) {
+          q.append('query', this.queryParams.queryExp);
+        }
+
+        if (this.queryParams.customerListID) {
+          q.append('customer_list_id', this.queryParams.customerListID);
+        }
+
+        if (this.queryParams.subStatus) {
+          q.append('subscription_status', this.queryParams.subStatus);
+        }
+
+        if (this.workspace.organizationId) {
+          q.append('organization_id', this.workspace.organizationId);
+        }
+
+        if (!this.bulk.all && this.bulk.checked.length > 0) {
+          this.bulk.checked.forEach((customer) => q.append('id', customer.id));
+        }
+
+        document.location.href = `${uris.exportCustomers}?${q.toString()}`;
+      });
     },
 
     deleteCustomers() {
@@ -502,12 +553,32 @@ export default Vue.extend({
       return this.$canCreateWorkspaceResource('customers:manage');
     },
 
+    canDeleteCustomers() {
+      return this.$can('customers:delete')
+        && (!this.bulk.checked.length || this.bulk.checked.every((customer) => this.canDeleteCustomer(customer)));
+    },
+
+    canBlocklistCustomers() {
+      return this.$can('customers:blocklist')
+        && (!this.bulk.checked.length || this.bulk.checked.every((customer) => this.canBlocklistCustomer(customer)));
+    },
+
+    canManageMemberships() {
+      return this.$can('customers:membership_manage')
+        && (!this.bulk.checked.length || this.bulk.checked.every((customer) => this.canManageMembership(customer)));
+    },
+
+    canSelectCustomerRows() {
+      return this.canManageCustomers || this.$can('customers:delete', 'customers:blocklist', 'customers:membership_manage');
+    },
+
     canSelectAll() {
       return !(this.workspace.organizationId && this.workspace.role === 'manager');
     },
 
     canExportCustomers() {
-      return (this.workspace.platformAdmin || (this.workspace.organizationId && this.workspace.role === 'manager'))
+      return (this.workspace.platformAdmin || (this.workspace.organizationId && this.workspace.role === 'manager')
+        || this.$can('customers:export'))
         && this.$canCreateWorkspaceResource('customers:get_all', 'customers:get')
         && (!this.bulk.checked.length || this.bulk.checked.every((customer) => this.$canManageResource(customer)));
     },

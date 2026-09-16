@@ -215,6 +215,7 @@ export default Vue.extend({
       return ({
         unsubscribe: 'is-warning',
         complaint: 'is-danger',
+        product_complaint: 'is-info',
         other: 'is-light',
       })[intent] || 'is-light';
     },

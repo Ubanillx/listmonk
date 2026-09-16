@@ -16,8 +16,6 @@
         </b-field>
       </div>
     </header>
-    <div class="mb-4"><export-button kind="campaigns" :filters="{ ...queryParams, ...$route.query }" :selected="bulk.all ? [] : bulk.checked" /></div>
-
     <b-table :data="campaigns.results" :loading="loading.campaigns" :row-class="highlightedRow"
       @check-all="onTableCheck" @check="onTableCheck" :checked-rows.sync="bulk.checked" paginated backend-pagination
       pagination-position="both" @page-change="onPageChange" :current-page="queryParams.page"
@@ -359,19 +357,23 @@ export default Vue.extend({
   methods: {
     // Campaign statuses.
     canStart(c) {
-      return c.status === 'draft' && !c.sendAt;
+      return this.canManageCampaign(c) && this.$can('campaigns:send')
+        && c.status === 'draft' && !c.sendAt;
     },
     canSchedule(c) {
-      return (c.status === 'draft' || c.status === 'paused' || c.status === 'deferred') && c.sendAt;
+      return this.canManageCampaign(c) && this.$can('campaigns:schedule')
+        && (c.status === 'draft' || c.status === 'paused' || c.status === 'deferred') && c.sendAt;
     },
     canPause(c) {
-      return c.status === 'running';
+      return this.canManageCampaign(c) && this.$can('campaigns:control') && c.status === 'running';
     },
     canCancel(c) {
-      return c.status === 'running' || c.status === 'paused' || c.status === 'deferred';
+      return this.canManageCampaign(c) && this.$can('campaigns:control')
+        && (c.status === 'running' || c.status === 'paused' || c.status === 'deferred');
     },
     canResume(c) {
-      return c.status === 'paused' || c.status === 'deferred';
+      return this.canManageCampaign(c) && this.$can('campaigns:send')
+        && (c.status === 'paused' || c.status === 'deferred');
     },
     isSheduled(c) {
       return c.status === 'scheduled' || c.sendAt !== null;

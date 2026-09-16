@@ -148,6 +148,104 @@ func TestLegacyPermissionsRemainNarrowingGuards(t *testing.T) {
 	}
 }
 
+func TestActionSpecificPermissionsRemainIndependent(t *testing.T) {
+	tests := []struct {
+		name       string
+		permission string
+	}{
+		{name: "customer delete", permission: auth.PermCustomersDelete},
+		{name: "customer blocklist", permission: auth.PermCustomersBlocklist},
+		{name: "customer membership", permission: auth.PermCustomersMembershipManage},
+		{name: "customer export", permission: auth.PermCustomersExport},
+		{name: "customer sensitive read", permission: auth.PermCustomersSensitiveRead},
+		{name: "campaign send", permission: auth.PermCampaignsSend},
+		{name: "campaign test", permission: auth.PermCampaignsTest},
+		{name: "campaign schedule", permission: auth.PermCampaignsSchedule},
+		{name: "campaign control", permission: auth.PermCampaignsControl},
+		{name: "campaign recipients", permission: auth.PermCampaignsRecipients},
+		{name: "bounce delete", permission: auth.PermBouncesDelete},
+		{name: "bounce blocklist", permission: auth.PermBouncesBlocklist},
+		{name: "user tokens", permission: auth.PermUsersTokens},
+		{name: "organization platform management", permission: auth.PermOrganizationsPlatformManage},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			allowed := permissionTestUser(test.permission)
+			if err := requireLegacyPermission(allowed, test.permission); err != nil {
+				t.Fatalf("specific permission %q was rejected: %v", test.permission, err)
+			}
+			denied := permissionTestUser(auth.PermCustomersGet)
+			if err := requireLegacyPermission(denied, test.permission); err == nil {
+				t.Fatalf("unrelated permission unexpectedly granted %q", test.permission)
+			}
+		})
+	}
+}
+
+func TestBusinessActionsDoNotInheritBroadPermissions(t *testing.T) {
+	tests := []struct {
+		name   string
+		broad  string
+		action string
+	}{
+		{name: "customer delete", broad: auth.PermCustomersManage, action: auth.PermCustomersDelete},
+		{name: "customer blocklist", broad: auth.PermCustomersManage, action: auth.PermCustomersBlocklist},
+		{name: "customer membership", broad: auth.PermCustomersManage, action: auth.PermCustomersMembershipManage},
+		{name: "bounce delete", broad: auth.PermBouncesManage, action: auth.PermBouncesDelete},
+		{name: "bounce blocklist", broad: auth.PermBouncesManage, action: auth.PermBouncesBlocklist},
+		{name: "campaign test", broad: auth.PermCampaignsManage, action: auth.PermCampaignsTest},
+		{name: "campaign schedule", broad: auth.PermCampaignsManage, action: auth.PermCampaignsSchedule},
+		{name: "campaign control", broad: auth.PermCampaignsManage, action: auth.PermCampaignsControl},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if err := requireLegacyPermission(permissionTestUser(test.broad), test.action); err == nil {
+				t.Fatalf("broad permission %q unexpectedly granted %q", test.broad, test.action)
+			}
+		})
+	}
+}
+
+func TestCampaignStatusPermissionMapping(t *testing.T) {
+	tests := map[string]string{
+		models.CampaignStatusScheduled: auth.PermCampaignsSchedule,
+		models.CampaignStatusRunning:   auth.PermCampaignsSend,
+		models.CampaignStatusDraft:     auth.PermCampaignsControl,
+		models.CampaignStatusPaused:    auth.PermCampaignsControl,
+		models.CampaignStatusCancelled: auth.PermCampaignsControl,
+		models.CampaignStatusDeferred:  "",
+		models.CampaignStatusFinished:  "",
+	}
+	for status, want := range tests {
+		if got := campaignStatusPermission(status); got != want {
+			t.Fatalf("campaignStatusPermission(%q) = %q, want %q", status, got, want)
+		}
+	}
+}
+
+func TestOrganizationManagementPathsAreExplicitlyWhitelisted(t *testing.T) {
+	for _, path := range []string{
+		"/api/organizations/members",
+		"/api/organizations/members/:user_id",
+		"/api/organizations/resources/transfer",
+		"/api/organizations/templates/:id/transfer",
+		"/api/organizations/templates/:id/unpublish",
+		"/api/organizations/reply-forwarding",
+		"/api/organizations/reply-forwarding/:id",
+		"/api/organizations/invites",
+		"/api/organizations/invites/:id",
+	} {
+		if !isOrganizationManagementPath(path) {
+			t.Fatalf("management path %q was not whitelisted", path)
+		}
+	}
+	for _, path := range []string{"/api/customers", "/api/organizations", "/api/users"} {
+		if isOrganizationManagementPath(path) {
+			t.Fatalf("unrelated path %q was whitelisted", path)
+		}
+	}
+}
+
 func TestManagedListIntersectionNeverFallsBackToAllLists(t *testing.T) {
 	if got := intersectManagedWorkspaceLegacyCustomerListIDs([]int{2, 5}, false, []int{5}); len(got) != 1 || got[0] != 5 {
 		t.Fatalf("managed customer_list intersection = %v, want [5]", got)

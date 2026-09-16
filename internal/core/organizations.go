@@ -774,7 +774,7 @@ func (c *Core) TransferArchivedOrganizationResourcesToPersonal(orgID, targetUser
 	}
 	if _, err := tx.Exec(`
 		UPDATE media SET organization_id = NULL, owner_user_id = $2,
-			visibility = 'private', transfer_pending_at = NULL, updated_at = NOW()
+			folder_id = NULL, visibility = 'private', transfer_pending_at = NULL, updated_at = NOW()
 		WHERE organization_id = $1 AND transfer_pending_at IS NOT NULL`, orgID, targetUserID); err != nil {
 		return c.organizationDBErr("moving archived organization media", err)
 	}

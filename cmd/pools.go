@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/knadh/listmonk/internal/auth"
 	"github.com/knadh/listmonk/models"
@@ -22,6 +23,179 @@ const (
 	maxPoolAllocationUploadSize = 25 << 20
 	maxPoolAllocationUnzipSize  = 256 << 20
 )
+
+var poolContactImportAliases = map[string][]string{
+	"customer_code":         {"customer_code", "customer code", "customercode", "客户编码", "客户编号"},
+	"name":                  {"name", "fullname", "full name", "联系人", "姓名"},
+	"email":                 {"email", "e-mail", "mail", "邮箱", "邮件地址"},
+	"allocation_department": {"allocation_department", "allocation department", "department", "部门", "分配部门", "分配部门名称"},
+}
+
+func normalizePoolImportHeader(value string) string {
+	return strings.ToLower(strings.TrimSpace(strings.TrimPrefix(value, "\ufeff")))
+}
+
+func parsePoolImportColumnRef(ref string) (int, bool) {
+	if ref == "" {
+		return 0, false
+	}
+	if n, err := strconv.Atoi(ref); err == nil {
+		if n <= 0 {
+			return 0, false
+		}
+		return n - 1, true
+	}
+	column := 0
+	for _, r := range ref {
+		upper := unicode.ToUpper(r)
+		if upper < 'A' || upper > 'Z' {
+			return 0, false
+		}
+		column = column*26 + int(upper-'A'+1)
+	}
+	if column <= 0 {
+		return 0, false
+	}
+	return column - 1, true
+}
+
+func resolvePoolContactImportColumns(header []string, fieldMap map[string]string) (map[string]int, error) {
+	headerIndexes := make(map[string]int, len(header))
+	for i, value := range header {
+		normalized := normalizePoolImportHeader(value)
+		if normalized != "" {
+			headerIndexes[normalized] = i
+		}
+	}
+	normalizedMap := make(map[string]string, len(fieldMap))
+	for key, value := range fieldMap {
+		normalizedMap[strings.ToLower(strings.TrimSpace(key))] = strings.TrimSpace(value)
+	}
+
+	columns := make(map[string]int, len(poolContactImportAliases))
+	for key, aliases := range poolContactImportAliases {
+		ref := normalizedMap[key]
+		if ref != "" {
+			if index, ok := headerIndexes[normalizePoolImportHeader(ref)]; ok {
+				columns[key] = index
+				continue
+			}
+			if index, ok := parsePoolImportColumnRef(ref); ok {
+				columns[key] = index
+				continue
+			}
+			return nil, fmt.Errorf("字段映射 %s 无法匹配列 %q", key, ref)
+		}
+		for _, alias := range aliases {
+			if index, ok := headerIndexes[normalizePoolImportHeader(alias)]; ok {
+				columns[key] = index
+				break
+			}
+		}
+		if _, ok := columns[key]; !ok {
+			return nil, fmt.Errorf("公海导入首行必须包含客户编号、姓名、邮箱、分配部门列")
+		}
+	}
+	return columns, nil
+}
+
+// parsePoolContactImportFile parses the first sheet/CSV of the unified public
+// pool import. The source workbook may contain the full business template;
+// only the four mapped fields are returned to the domain layer.
+func parsePoolContactImportFile(file *multipart.FileHeader, fieldMap map[string]string) ([]models.PoolContactImportRow, error) {
+	name := strings.ToLower(file.Filename)
+	src, err := file.Open()
+	if err != nil {
+		return nil, err
+	}
+	defer src.Close()
+	if strings.HasSuffix(name, ".csv") {
+		reader := csv.NewReader(src)
+		reader.FieldsPerRecord = -1
+		header, err := reader.Read()
+		if err != nil {
+			if err == io.EOF {
+				return nil, fmt.Errorf("公海导入文件为空")
+			}
+			return nil, fmt.Errorf("读取公海导入表头失败：%w", err)
+		}
+		return parsePoolContactImportRows(header, func() ([]string, error) { return reader.Read() }, fieldMap)
+	}
+	if strings.HasSuffix(name, ".xlsx") {
+		workbook, err := excelize.OpenReader(src, excelize.Options{UnzipSizeLimit: maxPoolAllocationUnzipSize})
+		if err != nil {
+			return nil, fmt.Errorf("无效 XLSX 文件：%w", err)
+		}
+		defer workbook.Close()
+		sheets := workbook.GetSheetList()
+		if len(sheets) == 0 {
+			return nil, fmt.Errorf("XLSX 文件没有工作表")
+		}
+		allRows, err := workbook.GetRows(sheets[0])
+		if err != nil {
+			return nil, fmt.Errorf("读取 XLSX 工作表失败：%w", err)
+		}
+		if len(allRows) == 0 {
+			return nil, fmt.Errorf("公海导入文件为空")
+		}
+		index := 1
+		return parsePoolContactImportRows(allRows[0], func() ([]string, error) {
+			if index >= len(allRows) {
+				return nil, io.EOF
+			}
+			row := allRows[index]
+			index++
+			return row, nil
+		}, fieldMap)
+	}
+	return nil, fmt.Errorf("公海导入仅支持 .csv 或 .xlsx 文件")
+}
+
+func parsePoolContactImportRows(header []string, next func() ([]string, error), fieldMap map[string]string) ([]models.PoolContactImportRow, error) {
+	columns, err := resolvePoolContactImportColumns(header, fieldMap)
+	if err != nil {
+		return nil, err
+	}
+	valueAt := func(values []string, key string) string {
+		index := columns[key]
+		if index < 0 || index >= len(values) {
+			return ""
+		}
+		return strings.TrimSpace(values[index])
+	}
+	rows := make([]models.PoolContactImportRow, 0)
+	rowNumber := 2
+	for {
+		values, err := next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("读取第 %d 行失败：%w", rowNumber, err)
+		}
+		isEmpty := true
+		for _, value := range values {
+			if strings.TrimSpace(value) != "" {
+				isEmpty = false
+				break
+			}
+		}
+		if !isEmpty {
+			rows = append(rows, models.PoolContactImportRow{
+				Row:                  rowNumber,
+				CustomerCode:         valueAt(values, "customer_code"),
+				Name:                 valueAt(values, "name"),
+				Email:                valueAt(values, "email"),
+				AllocationDepartment: valueAt(values, "allocation_department"),
+			})
+			if len(rows) > 100000 {
+				return nil, fmt.Errorf("文件最多支持 100000 条联系人")
+			}
+		}
+		rowNumber++
+	}
+	return rows, nil
+}
 
 func (a *App) GetPoolContacts(c echo.Context) error {
 	access, err := a.workspaceAccess(c)
@@ -61,8 +235,8 @@ func (a *App) GetPoolSegments(c echo.Context) error {
 // a highest administrator can select any active organization here while
 // remaining in the current workspace.
 func (a *App) GetPoolManagementTarget(c echo.Context) error {
-	if !auth.GetUser(c).IsPlatformAdmin() {
-		return echo.NewHTTPError(http.StatusForbidden, "only highest administrators may select a pool target organization")
+	if err := requirePoolAdministrator(c); err != nil {
+		return err
 	}
 	poolID := getID(c)
 	organizationID, err := strconv.Atoi(c.QueryParam("organization_id"))
@@ -74,6 +248,13 @@ func (a *App) GetPoolManagementTarget(c echo.Context) error {
 		return err
 	}
 	return c.JSON(http.StatusOK, okResp{out})
+}
+
+func requirePoolAdministrator(c echo.Context) error {
+	if !auth.GetUser(c).IsPlatformAdmin() {
+		return echo.NewHTTPError(http.StatusForbidden, "only highest administrators may manage public pools")
+	}
+	return nil
 }
 
 func (a *App) GetPoolImportConflicts(c echo.Context) error {
@@ -170,8 +351,8 @@ func (a *App) ClearPoolContactEmail(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if !auth.GetUser(c).IsPlatformAdmin() && !access.IsOrganizationManager() {
-		return echo.NewHTTPError(http.StatusForbidden, "organization manager permission required")
+	if err := requirePoolAdministrator(c); err != nil {
+		return err
 	}
 	poolID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -196,41 +377,19 @@ type poolSegmentRequest struct {
 }
 
 func (a *App) CreatePoolSegment(c echo.Context) error {
-	access, err := a.workspaceAccess(c)
-	if err != nil {
+	if err := requirePoolAdministrator(c); err != nil {
 		return err
-	}
-	if !auth.GetUser(c).IsPlatformAdmin() && !access.IsOrganizationManager() {
-		return echo.NewHTTPError(http.StatusForbidden, "organization manager permission required")
 	}
 	var req poolSegmentRequest
 	if err := c.Bind(&req); err != nil {
 		return err
 	}
 	u := auth.GetUser(c)
-	userID := 0
-	userID = u.ID
-	if u.IsPlatformAdmin() && req.ReplyMailboxID != nil {
+	if req.ReplyMailboxID != nil {
 		return echo.NewHTTPError(http.StatusForbidden, "reply mailbox must be configured in the organization workspace")
 	}
-	if !auth.GetUser(c).IsPlatformAdmin() && req.OrganizationID != int64(access.OrganizationID) {
-		return echo.NewHTTPError(http.StatusForbidden, "organization scope mismatch")
-	}
 	setAuditOrganizationID(c, int(req.OrganizationID))
-	if !auth.GetUser(c).IsPlatformAdmin() {
-		var permitted bool
-		if err := a.db.Get(&permitted, `SELECT EXISTS(
-			SELECT 1 FROM pool_organization_permissions WHERE pool_id=$1 AND organization_id=$2
-			UNION ALL
-			SELECT 1 FROM pool_segments WHERE pool_id=$1 AND organization_id=$2
-		)`, req.PoolID, req.OrganizationID); err != nil {
-			return err
-		}
-		if !permitted {
-			return echo.NewHTTPError(http.StatusForbidden, "pool delivery access has not been granted to organization")
-		}
-	}
-	out, err := a.core.CreatePoolSegment(req.PoolID, req.OrganizationID, req.Name, req.ReplyMailboxID, userID, auth.GetUser(c).IsPlatformAdmin())
+	out, err := a.core.CreatePoolSegment(req.PoolID, req.OrganizationID, req.Name, nil, u.ID, true)
 	if err != nil {
 		return err
 	}
@@ -344,12 +503,8 @@ func (a *App) AttachCampaignPool(c echo.Context) error {
 }
 
 func (a *App) AssignPoolContact(c echo.Context) error {
-	access, err := a.workspaceAccess(c)
-	if err != nil {
+	if err := requirePoolAdministrator(c); err != nil {
 		return err
-	}
-	if !auth.GetUser(c).IsPlatformAdmin() && !access.IsOrganizationManager() {
-		return echo.NewHTTPError(http.StatusForbidden, "organization manager permission required")
 	}
 	var req poolMembershipRequest
 	if err := c.Bind(&req); err != nil {
@@ -357,15 +512,6 @@ func (a *App) AssignPoolContact(c echo.Context) error {
 	}
 	setAuditObjectID(c, strconv.FormatInt(req.ContactID, 10))
 	setAuditMetadata(c, map[string]any{"segment_id": req.SegmentID})
-	if !auth.GetUser(c).IsPlatformAdmin() {
-		var segmentOrg int64
-		if err := a.db.Get(&segmentOrg, `SELECT organization_id FROM pool_segments WHERE id=$1`, req.SegmentID); err != nil {
-			return echo.NewHTTPError(http.StatusNotFound, "pool segment not found")
-		}
-		if segmentOrg != int64(access.OrganizationID) {
-			return echo.NewHTTPError(http.StatusForbidden, "organization scope mismatch")
-		}
-	}
 	if err := a.core.AssignPoolContact(req.SegmentID, req.ContactID); err != nil {
 		return err
 	}
@@ -376,29 +522,12 @@ func (a *App) AssignPoolContact(c echo.Context) error {
 // email columns. The server performs the match against the selected pool so
 // clients never need to send thousands of contact IDs over individual calls.
 func (a *App) ImportPoolSegmentMembers(c echo.Context) error {
-	access, err := a.workspaceAccess(c)
-	if err != nil {
+	if err := requirePoolAdministrator(c); err != nil {
 		return err
-	}
-	u := auth.GetUser(c)
-	if !u.IsPlatformAdmin() {
-		if err := requireWritableWorkspace(access); err != nil {
-			return err
-		}
-		if !access.IsOrganizationManager() {
-			return echo.NewHTTPError(http.StatusForbidden, "organization manager permission required")
-		}
 	}
 	segmentID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil || segmentID <= 0 {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid pool segment id")
-	}
-	var segmentOrg int64
-	if err := a.db.Get(&segmentOrg, `SELECT organization_id FROM pool_segments WHERE id=$1`, segmentID); err != nil {
-		return echo.NewHTTPError(http.StatusNotFound, "pool segment not found")
-	}
-	if !u.IsPlatformAdmin() && segmentOrg != int64(access.OrganizationID) {
-		return echo.NewHTTPError(http.StatusForbidden, "organization scope mismatch")
 	}
 	file, err := c.FormFile("file")
 	if err != nil {
@@ -536,12 +665,8 @@ func parsePoolAllocationRows(header []string, next func() ([]string, error)) ([]
 }
 
 func (a *App) RemovePoolContact(c echo.Context) error {
-	access, err := a.workspaceAccess(c)
-	if err != nil {
+	if err := requirePoolAdministrator(c); err != nil {
 		return err
-	}
-	if !auth.GetUser(c).IsPlatformAdmin() && !access.IsOrganizationManager() {
-		return echo.NewHTTPError(http.StatusForbidden, "organization manager permission required")
 	}
 	var req poolMembershipRequest
 	if err := c.Bind(&req); err != nil {
@@ -550,30 +675,15 @@ func (a *App) RemovePoolContact(c echo.Context) error {
 	setAuditObjectID(c, strconv.FormatInt(req.ContactID, 10))
 	setAuditMetadata(c, map[string]any{"segment_id": req.SegmentID})
 	u := auth.GetUser(c)
-	userID := 0
-	userID = u.ID
-	if !u.IsPlatformAdmin() {
-		var segmentOrg int64
-		if err := a.db.Get(&segmentOrg, `SELECT organization_id FROM pool_segments WHERE id=$1`, req.SegmentID); err != nil {
-			return echo.NewHTTPError(http.StatusNotFound, "pool segment not found")
-		}
-		if segmentOrg != int64(access.OrganizationID) {
-			return echo.NewHTTPError(http.StatusForbidden, "organization scope mismatch")
-		}
-	}
-	if err := a.core.RemovePoolContact(req.SegmentID, req.ContactID, userID, req.Reason); err != nil {
+	if err := a.core.RemovePoolContact(req.SegmentID, req.ContactID, u.ID, req.Reason); err != nil {
 		return err
 	}
 	return c.JSON(http.StatusOK, okResp{true})
 }
 
 func (a *App) RestorePoolContact(c echo.Context) error {
-	access, err := a.workspaceAccess(c)
-	if err != nil {
+	if err := requirePoolAdministrator(c); err != nil {
 		return err
-	}
-	if !auth.GetUser(c).IsPlatformAdmin() && !access.IsOrganizationManager() {
-		return echo.NewHTTPError(http.StatusForbidden, "organization manager permission required")
 	}
 	var req poolMembershipRequest
 	if err := c.Bind(&req); err != nil {
@@ -581,15 +691,6 @@ func (a *App) RestorePoolContact(c echo.Context) error {
 	}
 	setAuditObjectID(c, strconv.FormatInt(req.ContactID, 10))
 	setAuditMetadata(c, map[string]any{"segment_id": req.SegmentID})
-	if !auth.GetUser(c).IsPlatformAdmin() {
-		var segmentOrg int64
-		if err := a.db.Get(&segmentOrg, `SELECT organization_id FROM pool_segments WHERE id=$1`, req.SegmentID); err != nil {
-			return echo.NewHTTPError(http.StatusNotFound, "pool segment not found")
-		}
-		if segmentOrg != int64(access.OrganizationID) {
-			return echo.NewHTTPError(http.StatusForbidden, "organization scope mismatch")
-		}
-	}
 	if err := a.core.RestorePoolContact(req.SegmentID, req.ContactID); err != nil {
 		return err
 	}

@@ -25,8 +25,6 @@
         </b-field>
       </div>
     </header>
-    <div class="mb-4"><export-button kind="lists" :filters="queryParams" :selected="bulk.all ? [] : bulk.checked" /></div>
-
     <b-table :data="customer_lists.results" :loading="loading.listsFull" @check-all="onTableCheck" @check="onTableCheck"
       :checked-rows.sync="bulk.checked" hoverable default-sort="createdAt" paginated backend-pagination
       pagination-position="both" @page-change="onPageChange" :current-page="queryParams.page" :per-page="customer_lists.perPage"
@@ -153,7 +151,7 @@
             </b-tooltip>
           </a>
 
-          <a v-if="props.row.type === 'pool'" href="#" @click.prevent="showPoolManager(props.row)"
+          <a v-if="props.row.type === 'pool' && isPlatformAdmin" href="#" @click.prevent="showPoolManager(props.row)"
             data-cy="btn-manage-pool" :aria-label="$t('customer_lists.poolManage')">
             <b-tooltip :label="$t('customer_lists.poolManage')" type="is-dark">
               <b-icon icon="database-cog-outline" size="is-small" />
@@ -381,6 +379,9 @@ export default Vue.extend({
     },
 
     canManageList(customerList) {
+      if (customerList.type === 'pool') {
+        return this.isPlatformAdmin;
+      }
       return this.$canManageResource(customerList) && this.$canList(customerList.id, 'customer_list:manage');
     },
 
@@ -415,6 +416,10 @@ export default Vue.extend({
     // select them. Cross-page selection is therefore platform-admin only.
     canSelectAllLists() {
       return this.profile.userRole && Number(this.profile.userRole.id) === 1;
+    },
+
+    isPlatformAdmin() {
+      return Number(this.profile && this.profile.userRole && this.profile.userRole.id) === 1;
     },
 
     numSelectedLists() {

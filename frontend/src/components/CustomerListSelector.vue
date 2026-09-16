@@ -5,6 +5,7 @@
         <b-tag v-for="l in selectedItems" :key="l.id" :class="l.subscriptionStatus" :closable="!$props.disabled"
           :data-id="l.id" @close="removeList(l.id)" class="customer_list">
           {{ l.name }}
+          <sup v-if="l.type">（{{ $t(`customer_lists.types.${l.type}`) }}）</sup>
           <sup v-if="l.optin === 'double' && l.subscriptionStatus">
             {{ $t(`customers.status.${l.subscriptionStatus}`) }}
           </sup>

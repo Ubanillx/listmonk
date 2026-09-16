@@ -2,22 +2,32 @@
 
 Public customer pools are first-class `customer_list` types (`pool` and
 `pool_segment`). Contact records retain the imported customer code (which may
-repeat) and real email server-side; all non-highest-administrator responses
-return a masked email. Internal reply mailbox addresses are not masked.
+repeat), name, allocation department and real email server-side; all
+non-highest-administrator responses return a masked email. Internal reply
+mailbox addresses are not masked.
 
 Key endpoints:
 
 - `GET /api/pools/:id/contacts?customer_code=...` — locate pool contacts by imported code.
-- `POST /api/pools/:id/contacts` — import a contact (highest administrator).
+- `POST /api/pools/:id/contacts` — legacy single-contact compatibility route
+  (highest administrator); the product import entry is the unified customer
+  import endpoint below.
 - `POST /api/pools/segments` — split a first-level pool into a new organization segment. The list, pool grant and binding are created atomically; the organization manager configures its reply mailbox separately in the organization workspace.
 - `PUT /api/pools/segments/:id/reply-mailbox` — update the segment's internal reply mailbox (organization manager in the segment's organization only).
 - `POST|DELETE|PUT /api/pools/segments/members` — assign, logically remove, or restore a contact.
-- `POST /api/pools/segments/:id/import-members` — upload a CSV/XLSX allocation file
-  with `customer_code` and `email` columns. The server matches both normalized
-  fields within the parent pool and returns created, reactivated, already
-  assigned, unmatched, ambiguous and invalid row counts. The response never
-  includes uploaded email values.
-- `POST /api/pools/import` — import an ordinary customer list into a pool; this is separate from secondary-list splitting.
+- `POST /api/pools/segments/:id/import-members` — legacy compatibility route;
+  it is not the management UI's import path and is highest-administrator-only.
+- `POST /api/import/customers` — unified customer import endpoint. When
+  `customer_list_ids` contains exactly one first-level `pool`, the first CSV
+  sheet or XLSX worksheet must map `customer_code`, `name`, `email` and
+  `allocation_department`. Chinese template headers `客户编号`/`客户编码`,
+  `姓名`, `邮箱`, `分配部门` are recognized; other columns are ignored.
+  Only the highest administrator may use this branch. `分配部门` must match an
+  active `organizations.name`; unknown or archived departments are rejected
+  row-by-row and are not written. A valid value is stored on the pool contact
+  and does not create or bind an organization.
+- `POST /api/pools/import` — legacy ordinary-list-to-pool compatibility route;
+  new product flows use the unified customer import endpoint.
 - `GET /api/pools/:id/management-target?organization_id=...` — highest-admin-only target context: the target organization's existing segment state.
 - `POST /api/campaigns/:id/pools` — attach a pool or segment audience to a campaign draft.
 
@@ -48,15 +58,10 @@ generic customer-list form, and there is no secondary-to-primary merge flow.
 An organization manager may perform the same split while working in that
 organization; ordinary organization members cannot create lists.
 
-Each first-level pool can have one bound secondary list per organization. If
-the active organization already has one, the dialog selects it and operators
-assign contacts directly instead of creating another secondary list.
-
-After either action, select the secondary list in the dialog and upload the
-allocation template (`customer_code,email`). The server performs the batch
-match and reports row-level failures (missing record or ambiguous duplicate)
-without returning real email values. A collapsed **Single-record maintenance**
-panel remains available for searching by customer code, logical removal,
-restore, and clearing an invalid email; it is not the bulk allocation path.
+Each first-level pool can have one bound secondary list per organization. The
+dialog does not import contacts or allocate rows. Import the four-column pool
+template from the unified **Customer import** page, then use this dialog only
+to select a target organization and create/bind its secondary list.
 Organization operators continue to work only inside their own organization
-workspace; they cannot select another target organization.
+workspace; they cannot select another target organization or manage a
+first-level pool. The server enforces the same boundary for direct API calls.

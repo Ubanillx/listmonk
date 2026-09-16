@@ -18,8 +18,6 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- Organization tenancy tables are declared after users below because they
 -- reference user IDs. Drop them explicitly on a destructive fresh install.
-DROP TABLE IF EXISTS data_export_chunks CASCADE;
-DROP TABLE IF EXISTS data_export_jobs CASCADE;
 DROP TABLE IF EXISTS audit_events CASCADE;
 DROP TABLE IF EXISTS reply_ai_events CASCADE;
 DROP TABLE IF EXISTS reply_forward_messages CASCADE;
@@ -671,7 +669,7 @@ CREATE TABLE reply_ai_events (
     subject           TEXT NOT NULL DEFAULT '',
     body              TEXT NOT NULL DEFAULT '',
     body_hash         TEXT NOT NULL DEFAULT '',
-    intent            TEXT NOT NULL DEFAULT 'other' CHECK (intent IN ('unsubscribe','complaint','other')),
+    intent            TEXT NOT NULL DEFAULT 'other' CHECK (intent IN ('unsubscribe','complaint','product_complaint','other')),
     confidence        DOUBLE PRECISION NOT NULL DEFAULT 0,
     reason_code       TEXT NOT NULL DEFAULT '',
     model             TEXT NOT NULL DEFAULT '',
@@ -950,6 +948,7 @@ CREATE TABLE pool_contacts (
     company_name TEXT NOT NULL DEFAULT '',
     email TEXT NOT NULL,
     name TEXT NOT NULL DEFAULT '',
+    allocation_department TEXT NOT NULL DEFAULT '',
     attribs JSONB NOT NULL DEFAULT '{}',
     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','archived')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -957,6 +956,7 @@ CREATE TABLE pool_contacts (
 );
 CREATE INDEX idx_pool_contacts_code ON pool_contacts(customer_code);
 CREATE INDEX idx_pool_contacts_email ON pool_contacts(LOWER(email));
+CREATE INDEX idx_pool_contacts_allocation_department ON pool_contacts(allocation_department);
 
 CREATE TABLE pool_members (
     pool_id INTEGER NOT NULL REFERENCES customer_lists(id) ON DELETE CASCADE,
@@ -1051,31 +1051,6 @@ ALTER TABLE bounces ADD COLUMN IF NOT EXISTS source_pool_id INTEGER;
 ALTER TABLE bounces ADD COLUMN IF NOT EXISTS source_segment_id BIGINT;
 ALTER TABLE bounces ADD COLUMN IF NOT EXISTS source_organization_id BIGINT;
 CREATE INDEX IF NOT EXISTS idx_bounces_pool_contact ON bounces(pool_contact_id);
-
-CREATE TABLE IF NOT EXISTS data_export_jobs (
- id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
- user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
- organization_id BIGINT NOT NULL DEFAULT 0,
- request JSONB NOT NULL,
- status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','running','complete','failed','expired')),
- filename TEXT NOT NULL,
- row_count BIGINT NOT NULL DEFAULT 0,
- error TEXT NOT NULL DEFAULT '',
- access_stamp TEXT NOT NULL DEFAULT '',
- created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
- started_at TIMESTAMPTZ,
- completed_at TIMESTAMPTZ,
- expires_at TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '7 days',
- download_count INTEGER NOT NULL DEFAULT 0,
- last_downloaded_at TIMESTAMPTZ
-);
-CREATE INDEX IF NOT EXISTS idx_data_export_jobs_owner ON data_export_jobs(user_id, organization_id, created_at DESC);
-CREATE TABLE IF NOT EXISTS data_export_chunks (
- job_id UUID NOT NULL REFERENCES data_export_jobs(id) ON DELETE CASCADE,
- sequence INTEGER NOT NULL,
- content BYTEA NOT NULL,
- PRIMARY KEY(job_id, sequence)
-);
 
 -- Durable, privacy-safe business operation audit events. High-frequency
 -- delivery/open/click facts remain in their dedicated tables.

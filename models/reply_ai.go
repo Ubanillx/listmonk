@@ -3,9 +3,10 @@ package models
 import null "gopkg.in/volatiletech/null.v6"
 
 const (
-	ReplyAIIntentUnsubscribe = "unsubscribe"
-	ReplyAIIntentComplaint   = "complaint"
-	ReplyAIIntentOther       = "other"
+	ReplyAIIntentUnsubscribe      = "unsubscribe"
+	ReplyAIIntentComplaint        = "complaint"
+	ReplyAIIntentProductComplaint = "product_complaint"
+	ReplyAIIntentOther            = "other"
 
 	ReplyAIEventStatusPending    = "pending"
 	ReplyAIEventStatusProcessing = "processing"

@@ -81,6 +81,7 @@ describe('Reply AI gateway settings', function replyAISuite() {
     cy.get('[data-cy=reply-ai-model]').click().type('gpt-4o');
     cy.contains('.autocomplete .dropdown-item', 'gpt-4o-mini').click();
     cy.get('[data-cy=reply-ai-model]').should('have.value', 'gpt-4o-mini');
+    cy.get('select[name=reply_ai_test_expected] option[value=product_complaint]').should('exist');
     cy.get('[data-cy=reply-ai-test]').should('not.be.disabled');
 
     // Probing must never save the settings form.

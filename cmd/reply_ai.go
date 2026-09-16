@@ -443,7 +443,7 @@ func (a *App) processReplyAIEvent(event models.ReplyAIEvent) error {
 	if err != nil {
 		return err
 	}
-	if decision.Intent == models.ReplyAIIntentOther {
+	if decision.Intent == models.ReplyAIIntentOther || decision.Intent == models.ReplyAIIntentProductComplaint {
 		var customerID *int
 		if customer.ID > 0 {
 			customerID = &customer.ID

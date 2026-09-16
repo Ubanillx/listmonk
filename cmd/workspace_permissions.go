@@ -367,7 +367,15 @@ func (a *App) requireReadableWorkspaceCustomer(c echo.Context, access models.Wor
 }
 
 func (a *App) requireManagedWorkspaceCustomer(c echo.Context, access models.WorkspaceAccess, id int) (models.ResourceScope, error) {
-	scope, err := a.requireManagedWorkspaceResource(c, access, resourceCustomers, id, auth.PermCustomersManage)
+	return a.requireManagedWorkspaceCustomerWithPermissions(c, access, id, auth.PermCustomersManage)
+}
+
+// requireManagedWorkspaceCustomerWithPermissions keeps the workspace and
+// per-customer ownership checks in one place while allowing each destructive
+// customer action to use its own business permission. Callers must pass the
+// dedicated action permission; customer manage is reserved for create/edit.
+func (a *App) requireManagedWorkspaceCustomerWithPermissions(c echo.Context, access models.WorkspaceAccess, id int, permissions ...string) (models.ResourceScope, error) {
+	scope, err := a.requireManagedWorkspaceResource(c, access, resourceCustomers, id, permissions...)
 	if err != nil {
 		return scope, err
 	}

@@ -9,18 +9,21 @@ import (
 
 // PoolContact is a contact imported into a first-class public customer pool.
 // CustomerCode is intentionally not unique; the contact ID is the stable key.
+// AllocationDepartment stores the validated active organization name supplied
+// by the source template; it is not a free-form department label.
 type PoolContact struct {
-	ID           int64                  `db:"id" json:"id"`
-	UUID         string                 `db:"uuid" json:"uuid"`
-	CustomerCode string                 `db:"customer_code" json:"customer_code"`
-	CompanyName  string                 `db:"company_name" json:"company_name"`
-	Email        string                 `db:"email" json:"email"`
-	Name         string                 `db:"name" json:"name"`
-	Attribs      JSON                   `db:"attribs" json:"attribs"`
-	Status       string                 `db:"status" json:"status"`
-	CreatedAt    time.Time              `db:"created_at" json:"created_at"`
-	UpdatedAt    time.Time              `db:"updated_at" json:"updated_at"`
-	Exclusions   []PoolExclusionSummary `db:"-" json:"exclusions,omitempty"`
+	ID                   int64                  `db:"id" json:"id"`
+	UUID                 string                 `db:"uuid" json:"uuid"`
+	CustomerCode         string                 `db:"customer_code" json:"customer_code"`
+	CompanyName          string                 `db:"company_name" json:"company_name"`
+	Email                string                 `db:"email" json:"email"`
+	Name                 string                 `db:"name" json:"name"`
+	AllocationDepartment string                 `db:"allocation_department" json:"allocation_department"`
+	Attribs              JSON                   `db:"attribs" json:"attribs"`
+	Status               string                 `db:"status" json:"status"`
+	CreatedAt            time.Time              `db:"created_at" json:"created_at"`
+	UpdatedAt            time.Time              `db:"updated_at" json:"updated_at"`
+	Exclusions           []PoolExclusionSummary `db:"-" json:"exclusions,omitempty"`
 }
 
 // PoolExclusionSummary is safe audit metadata for a highest administrator.
@@ -34,14 +37,15 @@ type PoolExclusionSummary struct {
 
 // SafePoolContact is returned to non-highest-admin users. Email is always masked.
 type SafePoolContact struct {
-	ID              int64  `json:"id"`
-	CustomerCode    string `json:"customer_code"`
-	CompanyName     string `json:"company_name"`
-	Email           string `json:"email"`
-	Name            string `json:"name,omitempty"`
-	Status          string `json:"status"`
-	Excluded        bool   `json:"excluded,omitempty"`
-	ExclusionReason string `json:"exclusion_reason,omitempty"`
+	ID                   int64  `json:"id"`
+	CustomerCode         string `json:"customer_code"`
+	CompanyName          string `json:"company_name"`
+	Email                string `json:"email"`
+	Name                 string `json:"name,omitempty"`
+	AllocationDepartment string `json:"allocation_department,omitempty"`
+	Status               string `json:"status"`
+	Excluded             bool   `json:"excluded,omitempty"`
+	ExclusionReason      string `json:"exclusion_reason,omitempty"`
 }
 
 type PoolSegment struct {
@@ -68,6 +72,42 @@ type PoolImportIssue struct {
 	Row          int    `json:"row"`
 	CustomerCode string `json:"customer_code,omitempty"`
 	Reason       string `json:"reason"`
+}
+
+// PoolContactImportRow is one row from the unified public-pool import. The
+// source template may contain additional columns; only these four fields are
+// persisted by the pool import path.
+type PoolContactImportRow struct {
+	Row                  int
+	CustomerCode         string
+	Name                 string
+	Email                string
+	AllocationDepartment string
+}
+
+// PoolContactImportIssue contains safe, row-level validation information. It
+// deliberately excludes the uploaded email address; the department value is a
+// non-sensitive diagnostic that helps the operator correct the source row.
+type PoolContactImportIssue struct {
+	Row                  int    `json:"row"`
+	CustomerCode         string `json:"customer_code,omitempty"`
+	AllocationDepartment string `json:"allocation_department,omitempty"`
+	Reason               string `json:"reason"`
+}
+
+// PoolContactImportResult is returned synchronously by the unified import
+// endpoint when its target list is a first-level public pool.
+type PoolContactImportResult struct {
+	Target     string                   `json:"target"`
+	PoolID     int                      `json:"pool_id"`
+	Total      int                      `json:"total"`
+	Valid      int                      `json:"valid"`
+	Created    int                      `json:"created"`
+	Existing   int                      `json:"existing"`
+	Conflicts  int                      `json:"conflicts"`
+	Invalid    int                      `json:"invalid"`
+	Duplicates int                      `json:"duplicates"`
+	Issues     []PoolContactImportIssue `json:"issues,omitempty"`
 }
 
 // PoolImportResult deliberately contains no email values. This keeps the
@@ -121,5 +161,5 @@ func MaskPoolEmail(email string) string {
 func (p PoolContact) Safe() SafePoolContact {
 	// Contact person names are customer PII as well; non-highest administrators
 	// receive only the imported code, company name, status and masked address.
-	return SafePoolContact{ID: p.ID, CustomerCode: p.CustomerCode, CompanyName: p.CompanyName, Email: MaskPoolEmail(p.Email), Status: p.Status}
+	return SafePoolContact{ID: p.ID, CustomerCode: p.CustomerCode, CompanyName: p.CompanyName, Email: MaskPoolEmail(p.Email), AllocationDepartment: p.AllocationDepartment, Status: p.Status}
 }

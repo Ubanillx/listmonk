@@ -176,6 +176,9 @@ func (a *App) UpdateList(c echo.Context) error {
 	if _, err := a.requireManagedWorkspaceList(c, access, id); err != nil {
 		return err
 	}
+	if err := a.requirePoolListAdministrator(c, id); err != nil {
+		return err
+	}
 
 	// Incoming params.
 	var l models.CustomerList
@@ -210,6 +213,20 @@ func (a *App) UpdateList(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{out})
 }
 
+// requirePoolListAdministrator keeps the public-pool management boundary
+// independent from the legacy per-list permission model. A pool can be
+// visible as a campaign audience without becoming editable by that caller.
+func (a *App) requirePoolListAdministrator(c echo.Context, id int) error {
+	var typ string
+	if err := a.db.Get(&typ, `SELECT type::text FROM customer_lists WHERE id=$1`, id); err != nil {
+		return err
+	}
+	if typ == models.CustomerListTypePool && !auth.GetUser(c).IsPlatformAdmin() {
+		return echo.NewHTTPError(http.StatusForbidden, "only highest administrators may manage a public pool")
+	}
+	return nil
+}
+
 // DeleteList deletes a single customer_list by ID.
 func (a *App) DeleteList(c echo.Context) error {
 	id := getID(c)
@@ -218,6 +235,9 @@ func (a *App) DeleteList(c echo.Context) error {
 		return err
 	}
 	if _, err := a.requireManagedWorkspaceList(c, access, id); err != nil {
+		return err
+	}
+	if err := a.requirePoolListAdministrator(c, id); err != nil {
 		return err
 	}
 
@@ -268,6 +288,9 @@ func (a *App) DeleteLists(c echo.Context) error {
 	if len(ids) > 0 {
 		for _, id := range ids {
 			if _, err := a.requireManagedWorkspaceList(c, access, id); err != nil {
+				return err
+			}
+			if err := a.requirePoolListAdministrator(c, id); err != nil {
 				return err
 			}
 		}

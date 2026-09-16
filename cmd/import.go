@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/knadh/listmonk/internal/auth"
@@ -20,6 +22,37 @@ import (
 // transport limit for this route; the extraction limits in the subimporter
 // bound what an archive may expand to.
 const maxImportUploadSize = 64 << 20
+
+type importTargetInfo struct {
+	PoolIDs        []int
+	PoolSegmentIDs []int
+	RegularIDs     []int
+}
+
+// classifyImportTargets reads only list types. Public-pool lists may be
+// delivery-visible outside the active workspace, so this classification is
+// deliberately separate from the later write-scope check.
+func (a *App) classifyImportTargets(ids []int) (importTargetInfo, error) {
+	info := importTargetInfo{}
+	for _, id := range ids {
+		var typ string
+		if err := a.db.Get(&typ, `SELECT type::text FROM customer_lists WHERE id=$1`, id); err != nil {
+			if err == sql.ErrNoRows {
+				return info, echo.NewHTTPError(http.StatusNotFound, "customer list not found")
+			}
+			return info, err
+		}
+		switch typ {
+		case models.CustomerListTypePool:
+			info.PoolIDs = append(info.PoolIDs, id)
+		case models.CustomerListTypePoolSegment:
+			info.PoolSegmentIDs = append(info.PoolSegmentIDs, id)
+		default:
+			info.RegularIDs = append(info.RegularIDs, id)
+		}
+	}
+	return info, nil
+}
 
 // ImportCustomers handles the uploading and bulk importing of
 // a ZIP file of one or more CSV files.
@@ -48,13 +81,51 @@ func (a *App) ImportCustomers(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest,
 			a.i18n.Ts("import.invalidParams", "error", err.Error()))
 	}
+	if len(opt.FieldMap) > 0 {
+		normalizedFieldMap := make(map[string]string, len(opt.FieldMap))
+		for key, value := range opt.FieldMap {
+			normalizedFieldMap[strings.ToLower(strings.TrimSpace(key))] = strings.TrimSpace(value)
+		}
+		opt.FieldMap = normalizedFieldMap
+	}
+	targets, err := a.classifyImportTargets(opt.CustomerListIDs)
+	if err != nil {
+		return err
+	}
+	isPoolImport := len(targets.PoolIDs) > 0 || len(targets.PoolSegmentIDs) > 0
 	// Reject mappings for unsupported import fields.
 	if len(opt.FieldMap) > 0 {
 		allowed := map[string]bool{"email": true, "name": true, "customer_code": true}
+		if isPoolImport {
+			allowed["allocation_department"] = true
+		}
 		for key := range opt.FieldMap {
 			if !allowed[strings.ToLower(strings.TrimSpace(key))] {
 				return echo.NewHTTPError(http.StatusBadRequest, "unknown custom field: "+key)
 			}
+		}
+	}
+	if isPoolImport {
+		if len(targets.PoolIDs) != 1 || len(targets.PoolSegmentIDs) > 0 || len(targets.RegularIDs) > 0 {
+			return echo.NewHTTPError(http.StatusBadRequest, "public-pool import requires exactly one first-level public pool")
+		}
+		if !auth.GetUser(c).IsPlatformAdmin() {
+			return echo.NewHTTPError(http.StatusForbidden, "only highest administrators may import public-pool contacts")
+		}
+		if opt.Mode != subimporter.ModeSubscribe {
+			return echo.NewHTTPError(http.StatusBadRequest, "public-pool import only supports subscribe mode")
+		}
+		if opt.Overwrite || opt.OverwriteUserInfo || opt.OverwriteSubStatus {
+			return echo.NewHTTPError(http.StatusBadRequest, "overwrite options are not supported for public-pool import")
+		}
+		if err := a.requireWorkspaceCustomerListIDsForRequest(c, access, opt.CustomerListIDs, true); err != nil {
+			return err
+		}
+		return a.importPoolCustomers(c, targets.PoolIDs[0], opt)
+	}
+	if len(opt.FieldMap) > 0 {
+		if _, ok := opt.FieldMap["allocation_department"]; ok && strings.TrimSpace(opt.FieldMap["allocation_department"]) != "" {
+			return echo.NewHTTPError(http.StatusBadRequest, "allocation_department is only supported for public-pool import")
 		}
 	}
 
@@ -215,6 +286,51 @@ func (a *App) ImportCustomers(c echo.Context) error {
 	}()
 
 	return c.JSON(http.StatusOK, okResp{a.importer.GetStats()})
+}
+
+// importPoolCustomers is the public-pool branch of the unified customer
+// import endpoint. It is intentionally synchronous: one uploaded workbook is
+// parsed and committed as one transaction, and the response contains only
+// aggregate counts plus safe row numbers/codes.
+func (a *App) importPoolCustomers(c echo.Context, poolID int, opt subimporter.SessionOpt) error {
+	a.poolImportMu.Lock()
+	defer a.poolImportMu.Unlock()
+
+	file, err := c.FormFile("file")
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest,
+			a.i18n.Ts("import.invalidFile", "error", err.Error()))
+	}
+	if mf := c.Request().MultipartForm; mf != nil {
+		defer func() {
+			if err := mf.RemoveAll(); err != nil {
+				a.log.Printf("error removing multipart temporary files: %v", err)
+			}
+		}()
+	}
+	if file.Size > maxPoolAllocationUploadSize {
+		return tooLargeErr(a, fmt.Sprintf("file (max %d MB)", maxPoolAllocationUploadSize>>20))
+	}
+	rows, err := parsePoolContactImportFile(file, opt.FieldMap)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	result, err := a.core.ImportPoolContacts(poolID, auth.GetUser(c).ID, rows)
+	if err != nil {
+		return err
+	}
+	setAuditObjectID(c, strconv.Itoa(poolID))
+	setAuditMetadata(c, map[string]any{
+		"target":     result.Target,
+		"total":      result.Total,
+		"valid":      result.Valid,
+		"created":    result.Created,
+		"existing":   result.Existing,
+		"conflicts":  result.Conflicts,
+		"invalid":    result.Invalid,
+		"duplicates": result.Duplicates,
+	})
+	return c.JSON(http.StatusOK, okResp{result})
 }
 
 // removeTempPaths removes files and directories created for an import. Removing

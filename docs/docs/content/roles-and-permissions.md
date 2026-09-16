@@ -9,13 +9,12 @@ customer_list-specific grant never exposes a resource in another workspace.
 
 - CustomerLists and customers remain private to their owner. Organization managers
   may inspect member-owned records in their active organization, but cannot
-  modify them or send with them. Since v6.28.0, the dedicated administrator
-  export API permits organization managers to export their own organization's
-  member data, subject to email masking. Export jobs remain private to their
-  requesting administrator. See [Data exports](data-exports.md).
+  modify them or send with them. Customer and single-customer exports are direct
+  downloads; `customers:export` and the same workspace, ownership, and masking
+  rules apply.
 - Templates and campaigns can be private, organization-visible, or global.
   Members can read organization-visible resources in their active organization;
-  global resources remain readable across workspaces. Sending, exports, and
+  global resources remain readable across workspaces. Sending, direct exports, and
   mutations apply stricter owner and workspace checks.
 - Organization membership has separate `member` and `manager` roles. It does
   not grant system user-role or customer_list-role permissions. Archived organizations
@@ -34,16 +33,29 @@ A user role is a collection of user related permissions. User roles are attached
 |             | customer_lists:manage_all        | Create, update, and delete all owner-managed customer_lists in the active workspace                                                                                                                                                          |
 | customers | customers:get         | Get individual customer details                                                                                                                                                                                                    |
 |             | customers:get_all     | Get all customers and their details in the active workspace                                                                                                                                                                       |
-|             | customers:manage      | Add, update, and delete customers                                                                                                                                                                                                  |
+|             | customers:manage      | Add and update customers |
+|             | customers:delete      | Delete customers, including bulk and query-based deletion |
+|             | customers:blocklist   | Blocklist customers, including bulk and query-based blocklisting |
+|             | customers:membership_manage | Add, remove, or unsubscribe customers from customer lists |
 |             | customers:import      | Import customers from external files                                                                                                                                                                                               |
+|             | customers:export      | Export customer and blocklist data; ownership, workspace, and masking rules still apply |
+|             | customers:sensitive_read | View unmasked customer e-mail and attributes where the current customer list would otherwise mask them; this does not bypass workspace or ownership boundaries |
 |             | customers:sql_query   | Run raw SQL queries on customer data.<br /><span style="color: #de4a45;">**WARNING:**</span><span style="font-size: 0.875em; line-height: 1.3; color:#888;">This permission allows execution of arbitrary SQL expressions and SQL functions. While it is readonly on the table data, it allows querying of all customer_lists and customers directly from the database superceding individual customer_list and customer permissions. Raw SQL expressions make it possible to obtain Postgres database configuration and potentially interact with other Postgres system features. Give this permission ONLY to trusted users. [Learn more](#customerssql_query). |
-|             | tx:send                 | Send transactional messages to customers                                                                                                                                                                                           |
+| transactional | tx:send             | Send transactional messages to customers |
 | campaigns   | campaigns:get           | Get and view campaigns belonging to permitted customer_lists                                                                                                                                                                                  |
 |             | campaigns:get_all       | Get and view campaigns across accessible customer_lists in the active workspace                                                                                                                                                               |
 |             | campaigns:get_analytics | Access campaign performance metrics                                                                                                                                                                                                  |
 |             | campaigns:manage        | Create, update, and delete campaigns                                                                                                                                                                                                 |
+|             | campaigns:manage_all    | Manage campaigns across all permitted customer_lists in the active workspace |
+|             | campaigns:send         | Start or resume immediate delivery; ownership, SMTP, and API scope checks still apply |
+|             | campaigns:test         | Send campaign test messages; campaign management, ownership, SMTP, and API scope checks still apply |
+|             | campaigns:schedule    | Schedule campaign delivery; campaign management, ownership, SMTP, and API scope checks still apply |
+|             | campaigns:control     | Pause, cancel, unschedule, or archive campaigns |
+|             | campaigns:recipients   | View individual recipient details; requires customer read access, tracking, and the campaign privacy boundary |
 | bounces     | bounces:get             | Get email bounce records                                                                                                                                                                                                             |
-|             | bounces:manage          | Process and handle bounced emails                                                                                                                                                                                                    |
+|             | bounces:manage          | View and process bounced email workflows; destructive actions use their dedicated permissions |
+|             | bounces:delete         | Delete bounce records, including cleanup from a customer detail page |
+|             | bounces:blocklist      | Blocklist customers represented by bounce records |
 |             | webhooks:post_bounce    | Receive bounce notifications via webhook                                                                                                                                                                                             |
 | media       | media:get               | Get uploaded media files                                                                                                                                                                                                             |
 |             | media:manage            | Upload, update, and delete media                                                                                                                                                                                                     |
@@ -51,6 +63,7 @@ A user role is a collection of user related permissions. User roles are attached
 |             | templates:manage        | Create, update, and delete templates                                                                                                                                                                                                 |
 | users       | users:get               | Get system user accounts                                                                                                                                                                                                             |
 |             | users:manage            | Create, update, and delete user accounts <span style="color: #de4a45;">**WARNING:**</span><span style="font-size: 0.875em; line-height: 1.3; color:#888;">This permission allows creation of users with any role, including Super Admin. This permission should only be given to Super Admin level accounts</span>                              |
+|             | users:tokens            | Create, list, and revoke API user integration tokens |
 |             | roles:get               | Get user roles and permissions                                                                                                                                                                                                       |
 |             | roles:manage            | Create and modify user roles                                                                                                                                                                                                         |
 | settings    | settings:get            | Get system settings                                                                                                                                                                                                                  |
@@ -58,6 +71,14 @@ A user role is a collection of user related permissions. User roles are attached
 |             | settings:maintain       | Perform system maintenance tasks                                                                                                                                                                                                     |
 | audit       | audit:get               | View business audit events in the active workspace                                                                                                                                                                                   |
 | workspaces  | workspaces:personal     | Enter the personal workspace. Without this permission the account can only enter organization workspaces; platform administrators always retain the personal workspace. |
+| organizations | organizations:platform_manage | Manage organization requests, lifecycle, members, invites, forwarding, and restricted transfers. This does not grant ordinary resource access or membership. |
+
+Platform administration permissions (`users:*`, `roles:*`, `settings:*`, and
+`organizations:platform_manage`) remain broad platform controls and are not
+split into business-role actions. The Super Admin role retains full access.
+Business roles should use the customer, campaign, and bounce actions above;
+`audit:get` also controls audit-log export. They still cannot cross a workspace,
+ownership, organization, or API Key scope boundary.
 
 The business audit page uses server-side filtering and pagination. Users with
 `audit:get` can export selected events from the currently loaded page or export

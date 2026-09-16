@@ -56,10 +56,22 @@ ______________________________________________________________________
 
 #### POST /api/import/customers
 
-Send a CSV / XLSX (optionally ZIP compressed CSV) file to import customers. Use a multipart form POST.
+Send a CSV / XLSX (optionally ZIP compressed CSV) file to import customers. Use a multipart form POST. The selected list type determines the import branch.
 
 CSV files use commas. Supported fields are email, name, and customer_code.
 Subscription imports require customer_code. Only these supported fields are imported.
+
+When `customer_list_ids` contains exactly one first-level public-pool list
+(`type=pool`), the same endpoint uses the public-pool branch instead. The first
+CSV sheet or XLSX worksheet must provide customer code, name, email, and
+allocation department. The Chinese headers in the supplied workbook—`客户编号`
+(`客户编码` is also accepted), `姓名`, `邮箱`, and `分配部门`—are recognized;
+extra template columns are ignored. The allocation department must match an
+active organization name in the system; an unknown or archived department is
+reported as an invalid row and is not written to the pool. A valid department
+is saved on the pool contact but is not interpreted as an organization binding.
+This branch is synchronous, does not support blocklist, overwrite, or ZIP
+uploads, and is restricted to the highest administrator.
 
 ##### Parameters
 
@@ -75,7 +87,7 @@ Subscription imports require customer_code. Only these supported fields are impo
 | mode      | string   | Yes      | `subscribe` or `blocklist`                                                                                                         |
 | customer_list_ids | []number |          | Array of customer list IDs to subscribe to. |
 | overwrite | bool     |          | Whether to overwrite the customer parameters including subscriptions or ignore records that are already present in the database. |
-| field_map | object   |          | Optional field mapping. Keys: `email`, `name`, `customer_code`. Values can be header names (`email`) or column references (`A`, `B`, `1`, `2`). |
+| field_map | object   |          | Optional field mapping. Normal imports accept `email`, `name`, `customer_code`; public-pool imports additionally accept `allocation_department`. Values can be header names (`email`) or column references (`A`, `B`, `1`, `2`). |
 
 ##### Example Request
 
@@ -119,3 +131,18 @@ curl -u "api_user:token" -X DELETE 'http://localhost:9000/api/import/customers'
     }
 }
 ```
+
+##### Public-pool example
+
+```shell
+curl -u "api_user:token" -X POST 'http://localhost:9000/api/import/customers' \
+    -F 'params={"mode":"subscribe", "customer_list_ids":[42], "field_map":{"customer_code":"客户编号", "name":"姓名", "email":"邮箱", "allocation_department":"分配部门"}}' \
+    -F "file=@/path/to/分表 (1) 模板.xlsx"
+```
+
+The response is wrapped in `data` and contains only safe aggregate counts:
+`target`, `pool_id`, `total`, `valid`, `created`, `existing`, `conflicts`,
+`invalid`, `duplicates`, and row-level issues containing row number, customer
+code, allocation department and a reason. `allocation_department_not_found`
+means the value does not match an active organization name. Uploaded email
+values are never returned.

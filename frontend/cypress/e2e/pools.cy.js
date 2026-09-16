@@ -91,16 +91,13 @@ describe('Public pools', function poolSuite() { // eslint-disable-line prefer-ar
     temporarySegmentListID = 0;
   });
 
-  it('shows the pool manager with masked customer email and internal reply mailbox', () => {
+  it('hides first-level pool management from an organization user', () => {
     loginAs(Cypress.env('POOL_QA_USER') || 'wsqa_pool_manager');
-    cy.contains('a', 'wsqa-pool-primary').closest('tr').find('[data-cy=btn-manage-pool]').click();
-    cy.get('.pool-manager').should('be.visible');
-    cy.get('[data-cy=pool-contact-allocation]').contains('导入分配文件');
-    cy.get('[data-cy=pool-contact-allocation]').contains('CSV / Excel 文件');
-    cy.get('.pool-manager').contains('DUP-001');
-    cy.get('.pool-manager').contains('alpxxxxxxx@example.test');
-    cy.get('.pool-manager').should('not.contain', 'alpha-pool@example.test');
-    cy.get('.pool-manager').contains('pool-replies@example.test');
+    cy.contains('a', 'wsqa-pool-primary').closest('tr').find('[data-cy=btn-manage-pool]').should('not.exist');
+    cy.request({
+      url: `/api/pools/${poolID}/management-target?organization_id=1`,
+      failOnStatusCode: false,
+    }).its('status').should('eq', 403);
   });
 
   it('guides the highest administrator from organization selection to a ready-to-use secondary list', () => {
@@ -109,10 +106,10 @@ describe('Public pools', function poolSuite() { // eslint-disable-line prefer-ar
     cy.get('[data-cy=pool-secondary-list-empty]').should('be.visible');
     cy.get('[data-cy=pool-contact-allocation]').should('not.exist');
     cy.get('[data-cy=pool-target-organization]').select('1');
-    cy.get('[data-cy=pool-contact-allocation]').scrollIntoView().should('be.visible');
+    cy.get('[data-cy=pool-secondary-list-panel]').should('be.visible');
     cy.get('.pool-manager').should('be.visible');
-    cy.get('.pool-manager').contains('alpha-pool@example.test');
     cy.get('[data-cy=pool-segment-summary]').contains('wsqa-pool-segment');
+    cy.get('[data-cy=pool-contact-allocation]').should('not.exist');
   });
 
   it('shows a single split workflow without merge controls', () => {

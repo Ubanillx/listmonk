@@ -8,6 +8,19 @@ import (
 	"testing"
 )
 
+func TestNormalizeImportFieldMapDropsBlankMappings(t *testing.T) {
+	got := normalizeImportFieldMap(map[string]string{
+		" EMAIL ":               " A ",
+		"allocation_department": "",
+		"name":                  " ",
+		"customer_code":         "C",
+	})
+
+	if len(got) != 2 || got["email"] != "A" || got["customer_code"] != "C" {
+		t.Fatalf("normalized field map = %#v, want only non-empty mappings", got)
+	}
+}
+
 // TestRemoveTempPaths covers the cleanup that releases an import's uploaded copy
 // and extracted directory. Empty and already-missing paths must be tolerated:
 // the caller passes them for every import whether or not a ZIP was involved.

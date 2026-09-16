@@ -353,6 +353,13 @@ export default Vue.extend({
         this.form.mode = 'subscribe';
         this.preview.firstRowHeader = true;
       }
+      this.$nextTick(() => {
+        if (value) {
+          this.autoMapFields();
+        } else {
+          this.form.fieldMap.allocation_department = '';
+        }
+      });
     },
 
   },
@@ -441,8 +448,13 @@ export default Vue.extend({
         email: ['email', 'e-mail', 'mail', '邮箱', '邮件地址'],
         name: ['name', 'fullname', 'full name', '联系人', '姓名'],
         customer_code: ['customer_code', 'customer code', 'customercode', '客户编码', '客户编号'],
-        allocation_department: ['allocation_department', 'allocation department', 'department', '部门', '分配部门', '分配部门名称'],
       };
+
+      if (this.poolImport) {
+        keyMap.allocation_department = [
+          'allocation_department', 'allocation department', 'department', '部门', '分配部门', '分配部门名称',
+        ];
+      }
 
       Object.keys(keyMap).forEach((target) => {
         if (this.form.fieldMap[target]) {
@@ -677,18 +689,21 @@ export default Vue.extend({
 
       // Prepare the upload payload.
       const params = new FormData();
+      const fieldMap = {
+        email: this.form.fieldMap.email,
+        name: this.form.fieldMap.name,
+        customer_code: this.form.fieldMap.customer_code,
+      };
+      if (this.poolImport) {
+        fieldMap.allocation_department = this.form.fieldMap.allocation_department;
+      }
       params.set('params', JSON.stringify({
         mode: this.form.mode,
         subscription_status: this.form.subStatus,
         customer_list_ids: this.form.customer_lists.map((l) => l.id),
         overwrite_userinfo: this.form.overwriteUserInfo,
         overwrite_subscription_status: this.form.overwriteSubStatus,
-        field_map: {
-          email: this.form.fieldMap.email,
-          name: this.form.fieldMap.name,
-          customer_code: this.form.fieldMap.customer_code,
-          allocation_department: this.form.fieldMap.allocation_department,
-        },
+        field_map: fieldMap,
       }));
       params.set('file', this.form.file);
 

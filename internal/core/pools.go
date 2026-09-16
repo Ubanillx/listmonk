@@ -159,7 +159,14 @@ func (c *Core) QueryAuthorizedPoolLists(access models.WorkspaceAccess) ([]models
 		var out []models.CustomerList
 		err := c.db.Select(&out, `
 			SELECT l.*, COALESCE(o.name, '') AS organization_name,
-				COALESCE(u.username, '') AS owner_username, COALESCE(u.name, '') AS owner_name
+				COALESCE(u.username, '') AS owner_username, COALESCE(u.name, '') AS owner_name,
+				CASE WHEN l.type='pool' THEN (
+					SELECT COUNT(*) FROM pool_members pm WHERE pm.pool_id=l.id
+				) ELSE (
+					SELECT COUNT(*) FROM pool_segment_members sm
+					JOIN pool_segments ps ON ps.id=sm.segment_id
+					WHERE ps.list_id=l.id AND sm.status='active'
+				) END AS customer_count
 			FROM customer_lists l
 			LEFT JOIN organizations o ON o.id = l.organization_id
 			LEFT JOIN users u ON u.id = COALESCE(l.owner_user_id, l.original_owner_user_id)
@@ -176,7 +183,16 @@ func (c *Core) QueryAuthorizedPoolLists(access models.WorkspaceAccess) ([]models
 	var out []models.CustomerList
 	err := c.db.Select(&out, `
 		SELECT l.*, COALESCE(o.name, '') AS organization_name,
-			COALESCE(u.username, '') AS owner_username, COALESCE(u.name, '') AS owner_name
+			COALESCE(u.username, '') AS owner_username, COALESCE(u.name, '') AS owner_name,
+			CASE WHEN l.type='pool' THEN (
+				SELECT COUNT(*) FROM pool_segment_members sm
+				JOIN pool_segments ps ON ps.id=sm.segment_id
+				WHERE ps.pool_id=l.id AND ps.organization_id=$1 AND sm.status='active'
+			) ELSE (
+				SELECT COUNT(*) FROM pool_segment_members sm
+				JOIN pool_segments ps ON ps.id=sm.segment_id
+				WHERE ps.list_id=l.id AND sm.status='active'
+			) END AS customer_count
 		FROM customer_lists l
 		LEFT JOIN organizations o ON o.id = l.organization_id
 		LEFT JOIN users u ON u.id = COALESCE(l.owner_user_id, l.original_owner_user_id)
@@ -199,22 +215,92 @@ func (c *Core) QueryAuthorizedPoolLists(access models.WorkspaceAccess) ([]models
 	return out, err
 }
 
+type poolListScope struct {
+	PoolID         int
+	SegmentID      *int64
+	OrganizationID int64
+}
+
+func (c *Core) getPoolListScope(listID int) (poolListScope, error) {
+	var row struct {
+		PoolID         sql.NullInt64 `db:"pool_id"`
+		SegmentID      sql.NullInt64 `db:"segment_id"`
+		OrganizationID sql.NullInt64 `db:"organization_id"`
+	}
+	if err := c.db.Get(&row, `
+		SELECT CASE WHEN l.type='pool' THEN l.id ELSE ps.pool_id END AS pool_id,
+			CASE WHEN l.type='pool_segment' THEN ps.id END AS segment_id,
+			ps.organization_id
+		FROM customer_lists l
+		LEFT JOIN pool_segments ps ON ps.list_id=l.id
+		WHERE l.id=$1 AND l.type IN ('pool','pool_segment')`, listID); err != nil {
+		if err == sql.ErrNoRows {
+			return poolListScope{}, echo.NewHTTPError(http.StatusNotFound, "public pool list not found")
+		}
+		return poolListScope{}, err
+	}
+	if !row.PoolID.Valid {
+		return poolListScope{}, echo.NewHTTPError(http.StatusBadRequest, "public pool list is not bound")
+	}
+	scope := poolListScope{PoolID: int(row.PoolID.Int64)}
+	if row.SegmentID.Valid {
+		segmentID := row.SegmentID.Int64
+		scope.SegmentID = &segmentID
+	}
+	if row.OrganizationID.Valid {
+		scope.OrganizationID = row.OrganizationID.Int64
+	}
+	return scope, nil
+}
+
+// PoolListCustomerCount returns the number of rows represented by a first-level
+// pool or one of its secondary lists. Pool contacts intentionally remain outside
+// the legacy customer membership tables, so their counts need a dedicated query.
+func (c *Core) PoolListCustomerCount(listID int) (int, error) {
+	scope, err := c.getPoolListScope(listID)
+	if err != nil {
+		return 0, err
+	}
+	var count int
+	if scope.SegmentID == nil {
+		err = c.db.Get(&count, `SELECT COUNT(*) FROM pool_members WHERE pool_id=$1`, scope.PoolID)
+	} else {
+		err = c.db.Get(&count, `SELECT COUNT(*) FROM pool_segment_members WHERE segment_id=$1 AND status='active'`, *scope.SegmentID)
+	}
+	return count, err
+}
+
 // QueryPoolContacts returns complete records only for platform administrators.
 // All other callers receive a DTO containing a masked email.
 func (c *Core) QueryPoolContacts(poolID int, organizationID int, platformAdmin bool, customerCode string) (any, error) {
-	if err := c.ensurePool(poolID); err != nil {
+	scope, err := c.getPoolListScope(poolID)
+	if err != nil {
 		return nil, err
 	}
-	args := []any{poolID}
+	args := []any{scope.PoolID}
 	where := ""
 	join := ""
+	if scope.SegmentID != nil {
+		args = append(args, *scope.SegmentID)
+		join = ` JOIN pool_segment_members psm ON psm.contact_id=pc.id AND psm.segment_id=$2`
+		where = ` AND psm.status IN ('active','removed')`
+	}
 	if !platformAdmin {
 		if organizationID <= 0 {
 			return []models.SafePoolContact{}, nil
 		}
-		args = append(args, organizationID)
-		join = " JOIN pool_segment_members psm ON psm.contact_id=pc.id JOIN pool_segments ps ON ps.id=psm.segment_id AND ps.pool_id=pm.pool_id LEFT JOIN pool_segment_exclusions ex ON ex.pool_id=pm.pool_id AND ex.organization_id=ps.organization_id AND ex.contact_id=pc.id AND ex.restored_at IS NULL"
-		where = " AND ps.organization_id=$2 AND (psm.status IN ('active','removed') OR ex.contact_id IS NOT NULL)"
+		if scope.SegmentID != nil {
+			if scope.OrganizationID != int64(organizationID) {
+				return []models.SafePoolContact{}, nil
+			}
+			args = append(args, organizationID)
+			join += ` LEFT JOIN pool_segment_exclusions ex ON ex.pool_id=pm.pool_id AND ex.organization_id=$3 AND ex.contact_id=pc.id AND ex.restored_at IS NULL`
+			where += ` AND (psm.status IN ('active','removed') OR ex.contact_id IS NOT NULL)`
+		} else {
+			args = append(args, organizationID)
+			join = ` JOIN pool_segment_members psm ON psm.contact_id=pc.id JOIN pool_segments ps ON ps.id=psm.segment_id AND ps.pool_id=pm.pool_id LEFT JOIN pool_segment_exclusions ex ON ex.pool_id=pm.pool_id AND ex.organization_id=ps.organization_id AND ex.contact_id=pc.id AND ex.restored_at IS NULL`
+			where = ` AND ps.organization_id=$2 AND (psm.status IN ('active','removed') OR ex.contact_id IS NOT NULL)`
+		}
 	}
 	if strings.TrimSpace(customerCode) != "" {
 		args = append(args, "%"+strings.TrimSpace(customerCode)+"%")

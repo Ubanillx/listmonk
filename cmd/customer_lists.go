@@ -107,6 +107,10 @@ func (a *App) GetList(c echo.Context) error {
 		if err != nil {
 			return err
 		}
+		out.CustomerCount, err = a.core.PoolListCustomerCount(id)
+		if err != nil {
+			return err
+		}
 		out.PoolDeliveryAllowed = true
 		return c.JSON(http.StatusOK, okResp{out})
 	}

@@ -29,6 +29,23 @@ type importTargetInfo struct {
 	RegularIDs     []int
 }
 
+func normalizeImportFieldMap(fieldMap map[string]string) map[string]string {
+	if len(fieldMap) == 0 {
+		return nil
+	}
+
+	out := make(map[string]string, len(fieldMap))
+	for key, value := range fieldMap {
+		key = strings.ToLower(strings.TrimSpace(key))
+		value = strings.TrimSpace(value)
+		if key == "" || value == "" {
+			continue
+		}
+		out[key] = value
+	}
+	return out
+}
+
 // classifyImportTargets reads only list types. Public-pool lists may be
 // delivery-visible outside the active workspace, so this classification is
 // deliberately separate from the later write-scope check.
@@ -81,13 +98,7 @@ func (a *App) ImportCustomers(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest,
 			a.i18n.Ts("import.invalidParams", "error", err.Error()))
 	}
-	if len(opt.FieldMap) > 0 {
-		normalizedFieldMap := make(map[string]string, len(opt.FieldMap))
-		for key, value := range opt.FieldMap {
-			normalizedFieldMap[strings.ToLower(strings.TrimSpace(key))] = strings.TrimSpace(value)
-		}
-		opt.FieldMap = normalizedFieldMap
-	}
+	opt.FieldMap = normalizeImportFieldMap(opt.FieldMap)
 	targets, err := a.classifyImportTargets(opt.CustomerListIDs)
 	if err != nil {
 		return err

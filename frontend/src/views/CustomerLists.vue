@@ -108,7 +108,7 @@
 
       <b-table-column v-slot="props" field="customer_count" :label="$t('globals.terms.customers')"
         header-class="cy-customers" numeric sortable centered>
-        <router-link :to="`/customers/customer-lists/${props.row.id}`">
+        <router-link :to="customerListCustomersRoute(props.row)">
           {{ $utils.formatNumber(props.row.customerCount) }}
           <span class="is-size-7 view">{{ $t('globals.buttons.view') }}</span>
         </router-link>
@@ -420,6 +420,13 @@ export default Vue.extend({
 
     transferPendingAt(resource) {
       return resource.transferPendingAt || resource.transfer_pending_at;
+    },
+
+    customerListCustomersRoute(customerList) {
+      if (customerList.type === 'pool' || customerList.type === 'pool_segment') {
+        return { name: 'poolContacts', params: { customerListID: customerList.id } };
+      }
+      return { name: 'customersCustomerList', params: { customerListID: customerList.id } };
     },
   },
 

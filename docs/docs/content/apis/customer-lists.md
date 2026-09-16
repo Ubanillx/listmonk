@@ -321,7 +321,7 @@ ______________________________________________________________________
 
 #### GET /api/customer-lists/{customer_list_id}/pool-contacts
 
-Retrieve the contacts of a `pool` customer_list. This is a compatibility alias of `GET /api/pools/:id/contacts`; see [Public pools](pools.md) for masking and exclusion rules.
+Retrieve the contacts of a `pool` or `pool_segment` customer_list. This is a compatibility alias of `GET /api/pools/:id/contacts` for first-level pools; for a secondary list, the response is limited to that segment. See [Public pools](pools.md) for masking and exclusion rules.
 
 Highest administrators receive complete contact records. Other callers receive only the contacts of their own organization's segment, with masked e-mail addresses.
 
@@ -331,7 +331,7 @@ Highest administrators receive complete contact records. Other callers receive o
 
 | Name | Type | Required | Description |
 | :--- | :--- | :------- | :---------- |
-| customer_list_id | number | Yes | ID of the pool customer_list. |
+| customer_list_id | number | Yes | ID of a `pool` or `pool_segment` customer_list. |
 | customer_code | string | | Case-insensitive substring filter on the imported customer code. |
 
 ##### Example Request

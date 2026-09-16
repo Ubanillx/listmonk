@@ -60,6 +60,12 @@ const routes = [
     component: () => import('../views/Customers.vue'),
   },
   {
+    path: '/customers/pool-lists/:customerListID',
+    name: 'poolContacts',
+    meta: { title: 'globals.terms.customers', group: 'customers' },
+    component: () => import('../views/PoolContacts.vue'),
+  },
+  {
     path: '/customers/:id',
     name: 'customer',
     meta: { title: 'globals.terms.customers', group: 'customers' },

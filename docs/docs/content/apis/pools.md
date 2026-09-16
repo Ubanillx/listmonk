@@ -13,7 +13,7 @@ the owner fields for audit purposes.
 
 Key endpoints:
 
-- `GET /api/pools/:id/contacts?customer_code=...` — locate pool contacts by imported code.
+- `GET /api/pools/:id/contacts?customer_code=...` — locate first-level or secondary-list contacts by imported code. The equivalent `GET /api/customer-lists/:id/pool-contacts` route also accepts a `pool_segment` list ID; secondary-list reads are limited to that segment.
 - `POST /api/pools/:id/contacts` — legacy single-contact compatibility route
   (highest administrator); the product import entry is the unified customer
   import endpoint below.
@@ -76,6 +76,9 @@ Each first-level pool can have one bound secondary list per organization. The
 dialog does not import contacts or allocate rows. Import the four-column pool
 template from the unified **Customer import** page, then use this dialog only
 to select a target organization and create/bind its secondary list.
+The customer-count link for a first-level or secondary list opens the dedicated
+pool contact view; it does not use the ordinary customer table. That view keeps
+the pool data model separate and applies the same masked DTO policy as the API.
 Organization operators continue to work only inside their own organization
 workspace; they cannot select another target organization or manage a
 first-level pool. The server enforces the same boundary for direct API calls.

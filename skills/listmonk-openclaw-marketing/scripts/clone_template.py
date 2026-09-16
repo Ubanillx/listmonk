@@ -9,7 +9,7 @@ from listmonk_marketing.common import emit_error, emit_json, log
 from listmonk_marketing.templates import clone_template
 
 
-def parse_args(argv: customer_list[str] | None = None) -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Clone a listmonk template with a Bearer personal API key.")
     add_auth_arguments(parser)
     add_template_clone_arguments(parser)
@@ -17,7 +17,7 @@ def parse_args(argv: customer_list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(argv: customer_list[str] | None = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     client = ListmonkClient(args.base_url, args.bearer_token, organization_id=args.organization_id)
     try:

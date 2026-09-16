@@ -78,11 +78,11 @@ def add_list_target_arguments(parser: argparse.ArgumentParser, *, required: bool
 
 
 def add_list_create_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--customer_list-type", default="private", choices=["private", "public"], help="CustomerList type when creating a customer_list")
-    parser.add_argument("--customer_list-optin", default="single", choices=["single", "double"], help="CustomerList opt-in mode when creating a customer_list")
-    parser.add_argument("--customer_list-status", default="active", choices=["active", "archived"], help="CustomerList status when creating a customer_list")
-    parser.add_argument("--customer_list-tags", default="", help="Comma-separated customer_list tags used when creating a customer_list")
-    parser.add_argument("--customer_list-description", default="", help="Optional description used when creating a customer_list")
+    parser.add_argument("--customer_list-type", dest="list_type", default="private", choices=["private", "public"], help="CustomerList type when creating a customer_list")
+    parser.add_argument("--customer_list-optin", dest="list_optin", default="single", choices=["single", "double"], help="CustomerList opt-in mode when creating a customer_list")
+    parser.add_argument("--customer_list-status", dest="list_status", default="active", choices=["active", "archived"], help="CustomerList status when creating a customer_list")
+    parser.add_argument("--customer_list-tags", dest="list_tags", default="", help="Comma-separated customer_list tags used when creating a customer_list")
+    parser.add_argument("--customer_list-description", dest="list_description", default="", help="Optional description used when creating a customer_list")
 
 
 def add_customer_input_arguments(parser: argparse.ArgumentParser) -> None:
@@ -93,6 +93,7 @@ def add_customer_input_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--preconfirm-subscriptions", action="store_true", help="Preconfirm customer customer_list memberships on create")
     parser.add_argument("--excel-sheet", default="", help="Excel sheet name or 1-based index; defaults to the first sheet")
     parser.add_argument("--email-column", default="", help="Excel e-mail column, by header name or column letter")
+    parser.add_argument("--customer-code-column", default="", help="Required Excel customer code column, by header name or column letter")
     parser.add_argument("--name-column", default="", help="Optional Excel name column, by header name or column letter")
     parser.add_argument("--header-row", type=int, default=1, help="Excel header row number, defaults to 1")
     parser.add_argument("--start-row", type=int, default=0, help="Excel data start row; defaults to header_row + 1")
@@ -127,6 +128,7 @@ def add_campaign_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--content-type", choices=["richtext", "html", "markdown", "plain", "visual"])
     parser.add_argument("--messenger", help="Messenger name, defaults to email unless inherited")
     parser.add_argument("--from-email", help="Optional campaign from_email, or inherit from a source campaign")
+    parser.add_argument("--reply-mailbox-id", type=int, help="Optional owner-configured reply mailbox ID")
     parser.add_argument("--daily-send-limit", type=int, help="Daily send limit, or inherit from a source campaign")
     parser.add_argument("--daily-resume-time", help="Daily resume time in HH:MM local server time, or inherit")
     parser.add_argument("--send-at", default="", help="Optional RFC3339 send time for scheduling")

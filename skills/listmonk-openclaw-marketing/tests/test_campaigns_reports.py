@@ -22,7 +22,7 @@ class ReportClient:
     def get_report_timeseries(self, campaign_id: int, report_from: str, report_to: str) -> dict[str, object]:
         return {"views": [], "clicks": [], "bounces": []}
 
-    def get_report_links(self, campaign_id: int, report_from: str, report_to: str) -> customer_list[dict[str, object]]:
+    def get_report_links(self, campaign_id: int, report_from: str, report_to: str) -> list[dict[str, object]]:
         return [{"url": "https://example.com", "total_clicks": 1}]
 
     def get_report_recipients(self, campaign_id: int, report_from: str, report_to: str, per_page: int) -> dict[str, object]:
@@ -31,12 +31,12 @@ class ReportClient:
 
 class SourceCampaignClient:
     def __init__(self) -> None:
-        self.queries: customer_list[str] = []
+        self.queries: list[str] = []
 
     def get_campaign(self, campaign_id: int) -> dict[str, object]:
         return {"id": campaign_id, "name": "复制用模板", "subject": "测试主题", "daily_send_limit": 500}
 
-    def query_campaigns(self, query: str) -> customer_list[dict[str, object]]:
+    def query_campaigns(self, query: str) -> list[dict[str, object]]:
         self.queries.append(query)
         return [
             {"id": 2, "name": "复制用模板"},
@@ -63,6 +63,7 @@ class CampaignAndReportTests(unittest.TestCase):
             content_type="html",
             messenger="email",
             from_email="ops@example.com",
+            reply_mailbox_id=6,
             daily_send_limit=500,
             daily_resume_time="10:30",
             send_at="2026-03-24T10:00:00Z",
@@ -70,9 +71,10 @@ class CampaignAndReportTests(unittest.TestCase):
             attribs_file=attribs_file,
         )
 
-        self.assertEqual(payload["customerLists"], [3])
+        self.assertEqual(payload["customer_list_ids"], [3])
         self.assertEqual(payload["template_id"], 4)
         self.assertEqual(payload["from_email"], "ops@example.com")
+        self.assertEqual(payload["reply_mailbox_id"], 6)
         self.assertEqual(payload["send_at"], "2026-03-24T10:00:00Z")
         self.assertEqual(payload["attribs"], {"team": "growth"})
 
@@ -106,7 +108,7 @@ class CampaignAndReportTests(unittest.TestCase):
         )
 
         self.assertEqual(payload["name"], "Launch Copy")
-        self.assertEqual(payload["customerLists"], [9])
+        self.assertEqual(payload["customer_list_ids"], [9])
         self.assertEqual(payload["subject"], "测试主题")
         self.assertEqual(payload["template_id"], 1)
         self.assertEqual(payload["daily_send_limit"], 500)

@@ -42,7 +42,7 @@ class ListmonkClient:
         path: str,
         *,
         params: dict[str, Any] | None = None,
-        payload: dict[str, Any] | customer_list[Any] | None = None,
+        payload: dict[str, Any] | list[Any] | None = None,
         data: bytes | None = None,
         headers: dict[str, str] | None = None,
     ) -> Any:
@@ -87,7 +87,7 @@ class ListmonkClient:
     def get_list(self, customer_list_id: int) -> dict[str, Any]:
         return self.request("GET", f"/api/customer-lists/{customer_list_id}")
 
-    def query_lists(self, query: str) -> customer_list[dict[str, Any]]:
+    def query_lists(self, query: str) -> list[dict[str, Any]]:
         page = self.request("GET", "/api/customer-lists", params={"query": query, "page": 1, "per_page": "all"})
         return page.get("results", [])
 
@@ -97,7 +97,7 @@ class ListmonkClient:
         list_type: str,
         optin: str,
         status: str,
-        tags: customer_list[str],
+        tags: list[str],
         description: str,
     ) -> dict[str, Any]:
         payload = {
@@ -112,22 +112,26 @@ class ListmonkClient:
 
     def create_customer(self, customer: dict[str, Any], customer_list_id: int, preconfirm: bool) -> dict[str, Any]:
         payload = dict(customer)
-        customer_lists = payload.get("customerLists", [])
+        customer_lists = payload.get("customer_list_ids", [])
+        if customer_lists in (None, ""):
+            customer_lists = []
+        if not isinstance(customer_lists, list):
+            raise ValueError("customer_list_ids must be an array")
         if customer_list_id not in customer_lists:
-            customer_lists = customer_list(customer_lists) + [customer_list_id]
-        payload["customerLists"] = customer_lists
+            customer_lists = list(customer_lists) + [customer_list_id]
+        payload["customer_list_ids"] = customer_lists
         payload.setdefault("status", "enabled")
         payload["preconfirm_subscriptions"] = preconfirm
         return self.request("POST", "/api/customers", payload=payload)
 
-    def query_customers(self, search: str, per_page: int | str = "all") -> customer_list[dict[str, Any]]:
+    def query_customers(self, search: str, per_page: int | str = "all") -> list[dict[str, Any]]:
         page = self.request("GET", "/api/customers", params={"search": search, "page": 1, "per_page": per_page})
         return page.get("results", [])
 
     def manage_customer_list_memberships(
         self,
-        customer_ids: customer_list[int],
-        target_customer_list_ids: customer_list[int],
+        customer_ids: list[int],
+        target_customer_list_ids: list[int],
         status: str,
         action: str = "add",
     ) -> Any:
@@ -189,7 +193,7 @@ class ListmonkClient:
     def get_campaign(self, campaign_id: int) -> dict[str, Any]:
         return self.request("GET", f"/api/campaigns/{campaign_id}")
 
-    def query_campaigns(self, query: str) -> customer_list[dict[str, Any]]:
+    def query_campaigns(self, query: str) -> list[dict[str, Any]]:
         page = self.request("GET", "/api/campaigns", params={"query": query, "page": 1, "per_page": "all"})
         return page.get("results", [])
 

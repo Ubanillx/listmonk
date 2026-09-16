@@ -9,18 +9,20 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 from listmonk_marketing.client import APIError
-from listmonk_marketing.customer_lists import find_or_create_list
+from listmonk_marketing.lists import find_or_create_list
 
 
 class CustomerListClient:
     def __init__(self) -> None:
-        self.created_payloads: customer_list[dict[str, object]] = []
+        self.created_payloads: list[dict[str, object]] = []
         self.queries = 0
 
     def get_list(self, customer_list_id: int) -> dict[str, object]:
-        return {"id": customer_list_id, "name": "Existing"}
+        if customer_list_id == 99:
+            return {"id": customer_list_id, "name": "Pool", "type": "pool"}
+        return {"id": customer_list_id, "name": "Existing", "type": "private"}
 
-    def query_lists(self, query: str) -> customer_list[dict[str, object]]:
+    def query_lists(self, query: str) -> list[dict[str, object]]:
         self.queries += 1
         if query == "Found":
             return [{"id": 7, "name": "Found"}]
@@ -35,7 +37,7 @@ class CustomerListClient:
         list_type: str,
         optin: str,
         status: str,
-        tags: customer_list[str],
+        tags: list[str],
         description: str,
     ) -> dict[str, object]:
         payload = {
@@ -57,6 +59,11 @@ class CustomerListResolutionTests(unittest.TestCase):
         client = CustomerListClient()
         result = find_or_create_list(client, customer_list_id=12)
         self.assertEqual(result["id"], 12)
+
+    def test_find_or_create_rejects_public_pool_list(self) -> None:
+        client = CustomerListClient()
+        with self.assertRaisesRegex(ValueError, "pool"):
+            find_or_create_list(client, customer_list_id=99)
 
     def test_find_or_create_reuses_exact_name_match(self) -> None:
         client = CustomerListClient()

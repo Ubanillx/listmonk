@@ -12,11 +12,11 @@ from listmonk_marketing.cli import (
 )
 from listmonk_marketing.client import ListmonkClient
 from listmonk_marketing.common import emit_error, emit_json, log
-from listmonk_marketing.customer_lists import find_or_create_list
-from listmonk_marketing.customers import create_customers_if_needed
+from listmonk_marketing.lists import find_or_create_list
+from listmonk_marketing.subscribers import create_customers_if_needed
 
 
-def parse_args(argv: customer_list[str] | None = None) -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Import customers into listmonk with a Bearer personal API key.")
     add_auth_arguments(parser)
     add_list_target_arguments(parser, required=True)
@@ -26,7 +26,7 @@ def parse_args(argv: customer_list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(argv: customer_list[str] | None = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     client = ListmonkClient(args.base_url, args.bearer_token, organization_id=args.organization_id)
     progress: dict[str, object] = {}
@@ -55,6 +55,7 @@ def main(argv: customer_list[str] | None = None) -> int:
             preconfirm_subscriptions=args.preconfirm_subscriptions,
             excel_sheet=args.excel_sheet,
             email_column=args.email_column,
+            customer_code_column=args.customer_code_column,
             name_column=args.name_column,
             header_row=args.header_row,
             start_row=args.start_row,

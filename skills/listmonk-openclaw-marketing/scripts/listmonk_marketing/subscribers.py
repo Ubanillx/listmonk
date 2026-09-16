@@ -29,7 +29,7 @@ class BatchImportError(RuntimeError):
 
 
 def load_json_customers(customers_file: str) -> dict[str, Any]:
-    customers = load_json_file(customers_file, customer_list)
+    customers = load_json_file(customers_file, list)
     rows = []
     for index, customer in enumerate(customers, start=1):
         if not isinstance(customer, dict):
@@ -50,6 +50,7 @@ def load_customer_source(
     excel_file: str = "",
     excel_sheet: str = "",
     email_column: str = "",
+    customer_code_column: str = "",
     name_column: str = "",
     header_row: int = 1,
     start_row: int = 0,
@@ -65,6 +66,7 @@ def load_customer_source(
     return parse_excel_customers(
         excel_file=excel_file,
         email_column=email_column,
+        customer_code_column=customer_code_column,
         name_column=name_column,
         excel_sheet=excel_sheet,
         header_row=header_row,
@@ -88,7 +90,7 @@ def reuse_existing_customer(
         raise APIError(409, "customer already exists but could not be queried back")
 
     desired_status = "confirmed" if preconfirm_subscriptions else "unconfirmed"
-    customer_lists = match.get("customerLists", [])
+    customer_lists = match.get("customer_lists", [])
     current = next((item for item in customer_lists if item.get("id") == customer_list_id), None)
     current_status = current.get("subscription_status") if current else None
     if current is None or current_status != desired_status:
@@ -102,16 +104,22 @@ def reuse_existing_customer(
 
 
 def ensure_batch_compatible_customer(customer: dict[str, Any], *, row: int, customer_list_id: int) -> None:
-    raw_lists = customer.get("customerLists")
+    raw_lists = customer.get("customer_list_ids")
     if raw_lists in (None, "", []):
         raw_lists = []
-    if raw_lists and not isinstance(raw_lists, customer_list):
-        raise ValueError(f"Customer row {row} has an unsupported 'customerLists' value for batch import")
+    if raw_lists and not isinstance(raw_lists, list):
+        raise ValueError(f"Customer row {row} has an unsupported 'customer_list_ids' value for batch import")
 
     extra_lists = [value for value in raw_lists if str(value).strip() and str(value).strip() != str(customer_list_id)]
     if extra_lists:
         raise ValueError(
             f"Customer row {row} targets additional customer_lists {extra_lists}, but batch import only supports the selected customer_list {customer_list_id}"
+        )
+
+    attribs = customer.get("attribs")
+    if attribs not in (None, "", {}):
+        raise ValueError(
+            f"Customer row {row} contains attribs, which native batch import cannot preserve; use direct customer creation instead"
         )
 
     status = str(customer.get("status", "")).strip()
@@ -121,7 +129,7 @@ def ensure_batch_compatible_customer(customer: dict[str, Any], *, row: int, cust
         )
 
 
-def write_batch_import_csv(source_rows: customer_list[dict[str, Any]], *, customer_list_id: int) -> tuple[str, dict[int, int]]:
+def write_batch_import_csv(source_rows: list[dict[str, Any]], *, customer_list_id: int) -> tuple[str, dict[int, int]]:
     handle = tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False, encoding="utf-8", newline="")
     line_map: dict[int, int] = {}
     try:
@@ -190,8 +198,8 @@ def wait_for_batch_import(
     )
 
 
-def parse_import_failed_rows(logs: str, *, line_map: dict[int, int]) -> customer_list[dict[str, Any]]:
-    failed_rows: customer_list[dict[str, Any]] = []
+def parse_import_failed_rows(logs: str, *, line_map: dict[int, int]) -> list[dict[str, Any]]:
+    failed_rows: list[dict[str, Any]] = []
     seen: set[tuple[int, str]] = set()
 
     for line in logs.splitlines():
@@ -218,9 +226,9 @@ def create_customers_via_batch_import(
     parsed: dict[str, Any],
     preconfirm_subscriptions: bool,
 ) -> dict[str, Any]:
-    source_rows = customer_list(parsed["customers"])
-    skipped_rows = customer_list(parsed["skipped_rows"])
-    failed_rows = customer_list(parsed["failed_rows"])
+    source_rows = list(parsed["customers"])
+    skipped_rows = list(parsed["skipped_rows"])
+    failed_rows = list(parsed["failed_rows"])
 
     if not source_rows:
         return {
@@ -268,6 +276,7 @@ def create_customers_if_needed(
     preconfirm_subscriptions: bool = False,
     excel_sheet: str = "",
     email_column: str = "",
+    customer_code_column: str = "",
     name_column: str = "",
     header_row: int = 1,
     start_row: int = 0,
@@ -279,6 +288,7 @@ def create_customers_if_needed(
         excel_file=excel_file,
         excel_sheet=excel_sheet,
         email_column=email_column,
+        customer_code_column=customer_code_column,
         name_column=name_column,
         header_row=header_row,
         start_row=start_row,
@@ -287,11 +297,15 @@ def create_customers_if_needed(
     )
     source = parsed["source"]
     source_rows = parsed["customers"]
-    skipped_rows = customer_list(parsed["skipped_rows"])
-    failed_rows = customer_list(parsed["failed_rows"])
+    skipped_rows = list(parsed["skipped_rows"])
+    failed_rows = list(parsed["failed_rows"])
     created = []
 
-    if hasattr(client, "start_customer_import") and hasattr(client, "get_customer_import_status"):
+    has_batch_import = hasattr(client, "start_customer_import") and hasattr(client, "get_customer_import_status")
+    has_direct_only_fields = any(
+        item["customer"].get("attribs") not in (None, "", {}) for item in source_rows
+    )
+    if has_batch_import and not has_direct_only_fields:
         return create_customers_via_batch_import(
             client,
             customer_list_id=customer_list_id,
@@ -304,6 +318,11 @@ def create_customers_if_needed(
             index = int(item["row"])
             customer = item["customer"]
             try:
+                if not str(customer.get("customer_code") or "").strip():
+                    failed_rows.append(
+                        {"row": index, "email": customer.get("email"), "reason": "customer_code is required"}
+                    )
+                    continue
                 created.append(client.create_customer(customer, customer_list_id, preconfirm_subscriptions))
             except APIError as exc:
                 if exc.status == 409 and customer.get("email"):
@@ -340,6 +359,11 @@ def create_customers_if_needed(
         row = int(item["row"])
         customer = item["customer"]
         try:
+            if not str(customer.get("customer_code") or "").strip():
+                failed_rows.append(
+                    {"row": row, "email": customer.get("email"), "reason": "customer_code is required"}
+                )
+                continue
             created.append(client.create_customer(customer, customer_list_id, preconfirm_subscriptions))
         except APIError as exc:
             if exc.status == 409 and customer.get("email"):

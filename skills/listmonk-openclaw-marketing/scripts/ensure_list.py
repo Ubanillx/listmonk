@@ -11,10 +11,10 @@ from listmonk_marketing.cli import (
 )
 from listmonk_marketing.client import ListmonkClient
 from listmonk_marketing.common import emit_error, emit_json, log
-from listmonk_marketing.customer_lists import find_or_create_list
+from listmonk_marketing.lists import find_or_create_list
 
 
-def parse_args(argv: customer_list[str] | None = None) -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Find or create a listmonk customer_list with a Bearer personal API key.")
     add_auth_arguments(parser)
     add_list_target_arguments(parser, required=True)
@@ -23,7 +23,7 @@ def parse_args(argv: customer_list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(argv: customer_list[str] | None = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     client = ListmonkClient(args.base_url, args.bearer_token, organization_id=args.organization_id)
     try:

@@ -6,7 +6,7 @@ The skill ships with a modular Python CLI:
 
 - `run_marketing_flow.py` for the end-to-end flow
 - `ensure_list.py`
-- `import_customers.py`
+- `import_subscribers.py`
 - `clone_template.py`
 - `create_campaign.py`
 - `update_campaign_status.py`
@@ -86,12 +86,17 @@ python3 scripts/run_marketing_flow.py \
   {
     "email": "jane@example.com",
     "name": "Jane",
+    "customer_code": "C001",
     "attribs": {
       "city": "Shanghai"
     }
   }
 ]
 ```
+
+`email` and `customer_code` are required for every row. Because this example includes
+`attribs`, the script uses direct `POST /api/customers` calls; omit `attribs` when the
+native batch importer is preferred.
 
 End-to-end Excel input example:
 
@@ -103,6 +108,7 @@ python3 scripts/run_marketing_flow.py \
   --excel-file ./customers.xlsx \
   --excel-sheet "Sheet1" \
   --email-column "AG" \
+  --customer-code-column "AB" \
   --name-column "AE" \
   --header-row 2 \
   --source-campaign-name "复制用模板" \
@@ -117,9 +123,11 @@ Excel mode rules:
 
 - Only `.xlsx` files are supported.
 - `--email-column` is required.
+- `--customer-code-column` is required.
 - `--name-column` is optional.
 - Column selectors can be header names like `邮箱` or letters like `A`.
-- All other non-empty columns are added to customer `attribs`.
+- All other non-empty columns are added to customer `attribs`; those rows use direct customer creation so attributes are preserved.
+- Rows with only `email`, `name`, and `customer_code` use the native batch importer.
 - Duplicate emails are deduplicated by default. Use `--no-dedupe-by-email` to disable that behavior.
 - The script returns `imported_count`, `skipped_rows`, and `failed_rows` in the final JSON output.
 
@@ -140,7 +148,7 @@ python3 scripts/ensure_list.py \
 Import customers:
 
 ```shell
-python3 scripts/import_customers.py \
+python3 scripts/import_subscribers.py \
   --base-url "https://listmonk.example.com" \
   --bearer-token "$TOKEN" \
   --customer_list-id 12 \
@@ -166,6 +174,7 @@ python3 scripts/create_campaign.py \
   --customer_list-id 12 \
   --source-campaign-name "复制用模板" \
   --campaign-name "OpenClaw Launch Campaign" \
+  --reply-mailbox-id 6 \
   --subject "Launch Day"
 ```
 
@@ -218,7 +227,8 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
 
 ## 3. Add customers
 
-The skill now converts JSON or Excel input into a temporary CSV and uses listmonk's native bulk import API:
+For rows containing only `email`, `name`, and `customer_code`, the skill converts the
+input into a temporary CSV and uses listmonk's native bulk import API:
 
 ```shell
 curl -X POST -H "Authorization: Bearer $TOKEN" \
@@ -242,6 +252,15 @@ curl -H "Authorization: Bearer $TOKEN" \
 ```
 
 The key used by this step needs the `customers:import` scope.
+
+If a JSON row contains non-empty `attribs`, or an Excel row has extra non-empty columns,
+the skill uses direct `POST /api/customers` calls instead. The direct path requires
+`customers:write` and preserves attributes; it still requires `customer_code`.
+
+This workflow supports ordinary `private` and `public` customer lists only. Lists with
+type `pool` or `pool_segment` belong to the public-pool allocation workflow and should be
+handled through [the pool APIs](../../../../docs/docs/content/apis/pools.md), not this
+batch/direct import path.
 
 ## 4. Choose the campaign blueprint
 
@@ -279,7 +298,7 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
   -d '{
     "name": "OpenClaw Launch Campaign",
     "subject": "测试主题",
-    "customerLists": [12],
+    "customer_list_ids": [12],
     "type": "regular",
     "content_type": "html",
     "body": "# 我是一篇文章",
@@ -296,6 +315,8 @@ Notes:
 - Keep `daily_send_limit` and `daily_resume_time` set for regular email campaigns.
 - When the template already contains the wrapper, leaving `body` empty is valid for template-driven campaign content in listmonk's current API shape.
 - In source campaign mode, the workflow recreates a fresh campaign from the source campaign's fields and swaps in the target customer_list. It does not duplicate the original campaign object in place.
+- Campaign creation requires the `campaigns:write` API-key scope and the user's campaign-create permission.
+- `--reply-mailbox-id` is optional and must reference a reply mailbox owned and preconfigured by the API-key owner; it is not copied from another user's source campaign.
 
 ## 6. Start or schedule the campaign
 
@@ -308,7 +329,18 @@ curl -X PUT -H "Authorization: Bearer $TOKEN" \
   -d '{"status":"running"}'
 ```
 
-If `send_at` was set during campaign creation, the same status call keeps the campaign scheduled in listmonk. Starting or scheduling requires the `campaigns:send` scope.
+Schedule a campaign whose `send_at` was set during creation:
+
+```shell
+curl -X PUT -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  "$BASE_URL/api/campaigns/31/status" \
+  -d '{"status":"scheduled"}'
+```
+
+Campaign create/update/status requests need `campaigns:write`. Starting or scheduling
+also needs the `campaigns:send` scope, the user's send/schedule action permission, and a
+valid owner-configured SMTP/reply mailbox.
 
 ## 7. Fetch analytics
 
@@ -352,25 +384,27 @@ If recipient analytics return a privacy-related `403`, degrade gracefully to sum
   curl -H "Authorization: Bearer $TOKEN" \
     "$BASE_URL/api/campaigns/31/report/summary?from=$FROM&to=$FROM"
   ```
-- Campaign **customer_list** endpoint uses Unix seconds: `/api/campaigns?from=<epoch>&to=<epoch>`.
+- The campaign collection endpoint does not accept `from`/`to`; use `/api/campaigns?per_page=all`
+  and filter `created_at`/`updated_at` client-side when building a daily overview.
 
 ### "Today" dashboard query (personal API key)
 
-Personal API keys have no dashboard endpoint; use the campaign customer_list plus
-per-campaign reports:
+Personal API keys have no dashboard endpoint and the campaign collection has no time
+filter. Fetch the collection, filter its returned timestamps client-side, and then query
+per-campaign reports with date strings:
 
 ```shell
-# 1) campaigns created/updated today (epoch seconds)
+# 1) fetch campaigns; filter created_at/updated_at in the client
 curl -H "Authorization: Bearer $TOKEN" \
-  "$BASE_URL/api/campaigns?from=$(date -d 'today 00:00:00' +%s)&to=$(date -d 'today 23:59:59' +%s)&per_page=50"
+  "$BASE_URL/api/campaigns?per_page=all"
 
 # 2) per-campaign detail with date strings
 curl -H "Authorization: Bearer $TOKEN" \
   "$BASE_URL/api/campaigns/31/report/summary?from=$(date +%F)&to=$(date +%F)"
 ```
 
-The campaign customer_list payload already includes `status`, `sent`, `to_send`, `views`,
-`clicks`, `bounces`, and target `customer_lists` — enough for a quick daily overview.
+The campaign collection payload includes delivery counters and target `customer_lists`
+for a quick overview; report endpoints provide the date-bounded detail.
 
 ## Local smoke test
 
@@ -398,7 +432,7 @@ docker compose -p listmonk-skilltest -f dev/docker-compose.yml run -d --service-
 
 5. Run the modular chain:
    - `ensure_list.py`
-   - `import_customers.py`
+   - `import_subscribers.py`
    - `clone_template.py`
    - `create_campaign.py`
    - `fetch_campaign_reports.py`

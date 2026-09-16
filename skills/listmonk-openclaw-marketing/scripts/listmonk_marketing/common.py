@@ -18,8 +18,8 @@ def log(message: str, *, enabled: bool) -> None:
         print(message, file=sys.stderr)
 
 
-def normalize_tags(raw: str | customer_list[str]) -> customer_list[str]:
-    if isinstance(raw, customer_list):
+def normalize_tags(raw: str | list[str]) -> list[str]:
+    if isinstance(raw, list):
         return [item.strip() for item in raw if str(item).strip()]
     return [item.strip() for item in raw.split(",") if item.strip()]
 
@@ -45,4 +45,3 @@ def emit_error(exc: Exception, *, progress: dict[str, Any] | None = None) -> int
 
     emit_json({"error": error}, stream=sys.stderr)
     return 1
-

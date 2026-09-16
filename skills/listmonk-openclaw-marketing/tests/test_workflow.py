@@ -17,11 +17,12 @@ from run_marketing_flow import run_workflow
 class WorkflowClient:
     def __init__(self) -> None:
         self.clone_template_called = False
+        self.status_calls: list[tuple[int, str]] = []
 
-    def validate_token(self) -> customer_list[dict[str, object]]:
+    def validate_token(self) -> list[dict[str, object]]:
         return []
 
-    def query_lists(self, query: str) -> customer_list[dict[str, object]]:
+    def query_lists(self, query: str) -> list[dict[str, object]]:
         return []
 
     def create_list(
@@ -31,7 +32,7 @@ class WorkflowClient:
         list_type: str,
         optin: str,
         status: str,
-        tags: customer_list[str],
+        tags: list[str],
         description: str,
     ) -> dict[str, object]:
         return {"id": 11, "name": name}
@@ -57,7 +58,7 @@ class WorkflowClient:
             "tags": ["test"],
         }
 
-    def query_campaigns(self, query: str) -> customer_list[dict[str, object]]:
+    def query_campaigns(self, query: str) -> list[dict[str, object]]:
         return [{"id": 2, "name": "复制用模板"}]
 
     def create_campaign(self, payload: dict[str, object]) -> dict[str, object]:
@@ -69,9 +70,13 @@ class WorkflowClient:
             "template_id": payload.get("template_id"),
         }
 
+    def update_campaign_status(self, campaign_id: int, status: str) -> dict[str, object]:
+        self.status_calls.append((campaign_id, status))
+        return {"id": campaign_id, "status": status}
+
 
 class WorkflowTests(unittest.TestCase):
-    def make_json_file(self, payload: customer_list[dict[str, object]]) -> str:
+    def make_json_file(self, payload: list[dict[str, object]]) -> str:
         handle = tempfile.NamedTemporaryFile(suffix=".json", delete=False)
         handle.write(json.dumps(payload).encode("utf-8"))
         handle.close()
@@ -79,7 +84,7 @@ class WorkflowTests(unittest.TestCase):
         return handle.name
 
     def test_run_workflow_aggregates_subsystems(self) -> None:
-        source = self.make_json_file([{"email": "flow@example.com", "name": "Flow"}])
+        source = self.make_json_file([{"email": "flow@example.com", "name": "Flow", "customer_code": "FLOW001"}])
         client = WorkflowClient()
         args = argparse.Namespace(
             base_url="http://localhost:9000",
@@ -96,6 +101,7 @@ class WorkflowTests(unittest.TestCase):
             preconfirm_subscriptions=False,
             excel_sheet="",
             email_column="",
+            customer_code_column="",
             name_column="",
             header_row=1,
             start_row=0,
@@ -112,12 +118,13 @@ class WorkflowTests(unittest.TestCase):
             content_type=None,
             messenger=None,
             from_email=None,
+            reply_mailbox_id=None,
             daily_send_limit=100,
             daily_resume_time=None,
-            send_at="",
+            send_at="2026-03-24T10:00:00Z",
             tag=["growth"],
             attribs_file="",
-            auto_start=False,
+            auto_start=True,
             report_from="",
             report_to="",
             recipient_per_page=100,
@@ -128,11 +135,12 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(result["template_id"], 31)
         self.assertEqual(result["campaign_id"], 41)
         self.assertEqual(result["imported_count"], 1)
-        self.assertEqual(result["status"], "draft")
+        self.assertEqual(result["status"], "scheduled")
+        self.assertEqual(client.status_calls, [(41, "scheduled")])
         self.assertTrue(client.clone_template_called)
 
     def test_run_workflow_can_inherit_from_source_campaign(self) -> None:
-        source = self.make_json_file([{"email": "flow@example.com", "name": "Flow"}])
+        source = self.make_json_file([{"email": "flow@example.com", "name": "Flow", "customer_code": "FLOW001"}])
         client = WorkflowClient()
         args = argparse.Namespace(
             base_url="http://localhost:9000",
@@ -149,6 +157,7 @@ class WorkflowTests(unittest.TestCase):
             preconfirm_subscriptions=False,
             excel_sheet="",
             email_column="",
+            customer_code_column="",
             name_column="",
             header_row=1,
             start_row=0,
@@ -165,6 +174,7 @@ class WorkflowTests(unittest.TestCase):
             content_type=None,
             messenger=None,
             from_email=None,
+            reply_mailbox_id=None,
             daily_send_limit=None,
             daily_resume_time=None,
             send_at="",

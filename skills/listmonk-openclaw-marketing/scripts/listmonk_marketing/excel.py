@@ -17,7 +17,7 @@ def is_column_letter(value: str) -> bool:
     return bool(re.fullmatch(r"[A-Za-z]+", value.strip()))
 
 
-def extract_emails(raw_value: Any) -> customer_list[str]:
+def extract_emails(raw_value: Any) -> list[str]:
     if raw_value is None:
         return []
 
@@ -26,7 +26,7 @@ def extract_emails(raw_value: Any) -> customer_list[str]:
         return []
 
     matches = re.findall(r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+", text)
-    out: customer_list[str] = []
+    out: list[str] = []
     seen: set[str] = set()
     for match in matches:
         email = match.strip()
@@ -66,7 +66,7 @@ def resolve_sheet(workbook: Any, sheet_spec: str) -> Any:
 
 
 def build_header_maps(
-    header_values: customer_list[Any],
+    header_values: list[Any],
     max_column: int,
     get_column_letter: Any,
 ) -> tuple[dict[str, int], dict[int, str]]:
@@ -113,6 +113,7 @@ def parse_excel_customers(
     *,
     excel_file: str,
     email_column: str,
+    customer_code_column: str,
     name_column: str = "",
     excel_sheet: str = "",
     header_row: int = 1,
@@ -122,6 +123,8 @@ def parse_excel_customers(
 ) -> dict[str, Any]:
     if not email_column:
         raise ValueError("--email-column is required when using --excel-file")
+    if not customer_code_column:
+        raise ValueError("--customer-code-column is required when using --excel-file")
     if not str(excel_file).lower().endswith(".xlsx"):
         raise ValueError("Only .xlsx Excel files are supported")
     if header_row < 1:
@@ -138,7 +141,7 @@ def parse_excel_customers(
             raise ValueError("Excel sheet is empty")
 
         header_rows = sheet.iter_rows(min_row=header_row, max_row=header_row, values_only=True)
-        header_values = customer_list(next(header_rows, ()))
+        header_values = list(next(header_rows, ()))
         header_to_index, index_to_key = build_header_maps(header_values, max_column, get_column_letter)
         email_col = resolve_column(
             email_column,
@@ -154,12 +157,18 @@ def parse_excel_customers(
                 column_index_from_string=column_index_from_string,
                 label="--name-column",
             )
+        customer_code_col = resolve_column(
+            customer_code_column,
+            header_to_index=header_to_index,
+            column_index_from_string=column_index_from_string,
+            label="--customer-code-column",
+        )
 
         start = start_row or (header_row + 1)
         seen_emails: set[str] = set()
-        customers: customer_list[dict[str, Any]] = []
-        skipped_rows: customer_list[dict[str, Any]] = []
-        failed_rows: customer_list[dict[str, Any]] = []
+        customers: list[dict[str, Any]] = []
+        skipped_rows: list[dict[str, Any]] = []
+        failed_rows: list[dict[str, Any]] = []
 
         row_iter = sheet.iter_rows(min_row=start, values_only=True)
         for row_idx, row_values in enumerate(row_iter, start=start):
@@ -191,10 +200,15 @@ def parse_excel_customers(
 
             raw_name = values.get(name_col) if name_col is not None else None
             name = "" if raw_name is None else str(raw_name).strip()
+            raw_customer_code = values.get(customer_code_col)
+            customer_code = "" if raw_customer_code is None else str(raw_customer_code).strip()
+            if not customer_code:
+                failed_rows.append({"row": row_idx, "email": raw_email_text, "reason": "missing_customer_code"})
+                continue
 
             attribs: dict[str, Any] = {}
             for col_idx in range(1, max_column + 1):
-                if col_idx in {email_col, name_col}:
+                if col_idx in {email_col, name_col, customer_code_col}:
                     continue
                 value = values.get(col_idx)
                 if value in (None, ""):
@@ -208,7 +222,7 @@ def parse_excel_customers(
                     continue
                 seen_emails.add(email_key)
 
-                customer: dict[str, Any] = {"email": email}
+                customer: dict[str, Any] = {"email": email, "customer_code": customer_code}
                 if name:
                     customer["name"] = name
                 if attribs:

@@ -1,4 +1,4 @@
 version: 1
 display_name: listmonk OpenClaw Marketing
 short_description: Run modular or end-to-end listmonk marketing workflows from OpenClaw using workspace-bound personal API keys.
-default_prompt: Use the modular listmonk marketing skill to create or reuse a customer_list, import customers, clone templates, reuse an existing campaign as a blueprint, create campaigns, update campaign status, or fetch analytics with a workspace-bound personal API key.
+default_prompt: Use the modular listmonk marketing skill to create or reuse an ordinary customer_list, import subscribers with customer_code, clone templates, reuse an existing campaign as a blueprint, create or schedule campaigns, or fetch analytics with a workspace-bound personal API key. Use the dedicated pool APIs for pool and pool_segment audiences.

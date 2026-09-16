@@ -22,13 +22,13 @@ from listmonk_marketing.cli import (
 )
 from listmonk_marketing.client import ListmonkClient
 from listmonk_marketing.common import emit_error, emit_json, log
-from listmonk_marketing.customer_lists import find_or_create_list
+from listmonk_marketing.lists import find_or_create_list
 from listmonk_marketing.reports import fetch_campaign_reports
-from listmonk_marketing.customers import create_customers_if_needed
+from listmonk_marketing.subscribers import create_customers_if_needed
 from listmonk_marketing.templates import clone_template
 
 
-def parse_args(argv: customer_list[str] | None = None) -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run a listmonk marketing flow with a Bearer personal API key.")
     add_auth_arguments(parser)
     add_list_target_arguments(parser, required=True)
@@ -91,6 +91,7 @@ def run_workflow(args: argparse.Namespace, *, client: ListmonkClient | None = No
         preconfirm_subscriptions=args.preconfirm_subscriptions,
         excel_sheet=args.excel_sheet,
         email_column=args.email_column,
+        customer_code_column=args.customer_code_column,
         name_column=args.name_column,
         header_row=args.header_row,
         start_row=args.start_row,
@@ -141,6 +142,7 @@ def run_workflow(args: argparse.Namespace, *, client: ListmonkClient | None = No
             content_type=args.content_type,
             messenger=args.messenger,
             from_email=args.from_email,
+            reply_mailbox_id=args.reply_mailbox_id,
             daily_send_limit=args.daily_send_limit,
             daily_resume_time=args.daily_resume_time,
             send_at=args.send_at,
@@ -155,7 +157,8 @@ def run_workflow(args: argparse.Namespace, *, client: ListmonkClient | None = No
     status_result = None
     if args.auto_start:
         log("Starting or scheduling campaign", enabled=args.verbose)
-        status_result = update_campaign_status(client, campaign_id=int(campaign["id"]), status="running")
+        target_status = "scheduled" if args.send_at else "running"
+        status_result = update_campaign_status(client, campaign_id=int(campaign["id"]), status=target_status)
 
     log("Fetching reports", enabled=args.verbose)
     reports = fetch_campaign_reports(
@@ -192,7 +195,7 @@ def run_workflow(args: argparse.Namespace, *, client: ListmonkClient | None = No
     return result
 
 
-def main(argv: customer_list[str] | None = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
         emit_json(run_workflow(args))

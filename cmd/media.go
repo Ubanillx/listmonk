@@ -250,6 +250,11 @@ func (a *App) UploadMedia(c echo.Context) error {
 		return err
 	}
 	setAuditObjectID(c, strconv.Itoa(m.ID))
+	setAuditObjectDetails(c, map[string]any{
+		"filename":     m.Filename,
+		"content_type": contentType,
+		"extension":    ext,
+	})
 	setAuditMetadata(c, map[string]any{
 		"content_type":  contentType,
 		"extension":     ext,
@@ -342,6 +347,12 @@ func (a *App) DeleteMedia(c echo.Context) error {
 	id := getID(c)
 	if _, err := a.requireManagedWorkspaceResource(c, access, resourceMedia, id, auth.PermMediaManage); err != nil {
 		return err
+	}
+	if out, err := a.core.GetWorkspaceMediaByID(access, id); err == nil {
+		setAuditObjectDetails(c, map[string]any{
+			"filename":     out.Filename,
+			"content_type": out.ContentType,
+		})
 	}
 	deleted, err := a.core.DeleteMediaInWorkspace(access, id)
 	if err != nil {

@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/knadh/listmonk/internal/auth"
+	"github.com/knadh/listmonk/internal/media"
+	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
 )
 
@@ -20,6 +22,70 @@ type mediaFolderMoveRequest struct {
 
 type mediaMoveRequest struct {
 	FolderID *int `json:"folder_id"`
+}
+
+func auditMediaFolderName(folders []media.MediaFolder, id int) (string, bool) {
+	for _, folder := range folders {
+		if folder.ID == id {
+			return folder.Name, true
+		}
+	}
+	return "", false
+}
+
+// setAuditMediaMoveDetails captures the file and both sides of a media-folder
+// move before the mutation runs, so failed requests are understandable too.
+func (a *App) setAuditMediaMoveDetails(c echo.Context, access models.WorkspaceAccess, mediaID, targetFolderID int) {
+	details := map[string]any{"target_folder_id": targetFolderID}
+	if targetFolderID == 0 {
+		details["target_folder_root"] = true
+	}
+
+	current, err := a.core.GetWorkspaceMediaByID(access, mediaID)
+	if err == nil {
+		details["filename"] = current.Filename
+		if current.FolderID.Valid {
+			details["source_folder_id"] = current.FolderID.Int
+		} else {
+			details["source_folder_root"] = true
+		}
+	}
+
+	if folders, err := a.core.QueryWorkspaceMediaFolders(access); err == nil {
+		if current.FolderID.Valid {
+			if name, ok := auditMediaFolderName(folders, int(current.FolderID.Int)); ok {
+				details["source_folder_name"] = name
+			}
+		}
+		if targetFolderID > 0 {
+			if name, ok := auditMediaFolderName(folders, targetFolderID); ok {
+				details["target_folder_name"] = name
+			}
+		}
+	}
+
+	setAuditObjectDetails(c, details)
+}
+
+func (a *App) setAuditMediaFolderMoveDetails(c echo.Context, access models.WorkspaceAccess, id, parentID int) {
+	details := map[string]any{
+		"target_folder_id": parentID,
+	}
+	if parentID == 0 {
+		details["target_folder_root"] = true
+	}
+
+	if folders, err := a.core.QueryWorkspaceMediaFolders(access); err == nil {
+		if name, ok := auditMediaFolderName(folders, id); ok {
+			details["name"] = name
+		}
+		if parentID > 0 {
+			if name, ok := auditMediaFolderName(folders, parentID); ok {
+				details["target_folder_name"] = name
+			}
+		}
+	}
+	setAuditObjectDetails(c, details)
 }
 
 func parseMediaFolderID(raw string) (int, error) {
@@ -85,6 +151,7 @@ func (a *App) CreateMediaFolder(c echo.Context) error {
 		return err
 	}
 	setAuditObjectID(c, strconv.Itoa(folder.ID))
+	setAuditObjectDetails(c, map[string]any{"name": folder.Name})
 	setAuditMetadata(c, map[string]any{"parent_folder_id": req.ParentID})
 	return c.JSON(http.StatusOK, okResp{folder})
 }
@@ -108,6 +175,7 @@ func (a *App) RenameMediaFolder(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	setAuditObjectDetails(c, map[string]any{"name": folder.Name})
 	return c.JSON(http.StatusOK, okResp{folder})
 }
 
@@ -121,6 +189,11 @@ func (a *App) DeleteMediaFolder(c echo.Context) error {
 	}
 	if err := requireLegacyPermission(auth.GetUser(c), auth.PermMediaManage); err != nil {
 		return err
+	}
+	if folders, err := a.core.QueryWorkspaceMediaFolders(access); err == nil {
+		if name, ok := auditMediaFolderName(folders, getID(c)); ok {
+			setAuditObjectDetails(c, map[string]any{"name": name})
+		}
 	}
 	if err := a.core.DeleteMediaFolderInWorkspace(access, getID(c)); err != nil {
 		return err
@@ -147,10 +220,11 @@ func (a *App) MoveMediaFolder(c echo.Context) error {
 	if req.ParentID != nil {
 		parentID = *req.ParentID
 	}
+	a.setAuditMediaFolderMoveDetails(c, access, getID(c), parentID)
+	setAuditMetadata(c, map[string]any{"parent_folder_id": parentID})
 	if err := a.core.MoveMediaFolderInWorkspace(access, getID(c), parentID); err != nil {
 		return err
 	}
-	setAuditMetadata(c, map[string]any{"parent_folder_id": parentID})
 	return c.JSON(http.StatusOK, okResp{true})
 }
 
@@ -173,9 +247,10 @@ func (a *App) MoveMediaToFolder(c echo.Context) error {
 	if req.FolderID != nil {
 		folderID = *req.FolderID
 	}
+	a.setAuditMediaMoveDetails(c, access, getID(c), folderID)
+	setAuditMetadata(c, map[string]any{"folder_id": folderID})
 	if err := a.core.MoveMediaToFolderInWorkspace(access, getID(c), folderID); err != nil {
 		return err
 	}
-	setAuditMetadata(c, map[string]any{"folder_id": folderID})
 	return c.JSON(http.StatusOK, okResp{true})
 }

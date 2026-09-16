@@ -243,6 +243,8 @@ func (a *App) CreateTemplate(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	setAuditObjectID(c, strconv.Itoa(out.ID))
+	setAuditObjectDetails(c, auditTemplateDetails(out))
 
 	// If it's a transactional template, cache it in the manager
 	// to be used for arbitrary incoming tx message pushes.
@@ -301,6 +303,7 @@ func (a *App) UpdateTemplate(c echo.Context) error {
 	if visibility != "" {
 		out.Visibility = visibility
 	}
+	setAuditObjectDetails(c, auditTemplateDetails(out))
 
 	// If it's a transactional template, cache it.
 	if out.Type == models.TemplateTypeTx {
@@ -362,6 +365,8 @@ func (a *App) CloneTemplate(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	setAuditObjectID(c, strconv.Itoa(out.ID))
+	setAuditObjectDetails(c, auditTemplateDetails(out))
 
 	if clone.Type == models.TemplateTypeTx {
 		// The core clone operation snapshots media and rewrites ID-qualified
@@ -392,6 +397,9 @@ func (a *App) TemplateSetDefault(c echo.Context) error {
 	if err := a.core.SetWorkspaceDefaultTemplate(id, access); err != nil {
 		return err
 	}
+	if tpl, err := a.core.GetWorkspaceTemplate(access, id, true); err == nil {
+		setAuditObjectDetails(c, auditTemplateDetails(tpl))
+	}
 
 	return a.GetTemplates(c)
 }
@@ -406,6 +414,9 @@ func (a *App) DeleteTemplate(c echo.Context) error {
 	id := getID(c)
 	if _, err := a.requireManagedWorkspaceTemplate(c, access, id); err != nil {
 		return err
+	}
+	if tpl, err := a.core.GetWorkspaceTemplate(access, id, true); err == nil {
+		setAuditObjectDetails(c, auditTemplateDetails(tpl))
 	}
 	if err := a.core.DeleteTemplateInWorkspace(access, id); err != nil {
 		return err

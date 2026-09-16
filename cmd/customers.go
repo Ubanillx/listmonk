@@ -430,6 +430,8 @@ func (a *App) CreateCustomer(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	setAuditObjectID(c, strconv.Itoa(sub.ID))
+	setAuditObjectDetails(c, auditCustomerDetails(sub))
 
 	return c.JSON(http.StatusOK, okResp{sub})
 }
@@ -486,6 +488,7 @@ func (a *App) UpdateCustomer(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	setAuditObjectDetails(c, auditCustomerDetails(out))
 
 	return c.JSON(http.StatusOK, okResp{out})
 }
@@ -505,6 +508,7 @@ func (a *App) CustomerSendOptin(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	setAuditObjectDetails(c, auditCustomerDetails(out))
 
 	// Trigger the opt-in confirmation e-mail hook.
 	if _, err := a.fnOptinNotify(out, nil); err != nil {
@@ -638,6 +642,9 @@ func (a *App) DeleteCustomer(c echo.Context) error {
 	if _, err := a.requireManagedWorkspaceCustomerWithPermissions(c, access, id,
 		auth.PermCustomersDelete); err != nil {
 		return err
+	}
+	if out, err := a.core.GetWorkspaceCustomer(access, id); err == nil {
+		setAuditObjectDetails(c, auditCustomerDetails(out))
 	}
 	if err := a.core.DeleteCustomersInWorkspace(access, []int{id}); err != nil {
 		return err

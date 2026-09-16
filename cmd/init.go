@@ -624,6 +624,11 @@ func initCampaignManager(msgrs []manager.Messenger, q *models.Queries, u *UrlCon
 				id := campaign.OwnerUserID.Int
 				actorUserID = &id
 			}
+			withDetails := make(map[string]any, len(metadata)+1)
+			for key, value := range metadata {
+				withDetails[key] = value
+			}
+			withDetails["object_details"] = auditCampaignDetails(*campaign)
 			if err := campaignAudit.Record(context.Background(), auditlog.Event{
 				OrganizationID: organizationID,
 				ActorType:      "system",
@@ -632,7 +637,7 @@ func initCampaignManager(msgrs []manager.Messenger, q *models.Queries, u *UrlCon
 				ObjectType:     "campaign",
 				ObjectID:       fmt.Sprintf("%d", campaign.ID),
 				Result:         "success",
-				Metadata:       metadata,
+				Metadata:       withDetails,
 			}); err != nil {
 				lo.Printf("error recording campaign audit event %s: %v", action, err)
 			}

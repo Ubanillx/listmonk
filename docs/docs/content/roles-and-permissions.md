@@ -83,7 +83,12 @@ ownership, organization, or API Key scope boundary.
 The business audit page uses server-side filtering and pagination. Users with
 `audit:get` can export selected events from the currently loaded page or export
 all events matching the current filters; both exports remain limited to the
-active workspace.
+active workspace. The table shows captured object summaries (such as a template
+name, media filename, campaign subject, or current status), resolves retained
+actor IDs to the current username/name, and keeps technical metadata behind the
+expanded event details. Historical events that predate an object or actor
+summary may still show only their stable ID; anonymous login events cannot be
+retroactively associated with a username that was never stored.
 
 ## Personal workspace capability
 

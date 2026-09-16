@@ -161,6 +161,11 @@ func (a *App) CreateList(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	setAuditObjectID(c, strconv.Itoa(out.ID))
+	setAuditObjectDetails(c, map[string]any{
+		"name": out.Name,
+		"type": out.Type,
+	})
 
 	return c.JSON(http.StatusOK, okResp{out})
 }
@@ -209,6 +214,10 @@ func (a *App) UpdateList(c echo.Context) error {
 	if visibility != "" {
 		out.Visibility = visibility
 	}
+	setAuditObjectDetails(c, map[string]any{
+		"name": out.Name,
+		"type": out.Type,
+	})
 
 	return c.JSON(http.StatusOK, okResp{out})
 }
@@ -239,6 +248,12 @@ func (a *App) DeleteList(c echo.Context) error {
 	}
 	if err := a.requirePoolListAdministrator(c, id); err != nil {
 		return err
+	}
+	if out, err := a.core.GetWorkspaceList(access, id); err == nil {
+		setAuditObjectDetails(c, map[string]any{
+			"name": out.Name,
+			"type": out.Type,
+		})
 	}
 
 	// Delete the customer_list from the DB.

@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	auditlog "github.com/knadh/listmonk/internal/audit"
@@ -58,6 +59,31 @@ func TestAuditJSONScanAndMarshal(t *testing.T) {
 	}
 }
 
+func TestAuditObjectDetailsAreSafeAndBounded(t *testing.T) {
+	e := echo.New()
+	c := e.NewContext(httptest.NewRequest(http.MethodPost, "/api/templates", nil), httptest.NewRecorder())
+	setAuditObjectDetails(c, map[string]any{
+		"name":    "欢迎模板",
+		"subject": strings.Repeat("主", auditDetailTextLimit+10),
+		"empty":   "  ",
+	})
+
+	metadata, ok := c.Get(auditContextMetadata).(map[string]any)
+	if !ok {
+		t.Fatalf("audit metadata context = %#v", c.Get(auditContextMetadata))
+	}
+	details, ok := metadata["object_details"].(map[string]any)
+	if !ok || details["name"] != "欢迎模板" {
+		t.Fatalf("object details = %#v", metadata["object_details"])
+	}
+	if _, ok := details["empty"]; ok {
+		t.Fatalf("empty detail was retained: %#v", details)
+	}
+	if got := len([]rune(details["subject"].(string))); got != auditDetailTextLimit+1 {
+		t.Fatalf("bounded subject rune length = %d, want %d", got, auditDetailTextLimit+1)
+	}
+}
+
 func TestAuditMiddlewareRecordsUserSuccess(t *testing.T) {
 	sink := &recordingAudit{}
 	a := &App{audit: sink, log: log.New(io.Discard, "", 0)}
@@ -70,7 +96,11 @@ func TestAuditMiddlewareRecordsUserSuccess(t *testing.T) {
 	c.SetPath("/api/campaigns/:id/status")
 	c.SetParamNames("id")
 	c.SetParamValues("42")
-	c.Set(auth.UserHTTPCtxKey, auth.User{Base: auth.Base{ID: 11}})
+	c.Set(auth.UserHTTPCtxKey, auth.User{
+		Base:     auth.Base{ID: 11},
+		Username: "audit-user",
+		Name:     "Audit User",
+	})
 
 	err := a.auditMiddleware(func(c echo.Context) error {
 		return c.JSON(http.StatusAccepted, map[string]bool{"ok": true})
@@ -97,6 +127,46 @@ func TestAuditMiddlewareRecordsUserSuccess(t *testing.T) {
 	metadata, ok := event.Metadata.(map[string]any)
 	if !ok || metadata["http_status"] != http.StatusAccepted || metadata["route"] != "/api/campaigns/:id/status" {
 		t.Fatalf("unexpected metadata: %#v", event.Metadata)
+	}
+	actorDetails, ok := metadata["actor_details"].(map[string]any)
+	if !ok || actorDetails["username"] != "audit-user" || actorDetails["name"] != "Audit User" {
+		t.Fatalf("unexpected actor details: %#v", metadata["actor_details"])
+	}
+}
+
+func TestAuditMiddlewareRecordsPreSessionActorDetails(t *testing.T) {
+	sink := &recordingAudit{}
+	a := &App{audit: sink, log: log.New(io.Discard, "", 0)}
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/admin/login", nil)
+	c := e.NewContext(req, httptest.NewRecorder())
+	c.SetPath("/admin/login")
+	setAuditActorUser(c, auth.User{
+		Base:     auth.Base{ID: 11},
+		Username: "audit-user",
+		Name:     "Audit User",
+	})
+	setAuditAction(c, "auth.login_succeeded")
+
+	if err := a.auditMiddleware(func(c echo.Context) error {
+		return c.NoContent(http.StatusFound)
+	})(c); err != nil {
+		t.Fatalf("middleware returned error: %v", err)
+	}
+	if len(sink.events) != 1 {
+		t.Fatalf("recorded %d events, want 1", len(sink.events))
+	}
+	event := sink.events[0]
+	if event.ActorType != "user" || event.ActorUserID == nil || *event.ActorUserID != 11 {
+		t.Fatalf("unexpected pre-session actor: %+v", event)
+	}
+	metadata, ok := event.Metadata.(map[string]any)
+	if !ok {
+		t.Fatalf("metadata = %#v", event.Metadata)
+	}
+	actorDetails, ok := metadata["actor_details"].(map[string]any)
+	if !ok || actorDetails["username"] != "audit-user" {
+		t.Fatalf("unexpected pre-session actor details: %#v", metadata["actor_details"])
 	}
 }
 

@@ -397,6 +397,8 @@ func (a *App) CreateCampaign(c echo.Context) error {
 			return err
 		}
 	}
+	setAuditObjectID(c, strconv.Itoa(out.ID))
+	setAuditObjectDetails(c, auditCampaignDetails(out))
 
 	return c.JSON(http.StatusOK, okResp{out})
 }
@@ -446,6 +448,8 @@ func (a *App) CloneCampaign(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	setAuditObjectID(c, strconv.Itoa(out.ID))
+	setAuditObjectDetails(c, auditCampaignDetails(out))
 	return c.JSON(http.StatusCreated, okResp{out})
 }
 
@@ -589,6 +593,7 @@ func (a *App) UpdateCampaign(c echo.Context) error {
 			return err
 		}
 	}
+	setAuditObjectDetails(c, auditCampaignDetails(out))
 	return c.JSON(http.StatusOK, okResp{out})
 }
 
@@ -670,6 +675,7 @@ func (a *App) UpdateCampaignStatus(c echo.Context) error {
 	if req.Status == models.CampaignStatusPaused || req.Status == models.CampaignStatusCancelled {
 		a.manager.StopCampaign(id, req.Status)
 	}
+	setAuditObjectDetails(c, auditCampaignDetails(out))
 	return c.JSON(http.StatusOK, okResp{out})
 }
 
@@ -717,6 +723,14 @@ func (a *App) UpdateCampaignArchive(c echo.Context) error {
 	if err := a.core.UpdateCampaignArchiveInWorkspace(access, id, req.Archive, req.TemplateID, req.Meta, req.ArchiveSlug); err != nil {
 		return err
 	}
+	if out, err := a.core.GetWorkspaceCampaign(access, id); err == nil {
+		setAuditObjectDetails(c, auditCampaignDetails(out))
+	}
+	setAuditMetadata(c, map[string]any{
+		"archive":             req.Archive,
+		"archive_template_id": req.TemplateID,
+		"archive_slug":        req.ArchiveSlug,
+	})
 
 	return c.JSON(http.StatusOK, okResp{req})
 }
@@ -733,6 +747,9 @@ func (a *App) DeleteCampaign(c echo.Context) error {
 
 	if _, err := a.requireManagedWorkspaceCampaign(c, access, id); err != nil {
 		return err
+	}
+	if out, err := a.core.GetWorkspaceCampaign(access, id); err == nil {
+		setAuditObjectDetails(c, auditCampaignDetails(out))
 	}
 
 	// Delete the campaign from the DB.

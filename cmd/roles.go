@@ -48,6 +48,10 @@ func (a *App) CreateUserRole(c echo.Context) error {
 		return err
 	}
 	setAuditObjectID(c, strconv.Itoa(out.ID))
+	setAuditObjectDetails(c, map[string]any{
+		"name": out.Name.String,
+		"type": auth.RoleTypeUser,
+	})
 
 	return c.JSON(http.StatusOK, okResp{out})
 }
@@ -68,6 +72,10 @@ func (a *App) CreateListRole(c echo.Context) error {
 		return err
 	}
 	setAuditObjectID(c, strconv.Itoa(out.ID))
+	setAuditObjectDetails(c, map[string]any{
+		"name": out.Name.String,
+		"type": auth.RoleTypeList,
+	})
 
 	return c.JSON(http.StatusOK, okResp{out})
 }
@@ -103,6 +111,10 @@ func (a *App) UpdateUserRole(c echo.Context) error {
 	if _, err := cacheUsers(a.core, a.auth); err != nil {
 		return err
 	}
+	setAuditObjectDetails(c, map[string]any{
+		"name": r.Name.String,
+		"type": auth.RoleTypeUser,
+	})
 
 	return c.JSON(http.StatusOK, okResp{out})
 }
@@ -140,6 +152,10 @@ func (a *App) UpdateListRole(c echo.Context) error {
 	if _, err := cacheUsers(a.core, a.auth); err != nil {
 		return err
 	}
+	setAuditObjectDetails(c, map[string]any{
+		"name": r.Name.String,
+		"type": auth.RoleTypeList,
+	})
 
 	return c.JSON(http.StatusOK, okResp{out})
 }

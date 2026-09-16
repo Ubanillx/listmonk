@@ -149,6 +149,11 @@ func (a *App) CreateUser(c echo.Context) error {
 		return err
 	}
 	setAuditObjectID(c, strconv.Itoa(user.ID))
+	setAuditObjectDetails(c, map[string]any{
+		"name":     user.Name,
+		"username": user.Username,
+		"type":     user.Type,
+	})
 
 	// Blank out the password hash in the response.
 	if user.Type != auth.UserTypeAPI {
@@ -455,6 +460,12 @@ func (a *App) UpdateUser(c echo.Context) error {
 	if _, err := cacheUsers(a.core, a.auth); err != nil {
 		return err
 	}
+	setAuditObjectID(c, strconv.Itoa(user.ID))
+	setAuditObjectDetails(c, map[string]any{
+		"name":     user.Name,
+		"username": user.Username,
+		"type":     user.Type,
+	})
 
 	return c.JSON(http.StatusOK, okResp{user})
 }
@@ -474,6 +485,11 @@ func (a *App) DeleteUser(c echo.Context) error {
 	if err := requireSuperAdminManageable(c, target); err != nil {
 		return err
 	}
+	setAuditObjectDetails(c, map[string]any{
+		"name":     target.Name,
+		"username": target.Username,
+		"type":     target.Type,
+	})
 
 	// Serialize deletion with account-owned delivery. The manager closes all
 	// cached pools and holds its SMTP writer lock until the user row (and its
@@ -686,6 +702,11 @@ func (a *App) UpdateUserProfile(c echo.Context) error {
 	// Blank out the password hash in the response.
 	out.Password = null.String{}
 	setAuditObjectID(c, strconv.Itoa(user.ID))
+	setAuditObjectDetails(c, map[string]any{
+		"name":     out.Name,
+		"username": out.Username,
+		"type":     out.Type,
+	})
 	if u.Password.String != "" {
 		setAuditAction(c, "auth.password_changed")
 	}

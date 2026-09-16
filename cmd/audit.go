@@ -29,6 +29,8 @@ type auditRouteSpec struct {
 const (
 	auditContextAction         = "audit_action"
 	auditContextActorType      = "audit_actor_type"
+	auditContextActorUserID    = "audit_actor_user_id"
+	auditContextActorTokenID   = "audit_actor_token_id"
 	auditContextObjectID       = "audit_object_id"
 	auditContextOrganizationID = "audit_organization_id"
 	auditContextMetadata       = "audit_metadata"
@@ -36,11 +38,143 @@ const (
 	auditContextResult         = "audit_result"
 )
 
+const auditDetailTextLimit = 256
+
 // auditRecorder keeps HTTP/background audit producers testable without
 // coupling them to a concrete database writer. The production implementation
 // is internal/audit.Writer.
 type auditRecorder interface {
 	Record(context.Context, auditlog.Event) error
+}
+
+// setAuditObjectDetails adds a small, human-readable snapshot to an audit
+// event. The snapshot is deliberately separate from object_id: IDs are stable
+// join keys, while these fields preserve enough context to understand an
+// event after the referenced row has been renamed or deleted.
+//
+// Callers must only pass non-sensitive business labels here. In particular,
+// this must never contain message bodies, credentials, attachments, or
+// customer email addresses.
+func setAuditObjectDetails(c echo.Context, details map[string]any) {
+	clean := auditDetailMap(details)
+	if len(clean) == 0 {
+		return
+	}
+	setAuditMetadata(c, map[string]any{"object_details": clean})
+}
+
+func auditDetailMap(details map[string]any) map[string]any {
+	if len(details) == 0 {
+		return nil
+	}
+
+	clean := make(map[string]any, len(details))
+	for key, value := range details {
+		if strings.TrimSpace(key) == "" || value == nil {
+			continue
+		}
+		if text, ok := value.(string); ok {
+			text = strings.TrimSpace(text)
+			if text == "" {
+				continue
+			}
+			clean[key] = auditDetailText(text)
+			continue
+		}
+		clean[key] = value
+	}
+	if len(clean) == 0 {
+		return nil
+	}
+	return clean
+}
+
+func auditDetailText(value string) string {
+	runes := []rune(value)
+	if len(runes) <= auditDetailTextLimit {
+		return value
+	}
+	return string(runes[:auditDetailTextLimit]) + "…"
+}
+
+func auditTemplateDetails(t models.Template) map[string]any {
+	details := map[string]any{
+		"name": t.Name,
+		"type": t.Type,
+	}
+	if t.Subject != "" {
+		details["subject"] = t.Subject
+	}
+	return details
+}
+
+func auditCampaignDetails(campaign models.Campaign) map[string]any {
+	details := map[string]any{
+		"name":   campaign.Name,
+		"type":   campaign.Type,
+		"status": campaign.Status,
+	}
+	if campaign.Subject != "" {
+		details["subject"] = campaign.Subject
+	}
+	return details
+}
+
+func auditCustomerDetails(customer models.Customer) map[string]any {
+	details := map[string]any{
+		"name":   customer.Name,
+		"status": customer.Status,
+	}
+	if customer.CustomerCode != "" {
+		details["customer_code"] = customer.CustomerCode
+	}
+	return details
+}
+
+// setAuditActorDetails preserves readable actor information in the event
+// metadata. It is used for login requests as well, where the normal auth
+// middleware has not established a session yet.
+func setAuditActorDetails(c echo.Context, details map[string]any) {
+	clean := auditDetailMap(details)
+	if len(clean) == 0 {
+		return
+	}
+
+	merged := make(map[string]any, len(clean))
+	if current, ok := c.Get(auditContextMetadata).(map[string]any); ok {
+		if existing, ok := current["actor_details"].(map[string]any); ok {
+			for key, value := range existing {
+				merged[key] = value
+			}
+		}
+	}
+	for key, value := range clean {
+		merged[key] = value
+	}
+	setAuditMetadata(c, map[string]any{"actor_details": merged})
+}
+
+func auditUserDetails(user auth.User) map[string]any {
+	return map[string]any{
+		"name":     user.Name,
+		"username": user.Username,
+	}
+}
+
+// setAuditActorUser attaches the authenticated user to an event before a
+// session exists, such as a successful password or OIDC login.
+func setAuditActorUser(c echo.Context, user auth.User) {
+	if user.ID > 0 {
+		c.Set(auditContextActorType, "user")
+		c.Set(auditContextActorUserID, user.ID)
+	}
+	setAuditActorDetails(c, auditUserDetails(user))
+}
+
+func setAuditAttemptedUsername(c echo.Context, username string) {
+	if username = strings.TrimSpace(username); username != "" {
+		setAuditActorDetails(c, map[string]any{"attempted_username": username})
+	}
 }
 
 // auditRoutes deliberately names business operations instead of persisting
@@ -207,6 +341,8 @@ type auditEventRow struct {
 	ActorType      string    `db:"actor_type" json:"actor_type"`
 	ActorUserID    int       `db:"actor_user_id" json:"actor_user_id"`
 	ActorTokenID   int       `db:"actor_token_id" json:"actor_token_id"`
+	ActorUsername  string    `db:"actor_username" json:"actor_username"`
+	ActorName      string    `db:"actor_name" json:"actor_name"`
 	Action         string    `db:"action" json:"action"`
 	ObjectType     string    `db:"object_type" json:"object_type"`
 	ObjectID       string    `db:"object_id" json:"object_id"`
@@ -305,6 +441,23 @@ func (a *App) auditMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 				metadata[key] = value
 			}
 		}
+		if user, ok := c.Get(auth.UserHTTPCtxKey).(auth.User); ok && user.ID > 0 {
+			actorDetails := map[string]any{}
+			if name := strings.TrimSpace(user.Name); name != "" {
+				actorDetails["name"] = auditDetailText(name)
+			}
+			if username := strings.TrimSpace(user.Username); username != "" {
+				actorDetails["username"] = auditDetailText(username)
+			}
+			if token, ok := auth.GetIntegrationTokenContext(c); ok {
+				if tokenName := strings.TrimSpace(token.Name); tokenName != "" {
+					actorDetails["token_name"] = auditDetailText(tokenName)
+				}
+			}
+			if len(actorDetails) > 0 {
+				metadata["actor_details"] = actorDetails
+			}
+		}
 		event := auditlog.Event{
 			OrganizationID: a.auditOrganizationID(c),
 			ActorType:      actorType,
@@ -356,10 +509,10 @@ func auditRouteSpecForContext(c echo.Context) (auditRouteSpec, bool) {
 func auditActor(c echo.Context) (string, *int, *int) {
 	if actorType, ok := c.Get(auditContextActorType).(string); ok && actorType != "" {
 		var actorUserID, actorTokenID *int
-		if value, ok := auditContextInt(c, "audit_actor_user_id"); ok && value > 0 {
+		if value, ok := auditContextInt(c, auditContextActorUserID); ok && value > 0 {
 			actorUserID = &value
 		}
-		if value, ok := auditContextInt(c, "audit_actor_token_id"); ok && value > 0 {
+		if value, ok := auditContextInt(c, auditContextActorTokenID); ok && value > 0 {
 			actorTokenID = &value
 		}
 		return actorType, actorUserID, actorTokenID
@@ -533,12 +686,18 @@ func (a *App) GetAuditEvents(c echo.Context) error {
 		return err
 	}
 	args = append(args, limit, offset)
-	query := `SELECT id, occurred_at, COALESCE(organization_id, 0) AS organization_id,
-		actor_type, COALESCE(actor_user_id, 0) AS actor_user_id,
-		COALESCE(actor_token_id, 0) AS actor_token_id, action, object_type,
-		object_id, result, reason_code, request_id, metadata,
-		COALESCE(ip::TEXT, '') AS ip, user_agent
-		FROM audit_events WHERE ` + whereSQL + ` ORDER BY occurred_at DESC, id DESC LIMIT $` + strconv.Itoa(len(args)-1) + ` OFFSET $` + strconv.Itoa(len(args))
+	query := `SELECT audit_events.id, audit_events.occurred_at,
+		COALESCE(audit_events.organization_id, 0) AS organization_id,
+		audit_events.actor_type, COALESCE(audit_events.actor_user_id, 0) AS actor_user_id,
+		COALESCE(audit_events.actor_token_id, 0) AS actor_token_id,
+		COALESCE(audit_actor.username, '') AS actor_username,
+		COALESCE(audit_actor.name, '') AS actor_name, audit_events.action,
+		audit_events.object_type, audit_events.object_id, audit_events.result,
+		audit_events.reason_code, audit_events.request_id, audit_events.metadata,
+		COALESCE(audit_events.ip::TEXT, '') AS ip, audit_events.user_agent
+		FROM audit_events
+		LEFT JOIN users audit_actor ON audit_actor.id = audit_events.actor_user_id
+		WHERE ` + whereSQL + ` ORDER BY audit_events.occurred_at DESC, audit_events.id DESC LIMIT $` + strconv.Itoa(len(args)-1) + ` OFFSET $` + strconv.Itoa(len(args))
 	rows := []auditEventRow{}
 	if err := a.db.Select(&rows, query, args...); err != nil {
 		return err
@@ -715,12 +874,18 @@ func (a *App) GetAuditEvent(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid audit event id")
 	}
 	var row auditEventRow
-	err = a.db.Get(&row, `SELECT id, occurred_at, COALESCE(organization_id, 0) AS organization_id,
-		actor_type, COALESCE(actor_user_id, 0) AS actor_user_id,
-		COALESCE(actor_token_id, 0) AS actor_token_id, action, object_type,
-		object_id, result, reason_code, request_id, metadata,
-		COALESCE(ip::TEXT, '') AS ip, user_agent
-		FROM audit_events WHERE id=$1 AND COALESCE(organization_id, 0)=$2`, id, access.OrganizationID)
+	err = a.db.Get(&row, `SELECT audit_events.id, audit_events.occurred_at,
+		COALESCE(audit_events.organization_id, 0) AS organization_id,
+		audit_events.actor_type, COALESCE(audit_events.actor_user_id, 0) AS actor_user_id,
+		COALESCE(audit_events.actor_token_id, 0) AS actor_token_id,
+		COALESCE(audit_actor.username, '') AS actor_username,
+		COALESCE(audit_actor.name, '') AS actor_name, audit_events.action,
+		audit_events.object_type, audit_events.object_id, audit_events.result,
+		audit_events.reason_code, audit_events.request_id, audit_events.metadata,
+		COALESCE(audit_events.ip::TEXT, '') AS ip, audit_events.user_agent
+		FROM audit_events
+		LEFT JOIN users audit_actor ON audit_actor.id = audit_events.actor_user_id
+		WHERE audit_events.id=$1 AND COALESCE(audit_events.organization_id, 0)=$2`, id, access.OrganizationID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return echo.NewHTTPError(http.StatusNotFound, "audit event not found")

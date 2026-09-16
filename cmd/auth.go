@@ -310,6 +310,7 @@ func (a *App) OIDCFinish(c echo.Context) error {
 			return a.renderLoginPage(c, userErr)
 		}
 	}
+	setAuditActorUser(c, user)
 
 	// A disabled account must not be able to log in through the provider either.
 	// The password login path enforces this in SQL, but the OIDC path resolves
@@ -519,6 +520,7 @@ func (a *App) doLogin(c echo.Context) error {
 		username  = strings.TrimSpace(c.FormValue("username"))
 		password  = strings.TrimSpace(c.FormValue("password"))
 	)
+	setAuditAttemptedUsername(c, username)
 
 	// Ensure timing mitigation is applied regardless of early returns
 	defer func() {
@@ -549,6 +551,7 @@ func (a *App) doLogin(c echo.Context) error {
 		return err
 	}
 	a.throttle.Success(throttleKey)
+	setAuditActorUser(c, user)
 
 	// If TOTP is enabled for the user, create a temp token and redirect to the 2FA page.
 	if user.TwofaType == models.TwofaTypeTOTP {
@@ -585,6 +588,7 @@ func (a *App) doFirstTimeSetup(c echo.Context) error {
 		password  = strings.TrimSpace(c.FormValue("password"))
 		password2 = strings.TrimSpace(c.FormValue("password2"))
 	)
+	setAuditAttemptedUsername(c, username)
 	if !utils.ValidateEmail(email) {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.Ts("globals.messages.invalidFields", "name", "email"))
 	}
@@ -627,6 +631,7 @@ func (a *App) doFirstTimeSetup(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	setAuditActorUser(c, user)
 
 	// Set the session in the DB and cookie.
 	if err := a.auth.SaveSession(user, "", c); err != nil {
@@ -825,6 +830,7 @@ func (a *App) doTwofaVerify(c echo.Context, token string, userID int, next strin
 		setAuditOutcome(c, "failed", "invalid_two_factor_user")
 		return a.renderTwofaPage(c, token, next, a.i18n.T("users.invalidRequest"))
 	}
+	setAuditActorUser(c, user)
 
 	// Verify that TOTP is actually enabled for the user.
 	if user.TwofaType != models.TwofaTypeTOTP {

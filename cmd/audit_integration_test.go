@@ -38,6 +38,13 @@ CREATE TABLE audit_events (
     user_agent TEXT NOT NULL DEFAULT ''
 )`
 
+const auditHandlerTestUsersTable = `
+CREATE TABLE users (
+    id INTEGER PRIMARY KEY,
+    username TEXT NOT NULL DEFAULT '',
+    name TEXT NOT NULL DEFAULT ''
+)`
+
 func openAuditHandlerTestDB(t *testing.T) *sqlx.DB {
 	t.Helper()
 	dsn := os.Getenv("AUDIT_TEST_DSN")
@@ -62,6 +69,10 @@ func openAuditHandlerTestDB(t *testing.T) *sqlx.DB {
 		db.Close()
 		t.Fatal(err)
 	}
+	if _, err := db.Exec(auditHandlerTestUsersTable); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
 	t.Cleanup(func() {
 		_, _ = db.Exec("SET search_path TO public")
 		_, _ = db.Exec("DROP SCHEMA " + schema + " CASCADE")
@@ -72,11 +83,14 @@ func openAuditHandlerTestDB(t *testing.T) *sqlx.DB {
 
 func TestAuditHandlersKeepPersonalWorkspaceIsolatedPostgresIntegration(t *testing.T) {
 	db := openAuditHandlerTestDB(t)
+	if _, err := db.Exec(`INSERT INTO users (id, username, name) VALUES (11, 'audit-user', 'Audit User')`); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := db.Exec(`INSERT INTO audit_events
-		(organization_id, actor_type, action, object_type, object_id)
-		VALUES (0, 'user', 'personal.event.first', 'campaign', '1'),
-		       (0, 'user', 'personal.event.second', 'campaign', '2'),
-		       (7, 'user', 'organization.event', 'campaign', '3')`); err != nil {
+		(organization_id, actor_type, actor_user_id, action, object_type, object_id)
+		VALUES (0, 'user', 11, 'personal.event.first', 'campaign', '1'),
+		       (0, 'user', NULL, 'personal.event.second', 'campaign', '2'),
+		       (7, 'user', NULL, 'organization.event', 'campaign', '3')`); err != nil {
 		t.Fatal(err)
 	}
 
@@ -102,7 +116,7 @@ func TestAuditHandlersKeepPersonalWorkspaceIsolatedPostgresIntegration(t *testin
 	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
 		t.Fatal(err)
 	}
-	if payload.Data.Total != 2 || len(payload.Data.Results) != 1 || payload.Data.Results[0].Action != "personal.event.first" || payload.Data.Results[0].OrganizationID != 0 {
+	if payload.Data.Total != 2 || len(payload.Data.Results) != 1 || payload.Data.Results[0].Action != "personal.event.first" || payload.Data.Results[0].OrganizationID != 0 || payload.Data.Results[0].ActorUsername != "audit-user" {
 		t.Fatalf("personal audit response leaked another workspace: %+v", payload.Data)
 	}
 

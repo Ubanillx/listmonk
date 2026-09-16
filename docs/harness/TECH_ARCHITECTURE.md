@@ -24,6 +24,7 @@
 - `organizations:platform_manage` 只用于平台组织管理路由；对活跃组织的成员/邀请/回复转发等管理调用使用显式路径白名单，避免平台操作员被当成普通资源管理员。`users:tokens` 独立控制集成令牌 API。
 - `internal/migrations/v6.36.0.go` 只为历史宽权限用户角色补齐新动作，迁移必须幂等；撤销动作时由角色数组直接生效。新增后台任务或下载接口必须在执行时重新读取权限和工作区状态。
 - 直接客户导出由 `cmd/customers.go` 执行 `customers:export` 和工作区/所有权/脱敏检查；审计导出由 `cmd/audit.go` 执行 `audit:get` 和相同工作区边界。前端只负责发起下载，不能作为安全边界。
+- `internal/core/workspace_queries.go` 的客户列表查询对活动平台管理员也按当前工作区收敛；`cmd/customers.go` 的客户列表 ID 守卫再次校验活动工作区，客户新建/编辑/普通导入使用当前操作者所有权守卫。`frontend/src/utils/workspace.js` 为客户表单、普通导入、批量操作、活动受众和客户列表导入入口复用同一显示规则；一级公海列表仍由独立投放/导入授权显式加入。
 
 ## Jenkins filesystem media persistence
 

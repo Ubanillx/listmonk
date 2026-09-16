@@ -63,7 +63,7 @@ func workspaceReadPredicate(access models.WorkspaceAccess, alias string, firstAr
 		[]any{access.OrganizationID, access.UserID}
 }
 
-// workspaceOwnerScopedReadPredicate is used for customer_lists and customers. An
+// workspaceOwnerScopedReadPredicate is the default customer/list boundary. An
 // owner audience cannot be shared with ordinary organization members; only an
 // organization manager can inspect another member's records in that org.
 func workspaceOwnerScopedReadPredicate(access models.WorkspaceAccess, alias string, firstArg int) (string, []any) {
@@ -91,6 +91,39 @@ func workspaceOwnerScopedReadPredicate(access models.WorkspaceAccess, alias stri
 	return withActiveOrganizationPredicate(scope, alias), []any{access.OrganizationID, access.UserID}
 }
 
+// workspaceCustomerListReadPredicate keeps the ordinary customer-list index
+// inside the selected workspace even for platform administrators. Platform
+// administrators still retain the broad single-resource and mutation
+// capabilities used by administration flows; this narrower query boundary is
+// required because the result is also the source for customer/list selectors.
+// Public pools are added separately by the HTTP layer through their explicit
+// delivery authorization and are therefore not widened by this predicate.
+func workspaceCustomerListReadPredicate(access models.WorkspaceAccess, alias string, firstArg int) (string, []any) {
+	if !access.PlatformAdmin || access.Archived {
+		return workspaceOwnerScopedReadPredicate(access, alias, firstArg)
+	}
+
+	field := func(name string) string {
+		if alias == "" {
+			return name
+		}
+		return alias + "." + name
+	}
+	arg := func(offset int) string { return fmt.Sprintf("$%d", firstArg+offset) }
+	if access.IsOrganization() {
+		return withActiveOrganizationPredicate(
+			fmt.Sprintf("%sorganization_id = %s", field(""), arg(0)),
+			alias,
+		), []any{access.OrganizationID}
+	}
+
+	return withActiveOrganizationPredicate(
+		fmt.Sprintf("(%sorganization_id IS NULL AND %sowner_user_id = %s AND %stransfer_pending_at IS NULL)",
+			field(""), field(""), arg(0), field("")),
+		alias,
+	), []any{access.UserID}
+}
+
 func workspaceSort(orderBy, order string, fields map[string]string, fallback string) string {
 	field, ok := fields[orderBy]
 	if !ok {
@@ -109,7 +142,7 @@ func (c *Core) QueryWorkspaceLists(access models.WorkspaceAccess, search, typ, o
 	}
 	_ = c.refreshCache(matListSubStats, false)
 
-	scope, args := workspaceOwnerScopedReadPredicate(access, "l", 1)
+	scope, args := workspaceCustomerListReadPredicate(access, "l", 1)
 	first := len(args) + 1
 	search = strings.TrimSpace(search)
 	stmt := fmt.Sprintf(`
@@ -466,15 +499,15 @@ func (c *Core) GetWorkspaceCampaignForPreview(access models.WorkspaceAccess, id,
 }
 
 // GetWorkspaceList returns one customer_list with customer counters through the
-// owner-scoped predicate.  Managers may inspect another member's customer_list, while
-// a personal request can only ever resolve its own row.
+// active-workspace predicate. Managers may inspect another member's customer_list,
+// while a personal request can only ever resolve its own row.
 func (c *Core) GetWorkspaceList(access models.WorkspaceAccess, id int) (models.CustomerList, error) {
 	if id < 1 {
 		return models.CustomerList{}, echo.NewHTTPError(http.StatusBadRequest,
 			c.i18n.Ts("globals.messages.notFound", "name", "{globals.terms.customer_list}"))
 	}
 	_ = c.refreshCache(matListSubStats, false)
-	scope, args := workspaceOwnerScopedReadPredicate(access, "l", 1)
+	scope, args := workspaceCustomerListReadPredicate(access, "l", 1)
 	idArg := len(args) + 1
 	stmt := fmt.Sprintf(`
 		WITH statuses AS (

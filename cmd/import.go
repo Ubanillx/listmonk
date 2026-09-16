@@ -118,7 +118,7 @@ func (a *App) ImportCustomers(c echo.Context) error {
 		if opt.Overwrite || opt.OverwriteUserInfo || opt.OverwriteSubStatus {
 			return echo.NewHTTPError(http.StatusBadRequest, "overwrite options are not supported for public-pool import")
 		}
-		if err := a.requireWorkspaceCustomerListIDsForRequest(c, access, opt.CustomerListIDs, true); err != nil {
+		if err := a.requireWorkspaceCustomerListIDsForRequestAllowPool(c, access, opt.CustomerListIDs, true); err != nil {
 			return err
 		}
 		return a.importPoolCustomers(c, targets.PoolIDs[0], opt)
@@ -149,7 +149,7 @@ func (a *App) ImportCustomers(c echo.Context) error {
 		opt.SubStatus != models.SubscriptionStatusUnsubscribed {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("import.invalidSubStatus"))
 	}
-	if err := a.requireWorkspaceCustomerListIDsForRequest(c, access, opt.CustomerListIDs, true); err != nil {
+	if err := a.requireOwnedWorkspaceCustomerListIDsForRequest(c, access, opt.CustomerListIDs, true); err != nil {
 		return err
 	}
 	opt.OwnerUserID = access.UserID

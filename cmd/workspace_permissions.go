@@ -350,6 +350,29 @@ func (a *App) requireManagedWorkspaceList(c echo.Context, access models.Workspac
 	return scope, nil
 }
 
+// customerListInActiveWorkspace is the final boundary for customer-list IDs
+// supplied to customer, import, bulk, and campaign requests. Platform admins
+// can still inspect/manage resources broadly through the resource APIs, but a
+// customer-list target must belong to the selected workspace. A caller-owned
+// check is additionally required by customer creation/import because the new
+// customer is stamped with the caller's owner identity.
+func customerListInActiveWorkspace(access models.WorkspaceAccess, scope models.ResourceScope, ownerOnly bool) bool {
+	if scope.TransferPendingAt.Valid || !scope.OwnerUserID.Valid {
+		return false
+	}
+	if !access.IsOrganization() {
+		return !scope.OrganizationID.Valid && int(scope.OwnerUserID.Int) == access.UserID
+	}
+	if !scope.OrganizationID.Valid || int(scope.OrganizationID.Int) != access.OrganizationID {
+		return false
+	}
+	return !ownerOnly || int(scope.OwnerUserID.Int) == access.UserID
+}
+
+func customerListOutsideActiveWorkspaceError() error {
+	return echo.NewHTTPError(http.StatusForbidden, "a selected customer_list is outside the active workspace")
+}
+
 func (a *App) requireReadableWorkspaceCustomer(c echo.Context, access models.WorkspaceAccess, id int) (models.ResourceScope, error) {
 	scope, err := a.requireReadableWorkspaceResource(c, access, resourceCustomers, id,
 		auth.PermCustomersGetAll, auth.PermCustomersGet)

@@ -33,6 +33,39 @@ func permissionTestUser(perms ...string) auth.User {
 	return auth.User{PermissionsMap: permissions}
 }
 
+func TestCustomerListInActiveWorkspace(t *testing.T) {
+	organizationAdmin := models.WorkspaceAccess{
+		Workspace: models.Workspace{OrganizationID: 7, PlatformAdmin: true},
+		UserID:    10,
+	}
+	personalAdmin := models.WorkspaceAccess{
+		Workspace: models.Workspace{Personal: true, PlatformAdmin: true},
+		UserID:    10,
+	}
+
+	tests := []struct {
+		name      string
+		access    models.WorkspaceAccess
+		scope     models.ResourceScope
+		ownerOnly bool
+		want      bool
+	}{
+		{"organization list is inside selected organization", organizationAdmin, permissionTestScope(7, 20, models.ResourceVisibilityPrivate, false), false, true},
+		{"personal list is outside selected organization", organizationAdmin, permissionTestScope(0, 10, models.ResourceVisibilityPrivate, false), false, false},
+		{"other organization list is outside selected organization", organizationAdmin, permissionTestScope(8, 10, models.ResourceVisibilityPrivate, false), false, false},
+		{"pending list is not a selectable target", organizationAdmin, permissionTestScope(7, 20, models.ResourceVisibilityPrivate, true), false, false},
+		{"customer mutation target must be caller-owned", organizationAdmin, permissionTestScope(7, 20, models.ResourceVisibilityPrivate, false), true, false},
+		{"personal owner can select own personal list", personalAdmin, permissionTestScope(0, 10, models.ResourceVisibilityPrivate, false), true, true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := customerListInActiveWorkspace(test.access, test.scope, test.ownerOnly); got != test.want {
+				t.Fatalf("customerListInActiveWorkspace() = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
 func TestWorkspaceShareAndCopyExceptions(t *testing.T) {
 	member := models.WorkspaceAccess{
 		Workspace: models.Workspace{OrganizationID: 7},

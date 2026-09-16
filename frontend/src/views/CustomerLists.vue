@@ -158,7 +158,7 @@
             </b-tooltip>
           </a>
 
-          <router-link v-if="canManageList(props.row)"
+          <router-link v-if="canImportList(props.row)"
             :to="{ name: 'import', query: { customer_list_id: props.row.id } }"
             data-cy="btn-import">
             <b-tooltip :label="$t('import.title')" type="is-dark">
@@ -205,6 +205,7 @@ import { mapState } from 'vuex';
 import EmptyPlaceholder from '../components/EmptyPlaceholder.vue';
 import PoolManager from '../components/PoolManager.vue';
 import CustomerListForm from './CustomerListForm.vue';
+import { isOwnedActiveWorkspaceCustomerList } from '../utils/workspace';
 
 export default Vue.extend({
   components: {
@@ -382,7 +383,21 @@ export default Vue.extend({
       if (customerList.type === 'pool') {
         return this.isPlatformAdmin;
       }
+      if (customerList.type === 'pool_segment') {
+        return false;
+      }
       return this.$canManageResource(customerList) && this.$canList(customerList.id, 'customer_list:manage');
+    },
+
+    canImportList(customerList) {
+      if (customerList.type === 'pool') {
+        return this.isPlatformAdmin;
+      }
+      return isOwnedActiveWorkspaceCustomerList(
+        customerList,
+        this.workspace,
+        this.profile && this.profile.id,
+      ) && this.$canList(customerList.id, 'customer_list:manage');
     },
 
     ownerLabel(resource) {
@@ -402,7 +417,7 @@ export default Vue.extend({
   },
 
   computed: {
-    ...mapState(['loading', 'settings', 'profile']),
+    ...mapState(['loading', 'settings', 'profile', 'workspace']),
 
     canManageLists() {
       return Array.isArray(this.customer_lists.results) && this.customer_lists.results.some((customerList) => this.canManageList(customerList));

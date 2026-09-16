@@ -55,7 +55,7 @@
         <b-tabs type="is-boxed" :animated="false">
           <b-tab-item :label="$t('globals.terms.customer_lists')" label-position="on-border">
             <customer-list-selector :label="$t('customers.customer_lists')" :placeholder="$t('customers.listsPlaceholder')"
-              :message="$t('customers.listsHelp')" v-model="form.customer_lists" :selected="form.customer_lists" :all="customer_lists.results"
+              :message="$t('customers.listsHelp')" v-model="form.customer_lists" :selected="form.customer_lists" :all="customerListOptions"
               :disabled="!canEdit" />
             <div class="columns">
               <div class="column is-7">
@@ -177,6 +177,7 @@ import { mapState } from 'vuex';
 import CustomerListSelector from '../components/CustomerListSelector.vue';
 import CopyText from '../components/CopyText.vue';
 import CustomerActivity from '../components/CustomerActivity.vue';
+import { isOwnedActiveWorkspaceCustomerList } from '../utils/workspace';
 
 export default Vue.extend({
   components: {
@@ -336,7 +337,17 @@ export default Vue.extend({
   },
 
   computed: {
-    ...mapState(['customer_lists', 'loading']),
+    ...mapState(['customer_lists', 'loading', 'profile', 'workspace']),
+
+    customerListOptions() {
+      const lists = (this.customer_lists && this.customer_lists.results) || [];
+      const userID = this.profile && this.profile.id;
+      return lists.filter((customerList) => isOwnedActiveWorkspaceCustomerList(
+        customerList,
+        this.workspace,
+        userID,
+      ) && this.$canList(customerList.id, 'customer_list:manage'));
+    },
 
     canEdit() {
       return !this.isEditing

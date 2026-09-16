@@ -1,11 +1,48 @@
 package core
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/knadh/listmonk/models"
 	null "gopkg.in/volatiletech/null.v6"
 )
+
+func TestWorkspaceCustomerListReadPredicateScopesPlatformAdmin(t *testing.T) {
+	organizationAdmin := models.WorkspaceAccess{
+		Workspace: models.Workspace{OrganizationID: 7, PlatformAdmin: true},
+		UserID:    10,
+	}
+	organizationPredicate, organizationArgs := workspaceCustomerListReadPredicate(organizationAdmin, "l", 3)
+	if len(organizationArgs) != 1 || organizationArgs[0] != 7 {
+		t.Fatalf("organization predicate args = %#v, want [7]", organizationArgs)
+	}
+	if !strings.Contains(organizationPredicate, "(l.organization_id = $3)") {
+		t.Fatalf("organization predicate = %q, want active organization scope", organizationPredicate)
+	}
+
+	personalAdmin := models.WorkspaceAccess{
+		Workspace: models.Workspace{Personal: true, PlatformAdmin: true},
+		UserID:    10,
+	}
+	personalPredicate, personalArgs := workspaceCustomerListReadPredicate(personalAdmin, "l", 2)
+	if len(personalArgs) != 1 || personalArgs[0] != 10 {
+		t.Fatalf("personal predicate args = %#v, want [10]", personalArgs)
+	}
+	if !strings.Contains(personalPredicate, "l.organization_id IS NULL") ||
+		!strings.Contains(personalPredicate, "l.owner_user_id = $2") {
+		t.Fatalf("personal predicate = %q, want caller-owned personal scope", personalPredicate)
+	}
+
+	archivedAdmin := models.WorkspaceAccess{
+		Workspace: models.Workspace{OrganizationID: 7, PlatformAdmin: true, Archived: true},
+		UserID:    10,
+	}
+	archivedPredicate, archivedArgs := workspaceCustomerListReadPredicate(archivedAdmin, "l", 1)
+	if archivedPredicate != "TRUE" || len(archivedArgs) != 0 {
+		t.Fatalf("archived admin predicate = %q %#v, want broad cleanup visibility", archivedPredicate, archivedArgs)
+	}
+}
 
 func workspaceTestScope(orgID, ownerID int, visibility string, pending bool) models.ResourceScope {
 	scope := models.ResourceScope{Visibility: visibility}

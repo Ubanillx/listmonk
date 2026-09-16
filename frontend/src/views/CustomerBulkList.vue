@@ -23,7 +23,7 @@
         </b-field>
 
         <customer-list-selector :label="$t('globals.terms.customer_lists')" :placeholder="$t('customers.listsPlaceholder')" v-model="form.customer_lists" :selected="form.customer_lists"
-          :all="customer_lists.results" />
+          :all="customerListOptions" />
 
         <b-field :message="$t('customers.preconfirmHelp')">
           <b-checkbox v-model="form.preconfirm" data-cy="preconfirm" :native-value="true" :disabled="!hasOptinList">
@@ -48,6 +48,7 @@
 import Vue from 'vue';
 import { mapState } from 'vuex';
 import CustomerListSelector from '../components/CustomerListSelector.vue';
+import { isActiveWorkspaceCustomerList } from '../utils/workspace';
 
 export default Vue.extend({
   components: {
@@ -77,7 +78,17 @@ export default Vue.extend({
   },
 
   computed: {
-    ...mapState(['customer_lists', 'loading']),
+    ...mapState(['customer_lists', 'loading', 'profile', 'workspace']),
+
+    customerListOptions() {
+      const lists = (this.customer_lists && this.customer_lists.results) || [];
+      const userID = this.profile && this.profile.id;
+      return lists.filter((customerList) => isActiveWorkspaceCustomerList(
+        customerList,
+        this.workspace,
+        userID,
+      ) && this.$canList(customerList.id, 'customer_list:manage'));
+    },
 
     hasOptinList() {
       return this.form.customer_lists.some((l) => l.optin === 'double');

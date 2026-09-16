@@ -266,6 +266,7 @@ import * as XLSX from 'xlsx';
 import { mapState } from 'vuex';
 import CustomerListSelector from '../components/CustomerListSelector.vue';
 import LogView from '../components/LogView.vue';
+import { isOwnedActiveWorkspaceCustomerList } from '../utils/workspace';
 
 export default Vue.extend({
   components: {
@@ -751,7 +752,7 @@ export default Vue.extend({
   },
 
   computed: {
-    ...mapState(['customer_lists', 'profile']),
+    ...mapState(['customer_lists', 'profile', 'workspace']),
 
     isPlatformAdmin() {
       return Number(this.profile && this.profile.userRole && this.profile.userRole.id) === 1;
@@ -759,6 +760,21 @@ export default Vue.extend({
 
     selectedPoolLists() {
       return this.form.customer_lists.filter((list) => list.type === 'pool');
+    },
+
+    regularImportLists() {
+      const all = (this.customer_lists && this.customer_lists.results) || [];
+      const userID = this.profile && this.profile.id;
+      return all.filter((customerList) => isOwnedActiveWorkspaceCustomerList(
+        customerList,
+        this.workspace,
+        userID,
+      ) && this.$canList(customerList.id, 'customer_list:manage'));
+    },
+
+    poolImportLists() {
+      const all = (this.customer_lists && this.customer_lists.results) || [];
+      return all.filter((list) => list.type === 'pool');
     },
 
     poolImport() {
@@ -777,20 +793,18 @@ export default Vue.extend({
     },
 
     importListOptions() {
-      const all = (this.customer_lists && this.customer_lists.results) || [];
       const selected = this.form.customer_lists;
       const selectedPool = selected.some((list) => list.type === 'pool');
       const selectedRegular = selected.some((list) => list.type !== 'pool' && list.type !== 'pool_segment');
       if (selectedPool && this.isPlatformAdmin) {
-        return all.filter((list) => list.type === 'pool');
+        return this.poolImportLists;
       }
-      if (selectedPool) {
-        return all.filter((list) => list.type !== 'pool' && list.type !== 'pool_segment');
+      if (selectedPool || selectedRegular) {
+        return this.regularImportLists;
       }
-      if (selectedRegular) {
-        return all.filter((list) => list.type !== 'pool' && list.type !== 'pool_segment');
-      }
-      return all.filter((list) => list.type !== 'pool_segment' && (this.isPlatformAdmin || list.type !== 'pool'));
+      return this.isPlatformAdmin
+        ? this.regularImportLists.concat(this.poolImportLists)
+        : this.regularImportLists;
     },
 
     uploadAccept() {
@@ -816,8 +830,10 @@ export default Vue.extend({
     const ids = this.$utils.parseQueryIDs(this.$route.query.customer_list_id);
     if (ids.length > 0 && this.customer_lists.results) {
       this.$nextTick(() => {
-        this.form.customer_lists = this.customer_lists.results.filter((l) => ids.indexOf(l.id) > -1
-          && (this.isPlatformAdmin || l.type !== 'pool'));
+        const options = this.isPlatformAdmin
+          ? this.regularImportLists.concat(this.poolImportLists)
+          : this.regularImportLists;
+        this.form.customer_lists = options.filter((list) => ids.indexOf(list.id) > -1);
       });
     }
   },

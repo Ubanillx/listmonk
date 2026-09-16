@@ -421,7 +421,7 @@ func (a *App) CreateCustomer(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("customers.invalidCustomerCode"))
 	}
 
-	if err := a.requireWorkspaceCustomerListIDsForRequest(c, access, req.CustomerLists, true); err != nil {
+	if err := a.requireOwnedWorkspaceCustomerListIDsForRequest(c, access, req.CustomerLists, true); err != nil {
 		return err
 	}
 
@@ -472,7 +472,7 @@ func (a *App) UpdateCustomer(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("customers.invalidCustomerCode"))
 	}
 
-	if err := a.requireWorkspaceCustomerListIDsForRequest(c, access, req.CustomerLists, true); err != nil {
+	if err := a.requireOwnedWorkspaceCustomerListIDsForRequest(c, access, req.CustomerLists, true); err != nil {
 		return err
 	}
 
@@ -1149,26 +1149,42 @@ func (a *App) requireWorkspaceCustomerListIDs(access models.WorkspaceAccess, ids
 }
 
 func (a *App) requireWorkspaceCustomerListIDsForRequest(c echo.Context, access models.WorkspaceAccess, ids []int, manage bool) error {
+	return a.requireWorkspaceCustomerListIDsForRequestWithOptions(c, access, ids, manage, false, false)
+}
+
+func (a *App) requireOwnedWorkspaceCustomerListIDsForRequest(c echo.Context, access models.WorkspaceAccess, ids []int, manage bool) error {
+	return a.requireWorkspaceCustomerListIDsForRequestWithOptions(c, access, ids, manage, false, true)
+}
+
+func (a *App) requireWorkspaceCustomerListIDsForRequestAllowPool(c echo.Context, access models.WorkspaceAccess, ids []int, manage bool) error {
+	return a.requireWorkspaceCustomerListIDsForRequestWithOptions(c, access, ids, manage, true, false)
+}
+
+func (a *App) requireWorkspaceCustomerListIDsForRequestWithOptions(c echo.Context, access models.WorkspaceAccess, ids []int, manage, allowPool, ownerOnly bool) error {
 	for _, id := range ids {
 		if id < 1 {
 			return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("globals.messages.invalidID"))
 		}
+		var (
+			scope models.ResourceScope
+			err   error
+		)
 		if c != nil {
 			if manage {
-				if _, err := a.requireManagedWorkspaceList(c, access, id); err != nil {
-					return err
-				}
-			} else if _, err := a.requireReadableWorkspaceList(c, access, id); err != nil {
-				return err
+				scope, err = a.requireManagedWorkspaceList(c, access, id)
+			} else {
+				scope, err = a.requireReadableWorkspaceList(c, access, id)
 			}
-			continue
+		} else if manage {
+			scope, err = a.core.RequireManageResource(access, resourceLists, id)
+		} else {
+			scope, err = a.core.RequireReadResource(access, resourceLists, id)
 		}
-		if manage {
-			if _, err := a.core.RequireManageResource(access, resourceLists, id); err != nil {
-				return err
-			}
-		} else if _, err := a.core.RequireReadResource(access, resourceLists, id); err != nil {
+		if err != nil {
 			return err
+		}
+		if !allowPool && !customerListInActiveWorkspace(access, scope, ownerOnly) {
+			return customerListOutsideActiveWorkspaceError()
 		}
 	}
 	return nil

@@ -434,6 +434,7 @@ import CampaignReport from '../components/CampaignReport.vue';
 import CopyText from '../components/CopyText.vue';
 import Editor from '../components/Editor.vue';
 import CustomerListSelector from '../components/CustomerListSelector.vue';
+import { isActiveWorkspaceCustomerList } from '../utils/workspace';
 import Media from './Media.vue';
 
 export default Vue.extend({
@@ -935,6 +936,9 @@ export default Vue.extend({
       if ((customerList.type === 'pool' || customerList.type === 'pool_segment')
         && customerList.poolDeliveryAllowed) {
         return true;
+      }
+      if (!isActiveWorkspaceCustomerList(customerList, this.workspace, this.profile && this.profile.id)) {
+        return false;
       }
       return this.$canManageResource(customerList) && this.$canList(customerList.id, 'customer_list:manage');
     },

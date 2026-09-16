@@ -46,6 +46,11 @@ CSV, or API-key responses.
 
 Campaign responses include `customer_pools[].reply_mailbox_email` so operators
 can see the effective internal reply route (`一级公海 -> 二级列表 -> 回件邮箱`).
+When the selected audience is an explicit secondary list,
+`customer_pools[].segment_list_id` and `customer_pools[].segment_list_name` identify the
+selector-compatible `pool_segment` list; `segment_id` remains the internal
+pool-to-organization binding ID. This lets the campaign editor round-trip a
+secondary-list audience without silently changing it to its parent pool.
 This is an internal company address and is not masked; customer contact emails
 remain protected by the pool contact DTO policy.
 

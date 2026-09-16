@@ -53,7 +53,9 @@ CREATE TABLE customer_lists (
 CREATE TABLE reply_mailboxes (
     id              SERIAL PRIMARY KEY,
     email           TEXT NOT NULL,
-    organization_id BIGINT
+    organization_id BIGINT,
+    status          TEXT NOT NULL DEFAULT 'pending',
+    verified_at     TIMESTAMPTZ
 );
 
 CREATE TABLE pool_contacts (
@@ -228,7 +230,7 @@ func (env *poolRecipientsTestEnv) seedPool(name string) int {
 
 func (env *poolRecipientsTestEnv) seedMailbox(organizationID int64, email string) int64 {
 	env.t.Helper()
-	return env.id(`INSERT INTO reply_mailboxes(organization_id,email) VALUES($1,$2) RETURNING id`, organizationID, email)
+	return env.id(`INSERT INTO reply_mailboxes(organization_id,email,status,verified_at) VALUES($1,$2,'active',NOW()) RETURNING id`, organizationID, email)
 }
 
 func (env *poolRecipientsTestEnv) seedSegment(poolID int, organizationID int64, mailboxID *int64) int64 {
@@ -378,6 +380,45 @@ func (env *poolRecipientsTestEnv) countRows(query string, args ...any) int {
 		env.t.Fatalf("count %q: %v", query, err)
 	}
 	return n
+}
+
+// TestValidatePoolCampaignAudienceRefreshesRoutes covers drafts that were
+// created before the organization manager configured the secondary-list
+// mailbox. Preview/send validation must use the current segment setting and
+// repair the campaign relation instead of keeping the old NULL forever.
+func TestValidatePoolCampaignAudienceRefreshesRoutes(t *testing.T) {
+	env := newPoolRecipientsTestEnv(t)
+
+	org := env.seedOrganization("org-a")
+	poolID := env.seedPool("ws-pool")
+	mailbox := env.seedMailbox(org, "pool-a@example.invalid")
+	segment := env.seedSegment(poolID, org, nil)
+	campaign := env.seedCampaign()
+	env.seedAudience(campaign, poolID, org, nil, nil)
+
+	if err := env.core.ValidatePoolCampaignAudience(campaign); err == nil {
+		t.Fatal("ValidatePoolCampaignAudience accepted an unconfigured segment mailbox")
+	} else if err.Error() != "code=400, message=public-pool audience requires an organization segment and reply mailbox before previewing or sending" {
+		t.Fatalf("ValidatePoolCampaignAudience error = %v, want the unresolved preview/send message", err)
+	}
+
+	env.exec(`UPDATE pool_segments SET reply_mailbox_id=$2 WHERE id=$1`, segment, mailbox)
+	if err := env.core.ValidatePoolCampaignAudience(campaign); err != nil {
+		t.Fatalf("ValidatePoolCampaignAudience after mailbox configuration: %v", err)
+	}
+
+	var resolved int64
+	if err := env.db.Get(&resolved, `SELECT resolved_reply_mailbox_id FROM campaign_customer_lists WHERE campaign_id=$1`, campaign); err != nil {
+		t.Fatalf("read resolved mailbox: %v", err)
+	}
+	if resolved != mailbox {
+		t.Fatalf("resolved mailbox = %d, want %d", resolved, mailbox)
+	}
+
+	env.exec(`UPDATE reply_mailboxes SET status='disabled' WHERE id=$1`, mailbox)
+	if err := env.core.ValidatePoolCampaignAudience(campaign); err == nil {
+		t.Fatal("ValidatePoolCampaignAudience accepted a disabled mailbox")
+	}
 }
 
 // TestPoolRecipientPathsAgreeOnDeliverableMembers is the drift test: the same

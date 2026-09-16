@@ -4,7 +4,7 @@ Enable bounce processing in Settings -> Bounces. POP3 bounce scanning and APIs o
 
 ## AI classification of customer replies
 
-When a campaign uses a dedicated reply mailbox (see Reply-To configuration in the campaign editor and the reply mailbox settings under your profile), you can optionally let listmonk classify inbound customer replies with an OpenAI-compatible model and act on the two explicit intents automatically:
+When a campaign uses a dedicated reply mailbox (see Reply-To configuration in the campaign editor and reply mailbox settings under your personal profile or the organization management page), you can optionally let listmonk classify inbound customer replies with an OpenAI-compatible model and act on the two explicit intents automatically:
 
 - **Unsubscribe** — an explicit request to stop receiving marketing e-mail.
 - **Complaint** — an explicit spam/abuse allegation or a threat to report the sender.

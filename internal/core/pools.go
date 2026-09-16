@@ -720,16 +720,46 @@ func (c *Core) ClearPoolContactEmail(poolID int, contactID int64, organizationID
 	return err
 }
 
+// refreshPoolCampaignAudienceRoutes re-resolves the internal mailbox route of
+// every pool audience on a campaign. A draft can be created before its
+// organization's secondary list mailbox is configured; in that case the
+// relation keeps a NULL resolved mailbox. Re-reading the current segment
+// configuration here makes an existing draft usable after the administrator
+// finishes the configuration, without changing the first-level/secondary
+// audience selection stored in pool_segment_id.
+func (c *Core) refreshPoolCampaignAudienceRoutes(campaignID int) error {
+	_, err := c.db.Exec(`
+		UPDATE campaign_customer_lists ccl
+		SET resolved_reply_mailbox_id = (
+			SELECT CASE
+				WHEN COUNT(DISTINCT s.id) = 1 AND COUNT(DISTINCT rm.id) = 1 THEN MAX(rm.id)
+				ELSE NULL
+			END
+			FROM pool_segments s
+			LEFT JOIN reply_mailboxes rm ON rm.id=s.reply_mailbox_id
+				AND rm.status='active' AND rm.verified_at IS NOT NULL
+			WHERE ccl.source_organization_id IS NOT NULL
+				AND s.pool_id=ccl.pool_id
+				AND s.organization_id=ccl.source_organization_id
+				AND (ccl.pool_segment_id IS NULL OR s.id=ccl.pool_segment_id)
+		)
+		WHERE ccl.campaign_id=$1 AND ccl.pool_id IS NOT NULL`, campaignID)
+	return err
+}
+
 // ValidatePoolCampaignAudience is called by preview/send paths. Drafts may
 // retain an unresolved pool audience, but sending is blocked until every pool
 // row resolves to an organization segment and an internal reply mailbox.
 func (c *Core) ValidatePoolCampaignAudience(campaignID int) error {
+	if err := c.refreshPoolCampaignAudienceRoutes(campaignID); err != nil {
+		return err
+	}
 	var unresolved int
 	if err := c.db.Get(&unresolved, `SELECT COUNT(*) FROM campaign_customer_lists WHERE campaign_id=$1 AND pool_id IS NOT NULL AND (source_organization_id IS NULL OR resolved_reply_mailbox_id IS NULL)`, campaignID); err != nil {
 		return err
 	}
 	if unresolved > 0 {
-		return echo.NewHTTPError(http.StatusBadRequest, "public-pool audience requires an organization segment and reply mailbox before sending")
+		return echo.NewHTTPError(http.StatusBadRequest, "public-pool audience requires an organization segment and reply mailbox before previewing or sending")
 	}
 	return nil
 }

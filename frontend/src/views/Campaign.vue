@@ -684,6 +684,23 @@ export default Vue.extend({
         const normalizedSMTP = (data.type === 'regular' && (data.messenger === 'email' || data.messenger?.startsWith('email-')))
           ? this.normalizeSMTPDailyFields(data.dailySendLimit, data.dailyResumeTime)
           : { dailySendLimit: data.dailySendLimit, dailyResumeTime: data.dailyResumeTime };
+        const customerLists = Array.isArray(data.customerLists) ? data.customerLists : [];
+        const customerPools = Array.isArray(data.customerPools) ? data.customerPools : [];
+        const poolAudienceLists = customerPools.reduce((lists, pool) => {
+          const poolID = Number(pool.poolId || pool.pool_id);
+          const segmentListID = Number(pool.segmentListId || pool.segment_list_id);
+          const listID = segmentListID > 0 ? segmentListID : poolID;
+          if (listID > 0) {
+            lists.push({
+              id: listID,
+              name: pool.segmentListName || pool.segment_list_name
+                || pool.name || this.$t('campaigns.poolFallback', { id: poolID }),
+              type: segmentListID > 0 ? 'pool_segment' : 'pool',
+              poolDeliveryAllowed: true,
+            });
+          }
+          return lists;
+        }, []);
 
         this.data = data;
         const normalizedMessenger = data.messenger?.startsWith('email-') ? 'email' : (data.messenger || 'email');
@@ -695,6 +712,10 @@ export default Vue.extend({
           // logical `email` messenger backed by the user's enabled pool.
           messenger: normalizedMessenger,
           ...normalizedSMTP,
+          // Campaign stats expose public-pool audiences separately from regular
+          // lists. Re-add them as selector-compatible items so an existing
+          // draft shows its audience and saving it does not drop the pool rows.
+          customer_lists: [...customerLists, ...poolAudienceLists],
           headersStr: JSON.stringify(data.headers, null, 4),
           archiveMetaStr: data.archiveMeta ? JSON.stringify(data.archiveMeta, null, 4) : '{}',
           attribsStr: data.attribs ? JSON.stringify(data.attribs, null, 4) : '{}',
@@ -1079,7 +1100,12 @@ export default Vue.extend({
 
   watch: {
     selectedLists() {
-      this.form.customer_lists = this.selectedLists;
+      // This computed value is only for preselecting lists on a new campaign.
+      // An edited campaign receives its regular and pool audiences from the
+      // API, and must not be reset when the global list store finishes loading.
+      if (!this.isEditing) {
+        this.form.customer_lists = this.selectedLists;
+      }
     },
 
     // eslint-disable-next-line func-names

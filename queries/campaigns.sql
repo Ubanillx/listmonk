@@ -328,7 +328,9 @@ SELECT COUNT(*) OVER () AS total, campaigns.*,
 -- the same order as the customer_list of campaigns it would've queried and attach the results.
 WITH customer_lists AS (
     SELECT cl.campaign_id, JSON_AGG(JSON_BUILD_OBJECT('id', cl.customer_list_id, 'name', cl.customer_list_name)) FILTER (WHERE cl.pool_id IS NULL) AS customer_lists,
-        JSON_AGG(JSON_BUILD_OBJECT('pool_id', cl.pool_id, 'segment_id', cl.pool_segment_id, 'organization_id', cl.source_organization_id, 'reply_mailbox_id', cl.resolved_reply_mailbox_id, 'reply_mailbox_email', COALESCE(r.email, ''), 'name', cl.customer_list_name)) FILTER (WHERE cl.pool_id IS NOT NULL) AS customer_pools FROM campaign_customer_lists cl
+        JSON_AGG(JSON_BUILD_OBJECT('pool_id', cl.pool_id, 'segment_id', cl.pool_segment_id, 'segment_list_id', ps.list_id, 'segment_list_name', ps_list.name, 'organization_id', cl.source_organization_id, 'reply_mailbox_id', cl.resolved_reply_mailbox_id, 'reply_mailbox_email', COALESCE(r.email, ''), 'name', cl.customer_list_name)) FILTER (WHERE cl.pool_id IS NOT NULL) AS customer_pools FROM campaign_customer_lists cl
+    LEFT JOIN pool_segments ps ON ps.id = cl.pool_segment_id
+    LEFT JOIN customer_lists ps_list ON ps_list.id = ps.list_id
     LEFT JOIN reply_mailboxes r ON r.id = cl.resolved_reply_mailbox_id
     WHERE cl.campaign_id = ANY($1) GROUP BY cl.campaign_id
 ),
@@ -395,8 +397,11 @@ COALESCE((
 ) AS customer_lists
 ,
 (
-		SELECT COALESCE(JSON_AGG(JSON_BUILD_OBJECT('pool_id', cl.pool_id, 'segment_id', cl.pool_segment_id, 'organization_id', cl.source_organization_id, 'reply_mailbox_id', cl.resolved_reply_mailbox_id, 'reply_mailbox_email', COALESCE(r.email, ''), 'name', cl.customer_list_name)), '[]')
-		FROM campaign_customer_lists cl LEFT JOIN reply_mailboxes r ON r.id = cl.resolved_reply_mailbox_id
+		SELECT COALESCE(JSON_AGG(JSON_BUILD_OBJECT('pool_id', cl.pool_id, 'segment_id', cl.pool_segment_id, 'segment_list_id', ps.list_id, 'segment_list_name', ps_list.name, 'organization_id', cl.source_organization_id, 'reply_mailbox_id', cl.resolved_reply_mailbox_id, 'reply_mailbox_email', COALESCE(r.email, ''), 'name', cl.customer_list_name)), '[]')
+		FROM campaign_customer_lists cl
+		LEFT JOIN pool_segments ps ON ps.id = cl.pool_segment_id
+		LEFT JOIN customer_lists ps_list ON ps_list.id = ps.list_id
+		LEFT JOIN reply_mailboxes r ON r.id = cl.resolved_reply_mailbox_id
 		WHERE cl.campaign_id = campaigns.id AND cl.pool_id IS NOT NULL
 ) AS customer_pools
 FROM campaigns

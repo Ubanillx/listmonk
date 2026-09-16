@@ -91,11 +91,20 @@ func (c *Core) MigratePersonalListsToOrganization(sourceUserID, targetOrganizati
 		return nil, err
 	}
 
+	// First-level pools are platform-global assets rather than personal lists:
+	// ApplyPublicPoolScope stores them as visibility='global' with the creating
+	// platform administrator as the owner and leaves organization_id NULL, so
+	// they would otherwise match this personal-source query. Moving one would
+	// silently hand a platform asset to an organization as a private list, the
+	// same contract change the resource migration refuses for global templates,
+	// campaigns, and media. Secondary lists always carry an organization_id and
+	// are excluded with them.
 	var customer_lists []models.CustomerList
 	if err := tx.Select(&customer_lists, `
 		SELECT * FROM customer_lists
 		WHERE id = ANY($1::INT[]) AND organization_id IS NULL
 			AND owner_user_id = $2 AND transfer_pending_at IS NULL
+			AND type NOT IN ('pool', 'pool_segment')
 		ORDER BY id FOR UPDATE`, pq.Array(sourceCustomerListIDs), sourceUserID); err != nil {
 		return nil, workspaceQueryError("reading personal customer_lists", err)
 	}

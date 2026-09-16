@@ -32,8 +32,8 @@
       <b-table-column v-slot="props" field="customerCode" :label="$t('pool.tableCustomerCode')">
         {{ props.row.customerCode || props.row.customer_code || '-' }}
       </b-table-column>
-      <b-table-column v-slot="props" field="companyName" :label="$t('pool.tableCompanyName')">
-        {{ props.row.companyName || props.row.company_name || '-' }}
+      <b-table-column v-slot="props" field="name" :label="$t('pool.tableName')">
+        {{ props.row.name || '-' }}
       </b-table-column>
       <b-table-column v-slot="props" field="email" :label="$t('pool.tableEmail')">
         {{ props.row.email || '-' }}

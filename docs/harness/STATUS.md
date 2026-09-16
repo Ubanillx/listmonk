@@ -2,6 +2,8 @@
 
 快照日期：2026-09-16
 
+- 公海联系人姓名字段展示修正（2026-09-16）：统一公海导入写入 `pool_contacts.name`，但联系人查看页误读旧的 `company_name` 字段，导致导入姓名在超级管理员页面显示为公司名称且为空时呈现 `-`。前端表格现改为读取 `name` 并显示“姓名”；保留公司名称语言键供其他兼容场景使用。同步更新中英文及繁体中文说明。来源：`frontend/src/views/PoolContacts.vue`、`i18n/{en,zh-CN,zh-TW}.json`。
+
 - 公海分配部门自动归入二级列表（2026-09-16）：修复统一公海导入只写入 `pool_contacts`/`pool_members`、未写入已有 `pool_segment_members` 的问题。导入时按启用组织名称自动加入已绑定的同组织二级列表；先导入后创建二级列表时，`CreatePoolSegment` 在同一事务回填匹配联系人；v6.41.0 迁移补齐历史数据且保留既有 `removed` 状态。同步更新 API、架构、业务规则和界面说明。验证：公海回填迁移测试、`go test ./... -count=1`、前端 lint/build 通过；后端已重启，v6.41.0 已执行，9173 返回 200。
 
 - 导入与公海列表可见性修正（2026-09-16）：普通客户导入会忽略空的 `allocation_department` 映射，仍拒绝普通分支中的非空公海字段；公海/二级列表计数改读独立成员表，客户列表计数入口改为专用公海联系人视图，并让二级列表读取按 segment 限定且继续使用安全 DTO，不复制到普通 `customers`。来源：`cmd/import.go`、`internal/core/{pools,workspace_queries}.go`、`frontend/src/{router/index.js,views/{Import,CustomerLists,PoolContacts}.vue}`、`docs/ARCHITECTURE.md`、`docs/docs/content/apis/pools.md`。

@@ -27,7 +27,7 @@ Vue 2 管理端 ──────── REST `/api/*` ───────► 
 | --- | --- |
 | `cmd/` | 程序入口、Echo 路由、HTTP 处理器、初始化与配置加载。 |
 | `internal/core/` | 领域操作、工作区查询、资源授权及带锁的事务写入。 |
-| `internal/manager/`、`messenger/`、`bounce/`、`replyai/`、`subimporter/` | 邮件调度/投递、退信、AI 回信分类、批量导入等后台能力。 |
+| `internal/manager/`、`internal/messenger/`、`internal/bounce/`、`internal/replyai/`、`internal/subimporter/` | 邮件调度/投递、退信、AI 回信分类、批量导入等后台能力。 |
 | `models/`、`queries/`、`schema.sql`、`internal/migrations/` | Go 数据模型、具名 SQL、初始结构和版本迁移。 |
 | `frontend/` | Vue 2 管理端；`src/views/` 为页面，`src/components/` 为共享组件，`cypress/` 为端到端测试。 |
 | `frontend/email-builder/` | 独立的 React 18 + TypeScript 邮件编辑器。 |
@@ -68,7 +68,7 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 
 `v6.36.0` 和 `v6.38.0` 通过幂等迁移为既有非 Super Admin 角色补齐细分权限，避免升级后改变原有业务能力。之后管理员可以从角色中去掉某个独立动作；创建新角色时这些高风险动作默认不勾选。平台管理员、用户/角色/设置/组织管理权限保持现有的宽平台控制，不为管理员场景继续拆分；业务细分权限不能跨越资源边界，也不能把“有某个动作”解释为获得其它动作。
 
-组织平台管理权限只覆盖组织申请、组织生命周期、成员/邀请、回复转发和受限资源转移；平台操作员通过明确的管理接口选择组织，不会因此获得该组织客户、活动、模板或媒体的普通工作区数据访问。客户导出仍执行工作区、成员、所有权、邮箱脱敏和一级公海明文限制，不因直接下载而放宽边界。个人 SMTP、回信邮箱、API Key 自助设置、公海导入和其它自助流程仍按各自的系统边界处理。
+组织平台管理权限只覆盖组织申请、组织生命周期、成员/邀请、组织回信邮箱、回复转发和受限资源转移；平台操作员通过明确的管理接口选择组织，不会因此获得该组织客户、活动、模板或媒体的普通工作区数据访问。平台管理员可通过 `POST /api/organizations` 在一个事务中直接创建组织并指定首位组织管理员/初始成员，也可通过 `POST /api/organizations/:id/members/bulk` 按用户名或邮箱批量加入已注册账号；批量校验失败时不写入，且组织始终至少保留一名 manager。客户导出仍执行工作区、成员、所有权、邮箱脱敏和一级公海明文限制，不因直接下载而放宽边界。个人 SMTP、个人工作区回信邮箱、API Key 自助设置、公海导入和其它自助流程仍按各自的系统边界处理；组织工作区回信邮箱从“管理组织”页面配置。
 
 ### 媒体逻辑文件夹（v6.37.0）
 
@@ -110,11 +110,13 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 ### 一级公海与组织二级列表（已实施）
 
 - 一级公海是独立的客户池类型，不等同于允许匿名订阅的 `public` 列表。公海联系人保存导入的客户编码（允许重复）、公司名称和真实邮箱；编码不承担唯一键职责。
+- 一级公海列表本身固定为平台级 `global` 资源，组织投放权限单独保存在授权表；组织二级列表的业务归属由 `organization_id`/`organization_name` 表示，创建人字段仅用于审计和所有权校验。
 - 公海导入统一使用 `POST /api/import/customers`：`customer_list_ids` 必须只包含一个一级 `pool` 列表，首个 CSV/XLSX 工作表必须能映射 `customer_code`、`name`、`email`、`allocation_department` 四列；兼容模板中的 `客户编号`/`客户编码`、`姓名`、`邮箱`、`分配部门`，其他列（例如注册名称、品牌、客户等级、`分表1`）只作为模板信息忽略。`分配部门` 必须匹配一个启用中的 `organizations.name`；不存在或已归档的部门按行拒绝，不创建组织、不写入公海，也不自动绑定二级列表。
-- 一级公海的导入、联系人维护和二级列表绑定均由最高管理员执行；普通用户仍可按既有投放授权使用公海受众，但不能直接导入或管理一级公海。公海管理窗口只保留“目标组织选择 + 已有二级列表查看/创建并绑定”，不再承载客户文件导入、联系人查询、批量分配或单条维护。
+- 一级公海的导入与联系人维护由最高管理员执行；二级列表的创建与绑定为双路径——最高管理员可为任意活跃组织执行，目标组织自身的组织经理可在该组织工作区内为自己组织执行同一拆分。普通用户仍可按既有投放授权使用公海受众，但不能直接导入或管理一级公海。公海管理窗口只保留“目标组织选择 + 已有二级列表查看/创建并绑定”，不再承载客户文件导入、联系人查询、批量分配或单条维护。
 - 二级列表仅保存一级公海联系人到组织的分配关系和组织回件邮箱，不复制联系人主数据。组织在二级列表手动移除联系人时，一级公海保留该联系人并显示该组织的逻辑剔除标记；该组织后续选择一级公海投放时也必须过滤该标记，其他组织不受影响。
 - 历史二级成员导入 API 仍保留兼容路由，但不再是管理端主入口，且其写操作与联系人维护都由服务端限制为最高管理员；统一客户导入接口是新增公海数据的唯一产品入口。组织回件邮箱仍由组织工作区管理员通过专用配置接口维护。
-- 每个“一级公海 × 组织”至多绑定一个二级列表，以便一级公海投放能唯一解析该组织的回件邮箱。最高管理员或目标组织管理员在目标组织尚未绑定时创建并绑定二级列表；回件邮箱由组织管理员在组织工作区单独配置，创建二级列表时不要求最高管理员代填。
+- 每个“一级公海 × 组织”至多绑定一个二级列表，以便一级公海投放能唯一解析该组织的回件邮箱。二级列表的创建与绑定由 `cmd/pools.go` 的 `CreatePoolSegment` 承担：平台管理员可在任意活跃组织上执行（请求显式指向目标组织，无需加入该组织）；非平台管理员必须是该组织的经理且请求的 `organization_id` 等于其当前工作区组织，否则 403，普通成员一律 403。该 handler 把 `platformAdmin` 标志传给 `internal/core/pools.go` 的 `CreatePoolSegment`，由 `withWorkspaceCreation`（`internal/core/workspace_mutations.go`）在事务内锁定目标组织、要求其处于活跃状态，并在非平台管理员路径上复核调用者的活跃成员资格；其它公海写操作（联系人维护、导入、清邮等）仍由 `requirePoolAdministrator` 限制为最高管理员。回件邮箱由组织管理员在组织工作区单独配置，创建二级列表时不要求最高管理员代填。
+- 组织经理的二级列表自助边界（2026-09-16 决策：维持"联系人维护仅最高管理员"）：组织经理可以为自己所在的活跃组织创建并绑定二级列表（见上条），并可通过 `PUT /api/pool-segments/:id/reply-mailbox`（别名 `/api/pools/segments/:id/reply-mailbox`）维护该二级列表的回件邮箱——该端点由 `cmd/pools.go` 的 `UpdatePoolSegmentReplyMailbox` 实现，只放行本组织的组织经理，并明确拒绝平台管理员代配；但**公海联系人的一切写操作仍只属于最高管理员**：单条新增（`POST /api/customer-lists/:id/pool-contacts`，兼容别名 `POST /api/pools/:id/contacts`，`cmd/pools.go` 的 `CreatePoolContact` 用 `IsPlatformAdmin()` 判定）、文件批量导入成员（`POST /api/pool-segments/:id/import-members`）、逻辑移除与恢复（`DELETE`/`PUT /api/pool-segments/members` 及其 `/api/pools/segments/members` 别名）、清除联系人邮箱（`DELETE /api/customer-lists/:id/pool-contacts/:contact_id/email`）与 `POST /api/pools/import` 均由 `requirePoolAdministrator` 限制。组织经理对这些端点一律 403，只能读取本组织的二级列表和经 `SafePoolContact` 脱敏后的联系人。该边界有回归断言锁定：`dev/pools_e2e_verify.ps1` 同时断言"组织经理的分配/移除/恢复均 403"与"最高管理员的移除/恢复 200"。
 - 最高管理员在一级公海管理窗口通过独立目标组织选择器查看该组织的现有二级列表；创建请求显式指向目标组织，不切换当前工作区，也不创建组织成员关系。普通组织用户没有跨组织目标选择能力，二级列表不能通过通用客户列表表单创建，也不存在二级合并一级流程。二级列表回件邮箱的维护入口只对组织工作区管理员开放。
 - 活动选择一级公海时，一级列表可作为受众选择项，但不授予详情、导出或客户明文邮箱访问；服务端按目标组织的二级分配解析收件人和统一回件邮箱，并在发送快照中记录一级/二级来源、组织和最终邮箱来源。活动选择二级列表时直接使用该二级列表的回件邮箱。回件邮箱是公司内部地址，可在管理端明文展示，不纳入客户邮箱脱敏。
 - 公海投递快照使用 `campaign_pool_recipients` 与联系人内部 ID 去重；公海退订、退信和回复 AI 事件写入 `pool_segment_exclusions` 的组织维度逻辑状态，并在 `bounces`/`reply_ai_events` 保留来源池、二级列表和组织字段，禁止改变一级主数据或其他组织分配。收件人判定（活跃公海联系人 × 有效二级分配 × 本组织未剔除）只在 `internal/core/pools.go` 的 `poolRecipientMembershipSQL` 定义一次，一级解析、二级解析与快照写入共用同一片段，因此三条路径不可能给出不同收件人集合。快照刷新采用 `DO UPDATE` 并清理本组织范围内、已不再可投递且尚未交给投递的 `pending`/`deferred` 行；已 `queued`/`sent`/`cancelled` 的行属于投递历史，不重写也不删除，退队路径另按 `pool_segment_exclusions` 重查剔除。
@@ -151,7 +153,7 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 | `make test` | 运行全部 Go 单元测试（`go test ./...`）。 |
 | `cd frontend && yarn lint` | 执行 Vue/JavaScript ESLint。 |
 | `cd frontend && yarn cypress run` | 运行端到端测试；它会重置并启动本地服务，只能在隔离环境使用。 |
-| `make init-dev-docker`、`make dev-docker` | 初始化并启动开发 Compose 套件；管理端映射到 `http://localhost:8181`。 |
+| `make init-dev-docker`、`make dev-docker` | 初始化并启动开发 Compose 套件；后端（提供管理端）映射到 `http://localhost:9173`，Vite 前端开发服务器映射到 `http://localhost:8181`。 |
 | `make rm-dev-docker` | 删除开发容器及其数据库卷，数据不可恢复。 |
 
 Go 测试放在实现附近的 `*_test.go`；修改工作区、权限、导入、发送或迁移行为时，必须补充对应的边界测试。前端可见行为变化应更新 `frontend/cypress/e2e/` 测试。
@@ -163,11 +165,13 @@ Go 测试放在实现附近的 `*_test.go`；修改工作区、权限、导入�
 - 根目录 `docker-compose.yml` 是常规 Compose 部署：应用启动时幂等安装、执行迁移，再开始服务；所有密钥使用运行环境变量或 `LISTMONK_*_FILE`，不可提交真实配置。
 - `deploy/package_bundle.sh` 先执行 `make dist`，打包官方镜像、本地镜像、PostgreSQL 镜像与 Compose 脚本。将生成包复制到目标机后，依次运行包内 `scripts/load-images.sh`，配置 `env/runtime.env`，再运行 `start-online.sh` 或 `start-local.sh`；`stop.sh` 用于停止。
 - `Jenkinsfile` 执行 `make test` 和 `make dist`，归档二进制、前端压缩包及 SHA-256，再通过 SSH 和 systemd 进行可回滚部署。Jenkins 发布将 filesystem 媒体固定保存在 `<DEPLOY_DIR>/uploads`（版本目录之外），每个版本的 `uploads` 都链接到该目录；首次修复发布会从旧 `current/uploads` 迁移历史文件。`listmonk@.service` 是强化隔离的模板，`listmonk-simple.service` 兼容旧系统。
-- GitHub Actions 的 PR build-sanity 执行 `make dist`；标签 `v*` 使用 GoReleaser 发布多架构二进制与 Docker 镜像，nightly 工作流发布每日快照。
+- GitHub Actions 的 PR build-sanity 执行 `make dist`；`docs-sanity` 在 PR 的每次 push（`docs/**` 或 `scripts/check_docs.py` 变化时触发）执行 `python scripts/check_docs.py`（校验 nav 可达性、页内锚点与相对链接）和 `mkdocs build --strict --clean`；标签 `v*` 使用 GoReleaser 发布多架构二进制与 Docker 镜像，nightly 工作流发布每日快照。
 
 ## 文档同步规则（强制）
 
 提交前逐项检查：目录职责或模块移动更新本文；路由、数据模型、工作区/权限语义变化更新本文及 `docs/docs/content/roles-and-permissions.md` 或相关 API 文档；构建、测试、CI、Docker、Jenkins 或部署脚本变化更新本文、`docs/docs/content/developer-setup.md` 和/或 `deploy/README.md`。不得保留与代码、`Makefile`、Compose 或流水线不一致的命令、端口、服务名、权限描述或示例。
+
+提交文档改动前运行 `python scripts/check_docs.py`：它校验 nav 可达性、页内锚点和相对链接——这三类漂移 `mkdocs build --strict` 不会报告（nav 未引用的页面只提示 INFO，失效锚点与失效相对链接不检查）。
 
 
 ## 模板称呼兜底（v6.29.0）

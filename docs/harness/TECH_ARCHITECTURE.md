@@ -10,7 +10,7 @@
 | --- | --- | --- |
 | HTTP/API | `cmd/` | Echo 路由、认证接入、请求校验和响应。 |
 | 领域与持久化 | `internal/core/`、`models/`、`queries/`、`schema.sql` | 业务操作、工作区授权、SQL 查询和事务写入。 |
-| 后台能力 | `internal/manager/`、`messenger/`、`bounce/`、`replyai/`、`subimporter/` | 调度发送、SMTP/Postback、退信、AI 回信分类和批量导入。 |
+| 后台能力 | `internal/manager/`、`internal/messenger/`、`internal/bounce/`、`internal/replyai/`、`internal/subimporter/` | 调度发送、SMTP/Postback、退信、AI 回信分类和批量导入。 |
 | 直接导出 | `cmd/customers.go`、`cmd/audit.go`、`internal/core/` | 直接流式返回客户 CSV、客户资料 JSON 和审计 CSV，不创建导出任务或持久化文件。 |
 | Web 客户端 | `frontend/`、`frontend/email-builder/` | Vue 2 管理端与 React/TypeScript 邮件编辑器。 |
 | 运行与交付 | `dev/`、`deploy/`、`.github/`、`Jenkinsfile` | 本地 Compose、离线包、CI 和 systemd/GoReleaser 发布。 |
@@ -21,7 +21,7 @@
 
 - `permissions.json` 是角色编辑器和服务端配置的权限注册表；`internal/auth/models.go` 保存处理器使用的稳定权限常量，`RoleForm.vue` 通过 i18n 将权限 ID 显示为中文/英文自然语言。
 - `cmd/handlers.go` 的路由门和处理器内的资源门必须同时存在。`customers:*`、`campaigns:*`、`bounces:*` 等细分动作只收窄功能，不替代 `WorkspaceAccess`、Core ownership 或 API Key scope。
-- `organizations:platform_manage` 只用于平台组织管理路由；对活跃组织的成员/邀请/回复转发等管理调用使用显式路径白名单，避免平台操作员被当成普通资源管理员。`users:tokens` 独立控制集成令牌 API。
+- `organizations:platform_manage` 只用于平台组织管理路由；对活跃组织的成员/邀请/回复转发等管理调用使用显式路径白名单，避免平台操作员被当成普通资源管理员。平台创建组织和批量导入成员使用显式组织 ID/平台路由，不切换工作区，并在 Core 事务内一次性提交组织与成员关系。`users:tokens` 独立控制集成令牌 API。
 - `internal/migrations/v6.36.0.go` 只为历史宽权限用户角色补齐新动作，迁移必须幂等；撤销动作时由角色数组直接生效。新增后台任务或下载接口必须在执行时重新读取权限和工作区状态。
 - 直接客户导出由 `cmd/customers.go` 执行 `customers:export` 和工作区/所有权/脱敏检查；审计导出由 `cmd/audit.go` 执行 `audit:get` 和相同工作区边界。前端只负责发起下载，不能作为安全边界。
 - `internal/core/workspace_queries.go` 的客户列表查询对活动平台管理员也按当前工作区收敛；`cmd/customers.go` 的客户列表 ID 守卫再次校验活动工作区，客户新建/编辑/普通导入使用当前操作者所有权守卫。`frontend/src/utils/workspace.js` 为客户表单、普通导入、批量操作、活动受众和客户列表导入入口复用同一显示规则；一级公海列表仍由独立投放/导入授权显式加入。
@@ -49,10 +49,10 @@
 - 列表/详情/API 层使用安全 DTO；真实邮箱只允许进入服务端活动受众解析、投递快照和回信处理。导出、浏览器响应、日志和审计字段不得携带明文邮箱给非最高管理员。
 - 活动受众关系需要同时记录一级公海来源、二级组织分配和最终回件邮箱解析结果。发送 worker 以联系人内部 ID 去重，并在查询时过滤组织级剔除状态。
 - 二级列表手动移除与回复剔除写入可审计的逻辑状态；一级公海列表查询按调用者显示组织维度标记，最高管理员跨组织可见，组织用户只可见本组织。
-- 二级回件邮箱由组织二级列表配置，且只能由组织工作区管理员维护。一级公海活动不得回退到全局默认邮箱；缺少或存在冲突的有效二级邮箱时，活动应在发送前阻断并提示配置来源。回件邮箱属于公司内部地址，可在组织管理端明文展示，但必须与客户真实邮箱 DTO 和导出字段分离。
+- 二级回件邮箱由组织工作区的回件邮箱设置维护，并绑定到组织二级列表；只能由组织工作区管理员维护。个人工作区回件邮箱仍由个人资料维护。一级公海活动不得回退到全局默认邮箱；缺少或存在冲突的有效二级邮箱时，活动应在发送前阻断并提示配置来源。回件邮箱属于公司内部地址，可在组织管理端明文展示，但必须与客户真实邮箱 DTO 和导出字段分离。停用邮箱必须提供可审计的启用动作；有历史验证记录的邮箱可恢复为 active，未验证邮箱恢复为 pending。
 - 最高管理员分配公海时使用 `GET /api/pools/:id/management-target` 读取显式目标组织的现有二级列表状态，不在公海拆分弹窗代配回件邮箱。创建拆分请求显式携带目标组织信息，由服务端在单一事务中创建列表、授权和绑定；该端点不从当前工作区推导目标组织，平台管理员路径不检查该组织成员资格。
 - 公海联系人新增统一通过 `POST /api/import/customers`：请求只允许一个一级 `pool` 列表，后端在首个 CSV/XLSX 工作表解析 `customer_code`、`name`、`email`、`allocation_department` 四个字段，额外模板列丢弃；`allocation_department` 必须匹配启用中的 `organizations.name`，未知或已归档组织的行记为无效并跳过写入；合法值才写入 `pool_contacts`，且不触发组织创建或二级绑定。该同步分支由 `poolImportMu` 串行化并在事务内按完整规范化记录幂等，编码相同但比较字段不同则写冲突审计。
-- `pool` 导入、联系人维护及二级列表创建/绑定的写路由统一由最高管理员守卫；普通用户不能通过伪造前端请求绕过。公海管理组件只调用 `management-target`、`pool-segments` 和 `POST /api/pool-segments`，不再上传或维护联系人。历史 `import-members`/`pools/import` 路由仅为兼容保留，不作为产品入口。
+- `pool` 导入与联系人维护仍由最高管理员的写路由守卫；二级列表创建/绑定是双路径——平台管理员可为任意活跃组织执行，组织经理只能为自己所在的工作区组织执行（请求的 `organization_id` 必须等于当前工作区组织，否则 403），普通成员一律 403，且不能通过伪造前端请求绕过：`cmd/pools.go` 的 `CreatePoolSegment` 在非平台管理员分支解析 `workspaceAccess` 并校验 `IsOrganizationManager`，`internal/core/workspace_mutations.go` 的 `withWorkspaceCreation` 在事务内锁定目标组织、要求其处于活跃状态并复核调用者成员资格。公海管理组件只调用 `management-target`（仅平台管理员路径）、`pool-segments` 和 `POST /api/pool-segments`，不再上传或维护联系人。历史 `import-members`/`pools/import` 路由仅为兼容保留，不作为产品入口。
 - 数据库唯一约束保证每个 `(pool_id, organization_id)` 只有一个已绑定二级列表，因此同一组织内的公海联系人只有唯一归属和回件邮箱来源；若产品放开重叠归属，受众解析必须要求显式二级列表选择，不能静默猜测回件邮箱。一级公海活动可保存草稿但缺少有效归属/邮箱时不得预览或发送。回件邮箱作为公司内部地址明文保留和展示，不进入客户联系方式脱敏策略。
 
 ## 退信邮箱检测（2026-09-08）

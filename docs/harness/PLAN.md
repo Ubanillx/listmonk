@@ -158,3 +158,41 @@
 - [x] 直接客户/黑名单导出在 HTTP 请求阶段重验权限、工作区、成员资格、所有权、脱敏和公海明文限制；使用 `customers:export`，不创建任务或持久化文件。
 - [x] 补齐 `permissions.json`、三份主要语言包、角色表单标签、业务/技术/用户文档与后端边界测试。
 - [ ] 设置项内部的“查看、修改、维护、探测/测试”继续保持现有三档权限；若要进一步拆分 SMTP、回复邮箱、AI 探测等设置，应单独设计配置项级权限和兼容迁移。
+
+## 文档补齐（2026-09-16）
+
+来源：2026-09-16 文档核对，把 `docs/docs/content/`、`docs/ARCHITECTURE.md`、`docs/harness/` 与 `cmd/`、`Makefile`、`dev/`、`.github/workflows/` 逐项比对。
+
+已完成（同一日期）：
+
+- [x] 未文档化的 API 路由族。新增 6 个 API 页面覆盖此前无文档的全部 16 个 `/api/*` 前缀：`apis/organizations.md`（`/api/organizations/*` 28 条 + `/api/workspace`）、`apis/system.md`（health/config/lang/about/dashboard/custom-fields/events/logs/admin reload/maintenance/logout）、`apis/roles.md`、`apis/settings.md`、`apis/audit-events.md`、`apis/public-endpoints.md`（`/api/public/*`、`/api/media/file/*`、`/api/pool-segments/*` 别名）；均已挂入 `mkdocs.yml` 的 API 分组。
+- [x] `apis/customers.md` 端点表补上 `GET /api/customers/:id/activity`、`GET /api/customers/export`、`PUT /api/customers/query/customer-lists` 三个已实现端点。
+- [x] `configuration.md` 新增 `## Configuration file reference`：逐段列出 `[app]`、`[db]`、`[privacy]`、`[security]`（含 oidc/captcha）、`[appearance]`、`[upload]`、`[bounce]`、`[smtp]`、`[[messengers]]`、`[reply_ai]`、`[maintenance.db]` 的键、类型、默认值与必填性。
+- [x] 文档 CI 触发面：新增 `.github/workflows/docs-sanity.yml`（PR 的 opened/synchronize/reopened，paths `docs/**` 与 `scripts/check_docs.py`），执行 `scripts/check_docs.py` 与 `mkdocs build --strict`，补上 `build-sanity` 只在 PR 打开时校验的空档。
+
+未完成：
+
+- [x] `config.toml.sample` 与代码漂移（2026-09-16 核实结案：**无需变更**）。核实方法：列出代码中全部 koanf 读取点（`ko.String/Bool/Int/Unmarshal*`）并与数据库 `settings` 表的实际键比对（`SELECT split_part(key,'.',1), COUNT(*) FROM settings GROUP BY 1`）。结论：除 `app.address`、`app.admin_username`、`app.admin_password`（已弃用的遗留 API 用户）与 `[db].*` 外，文档中列出的每个键——`app.*` 的 21 个、`appearance`、`bounce`、`customer.custom_fields`、`maintenance.db`、`messengers`、`migrations`、`privacy`、`reply_ai`、`security`、`smtp`、`upload`——都存在于 `settings` 表，并由 `cmd/init.go:411` 的 `initSettings` 在启动时载入 koanf **覆盖**配置文件（`ko.Load(confmap.Provider(...))`，见 `cmd/init.go:431`）。因此 sample 只含 `[app]`/`[db]` 是设计使然，扩充它反而会诱导用户写入会被数据库覆盖的值。已做的修正：`docs/docs/content/configuration.md` 新增"仅存在于配置文件的键"表格与优先级说明，并把原先误导性的提示（`those sections have to be added to your config.toml by hand`）改为"数据库设置项不应写进 `config.toml`"。
+
+## 已决策并实施：组织经理在公海的自助范围（2026-09-16）
+
+决策：维持"**公海联系人维护仅最高管理员**"，组织经理只负责自己组织的二级列表归属与其回件邮箱。用户于 2026-09-16 在两选项中选定此项，本轮已实施。
+
+背景与证据（保留供追溯）：二级列表创建/绑定恢复双路径后，公海联系人维护仍是最高管理员专属——`cmd/pools.go` 的 `AssignPoolContact`、`ImportPoolSegmentMembers`、`RemovePoolContact`、`RestorePoolContact`（以及 `CreatePoolContact`、`ImportListIntoPool`）都经 `requirePoolAdministrator`。仓库自带回归脚本 `dev/pools_e2e_verify.ps1` 曾按 2026-09-04 的设计断言"组织经理可移除/恢复成员（200）"，实测返回 403；该守卫由提交 `4c12a5fb feat: refine business permissions and remove export center` 引入，脚本自该提交起即与代码不一致。
+
+实施内容：
+
+- [x] `dev/pools_e2e_verify.ps1`：成员维护断言改用最高管理员会话（`$root`，断言标签同步改为 "highest administrator …"），并新增三条反向断言锁定边界——组织经理的分配/移除/恢复一律 403。脚本另加登录前置校验：经理会话（`GET /api/pools/:id/segments`）或管理员会话（`GET /api/settings`）未建立时立即抛出带指引的错误（分别提示加载 `dev/pools_e2e_seed.sql`、设置 `POOL_QA_SUPER_PASSWORD`），不再让失败表现为令人困惑的 403。
+- [x] `docs/ARCHITECTURE.md` 在"一级公海与组织二级列表"一节新增"组织经理的二级列表自助边界"条目：逐条列出经理**可**做（创建/绑定本组织二级列表、维护其回件邮箱、读取本组织脱敏联系人）与**不可**做（单条新增、批量导入成员、逻辑移除与恢复、清除联系人邮箱、`/api/pools/import`）的操作，并写明各自的守卫。
+- [x] `docs/harness/BUSINESS_LOGIC.md` 的剔除不变量由"组织管理员或最高管理员"更正为"仅最高管理员"，并说明它与"经理可创建/绑定"之间的分工：经理建立归属并维护回件邮箱，联系人主数据由最高管理员维护。
+
+验证：脚本经 PowerShell 解析器语法检查通过；脚本新断言的每一条都在运行中的开发套件上实测成立——经理 assign/remove/restore 均 403、管理员 restore/remove 均 200、经理读取可见 `excluded=true` 且 `reason=e2e`、管理员用不存在的联系人移除返回 400、验证后 `pool_segment_exclusions` 未恢复条数为 0（夹具已复原）。限制：本机不知道 `root` 账号口令，脚本未整机跑通，管理员侧断言是用遗留 Super Admin 令牌发出的等价请求验证的。
+
+## 待办：API 文档的源码引用重新基线（2026-09-16）
+
+背景：`docs/docs/content/apis/organizations.md` 在每节末尾以 `cmd/x.go:NNN` 形式给出证据出处。本轮独立审校确认其中一部分已经过时，并已修正 9 处引用：6 处 `cmd/handlers.go` 路由行号（路由表新增导致整体后移）与 3 处把 `internal/core/organizations.go` 误记为 `cmd/organizations.go` 的跨文件引用。但该页仍有约 40 处 `cmd/organizations.go:NNN` 与约 19 处 `internal/core/organizations.go:NNN` 引用**未重新基线**。
+
+为何现在不做：工作区存在未提交的大规模改动——`cmd/organizations.go` 增加约 165 行、`internal/core/organizations.go` 在 86 行附近插入约 138 行、`cmd/handlers.go` +2 行；复核期间这些偏移仍在变动（`GetOrganizationRequests` 一度从 533 变为 536，`ArchiveOrganization` 581→584）。在代码定型前重新基线会立即失效。
+
+- [ ] 待上述改动提交、工作区干净后，按当前文件重新基线该页全部 `cmd/organizations.go:NNN` / `internal/core/organizations.go:NNN` / `cmd/handlers.go:NNN` 引用：逐条按所在小节的端点或函数名定位真实行号，只改数字、不改正文。验收：随机抽查 10 条引用能直接命中对应代码；`python scripts/check_docs.py` 与 `mkdocs build --strict` 通过。
+- [ ] 建议在 `docs/harness/README.md` 的维护规则补一句：涉及大规模行插入的代码变更（新增路由、整段函数搬迁）应顺带复核文档中的 `文件:行号` 引用，或改用函数名而非行号作为出处，以降低复发频率。

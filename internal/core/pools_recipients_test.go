@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -233,9 +234,19 @@ func (env *poolRecipientsTestEnv) seedMailbox(organizationID int64, email string
 	return env.id(`INSERT INTO reply_mailboxes(organization_id,email,status,verified_at) VALUES($1,$2,'active',NOW()) RETURNING id`, organizationID, email)
 }
 
+// seedAllocationListName is the name of the pool-allocation customer list seedAllocation
+// creates. Tests compute the same name to assert that the self-diagnosing block
+// message names the real list.
+func seedAllocationListName(poolID int, organizationID int64) string {
+	return fmt.Sprintf("pool allocation %d/%d", poolID, organizationID)
+}
+
+// seedAllocation creates the organization's pool allocation and its org_pool_allocations
+// row, mirroring the production shape (org_pool_allocations.list_id -> customer_lists).
 func (env *poolRecipientsTestEnv) seedAllocation(poolID int, organizationID int64, mailboxID *int64) int64 {
 	env.t.Helper()
-	return env.id(`INSERT INTO org_pool_allocations(pool_id,organization_id,reply_mailbox_id,created_by_user_id) VALUES($1,$2,$3,1) RETURNING id`, poolID, organizationID, mailboxID)
+	listID := env.id(`INSERT INTO customer_lists(name,type,status) VALUES($1,'private','active') RETURNING id`, seedAllocationListName(poolID, organizationID))
+	return env.id(`INSERT INTO org_pool_allocations(list_id,pool_id,organization_id,reply_mailbox_id,created_by_user_id) VALUES($1,$2,$3,$4,1) RETURNING id`, listID, poolID, organizationID, mailboxID)
 }
 
 func (env *poolRecipientsTestEnv) seedContact(code, name, email, status string) int64 {
@@ -271,7 +282,7 @@ func (env *poolRecipientsTestEnv) seedCampaign() int {
 func (env *poolRecipientsTestEnv) seedAudience(campaignID, poolID int, organizationID int64, allocationID, mailboxID *int64) {
 	env.t.Helper()
 	env.exec(`INSERT INTO campaign_customer_lists(campaign_id,customer_list_id,customer_list_name,pool_id,org_pool_allocation_id,source_organization_id,resolved_reply_mailbox_id)
-		VALUES($1,NULL,'pool audience',$2,$3,$4,$5)`, campaignID, poolID, allocationID, organizationID, mailboxID)
+		VALUES($1,NULL,(SELECT name FROM customer_lists WHERE id=$2),$2,$3,$4,$5)`, campaignID, poolID, allocationID, organizationID, mailboxID)
 }
 
 // recipientIDs returns the resolved pool contact IDs in the order the shared
@@ -398,8 +409,22 @@ func TestValidatePoolCampaignAudienceRefreshesRoutes(t *testing.T) {
 
 	if err := env.core.ValidatePoolCampaignAudience(campaign); err == nil {
 		t.Fatal("ValidatePoolCampaignAudience accepted an unconfigured allocation mailbox")
-	} else if err.Error() != "code=400, message=public-pool audience requires an organization allocation and reply mailbox before previewing or sending" {
-		t.Fatalf("ValidatePoolCampaignAudience error = %v, want the unresolved preview/send message", err)
+	} else {
+		msg := err.Error()
+		prefix := "code=400, message=public-pool audience requires an organization allocation and reply mailbox before previewing or sending: "
+		if !strings.HasPrefix(msg, prefix) {
+			t.Fatalf("ValidatePoolCampaignAudience error = %q, want the legacy prefix %q", msg, prefix)
+		}
+		// The message must name the pool, the organization and the concrete
+		// missing piece instead of the former opaque sentence.
+		for _, want := range []string{`"ws-pool"`, `"org-a"`, "the pool allocation has no reply mailbox", "Configure it in Customer lists -> Public pool management."} {
+			if !strings.Contains(msg, want) {
+				t.Errorf("ValidatePoolCampaignAudience error = %q, want it to contain %q", msg, want)
+			}
+		}
+		if strings.Contains(msg, "\n") {
+			t.Errorf("ValidatePoolCampaignAudience error = %q, want a single line", msg)
+		}
 	}
 
 	env.exec(`UPDATE org_pool_allocations SET reply_mailbox_id=$2 WHERE id=$1`, allocation, mailbox)
@@ -418,6 +443,173 @@ func TestValidatePoolCampaignAudienceRefreshesRoutes(t *testing.T) {
 	env.exec(`UPDATE reply_mailboxes SET status='disabled' WHERE id=$1`, mailbox)
 	if err := env.core.ValidatePoolCampaignAudience(campaign); err == nil {
 		t.Fatal("ValidatePoolCampaignAudience accepted a disabled mailbox")
+	} else {
+		want := fmt.Sprintf(`"ws-pool" (organization "org-a", pool allocation %q): the reply mailbox "pool-a@example.invalid" is not verified and active`, seedAllocationListName(poolID, org))
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("ValidatePoolCampaignAudience error = %q, want it to contain %q", err.Error(), want)
+		}
+	}
+}
+
+// TestValidatePoolCampaignAudienceReportsRouteReasons pins the self-diagnosing
+// block message: an unresolved pool audience must name the pool, the
+// organization and the concrete missing piece instead of the former single
+// opaque sentence. Every case gets its own campaign because a campaign may hold
+// several unresolved audiences at once.
+func TestValidatePoolCampaignAudienceReportsRouteReasons(t *testing.T) {
+	cases := []struct {
+		name string
+		// reason is the expected PoolAudienceRouteIssue.Reason; it is empty for
+		// the positive control, which must validate.
+		reason string
+		// setup seeds one campaign and returns it together with the clause the
+		// block message must contain. An empty clause means the campaign must
+		// validate.
+		setup func(env *poolRecipientsTestEnv) (campaign int, wantClause string)
+	}{
+		{
+			name:   "allocation_missing",
+			reason: "allocation_missing",
+			setup: func(env *poolRecipientsTestEnv) (int, string) {
+				org := env.seedOrganization("org-no-allocation")
+				poolID := env.seedPool("pool-no-allocation")
+				campaign := env.seedCampaign()
+				env.seedAudience(campaign, poolID, org, nil, nil)
+				return campaign, `"pool-no-allocation" (organization "org-no-allocation"): no pool allocation is bound for the organization`
+			},
+		},
+		{
+			name:   "mailbox_missing",
+			reason: "mailbox_missing",
+			setup: func(env *poolRecipientsTestEnv) (int, string) {
+				org := env.seedOrganization("org-no-mailbox")
+				poolID := env.seedPool("pool-no-mailbox")
+				env.seedAllocation(poolID, org, nil)
+				campaign := env.seedCampaign()
+				env.seedAudience(campaign, poolID, org, nil, nil)
+				return campaign, fmt.Sprintf(`"pool-no-mailbox" (organization "org-no-mailbox", pool allocation %q): the pool allocation has no reply mailbox`, seedAllocationListName(poolID, org))
+			},
+		},
+		{
+			name:   "mailbox_unavailable",
+			reason: "mailbox_unavailable",
+			setup: func(env *poolRecipientsTestEnv) (int, string) {
+				org := env.seedOrganization("org-disabled-mailbox")
+				poolID := env.seedPool("pool-disabled-mailbox")
+				mailbox := env.seedMailbox(org, "disabled@example.invalid")
+				env.seedAllocation(poolID, org, &mailbox)
+				env.exec(`UPDATE reply_mailboxes SET status='disabled' WHERE id=$1`, mailbox)
+				campaign := env.seedCampaign()
+				env.seedAudience(campaign, poolID, org, nil, nil)
+				return campaign, fmt.Sprintf(`"pool-disabled-mailbox" (organization "org-disabled-mailbox", pool allocation %q): the reply mailbox "disabled@example.invalid" is not verified and active`, seedAllocationListName(poolID, org))
+			},
+		},
+		{
+			name:   "organization_missing",
+			reason: "organization_missing",
+			setup: func(env *poolRecipientsTestEnv) (int, string) {
+				poolID := env.seedPool("pool-no-organization")
+				campaign := env.seedCampaign()
+				env.exec(`INSERT INTO campaign_customer_lists(campaign_id,customer_list_id,customer_list_name,pool_id,org_pool_allocation_id,source_organization_id,resolved_reply_mailbox_id)
+					VALUES($1,NULL,(SELECT name FROM customer_lists WHERE id=$2),$2,NULL,NULL,NULL)`, campaign, poolID)
+				return campaign, `"pool-no-organization" has no target organization`
+			},
+		},
+		{
+			name: "resolved_audience",
+			setup: func(env *poolRecipientsTestEnv) (int, string) {
+				org := env.seedOrganization("org-ready")
+				poolID := env.seedPool("pool-ready")
+				mailbox := env.seedMailbox(org, "ready@example.invalid")
+				env.seedAllocation(poolID, org, &mailbox)
+				campaign := env.seedCampaign()
+				env.seedAudience(campaign, poolID, org, nil, nil)
+				return campaign, ""
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			env := newPoolRecipientsTestEnv(t)
+			campaign, wantClause := tc.setup(env)
+
+			err := env.core.ValidatePoolCampaignAudience(campaign)
+			if wantClause == "" {
+				if err != nil {
+					t.Fatalf("ValidatePoolCampaignAudience on a resolved audience: %v", err)
+				}
+				if issues, loadErr := env.core.poolAudienceRouteIssues(campaign); loadErr != nil {
+					t.Fatalf("poolAudienceRouteIssues: %v", loadErr)
+				} else if len(issues) != 0 {
+					t.Fatalf("poolAudienceRouteIssues = %+v, want no issue for a resolved audience", issues)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("ValidatePoolCampaignAudience accepted an unresolved pool audience")
+			}
+			msg := err.Error()
+			prefix := "code=400, message=public-pool audience requires an organization allocation and reply mailbox before previewing or sending: "
+			if !strings.HasPrefix(msg, prefix) {
+				t.Fatalf("ValidatePoolCampaignAudience error = %q, want the legacy prefix %q", msg, prefix)
+			}
+			if !strings.Contains(msg, wantClause) {
+				t.Errorf("ValidatePoolCampaignAudience error = %q, want the clause %q", msg, wantClause)
+			}
+			if !strings.Contains(msg, "Configure it in Customer lists -> Public pool management.") {
+				t.Errorf("ValidatePoolCampaignAudience error = %q, want the fix hint", msg)
+			}
+			if strings.Contains(msg, "\n") {
+				t.Errorf("ValidatePoolCampaignAudience error = %q, want a single line", msg)
+			}
+			// A mailbox failure must name the mailbox problem, not fall back to
+			// the generic "no pool allocation" wording.
+			if tc.reason == "mailbox_missing" || tc.reason == "mailbox_unavailable" {
+				if strings.Contains(msg, "no pool allocation") {
+					t.Errorf("ValidatePoolCampaignAudience error = %q must not claim a missing pool allocation", msg)
+				}
+			}
+
+			issues, loadErr := env.core.poolAudienceRouteIssues(campaign)
+			if loadErr != nil {
+				t.Fatalf("poolAudienceRouteIssues: %v", loadErr)
+			}
+			if len(issues) != 1 {
+				t.Fatalf("poolAudienceRouteIssues = %+v, want exactly one issue", issues)
+			}
+			if issues[0].Reason != tc.reason {
+				t.Errorf("issue reason = %q, want %q", issues[0].Reason, tc.reason)
+			}
+			if issues[0].PoolName == "" {
+				t.Errorf("issue pool name is empty, want the audience pool name")
+			}
+		})
+	}
+}
+
+// TestPoolAudienceRouteMessageCapsClauses pins the single-line, capped block
+// message. It needs no database because it renders fabricated issues.
+func TestPoolAudienceRouteMessageCapsClauses(t *testing.T) {
+	issues := make([]PoolAudienceRouteIssue, 0, poolAudienceRouteMessageLimit+2)
+	for i := 0; i < poolAudienceRouteMessageLimit+2; i++ {
+		issues = append(issues, PoolAudienceRouteIssue{PoolID: i + 1, PoolName: fmt.Sprintf("pool-%d", i+1), Reason: poolAudienceRouteReasonOrganizationMissing})
+	}
+	msg := poolAudienceRouteMessage(issues)
+	if !strings.HasPrefix(msg, poolAudienceRouteMessagePrefix+": ") {
+		t.Errorf("message = %q, want the legacy prefix", msg)
+	}
+	if got := strings.Count(msg, "has no target organization"); got != poolAudienceRouteMessageLimit {
+		t.Errorf("message renders %d clauses, want %d", got, poolAudienceRouteMessageLimit)
+	}
+	if !strings.Contains(msg, " (+2 more)") {
+		t.Errorf("message = %q, want the truncated-count suffix", msg)
+	}
+	if !strings.HasSuffix(msg, poolAudienceRouteMessageHint) {
+		t.Errorf("message = %q, want the fix hint suffix", msg)
+	}
+	if strings.Contains(msg, "\n") {
+		t.Errorf("message = %q, want a single line", msg)
 	}
 }
 

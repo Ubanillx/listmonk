@@ -270,6 +270,53 @@ export default Vue.extend({
       this.isPoolVisible = true;
     },
 
+    // Deep link from the campaign editor: ?pool=<id> opens the pool manager for
+    // that first-level pool. The row is normally already on the loaded page; when
+    // pagination or a filter hides it, the list is fetched directly so the fix
+    // entry point still works.
+    openPoolFromQuery() {
+      const poolID = Number(this.$route.query.pool);
+      if (!(poolID > 0)) {
+        return;
+      }
+      if (!this.canManagePool) {
+        this.consumePoolQuery();
+        return;
+      }
+      const results = Array.isArray(this.customer_lists.results) ? this.customer_lists.results : [];
+      const loaded = results.find((row) => row.type === 'pool' && Number(row.id) === poolID);
+      if (loaded) {
+        this.showPoolManager(loaded);
+        this.consumePoolQuery();
+        return;
+      }
+      this.$api.getList(poolID).then((row) => {
+        if (row && row.type === 'pool' && Number(row.id) === poolID) {
+          this.showPoolManager(row);
+        }
+        return null;
+      }).catch(() => null).finally(() => {
+        this.consumePoolQuery();
+      });
+    },
+
+    // Consume the deep link so reloading does not reopen the modal. This is a
+    // raw history replacement on purpose: App.vue keys the router view by
+    // `$route.fullPath`, so a router-driven query change would remount this view
+    // and drop the modal that was just opened.
+    consumePoolQuery() {
+      if (this.$route.query.pool === undefined) {
+        return;
+      }
+      const url = new URL(window.location.href);
+      url.searchParams.delete('pool');
+      window.history.replaceState(
+        window.history.state,
+        '',
+        `${url.pathname}${url.search}${url.hash}`,
+      );
+    },
+
     formFinished() {
       this.getLists();
     },
@@ -298,6 +345,7 @@ export default Vue.extend({
         status: this.queryParams.status,
       }).then((resp) => {
         this.customer_lists = resp;
+        this.openPoolFromQuery();
       });
 
       // Also fetch the minimal customer_lists for the global store that appears
@@ -470,6 +518,12 @@ export default Vue.extend({
     },
   },
 
+  watch: {
+    '$route.query.pool': function onPoolQueryChange() {
+      this.openPoolFromQuery();
+    },
+  },
+
   created() {
     this.$root.$on('page.refresh', this.getLists);
   },
@@ -486,6 +540,11 @@ export default Vue.extend({
     } else {
       this.getLists();
     }
+  },
+
+  // Re-check the deep link when the view is re-activated.
+  activated() {
+    this.openPoolFromQuery();
   },
 });
 </script>

@@ -2,6 +2,7 @@ package core
 
 import (
 	"database/sql"
+	"fmt"
 	"net/http"
 	"net/mail"
 	"strconv"
@@ -881,19 +882,168 @@ func (c *Core) refreshPoolCampaignAudienceRoutes(campaignID int) error {
 	return err
 }
 
+// PoolAudienceRouteIssue is one unresolved public-pool audience row of one
+// campaign. ValidatePoolCampaignAudience renders these rows so the administrator
+// sees which configuration step is missing instead of the former opaque
+// sentence. This struct only reports a problem; the resolution semantics are
+// unchanged and a pool audience still never falls back to a personal,
+// organization or system default mailbox. The user-decided invariant in
+// docs/harness/BUSINESS_LOGIC.md stands: a first-level pool campaign may be
+// saved as a draft, but preview and send must be blocked while the target
+// organization has no effective pool allocation or reply mailbox.
+type PoolAudienceRouteIssue struct {
+	PoolID             int    `db:"pool_id"`
+	PoolName           string `db:"pool_name"`
+	OrganizationID     *int64 `db:"organization_id"`
+	OrganizationName   string `db:"organization_name"`
+	AllocationID       *int64 `db:"allocation_id"`
+	AllocationListID   *int64 `db:"allocation_list_id"`
+	AllocationListName string `db:"allocation_list_name"`
+	BoundMailboxID     *int   `db:"bound_mailbox_id"`
+	BoundMailboxEmail  string `db:"bound_mailbox_email"`
+	// Reason is the first failing condition. It is one of the
+	// poolAudienceRouteReason* constants below, or the defensive fallback
+	// "unresolved" when the row is unresolved although the current allocation and
+	// mailbox look usable.
+	Reason string `db:"reason"`
+}
+
+// Reason codes for PoolAudienceRouteIssue. The order mirrors the resolve: a
+// missing organization hides the allocation state and a missing or invalid allocation
+// hides the mailbox state, exactly as refreshPoolCampaignAudienceRoutes cannot
+// resolve through them either.
+const (
+	poolAudienceRouteReasonOrganizationMissing = "organization_missing"
+	poolAudienceRouteReasonAllocationMissing   = "allocation_missing"
+	poolAudienceRouteReasonMailboxMissing      = "mailbox_missing"
+	poolAudienceRouteReasonMailboxUnavailable  = "mailbox_unavailable"
+)
+
+// poolAudienceRouteMessageLimit caps how many audience clauses the block
+// message spells out; the rest is summarized as "(+N more)".
+const poolAudienceRouteMessageLimit = 5
+
+// poolAudienceRouteMessagePrefix is the legacy prefix existing callers match on.
+const poolAudienceRouteMessagePrefix = "public-pool audience requires an organization allocation and reply mailbox before previewing or sending"
+
+// poolAudienceRouteMessageHint points at the screen that fixes the issue. It is
+// appended after a sentence break so a rendered clause list stays readable.
+const poolAudienceRouteMessageHint = "Configure it in Customer lists -> Public pool management."
+
+// poolAudienceRouteIssues lists the audiences of one campaign that cannot be
+// previewed or sent yet, with the first failing condition of each row. This is
+// read-only diagnostics: the SQL mirrors refreshPoolCampaignAudienceRoutes, so
+// it matches the same pool, organization and pinned-allocation triple, accepts a
+// mailbox only under status='active' AND verified_at IS NOT NULL, and uses the
+// exact unresolved predicate ValidatePoolCampaignAudience checks. No mailbox is
+// substituted for a missing one; the row is only labelled.
+func (c *Core) poolAudienceRouteIssues(campaignID int) ([]PoolAudienceRouteIssue, error) {
+	var issues []PoolAudienceRouteIssue
+	err := c.db.Select(&issues, `
+		SELECT ccl.pool_id,
+			ccl.customer_list_name AS pool_name,
+			ccl.source_organization_id AS organization_id,
+			COALESCE(o.name,'') AS organization_name,
+			s.id AS allocation_id,
+			s.list_id AS allocation_list_id,
+			COALESCE(l.name,'') AS allocation_list_name,
+			s.reply_mailbox_id AS bound_mailbox_id,
+			COALESCE(rm.email,'') AS bound_mailbox_email,
+			CASE
+				-- Keep these literals in sync with the poolAudienceRouteReason* constants.
+				WHEN ccl.source_organization_id IS NULL THEN 'organization_missing'
+				WHEN s.id IS NULL THEN 'allocation_missing'
+				WHEN s.reply_mailbox_id IS NULL THEN 'mailbox_missing'
+				WHEN rm.status='active' AND rm.verified_at IS NOT NULL THEN 'unresolved'
+				ELSE 'mailbox_unavailable'
+			END AS reason
+		FROM campaign_customer_lists ccl
+		LEFT JOIN organizations o ON o.id=ccl.source_organization_id
+		LEFT JOIN LATERAL (
+			SELECT ss.id,ss.list_id,ss.reply_mailbox_id
+			FROM org_pool_allocations ss
+			WHERE ccl.source_organization_id IS NOT NULL
+				AND ss.pool_id=ccl.pool_id
+				AND ss.organization_id=ccl.source_organization_id
+				AND (ccl.org_pool_allocation_id IS NULL OR ss.id=ccl.org_pool_allocation_id)
+			ORDER BY ss.id
+			LIMIT 1
+		) s ON TRUE
+		LEFT JOIN customer_lists l ON l.id=s.list_id
+		LEFT JOIN reply_mailboxes rm ON rm.id=s.reply_mailbox_id
+		WHERE ccl.campaign_id=$1
+			AND ccl.pool_id IS NOT NULL
+			AND (ccl.source_organization_id IS NULL OR ccl.resolved_reply_mailbox_id IS NULL)
+		ORDER BY ccl.pool_id,s.id NULLS FIRST`, campaignID)
+	if err != nil {
+		return nil, err
+	}
+	return issues, nil
+}
+
+// poolAudienceRouteIssueClause renders one issue as a single-line clause naming
+// the concrete missing piece. The bound mailbox email is only named when the
+// row carries it; without it the clause still states the reason.
+func poolAudienceRouteIssueClause(issue PoolAudienceRouteIssue) string {
+	switch issue.Reason {
+	case poolAudienceRouteReasonOrganizationMissing:
+		return fmt.Sprintf("%q has no target organization", issue.PoolName)
+	case poolAudienceRouteReasonAllocationMissing:
+		return fmt.Sprintf("%q (organization %q): no pool allocation is bound for the organization", issue.PoolName, issue.OrganizationName)
+	case poolAudienceRouteReasonMailboxMissing:
+		return fmt.Sprintf("%q (organization %q, pool allocation %q): the pool allocation has no reply mailbox", issue.PoolName, issue.OrganizationName, issue.AllocationListName)
+	case poolAudienceRouteReasonMailboxUnavailable:
+		if issue.BoundMailboxEmail == "" {
+			return fmt.Sprintf("%q (organization %q, pool allocation %q): the pool allocation reply mailbox is not verified and active", issue.PoolName, issue.OrganizationName, issue.AllocationListName)
+		}
+		return fmt.Sprintf("%q (organization %q, pool allocation %q): the reply mailbox %q is not verified and active", issue.PoolName, issue.OrganizationName, issue.AllocationListName, issue.BoundMailboxEmail)
+	default:
+		// The "unresolved" fallback and any unknown code state the symptom
+		// without naming a missing piece.
+		if issue.OrganizationName == "" {
+			return fmt.Sprintf("%q has an unresolved audience route", issue.PoolName)
+		}
+		return fmt.Sprintf("%q (organization %q): the audience route is unresolved", issue.PoolName, issue.OrganizationName)
+	}
+}
+
+// poolAudienceRouteMessage renders the block message as one line: the legacy
+// prefix, one clause per unresolved audience (at most
+// poolAudienceRouteMessageLimit, then "(+N more)"), and the fix hint. It only
+// reports the configuration gap; it cannot resolve it and does not fall back to
+// any other mailbox. It never contains a newline.
+func poolAudienceRouteMessage(issues []PoolAudienceRouteIssue) string {
+	total := len(issues)
+	if total > poolAudienceRouteMessageLimit {
+		issues = issues[:poolAudienceRouteMessageLimit]
+	}
+	clauses := make([]string, 0, len(issues))
+	for _, issue := range issues {
+		clauses = append(clauses, poolAudienceRouteIssueClause(issue))
+	}
+	msg := poolAudienceRouteMessagePrefix + ": " + strings.Join(clauses, "; ")
+	if total > poolAudienceRouteMessageLimit {
+		msg += fmt.Sprintf(" (+%d more)", total-poolAudienceRouteMessageLimit)
+	}
+	return msg + ". " + poolAudienceRouteMessageHint
+}
+
 // ValidatePoolCampaignAudience is called by preview/send paths. Drafts may
 // retain an unresolved pool audience, but sending is blocked until every pool
-// row resolves to an organization allocation and an internal reply mailbox.
+// row resolves to an organization allocation and an internal reply mailbox. The
+// block message names each unresolved audience and the concrete missing piece so
+// the administrator can fix it in the public-pool management screen; it never
+// falls back to a personal, organization or system default mailbox.
 func (c *Core) ValidatePoolCampaignAudience(campaignID int) error {
 	if err := c.refreshPoolCampaignAudienceRoutes(campaignID); err != nil {
 		return err
 	}
-	var unresolved int
-	if err := c.db.Get(&unresolved, `SELECT COUNT(*) FROM campaign_customer_lists WHERE campaign_id=$1 AND pool_id IS NOT NULL AND (source_organization_id IS NULL OR resolved_reply_mailbox_id IS NULL)`, campaignID); err != nil {
+	issues, err := c.poolAudienceRouteIssues(campaignID)
+	if err != nil {
 		return err
 	}
-	if unresolved > 0 {
-		return echo.NewHTTPError(http.StatusBadRequest, "public-pool audience requires an organization allocation and reply mailbox before previewing or sending")
+	if len(issues) > 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, poolAudienceRouteMessage(issues))
 	}
 	return nil
 }

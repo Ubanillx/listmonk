@@ -1644,6 +1644,7 @@
     "campaigns.poolRouteTitle": "公海回件路由（发送时生效）",
     "campaigns.poolFallback": "一级公海 #{id}",
     "campaigns.poolRouteUnresolved": "未配置：按目标组织统一回件邮箱自动解析",
+    "campaigns.poolRoutePending": "保存后按目标组织统一回件邮箱自动解析",
     "campaigns.poolRouteBlocked": "在目标组织配置统一回件邮箱之前，公海受众无法预览或发送。",
     "customer_lists.poolManage": "管理公海",
     "customer_lists.poolManageTitle": "公海运营管理",

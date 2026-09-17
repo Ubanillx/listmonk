@@ -90,7 +90,7 @@
                   <b-input :value="smtpFromPreview" disabled />
                 </b-field>
 
-                <b-field v-if="isSMTPMessenger && !poolRoutingRows.length" :label="$t('campaigns.replyMailbox')" label-position="on-border"
+                <b-field v-if="isSMTPMessenger && !hasPoolAudience" :label="$t('campaigns.replyMailbox')" label-position="on-border"
                   :message="$t('campaigns.replyMailboxHelp')">
                   <b-select v-model="form.replyMailboxId" :disabled="!canEdit || activeReplyMailboxes.length === 0" expanded>
                     <option :value="null">{{ $t('campaigns.replyMailboxNone') }}</option>
@@ -103,26 +103,26 @@
                     </option>
                   </b-select>
                 </b-field>
-                <p v-if="isSMTPMessenger && !poolRoutingRows.length && replyMailboxesLoaded && activeReplyMailboxes.length === 0" class="help is-warning mb-4">
+                <p v-if="isSMTPMessenger && !hasPoolAudience && replyMailboxesLoaded && activeReplyMailboxes.length === 0" class="help is-warning mb-4">
                   {{ $t('campaigns.replyMailboxMissing') }}
                 </p>
 
                 <customer-list-selector v-model="form.customer_lists" :selected="form.customer_lists" :all="availableLists" :disabled="!canEdit || listsLocked"
                   :label="$t('globals.terms.customer_lists')" :placeholder="$t('campaigns.sendToLists')" />
 
-                <b-notification v-if="poolRoutingRows.length" :type="hasUnresolvedPoolRoute ? 'is-warning' : 'is-info'" :closable="false"
+                <b-notification v-if="poolNoticeRows.length" :type="hasUnresolvedPoolRoute ? 'is-warning' : 'is-info'" :closable="false"
                   class="pool-routing-notice" data-cy="pool-routing-notice">
                   <strong>{{ $t('campaigns.poolRouteTitle') }}</strong>
                   <p v-if="hasUnresolvedPoolRoute" class="mt-2">{{ $t('campaigns.poolRouteBlocked') }}</p>
                   <ul>
-                    <li v-for="(pool, index) in poolRoutingRows" :key="`pool-route-${pool.poolId || pool.pool_id}-${index}`">
+                    <li v-for="(pool, index) in poolNoticeRows" :key="`pool-route-${pool.poolId || pool.pool_id}-${index}`">
                       <template v-if="pool.replyMailboxEmail || pool.reply_mailbox_email">
                         {{ pool.name || $t('campaigns.poolFallback', { id: pool.poolId || pool.pool_id }) }} →
                         {{ pool.replyMailboxEmail || pool.reply_mailbox_email }}
                       </template>
                       <template v-else>
                         {{ pool.name || $t('campaigns.poolFallback', { id: pool.poolId || pool.pool_id }) }} →
-                        {{ $t('campaigns.poolRouteUnresolved') }}
+                        {{ pool.pending ? $t('campaigns.poolRoutePending') : $t('campaigns.poolRouteUnresolved') }}
                         <p class="help">{{ $t('campaigns.replyMailboxPoolHelp') }}</p>
                       </template>
                     </li>
@@ -1097,14 +1097,46 @@ export default Vue.extend({
       return Array.isArray(rows) ? rows : [];
     },
 
+    // Pool lists the audience selector currently holds. A new campaign has no
+    // server-side routing rows yet, so the editor has to read the local
+    // selection too: otherwise it would keep offering the campaign reply
+    // mailbox after a pool list was picked.
+    selectedPoolLists() {
+      const poolTypes = ['pool', 'pool_segment', 'pool_allocation', 'org_pool_allocation'];
+      const lists = Array.isArray(this.form.customer_lists) ? this.form.customer_lists : [];
+      return lists.filter((list) => list && poolTypes.includes(list.type));
+    },
+
+    hasPoolAudience() {
+      return this.poolRoutingRows.length > 0 || this.selectedPoolLists.length > 0;
+    },
+
+    // Rows of the read-only routing notice: the resolved rows of a saved
+    // campaign, or the locally selected pool lists before the first save. A
+    // pending row states that the route is resolved on save/send instead of
+    // claiming that the organization is unconfigured.
+    poolNoticeRows() {
+      if (this.poolRoutingRows.length) {
+        return this.poolRoutingRows;
+      }
+      return this.selectedPoolLists.map((list) => ({
+        poolId: list.id,
+        name: list.name,
+        pending: true,
+        replyMailboxEmail: '',
+      }));
+    },
+
     hasUnresolvedPoolRoute() {
-      return this.poolRoutingRows.some((pool) => !(pool.replyMailboxEmail || pool.reply_mailbox_email));
+      return this.poolNoticeRows.some((pool) => (
+        !pool.pending && !(pool.replyMailboxEmail || pool.reply_mailbox_email)
+      ));
     },
 
     // Pool audiences never use the campaign-level mailbox: their reply route is
     // always resolved from the target organization's unified reply mailbox.
     campaignReplyMailboxID() {
-      if (this.poolRoutingRows.length) {
+      if (this.hasPoolAudience) {
         return null;
       }
       return this.form.replyMailboxId || null;

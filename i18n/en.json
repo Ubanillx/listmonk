@@ -1644,6 +1644,7 @@
     "campaigns.poolRouteTitle": "Pool reply routing (applied when sending)",
     "campaigns.poolFallback": "Primary pool #{id}",
     "campaigns.poolRouteUnresolved": "Not configured: resolved automatically from the target organization's unified reply mailbox",
+    "campaigns.poolRoutePending": "Resolved automatically from the target organization's unified reply mailbox after saving",
     "campaigns.poolRouteBlocked": "The public-pool audience cannot be previewed or sent until the target organization has configured its unified reply mailbox.",
     "customer_lists.poolManage": "Manage pool",
     "customer_lists.poolManageTitle": "Pool operations",

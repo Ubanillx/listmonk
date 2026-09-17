@@ -1454,6 +1454,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#put-apiorganizationsidreply-mailbox" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PUT /api/organizations/{id}/reply-mailbox
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -3641,6 +3652,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#put-apiorganizationsidreply-mailbox" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PUT /api/organizations/{id}/reply-mailbox
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -4836,112 +4858,33 @@ personal API key surface: personal keys are restricted to the business prefixes 
 <td style="text-align: left;">Bulk-add registered accounts to an organization (platform)</td>
 </tr>
 <tr>
-<td style="text-align: left;">POST</td>
-<td style="text-align: left;"><a href="#post-apiorganizationsrequests">/api/organizations/requests</a></td>
-<td style="text-align: left;">Request a new organization</td>
-</tr>
-<tr>
-<td style="text-align: left;">GET</td>
-<td style="text-align: left;"><a href="#get-apiorganizationsrequestsmine">/api/organizations/requests/mine</a></td>
-<td style="text-align: left;">List the caller's own organization requests</td>
-</tr>
-<tr>
-<td style="text-align: left;">DELETE</td>
-<td style="text-align: left;"><a href="#delete-apiorganizationsrequestsid">/api/organizations/requests/{id}</a></td>
-<td style="text-align: left;">Withdraw a pending organization request</td>
-</tr>
-<tr>
-<td style="text-align: left;">GET</td>
-<td style="text-align: left;"><a href="#get-apiorganizationsrequests">/api/organizations/requests</a></td>
-<td style="text-align: left;">List organization requests (platform)</td>
-</tr>
-<tr>
 <td style="text-align: left;">PUT</td>
-<td style="text-align: left;"><a href="#put-apiorganizationsrequestsid">/api/organizations/requests/{id}</a></td>
-<td style="text-align: left;">Approve or reject an organization request (platform)</td>
-</tr>
-<tr>
-<td style="text-align: left;">POST</td>
-<td style="text-align: left;"><a href="#post-apiorganizationsjoin">/api/organizations/join</a></td>
-<td style="text-align: left;">Join an organization with an invitation code</td>
-</tr>
-<tr>
-<td style="text-align: left;">POST</td>
-<td style="text-align: left;"><a href="#post-apiorganizationsleave">/api/organizations/leave</a></td>
-<td style="text-align: left;">Leave the active organization</td>
-</tr>
-<tr>
-<td style="text-align: left;">GET</td>
-<td style="text-align: left;"><a href="#get-apiorganizationsinvites">/api/organizations/invites</a></td>
-<td style="text-align: left;">List invitations of the active organization</td>
-</tr>
-<tr>
-<td style="text-align: left;">POST</td>
-<td style="text-align: left;"><a href="#post-apiorganizationsinvites">/api/organizations/invites</a></td>
-<td style="text-align: left;">Create an invitation for the active organization</td>
-</tr>
-<tr>
-<td style="text-align: left;">DELETE</td>
-<td style="text-align: left;"><a href="#delete-apiorganizationsinvitesid">/api/organizations/invites/{id}</a></td>
-<td style="text-align: left;">Revoke an invitation</td>
-</tr>
-<tr>
-<td style="text-align: left;">POST</td>
-<td style="text-align: left;"><a href="#post-apiorganizationsresourcesmigrate">/api/organizations/resources/migrate</a></td>
-<td style="text-align: left;">Copy or move personal resources into an organization</td>
-</tr>
-<tr>
-<td style="text-align: left;">POST</td>
-<td style="text-align: left;"><a href="#post-apiorganizationsresourcescustomer-listsmigrate">/api/organizations/resources/customer-lists/migrate</a></td>
-<td style="text-align: left;">Copy or move personal customer_lists into an organization</td>
-</tr>
-<tr>
-<td style="text-align: left;">POST</td>
-<td style="text-align: left;"><a href="#post-apiorganizationsresourcestransfer">/api/organizations/resources/transfer</a></td>
-<td style="text-align: left;">Transfer a former member's pending resources</td>
-</tr>
-<tr>
-<td style="text-align: left;">POST</td>
-<td style="text-align: left;"><a href="#post-apiorganizationsidresourcestransfer">/api/organizations/{id}/resources/transfer</a></td>
-<td style="text-align: left;">Transfer an archived organization's resources (platform)</td>
-</tr>
-<tr>
-<td style="text-align: left;">POST</td>
-<td style="text-align: left;"><a href="#post-apiorganizationstemplatesidtransfer">/api/organizations/templates/{id}/transfer</a></td>
-<td style="text-align: left;">Hand over an organization-shared template</td>
-</tr>
-<tr>
-<td style="text-align: left;">POST</td>
-<td style="text-align: left;"><a href="#post-apiorganizationstemplatesidunpublish">/api/organizations/templates/{id}/unpublish</a></td>
-<td style="text-align: left;">Unpublish an organization-shared template</td>
-</tr>
-<tr>
-<td style="text-align: left;">GET</td>
-<td style="text-align: left;"><a href="#get-apiorganizationsreply-forwarding">/api/organizations/reply-forwarding</a></td>
-<td style="text-align: left;">List reply-forwarding rules of the active organization</td>
-</tr>
-<tr>
-<td style="text-align: left;">PUT</td>
-<td style="text-align: left;"><a href="#put-apiorganizationsreply-forwardingid">/api/organizations/reply-forwarding/{id}</a></td>
-<td style="text-align: left;">Enable or disable a reply-forwarding rule</td>
-</tr>
-<tr>
-<td style="text-align: left;">DELETE</td>
-<td style="text-align: left;"><a href="#delete-apiorganizationsreply-forwardingid">/api/organizations/reply-forwarding/{id}</a></td>
-<td style="text-align: left;">Disable a reply-forwarding rule</td>
-</tr>
-<tr>
-<td style="text-align: left;">POST</td>
-<td style="text-align: left;"><a href="#post-apiorganizationsidarchive">/api/organizations/{id}/archive</a></td>
-<td style="text-align: left;">Archive an organization (platform)</td>
-</tr>
-<tr>
-<td style="text-align: left;">DELETE</td>
-<td style="text-align: left;"><a href="#delete-apiorganizationsid">/api/organizations/{id}</a></td>
-<td style="text-align: left;">Permanently delete an archived organization (platform)</td>
+<td style="text-align: left;"><a href="#put-apiorganizationsidreply-mailbox">/api/organizations/{id}/reply-mailbox</a></td>
+<td style="text-align: left;">Set the organization's unified reply mailbox (organization manager)</td>
 </tr>
 </tbody>
 </table>
+<p>| POST   | <a href="#post-apiorganizationsrequests">/api/organizations/requests</a>             | Request a new organization                         |
+| GET    | <a href="#get-apiorganizationsrequestsmine">/api/organizations/requests/mine</a>     | List the caller's own organization requests        |
+| DELETE | <a href="#delete-apiorganizationsrequestsid">/api/organizations/requests/{id}</a>    | Withdraw a pending organization request            |
+| GET    | <a href="#get-apiorganizationsrequests">/api/organizations/requests</a>              | List organization requests (platform)              |
+| PUT    | <a href="#put-apiorganizationsrequestsid">/api/organizations/requests/{id}</a>       | Approve or reject an organization request (platform) |
+| POST   | <a href="#post-apiorganizationsjoin">/api/organizations/join</a>                     | Join an organization with an invitation code       |
+| POST   | <a href="#post-apiorganizationsleave">/api/organizations/leave</a>                   | Leave the active organization                      |
+| GET    | <a href="#get-apiorganizationsinvites">/api/organizations/invites</a>                | List invitations of the active organization        |
+| POST   | <a href="#post-apiorganizationsinvites">/api/organizations/invites</a>               | Create an invitation for the active organization   |
+| DELETE | <a href="#delete-apiorganizationsinvitesid">/api/organizations/invites/{id}</a>      | Revoke an invitation                               |
+| POST   | <a href="#post-apiorganizationsresourcesmigrate">/api/organizations/resources/migrate</a> | Copy or move personal resources into an organization |
+| POST   | <a href="#post-apiorganizationsresourcescustomer-listsmigrate">/api/organizations/resources/customer-lists/migrate</a> | Copy or move personal customer_lists into an organization |
+| POST   | <a href="#post-apiorganizationsresourcestransfer">/api/organizations/resources/transfer</a> | Transfer a former member's pending resources  |
+| POST   | <a href="#post-apiorganizationsidresourcestransfer">/api/organizations/{id}/resources/transfer</a> | Transfer an archived organization's resources (platform) |
+| POST   | <a href="#post-apiorganizationstemplatesidtransfer">/api/organizations/templates/{id}/transfer</a> | Hand over an organization-shared template  |
+| POST   | <a href="#post-apiorganizationstemplatesidunpublish">/api/organizations/templates/{id}/unpublish</a> | Unpublish an organization-shared template |
+| GET    | <a href="#get-apiorganizationsreply-forwarding">/api/organizations/reply-forwarding</a> | List reply-forwarding rules of the active organization |
+| PUT    | <a href="#put-apiorganizationsreply-forwardingid">/api/organizations/reply-forwarding/{id}</a> | Enable or disable a reply-forwarding rule |
+| DELETE | <a href="#delete-apiorganizationsreply-forwardingid">/api/organizations/reply-forwarding/{id}</a> | Disable a reply-forwarding rule    |
+| POST   | <a href="#post-apiorganizationsidarchive">/api/organizations/{id}/archive</a>       | Archive an organization (platform)                 |
+| DELETE | <a href="#delete-apiorganizationsid">/api/organizations/{id}</a>                     | Permanently delete an archived organization (platform) |</p>
 <p>Every route above is registered on the authenticated API group
 (<code>cmd/handlers.go:93</code>) and passes through the audit middleware
 (<code>cmd/handlers.go:106</code>); audit action names exist for the mutating organization
@@ -5336,6 +5279,25 @@ field, and stable code (<code>missing_account</code>, <code>invalid_role</code>,
 <code>account_not_found</code>, or <code>duplicate_account</code>). No rows are written when any
 validation error is returned. Re-importing a former member restores the
 membership; the final organization state must retain at least one manager.</p>
+<hr />
+<h4 id="put-apiorganizationsidreply-mailbox">PUT /api/organizations/{id}/reply-mailbox<a class="headerlink" href="#put-apiorganizationsidreply-mailbox" title="Permanent link">&para;</a></h4>
+<p>Set the single unified reply mailbox of the active organization. Public-pool
+campaign audiences reply to this mailbox: every pool recipient of that
+organization resolves its <code>Reply-To</code> from here, and pool allocations carry no
+reply mailbox of their own.</p>
+<p>The caller must be a manager of that organization, and the path organization
+must be the caller's active workspace. A platform administrator is rejected
+with HTTP 403 (<code>reply mailbox must be configured in the organization
+workspace</code>), because the setting belongs to the organization's workspace. The
+mailbox must already belong to that organization, and a <code>null</code> value clears the
+setting. Preview and sending stay blocked while the organization has no usable
+(active and verified) unified reply mailbox.</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"reply_mailbox_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">12</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Organization responses include <code>reply_mailbox_id</code> and <code>reply_mailbox_email</code> so
+the management UI can show the configured address.</p>
 <hr />
 <h3 id="organization-requests">Organization requests<a class="headerlink" href="#organization-requests" title="Permanent link">&para;</a></h3>
 <h4 id="post-apiorganizationsrequests">POST /api/organizations/requests<a class="headerlink" href="#post-apiorganizationsrequests" title="Permanent link">&para;</a></h4>

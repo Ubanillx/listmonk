@@ -183,7 +183,6 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.POST("/api/customer-lists/:id/pool-contacts", apiKeyScope(hasID(a.CreatePoolContact), apiKeyScopeListsWrite))
 		g.DELETE("/api/customer-lists/:id/pool-contacts/:contact_id/email", apiKeyScope(a.ClearPoolContactEmail, apiKeyScopeListsWrite))
 		g.POST("/api/org-pool-allocations", apiKeyScope(a.CreateOrgPoolAllocation, apiKeyScopeListsWrite))
-		g.PUT("/api/org-pool-allocations/:id/reply-mailbox", apiKeyScope(a.UpdateOrgPoolAllocationReplyMailbox, apiKeyScopeListsWrite))
 		g.POST("/api/org-pool-allocations/members", apiKeyScope(a.AssignPoolContact, apiKeyScopeListsWrite))
 		g.POST("/api/org-pool-allocations/:id/import-members", apiKeyScope(a.ImportOrgPoolAllocationMembers, apiKeyScopeListsWrite))
 		g.DELETE("/api/org-pool-allocations/members", apiKeyScope(a.RemovePoolContact, apiKeyScopeListsWrite))
@@ -199,7 +198,6 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.POST("/api/pools/:id/contacts", apiKeyScope(hasID(a.CreatePoolContact), apiKeyScopeListsWrite))
 		g.DELETE("/api/pools/:id/contacts/:contact_id/email", apiKeyScope(a.ClearPoolContactEmail, apiKeyScopeListsWrite))
 		g.POST("/api/pools/allocations", apiKeyScope(a.CreateOrgPoolAllocation, apiKeyScopeListsWrite))
-		g.PUT("/api/pools/allocations/:id/reply-mailbox", apiKeyScope(a.UpdateOrgPoolAllocationReplyMailbox, apiKeyScopeListsWrite))
 		g.POST("/api/pools/allocations/members", apiKeyScope(a.AssignPoolContact, apiKeyScopeListsWrite))
 		g.POST("/api/pools/allocations/:id/import-members", apiKeyScope(a.ImportOrgPoolAllocationMembers, apiKeyScopeListsWrite))
 		g.DELETE("/api/pools/allocations/members", apiKeyScope(a.RemovePoolContact, apiKeyScopeListsWrite))
@@ -316,6 +314,10 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.GET("/api/organizations/invites", a.GetOrganizationInvites)
 		g.POST("/api/organizations/invites", a.CreateOrganizationInvite)
 		g.DELETE("/api/organizations/invites/:id", hasID(a.RevokeOrganizationInvite))
+		// The organization's single unified reply mailbox replaces the former
+		// per-allocation reply mailbox. Only the organization workspace itself
+		// may configure it; nothing is set on an organization's behalf.
+		g.PUT("/api/organizations/:id/reply-mailbox", hasID(a.SetOrganizationReplyMailbox))
 		g.GET("/api/organizations", pm(a.GetOrganizations, auth.PermOrganizationsPlatformManage))
 		g.POST("/api/organizations", pm(a.CreateOrganization, auth.PermOrganizationsPlatformManage))
 		g.GET("/api/organizations/requests", pm(a.GetOrganizationRequests, auth.PermOrganizationsPlatformManage))

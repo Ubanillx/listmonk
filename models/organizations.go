@@ -45,6 +45,12 @@ type Organization struct {
 
 	MemberCount int    `db:"member_count" json:"member_count"`
 	MyRole      string `db:"my_role" json:"my_role"`
+
+	// ReplyMailboxID is the organization's single unified reply mailbox. Every
+	// public-pool audience of the organization resolves its reply route through
+	// this mailbox alone; an organization carries no per-allocation mailbox.
+	ReplyMailboxID    *int   `db:"reply_mailbox_id" json:"reply_mailbox_id"`
+	ReplyMailboxEmail string `db:"reply_mailbox_email" json:"reply_mailbox_email"`
 }
 
 // OrganizationMember is an active or former relationship between a user and

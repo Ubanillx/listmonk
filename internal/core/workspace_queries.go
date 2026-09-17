@@ -335,6 +335,15 @@ func (c *Core) GetWorkspaceCampaign(access models.WorkspaceAccess, id int) (mode
 		return models.Campaign{}, echo.NewHTTPError(http.StatusBadRequest,
 			c.i18n.Ts("globals.messages.notFound", "name", "{globals.terms.campaign}"))
 	}
+	// A pool audience's reply route is a derived cache of the target
+	// organization's unified reply mailbox, and the campaign editor renders it
+	// read-only. Refresh it before reading the campaign so an organization that
+	// changed (or cleared) its unified mailbox is reflected without waiting for a
+	// preview or a draft save. The statement is scoped to pool audience rows, so
+	// it is a no-op for every other campaign.
+	if err := c.refreshPoolCampaignAudienceRoutes(id); err != nil {
+		return models.Campaign{}, err
+	}
 
 	scope, args := workspaceReadPredicate(access, "campaigns", 1)
 	// The campaign row and its optional template must be constrained by the

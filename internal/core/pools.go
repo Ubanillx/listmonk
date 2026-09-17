@@ -16,6 +16,8 @@ import (
 )
 
 // PoolRecipient is the server-side sending snapshot source for a pool contact.
+// ReplyMailboxID is the organization's unified reply mailbox, resolved only
+// while that mailbox is active and verified.
 type PoolRecipient struct {
 	models.PoolContact
 	AllocationID   int64 `db:"allocation_id" json:"allocation_id"`
@@ -27,35 +29,15 @@ func normalizePoolAllocationDepartment(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
 }
 
-// UpdateOrgPoolAllocationReplyMailbox changes the internal reply destination for an
-// organization allocation. The mailbox must belong to the same organization as
-// the allocation; customer addresses are never involved in this operation.
-func (c *Core) UpdateOrgPoolAllocationReplyMailbox(allocationID int64, replyMailboxID *int) error {
-	var organizationID int64
-	if err := c.db.Get(&organizationID, `SELECT organization_id FROM org_pool_allocations WHERE id=$1`, allocationID); err != nil {
-		if err == sql.ErrNoRows {
-			return echo.NewHTTPError(http.StatusNotFound, "pool allocation not found")
-		}
-		return err
-	}
-	if replyMailboxID != nil {
-		var mailboxOrg sql.NullInt64
-		if err := c.db.Get(&mailboxOrg, `SELECT organization_id FROM reply_mailboxes WHERE id=$1`, *replyMailboxID); err != nil {
-			return echo.NewHTTPError(http.StatusBadRequest, "invalid reply mailbox")
-		}
-		if !mailboxOrg.Valid || mailboxOrg.Int64 != organizationID {
-			return echo.NewHTTPError(http.StatusForbidden, "reply mailbox must belong to allocation organization")
-		}
-	}
-	_, err := c.db.Exec(`UPDATE org_pool_allocations SET reply_mailbox_id=$2 WHERE id=$1`, allocationID, replyMailboxID)
-	return err
-}
-
+// QueryOrgPoolAllocations lists the pool allocations of one pool. An allocation
+// no longer carries a mailbox of its own, so reply_mailbox_id/reply_mailbox_email
+// report the mailbox the audience actually resolves: the organization's unified
+// reply mailbox.
 func (c *Core) QueryOrgPoolAllocations(poolID int, organizationID int64, platformAdmin bool) ([]models.OrgPoolAllocation, error) {
 	if err := c.ensurePool(poolID); err != nil {
 		return nil, err
 	}
-	q := `SELECT s.id,s.list_id,COALESCE(l.name,'') AS list_name,s.pool_id,s.organization_id,COALESCE(o.name,'') AS organization_name,s.reply_mailbox_id,COALESCE(r.email,'') AS reply_mailbox_email FROM org_pool_allocations s JOIN customer_lists l ON l.id=s.list_id JOIN organizations o ON o.id=s.organization_id LEFT JOIN reply_mailboxes r ON r.id=s.reply_mailbox_id WHERE s.pool_id=$1`
+	q := `SELECT s.id,s.list_id,COALESCE(l.name,'') AS list_name,s.pool_id,s.organization_id,COALESCE(o.name,'') AS organization_name,o.reply_mailbox_id,COALESCE(r.email,'') AS reply_mailbox_email FROM org_pool_allocations s JOIN customer_lists l ON l.id=s.list_id JOIN organizations o ON o.id=s.organization_id LEFT JOIN reply_mailboxes r ON r.id=o.reply_mailbox_id WHERE s.pool_id=$1`
 	args := []any{poolID}
 	if !platformAdmin {
 		q += ` AND s.organization_id=$2`
@@ -94,12 +76,12 @@ func (c *Core) QueryPoolManagementTarget(poolID, organizationID int) (models.Poo
 	var allocation models.OrgPoolAllocation
 	err = c.db.Get(&allocation, `
 		SELECT s.id,s.list_id,COALESCE(l.name,'') AS list_name,s.pool_id,s.organization_id,
-			COALESCE(o.name,'') AS organization_name,s.reply_mailbox_id,
+			COALESCE(o.name,'') AS organization_name,o.reply_mailbox_id,
 			COALESCE(r.email,'') AS reply_mailbox_email
 		FROM org_pool_allocations s
 		JOIN customer_lists l ON l.id=s.list_id
 		JOIN organizations o ON o.id=s.organization_id
-		LEFT JOIN reply_mailboxes r ON r.id=s.reply_mailbox_id
+		LEFT JOIN reply_mailboxes r ON r.id=o.reply_mailbox_id
 		WHERE s.pool_id=$1 AND s.organization_id=$2`, poolID, organizationID)
 	if err == nil {
 		out.Allocation = &allocation
@@ -576,6 +558,11 @@ func (c *Core) ImportPoolContacts(poolID, userID int, rows []models.PoolContactI
 // pool allocation. The list, delivery grant and allocation are created in one
 // transaction, so a standalone pool allocation can never be staged for a
 // later binding.
+//
+// replyMailboxID is retained only for callers that predate the organization's
+// unified reply mailbox. An allocation no longer carries a mailbox of its own,
+// so the parameter is deliberately ignored; every public-pool audience resolves
+// the organization's unified reply mailbox instead.
 func (c *Core) CreateOrgPoolAllocation(poolID int, organizationID int64, name string, replyMailboxID *int, userID int, platformAdmin bool) (models.OrgPoolAllocation, error) {
 	if poolID <= 0 || organizationID <= 0 || strings.TrimSpace(name) == "" {
 		return models.OrgPoolAllocation{}, echo.NewHTTPError(http.StatusBadRequest, "pool, organization and pool allocation name are required")
@@ -609,15 +596,6 @@ func (c *Core) CreateOrgPoolAllocation(poolID int, organizationID int64, name st
 		if exists {
 			return echo.NewHTTPError(http.StatusConflict, "organization already has a pool allocation for this public pool")
 		}
-		if replyMailboxID != nil {
-			var mailboxOrg sql.NullInt64
-			if err := tx.Get(&mailboxOrg, `SELECT organization_id FROM reply_mailboxes WHERE id=$1`, *replyMailboxID); err != nil {
-				return echo.NewHTTPError(http.StatusBadRequest, "invalid reply mailbox")
-			}
-			if !mailboxOrg.Valid || mailboxOrg.Int64 != organizationID {
-				return echo.NewHTTPError(http.StatusForbidden, "reply mailbox must belong to organization")
-			}
-		}
 
 		var listID int
 		if err := tx.Stmtx(c.q.CreateList).Get(&listID,
@@ -632,11 +610,12 @@ func (c *Core) CreateOrgPoolAllocation(poolID int, organizationID int64, name st
 		if _, err := tx.Exec(`INSERT INTO pool_organization_permissions(pool_id,organization_id,granted_by_user_id) VALUES($1,$2,$3) ON CONFLICT(pool_id,organization_id) DO UPDATE SET granted_by_user_id=EXCLUDED.granted_by_user_id`, poolID, organizationID, userID); err != nil {
 			return err
 		}
-		if err := tx.Get(&out, `INSERT INTO org_pool_allocations(list_id,pool_id,organization_id,reply_mailbox_id,created_by_user_id)
-			VALUES($1,$2,$3,$4,$5)
+		if err := tx.Get(&out, `INSERT INTO org_pool_allocations(list_id,pool_id,organization_id,created_by_user_id)
+			VALUES($1,$2,$3,$4)
 			RETURNING id,list_id,(SELECT name FROM customer_lists WHERE id=org_pool_allocations.list_id) AS list_name,
-				pool_id,organization_id,(SELECT name FROM organizations WHERE id=org_pool_allocations.organization_id) AS organization_name,reply_mailbox_id`,
-			listID, poolID, organizationID, replyMailboxID, userID); err != nil {
+				pool_id,organization_id,(SELECT name FROM organizations WHERE id=org_pool_allocations.organization_id) AS organization_name,
+				(SELECT o.reply_mailbox_id FROM organizations o WHERE o.id=org_pool_allocations.organization_id) AS reply_mailbox_id`,
+			listID, poolID, organizationID, userID); err != nil {
 			return err
 		}
 		// Existing contacts imported before this pool allocation was created
@@ -653,10 +632,10 @@ func (c *Core) CreateOrgPoolAllocation(poolID int, organizationID int64, name st
 			ON CONFLICT (allocation_id,contact_id) DO NOTHING`, out.ID, organizationID, poolID, models.OrganizationStatusActive); err != nil {
 			return err
 		}
-		if replyMailboxID != nil {
-			return tx.Get(&out.ReplyMailboxEmail, `SELECT email FROM reply_mailboxes WHERE id=$1`, *replyMailboxID)
-		}
-		return nil
+		// The allocation has no mailbox of its own. Report the organization's
+		// unified reply mailbox so the create response matches the allocation
+		// listing; the audience resolves through that mailbox.
+		return tx.Get(&out.ReplyMailboxEmail, `SELECT COALESCE(rm.email,'') FROM organizations o LEFT JOIN reply_mailboxes rm ON rm.id=o.reply_mailbox_id WHERE o.id=$1`, organizationID)
 	})
 	return out, err
 }
@@ -857,11 +836,12 @@ func (c *Core) ClearPoolContactEmail(poolID int, contactID int64, organizationID
 
 // refreshPoolCampaignAudienceRoutes re-resolves the internal mailbox route of
 // every pool audience on a campaign. A draft can be created before its
-// organization's pool allocation mailbox is configured; in that case the
-// relation keeps a NULL resolved mailbox. Re-reading the current allocation
-// configuration here makes an existing draft usable after the administrator
-// finishes the configuration, without changing the first-level/pool-allocation
-// audience selection stored in org_pool_allocation_id.
+// organization's unified reply mailbox is configured or usable; in that case
+// the relation keeps a NULL resolved mailbox. Re-reading the current
+// organization mailbox configuration here makes an existing draft usable after
+// the administrator finishes the configuration, without changing the
+// first-level/pool-allocation audience selection stored in
+// org_pool_allocation_id.
 func (c *Core) refreshPoolCampaignAudienceRoutes(campaignID int) error {
 	_, err := c.db.Exec(`
 		UPDATE campaign_customer_lists ccl
@@ -871,7 +851,8 @@ func (c *Core) refreshPoolCampaignAudienceRoutes(campaignID int) error {
 				ELSE NULL
 			END
 			FROM org_pool_allocations s
-			LEFT JOIN reply_mailboxes rm ON rm.id=s.reply_mailbox_id
+			JOIN organizations o ON o.id=s.organization_id
+			LEFT JOIN reply_mailboxes rm ON rm.id=o.reply_mailbox_id
 				AND rm.status='active' AND rm.verified_at IS NOT NULL
 			WHERE ccl.source_organization_id IS NOT NULL
 				AND s.pool_id=ccl.pool_id
@@ -886,11 +867,11 @@ func (c *Core) refreshPoolCampaignAudienceRoutes(campaignID int) error {
 // campaign. ValidatePoolCampaignAudience renders these rows so the administrator
 // sees which configuration step is missing instead of the former opaque
 // sentence. This struct only reports a problem; the resolution semantics are
-// unchanged and a pool audience still never falls back to a personal,
-// organization or system default mailbox. The user-decided invariant in
-// docs/harness/BUSINESS_LOGIC.md stands: a first-level pool campaign may be
+// unchanged and a pool audience still never falls back to a per-allocation,
+// personal or default mailbox: the only accepted route is the target
+// organization's unified reply mailbox. A first-level pool campaign may be
 // saved as a draft, but preview and send must be blocked while the target
-// organization has no effective pool allocation or reply mailbox.
+// organization has no effective pool allocation or unified reply mailbox.
 type PoolAudienceRouteIssue struct {
 	PoolID             int    `db:"pool_id"`
 	PoolName           string `db:"pool_name"`
@@ -909,9 +890,9 @@ type PoolAudienceRouteIssue struct {
 }
 
 // Reason codes for PoolAudienceRouteIssue. The order mirrors the resolve: a
-// missing organization hides the allocation state and a missing or invalid allocation
-// hides the mailbox state, exactly as refreshPoolCampaignAudienceRoutes cannot
-// resolve through them either.
+// missing organization hides the allocation state and a missing or invalid
+// allocation hides the organization mailbox state, exactly as
+// refreshPoolCampaignAudienceRoutes cannot resolve through them either.
 const (
 	poolAudienceRouteReasonOrganizationMissing = "organization_missing"
 	poolAudienceRouteReasonAllocationMissing   = "allocation_missing"
@@ -926,16 +907,27 @@ const poolAudienceRouteMessageLimit = 5
 // poolAudienceRouteMessagePrefix is the legacy prefix existing callers match on.
 const poolAudienceRouteMessagePrefix = "public-pool audience requires an organization allocation and reply mailbox before previewing or sending"
 
-// poolAudienceRouteMessageHint points at the screen that fixes the issue. It is
-// appended after a sentence break so a rendered clause list stays readable.
-const poolAudienceRouteMessageHint = "Configure it in Customer lists -> Public pool management."
+// poolAudienceRouteMessageMailboxStep is the actionable step that fixes a
+// missing or unusable organization reply mailbox. It names the organization
+// workspace on purpose: the setting belongs to the organization, and a platform
+// administrator cannot configure it on the organization's behalf.
+const poolAudienceRouteMessageMailboxStep = "a manager of that organization opens its workspace and saves a verified mailbox in Manage organizations -> Organization reply mailboxes as the organization's unified reply mailbox"
+
+// poolAudienceRouteMessageAllocationStep is prepended when an audience has no
+// organization allocation yet: without the allocation there is no recipient
+// set, so the mailbox step alone cannot fix the campaign.
+const poolAudienceRouteMessageAllocationStep = "bind the organization's allocation for that pool in Customer lists -> Public pool management"
+
+// poolAudienceRouteMessageRetry is the closing step of every rendered fix.
+const poolAudienceRouteMessageRetry = "then retry preview or send."
 
 // poolAudienceRouteIssues lists the audiences of one campaign that cannot be
 // previewed or sent yet, with the first failing condition of each row. This is
 // read-only diagnostics: the SQL mirrors refreshPoolCampaignAudienceRoutes, so
-// it matches the same pool, organization and pinned-allocation triple, accepts a
-// mailbox only under status='active' AND verified_at IS NOT NULL, and uses the
-// exact unresolved predicate ValidatePoolCampaignAudience checks. No mailbox is
+// it matches the same pool, organization and pinned-allocation triple, resolves
+// the mailbox from the organization's unified reply mailbox, accepts it only
+// under status='active' AND verified_at IS NOT NULL, and uses the exact
+// unresolved predicate ValidatePoolCampaignAudience checks. No mailbox is
 // substituted for a missing one; the row is only labelled.
 func (c *Core) poolAudienceRouteIssues(campaignID int) ([]PoolAudienceRouteIssue, error) {
 	var issues []PoolAudienceRouteIssue
@@ -947,20 +939,20 @@ func (c *Core) poolAudienceRouteIssues(campaignID int) ([]PoolAudienceRouteIssue
 			s.id AS allocation_id,
 			s.list_id AS allocation_list_id,
 			COALESCE(l.name,'') AS allocation_list_name,
-			s.reply_mailbox_id AS bound_mailbox_id,
+			o.reply_mailbox_id AS bound_mailbox_id,
 			COALESCE(rm.email,'') AS bound_mailbox_email,
 			CASE
 				-- Keep these literals in sync with the poolAudienceRouteReason* constants.
 				WHEN ccl.source_organization_id IS NULL THEN 'organization_missing'
 				WHEN s.id IS NULL THEN 'allocation_missing'
-				WHEN s.reply_mailbox_id IS NULL THEN 'mailbox_missing'
+				WHEN o.reply_mailbox_id IS NULL THEN 'mailbox_missing'
 				WHEN rm.status='active' AND rm.verified_at IS NOT NULL THEN 'unresolved'
 				ELSE 'mailbox_unavailable'
 			END AS reason
 		FROM campaign_customer_lists ccl
 		LEFT JOIN organizations o ON o.id=ccl.source_organization_id
 		LEFT JOIN LATERAL (
-			SELECT ss.id,ss.list_id,ss.reply_mailbox_id
+			SELECT ss.id,ss.list_id
 			FROM org_pool_allocations ss
 			WHERE ccl.source_organization_id IS NOT NULL
 				AND ss.pool_id=ccl.pool_id
@@ -970,7 +962,7 @@ func (c *Core) poolAudienceRouteIssues(campaignID int) ([]PoolAudienceRouteIssue
 			LIMIT 1
 		) s ON TRUE
 		LEFT JOIN customer_lists l ON l.id=s.list_id
-		LEFT JOIN reply_mailboxes rm ON rm.id=s.reply_mailbox_id
+		LEFT JOIN reply_mailboxes rm ON rm.id=o.reply_mailbox_id
 		WHERE ccl.campaign_id=$1
 			AND ccl.pool_id IS NOT NULL
 			AND (ccl.source_organization_id IS NULL OR ccl.resolved_reply_mailbox_id IS NULL)
@@ -981,29 +973,45 @@ func (c *Core) poolAudienceRouteIssues(campaignID int) ([]PoolAudienceRouteIssue
 	return issues, nil
 }
 
+// poolAudienceRouteAllocationLabel names the organization allocation of one
+// issue, falling back to its internal ID when the allocation list has no name
+// or the organization has no allocation at all.
+func poolAudienceRouteAllocationLabel(issue PoolAudienceRouteIssue) string {
+	if issue.AllocationListName != "" {
+		return fmt.Sprintf("%q", issue.AllocationListName)
+	}
+	if issue.AllocationID != nil {
+		return fmt.Sprintf("#%d", *issue.AllocationID)
+	}
+	return "unbound"
+}
+
 // poolAudienceRouteIssueClause renders one issue as a single-line clause naming
-// the concrete missing piece. The bound mailbox email is only named when the
-// row carries it; without it the clause still states the reason.
+// the whole chain the operator has to fix: the first-level pool list, the
+// organization allocation under it and the organization that owns the missing
+// reply mailbox. The bound mailbox email is only named when the row carries it;
+// without it the clause still states the reason.
 func poolAudienceRouteIssueClause(issue PoolAudienceRouteIssue) string {
+	allocation := poolAudienceRouteAllocationLabel(issue)
 	switch issue.Reason {
 	case poolAudienceRouteReasonOrganizationMissing:
-		return fmt.Sprintf("%q has no target organization", issue.PoolName)
+		return fmt.Sprintf("pool list %q has no target organization, so no reply mailbox can be resolved", issue.PoolName)
 	case poolAudienceRouteReasonAllocationMissing:
-		return fmt.Sprintf("%q (organization %q): no pool allocation is bound for the organization", issue.PoolName, issue.OrganizationName)
+		return fmt.Sprintf("pool list %q: organization %q has no organization allocation bound to the pool", issue.PoolName, issue.OrganizationName)
 	case poolAudienceRouteReasonMailboxMissing:
-		return fmt.Sprintf("%q (organization %q, pool allocation %q): the pool allocation has no reply mailbox", issue.PoolName, issue.OrganizationName, issue.AllocationListName)
+		return fmt.Sprintf("pool list %q -> organization allocation %s (organization %q): the organization has not configured its unified reply mailbox", issue.PoolName, allocation, issue.OrganizationName)
 	case poolAudienceRouteReasonMailboxUnavailable:
 		if issue.BoundMailboxEmail == "" {
-			return fmt.Sprintf("%q (organization %q, pool allocation %q): the pool allocation reply mailbox is not verified and active", issue.PoolName, issue.OrganizationName, issue.AllocationListName)
+			return fmt.Sprintf("pool list %q -> organization allocation %s (organization %q): the organization's unified reply mailbox is not verified and active", issue.PoolName, allocation, issue.OrganizationName)
 		}
-		return fmt.Sprintf("%q (organization %q, pool allocation %q): the reply mailbox %q is not verified and active", issue.PoolName, issue.OrganizationName, issue.AllocationListName, issue.BoundMailboxEmail)
+		return fmt.Sprintf("pool list %q -> organization allocation %s (organization %q): the organization's unified reply mailbox %q is not verified and active", issue.PoolName, allocation, issue.OrganizationName, issue.BoundMailboxEmail)
 	default:
 		// The "unresolved" fallback and any unknown code state the symptom
 		// without naming a missing piece.
 		if issue.OrganizationName == "" {
-			return fmt.Sprintf("%q has an unresolved audience route", issue.PoolName)
+			return fmt.Sprintf("pool list %q has an unresolved audience route", issue.PoolName)
 		}
-		return fmt.Sprintf("%q (organization %q): the audience route is unresolved", issue.PoolName, issue.OrganizationName)
+		return fmt.Sprintf("pool list %q -> organization allocation %s (organization %q): the audience route is unresolved", issue.PoolName, allocation, issue.OrganizationName)
 	}
 }
 
@@ -1014,6 +1022,13 @@ func poolAudienceRouteIssueClause(issue PoolAudienceRouteIssue) string {
 // any other mailbox. It never contains a newline.
 func poolAudienceRouteMessage(issues []PoolAudienceRouteIssue) string {
 	total := len(issues)
+	missingAllocation := false
+	for _, issue := range issues {
+		if issue.Reason == poolAudienceRouteReasonAllocationMissing {
+			missingAllocation = true
+			break
+		}
+	}
 	if total > poolAudienceRouteMessageLimit {
 		issues = issues[:poolAudienceRouteMessageLimit]
 	}
@@ -1025,15 +1040,20 @@ func poolAudienceRouteMessage(issues []PoolAudienceRouteIssue) string {
 	if total > poolAudienceRouteMessageLimit {
 		msg += fmt.Sprintf(" (+%d more)", total-poolAudienceRouteMessageLimit)
 	}
-	return msg + ". " + poolAudienceRouteMessageHint
+	steps := make([]string, 0, 2)
+	if missingAllocation {
+		steps = append(steps, poolAudienceRouteMessageAllocationStep)
+	}
+	steps = append(steps, poolAudienceRouteMessageMailboxStep)
+	return msg + ". Fix: " + strings.Join(steps, "; ") + "; " + poolAudienceRouteMessageRetry
 }
 
 // ValidatePoolCampaignAudience is called by preview/send paths. Drafts may
 // retain an unresolved pool audience, but sending is blocked until every pool
-// row resolves to an organization allocation and an internal reply mailbox. The
-// block message names each unresolved audience and the concrete missing piece so
-// the administrator can fix it in the public-pool management screen; it never
-// falls back to a personal, organization or system default mailbox.
+// row resolves to an organization allocation and the organization's unified
+// reply mailbox. The block message names each unresolved audience and the
+// concrete missing piece; it never substitutes a per-allocation, personal or
+// default mailbox for a missing organization mailbox.
 func (c *Core) ValidatePoolCampaignAudience(campaignID int) error {
 	if err := c.refreshPoolCampaignAudienceRoutes(campaignID); err != nil {
 		return err
@@ -1056,6 +1076,11 @@ func (c *Core) ValidatePoolCampaignAudience(campaignID int) error {
 // source or contact status cannot be added to one audience path while another
 // silently keeps sending to the contact.
 //
+// The fragment also joins the organization's single unified reply mailbox and
+// exposes it as rm.id, and only while that mailbox is active and verified.
+// Embedders read the per-recipient reply mailbox from rm.id; an organization
+// allocation carries no mailbox of its own.
+//
 // Positional parameter contract for every embedder:
 //
 //	$1 = first-level pool ID
@@ -1067,16 +1092,20 @@ func (c *Core) ValidatePoolCampaignAudience(campaignID int) error {
 // An embedder that needs further parameters must number them from $4 upwards.
 const poolRecipientMembershipSQL = `
 	FROM org_pool_allocations s
+	JOIN organizations o ON o.id=s.organization_id
 	JOIN org_pool_allocation_members sm ON sm.allocation_id=s.id AND sm.status='active'
 	JOIN pool_members pm ON pm.pool_id=s.pool_id AND pm.contact_id=sm.contact_id
 	JOIN pool_contacts pc ON pc.id=sm.contact_id
+	LEFT JOIN reply_mailboxes rm ON rm.id=o.reply_mailbox_id AND rm.status='active' AND rm.verified_at IS NOT NULL
 	LEFT JOIN org_pool_allocation_exclusions ex ON ex.pool_id=s.pool_id AND ex.organization_id=s.organization_id AND ex.contact_id=pc.id AND ex.restored_at IS NULL
 	WHERE s.pool_id=$1 AND s.organization_id=$2 AND ($3::BIGINT IS NULL OR s.id=$3::BIGINT) AND ex.contact_id IS NULL AND pc.status='active'`
 
 // poolRecipientSelectSQL reads the deliverable members of one pool audience. It
 // is the read half of the shared rule and is deduplicated by the pool contact's
-// stable internal ID, which is also the snapshot's primary key.
-const poolRecipientSelectSQL = `SELECT DISTINCT ON (pc.id) pc.id,pc.customer_code,pc.company_name,pc.email,pc.name,pc.status,s.id AS allocation_id,s.organization_id,s.reply_mailbox_id` + poolRecipientMembershipSQL + ` ORDER BY pc.id,s.id`
+// stable internal ID, which is also the snapshot's primary key. The reply
+// mailbox of every row is the organization's unified reply mailbox, exposed by
+// the shared fragment as rm.id.
+const poolRecipientSelectSQL = `SELECT DISTINCT ON (pc.id) pc.id,pc.customer_code,pc.company_name,pc.email,pc.name,pc.status,s.id AS allocation_id,s.organization_id,rm.id AS reply_mailbox_id` + poolRecipientMembershipSQL + ` ORDER BY pc.id,s.id`
 
 // poolSnapshotRefreshStatuses lists the snapshot statuses a refresh owns: a row
 // in one of these states has not been handed to delivery yet, so the refresh may
@@ -1107,10 +1136,10 @@ const poolSnapshotRefreshStatuses = `('pending','deferred')`
 // Embedder positions continue after the rule's parameters:
 //
 //	$4 = campaign ID
-//	$5 = audience reply mailbox, or NULL to keep the per-pool-allocation mailbox
-//	     of each resolved row
+//	$5 = audience reply mailbox, or NULL to use the organization's unified
+//	     reply mailbox of each resolved row (rm.id from the shared rule)
 const poolRecipientSnapshotUpsertSQL = `INSERT INTO campaign_pool_recipients AS cpr(campaign_id,pool_contact_id,pool_id,allocation_id,organization_id,reply_mailbox_id,email_snapshot,name_snapshot)
-	SELECT $4,pc.id,$1,s.id,$2,COALESCE($5::INT,s.reply_mailbox_id),pc.email,pc.name` + poolRecipientMembershipSQL + `
+	SELECT $4,pc.id,$1,s.id,$2,COALESCE($5::INT,rm.id),pc.email,pc.name` + poolRecipientMembershipSQL + `
 	ON CONFLICT(campaign_id,pool_contact_id) DO UPDATE SET
 		email_snapshot=EXCLUDED.email_snapshot,
 		name_snapshot=EXCLUDED.name_snapshot,
@@ -1243,10 +1272,37 @@ func (c *Core) resolvePoolRecipientsForAllocation(poolID int, organizationID, al
 	return c.resolvePoolRecipients(poolID, organizationID, &allocationID)
 }
 
+// organizationReplyMailboxID resolves the organization's single unified reply
+// mailbox, but only while it is usable: the mailbox row must be active and
+// verified. Public-pool audiences never fall back to a per-allocation, personal
+// or default mailbox, so an organization without a usable unified mailbox
+// leaves the audience unresolved.
+func (c *Core) organizationReplyMailboxID(organizationID int64) (*int64, error) {
+	var mailboxID int64
+	if err := c.db.Get(&mailboxID, `
+		SELECT o.reply_mailbox_id
+		FROM organizations o
+		JOIN reply_mailboxes rm ON rm.id=o.reply_mailbox_id
+			AND rm.status='active' AND rm.verified_at IS NOT NULL
+		WHERE o.id=$1`, organizationID); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &mailboxID, nil
+}
+
 // AttachPoolToCampaign records a pool/allocation audience on a draft campaign and
 // refreshes that audience's recipient snapshot from the shared membership rule.
 // Saving a draft audience again is a refresh: a contact that was excluded since
 // the previous save loses its snapshot row instead of keeping a stale one.
+//
+// The audience carries no reply mailbox of its own any more: the resolved route
+// is the target organization's unified reply mailbox, and only while that
+// mailbox is active and verified. A draft is still saved without one so the
+// administrator can finish the organization configuration later; preview and
+// send stay blocked until then.
 func (c *Core) AttachPoolToCampaign(campaignID, poolID int, allocationID *int64, organizationID int64) error {
 	var err error
 	if err := c.ensurePool(poolID); err != nil {
@@ -1266,54 +1322,37 @@ func (c *Core) AttachPoolToCampaign(campaignID, poolID int, allocationID *int64,
 	if err := c.db.Get(&name, `SELECT name FROM customer_lists WHERE id=$1`, poolID); err != nil {
 		return err
 	}
-	var mailbox *int64
+	mailbox, err := c.organizationReplyMailboxID(organizationID)
+	if err != nil {
+		return err
+	}
 	// Selecting a first-level pool resolves to the single effective pool allocation
-	// allocation for the target organization. If none (or more than one) exists,
-	// retain an unresolved relation so drafts can be saved but preview/send will
-	// be blocked until an administrator fixes the assignment.
+	// for the target organization. If none (or more than one) exists, retain an
+	// unresolved relation so drafts can be saved but preview/send will be blocked
+	// until an administrator fixes the assignment.
 	// Keep the audience selection semantics (pool vs explicit allocation) separate
 	// from the resolved delivery allocation used for recipients. This lets an
 	// activity remain editable with the original first-level pool ID even after
 	// a unique pool allocation is resolved.
 	selectedAllocationID := allocationID
-	unresolvedFirstLevel := false
 	if allocationID == nil {
 		var candidates []struct {
-			ID        int64         `db:"id"`
-			MailboxID sql.NullInt64 `db:"reply_mailbox_id"`
+			ID int64 `db:"id"`
 		}
-		if err := c.db.Select(&candidates, `SELECT id,reply_mailbox_id FROM org_pool_allocations WHERE pool_id=$1 AND organization_id=$2 ORDER BY id`, poolID, organizationID); err != nil {
+		if err := c.db.Select(&candidates, `SELECT id FROM org_pool_allocations WHERE pool_id=$1 AND organization_id=$2 ORDER BY id`, poolID, organizationID); err != nil {
 			return err
 		}
 		if len(candidates) == 1 {
 			id := candidates[0].ID
 			allocationID = &id
-			if candidates[0].MailboxID.Valid {
-				mailboxID := candidates[0].MailboxID.Int64
-				mailbox = &mailboxID
-			} else {
-				unresolvedFirstLevel = true
-			}
-		} else {
-			unresolvedFirstLevel = true
 		}
-	}
-	if allocationID != nil {
-		var m sql.NullInt64
-		if err := c.db.Get(&m, `SELECT reply_mailbox_id FROM org_pool_allocations WHERE id=$1 AND pool_id=$2 AND organization_id=$3`, *allocationID, poolID, organizationID); err != nil {
-			return echo.NewHTTPError(http.StatusBadRequest, "invalid pool allocation")
-		}
-		if m.Valid && mailbox == nil {
-			mailboxID := m.Int64
-			mailbox = &mailboxID
-		}
-	} else if !unresolvedFirstLevel {
-		// The audience selected the first-level pool and resolved to the single
-		// pool allocation of the organization. It expands through the same
-		// snapshot refresh as every other path, with the reply mailbox of each
-		// resolved row.
-		if err := c.refreshPoolCampaignRecipients(campaignID, poolAudience{poolID: poolID, organizationID: organizationID}); err != nil {
+	} else {
+		var exists bool
+		if err := c.db.Get(&exists, `SELECT EXISTS(SELECT 1 FROM org_pool_allocations WHERE id=$1 AND pool_id=$2 AND organization_id=$3)`, *allocationID, poolID, organizationID); err != nil {
 			return err
+		}
+		if !exists {
+			return echo.NewHTTPError(http.StatusBadRequest, "invalid pool allocation")
 		}
 	}
 	_, err = c.db.Exec(`INSERT INTO campaign_customer_lists(campaign_id,customer_list_id,customer_list_name,pool_id,org_pool_allocation_id,source_organization_id,resolved_reply_mailbox_id)
@@ -1322,6 +1361,7 @@ func (c *Core) AttachPoolToCampaign(campaignID, poolID int, allocationID *int64,
 		return err
 	}
 	if allocationID != nil {
+		// The snapshot of every row carries the resolved organization mailbox.
 		if err := c.refreshPoolCampaignRecipients(campaignID, poolAudience{poolID: poolID, organizationID: organizationID, allocationID: allocationID, mailboxID: mailbox}); err != nil {
 			return err
 		}

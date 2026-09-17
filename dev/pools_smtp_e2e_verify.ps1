@@ -111,8 +111,8 @@ try {
   } while ((Get-Date) -lt $deadline)
   Check 'campaign sends the three deduplicated pool contacts' ($state -eq 'finished|3|3')
 
-  $recipientStats = DbScalar "SELECT count(*)::text || '|' || count(DISTINCT pool_contact_id)::text || '|' || count(*) FILTER (WHERE status='sent')::text || '|' || count(*) FILTER (WHERE reply_mailbox_id=(SELECT reply_mailbox_id FROM org_pool_allocations WHERE id=$allocationID))::text FROM campaign_pool_recipients WHERE campaign_id=$campaignID"
-  Check 'send snapshot has one sent row per pool contact with allocation reply mailbox' ($recipientStats -eq '3|3|3|3')
+  $recipientStats = DbScalar "SELECT count(*)::text || '|' || count(DISTINCT pool_contact_id)::text || '|' || count(*) FILTER (WHERE status='sent')::text || '|' || count(*) FILTER (WHERE reply_mailbox_id=(SELECT o.reply_mailbox_id FROM org_pool_allocations a JOIN organizations o ON o.id=a.organization_id WHERE a.id=$allocationID))::text FROM campaign_pool_recipients WHERE campaign_id=$campaignID"
+  Check 'send snapshot has one sent row per pool contact with the organization unified reply mailbox' ($recipientStats -eq '3|3|3|3')
 
   $deadline = (Get-Date).AddSeconds(20)
   $messages = @()

@@ -970,7 +970,6 @@ CREATE TABLE org_pool_allocations (
     list_id INTEGER NOT NULL UNIQUE REFERENCES customer_lists(id) ON DELETE CASCADE,
     pool_id INTEGER NULL REFERENCES customer_lists(id) ON DELETE CASCADE,
     organization_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-    reply_mailbox_id INTEGER REFERENCES reply_mailboxes(id) ON DELETE SET NULL,
     created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -1020,6 +1019,12 @@ CREATE TABLE pool_merge_conflicts (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- The organization's single unified reply mailbox. Public-pool audiences
+-- resolve their reply route through it alone; org_pool_allocations deliberately
+-- carries no mailbox of its own. This ALTER lives here because organizations is
+-- created before reply_mailboxes, so the foreign key cannot be declared in the
+-- CREATE TABLE above.
+ALTER TABLE organizations ADD COLUMN IF NOT EXISTS reply_mailbox_id INTEGER NULL REFERENCES reply_mailboxes(id) ON DELETE SET NULL;
 ALTER TABLE campaign_customer_lists ADD COLUMN IF NOT EXISTS pool_id INTEGER REFERENCES customer_lists(id) ON DELETE SET NULL;
 ALTER TABLE campaign_customer_lists ADD COLUMN IF NOT EXISTS org_pool_allocation_id BIGINT REFERENCES org_pool_allocations(id) ON DELETE SET NULL;
 ALTER TABLE campaign_customer_lists ADD COLUMN IF NOT EXISTS source_organization_id BIGINT REFERENCES organizations(id) ON DELETE SET NULL;

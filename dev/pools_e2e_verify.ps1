@@ -49,7 +49,9 @@ function Api($method, $path, $jar, $organizationID, $body) {
 # and development databases do not promise any particular sequence values.
 $poolID = if ($env:POOL_QA_POOL_ID) { [int]$env:POOL_QA_POOL_ID } else { [int](DbScalar "SELECT id FROM customer_lists WHERE name='wsqa-pool-primary' AND type='pool'") }
 $allocationID = if ($env:POOL_QA_SEGMENT_ID) { [int]$env:POOL_QA_SEGMENT_ID } else { [int](DbScalar "SELECT ps.id FROM org_pool_allocations ps JOIN customer_lists l ON l.id=ps.list_id WHERE l.name='wsqa-org-pool-allocation' AND ps.pool_id=$poolID") }
-$replyMailboxID = [int](DbScalar "SELECT reply_mailbox_id FROM org_pool_allocations WHERE id=$allocationID")
+# Every pool audience of the organization replies through the organization's
+# single unified reply mailbox; the allocation has no mailbox of its own.
+$replyMailboxID = [int](DbScalar "SELECT reply_mailbox_id FROM organizations WHERE id=1")
 $removableContactID = [int](DbScalar "SELECT id FROM pool_contacts WHERE email='beta-pool@example.test'")
 
 $root = LoginUser 'root' $superPassword
@@ -78,7 +80,7 @@ Check 'pool export cannot expose customer email' (-not ($export.Raw.Contains('al
 $allocations = Api 'GET' "/api/pools/$poolID/allocations" $manager 1 $null
 $allocationRows = @($allocations.Json.data)
 Check 'organization can inspect its pool allocation' ($allocations.Status -eq 200 -and $allocationRows.Count -eq 1)
-Check 'internal reply mailbox remains unmasked' ($allocations.Raw.Contains('pool-replies@example.test'))
+Check 'pool allocations no longer expose a per-allocation reply mailbox' (-not $allocations.Raw.Contains('reply_mailbox'))
 
 $otherRead = Api 'GET' "/api/pools/$poolID/contacts" $otherOrg 2 $null
 Check 'organization without pool grant receives no contacts' ($otherRead.Status -eq 200 -and @($otherRead.Json.data).Count -eq 0)
@@ -87,8 +89,9 @@ Check 'cross-organization allocation write is denied' ($otherWrite.Status -eq 40
 
 # Contact maintenance is highest-administrator-only (see docs/ARCHITECTURE.md,
 # "一级公海与组织公海分配"): an organization manager can create and bind its
-# pool allocation and maintain its reply mailbox, but every contact write is
-# rejected for it. The assertions below lock both sides of that boundary.
+# pool allocation and configure the organization's unified reply mailbox, but
+# every contact write is rejected for it. The assertions below lock both sides
+# of that boundary.
 $managerAssign = Api 'POST' '/api/pools/allocations/members' $manager 1 ([pscustomobject]@{ allocation_id = $allocationID; contact_id = $removableContactID })
 Check 'organization manager cannot assign pool contacts' ($managerAssign.Status -eq 403)
 $managerRemove = Api 'DELETE' '/api/org-pool-allocations/members' $manager 1 ([pscustomobject]@{ allocation_id = $allocationID; contact_id = $removableContactID; reason = 'e2e' })
@@ -112,9 +115,9 @@ $invalidRemove = Api 'DELETE' '/api/pools/allocations/members' $root 1 ([pscusto
 Check 'unassigned contact cannot be logically removed' ($invalidRemove.Status -eq 400)
 
 # A first-level audience can be selected by an organization with delivery
-# permission. Preview succeeds because the unique pool allocation and its
-# internal reply mailbox resolve server-side; details remain unavailable to
-# the manager UI.
+# permission. Preview succeeds because the unique pool allocation resolves
+# server-side and the organization's unified reply mailbox supplies the reply
+# route; details remain unavailable to the manager UI.
 $campaignBody = [pscustomobject]@{
   name = "wsqa-pool-campaign-$PID"; subject = 'pool QA'; body = '<p>pool QA</p>'
   content_type = 'html'; customer_list_ids = @($poolID); type = 'regular'; messenger = 'email'
@@ -153,27 +156,36 @@ if ($campaignID -gt 0) {
   }
 }
 
-# Missing mailbox is a draft-time condition only. Preview must fail closed and
-# never fall back to a first-level or system default address.
-$mailboxCleared = Api 'PUT' "/api/org-pool-allocations/$allocationID/reply-mailbox" $manager 1 ([pscustomobject]@{ reply_mailbox_id = $null })
+# Missing unified reply mailbox is a draft-time condition only. Preview must
+# fail closed and never fall back to a first-level, personal or system default
+# address. The same draft previews once the organization's manager sets the
+# organization-level mailbox through the organization endpoint.
+$mailboxCleared = Api 'PUT' '/api/organizations/1/reply-mailbox' $manager 1 ([pscustomobject]@{ reply_mailbox_id = $null })
 $blockedID = 0
 try {
-  Check 'allocation reply mailbox can be cleared for validation' ($mailboxCleared.Status -eq 200)
+  Check 'organization unified reply mailbox can be cleared for validation' ($mailboxCleared.Status -eq 200)
   $blocked = Api 'POST' '/api/campaigns' $manager 1 $campaignBody
   $blockedID = if ($null -ne $blocked.Json.data.id) { [int]$blocked.Json.data.id } else { 0 }
   Check 'first-level pool draft is allowed without mailbox' ($blocked.Status -eq 200 -and $blockedID -gt 0)
   if ($blockedID -gt 0) {
     try {
       $blockedPreview = Api 'GET' "/api/campaigns/$blockedID/preview" $manager 1 $null
-      Check 'preview is blocked when pool-allocation reply mailbox is missing' ($blockedPreview.Status -eq 400)
+      Check 'preview is blocked when the organization unified reply mailbox is missing' ($blockedPreview.Status -eq 400)
+      Check 'blocked preview names the pool list, the allocation and the organization' ($blockedPreview.Raw.Contains('pool list') -and $blockedPreview.Raw.Contains('organization allocation') -and $blockedPreview.Raw.Contains('has not configured its unified reply mailbox'))
+      Check 'blocked preview explains the fix steps' ($blockedPreview.Raw.Contains('saves a verified mailbox in Manage organizations -> Organization reply mailboxes') -and $blockedPreview.Raw.Contains('then retry preview or send'))
+      Check 'blocked preview points at the organization reply mailbox setting' ($blockedPreview.Raw.Contains('Manage organizations -> Organization reply mailboxes'))
+      $mailboxSet = Api 'PUT' '/api/organizations/1/reply-mailbox' $manager 1 ([pscustomobject]@{ reply_mailbox_id = $replyMailboxID })
+      Check 'organization unified reply mailbox is set through the organization endpoint' ($mailboxSet.Status -eq 200)
+      $resumedPreview = Api 'GET' "/api/campaigns/$blockedID/preview" $manager 1 $null
+      Check 'the same draft previews after the organization unified reply mailbox is set' ($resumedPreview.Status -eq 200 -and $resumedPreview.Raw.Contains('pool QA'))
     } finally {
       $blockedDelete = Api 'DELETE' "/api/campaigns/$blockedID" $manager 1 $null
       Check 'blocked-mailbox campaign fixture is cleaned up' ($blockedDelete.Status -in @(200, 204))
     }
   }
 } finally {
-  $mailboxRestored = Api 'PUT' "/api/org-pool-allocations/$allocationID/reply-mailbox" $manager 1 ([pscustomobject]@{ reply_mailbox_id = $replyMailboxID })
-  Check 'allocation reply mailbox is restored after validation' ($mailboxRestored.Status -eq 200)
+  $mailboxRestored = Api 'PUT' '/api/organizations/1/reply-mailbox' $manager 1 ([pscustomobject]@{ reply_mailbox_id = $replyMailboxID })
+  Check 'organization unified reply mailbox is restored after validation' ($mailboxRestored.Status -eq 200)
 }
 
 Write-Host 'Public-pool E2E verification complete.'

@@ -17,8 +17,7 @@ Key endpoints:
 - `POST /api/pools/:id/contacts` — legacy single-contact compatibility route
   (highest administrator); the product import entry is the unified customer
   import endpoint below.
-- `POST /api/pools/allocations` — split a first-level pool into a new organization allocation. The list, pool grant and binding are created atomically; the organization manager configures its reply mailbox separately from **Organizations -> Manage organizations -> Organization reply mailboxes**.
-- `PUT /api/pools/allocations/:id/reply-mailbox` — update the allocation's internal reply mailbox (organization manager in the allocation's organization only).
+- `POST /api/pools/allocations` — split a first-level pool into a new organization allocation. The list, pool grant and binding are created atomically. The allocation carries no reply mailbox of its own: pool recipients reply to the organization's unified reply mailbox, configured once from **Organizations -> Manage organizations -> Organization reply mailboxes**.
 - `POST|DELETE|PUT /api/pools/allocations/members` — assign, logically remove, or restore a contact.
 - `POST /api/pools/allocations/:id/import-members` — legacy compatibility route;
   it is not the management UI's import path and is highest-administrator-only.
@@ -39,31 +38,37 @@ Key endpoints:
 - `GET /api/pools/:id/management-target?organization_id=...` — highest-admin-only target context: the target organization's existing allocation state.
 - `POST /api/campaigns/:id/pools` — attach a pool or allocation audience to a campaign draft.
 
-Preview and send operations reject unresolved pool audiences (missing an
-organization allocation or its reply mailbox) and answer with HTTP `400`. The
-message keeps the leading sentence
-`public-pool audience requires an organization allocation and reply mailbox before previewing or sending`
-and then names every unresolved audience of the campaign with its organization,
-its pool allocation and the first failing condition: `has no target
-organization`, `no pool allocation is bound for the organization`, `the pool allocation
-list has no reply mailbox`, or `the reply mailbox "<address>" is not verified
-and active`. At most five audiences are listed, the remainder is summarized as
-`(+N more)`, and the message ends with
-`Configure it in Customer lists -> Public pool management.`
+Preview and send operations reject unresolved pool audiences (missing the
+organization's pool allocation or its unified reply mailbox) and answer with
+HTTP `400`. The message keeps the leading sentence
+`public-pool audience requires an organization allocation and reply mailbox before previewing or sending`,
+then names every unresolved audience as the whole chain the operator has to
+fix — `pool list "<pool>" -> organization allocation "<allocation>"
+(organization "<org>")` — followed by the first failing condition: `has no
+target organization, so no reply mailbox can be resolved`, `has no organization
+allocation bound to the pool`, `has not configured its unified reply mailbox`,
+or `its unified reply mailbox "<address>" is not verified and active`. At most
+five audiences are listed, the remainder is summarized as `(+N more)`, and the
+message closes with the actionable steps, prefixed by `Fix: `: bind the
+organization's allocation for that pool in `Customer lists -> Public pool
+management` when that is one of the reasons, then have a manager of the
+organization open its workspace and save a verified mailbox in `Manage
+organizations -> Organization reply mailboxes` as the organization's unified
+reply mailbox, and `then retry preview or send.` The steps are single-line and
+never localized differently per reason.
 
-The rejection never falls back to a personal, organization-level or system
-mailbox: an unresolved pool audience is a configuration gap in that
-organization's pool allocation, and the organization manager fixes it by binding
-the mailbox to the pool allocation (`PUT /api/org-pool-allocations/:id/reply-mailbox`).
-Pool exclusions are organization scoped and do not physically delete the
-first-level pool contact.
+The rejection never falls back to a personal or system mailbox: an unresolved
+pool audience is a configuration gap in the target organization, and the
+organization's manager fixes it by setting the organization's unified reply
+mailbox. Pool exclusions are organization scoped and do not physically delete
+the first-level pool contact.
 
 Pool contacts are not part of the legacy customer export surface. Non-highest
 administrators cannot obtain a pool contact's real email through list, detail,
 CSV, or API-key responses.
 
 Campaign responses include `customer_pools[].reply_mailbox_email` so operators
-can see the effective internal reply route (`一级公海 -> 公海分配 -> 回件邮箱`).
+can see the effective internal reply route (一级公海 -> 公海分配 -> 组织统一回件邮箱).
 When the selected audience is an explicit pool allocation,
 `customer_pools[].allocation_list_id` and `customer_pools[].allocation_list_name` identify the
 selector-compatible `org_pool_allocation` list; `allocation_id` remains the internal
@@ -80,14 +85,14 @@ management dialog. This is an allocation target, not a workspace switch and
 not an organization-membership action: the administrator does not need to join
 the organization and remains in the current workspace. The dialog then offers
 one **Create and bind** action. It creates the pool allocation, grants delivery
-access and binds it to the open pool in one transaction. In that same dialog the
-target organization's manager selects the pool allocation and saves its
-**unified reply mailbox** (`PUT /api/org-pool-allocations/:id/reply-mailbox`). That
-mailbox is the reply route for that organization's pool recipients; the
-organization-level reply mailbox maintained under **Manage organizations** and
-the campaign field **customer reply mailbox** do not feed this route. A
-pool allocation cannot be created from the generic customer-list form, and there
-is no pool-allocation-to-first-level merge flow.
+access and binds it to the open pool in one transaction. The reply route for the
+organization's pool recipients is the organization's single **unified reply
+mailbox**, configured once by the organization's manager in
+**Organizations -> Manage organizations -> Organization reply mailboxes**
+(`PUT /api/organizations/:id/reply-mailbox`). A pool allocation carries no reply
+mailbox of its own, the campaign field **customer reply mailbox** does not feed
+this route, and a pool allocation cannot be created from the generic
+customer-list form; there is no pool-allocation-to-first-level merge flow.
 A highest administrator performs the split through `POST /api/org-pool-allocations`
 (the `/api/pools/allocations` alias is equivalent) with the target organization's
 `organization_id`, without joining it. An organization manager may perform the

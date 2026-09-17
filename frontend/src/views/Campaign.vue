@@ -90,7 +90,7 @@
                   <b-input :value="smtpFromPreview" disabled />
                 </b-field>
 
-                <b-field v-if="isSMTPMessenger" :label="$t('campaigns.replyMailbox')" label-position="on-border"
+                <b-field v-if="isSMTPMessenger && !poolRoutingRows.length" :label="$t('campaigns.replyMailbox')" label-position="on-border"
                   :message="$t('campaigns.replyMailboxHelp')">
                   <b-select v-model="form.replyMailboxId" :disabled="!canEdit || activeReplyMailboxes.length === 0" expanded>
                     <option :value="null">{{ $t('campaigns.replyMailboxNone') }}</option>
@@ -103,17 +103,14 @@
                     </option>
                   </b-select>
                 </b-field>
-                <p v-if="isSMTPMessenger && replyMailboxesLoaded && activeReplyMailboxes.length === 0" class="help is-warning mb-4">
+                <p v-if="isSMTPMessenger && !poolRoutingRows.length && replyMailboxesLoaded && activeReplyMailboxes.length === 0" class="help is-warning mb-4">
                   {{ $t('campaigns.replyMailboxMissing') }}
-                </p>
-                <p v-if="isSMTPMessenger && poolRoutingRows.length" class="help mb-4" data-cy="reply-mailbox-pool-help">
-                  {{ $t('campaigns.replyMailboxPoolHelp') }}
                 </p>
 
                 <customer-list-selector v-model="form.customer_lists" :selected="form.customer_lists" :all="availableLists" :disabled="!canEdit || listsLocked"
                   :label="$t('globals.terms.customer_lists')" :placeholder="$t('campaigns.sendToLists')" />
 
-                <b-notification v-if="poolRoutingRows.length" :type="hasUnresolvedPoolRoute ? 'is-danger' : 'is-info'" :closable="false"
+                <b-notification v-if="poolRoutingRows.length" :type="hasUnresolvedPoolRoute ? 'is-warning' : 'is-info'" :closable="false"
                   class="pool-routing-notice" data-cy="pool-routing-notice">
                   <strong>{{ $t('campaigns.poolRouteTitle') }}</strong>
                   <p v-if="hasUnresolvedPoolRoute" class="mt-2">{{ $t('campaigns.poolRouteBlocked') }}</p>
@@ -126,11 +123,7 @@
                       <template v-else>
                         {{ pool.name || $t('campaigns.poolFallback', { id: pool.poolId || pool.pool_id }) }} →
                         {{ $t('campaigns.poolRouteUnresolved') }}
-                        <p class="help">{{ $t('campaigns.poolRouteFixHelp') }}</p>
-                        <b-button size="is-small" type="is-warning" data-cy="pool-route-configure"
-                          @click="configurePoolRoute(pool)">
-                          {{ $t('campaigns.poolRouteFixAction') }}
-                        </b-button>
+                        <p class="help">{{ $t('campaigns.replyMailboxPoolHelp') }}</p>
                       </template>
                     </li>
                   </ul>
@@ -775,7 +768,7 @@ export default Vue.extend({
         customers: this.form.testEmails,
         media: this.form.media.map((m) => m.id),
         visibility: this.form.visibility,
-        reply_mailbox_id: this.form.replyMailboxId || null,
+        reply_mailbox_id: this.campaignReplyMailboxID,
       };
 
       this.$api.testCampaign(data).then(() => {
@@ -803,7 +796,7 @@ export default Vue.extend({
         attribs: this.form.attribs,
         media: this.form.media.map((m) => m.id),
         visibility: this.form.visibility,
-        reply_mailbox_id: this.form.replyMailboxId || null,
+        reply_mailbox_id: this.campaignReplyMailboxID,
       };
 
       this.$api.createCampaign(data).then((d) => {
@@ -838,7 +831,7 @@ export default Vue.extend({
         archive_meta: this.form.archiveMeta,
         media: this.form.media.map((m) => m.id),
         visibility: this.form.visibility,
-        reply_mailbox_id: this.form.replyMailboxId || null,
+        reply_mailbox_id: this.campaignReplyMailboxID,
       };
 
       let typMsg = 'globals.messages.updated';
@@ -978,16 +971,6 @@ export default Vue.extend({
       }
       return this.$canManageResource(customerList) && this.$canList(customerList.id, 'customer_list:manage');
     },
-
-    // Deep-link an unresolved public-pool audience to the customer lists view,
-    // where the target organization's pool-allocation reply mailbox is configured.
-    configurePoolRoute(pool) {
-      const poolId = pool.poolId || pool.pool_id;
-      if (!poolId) {
-        return;
-      }
-      this.$router.push({ name: 'customerLists', query: { pool: String(poolId) } });
-    },
   },
 
   computed: {
@@ -1116,6 +1099,15 @@ export default Vue.extend({
 
     hasUnresolvedPoolRoute() {
       return this.poolRoutingRows.some((pool) => !(pool.replyMailboxEmail || pool.reply_mailbox_email));
+    },
+
+    // Pool audiences never use the campaign-level mailbox: their reply route is
+    // always resolved from the target organization's unified reply mailbox.
+    campaignReplyMailboxID() {
+      if (this.poolRoutingRows.length) {
+        return null;
+      }
+      return this.form.replyMailboxId || null;
     },
   },
 

@@ -55,35 +55,9 @@
             <span>{{ $t('pool.allocationOrganizationLabel') }}</span>
             <strong>{{ selectedAllocation.organizationName || targetOrganizationName }}</strong>
           </div>
-          <div>
-            <span>{{ $t('pool.allocationMailboxLabel') }}</span>
-            <strong>{{ selectedAllocation.replyMailboxEmail || $t('pool.notConfigured') }}</strong>
-          </div>
-          <p v-if="isPlatformAdmin" class="help pool-manager__organization-note-text">
-            <b-icon icon="information-outline" size="is-small" />
-            {{ $t('pool.mailboxPlatformNote') }}
-          </p>
         </div>
 
-        <div v-if="selectedAllocation && !isPlatformAdmin" class="pool-manager__reply-mailbox">
-          <b-field :label="$t('pool.unifiedMailboxLabel')" label-position="on-border">
-            <b-select v-model="replyMailboxID" expanded :disabled="!canManageAllocations" data-cy="pool-reply-mailbox">
-              <option :value="null">{{ $t('pool.mailboxRequiredOption') }}</option>
-              <option v-for="mailbox in replyMailboxes" :key="mailbox.id" :value="mailbox.id">
-                {{ mailbox.name || mailbox.email }}（{{ mailbox.email }}）
-              </option>
-            </b-select>
-          </b-field>
-          <div class="pool-manager__inline-action">
-            <b-button size="is-small" type="is-primary" :loading="savingReplyMailbox"
-              :disabled="!canManageAllocations" @click="saveReplyMailbox">
-              {{ $t('pool.saveMailbox') }}
-            </b-button>
-            <p class="help">{{ $t('pool.mailboxHelp') }}</p>
-          </div>
-        </div>
-
-        <div v-else-if="!selectedAllocation" class="pool-manager__create-allocation" data-cy="org-pool-allocation-create">
+        <div v-if="!selectedAllocation" class="pool-manager__create-allocation" data-cy="org-pool-allocation-create">
           <div class="pool-manager__create-allocation-title">
             <div>
               <span>{{ $t('pool.targetOrganizationLabel') }}</span>
@@ -132,9 +106,6 @@ export default Vue.extend({
       targetOrganizationID: null,
       targetOrganizationNameOverride: '',
       selectedAllocationID: null,
-      replyMailboxes: [],
-      replyMailboxID: null,
-      savingReplyMailbox: false,
       creatingAllocation: false,
       newAllocation: { name: '' },
     };
@@ -186,12 +157,6 @@ export default Vue.extend({
     selectedAllocation() {
       return this.allocations.find((allocation) => Number(allocation.id) === Number(this.selectedAllocationID));
     },
-
-    canManageAllocations() {
-      return !this.isPlatformAdmin && Boolean(
-        this.workspace && this.workspace.organizationId && this.workspace.role === 'manager',
-      );
-    },
   },
 
   watch: {
@@ -199,12 +164,6 @@ export default Vue.extend({
       this.selectedAllocationID = null;
       this.targetOrganizationNameOverride = '';
       this.loadTargetOrganization();
-    },
-    selectedAllocationID() {
-      const mailboxID = this.selectedAllocation && (
-        this.selectedAllocation.replyMailboxId || this.selectedAllocation.reply_mailbox_id
-      );
-      this.replyMailboxID = mailboxID ? Number(mailboxID) : null;
     },
   },
 
@@ -223,16 +182,10 @@ export default Vue.extend({
       // fixed to their own workspace, so their own allocations are all that has to
       // be reloaded.
       if (!this.isPlatformAdmin) {
-        return Promise.all([
-          this.$api.getReplyMailboxes(this.organizationID),
-          this.loadAllocations(),
-        ]).then(([mailboxes]) => {
-          this.replyMailboxes = Array.isArray(mailboxes) ? mailboxes : [];
-        });
+        return this.loadAllocations();
       }
       if (!this.organizationID) {
         this.allocations = [];
-        this.replyMailboxes = [];
         return Promise.resolve();
       }
       return this.$api.getPoolManagementTarget(this.pool.id, this.organizationID)
@@ -258,20 +211,6 @@ export default Vue.extend({
       }).finally(() => {
         this.creatingAllocation = false;
       });
-    },
-
-    saveReplyMailbox() {
-      if (!this.selectedAllocation || !this.canManageAllocations) {
-        return Promise.resolve();
-      }
-      this.savingReplyMailbox = true;
-      return this.$api.updateOrgPoolAllocationReplyMailbox(this.selectedAllocation.id, this.replyMailboxID)
-        .then(() => {
-          this.$utils.toast(this.$t('pool.toastMailboxSaved'));
-          return this.loadTargetOrganization();
-        }).finally(() => {
-          this.savingReplyMailbox = false;
-        });
     },
   },
 

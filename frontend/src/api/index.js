@@ -225,10 +225,6 @@ export const getPoolManagementTarget = (id, organizationID) => http.get(`/api/po
 export const getPoolImportConflicts = (id) => http.get(`/api/pools/${id}/import-conflicts`);
 export const createPoolContact = (id, data) => http.post(`/api/customer-lists/${id}/pool-contacts`, data);
 export const createOrgPoolAllocation = (data) => http.post('/api/org-pool-allocations', data);
-export const updateOrgPoolAllocationReplyMailbox = (id, replyMailboxID) => http.put(
-  `/api/org-pool-allocations/${id}/reply-mailbox`,
-  { reply_mailbox_id: replyMailboxID || null },
-);
 export const assignPoolContact = (data) => http.post('/api/org-pool-allocations/members', data);
 export const importOrgPoolAllocationMembers = (allocationID, file) => {
   const form = new FormData();
@@ -323,6 +319,12 @@ export const updateReplyForwardRule = (id, data, organizationID) => http.put(
 export const deleteReplyForwardRule = (id, organizationID) => http.delete(
   `/api/organizations/reply-forwarding/${id}`,
   organizationWorkspaceConfig(organizationID),
+);
+
+export const updateOrganizationReplyMailbox = (id, mailboxID) => http.put(
+  `/api/organizations/${id}/reply-mailbox`,
+  { reply_mailbox_id: mailboxID || null },
+  organizationWorkspaceConfig(id),
 );
 
 export const transferPendingOrganizationResources = (data, organizationID) => http.post(

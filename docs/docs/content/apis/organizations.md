@@ -40,6 +40,8 @@ Two authorization levels appear throughout this page:
 | DELETE | [/api/organizations/members/{user_id}](#delete-apiorganizationsmembersuser_id) | Remove a member from the active organization   |
 | GET    | [/api/organizations/{id}/members](#get-apiorganizationsidmembers)         | List members of any organization (platform)        |
 | POST   | [/api/organizations/{id}/members/bulk](#post-apiorganizationsidmembersbulk) | Bulk-add registered accounts to an organization (platform) |
+| PUT    | [/api/organizations/{id}/reply-mailbox](#put-apiorganizationsidreply-mailbox) | Set the organization's unified reply mailbox (organization manager) |
+
 | POST   | [/api/organizations/requests](#post-apiorganizationsrequests)             | Request a new organization                         |
 | GET    | [/api/organizations/requests/mine](#get-apiorganizationsrequestsmine)     | List the caller's own organization requests        |
 | DELETE | [/api/organizations/requests/{id}](#delete-apiorganizationsrequestsid)    | Withdraw a pending organization request            |
@@ -438,6 +440,32 @@ field, and stable code (`missing_account`, `invalid_role`,
 `account_not_found`, or `duplicate_account`). No rows are written when any
 validation error is returned. Re-importing a former member restores the
 membership; the final organization state must retain at least one manager.
+
+______________________________________________________________________
+
+#### PUT /api/organizations/{id}/reply-mailbox
+
+Set the single unified reply mailbox of the active organization. Public-pool
+campaign audiences reply to this mailbox: every pool recipient of that
+organization resolves its `Reply-To` from here, and pool allocations carry no
+reply mailbox of their own.
+
+The caller must be a manager of that organization, and the path organization
+must be the caller's active workspace. A platform administrator is rejected
+with HTTP 403 (`reply mailbox must be configured in the organization
+workspace`), because the setting belongs to the organization's workspace. The
+mailbox must already belong to that organization, and a `null` value clears the
+setting. Preview and sending stay blocked while the organization has no usable
+(active and verified) unified reply mailbox.
+
+```json
+{
+  "reply_mailbox_id": 12
+}
+```
+
+Organization responses include `reply_mailbox_id` and `reply_mailbox_email` so
+the management UI can show the configured address.
 
 ______________________________________________________________________
 

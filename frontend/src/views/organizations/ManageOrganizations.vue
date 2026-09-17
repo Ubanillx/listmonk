@@ -131,6 +131,37 @@
 
       <b-tab-item v-if="selectedOrganizationID" :label="$t('organizations.tabReplyMailboxes')" icon="email-multiple-outline">
         <section class="wrap">
+          <section class="mb-6" data-cy="org-unified-reply-mailbox">
+            <h2 class="title is-5">{{ $t('organizations.unifiedReplyMailbox') }}</h2>
+            <div class="columns is-multiline">
+              <div class="column is-6">
+                <b-field :label="$t('organizations.unifiedReplyMailbox')" label-position="on-border"
+                  :message="$t('organizations.unifiedReplyMailboxHelp')">
+                  <b-select v-model="unifiedReplyMailboxID" expanded :disabled="!canEditUnifiedReplyMailbox"
+                    data-cy="org-unified-reply-mailbox-select">
+                    <option :value="null">{{ $t('organizations.unifiedReplyMailboxNone') }}</option>
+                    <option v-if="unifiedReplyMailboxID && !organizationReplyMailboxes.some((mailbox) => Number(mailbox.id) === Number(unifiedReplyMailboxID))"
+                      :value="unifiedReplyMailboxID" disabled>
+                      {{ selectedOrganizationReplyMailboxEmail || $t('organizations.unifiedReplyMailboxNone') }}
+                    </option>
+                    <option v-for="mailbox in organizationReplyMailboxes" :key="mailbox.id" :value="mailbox.id">
+                      {{ mailbox.name || mailbox.email }}
+                    </option>
+                  </b-select>
+                </b-field>
+                <p v-if="!canEditUnifiedReplyMailbox" class="help" data-cy="org-unified-reply-mailbox-readonly">
+                  {{ $t('organizations.unifiedReplyMailboxReadOnly') }}
+                </p>
+              </div>
+              <div class="column is-3 is-flex is-align-items-flex-end">
+                <b-button type="is-primary" icon-left="content-save-outline" :loading="savingUnifiedReplyMailbox"
+                  :disabled="!canEditUnifiedReplyMailbox" data-cy="org-unified-reply-mailbox-save"
+                  @click="saveUnifiedReplyMailbox">
+                  {{ $t('organizations.unifiedReplyMailboxSave') }}
+                </b-button>
+              </div>
+            </div>
+          </section>
           <reply-mailbox-settings :organization-id="Number(selectedOrganizationID)" />
         </section>
       </b-tab-item>
@@ -257,6 +288,9 @@ export default Vue.extend({
       members: [],
       invites: [],
       replyForwardRules: [],
+      organizationReplyMailboxes: [],
+      unifiedReplyMailboxID: null,
+      savingUnifiedReplyMailbox: false,
       requests: [],
       platformOrganizations: [],
       newInviteCode: '',
@@ -287,6 +321,33 @@ export default Vue.extend({
 
     activeMembers() {
       return this.members.filter((member) => !member.removedAt);
+    },
+
+    // The organization shown by the tabs. The unified reply mailbox endpoint is
+    // organization-manager only, so the section is read-only for everyone else,
+    // including platform administrators.
+    selectedOrganization() {
+      const id = Number(this.selectedOrganizationID) || 0;
+      const lists = [...(this.manageableOrganizations || []), ...(this.organizations || [])];
+      return lists.find((organization) => Number(organization.id) === id) || null;
+    },
+
+    selectedOrganizationReplyMailboxEmail() {
+      const organization = this.selectedOrganization;
+      return (organization && (organization.replyMailboxEmail || organization.reply_mailbox_email)) || '';
+    },
+
+    canEditUnifiedReplyMailbox() {
+      // The endpoint is organization-manager only: platform administrators are
+      // rejected server-side even inside their own organization, so the section
+      // stays read-only for them.
+      if (Number(this.profile && this.profile.userRole && this.profile.userRole.id) === 1) {
+        return false;
+      }
+      const id = Number(this.selectedOrganizationID) || 0;
+      return (this.organizations || []).some(
+        (organization) => Number(organization.id) === id && organization.myRole === 'manager',
+      );
     },
   },
 
@@ -327,6 +388,8 @@ export default Vue.extend({
         this.invites = [];
         this.replyForwardRules = [];
         this.transferTargetUserID = null;
+        this.organizationReplyMailboxes = [];
+        this.unifiedReplyMailboxID = null;
         return;
       }
       const [members, invites] = await Promise.all([
@@ -337,6 +400,7 @@ export default Vue.extend({
       this.invites = invites;
       this.replyForwardRules = await this.$api.getReplyForwardRules(this.selectedOrganizationID);
       this.transferTargetUserID = null;
+      await this.loadUnifiedReplyMailbox();
     },
 
     selectOrganization(organization) {
@@ -378,6 +442,33 @@ export default Vue.extend({
     async revokeInvite(invite) {
       await this.$api.revokeOrganizationInvite(invite.id, this.selectedOrganizationID);
       await this.refreshSelectedOrganization();
+    },
+
+    // The pool audience reply route resolves to the organization's single
+    // unified reply mailbox, so the value is loaded from the organization
+    // payload and refreshed after saving.
+    async loadUnifiedReplyMailbox() {
+      const organization = this.selectedOrganization;
+      const mailboxID = organization && (organization.replyMailboxId || organization.reply_mailbox_id);
+      this.unifiedReplyMailboxID = mailboxID ? Number(mailboxID) : null;
+      const mailboxes = await this.$api
+        .getReplyMailboxes(Number(this.selectedOrganizationID))
+        .catch(() => []);
+      this.organizationReplyMailboxes = Array.isArray(mailboxes) ? mailboxes : [];
+    },
+
+    async saveUnifiedReplyMailbox() {
+      if (!this.selectedOrganizationID || !this.canEditUnifiedReplyMailbox) {
+        return;
+      }
+      this.savingUnifiedReplyMailbox = true;
+      try {
+        await this.$api.updateOrganizationReplyMailbox(this.selectedOrganizationID, this.unifiedReplyMailboxID);
+        this.$utils.toast(this.$t('organizations.unifiedReplyMailboxSaved'));
+        await this.refresh();
+      } finally {
+        this.savingUnifiedReplyMailbox = false;
+      }
     },
 
     async toggleReplyForwardRule(rule) {

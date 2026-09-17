@@ -38,8 +38,10 @@ func (c *Core) GetUserOrganizations(userID int) ([]models.Organization, error) {
 	out := []models.Organization{}
 	err := c.db.Select(&out, `
 		SELECT o.*, om.role AS my_role,
-			COUNT(active_members.user_id) AS member_count
+			COUNT(active_members.user_id) AS member_count,
+			COALESCE(MAX(rm.email),'') AS reply_mailbox_email
 		FROM organizations o
+		LEFT JOIN reply_mailboxes rm ON rm.id = o.reply_mailbox_id
 		JOIN organization_members om
 			ON om.organization_id = o.id AND om.user_id = $1 AND om.removed_at IS NULL
 		LEFT JOIN organization_members active_members
@@ -57,8 +59,10 @@ func (c *Core) GetUserOrganizations(userID int) ([]models.Organization, error) {
 func (c *Core) GetOrganizations(includeArchived bool) ([]models.Organization, error) {
 	out := []models.Organization{}
 	err := c.db.Select(&out, `
-		SELECT o.*, '' AS my_role, COUNT(om.user_id) AS member_count
+		SELECT o.*, '' AS my_role, COUNT(om.user_id) AS member_count,
+			COALESCE(MAX(rm.email),'') AS reply_mailbox_email
 		FROM organizations o
+		LEFT JOIN reply_mailboxes rm ON rm.id = o.reply_mailbox_id
 		LEFT JOIN organization_members om ON om.organization_id = o.id AND om.removed_at IS NULL
 		WHERE ($1 OR o.status = $2)
 		GROUP BY o.id
@@ -73,14 +77,44 @@ func (c *Core) GetOrganization(id int) (models.Organization, error) {
 	var out models.Organization
 	if err := c.db.Get(&out, `
 		SELECT o.*, '' AS my_role,
+			COALESCE(rm.email,'') AS reply_mailbox_email,
 			(SELECT COUNT(*) FROM organization_members om WHERE om.organization_id = o.id AND om.removed_at IS NULL) AS member_count
-		FROM organizations o WHERE o.id = $1`, id); err != nil {
+		FROM organizations o
+		LEFT JOIN reply_mailboxes rm ON rm.id = o.reply_mailbox_id
+		WHERE o.id = $1`, id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return out, ErrOrganizationNotFound
 		}
 		return out, c.organizationDBErr("fetching organization", err)
 	}
 	return out, nil
+}
+
+// SetOrganizationReplyMailbox sets or clears the organization's single unified
+// reply mailbox. Every public-pool audience of the organization resolves its
+// reply route through this mailbox, so it is configured once per organization
+// instead of once per pool allocation. A non-NULL mailbox must exist and belong
+// to the organization, which keeps one workspace from selecting another
+// workspace's receive-only mailbox; NULL clears the setting.
+func (c *Core) SetOrganizationReplyMailbox(organizationID int64, replyMailboxID *int) error {
+	var exists bool
+	if err := c.db.Get(&exists, `SELECT EXISTS(SELECT 1 FROM organizations WHERE id=$1)`, organizationID); err != nil {
+		return c.organizationDBErr("fetching organization", err)
+	}
+	if !exists {
+		return ErrOrganizationNotFound
+	}
+	if replyMailboxID != nil {
+		var belongs bool
+		if err := c.db.Get(&belongs, `SELECT EXISTS(SELECT 1 FROM reply_mailboxes WHERE id=$1 AND organization_id=$2)`, *replyMailboxID, organizationID); err != nil {
+			return c.organizationDBErr("checking reply mailbox", err)
+		}
+		if !belongs {
+			return echo.NewHTTPError(http.StatusForbidden, "reply mailbox must belong to the organization")
+		}
+	}
+	_, err := c.db.Exec(`UPDATE organizations SET reply_mailbox_id=$2, updated_at=NOW() WHERE id=$1`, organizationID, replyMailboxID)
+	return err
 }
 
 // CreateOrganizationWithMembers provisions an organization and its initial
@@ -546,9 +580,11 @@ func (c *Core) JoinOrganizationByInvite(userID int, codeHash string) (models.Org
 	var org models.Organization
 	if err := tx.Get(&org, `
 		SELECT o.*, $2::TEXT AS my_role,
+			COALESCE(rm.email,'') AS reply_mailbox_email,
 			(SELECT COUNT(*) FROM organization_members om
 			 WHERE om.organization_id = o.id AND om.removed_at IS NULL) AS member_count
 		FROM organizations o
+		LEFT JOIN reply_mailboxes rm ON rm.id = o.reply_mailbox_id
 		WHERE o.id = $1`, invite.OrganizationID, models.OrganizationMemberRoleMember); err != nil {
 		return org, c.organizationDBErr("fetching organization", err)
 	}

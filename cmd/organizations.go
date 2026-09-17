@@ -739,6 +739,48 @@ func (a *App) RemoveOrganizationMember(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{true})
 }
 
+// organizationReplyMailboxInput is the request shape of an organization's
+// single unified reply mailbox. A null reply_mailbox_id clears the setting.
+type organizationReplyMailboxInput struct {
+	ReplyMailboxID *int `json:"reply_mailbox_id"`
+}
+
+// SetOrganizationReplyMailbox points every pool audience of an organization at
+// the organization's one unified reply mailbox. The setting is deliberately
+// workspace-scoped: the caller must be an active manager of the organization
+// named in the path, and a platform administrator may not configure it on an
+// organization's behalf. The core setter re-verifies that the mailbox belongs
+// to the organization; pool allocations no longer carry a reply mailbox of
+// their own.
+func (a *App) SetOrganizationReplyMailbox(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
+	organizationID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || organizationID < 1 {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid organization id")
+	}
+	if !access.IsOrganization() || int64(access.OrganizationID) != organizationID {
+		return echo.NewHTTPError(http.StatusForbidden, "organization scope mismatch")
+	}
+	if auth.GetUser(c).IsPlatformAdmin() {
+		return echo.NewHTTPError(http.StatusForbidden, "reply mailbox must be configured in the organization workspace")
+	}
+	if !access.IsOrganizationManager() {
+		return echo.NewHTTPError(http.StatusForbidden, "organization manager permission required")
+	}
+	var req organizationReplyMailboxInput
+	if err := c.Bind(&req); err != nil {
+		return err
+	}
+	if err := a.core.SetOrganizationReplyMailbox(organizationID, req.ReplyMailboxID); err != nil {
+		return err
+	}
+	setAuditOrganizationID(c, int(organizationID))
+	return c.JSON(http.StatusOK, okResp{true})
+}
+
 func (a *App) LeaveOrganization(c echo.Context) error {
 	ws, err := a.workspaceFromRequest(c)
 	if err != nil {

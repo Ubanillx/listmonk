@@ -419,44 +419,6 @@ func (a *App) CreateOrgPoolAllocation(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{out})
 }
 
-type orgPoolAllocationMailboxRequest struct {
-	ReplyMailboxID *int `json:"reply_mailbox_id"`
-}
-
-func (a *App) UpdateOrgPoolAllocationReplyMailbox(c echo.Context) error {
-	access, err := a.workspaceAccess(c)
-	if err != nil {
-		return err
-	}
-	if !auth.GetUser(c).IsPlatformAdmin() && !access.IsOrganizationManager() {
-		return echo.NewHTTPError(http.StatusForbidden, "organization manager permission required")
-	}
-	if auth.GetUser(c).IsPlatformAdmin() {
-		return echo.NewHTTPError(http.StatusForbidden, "reply mailbox must be configured in the organization workspace")
-	}
-	allocationID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid allocation id")
-	}
-	var req orgPoolAllocationMailboxRequest
-	if err := c.Bind(&req); err != nil {
-		return err
-	}
-	if !auth.GetUser(c).IsPlatformAdmin() {
-		var orgID int64
-		if err := a.db.Get(&orgID, `SELECT organization_id FROM org_pool_allocations WHERE id=$1`, allocationID); err != nil {
-			return err
-		}
-		if orgID != int64(access.OrganizationID) {
-			return echo.NewHTTPError(http.StatusForbidden, "organization scope mismatch")
-		}
-	}
-	if err := a.core.UpdateOrgPoolAllocationReplyMailbox(allocationID, req.ReplyMailboxID); err != nil {
-		return err
-	}
-	return c.JSON(http.StatusOK, okResp{true})
-}
-
 type poolMembershipRequest struct {
 	AllocationID int64  `json:"allocation_id"`
 	ContactID    int64  `json:"contact_id"`

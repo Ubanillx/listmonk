@@ -133,34 +133,32 @@
         <section class="wrap">
           <section class="mb-6" data-cy="org-unified-reply-mailbox">
             <h2 class="title is-5">{{ $t('organizations.unifiedReplyMailbox') }}</h2>
-            <div class="columns is-multiline">
-              <div class="column is-6">
-                <b-field :label="$t('organizations.unifiedReplyMailbox')" label-position="on-border"
-                  :message="$t('organizations.unifiedReplyMailboxHelp')">
-                  <b-select v-model="unifiedReplyMailboxID" expanded :disabled="!canEditUnifiedReplyMailbox"
-                    data-cy="org-unified-reply-mailbox-select">
-                    <option :value="null">{{ $t('organizations.unifiedReplyMailboxNone') }}</option>
-                    <option v-if="unifiedReplyMailboxID && !organizationReplyMailboxes.some((mailbox) => Number(mailbox.id) === Number(unifiedReplyMailboxID))"
-                      :value="unifiedReplyMailboxID" disabled>
-                      {{ selectedOrganizationReplyMailboxEmail || $t('organizations.unifiedReplyMailboxNone') }}
-                    </option>
-                    <option v-for="mailbox in organizationReplyMailboxes" :key="mailbox.id" :value="mailbox.id">
-                      {{ mailbox.name || mailbox.email }}
-                    </option>
-                  </b-select>
-                </b-field>
-                <p v-if="!canEditUnifiedReplyMailbox" class="help" data-cy="org-unified-reply-mailbox-readonly">
-                  {{ $t('organizations.unifiedReplyMailboxReadOnly') }}
-                </p>
-              </div>
-              <div class="column is-3 is-flex is-align-items-flex-end">
+            <b-field addons :label="$t('organizations.unifiedReplyMailbox')" label-position="on-border"
+              :message="$t('organizations.unifiedReplyMailboxHelp')">
+              <b-field expanded>
+                <b-select v-model="unifiedReplyMailboxID" expanded :disabled="!canEditUnifiedReplyMailbox"
+                  data-cy="org-unified-reply-mailbox-select">
+                  <option :value="null">{{ $t('organizations.unifiedReplyMailboxNone') }}</option>
+                  <option v-if="unifiedReplyMailboxID && !unifiedMailboxOptions.some((mailbox) => Number(mailbox.id) === Number(unifiedReplyMailboxID))"
+                    :value="unifiedReplyMailboxID" disabled>
+                    {{ selectedOrganizationReplyMailboxEmail || $t('organizations.unifiedReplyMailboxNone') }}
+                  </option>
+                  <option v-for="mailbox in unifiedMailboxOptions" :key="mailbox.id" :value="mailbox.id">
+                    {{ mailbox.email || mailbox.name }}
+                  </option>
+                </b-select>
+              </b-field>
+              <p class="control">
                 <b-button type="is-primary" icon-left="content-save-outline" :loading="savingUnifiedReplyMailbox"
                   :disabled="!canEditUnifiedReplyMailbox" data-cy="org-unified-reply-mailbox-save"
                   @click="saveUnifiedReplyMailbox">
                   {{ $t('organizations.unifiedReplyMailboxSave') }}
                 </b-button>
-              </div>
-            </div>
+              </p>
+            </b-field>
+            <p v-if="!canEditUnifiedReplyMailbox" class="help" data-cy="org-unified-reply-mailbox-readonly">
+              {{ $t('organizations.unifiedReplyMailboxReadOnly') }}
+            </p>
           </section>
           <reply-mailbox-settings :organization-id="Number(selectedOrganizationID)" />
         </section>
@@ -348,6 +346,25 @@ export default Vue.extend({
       return (this.organizations || []).some(
         (organization) => Number(organization.id) === id && organization.myRole === 'manager',
       );
+    },
+    // The organization's listing can hold the same address more than once: the
+    // unique index is per member, so two members may register the same mailbox.
+    // The unified setting is per address, so collapse duplicates and prefer a row
+    // the caller also owns and that is already verified.
+    unifiedMailboxOptions() {
+      const rank = (mailbox) => (mailbox.manageable === false ? 2 : 0)
+        + (mailbox.status === 'active' ? 0 : 1);
+      const byEmail = (this.organizationReplyMailboxes || []).reduce((acc, mailbox) => {
+        const email = String(mailbox.email || '').trim().toLowerCase();
+        if (email) {
+          const current = acc.get(email);
+          if (!current || rank(mailbox) < rank(current)) {
+            acc.set(email, mailbox);
+          }
+        }
+        return acc;
+      }, new Map());
+      return Array.from(byEmail.values());
     },
   },
 

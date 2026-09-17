@@ -1310,6 +1310,8 @@
     "replyMailbox.empty": "No reply mailboxes configured.",
     "replyMailbox.fallbackName": "Reply mailbox #{n}",
     "replyMailbox.defaultTag": "Default",
+    "replyMailbox.otherMember": "Other member",
+    "replyMailbox.readOnlyNote": "This mailbox belongs to another member: only its owner can edit, test or disable it. Every member can still select the address in a campaign.",
     "replyMailbox.noEmail": "Enter the reply mailbox address",
     "replyMailbox.disable": "Disable",
     "replyMailbox.enable": "Enable",

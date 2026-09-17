@@ -1310,6 +1310,8 @@
     "replyMailbox.empty": "尚未配置客户回信邮箱。",
     "replyMailbox.fallbackName": "回信邮箱 #{n}",
     "replyMailbox.defaultTag": "默认",
+    "replyMailbox.otherMember": "其他成员",
+    "replyMailbox.readOnlyNote": "该邮箱由其他成员创建，仅其所有者可以编辑、测试或停用；活动里仍可选择该地址。",
     "replyMailbox.noEmail": "填写客户回信邮箱地址",
     "replyMailbox.disable": "停用",
     "replyMailbox.enable": "启用",

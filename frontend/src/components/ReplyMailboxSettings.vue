@@ -22,11 +22,12 @@
               {{ statusLabel(mailbox.status) }}
             </b-tag>
             <b-tag v-if="mailbox.isDefault" type="is-info" rounded size="is-small">{{ $t('replyMailbox.defaultTag') }}</b-tag>
+            <b-tag v-if="mailbox.readOnly" type="is-light" rounded size="is-small">{{ $t('replyMailbox.otherMember') }}</b-tag>
           </div>
           <p class="reply-card-subtitle">{{ mailbox.email || $t('replyMailbox.noEmail') }}</p>
         </div>
-        <b-button v-if="mailbox.id && mailbox.status !== 'disabled'" type="is-danger" outlined size="is-small" icon-left="trash-can-outline"
-          @click="disableMailbox(mailbox, index)">
+        <b-button v-if="mailbox.id && mailbox.status !== 'disabled' && !mailbox.readOnly" type="is-danger" outlined
+          size="is-small" icon-left="trash-can-outline" @click="disableMailbox(mailbox, index)">
           {{ $t('replyMailbox.disable') }}
         </b-button>
         <b-button v-else-if="mailbox.id" type="is-primary" outlined size="is-small" icon-left="play-circle-outline"
@@ -38,46 +39,46 @@
       <div class="columns is-multiline reply-grid">
         <div class="column is-6">
           <b-field :label="$t('replyMailbox.emailLabel')" label-position="on-border">
-            <b-input v-model.trim="mailbox.email" type="email" required placeholder="employee@company.example" />
+            <b-input v-model.trim="mailbox.email" type="email" required placeholder="employee@company.example" :disabled="mailbox.readOnly" />
           </b-field>
         </div>
         <div class="column is-6">
           <b-field :label="$t('replyMailbox.nameLabel')" label-position="on-border">
-            <b-input v-model="mailbox.name" maxlength="100" :placeholder="$t('replyMailbox.nameLabel')" />
+            <b-input v-model="mailbox.name" maxlength="100" :placeholder="$t('replyMailbox.nameLabel')" :disabled="mailbox.readOnly" />
           </b-field>
         </div>
         <div class="column is-6">
           <b-field :label="$t('replyMailbox.usernameLabel')" label-position="on-border" :message="$t('replyMailbox.usernameHelp')">
-            <b-input v-model.trim="mailbox.username" placeholder="employee@company.example" />
+            <b-input v-model.trim="mailbox.username" placeholder="employee@company.example" :disabled="mailbox.readOnly" />
           </b-field>
         </div>
         <div class="column is-6">
           <b-field :label="$t('replyMailbox.passwordLabel')" label-position="on-border"
             :message="$t('replyMailbox.passwordHelp')">
-            <b-input v-model="mailbox.password" type="password" password-reveal
+            <b-input v-model="mailbox.password" type="password" password-reveal :disabled="mailbox.readOnly"
               :placeholder="mailbox.id ? $t('replyMailbox.passwordSaved') : $t('replyMailbox.passwordPlaceholder')" />
           </b-field>
         </div>
         <div class="column is-6">
           <b-field :label="$t('replyMailbox.imapHostLabel')" label-position="on-border">
-            <b-input v-model.trim="mailbox.imapHost" placeholder="imap.example.com" />
+            <b-input v-model.trim="mailbox.imapHost" placeholder="imap.example.com" :disabled="mailbox.readOnly" />
           </b-field>
         </div>
         <div class="column is-3">
           <b-field :label="$t('replyMailbox.portLabel')" label-position="on-border">
-            <b-numberinput v-model="mailbox.imapPort" min="1" max="65535" controls-position="compact" />
+            <b-numberinput v-model="mailbox.imapPort" min="1" max="65535" controls-position="compact" :disabled="mailbox.readOnly" />
           </b-field>
         </div>
         <div class="column is-3">
           <b-field :label="$t('replyMailbox.folderLabel')" label-position="on-border">
-            <b-input v-model.trim="mailbox.folder" placeholder="INBOX" />
+            <b-input v-model.trim="mailbox.folder" placeholder="INBOX" :disabled="mailbox.readOnly" />
           </b-field>
         </div>
       </div>
 
       <div class="reply-card-footer">
         <div class="reply-card-ai-toggle">
-          <b-checkbox v-model="mailbox.aiEnabled">
+          <b-checkbox v-model="mailbox.aiEnabled" :disabled="mailbox.readOnly">
             {{ $t('replyMailbox.aiToggle') }}
           </b-checkbox>
           <p class="help" v-if="mailbox.aiEnabled">
@@ -85,9 +86,9 @@
           </p>
         </div>
         <div class="reply-card-default-toggle">
-          <b-checkbox v-model="mailbox.isDefault">{{ $t('replyMailbox.setDefault') }}</b-checkbox>
+          <b-checkbox v-model="mailbox.isDefault" :disabled="mailbox.readOnly">{{ $t('replyMailbox.setDefault') }}</b-checkbox>
         </div>
-        <div class="buttons mb-0">
+        <div v-if="!mailbox.readOnly" class="buttons mb-0">
           <b-button type="is-light" icon-left="connection" :loading="testing === index" @click="testMailbox(mailbox, index)">
             {{ $t('replyMailbox.testConnection') }}
           </b-button>
@@ -95,6 +96,7 @@
             {{ $t('globals.buttons.save') }}
           </b-button>
         </div>
+        <p v-else class="help mb-0" data-cy="reply-mailbox-readonly-note">{{ $t('replyMailbox.readOnlyNote') }}</p>
       </div>
     </div>
   </section>
@@ -164,20 +166,22 @@ export default Vue.extend({
       this.load();
     },
   },
-
   methods: {
     normalize(row) {
-      return { ...blankMailbox(), ...row, password: '' };
+      return {
+        ...blankMailbox(), ...row, password: '', readOnly: row.manageable === false,
+      };
     },
 
+    // The listing returns every reply mailbox of the organization so the
+    // workspace sees its full inventory. A row that belongs to another member is
+    // rendered read-only: the address is usable by the whole workspace, but
+    // editing, testing and disabling it requires ownership.
     load() {
       this.loadedWorkspace = this.workspaceKey;
       this.$api.getReplyMailboxes(this.apiOrganizationID).then((data) => {
         const rows = Array.isArray(data) ? data : [];
-        // The listing may include organization reply mailboxes the caller can
-        // select in a campaign but does not own. The manage surface only shows
-        // mailboxes the caller actually owns and may edit, disable or test.
-        this.mailboxes = rows.filter((row) => row.manageable !== false).map(this.normalize);
+        this.mailboxes = rows.map(this.normalize);
       });
     },
 

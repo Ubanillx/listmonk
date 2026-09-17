@@ -113,6 +113,23 @@ type Queries struct {
 	DeleteCampaign                  *sqlx.Stmt `query:"delete-campaign"`
 	DeleteCampaigns                 *sqlx.Stmt `query:"delete-campaigns"`
 
+	// Platform-level ('all_organizations') public-pool delivery: fair
+	// organization rotation, the organization SMTP pool and its durable
+	// round-robin cursor, and the transactional recipient claim.
+	GetCampaignPoolOrgs               *sqlx.Stmt `query:"get-campaign-pool-orgs"`
+	GetCampaignPoolOrgOrders          *sqlx.Stmt `query:"get-campaign-pool-org-orders"`
+	InsertCampaignPoolOrgOrder        *sqlx.Stmt `query:"insert-campaign-pool-org-order"`
+	DeleteCampaignPoolOrgOrders       *sqlx.Stmt `query:"delete-campaign-pool-org-orders"`
+	DeleteStaleCampaignPoolOrgOrders  *sqlx.Stmt `query:"delete-stale-campaign-pool-org-orders"`
+	UpdateCampaignPoolOrgIndex        *sqlx.Stmt `query:"update-campaign-pool-org-index"`
+	GetCampaignPoolOrgStatus          *sqlx.Stmt `query:"get-campaign-pool-org-status"`
+	GetOrgPoolSMTPServers             *sqlx.Stmt `query:"get-org-pool-smtp-servers"`
+	GetEnabledUserSMTPServerByUUID    *sqlx.Stmt `query:"get-enabled-user-smtp-server-by-uuid"`
+	UpsertOrgPoolSMTPCursor           *sqlx.Stmt `query:"upsert-org-pool-smtp-cursor"`
+	ClaimCampaignPoolOrgRecipient     *sqlx.Stmt `query:"claim-campaign-pool-org-recipient"`
+	QueueCampaignPoolRecipientClaimed *sqlx.Stmt `query:"queue-campaign-pool-recipient-claimed"`
+	GetCampaignPoolSMTPRemaining      *sqlx.Stmt `query:"get-campaign-pool-smtp-remaining"`
+
 	InsertMedia *sqlx.Stmt `query:"insert-media"`
 	GetMedia    *sqlx.Stmt `query:"get-media"`
 	QueryMedia  *sqlx.Stmt `query:"query-media"`

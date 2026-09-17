@@ -470,6 +470,7 @@ Create a new campaign.
 | tags         | string\[\] |          | Tags to mark campaign.                                                                                                 |
 | headers      | JSON       |          | Key-value pairs to send as SMTP headers. Example: \[{"x-custom-header": "value"}\].                                    |
 | attribs      | JSON       |          | Optional JSON object attributes that can be used in the campaign message template. Example `{"location": "Somewhere"}` |
+| pool_scope   | string     |          | Public-pool audience scope: `organization` (default) resolves the campaign workspace's pool allocation; `all_organizations` makes the campaign cover every active organization's pool allocation of the selected first-level pool and requires the caller to hold `campaigns:public_pool_send`. An `all_organizations` campaign accepts first-level public pool audiences only (no explicit pool-allocation lists, no regular customer lists), persists a random fair organization rotation, and sends each recipient through the target organization's member SMTP pool with the organization's unified reply mailbox as Reply-To. It is immutable after creation. |
 
 ##### Example request
 
@@ -533,17 +534,48 @@ ______________________________________________________________________
 
 #### PUT /api/campaigns/{campaign_id}
 
-Update a campaign.
-
-> Refer to parameters from [POST /api/campaigns](#post-apicampaigns)
-
-______________________________________________________________________
-
-#### PUT /api/campaigns/{campaign_id}
-
 Update a specific campaign.
 
 > Refer to parameters from [POST /api/campaigns](#post-apicampaigns)
+> `pool_scope` is immutable: an existing campaign keeps the scope it was created with.
+
+______________________________________________________________________
+
+#### GET /api/campaigns/{campaign_id}/pool-send-status
+
+Readiness of a platform-level public-pool campaign (`pool_scope = all_organizations`). The response names each target organization with its unified reply mailbox readiness and its number of eligible member SMTP accounts, plus one issue string per unready organization. It never returns SMTP credentials.
+
+Legacy campaigns (`pool_scope = organization`) resolve their sender through the campaign owner's personal SMTP pool and always report `ready: true` here.
+
+##### Example Response
+
+```json
+{
+    "data": {
+        "pool_scope": "all_organizations",
+        "ready": false,
+        "organizations": [
+            {
+                "id": 1,
+                "name": "Acme",
+                "active": true,
+                "mailbox_ready": true,
+                "mailbox_email": "replies@acme.example",
+                "smtp_count": 3
+            },
+            {
+                "id": 2,
+                "name": "Globex",
+                "active": true,
+                "mailbox_ready": false,
+                "mailbox_email": "",
+                "smtp_count": 1
+            }
+        ],
+        "issues": ["Globex: unified reply mailbox is missing or not verified"]
+    }
+}
+```
 
 ______________________________________________________________________
 

@@ -49,6 +49,13 @@ var ErrManagerClosed = errors.New("campaign manager is closed")
 // of repeatedly retrying (or ever falling back to the platform SMTP).
 var ErrPersonalSMTPUnavailable = errors.New("personal SMTP unavailable")
 
+// ErrPoolSMTPUnavailable is returned when a platform-level public-pool
+// campaign cannot assign a sender: the target organization's member SMTP
+// pool has no eligible SMTP account. It pauses the campaign the same strict
+// way an unavailable personal pool does, without ever falling back to the
+// campaign owner or the platform SMTP.
+var ErrPoolSMTPUnavailable = errors.New("organization pool SMTP unavailable")
+
 // Store represents a data backend, such as a database,
 // that provides customer and campaign records.
 type Store interface {
@@ -208,6 +215,13 @@ type Manager struct {
 	// configuration change takes the writer lock before closing the old pool;
 	// this prevents a message from using a pool after the update has completed.
 	personalSMTPSendMut sync.RWMutex
+
+	// poolSMTP resolves one SMTP account by UUID for platform-level
+	// public-pool recipients. The cache and its invalidation share the
+	// personal SMTP locks so account configuration changes serialize with
+	// every pool delivery the same way they do with owner deliveries.
+	poolSMTP           func(string) (*email.Emailer, error)
+	poolSMTPMessengers map[string]*email.Emailer
 	fnNotify            func(subject string, data any) error
 	log                 *log.Logger
 
@@ -256,6 +270,15 @@ type CampaignMessage struct {
 	PoolReplyMailboxID    null.Int
 	PoolReplyMailboxEmail string
 
+	// Platform-level public-pool delivery context. PoolOrganizationID is the
+	// target organization of this recipient; PoolSenderSMTPUUID is the SMTP
+	// account assigned by the organization pool allocator and is resolved per
+	// message instead of the campaign owner's personal pool.
+	PoolOrganizationID int64
+	PoolSenderSMTPUUID string
+	PoolSenderUserID   int64
+	PoolSenderFrom     string
+
 	from     string
 	to       string
 	subject  string
@@ -303,6 +326,11 @@ type Config struct {
 	// resolver means account-owned campaign/transactional sends are disabled.
 	PersonalSMTP func(int) (*email.Emailer, error)
 
+	// PoolSMTP resolves one specific SMTP account by UUID for
+	// platform-level public-pool recipients, so a recipient's assigned
+	// sender is honored exactly. A nil resolver disables the pool path.
+	PoolSMTP func(smtpUUID string) (*email.Emailer, error)
+
 	// AuditCampaign is called for low-volume campaign lifecycle transitions
 	// produced by the background sender. It is optional so the manager remains
 	// reusable in integrations and focused tests.
@@ -334,6 +362,8 @@ func New(cfg Config, store Store, i *i18n.I18n, l *log.Logger) *Manager {
 		messengers:         make(map[string]Messenger),
 		personalSMTP:       cfg.PersonalSMTP,
 		personalMessengers: make(map[int]*email.Emailer),
+		poolSMTP:           cfg.PoolSMTP,
+		poolSMTPMessengers: make(map[string]*email.Emailer),
 		pipes:              make(map[int]*pipe),
 		tpls:               make(map[int]*models.Template),
 		links:              make(map[string]string),
@@ -461,6 +491,63 @@ func (m *Manager) isPersonalSMTPMessage(msg models.Message) bool {
 		(msg.OwnerUserID > 0 || msg.Campaign != nil)
 }
 
+// resolvePoolSMTPMessenger resolves the cached single-server messenger for one
+// assigned pool SMTP UUID. The resolver revalidates the row (enabled, enabled
+// owner, active membership) on every cache miss, so a disabled account or a
+// removed member stops being usable even while a campaign keeps running.
+func (m *Manager) resolvePoolSMTPMessenger(uuid string) (Messenger, error) {
+	if m.poolSMTP == nil {
+		return nil, fmt.Errorf("%w: no SMTP pool resolver configured", ErrPersonalSMTPUnavailable)
+	}
+	m.personalSMTPMut.Lock()
+	defer m.personalSMTPMut.Unlock()
+	if m.closed.Load() {
+		return nil, ErrManagerClosed
+	}
+	if msgr, ok := m.poolSMTPMessengers[uuid]; ok {
+		return msgr, nil
+	}
+	msgr, err := m.poolSMTP(uuid)
+	if err != nil {
+		return nil, fmt.Errorf("%w: pool SMTP %s: %v", ErrPersonalSMTPUnavailable, uuid, err)
+	}
+	if msgr == nil {
+		return nil, fmt.Errorf("%w: pool SMTP %s is not available", ErrPersonalSMTPUnavailable, uuid)
+	}
+	m.poolSMTPMessengers[uuid] = msgr
+	return msgr, nil
+}
+
+// InvalidatePoolSMTP closes one cached pool SMTP connection pool. Called after
+// the owning account's SMTP configuration changed.
+func (m *Manager) InvalidatePoolSMTP(uuid string) {
+	if uuid == "" {
+		return
+	}
+	m.personalSMTPSendMut.Lock()
+	defer m.personalSMTPSendMut.Unlock()
+	m.personalSMTPMut.Lock()
+	defer m.personalSMTPMut.Unlock()
+	if msgr, ok := m.poolSMTPMessengers[uuid]; ok {
+		_ = msgr.Close()
+		delete(m.poolSMTPMessengers, uuid)
+	}
+}
+
+// InvalidateAllPoolSMTP closes every cached pool SMTP connection pool. Used
+// when membership, account status or SMTP configuration changes in a way that
+// can affect several organizations at once.
+func (m *Manager) InvalidateAllPoolSMTP() {
+	m.personalSMTPSendMut.Lock()
+	defer m.personalSMTPSendMut.Unlock()
+	m.personalSMTPMut.Lock()
+	defer m.personalSMTPMut.Unlock()
+	for uuid, msgr := range m.poolSMTPMessengers {
+		_ = msgr.Close()
+		delete(m.poolSMTPMessengers, uuid)
+	}
+}
+
 // resolveMessenger isolates account-owned SMTP traffic from the platform
 // messenger. OwnerUserID == 0 is reserved for system notifications.
 func (m *Manager) resolveMessenger(msg models.Message) (Messenger, error) {
@@ -468,6 +555,11 @@ func (m *Manager) resolveMessenger(msg models.Message) (Messenger, error) {
 		return nil, ErrManagerClosed
 	}
 	if m.isPersonalSMTPMessage(msg) {
+		// A platform-level public-pool recipient carries its own SMTP
+		// assignment; the campaign owner's personal pool never applies.
+		if msg.PoolSenderSMTPUUID != "" {
+			return m.resolvePoolSMTPMessenger(msg.PoolSenderSMTPUUID)
+		}
 		if msg.OwnerUserID < 1 {
 			return nil, fmt.Errorf("%w: campaign has no account owner", ErrPersonalSMTPUnavailable)
 		}
@@ -584,6 +676,15 @@ func (m *Manager) WithPersonalSMTPUpdate(userID int, fn func() error) error {
 	defer m.personalSMTPSendMut.Unlock()
 	m.personalSMTPMut.Lock()
 	defer m.personalSMTPMut.Unlock()
+
+	// Any account SMTP change can alter an organization's member SMTP pool,
+	// so drop every pooled sender too. The pool is rebuilt lazily and each
+	// entry is revalidated (enabled row, enabled owner, active membership)
+	// when it is resolved again.
+	for uuid, msgr := range m.poolSMTPMessengers {
+		_ = msgr.Close()
+		delete(m.poolSMTPMessengers, uuid)
+	}
 
 	if userID > 0 {
 		if msgr, ok := m.personalMessengers[userID]; ok {
@@ -818,6 +919,10 @@ func (m *Manager) Close() {
 			_ = msgr.Close()
 			delete(m.personalMessengers, userID)
 		}
+		for uuid, msgr := range m.poolSMTPMessengers {
+			_ = msgr.Close()
+			delete(m.poolSMTPMessengers, uuid)
+		}
 	})
 }
 
@@ -992,6 +1097,9 @@ func (m *Manager) worker() {
 			// SMTP campaigns deliberately resolve through pushMessage so the
 			// invalidation read/write lock covers the complete delivery.
 			out.OwnerUserID = msg.Campaign.OwnerUserID.Int
+			// A platform-level public-pool recipient carries its assigned SMTP
+			// account; resolution goes through the organization pool path.
+			out.PoolSenderSMTPUUID = msg.PoolSenderSMTPUUID
 			var err error
 			if msg.pipe != nil && msg.pipe.messenger != nil {
 				err = msg.pipe.messenger.Push(out)

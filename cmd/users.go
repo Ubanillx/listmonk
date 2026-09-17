@@ -439,6 +439,12 @@ func (a *App) UpdateUser(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	// Disabling (or re-enabling) an account changes which member SMTP
+	// accounts an organization's public-pool campaigns may use. Drop the
+	// pooled senders so the next resolution revalidates account status.
+	if a.manager != nil {
+		a.manager.InvalidateAllPoolSMTP()
+	}
 
 	// A password change must invalidate previously issued sessions. Keep the
 	// acting browser session usable when the account edited itself.

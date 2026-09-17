@@ -234,6 +234,9 @@ export const importOrgPoolAllocationMembers = (allocationID, file) => {
 };
 export const removePoolContact = (data) => http.delete('/api/org-pool-allocations/members', { data });
 export const attachCampaignPool = (id, data) => http.post(`/api/campaigns/${id}/pools`, data);
+// Readiness of a platform-level public-pool campaign: per-organization
+// mailbox/SMTP readiness without exposing any SMTP credentials.
+export const getCampaignPoolSendStatus = (id) => http.get(`/api/campaigns/${id}/pool-send-status`);
 export const grantPoolOrganization = (data) => http.post('/api/pools/permissions', data);
 export const revokePoolOrganization = (data) => http.delete('/api/pools/permissions', { data });
 export const restorePoolContact = (data) => http.put('/api/pools/allocations/members', data);

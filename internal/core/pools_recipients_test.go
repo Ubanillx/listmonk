@@ -33,7 +33,30 @@ const poolRecipientsTestDDL = `
 CREATE TYPE campaign_recipient_status AS ENUM ('pending','queued','deferred','sent','cancelled');
 
 CREATE TABLE users (
-    id SERIAL PRIMARY KEY
+    id SERIAL PRIMARY KEY,
+    username TEXT NOT NULL DEFAULT '',
+    name TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'enabled'
+);
+
+-- The organization SMTP pool readiness check reads these two tables.
+CREATE TABLE user_smtp_servers (
+    id          SERIAL PRIMARY KEY,
+    uuid        UUID NOT NULL DEFAULT gen_random_uuid() UNIQUE,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name        TEXT NOT NULL DEFAULT '',
+    enabled     BOOLEAN NOT NULL DEFAULT TRUE,
+    from_email  TEXT NOT NULL DEFAULT '',
+    daily_limit INT NOT NULL DEFAULT 0,
+    host        TEXT NOT NULL DEFAULT '',
+    port        INT NOT NULL DEFAULT 465
+);
+
+CREATE TABLE user_smtp_daily_usage (
+    smtp_uuid  UUID NOT NULL REFERENCES user_smtp_servers(uuid) ON DELETE CASCADE,
+    usage_date DATE NOT NULL,
+    sent_count INT NOT NULL DEFAULT 0,
+    PRIMARY KEY (smtp_uuid, usage_date)
 );
 
 CREATE TABLE organizations (
@@ -57,7 +80,8 @@ CREATE TABLE customer_lists (
     type            TEXT NOT NULL DEFAULT 'private',
     status          TEXT NOT NULL DEFAULT 'active',
     organization_id BIGINT,
-    owner_user_id   INTEGER
+    owner_user_id   INTEGER,
+    original_owner_user_id INTEGER
 );
 
 CREATE TABLE reply_mailboxes (
@@ -136,7 +160,16 @@ CREATE TABLE pool_organization_permissions (
 
 CREATE TABLE campaigns (
     id              SERIAL PRIMARY KEY,
-    organization_id BIGINT
+    organization_id BIGINT,
+    pool_scope      TEXT NOT NULL DEFAULT 'organization'
+);
+
+CREATE TABLE campaign_pool_org_orders (
+    campaign_id     INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+    organization_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    dispatch_order  INTEGER NOT NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (campaign_id, organization_id)
 );
 
 CREATE TABLE campaign_customer_lists (
@@ -160,6 +193,10 @@ CREATE TABLE campaign_pool_recipients (
     status           campaign_recipient_status NOT NULL DEFAULT 'pending',
     email_snapshot   TEXT NOT NULL,
     name_snapshot    TEXT NOT NULL DEFAULT '',
+    sender_smtp_uuid UUID,
+    sender_user_id   INTEGER,
+    sender_from_snapshot TEXT NOT NULL DEFAULT '',
+    sender_assigned_at TIMESTAMPTZ,
     created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (campaign_id, pool_contact_id)
@@ -721,7 +758,7 @@ func TestPoolRecipientPathsAgreeOnDeliverableMembers(t *testing.T) {
 
 	// Path 3: attach an explicitly selected pool allocation.
 	allocationCampaign := env.seedCampaign()
-	if err := env.core.AttachPoolToCampaign(allocationCampaign, poolID, &allocationA, orgA); err != nil {
+	if err := env.core.AttachPoolToCampaign(allocationCampaign, poolID, &allocationA, orgA, false); err != nil {
 		t.Fatalf("AttachPoolToCampaign(allocation): %v", err)
 	}
 	assertSameIDs(t, "AttachPoolToCampaign(allocation)", env.snapshotIDs(allocationCampaign), wantA)
@@ -730,7 +767,7 @@ func TestPoolRecipientPathsAgreeOnDeliverableMembers(t *testing.T) {
 	// Path 4: attach the first-level pool, which resolves to the organization's
 	// single pool allocation.
 	firstLevelCampaign := env.seedCampaign()
-	if err := env.core.AttachPoolToCampaign(firstLevelCampaign, poolID, nil, orgA); err != nil {
+	if err := env.core.AttachPoolToCampaign(firstLevelCampaign, poolID, nil, orgA, false); err != nil {
 		t.Fatalf("AttachPoolToCampaign(first-level): %v", err)
 	}
 	assertSameIDs(t, "AttachPoolToCampaign(first-level)", env.snapshotIDs(firstLevelCampaign), wantA)
@@ -825,7 +862,7 @@ func TestPoolRecipientSnapshotRefreshAfterExclusion(t *testing.T) {
 	}
 
 	campaign := env.seedCampaign()
-	if err := env.core.AttachPoolToCampaign(campaign, poolID, &allocation, org); err != nil {
+	if err := env.core.AttachPoolToCampaign(campaign, poolID, &allocation, org, false); err != nil {
 		t.Fatalf("AttachPoolToCampaign: %v", err)
 	}
 	assertSameIDs(t, "snapshot after attach", env.snapshotIDs(campaign), []int64{keep, excludedLater})
@@ -856,7 +893,7 @@ func TestPoolRecipientSnapshotRefreshAfterExclusion(t *testing.T) {
 
 	// Re-attaching the same audience is a refresh too, so it cannot bring the
 	// excluded contact back.
-	if err := env.core.AttachPoolToCampaign(campaign, poolID, &allocation, org); err != nil {
+	if err := env.core.AttachPoolToCampaign(campaign, poolID, &allocation, org, false); err != nil {
 		t.Fatalf("AttachPoolToCampaign after exclusion: %v", err)
 	}
 	assertSameIDs(t, "snapshot after re-attach", env.snapshotIDs(campaign), []int64{keep})
@@ -898,7 +935,7 @@ func TestPoolRecipientSnapshotRefreshDropsNonExclusionRemovals(t *testing.T) {
 	}
 
 	campaign := env.seedCampaign()
-	if err := env.core.AttachPoolToCampaign(campaign, poolID, &allocation, org); err != nil {
+	if err := env.core.AttachPoolToCampaign(campaign, poolID, &allocation, org, false); err != nil {
 		t.Fatalf("AttachPoolToCampaign: %v", err)
 	}
 	assertSameIDs(t, "snapshot after attach", env.snapshotIDs(campaign), []int64{keep, removedAllocation, archived})
@@ -947,7 +984,7 @@ func TestPoolRecipientSnapshotRefreshRewritesOwnedRowsOnly(t *testing.T) {
 	}
 
 	campaign := env.seedCampaign()
-	if err := env.core.AttachPoolToCampaign(campaign, poolID, &allocation, org); err != nil {
+	if err := env.core.AttachPoolToCampaign(campaign, poolID, &allocation, org, false); err != nil {
 		t.Fatalf("AttachPoolToCampaign: %v", err)
 	}
 	if n := env.countRows(`SELECT COUNT(*) FROM campaign_pool_recipients WHERE campaign_id=$1`, campaign); n != 6 {
@@ -1011,5 +1048,178 @@ func TestPoolRecipientSnapshotRefreshRewritesOwnedRowsOnly(t *testing.T) {
 	rows = env.snapshotRows(campaign)
 	if got := rows[sent]; got.EmailSnapshot != "sent@example.invalid" {
 		t.Errorf("delivered row changed on the second refresh: email_snapshot=%q", got.EmailSnapshot)
+	}
+}
+
+// TestQueryPlatformPublicPoolListsExposesActiveFirstLevelPools pins the
+// audience-selector grant for platform-level public-pool senders: every active
+// first-level pool is offered as a deliverable audience regardless of the
+// caller's organization, while archived pools are excluded and no contact
+// detail is attached.
+func TestQueryPlatformPublicPoolListsExposesActiveFirstLevelPools(t *testing.T) {
+	env := newPoolRecipientsTestEnv(t)
+
+	active := env.seedPool("platform-pool")
+	archived := env.seedPool("archived-pool")
+	env.exec(`UPDATE customer_lists SET status='archived' WHERE id=$1`, archived)
+	allocationList := env.id(`INSERT INTO customer_lists(name,type,status) VALUES('allocation-list','org_pool_allocation','active') RETURNING id`)
+
+	rows, err := env.core.QueryPlatformPublicPoolLists()
+	if err != nil {
+		t.Fatalf("QueryPlatformPublicPoolLists: %v", err)
+	}
+	byID := make(map[int]models.CustomerList, len(rows))
+	for _, row := range rows {
+		byID[row.ID] = row
+	}
+	if _, ok := byID[archived]; ok {
+		t.Errorf("archived pool %d was offered as a platform audience", archived)
+	}
+	if _, ok := byID[int(allocationList)]; ok {
+		t.Errorf("pool allocation list %d was offered as a first-level platform audience", allocationList)
+	}
+	got, ok := byID[active]
+	if !ok {
+		t.Fatalf("active first-level pool %d is missing from %v", active, rows)
+	}
+	if !got.PoolDeliveryAllowed {
+		t.Error("platform pool list is not marked deliverable")
+	}
+	if got.Type != models.CustomerListTypePool {
+		t.Errorf("list type = %q, want %q", got.Type, models.CustomerListTypePool)
+	}
+}
+
+// seedAllOrgAudience creates a platform-level ('all_organizations') campaign
+// whose single pool audience covers every active organization's allocation.
+func (env *poolRecipientsTestEnv) seedAllOrgAudience(campaignID, poolID int) {
+	env.t.Helper()
+	env.exec(`UPDATE campaigns SET pool_scope=$2 WHERE id=$1`, campaignID, models.CampaignPoolScopeAllOrganizations)
+	env.exec(`INSERT INTO campaign_customer_lists(campaign_id,customer_list_id,customer_list_name,pool_id)
+		VALUES($1,NULL,(SELECT name FROM customer_lists WHERE id=$2),$2)`, campaignID, poolID)
+}
+
+func (env *poolRecipientsTestEnv) setOrgOrder(campaignID int, entries map[int64]int) {
+	env.t.Helper()
+	env.exec(`DELETE FROM campaign_pool_org_orders WHERE campaign_id=$1`, campaignID)
+	for orgID, order := range entries {
+		env.exec(`INSERT INTO campaign_pool_org_orders(campaign_id,organization_id,dispatch_order) VALUES($1,$2,$3)`, campaignID, orgID, order)
+	}
+}
+
+// TestAllOrgPoolSnapshotDeduplicatesByRotationOrder pins the platform-level
+// audience rule: every deliverable contact appears exactly once and is owned
+// by the organization that comes first in the campaign's persisted rotation,
+// the assignment follows a changed rotation while the row is still pending,
+// delivered rows keep their original organization, and an organization without
+// a usable unified reply mailbox contributes no recipients.
+func TestAllOrgPoolSnapshotDeduplicatesByRotationOrder(t *testing.T) {
+	env := newPoolRecipientsTestEnv(t)
+
+	poolID := env.seedPool("all-org-pool")
+	orgA := env.seedOrganization("org-a")
+	orgB := env.seedOrganization("org-b")
+	mailboxA := env.seedMailbox(orgA, "a@example.invalid")
+	mailboxB := env.seedMailbox(orgB, "b@example.invalid")
+	env.setOrganizationMailbox(orgA, &mailboxA)
+	env.setOrganizationMailbox(orgB, &mailboxB)
+	allocationA := env.seedAllocation(poolID, orgA)
+	allocationB := env.seedAllocation(poolID, orgB)
+
+	shared := env.seedContact("C1", "Shared", "shared@example.invalid", "active")
+	onlyB := env.seedContact("C2", "OnlyB", "b-only@example.invalid", "active")
+	for _, id := range []int64{shared, onlyB} {
+		env.joinPool(poolID, id)
+	}
+	env.allocate(allocationA, shared, "active")
+	env.allocate(allocationB, shared, "active")
+	env.allocate(allocationB, onlyB, "active")
+
+	campaign := env.seedCampaign()
+	env.seedAllOrgAudience(campaign, poolID)
+	env.setOrgOrder(campaign, map[int64]int{orgA: 1, orgB: 2})
+
+	if err := env.core.EnsurePoolCampaignRecipients(campaign); err != nil {
+		t.Fatalf("EnsurePoolCampaignRecipients: %v", err)
+	}
+	assertSameIDs(t, "all-org snapshot", env.snapshotIDs(campaign), []int64{shared, onlyB})
+	rows := env.snapshotRows(campaign)
+	if got := rows[shared]; got.OrganizationID == nil || *got.OrganizationID != orgA {
+		t.Errorf("shared contact organization = %v, want %d (first in rotation)", got.OrganizationID, orgA)
+	}
+	if got := rows[shared]; got.AllocationID == nil || *got.AllocationID != allocationA {
+		t.Errorf("shared contact allocation = %v, want %d", got.AllocationID, allocationA)
+	}
+	if got := rows[shared]; got.ReplyMailboxID == nil || *got.ReplyMailboxID != mailboxA {
+		t.Errorf("shared contact reply mailbox = %v, want %d", got.ReplyMailboxID, mailboxA)
+	}
+	if got := rows[onlyB]; got.OrganizationID == nil || *got.OrganizationID != orgB {
+		t.Errorf("single-organization contact = %v, want %d", got.OrganizationID, orgB)
+	}
+
+	// Reversing the rotation moves a still-pending row to the new first
+	// organization, and it never duplicates the contact.
+	env.setOrgOrder(campaign, map[int64]int{orgA: 2, orgB: 1})
+	if err := env.core.EnsurePoolCampaignRecipients(campaign); err != nil {
+		t.Fatalf("EnsurePoolCampaignRecipients after rotation change: %v", err)
+	}
+	assertSameIDs(t, "all-org snapshot after rotation change", env.snapshotIDs(campaign), []int64{shared, onlyB})
+	rows = env.snapshotRows(campaign)
+	if got := rows[shared]; got.OrganizationID == nil || *got.OrganizationID != orgB {
+		t.Errorf("pending row did not follow the new rotation: organization = %v, want %d", got.OrganizationID, orgB)
+	}
+
+	// A delivery-history row is never re-owned by a rotation change.
+	env.exec(`UPDATE campaign_pool_recipients SET status='sent' WHERE campaign_id=$1 AND pool_contact_id=$2`, campaign, shared)
+	env.setOrgOrder(campaign, map[int64]int{orgA: 1, orgB: 2})
+	if err := env.core.EnsurePoolCampaignRecipients(campaign); err != nil {
+		t.Fatalf("EnsurePoolCampaignRecipients after delivery: %v", err)
+	}
+	rows = env.snapshotRows(campaign)
+	if got := rows[shared]; got.OrganizationID == nil || *got.OrganizationID != orgB || got.Status != models.CampaignRecipientStatusSent {
+		t.Errorf("delivered row was rewritten: organization=%v status=%q", got.OrganizationID, got.Status)
+	}
+
+	// An organization without a usable unified reply mailbox contributes no
+	// recipients, and a contact that is only allocated there is dropped.
+	env.setOrganizationMailbox(orgB, nil)
+	if err := env.core.EnsurePoolCampaignRecipients(campaign); err != nil {
+		t.Fatalf("EnsurePoolCampaignRecipients after mailbox removal: %v", err)
+	}
+	assertSameIDs(t, "all-org snapshot without org-b mailbox", env.snapshotIDs(campaign), []int64{shared})
+}
+
+// TestValidateAllOrgPoolCampaignAudienceRequiresEveryOrganization pins the
+// platform-level start guard: one unready organization (missing mailbox or no
+// eligible SMTP account) blocks the whole campaign and is named in the error.
+func TestValidateAllOrgPoolCampaignAudienceRequiresEveryOrganization(t *testing.T) {
+	env := newPoolRecipientsTestEnv(t)
+
+	poolID := env.seedPool("all-org-pool")
+	org := env.seedOrganization("org-a")
+	mailbox := env.seedMailbox(org, "a@example.invalid")
+	env.setOrganizationMailbox(org, &mailbox)
+	env.seedAllocation(poolID, org)
+	// The sender account must belong to an enabled active member.
+	env.exec(`INSERT INTO organization_members(organization_id,user_id) VALUES($1,1)`, org)
+	env.exec(`INSERT INTO user_smtp_servers(uuid,user_id,name,enabled,from_email,host,port)
+		VALUES(gen_random_uuid(),1,'primary',TRUE,'sender@example.invalid','smtp.example.invalid',465)`)
+
+	campaign := env.seedCampaign()
+	env.seedAllOrgAudience(campaign, poolID)
+
+	if err := env.core.ValidatePoolCampaignAudience(campaign); err != nil {
+		t.Fatalf("ready all-organization campaign rejected: %v", err)
+	}
+
+	// The organization's only SMTP row is disabled: the campaign must be
+	// blocked and the message must name the SMTP problem, not a mailbox one.
+	env.exec(`UPDATE user_smtp_servers SET enabled=FALSE`)
+	err := env.core.ValidatePoolCampaignAudience(campaign)
+	if err == nil {
+		t.Fatal("ValidatePoolCampaignAudience accepted an organization without any enabled SMTP account")
+	}
+	if msg := err.Error(); !strings.Contains(msg, "no enabled SMTP account") || !strings.Contains(msg, "org-a") {
+		t.Errorf("block message = %q, want the organization and the SMTP reason", msg)
 	}
 }

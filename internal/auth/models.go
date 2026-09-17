@@ -74,6 +74,13 @@ const (
 	PermCampaignsSchedule           = "campaigns:schedule"
 	PermCampaignsControl            = "campaigns:control"
 	PermCampaignsRecipients         = "campaigns:recipients"
+	// PermCampaignsPublicPoolSend authorizes platform-level public-pool
+	// campaigns: creating, editing, scheduling and starting campaigns whose
+	// audience is the whole first-level pool across every active
+	// organization. It is deliberately separate from campaigns:send so the
+	// cross-organization audience and the organization member SMTP pool are
+	// only usable by explicitly granted accounts.
+	PermCampaignsPublicPoolSend = "campaigns:public_pool_send"
 	PermBouncesGet                  = "bounces:get"
 	PermBouncesManage               = "bounces:manage"
 	PermBouncesDelete               = "bounces:delete"

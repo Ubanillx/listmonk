@@ -43,7 +43,8 @@
             "campaigns:test",
             "campaigns:schedule",
             "campaigns:control",
-            "campaigns:recipients"
+            "campaigns:recipients",
+            "campaigns:public_pool_send"
         ]
     },
     {

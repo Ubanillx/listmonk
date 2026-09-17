@@ -724,6 +724,12 @@ func (a *App) RemoveOrganizationMember(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	// The removed member must stop counting as a sender for this
+	// organization's public-pool campaigns immediately. The pool is rebuilt
+	// lazily and revalidates membership, so dropping the cache is enough.
+	if a.manager != nil {
+		a.manager.InvalidateAllPoolSMTP()
+	}
 	a.stopOrganizationImport(ws.OrganizationID, userID)
 	if err := a.activateReplyForwardingForMember(ws.OrganizationID, userID); err != nil {
 		return err

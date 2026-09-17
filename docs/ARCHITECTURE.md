@@ -127,6 +127,18 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 - 公海投递快照使用 `campaign_pool_recipients` 与联系人内部 ID 去重；公海退订、退信和回复 AI 事件写入 `org_pool_allocation_exclusions` 的组织维度逻辑状态，并在 `bounces`/`reply_ai_events` 保留来源池、公海分配和组织字段，禁止改变一级主数据或其他组织分配。收件人判定（活跃公海联系人 × 有效二级分配 × 本组织未剔除）只在 `internal/core/pools.go` 的 `poolRecipientMembershipSQL` 定义一次，一级解析、二级解析与快照写入共用同一片段，因此三条路径不可能给出不同收件人集合。快照刷新采用 `DO UPDATE` 并清理本组织范围内、已不再可投递且尚未交给投递的 `pending`/`deferred` 行；已 `queued`/`sent`/`cancelled` 的行属于投递历史，不重写也不删除，退队路径另按 `org_pool_allocation_exclusions` 重查剔除。
 - 客户回复、退订和投诉只能对实际投递来源组织的二级分配执行逻辑剔除，保留一级主数据和历史快照；最高管理员可跨组织审计，组织用户只能看本组织安全字段。
 
+### 平台级公海营销（全量组织受众 + 组织 SMTP 池轮询，已实施）
+
+- 营销活动勾选一级公海时，默认仍是单组织范围（`campaigns.pool_scope = 'organization'`，按当前工作区组织的公海分配解析）。持有专用权限 `campaigns:public_pool_send` 的账号可以把活动创建为 `all_organizations`：受众是该一级公海下**所有活跃组织**的公海分配并集，只接受一级公海列表（显式公海分配列表与普通客户列表都会被拒绝），权限常量在 `internal/auth/models.go`、清单在 `permissions.json`（`campaigns` 组），前端以 `$can('campaigns:public_pool_send')` 控制入口。
+- 收件人解析在 `internal/core/pools.go` 新增的全组织规则里运行：`poolRecipientAllOrgMembershipSQL` 复用与单组织规则完全相同的成员判定（活跃分配成员、活跃公海成员、联系人 active、无有效剔除），并额外要求目标组织的统一回件邮箱 active 且已验证；`poolRecipientAllOrgSelectSQL`/`poolRecipientAllOrgSnapshotUpsertSQL` 用 `DISTINCT ON (pc.id)` 把同一联系人去重到活动持久化组织顺序中的第一个组织，写入 `campaign_pool_recipients` 的目标组织、分配与回件邮箱。刷新只改写 `pending`/`deferred` 行，`queued`/`sent`/`cancelled` 是投递历史（组织、回件邮箱、发件人都不会被重排或配置变更改写）。
+- 组织顺序持久化在 `campaign_pool_org_orders`：活动首次被调度（`cmd/manager_store.go` 的分配器）时按活跃分配组织随机打散写入，不因暂停/重启/次日续发而重排；不再持有该公海分配的组织其顺序行会被清理。`campaigns.pool_next_org_index` 保存轮转位置，分配器每领取一封就推进一次，因此并发批次、多 worker 与恢复后的活动继续轮转。
+- 发件侧不再使用活动所有者的个人 SMTP：分配器在同一个数据库事务里按“组织轮转 → 组织内稳定顺序（user_id, smtp id）”领取收件人，并用组织级持久化游标 `org_pool_smtp_cursors.next_smtp_uuid`（`FOR UPDATE` 行锁）选择发件 SMTP，同时把 `sender_smtp_uuid`/`sender_user_id`/`sender_from_snapshot`/`sender_assigned_at` 写入投递快照。组织池成员动态过滤（组织 active、`organization_members.removed_at IS NULL`、用户 enabled、SMTP enabled），因此成员离组、账号停用、SMTP 停用立即生效。已分配且仍可用（在池中且有剩余额度）的发件人会被复用，使失败重试不跨账号。
+- 发送链路按已分配的 SMTP UUID 解析：`manager.Config.PoolSMTP`（`cmd/init.go` 注入，`cmd/manager_store.go` 的 `GetPoolSMTPServerByUUID` 在每次缓存未命中时重新校验账户状态）返回**单服务器** `email.Emailer`，`resolveMessenger` 优先于 owner 路径按 UUID 解析，缓存与失效复用 `personalSMTPSendMut`/`personalSMTPMut` 锁；SMTP 配置变更（`WithPersonalSMTPUpdate`）、成员移除、账号启停都会失效组织池缓存。发送失败仍按既有语义把收件人置回 `pending` 并保留发件人分配；`ErrPoolSMTPUnavailable`（组织结构性缺少可用 SMTP）暂停活动，`ErrSMTPQuotaExceeded` 按既有 `daily_resume_time` 延迟。
+- 额度语义保持不变并叠加：活动 `daily_send_limit` 仍是硬上限，每个 SMTP 行的 `daily_limit` 在所有公海活动之间共享；`get-campaign-pool-smtp-remaining` 只提供批量大小的建议值，最终上限由 `smtpQuotaTracker.ReserveServer` 在发送时原子预占。
+- 校验与状态：`ValidatePoolCampaignAudience` 对 `all_organizations` 活动逐组织校验（活跃、统一回件邮箱可用、至少一个可用 SMTP 账号），任一条不满足即阻止预览/发送并列出组织与缺失项；`GET /api/campaigns/:id/pool-send-status` 返回同样结论的只读视图（组织名、回件邮箱地址、SMTP 数量，绝不返回凭据），前端据此决定 Start/Schedule 是否可用。
+- 与发送快照相关的既有投影同步放宽：`campaign_send_counts`、`has-campaign-recipients`、`queue-campaign-pool-customers` 对 `all_organizations` 活动不再要求池行所属组织等于活动组织，因此未发送计数、完成判定与调度器读取的收件人集合在两条部署路径下一致。
+- 迁移 `internal/migrations/v6.44.0.go`（`cmd/upgrade.go` 注册）幂等新增 `campaigns.pool_scope`/`pool_next_org_index`、`campaign_pool_recipients` 的四个发件快照列、`campaign_pool_org_orders`、`org_pool_smtp_cursors`，并以新谓词重建 `campaign_send_counts`；对全新 `schema.sql` 库为 no-op。
+
 ## AI 入站回信处理
 
 退信设置的 `POST /api/settings/bounce/mailbox/test` 复用 `settings:manage`，对未保存表单执行连接/登录/读取/解析四步只读检测，最多读取当前 POP 会话最高序号的一封邮件（30 秒、5 MiB 上限），不调用 `Scan`、不删除邮件、不入队或改变客户状态。`internal/bounce/mailbox/test.go` 负责连接诊断，`preview.go` 负责外层摘要与 DSN 失败收件人解析。`bounce.mailboxes[].starttls` 默认 false，与 `tls_enabled` 互斥；后台扫描也支持 STLS，旧配置保持原行为，无数据库迁移。接口和日期/识别语义见 `docs/docs/content/bounces.md`。

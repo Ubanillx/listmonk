@@ -181,7 +181,11 @@ func TestCampaignSendCountsHaveOneDefinition(t *testing.T) {
 	queries := loadPublicCampaignQueryFiles(t)
 
 	view := extractSendCountsView(t, readRepoFile(t, "schema.sql"), "schema.sql")
-	migrationView := extractSendCountsView(t, readRepoFile(t, "internal/migrations/v6.31.0.go"), "internal/migrations/v6.31.0.go")
+	// The newest migration that installs the view defines the post-upgrade
+	// state, so it is the one a fresh install must match. v6.31.0 installed the
+	// original view; v6.44.0 re-installs it with the platform-level
+	// ('all_organizations') pool predicate.
+	migrationView := extractSendCountsView(t, readRepoFile(t, "internal/migrations/v6.44.0.go"), "internal/migrations/v6.44.0.go")
 	requireSameRuleDefinition(t, view, migrationView)
 
 	requireQueryTerms(t, goyesql.Queries{"campaign_send_counts": {Query: view}}, "campaign_send_counts",
@@ -190,7 +194,7 @@ func TestCampaignSendCountsHaveOneDefinition(t *testing.T) {
 		"s.organization_id IS NOT DISTINCT FROM c.organization_id",
 		"s.owner_user_id = c.owner_user_id",
 		"s.transfer_pending_at IS NULL",
-		"cpr.organization_id IS NOT DISTINCT FROM c.organization_id",
+		"c.pool_scope = 'all_organizations' OR cpr.organization_id IS NOT DISTINCT FROM c.organization_id",
 		"GREATEST(c.to_send - c.sent, 0)",
 	)
 

@@ -333,9 +333,23 @@ func (a *App) CreateCampaign(c echo.Context) error {
 		return err
 	}
 
-	regularListIDs, poolAudiences, err := a.splitCampaignAudienceIDs(access, o.CustomerListIDs)
+	poolScope, err := a.normalizeCampaignPoolScope(auth.GetUser(c), o.PoolScope)
 	if err != nil {
 		return err
+	}
+	o.PoolScope = poolScope
+	allOrganizations := poolScope == models.CampaignPoolScopeAllOrganizations
+	regularListIDs, poolAudiences, err := a.splitCampaignAudienceIDs(access, o.CustomerListIDs, allOrganizations)
+	if err != nil {
+		return err
+	}
+	if allOrganizations {
+		if len(regularListIDs) > 0 {
+			return echo.NewHTTPError(http.StatusBadRequest, "an all-organization public pool campaign accepts public pool audiences only")
+		}
+		if len(poolAudiences) == 0 {
+			return echo.NewHTTPError(http.StatusBadRequest, "an all-organization public pool campaign requires a first-level public pool audience")
+		}
 	}
 	if err := a.requireWorkspaceCustomerListIDsForRequest(c, access, regularListIDs, true); err != nil {
 		return err
@@ -387,7 +401,7 @@ func (a *App) CreateCampaign(c echo.Context) error {
 	}
 	out.ReplyMailboxID = o.ReplyMailboxID
 	for _, audience := range poolAudiences {
-		if err := a.core.AttachPoolToCampaign(out.ID, audience.PoolID, audience.AllocationID, int64(access.OrganizationID)); err != nil {
+		if err := a.core.AttachPoolToCampaign(out.ID, audience.PoolID, audience.AllocationID, int64(access.OrganizationID), allOrganizations); err != nil {
 			return err
 		}
 	}
@@ -490,9 +504,21 @@ func (a *App) UpdateCampaign(c echo.Context) error {
 		return err
 	}
 
-	regularListIDs, poolAudiences, err := a.splitCampaignAudienceIDs(access, o.CustomerListIDs)
+	// Pool scope is immutable after creation: the request value is normalized
+	// against the saved campaign so an audience edit can never smuggle a
+	// different scope past the dedicated permission.
+	allOrganizations := cm.PoolScope == models.CampaignPoolScopeAllOrganizations
+	regularListIDs, poolAudiences, err := a.splitCampaignAudienceIDs(access, o.CustomerListIDs, allOrganizations)
 	if err != nil {
 		return err
+	}
+	if allOrganizations {
+		if len(regularListIDs) > 0 {
+			return echo.NewHTTPError(http.StatusBadRequest, "an all-organization public pool campaign accepts public pool audiences only")
+		}
+		if len(poolAudiences) == 0 {
+			return echo.NewHTTPError(http.StatusBadRequest, "an all-organization public pool campaign requires a first-level public pool audience")
+		}
 	}
 	if err := a.requireWorkspaceCustomerListIDsForRequest(c, access, regularListIDs, true); err != nil {
 		return err
@@ -567,11 +593,17 @@ func (a *App) UpdateCampaign(c echo.Context) error {
 		if _, err := a.db.Exec(`DELETE FROM campaign_customer_lists WHERE campaign_id=$1 AND pool_id IS NOT NULL`, id); err != nil {
 			return err
 		}
+		if _, err := a.db.Exec(`DELETE FROM campaign_pool_org_orders WHERE campaign_id=$1`, id); err != nil {
+			return err
+		}
 	} else if len(poolIDs) == 0 {
 		if _, err := a.db.Exec(`DELETE FROM campaign_pool_recipients WHERE campaign_id=$1`, id); err != nil {
 			return err
 		}
 		if _, err := a.db.Exec(`DELETE FROM campaign_customer_lists WHERE campaign_id=$1 AND pool_id IS NOT NULL`, id); err != nil {
+			return err
+		}
+		if _, err := a.db.Exec(`DELETE FROM campaign_pool_org_orders WHERE campaign_id=$1`, id); err != nil {
 			return err
 		}
 	} else if _, err := a.db.Exec(`DELETE FROM campaign_pool_recipients WHERE campaign_id=$1 AND pool_id <> ALL($2::INT[])`, id, pq.Array(poolIDs)); err != nil {
@@ -583,7 +615,7 @@ func (a *App) UpdateCampaign(c echo.Context) error {
 		}
 	}
 	for _, audience := range poolAudiences {
-		if err := a.core.AttachPoolToCampaign(id, audience.PoolID, audience.AllocationID, int64(access.OrganizationID)); err != nil {
+		if err := a.core.AttachPoolToCampaign(id, audience.PoolID, audience.AllocationID, int64(access.OrganizationID), allOrganizations); err != nil {
 			return err
 		}
 	}
@@ -651,7 +683,8 @@ func (a *App) UpdateCampaignStatus(c echo.Context) error {
 		}
 	}
 	if (req.Status == models.CampaignStatusScheduled || req.Status == models.CampaignStatusRunning) &&
-		email.IsMessengerName(current.Messenger) {
+		email.IsMessengerName(current.Messenger) &&
+		current.PoolScope != models.CampaignPoolScopeAllOrganizations {
 		if !current.OwnerUserID.Valid || current.OwnerUserID.Int < 1 {
 			return echo.NewHTTPError(http.StatusConflict, "campaign owner has no personal SMTP configured")
 		}
@@ -1040,11 +1073,99 @@ func (a *App) TestCampaign(c echo.Context) error {
 // read/manage access from becoming an ability to send through another user's
 // personal SMTP credentials. It is intentionally applied to every messenger,
 // not only e-mail, because a campaign send is an account-owned operation.
+//
+// The exception is a platform-level public-pool campaign: its delivery never
+// touches the owner's personal SMTP (it rotates the target organizations'
+// member SMTP pools), so a caller holding campaigns:public_pool_send may
+// start or schedule it. The permission holder stays auditable through the
+// campaign audit trail.
 func requireCampaignSendOwnership(user auth.User, camp models.Campaign) error {
+	if camp.PoolScope == models.CampaignPoolScopeAllOrganizations && user.HasPerm(auth.PermCampaignsPublicPoolSend) {
+		return nil
+	}
 	if !camp.OwnerUserID.Valid || camp.OwnerUserID.Int != user.ID {
 		return echo.NewHTTPError(http.StatusForbidden, "only the campaign owner can send this campaign")
 	}
 	return nil
+}
+
+// poolSendStatusOrg is one target organization's readiness entry for a
+// platform-level public-pool campaign.
+type poolSendStatusOrg struct {
+	ID           int64  `json:"id"`
+	Name         string `json:"name"`
+	Active       bool   `json:"active"`
+	MailboxReady bool   `json:"mailbox_ready"`
+	MailboxEmail string `json:"mailbox_email"`
+	SMTPCount    int    `json:"smtp_count"`
+}
+
+// GetCampaignPoolSendStatus reports whether a platform-level public-pool
+// campaign can currently start. It never exposes SMTP credentials: only
+// organization names, mailbox addresses (company-internal routing addresses)
+// and non-sensitive SMTP counts.
+func (a *App) GetCampaignPoolSendStatus(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
+	id := getID(c)
+	camp, err := a.core.GetWorkspaceCampaign(access, id)
+	if err != nil {
+		return err
+	}
+	out := struct {
+		PoolScope     string            `json:"pool_scope"`
+		Ready         bool              `json:"ready"`
+		Organizations []poolSendStatusOrg `json:"organizations"`
+		Issues        []string          `json:"issues"`
+	}{
+		PoolScope:     camp.PoolScope,
+		Organizations: []poolSendStatusOrg{},
+		Issues:        []string{},
+	}
+	if camp.PoolScope != models.CampaignPoolScopeAllOrganizations {
+		// Legacy campaigns resolve SMTP through the campaign owner's personal
+		// pool; the frontend keeps its existing gating for them.
+		out.Ready = true
+		return c.JSON(http.StatusOK, okResp{out})
+	}
+
+	var rows []struct {
+		OrganizationID     int64  `db:"organization_id"`
+		OrganizationName   string `db:"organization_name"`
+		OrganizationStatus string `db:"organization_status"`
+		MailboxReady       bool   `db:"mailbox_ready"`
+		ReplyMailboxEmail  string `db:"reply_mailbox_email"`
+		SMTPCount          int    `db:"smtp_count"`
+	}
+	if err := a.queries.GetCampaignPoolOrgStatus.Select(&rows, id); err != nil {
+		return err
+	}
+	if len(rows) == 0 {
+		out.Issues = append(out.Issues, "the selected public pool has no active organization pool allocation")
+	}
+	for _, row := range rows {
+		org := poolSendStatusOrg{
+			ID:           row.OrganizationID,
+			Name:         row.OrganizationName,
+			Active:       row.OrganizationStatus == "active",
+			MailboxReady: row.MailboxReady,
+			MailboxEmail: row.ReplyMailboxEmail,
+			SMTPCount:    row.SMTPCount,
+		}
+		out.Organizations = append(out.Organizations, org)
+		switch {
+		case !org.Active:
+			out.Issues = append(out.Issues, fmt.Sprintf("%s: organization is archived", row.OrganizationName))
+		case !row.MailboxReady:
+			out.Issues = append(out.Issues, fmt.Sprintf("%s: unified reply mailbox is missing or not verified", row.OrganizationName))
+		case row.SMTPCount == 0:
+			out.Issues = append(out.Issues, fmt.Sprintf("%s: no enabled SMTP account for active members", row.OrganizationName))
+		}
+	}
+	out.Ready = len(rows) > 0 && len(out.Issues) == 0
+	return c.JSON(http.StatusOK, okResp{out})
 }
 
 // GetCampaignViewAnalytics retrieves view counts for a campaign.
@@ -1679,7 +1800,12 @@ func (a *App) requireUsableCampaignResources(c echo.Context, access models.Works
 // public pools. Pool IDs are authorized through pool delivery grants/allocations,
 // not through customer-list read/manage permissions; this is what permits an
 // organization to select a pool while keeping contact details hidden.
-func (a *App) splitCampaignAudienceIDs(access models.WorkspaceAccess, ids []int) ([]int, []campaignPoolAudience, error) {
+//
+// An all-organizations platform campaign (campaigns:public_pool_send) selects
+// only first-level pools: every active organization's pool allocation of the
+// pool becomes the audience, so an explicit pool-allocation list is rejected
+// and the per-organization delivery grant is not consulted.
+func (a *App) splitCampaignAudienceIDs(access models.WorkspaceAccess, ids []int, allOrganizations bool) ([]int, []campaignPoolAudience, error) {
 	regular := make([]int, 0, len(ids))
 	pools := make([]campaignPoolAudience, 0)
 	if len(ids) == 0 {
@@ -1702,29 +1828,34 @@ func (a *App) splitCampaignAudienceIDs(access models.WorkspaceAccess, ids []int)
 		seen[row.ID] = true
 		switch row.Type {
 		case models.CustomerListTypePool:
-			if access.OrganizationID <= 0 {
-				return nil, nil, echo.NewHTTPError(http.StatusForbidden, "public pool requires an organization workspace")
-			}
-			if !access.PlatformAdmin {
-				if !access.IsOrganization() {
+			if !allOrganizations {
+				if access.OrganizationID <= 0 {
 					return nil, nil, echo.NewHTTPError(http.StatusForbidden, "public pool requires an organization workspace")
 				}
-				ok, err := a.core.HasPoolOrganizationPermission(row.ID, int64(access.OrganizationID))
-				if err != nil {
-					return nil, nil, err
-				}
-				if !ok {
-					if err := a.db.Get(&ok, `SELECT EXISTS(SELECT 1 FROM org_pool_allocations WHERE pool_id=$1 AND organization_id=$2)`, row.ID, access.OrganizationID); err != nil {
+				if !access.PlatformAdmin {
+					if !access.IsOrganization() {
+						return nil, nil, echo.NewHTTPError(http.StatusForbidden, "public pool requires an organization workspace")
+					}
+					ok, err := a.core.HasPoolOrganizationPermission(row.ID, int64(access.OrganizationID))
+					if err != nil {
 						return nil, nil, err
 					}
-				}
-				if !ok {
-					return nil, nil, echo.NewHTTPError(http.StatusForbidden, "pool delivery access has not been granted")
+					if !ok {
+						if err := a.db.Get(&ok, `SELECT EXISTS(SELECT 1 FROM org_pool_allocations WHERE pool_id=$1 AND organization_id=$2)`, row.ID, access.OrganizationID); err != nil {
+							return nil, nil, err
+						}
+					}
+					if !ok {
+						return nil, nil, echo.NewHTTPError(http.StatusForbidden, "pool delivery access has not been granted")
+					}
 				}
 			}
 			p := campaignPoolAudience{PoolID: row.ID}
 			pools = append(pools, p)
 		case models.CustomerListTypeOrgPoolAllocation:
+			if allOrganizations {
+				return nil, nil, echo.NewHTTPError(http.StatusBadRequest, "an all-organization public pool campaign selects first-level pools only, not explicit pool allocations")
+			}
 			if !row.PoolID.Valid {
 				return nil, nil, echo.NewHTTPError(http.StatusBadRequest, "public-pool allocation is not bound to a first-level pool")
 			}
@@ -1748,6 +1879,24 @@ func (a *App) splitCampaignAudienceIDs(access models.WorkspaceAccess, ids []int)
 		return nil, nil, echo.NewHTTPError(http.StatusBadRequest, "one or more customer lists were not found")
 	}
 	return regular, pools, nil
+}
+
+// normalizeCampaignPoolScope validates the requested public-pool audience
+// scope. The platform-level scope requires the dedicated
+// campaigns:public_pool_send permission and is the only way to send one
+// campaign to every active organization's pool allocation.
+func (a *App) normalizeCampaignPoolScope(user auth.User, scope string) (string, error) {
+	switch scope {
+	case "", models.CampaignPoolScopeOrganization:
+		return models.CampaignPoolScopeOrganization, nil
+	case models.CampaignPoolScopeAllOrganizations:
+		if !user.HasPerm(auth.PermCampaignsPublicPoolSend) {
+			return "", echo.NewHTTPError(http.StatusForbidden, "all-organization public pool sending requires the campaigns:public_pool_send permission")
+		}
+		return models.CampaignPoolScopeAllOrganizations, nil
+	default:
+		return "", echo.NewHTTPError(http.StatusBadRequest, "invalid pool scope")
+	}
 }
 
 // validateCampaignFields validates incoming campaign field values.

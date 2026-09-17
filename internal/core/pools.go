@@ -198,6 +198,34 @@ func (c *Core) QueryAuthorizedPoolLists(access models.WorkspaceAccess) ([]models
 	return out, err
 }
 
+// QueryPlatformPublicPoolLists returns the minimal metadata of every active
+// first-level public pool to a caller that holds the platform-level
+// public-pool send permission. Platform-level campaigns cover every active
+// organization's allocation of the selected pool, so the audience selector
+// must not depend on the caller's organization owning a pool delivery grant;
+// only metadata is returned and contact details stay behind the separate
+// pool-contact policy. The permission itself is re-checked on campaign
+// create/update/start.
+func (c *Core) QueryPlatformPublicPoolLists() ([]models.CustomerList, error) {
+	var out []models.CustomerList
+	err := c.db.Select(&out, `
+		SELECT l.*, COALESCE(o.name, '') AS organization_name,
+			COALESCE(u.username, '') AS owner_username, COALESCE(u.name, '') AS owner_name,
+			(SELECT COUNT(*) FROM pool_members pm WHERE pm.pool_id = l.id) AS customer_count
+		FROM customer_lists l
+		LEFT JOIN organizations o ON o.id = l.organization_id
+		LEFT JOIN users u ON u.id = COALESCE(l.owner_user_id, l.original_owner_user_id)
+		WHERE l.type = $1 AND l.status = 'active'
+		ORDER BY l.name, l.id`, models.CustomerListTypePool)
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		out[i].PoolDeliveryAllowed = true
+	}
+	return out, nil
+}
+
 type poolListScope struct {
 	PoolID         int
 	AllocationID   *int64
@@ -1054,9 +1082,22 @@ func poolAudienceRouteMessage(issues []PoolAudienceRouteIssue) string {
 // reply mailbox. The block message names each unresolved audience and the
 // concrete missing piece; it never substitutes a per-allocation, personal or
 // default mailbox for a missing organization mailbox.
+//
+// Platform-level ('all_organizations') campaigns are validated across every
+// active organization that owns a pool allocation for the campaign's pool:
+// each organization needs a usable unified reply mailbox and at least one
+// enabled SMTP account belonging to an enabled active member. A single
+// unready organization blocks the whole campaign.
 func (c *Core) ValidatePoolCampaignAudience(campaignID int) error {
+	var poolScope string
+	if err := c.db.Get(&poolScope, `SELECT pool_scope FROM campaigns WHERE id=$1`, campaignID); err != nil {
+		return err
+	}
 	if err := c.refreshPoolCampaignAudienceRoutes(campaignID); err != nil {
 		return err
+	}
+	if poolScope == models.CampaignPoolScopeAllOrganizations {
+		return c.validateAllOrgPoolCampaignAudience(campaignID)
 	}
 	issues, err := c.poolAudienceRouteIssues(campaignID)
 	if err != nil {
@@ -1066,6 +1107,105 @@ func (c *Core) ValidatePoolCampaignAudience(campaignID int) error {
 		return echo.NewHTTPError(http.StatusBadRequest, poolAudienceRouteMessage(issues))
 	}
 	return nil
+}
+
+// poolOrgStatusRow is one row of the all-organization readiness read.
+type poolOrgStatusRow struct {
+	OrganizationID   int64  `db:"organization_id"`
+	OrganizationName string `db:"organization_name"`
+	OrgStatus        string `db:"organization_status"`
+	MailboxReady     bool   `db:"mailbox_ready"`
+	MailboxEmail     string `db:"reply_mailbox_email"`
+	SMTPCount        int    `db:"smtp_count"`
+}
+
+const poolAllOrgMessageSMTPStep = "each target organization needs at least one enabled SMTP account belonging to an enabled active member (members add one in Profile -> SMTP)"
+
+// validateAllOrgPoolCampaignAudience blocks preview/send for a platform-level
+// campaign until every active organization with a pool allocation for the
+// campaign's pool has a usable unified reply mailbox and at least one
+// eligible SMTP account. The message names each failing organization so an
+// operator can fix them one by one.
+func (c *Core) validateAllOrgPoolCampaignAudience(campaignID int) error {
+	var rows []poolOrgStatusRow
+	if err := c.db.Select(&rows, `SELECT s.organization_id,
+			o.name AS organization_name,
+			o.status AS organization_status,
+			(rm.id IS NOT NULL AND rm.status = 'active' AND rm.verified_at IS NOT NULL) AS mailbox_ready,
+			COALESCE(rm.email, '') AS reply_mailbox_email,
+			(
+				SELECT COUNT(*)
+				FROM user_smtp_servers s2
+				JOIN organization_members om2 ON om2.organization_id = s.organization_id
+					AND om2.user_id = s2.user_id AND om2.removed_at IS NULL
+				JOIN users u2 ON u2.id = s2.user_id AND u2.status = 'enabled'
+				WHERE s2.enabled = TRUE
+			) AS smtp_count
+		FROM org_pool_allocations s
+		JOIN organizations o ON o.id = s.organization_id
+		LEFT JOIN reply_mailboxes rm ON rm.id = o.reply_mailbox_id
+		WHERE s.pool_id = (
+			SELECT ccl.pool_id
+			FROM campaign_customer_lists ccl
+			WHERE ccl.campaign_id = $1 AND ccl.pool_id IS NOT NULL
+			LIMIT 1
+		)
+		ORDER BY s.organization_id`, campaignID); err != nil {
+		return err
+	}
+	var poolName string
+	if err := c.db.Get(&poolName, `SELECT COALESCE(MAX(ccl.customer_list_name), '')
+		FROM campaign_customer_lists ccl WHERE ccl.campaign_id=$1 AND ccl.pool_id IS NOT NULL`, campaignID); err != nil {
+		return err
+	}
+	if poolName == "" {
+		var id int
+		if err := c.db.Get(&id, `SELECT ccl.pool_id FROM campaign_customer_lists ccl WHERE ccl.campaign_id=$1 AND ccl.pool_id IS NOT NULL LIMIT 1`, campaignID); err != nil {
+			return err
+		}
+		if err := c.db.Get(&poolName, `SELECT name FROM customer_lists WHERE id=$1`, id); err != nil {
+			return err
+		}
+	}
+	if len(rows) == 0 {
+		return echo.NewHTTPError(http.StatusBadRequest,
+			poolAudienceRouteMessagePrefix+": "+fmt.Sprintf("pool list %q has no active organization pool allocation to send to", poolName)+
+				". Fix: "+poolAudienceRouteMessageAllocationStep+"; "+poolAudienceRouteMessageRetry)
+	}
+
+	clauses := make([]string, 0, len(rows))
+	total := 0
+	for _, row := range rows {
+		if row.OrgStatus != "active" {
+			clauses = append(clauses, fmt.Sprintf("pool list %q -> organization %q: the organization is archived", poolName, row.OrganizationName))
+			total++
+			continue
+		}
+		if !row.MailboxReady {
+			if row.MailboxEmail != "" {
+				clauses = append(clauses, fmt.Sprintf("pool list %q -> organization %q: the organization's unified reply mailbox %q is not verified and active", poolName, row.OrganizationName, row.MailboxEmail))
+			} else {
+				clauses = append(clauses, fmt.Sprintf("pool list %q -> organization %q: the organization has not configured its unified reply mailbox", poolName, row.OrganizationName))
+			}
+			total++
+			continue
+		}
+		if row.SMTPCount == 0 {
+			clauses = append(clauses, fmt.Sprintf("pool list %q -> organization %q: no enabled SMTP account is available for the organization's active members", poolName, row.OrganizationName))
+			total++
+		}
+	}
+	if total == 0 {
+		return nil
+	}
+	if total > poolAudienceRouteMessageLimit {
+		clauses = clauses[:poolAudienceRouteMessageLimit]
+	}
+	msg := poolAudienceRouteMessagePrefix + ": " + strings.Join(clauses, "; ")
+	if total > poolAudienceRouteMessageLimit {
+		msg += fmt.Sprintf(" (+%d more)", total-poolAudienceRouteMessageLimit)
+	}
+	return echo.NewHTTPError(http.StatusBadRequest, msg+". Fix: "+poolAudienceRouteMessageMailboxStep+"; "+poolAllOrgMessageSMTPStep+"; "+poolAudienceRouteMessageRetry)
 }
 
 // poolRecipientMembershipSQL is the single definition of a deliverable pool
@@ -1165,6 +1305,69 @@ const poolRecipientSnapshotPruneSQL = `DELETE FROM campaign_pool_recipients
 	WHERE campaign_id=$1 AND pool_id=$2 AND organization_id=$3 AND ($4::BIGINT IS NULL OR allocation_id=$4::BIGINT)
 		AND status IN ` + poolSnapshotRefreshStatuses + ` AND NOT (pool_contact_id=ANY($5::BIGINT[]))`
 
+// poolRecipientAllOrgMembershipSQL is the all-organization variant of the
+// shared membership rule: it iterates every active organization that owns a
+// pool allocation in the first-level pool, keeps only organizations whose
+// unified reply mailbox is usable, and deduplicates each contact to the first
+// organization in the campaign's persisted rotation order (falling back to the
+// organization ID order before the rotation is generated). The membership
+// predicates — active allocation member, active pool member, active contact,
+// no active exclusion — are identical to poolRecipientMembershipSQL.
+//
+// Positional parameters:
+//
+//	$1 = first-level pool ID
+//	$2 = campaign ID (joins the campaign's persisted organization order)
+const poolRecipientAllOrgMembershipSQL = `
+	FROM pool_contacts pc
+	JOIN org_pool_allocations s ON s.pool_id=$1
+	JOIN organizations o ON o.id=s.organization_id AND o.status='active'
+	JOIN org_pool_allocation_members sm ON sm.allocation_id=s.id AND sm.status='active' AND sm.contact_id=pc.id
+	JOIN pool_members pm ON pm.pool_id=s.pool_id AND pm.contact_id=pc.id
+	JOIN reply_mailboxes rm ON rm.id=o.reply_mailbox_id AND rm.status='active' AND rm.verified_at IS NOT NULL
+	LEFT JOIN org_pool_allocation_exclusions ex ON ex.pool_id=s.pool_id AND ex.organization_id=s.organization_id AND ex.contact_id=pc.id AND ex.restored_at IS NULL
+	LEFT JOIN campaign_pool_org_orders oo ON oo.campaign_id=$2 AND oo.organization_id=s.organization_id
+	WHERE ex.contact_id IS NULL AND pc.status='active'`
+
+// poolRecipientAllOrgSelectSQL reads the deduplicated, all-organization
+// deliverable contact IDs of one first-level pool for a platform-level
+// campaign. Every contact appears once, owned by the organization that comes
+// first in the campaign's rotation order.
+const poolRecipientAllOrgSelectSQL = `SELECT DISTINCT ON (pc.id) pc.id` +
+	poolRecipientAllOrgMembershipSQL + `
+	ORDER BY pc.id, COALESCE(oo.dispatch_order, 2147483647), s.organization_id`
+
+// poolRecipientAllOrgSnapshotUpsertSQL writes the all-organization snapshot in
+// one statement from the shared membership rule. The rewrite is restricted to
+// rows the refresh owns (pending/deferred), exactly like the single-org
+// upsert, so queued/sent delivery history keeps its original target
+// organization, mailbox and sender.
+const poolRecipientAllOrgSnapshotUpsertSQL = `INSERT INTO campaign_pool_recipients AS cpr(campaign_id,pool_contact_id,pool_id,allocation_id,organization_id,reply_mailbox_id,email_snapshot,name_snapshot)
+	SELECT $2,chosen.contact_id,$1,chosen.allocation_id,chosen.organization_id,chosen.reply_mailbox_id,chosen.email,chosen.name
+	FROM (
+		SELECT DISTINCT ON (pc.id)
+			pc.id AS contact_id, pc.email, pc.name,
+			s.id AS allocation_id, s.organization_id, rm.id AS reply_mailbox_id` +
+	poolRecipientAllOrgMembershipSQL + `
+		ORDER BY pc.id, COALESCE(oo.dispatch_order, 2147483647), s.organization_id
+	) chosen
+	ON CONFLICT(campaign_id,pool_contact_id) DO UPDATE SET
+		email_snapshot=EXCLUDED.email_snapshot,
+		name_snapshot=EXCLUDED.name_snapshot,
+		pool_id=EXCLUDED.pool_id,
+		allocation_id=EXCLUDED.allocation_id,
+		organization_id=EXCLUDED.organization_id,
+		reply_mailbox_id=EXCLUDED.reply_mailbox_id,
+		updated_at=NOW()
+	WHERE cpr.status IN ` + poolSnapshotRefreshStatuses
+
+// poolRecipientAllOrgSnapshotPruneSQL removes still-refreshable snapshot rows
+// that the all-organization rule no longer delivers to. Unlike the
+// single-org prune it matches any target organization, because each row
+// carries its own resolved target organization.
+const poolRecipientAllOrgSnapshotPruneSQL = `DELETE FROM campaign_pool_recipients
+	WHERE campaign_id=$1 AND pool_id=$2 AND status IN ` + poolSnapshotRefreshStatuses + ` AND NOT (pool_contact_id=ANY($3::BIGINT[]))`
+
 // poolAudience is the delivery scope of one pool relation on a campaign: the
 // first-level pool, the target organization, the explicitly selected pool allocation
 // list (nil when the audience selected the first-level pool) and the reply
@@ -1184,6 +1387,7 @@ type poolAudience struct {
 // refresh never duplicates a recipient.
 func (c *Core) EnsurePoolCampaignRecipients(campaignID int) error {
 	var rows []struct {
+		PoolScope      string        `db:"pool_scope"`
 		PoolID         int           `db:"pool_id"`
 		AllocationID   sql.NullInt64 `db:"org_pool_allocation_id"`
 		OrganizationID sql.NullInt64 `db:"source_organization_id"`
@@ -1193,10 +1397,23 @@ func (c *Core) EnsurePoolCampaignRecipients(campaignID int) error {
 	// first-level pool and its pool allocation, or two pools that share a contact;
 	// because the snapshot keeps one row per campaign and pool contact, a stable
 	// order keeps that row's audience label deterministic across ticks.
-	if err := c.db.Select(&rows, `SELECT pool_id,org_pool_allocation_id,source_organization_id,resolved_reply_mailbox_id FROM campaign_customer_lists WHERE campaign_id=$1 AND pool_id IS NOT NULL ORDER BY pool_id,org_pool_allocation_id NULLS FIRST`, campaignID); err != nil {
+	if err := c.db.Select(&rows, `SELECT c.pool_scope,ccl.pool_id,ccl.org_pool_allocation_id,ccl.source_organization_id,ccl.resolved_reply_mailbox_id
+		FROM campaign_customer_lists ccl
+		JOIN campaigns c ON c.id=ccl.campaign_id
+		WHERE ccl.campaign_id=$1 AND ccl.pool_id IS NOT NULL
+		ORDER BY ccl.pool_id,ccl.org_pool_allocation_id NULLS FIRST`, campaignID); err != nil {
 		return err
 	}
 	for _, row := range rows {
+		if row.PoolScope == models.CampaignPoolScopeAllOrganizations {
+			// Platform-level campaign: the audience covers every active
+			// organization's pool allocation of the first-level pool. Each
+			// contact is deduplicated to its rotation-order organization.
+			if err := c.refreshAllOrgPoolCampaignRecipients(campaignID, row.PoolID); err != nil {
+				return err
+			}
+			continue
+		}
 		if !row.OrganizationID.Valid || !row.MailboxID.Valid {
 			continue
 		}
@@ -1222,6 +1439,25 @@ func (c *Core) EnsurePoolCampaignRecipients(campaignID int) error {
 		}
 	}
 	return nil
+}
+
+// refreshAllOrgPoolCampaignRecipients refreshes the platform-level snapshot of
+// one first-level pool audience: every deliverable contact of every active
+// organization appears once, owned by the organization first in the
+// campaign's rotation order.
+func (c *Core) refreshAllOrgPoolCampaignRecipients(campaignID, poolID int) error {
+	var ids []int64
+	if err := c.db.Select(&ids, poolRecipientAllOrgSelectSQL, poolID, campaignID); err != nil {
+		return err
+	}
+	if _, err := c.db.Exec(poolRecipientAllOrgSnapshotPruneSQL, campaignID, poolID, pq.Int64Array(ids)); err != nil {
+		return err
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	_, err := c.db.Exec(poolRecipientAllOrgSnapshotUpsertSQL, poolID, campaignID)
+	return err
 }
 
 // refreshPoolCampaignRecipients makes the campaign snapshot of one pool audience
@@ -1303,10 +1539,31 @@ func (c *Core) organizationReplyMailboxID(organizationID int64) (*int64, error) 
 // mailbox is active and verified. A draft is still saved without one so the
 // administrator can finish the organization configuration later; preview and
 // send stay blocked until then.
-func (c *Core) AttachPoolToCampaign(campaignID, poolID int, allocationID *int64, organizationID int64) error {
+func (c *Core) AttachPoolToCampaign(campaignID, poolID int, allocationID *int64, organizationID int64, allOrganizations bool) error {
 	var err error
 	if err := c.ensurePool(poolID); err != nil {
 		return err
+	}
+	if allOrganizations {
+		// Platform-level audience: permission to send to every organization
+		// is checked by the campaign API (campaigns:public_pool_send), not by
+		// a per-organization pool delivery grant. The relation carries no
+		// target organization, allocation or mailbox: recipients resolve per
+		// contact to every active organization's allocation and its unified
+		// reply mailbox. A previous rotation is discarded so the snapshot
+		// refresh recomputes membership for the newly selected pool.
+		var name string
+		if err := c.db.Get(&name, `SELECT name FROM customer_lists WHERE id=$1`, poolID); err != nil {
+			return err
+		}
+		if _, err = c.db.Exec(`DELETE FROM campaign_pool_org_orders WHERE campaign_id=$1`, campaignID); err != nil {
+			return err
+		}
+		if _, err = c.db.Exec(`INSERT INTO campaign_customer_lists(campaign_id,customer_list_id,customer_list_name,pool_id,org_pool_allocation_id,source_organization_id,resolved_reply_mailbox_id)
+			VALUES($1,NULL,$2,$3,NULL,NULL,NULL) ON CONFLICT DO NOTHING`, campaignID, name, poolID); err != nil {
+			return err
+		}
+		return c.refreshAllOrgPoolCampaignRecipients(campaignID, poolID)
 	}
 	if organizationID <= 0 {
 		return echo.NewHTTPError(http.StatusBadRequest, "organization is required for pool audiences")

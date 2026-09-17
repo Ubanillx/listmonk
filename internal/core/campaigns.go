@@ -342,6 +342,7 @@ func (c *Core) CreateCampaign(o models.Campaign, customerListIDs []int, mediaIDs
 		scope.OwnerUserID,
 		scope.OriginalOwnerUserID,
 		scope.Visibility,
+		o.PoolScope,
 	); err != nil {
 		if err == sql.ErrNoRows {
 			return models.Campaign{}, echo.NewHTTPError(http.StatusBadRequest, c.i18n.T("campaigns.noSubs"))
@@ -445,7 +446,8 @@ func (c *Core) CreateCampaignInWorkspace(access models.WorkspaceAccess, o models
 			scope.OrganizationID,
 			scope.OwnerUserID,
 			scope.OriginalOwnerUserID,
-			scope.Visibility); err != nil {
+			scope.Visibility,
+			o.PoolScope); err != nil {
 			if err == sql.ErrNoRows {
 				return echo.NewHTTPError(http.StatusBadRequest, c.i18n.T("campaigns.noSubs"))
 			}

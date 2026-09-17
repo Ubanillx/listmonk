@@ -31,6 +31,14 @@ const (
 	CampaignContentTypeMarkdown = "markdown"
 	CampaignContentTypePlain    = "plain"
 	CampaignContentTypeVisual   = "visual"
+
+	// Public-pool audience scopes. PoolScopeOrganization keeps the legacy
+	// single-organization resolution; PoolScopeAllOrganizations marks a
+	// platform-level campaign that resolves every active organization's pool
+	// allocation of the selected first-level pool and sends each recipient
+	// through the target organization's member SMTP pool.
+	CampaignPoolScopeOrganization     = "organization"
+	CampaignPoolScopeAllOrganizations = "all_organizations"
 )
 
 // Campaigns represents a slice of Campaigns.
@@ -77,6 +85,13 @@ type Campaign struct {
 	ArchiveMeta       json.RawMessage `db:"archive_meta" json:"archive_meta"`
 	ReplyMailboxID    null.Int        `db:"reply_mailbox_id" json:"reply_mailbox_id"`
 	ReplyMailboxEmail string          `db:"reply_mailbox_email" json:"reply_mailbox_email"`
+	// PoolScope selects how pool audiences resolve (see the constants above).
+	// It is set at creation time and never changed afterwards.
+	PoolScope string `db:"pool_scope" json:"pool_scope"`
+
+	// PoolNextOrgIndex is the round-robin position into the campaign's
+	// persisted organization rotation. Sender-process state, not API state.
+	PoolNextOrgIndex int `db:"pool_next_org_index" json:"-"`
 	// OwnerUserAttribs is loaded for rendering and omitted from API responses.
 	OwnerUserAttribs JSON `db:"owner_user_attribs" json:"-"`
 

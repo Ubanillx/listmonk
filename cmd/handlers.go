@@ -231,6 +231,7 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.PUT("/api/campaigns/:id/status", apiKeyScope(hasID(a.UpdateCampaignStatus), apiKeyScopeCampaignsWrite))
 		g.PUT("/api/campaigns/:id/archive", apiKeyScope(hasID(a.UpdateCampaignArchive), apiKeyScopeCampaignsWrite))
 		g.POST("/api/campaigns/:id/pools", apiKeyScope(hasID(a.AttachCampaignPool), apiKeyScopeCampaignsWrite))
+		g.GET("/api/campaigns/:id/pool-send-status", apiKeyScope(hasID(a.GetCampaignPoolSendStatus), apiKeyScopeCampaignsRead))
 		g.DELETE("/api/campaigns", apiKeyScope(a.DeleteCampaigns, apiKeyScopeCampaignsWrite))
 		g.DELETE("/api/campaigns/:id", apiKeyScope(hasID(a.DeleteCampaign), apiKeyScopeCampaignsWrite))
 

@@ -584,6 +584,25 @@ func (a *App) queryReadableWorkspaceLists(c echo.Context, access models.Workspac
 		for _, l := range poolLists {
 			if _, ok := known[l.ID]; !ok && (typ == "" || l.Type == typ) {
 				all = append(all, l)
+				known[l.ID] = struct{}{}
+			}
+		}
+		// Platform-level public-pool senders select a first-level pool whose
+		// audience spans every organization, so the selector must not depend
+		// on the caller's organization holding a pool delivery grant. Only
+		// list metadata is added; contact details stay behind the separate
+		// pool-contact policy, and the permission is re-checked when the
+		// campaign is created, updated, scheduled or started.
+		if permUser := auth.GetUser(c); permUser.HasPerm(auth.PermCampaignsPublicPoolSend) {
+			platformPools, err := a.core.QueryPlatformPublicPoolLists()
+			if err != nil {
+				return nil, 0, err
+			}
+			for _, l := range platformPools {
+				if _, ok := known[l.ID]; !ok && (typ == "" || l.Type == typ) {
+					all = append(all, l)
+					known[l.ID] = struct{}{}
+				}
 			}
 		}
 	}

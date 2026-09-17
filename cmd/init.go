@@ -613,6 +613,20 @@ func initCampaignManager(msgrs []manager.Messenger, q *models.Queries, u *UrlCon
 			msgr.SetQuotaTracker(userSMTPQuota)
 			return msgr, nil
 		},
+		// PoolSMTP resolves one assigned SMTP account for platform-level
+		// public-pool recipients. It revalidates the row at every cache miss,
+		// so a disabled account, a removed member or a disabled SMTP row
+		// stops being usable immediately. The single-server Emailer keeps the
+		// recipient's assigned sender exact and shares the lifetime quota
+		// tracker with every other account pool.
+		PoolSMTP: func(smtpUUID string) (*email.Emailer, error) {
+			msgr, err := store.GetPoolSMTPServerByUUID(smtpUUID)
+			if err != nil {
+				return nil, err
+			}
+			msgr.SetQuotaTracker(userSMTPQuota)
+			return msgr, nil
+		},
 		AuditCampaign: func(action string, campaign *models.Campaign, metadata map[string]any) {
 			var organizationID *int64
 			if campaign.OrganizationID.Valid && campaign.OrganizationID.Int > 0 {

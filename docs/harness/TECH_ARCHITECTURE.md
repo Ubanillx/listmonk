@@ -26,6 +26,14 @@
 - 直接客户导出由 `cmd/customers.go` 执行 `customers:export` 和工作区/所有权/脱敏检查；审计导出由 `cmd/audit.go` 执行 `audit:get` 和相同工作区边界。前端只负责发起下载，不能作为安全边界。
 - `internal/core/workspace_queries.go` 的客户列表查询对活动平台管理员也按当前工作区收敛；`cmd/customers.go` 的客户列表 ID 守卫再次校验活动工作区，客户新建/编辑/普通导入使用当前操作者所有权守卫。`frontend/src/utils/workspace.js` 为客户表单、普通导入、批量操作、活动受众和客户列表导入入口复用同一显示规则；一级公海列表仍由独立投放/导入授权显式加入。
 
+## 平台级公海活动的发送组件（v6.44.0）
+
+- 受众解析与快照在 `internal/core/pools.go`：`all_organizations` 活动复用单组织成员判定（`poolRecipientAllOrgMembershipSQL`）并要求目标组织统一回件邮箱可用，`DISTINCT ON (pc.id)` 去重到活动组织顺序中的第一个组织；刷新只改写 `pending`/`deferred` 行。
+- 组织顺序（`campaign_pool_org_orders`）与组织 SMTP 游标（`org_pool_smtp_cursors`）是持久化状态，由 `cmd/manager_store.go` 的 `nextPoolCustomers` 在单个事务内维护：生成/清理顺序 → 按组织轮转领取收件人（`FOR UPDATE ... SKIP LOCKED`）→ 在游标行锁下挑选未被额度耗尽的 SMTP → 写回发件快照并推进 `campaigns.pool_next_org_index`。并发 worker/多实例依赖数据库行锁，不依赖进程内状态。
+- 发送侧 `internal/manager` 新增按 SMTP UUID 解析的池路径（`Config.PoolSMTP` + `resolvePoolSMTPMessenger` + `InvalidateAllPoolSMTP`）：缓存键为 UUID、值为单服务器 `email.Emailer`，与个人 SMTP 共用失效锁；`ErrPoolSMTPUnavailable` 让活动严格暂停，普通活动与系统邮件路径不变。
+- 权限：`campaigns:public_pool_send` 同时存在于 `permissions.json`、`internal/auth/models.go` 与三语 i18n；`cmd/campaigns.go` 的 `normalizeCampaignPoolScope` 是唯一作用域闸门，`requireCampaignSendOwnership` 仅对该作用域放行权限持有者。
+- 验证入口：`dev/pools_all_org_smtp_e2e_verify.ps1`（自建/自清理夹具，覆盖多组织、多成员 SMTP 轮询、去重、Reply-To 与游标），`internal/core` 的 `TestAllOrgPoolSnapshot*`/`TestValidateAllOrgPool*`，`internal/manager/pool_smtp_test.go`，`internal/migrations/v6.44.0_test.go`。
+
 ## Jenkins filesystem media persistence
 
 `Jenkinsfile` 的 systemd 发布使用 `<DEPLOY_DIR>/releases/<release-id>` 保存

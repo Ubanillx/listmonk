@@ -480,7 +480,7 @@ func (a *App) AttachCampaignPool(c echo.Context) error {
 	if auth.GetUser(c).IsPlatformAdmin() && req.OrganizationID > 0 {
 		orgID = req.OrganizationID
 	}
-	if err := a.core.AttachPoolToCampaign(campaignID, req.PoolID, req.OrgPoolAllocationID, orgID); err != nil {
+	if err := a.core.AttachPoolToCampaign(campaignID, req.PoolID, req.OrgPoolAllocationID, orgID, false); err != nil {
 		return err
 	}
 	return c.JSON(http.StatusOK, okResp{true})

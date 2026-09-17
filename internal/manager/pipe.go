@@ -52,19 +52,41 @@ func (m *Manager) newPipe(c *models.Campaign) (*pipe, error) {
 		m.markCampaignSMTPUnavailable(c)
 		return nil, fmt.Errorf("campaign %s cannot send: %w: campaign has no account owner", c.Name, ErrPersonalSMTPUnavailable)
 	}
-	msg := models.Message{Messenger: c.Messenger, OwnerUserID: c.OwnerUserID.Int}
-	msgr, err := m.resolveMessenger(msg)
-	if err != nil {
-		// A campaign without an account SMTP must never silently use the platform
-		// SMTP. Preserve the prior scheduler state when the store supports the
-		// atomic strict transition; this pauses an already-running campaign while
-		// returning a scheduled/deferred claim to draft.
-		if errors.Is(err, ErrPersonalSMTPUnavailable) {
-			m.markCampaignSMTPUnavailable(c)
-		} else {
-			m.markCampaignStartFailure(c)
+	// Platform-level public-pool campaigns resolve their SMTP per message
+	// from the target organization's member SMTP pool, so the campaign
+	// owner's own personal SMTP is not required here; availability was
+	// validated when the campaign started and per-message resolution failure
+	// pauses the campaign.
+	poolScoped := c.PoolScope == models.CampaignPoolScopeAllOrganizations
+	var msgr Messenger
+	if poolScoped {
+		// A platform-level campaign must not borrow any messenger that is
+		// not the organization pool; keep the pipe messengerless for e-mail.
+		if !email.IsMessengerName(c.Messenger) {
+			msg := models.Message{Messenger: c.Messenger}
+			var err error
+			msgr, err = m.resolveMessenger(msg)
+			if err != nil {
+				m.markCampaignStartFailure(c)
+				return nil, fmt.Errorf("campaign %s cannot send: %w", c.Name, err)
+			}
 		}
-		return nil, fmt.Errorf("campaign %s cannot send: %w", c.Name, err)
+	} else {
+		msg := models.Message{Messenger: c.Messenger, OwnerUserID: c.OwnerUserID.Int}
+		var err error
+		msgr, err = m.resolveMessenger(msg)
+		if err != nil {
+			// A campaign without an account SMTP must never silently use the platform
+			// SMTP. Preserve the prior scheduler state when the store supports the
+			// atomic strict transition; this pauses an already-running campaign while
+			// returning a scheduled/deferred claim to draft.
+			if errors.Is(err, ErrPersonalSMTPUnavailable) {
+				m.markCampaignSMTPUnavailable(c)
+			} else {
+				m.markCampaignStartFailure(c)
+			}
+			return nil, fmt.Errorf("campaign %s cannot send: %w", c.Name, err)
+		}
 	}
 
 	// Load the template.
@@ -139,6 +161,14 @@ func (p *pipe) NextCustomers() (bool, error) {
 	if errors.Is(err, ErrCampaignDeferred) {
 		p.Defer()
 		return false, nil
+	}
+	if errors.Is(err, ErrPoolSMTPUnavailable) {
+		// A target organization's member SMTP pool has no eligible SMTP
+		// account. Pause the campaign strictly (no owner/platform fallback)
+		// so an operator can repair the pool and resume.
+		p.Stop(stopReasonPersonalSMTP, false)
+		p.m.log.Printf("paused campaign (%s): %v", p.camp.Name, err)
+		return false, err
 	}
 	if err != nil {
 		return false, fmt.Errorf("error fetching campaign customers (%s): %v", p.camp.Name, err)
@@ -299,6 +329,10 @@ func (p *pipe) newMessage(s models.CampaignCustomer) (CampaignMessage, error) {
 	msg.OrgPoolAllocationID = s.OrgPoolAllocationID
 	msg.PoolReplyMailboxID = s.ReplyMailboxID
 	msg.PoolReplyMailboxEmail = s.PoolReplyMailboxEmail
+	msg.PoolOrganizationID = s.PoolOrganizationID
+	msg.PoolSenderSMTPUUID = s.PoolSenderSMTPUUID
+	msg.PoolSenderUserID = s.PoolSenderUserID
+	msg.PoolSenderFrom = s.PoolSenderFrom
 	p.wg.Add(1)
 
 	return msg, nil

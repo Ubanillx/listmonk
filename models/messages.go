@@ -34,6 +34,12 @@ type Message struct {
 	// for user-originated campaign and transactional e-mail. A zero value is
 	// reserved for system messages, which use the platform SMTP.
 	OwnerUserID int
+
+	// PoolSenderSMTPUUID routes a platform-level public-pool message through
+	// the specific SMTP account assigned to that recipient by the
+	// organization pool allocator, instead of an owner's personal pool. When
+	// set, it takes precedence over OwnerUserID resolution.
+	PoolSenderSMTPUUID string
 }
 
 // SetListUnsubscribeHeaders adds the RFC 8058 one-click unsubscribe headers

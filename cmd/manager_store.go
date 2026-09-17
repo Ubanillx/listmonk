@@ -1,7 +1,9 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
+	"math/rand"
 	"net/url"
 	"time"
 
@@ -38,6 +40,8 @@ type campaignSendState struct {
 	DailySentCount  int       `db:"daily_sent_count"`
 	QueuedCount     int       `db:"queued_count"`
 	UnsentCount     int       `db:"unsent_count"`
+	PoolScope       string    `db:"pool_scope"`
+	PoolOrgIndex    int       `db:"pool_next_org_index"`
 }
 
 type campaignProgress struct {
@@ -77,37 +81,71 @@ func (s *store) GetUserSMTPServers(userID int) ([]email.Server, error) {
 		if !row.Enabled {
 			continue
 		}
-		idle, err := time.ParseDuration(row.IdleTimeout)
+		srv, err := mapSMTPServer(row)
 		if err != nil {
-			return nil, fmt.Errorf("invalid SMTP idle timeout: %w", err)
+			return nil, err
 		}
-		wait, err := time.ParseDuration(row.WaitTimeout)
-		if err != nil {
-			return nil, fmt.Errorf("invalid SMTP wait timeout: %w", err)
-		}
-		out = append(out, email.Server{
-			Name:          row.Name,
-			UUID:          row.UUID,
-			FromEmail:     row.FromEmail,
-			DailyLimit:    row.DailyLimit,
-			Username:      row.Username,
-			Password:      row.Password,
-			AuthProtocol:  row.AuthProtocol,
-			TLSType:       row.TLSType,
-			TLSSkipVerify: row.TLSSkipVerify,
-			EmailHeaders:  headersToMap(row.EmailHeaders),
-			Opt: smtppool.Opt{
-				Host:              row.Host,
-				Port:              row.Port,
-				HelloHostname:     row.HelloHostname,
-				MaxConns:          row.MaxConns,
-				MaxMessageRetries: row.MaxMsgRetries,
-				IdleTimeout:       idle,
-				PoolWaitTimeout:   wait,
-			},
-		})
+		out = append(out, srv)
 	}
 	return out, nil
+}
+
+// mapSMTPServer converts one persisted SMTP row into the messenger server
+// options used by email.Emailer.
+func mapSMTPServer(row models.PersonalSMTPServer) (email.Server, error) {
+	idle, err := time.ParseDuration(row.IdleTimeout)
+	if err != nil {
+		return email.Server{}, fmt.Errorf("invalid SMTP idle timeout: %w", err)
+	}
+	wait, err := time.ParseDuration(row.WaitTimeout)
+	if err != nil {
+		return email.Server{}, fmt.Errorf("invalid SMTP wait timeout: %w", err)
+	}
+	return email.Server{
+		Name:          row.Name,
+		UUID:          row.UUID,
+		FromEmail:     row.FromEmail,
+		DailyLimit:    row.DailyLimit,
+		Username:      row.Username,
+		Password:      row.Password,
+		AuthProtocol:  row.AuthProtocol,
+		TLSType:       row.TLSType,
+		TLSSkipVerify: row.TLSSkipVerify,
+		EmailHeaders:  headersToMap(row.EmailHeaders),
+		Opt: smtppool.Opt{
+			Host:              row.Host,
+			Port:              row.Port,
+			HelloHostname:     row.HelloHostname,
+			MaxConns:          row.MaxConns,
+			MaxMessageRetries: row.MaxMsgRetries,
+			IdleTimeout:       idle,
+			PoolWaitTimeout:   wait,
+		},
+	}, nil
+}
+
+// GetPoolSMTPServerByUUID loads one specific enabled SMTP account by UUID for
+// a platform-level public-pool recipient, revalidating that the owning user
+// is enabled and still an active member of an active organization. A
+// single-server Emailer is returned so the recipient's assigned sender is
+// honored exactly.
+func (s *store) GetPoolSMTPServerByUUID(uuid string) (*email.Emailer, error) {
+	var rows []models.PersonalSMTPServer
+	if err := s.queries.GetEnabledUserSMTPServerByUUID.Select(&rows, uuid, currentLocalDate()); err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, fmt.Errorf("%w: pool SMTP %s is not available", manager.ErrPoolSMTPUnavailable, uuid)
+	}
+	srv, err := mapSMTPServer(rows[0])
+	if err != nil {
+		return nil, err
+	}
+	msgr, err := email.New(email.MessengerName, srv)
+	if err != nil {
+		return nil, err
+	}
+	return msgr, nil
 }
 
 func headersToMap(headers models.Headers) map[string]string {
@@ -215,12 +253,21 @@ func (s *store) NextCustomers(campID, limit int) ([]models.CampaignCustomer, err
 	// Keep the same cap in the SQL projection and the batch decision. This is
 	// also defensive for legacy rows whose stored limit is still zero.
 	smtpRemaining := -1
-	if st.CampaignType == models.CampaignTypeRegular && email.IsMessengerName(st.Messenger) &&
-		st.OwnerUserID.Valid && st.OwnerUserID.Int > 0 {
-		var err error
-		smtpRemaining, err = s.userSMTPRemaining(st.OwnerUserID.Int)
-		if err != nil {
-			return nil, err
+	if st.CampaignType == models.CampaignTypeRegular && email.IsMessengerName(st.Messenger) {
+		if st.PoolScope == models.CampaignPoolScopeAllOrganizations {
+			// Platform-level public-pool campaigns draw from every target
+			// organization's member SMTP pool. The aggregate remaining
+			// capacity is advisory; the authoritative reservation happens at
+			// send time through the shared quota tracker.
+			if err := s.queries.GetCampaignPoolSMTPRemaining.Get(&smtpRemaining, campID, currentLocalDate()); err != nil {
+				return nil, err
+			}
+		} else if st.OwnerUserID.Valid && st.OwnerUserID.Int > 0 {
+			var err error
+			smtpRemaining, err = s.userSMTPRemaining(st.OwnerUserID.Int)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 	batchLimit, deferred := campaignBatchLimit(
@@ -244,6 +291,14 @@ func (s *store) NextCustomers(campID, limit int) ([]models.CampaignCustomer, err
 			return nil, manager.ErrCampaignDeferred
 		}
 		limit = batchLimit
+	}
+
+	// Platform-level public-pool campaigns claim recipients through the
+	// transactional organization allocator, which rotates organizations
+	// fairly and assigns each recipient an SMTP account from the target
+	// organization's member SMTP pool.
+	if st.PoolScope == models.CampaignPoolScopeAllOrganizations {
+		return s.nextPoolCustomers(campID, st, limit)
 	}
 
 	var out []models.CampaignCustomer
@@ -297,6 +352,299 @@ func (s *store) userSMTPRemaining(userID int) (int, error) {
 		return 0, err
 	}
 	return remaining, nil
+}
+
+// poolOrgSMTPServer is one flattened SMTP slot of an organization's member
+// SMTP pool.
+type poolOrgSMTPServer struct {
+	UUID       string `db:"uuid"`
+	UserID     int    `db:"user_id"`
+	FromEmail  string `db:"from_email"`
+	DailyLimit int    `db:"daily_limit"`
+	SentToday  int    `db:"sent_today"`
+}
+
+// poolClaimRow is one claim-campaign-pool-org-recipient row.
+type poolClaimRow struct {
+	PoolContactID    int64       `db:"pool_contact_id"`
+	SenderSMTPUUID   null.String `db:"sender_smtp_uuid"`
+	SenderUserID     null.Int    `db:"sender_user_id"`
+	SenderFrom       string      `db:"sender_from_snapshot"`
+	Email            string      `db:"email"`
+	Name             string      `db:"name"`
+	Attribs          models.JSON `db:"attribs"`
+	UUID             string      `db:"uuid"`
+	CustomerCode     string      `db:"customer_code"`
+	CreatedAt        null.Time   `db:"created_at"`
+	UpdatedAt        null.Time   `db:"updated_at"`
+	ReplyMailboxID   null.Int    `db:"reply_mailbox_id"`
+	AllocationID     int64       `db:"allocation_id"`
+	PoolReplyMailbox string      `db:"pool_reply_mailbox_email"`
+	PoolOrgID        int64       `db:"pool_organization_id"`
+}
+
+// ensurePoolOrgOrders guarantees the campaign has a persisted, fair
+// organization rotation inside the given transaction. The order is generated
+// once by shuffling the active organizations that own a pool allocation for
+// the campaign's pool; afterwards it never changes (stale organizations are
+// pruned, the remaining order keeps its sequence).
+func (s *store) ensurePoolOrgOrders(tx *sqlx.Tx, campID int) ([]int64, error) {
+	var orders []int64
+	if err := tx.Select(&orders, `SELECT organization_id FROM campaign_pool_org_orders WHERE campaign_id=$1 ORDER BY dispatch_order`, campID); err != nil {
+		return nil, err
+	}
+	if len(orders) > 0 {
+		if _, err := tx.Exec(`DELETE FROM campaign_pool_org_orders oo
+			WHERE oo.campaign_id = $1
+			  AND NOT EXISTS (
+			      SELECT 1 FROM org_pool_allocations s
+			      JOIN organizations o ON o.id = s.organization_id AND o.status = 'active'
+			      JOIN campaign_customer_lists ccl ON ccl.campaign_id = oo.campaign_id
+			          AND ccl.pool_id = s.pool_id AND ccl.pool_id IS NOT NULL
+			      WHERE s.organization_id = oo.organization_id
+			  )`, campID); err != nil {
+			return nil, err
+		}
+		if err := tx.Select(&orders, `SELECT organization_id FROM campaign_pool_org_orders WHERE campaign_id=$1 ORDER BY dispatch_order`, campID); err != nil {
+			return nil, err
+		}
+	}
+	if len(orders) > 0 {
+		return orders, nil
+	}
+
+	var poolID null.Int
+	if err := tx.Get(&poolID, `SELECT pool_id FROM campaign_customer_lists WHERE campaign_id=$1 AND pool_id IS NOT NULL LIMIT 1`, campID); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, manager.ErrPoolSMTPUnavailable
+		}
+		return nil, err
+	}
+	var orgs []int64
+	if err := tx.Select(&orgs, `SELECT DISTINCT s.organization_id
+		FROM org_pool_allocations s
+		JOIN organizations o ON o.id = s.organization_id AND o.status = 'active'
+		WHERE s.pool_id = $1
+		ORDER BY s.organization_id`, poolID.Int); err != nil {
+		return nil, err
+	}
+	if len(orgs) == 0 {
+		return nil, manager.ErrPoolSMTPUnavailable
+	}
+	rand.Shuffle(len(orgs), func(i, j int) { orgs[i], orgs[j] = orgs[j], orgs[i] })
+	for i, org := range orgs {
+		if _, err := tx.Exec(`INSERT INTO campaign_pool_org_orders(campaign_id, organization_id, dispatch_order)
+			VALUES($1, $2, $3) ON CONFLICT (campaign_id, organization_id) DO NOTHING`, campID, org, i); err != nil {
+			return nil, err
+		}
+	}
+	return orgs, nil
+}
+
+// pickPoolOrgSMTP advances the organization's durable round-robin cursor and
+// returns the next SMTP slot that still has local-day quota. A returned nil
+// means every server in the pool is quota-exhausted for today (advisory; the
+// authoritative reservation happens at send time). A structurally empty pool
+// (no eligible SMTP rows at all) is reported as ErrPoolSMTPUnavailable.
+func (s *store) pickPoolOrgSMTP(tx *sqlx.Tx, orgID int64, servers []poolOrgSMTPServer) (*poolOrgSMTPServer, error) {
+	if len(servers) == 0 {
+		return nil, manager.ErrPoolSMTPUnavailable
+	}
+	if _, err := tx.Exec(`INSERT INTO org_pool_smtp_cursors(organization_id) VALUES($1) ON CONFLICT DO NOTHING`, orgID); err != nil {
+		return nil, err
+	}
+	var cursor null.String
+	if err := tx.Get(&cursor, `SELECT next_smtp_uuid FROM org_pool_smtp_cursors WHERE organization_id=$1 FOR UPDATE`, orgID); err != nil {
+		return nil, err
+	}
+	start := 0
+	if cursor.Valid {
+		for i := range servers {
+			if servers[i].UUID == cursor.String {
+				start = i + 1
+				break
+			}
+		}
+	}
+	for i := range servers {
+		srv := servers[(start+i)%len(servers)]
+		if srv.DailyLimit > 0 && srv.SentToday >= srv.DailyLimit {
+			continue
+		}
+		if _, err := tx.Exec(`UPDATE org_pool_smtp_cursors SET next_smtp_uuid=$2::UUID, updated_at=NOW() WHERE organization_id=$1`, orgID, srv.UUID); err != nil {
+			return nil, err
+		}
+		return &srv, nil
+	}
+	return nil, nil
+}
+
+// nextPoolCustomers claims one batch of recipients for a platform-level
+// public-pool campaign. Organizations are served round-robin in the
+// campaign's persisted random order: each visit claims one deliverable
+// recipient for that organization and assigns an SMTP account from that
+// organization's member SMTP pool, advancing the organization's durable
+// cursor. A recipient whose previously assigned SMTP is still eligible keeps
+// it (an in-flight retry never crosses to a different account); a recipient
+// whose assigned SMTP is gone or quota-exhausted is reassigned from the
+// cursor position.
+func (s *store) nextPoolCustomers(campID int, st campaignSendState, limit int) ([]models.CampaignCustomer, error) {
+	tx, err := s.db.Beginx()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	orgOrders, err := s.ensurePoolOrgOrders(tx, campID)
+	if err != nil {
+		return nil, err
+	}
+	if len(orgOrders) == 0 {
+		return nil, manager.ErrPoolSMTPUnavailable
+	}
+
+	orgServers := make(map[int64][]poolOrgSMTPServer, len(orgOrders))
+	loadServers := func(orgID int64) ([]poolOrgSMTPServer, error) {
+		if rows, ok := orgServers[orgID]; ok {
+			return rows, nil
+		}
+		var rows []poolOrgSMTPServer
+		if err := s.queries.GetOrgPoolSMTPServers.Select(&rows, orgID, currentLocalDate()); err != nil {
+			return nil, err
+		}
+		orgServers[orgID] = rows
+		return rows, nil
+	}
+
+	quotaBlocked := make(map[int64]bool)
+	statuses := []string{models.CampaignRecipientStatusPending, models.CampaignRecipientStatusDeferred}
+	out := make([]models.CampaignCustomer, 0, limit)
+	orgIdx := st.PoolOrgIndex
+	visited := 0
+	for len(out) < limit && visited < len(orgOrders) {
+		orgID := orgOrders[orgIdx%len(orgOrders)]
+		orgIdx++
+		visited++
+
+		if quotaBlocked[orgID] {
+			continue
+		}
+		servers, err := loadServers(orgID)
+		if err != nil {
+			return nil, err
+		}
+		if len(servers) == 0 {
+			// Structural emptiness: the organization has no eligible SMTP
+			// account at all. The whole campaign pauses.
+			return nil, manager.ErrPoolSMTPUnavailable
+		}
+
+		var claim poolClaimRow
+		if err := tx.Get(&claim, `SELECT cpr.pool_contact_id,
+				cpr.sender_smtp_uuid, cpr.sender_user_id, cpr.sender_from_snapshot,
+				COALESCE(cpr.email_snapshot, pc.email) AS email,
+				COALESCE(cpr.name_snapshot, pc.name) AS name,
+				pc.attribs, pc.uuid, pc.customer_code, pc.created_at, pc.updated_at,
+				cpr.reply_mailbox_id, COALESCE(cpr.allocation_id, 0) AS allocation_id,
+				COALESCE(rm.email, '') AS pool_reply_mailbox_email,
+				cpr.organization_id AS pool_organization_id
+			FROM campaign_pool_recipients cpr
+			JOIN pool_contacts pc ON pc.id = cpr.pool_contact_id
+			LEFT JOIN reply_mailboxes rm ON rm.id = cpr.reply_mailbox_id
+			LEFT JOIN org_pool_allocation_exclusions ex ON ex.pool_id = cpr.pool_id
+				AND ex.organization_id = cpr.organization_id
+				AND ex.contact_id = cpr.pool_contact_id
+				AND ex.restored_at IS NULL
+			WHERE cpr.campaign_id = $1 AND cpr.organization_id = $2
+				AND cpr.status = ANY($3::campaign_recipient_status[])
+				AND pc.status = 'active' AND ex.contact_id IS NULL
+			ORDER BY cpr.pool_contact_id
+			FOR UPDATE OF cpr SKIP LOCKED
+			LIMIT 1`, campID, orgID, pq.Array(statuses)); err != nil {
+			if err == sql.ErrNoRows {
+				// The organization has no deliverable recipients left; move
+				// on to the next organization in the rotation.
+				continue
+			}
+			return nil, err
+		}
+
+		var srv *poolOrgSMTPServer
+		if claim.SenderSMTPUUID.Valid {
+			// Keep an existing assignment when its SMTP account is still in
+			// the organization's active pool and has quota left. Retrying a
+			// failed send must not cross accounts.
+			for i := range servers {
+				if servers[i].UUID == claim.SenderSMTPUUID.String {
+					if servers[i].DailyLimit > 0 && servers[i].SentToday >= servers[i].DailyLimit {
+						break
+					}
+					srv = &servers[i]
+					break
+				}
+			}
+		}
+		if srv == nil {
+			srv, err = s.pickPoolOrgSMTP(tx, orgID, servers)
+			if err != nil {
+				return nil, err
+			}
+			if srv == nil {
+				// Every server in this organization is quota-exhausted for
+				// today. Leave the recipient claimable and try other
+				// organizations; the campaign defers when the whole pool is
+				// exhausted.
+				quotaBlocked[orgID] = true
+				continue
+			}
+		}
+
+		res, err := tx.Exec(`UPDATE campaign_pool_recipients
+			SET status = 'queued', updated_at = NOW(),
+				sender_smtp_uuid = $3::UUID, sender_user_id = $4,
+				sender_from_snapshot = $5, sender_assigned_at = NOW()
+			WHERE campaign_id = $1 AND pool_contact_id = $2
+				AND status = ANY('{pending,deferred}'::campaign_recipient_status[])`,
+			campID, claim.PoolContactID, srv.UUID, srv.UserID, srv.FromEmail)
+		if err != nil {
+			return nil, err
+		}
+		if n, err := res.RowsAffected(); err != nil {
+			return nil, err
+		} else if n == 0 {
+			continue
+		}
+
+		out = append(out, models.CampaignCustomer{
+			Customer: models.Customer{
+				Base: models.Base{CreatedAt: claim.CreatedAt, UpdatedAt: claim.UpdatedAt},
+				UUID: claim.UUID, Email: claim.Email, Name: claim.Name,
+				Attribs: claim.Attribs, Status: "enabled",
+				CustomerCode: claim.CustomerCode,
+			},
+			RecipientStatus:       models.CampaignRecipientStatusQueued,
+			PoolContactID:         claim.PoolContactID,
+			PoolID:                int(claim.AllocationID), // unused for pool delivery; kept for parity
+			OrgPoolAllocationID:   claim.AllocationID,
+			ReplyMailboxID:        claim.ReplyMailboxID,
+			PoolReplyMailboxEmail: claim.PoolReplyMailbox,
+			PoolOrganizationID:    claim.PoolOrgID,
+			PoolSenderSMTPUUID:    srv.UUID,
+			PoolSenderUserID:      int64(srv.UserID),
+			PoolSenderFrom:        srv.FromEmail,
+		})
+	}
+
+	// Persist the rotation position so a paused/restarted campaign resumes
+	// where it stopped and concurrent batches rotate instead of restarting.
+	if _, err := tx.Exec(`UPDATE campaigns SET pool_next_org_index = $2, updated_at = NOW() WHERE id = $1`,
+		campID, orgIdx%len(orgOrders)); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // GetCampaign fetches a campaign from the database.

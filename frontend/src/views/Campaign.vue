@@ -129,6 +129,25 @@
                   </ul>
                 </b-notification>
 
+                <!-- Platform-level public pool: audience, SMTP rotation and
+                  per-organization readiness. -->
+                <b-notification v-if="isPlatformPoolCampaign" type="is-info" :closable="false"
+                  class="pool-scope-all-notice" data-cy="pool-scope-all-notice">
+                  <strong>{{ $t('campaigns.poolScopeAllTitle') }}</strong>
+                  <p class="mt-2">{{ $t('campaigns.poolScopeAllHelp') }}</p>
+                  <template v-if="poolSendStatus">
+                    <p :class="['mt-2', poolSendStatus.ready ? 'has-text-success' : 'has-text-warning']"
+                      data-cy="pool-send-status-ready">
+                      {{ poolSendStatus.ready ? $t('campaigns.poolSendReadyShort') : $t('campaigns.poolSendUnavailable') }}
+                      — {{ poolSendStatus.ready ? $t('campaigns.poolSendReady') : $t('campaigns.poolSendBlocked') }}
+                    </p>
+                    <ul v-if="poolSendStatus.issues && poolSendStatus.issues.length" data-cy="pool-send-status-issues">
+                      <li v-for="(issue, index) in poolSendStatus.issues" :key="`pool-send-issue-${index}`">{{ issue }}</li>
+                    </ul>
+                    <p class="help">{{ $t('campaigns.poolSendStatusTitle') }}</p>
+                  </template>
+                </b-notification>
+
                 <p v-if="listsLocked" class="help is-info">
                   {{ $t('campaigns.listsLockedHelp') }}
                 </p>
@@ -475,6 +494,8 @@ export default Vue.extend({
       templateMedia: [],
       personalSMTPAvailable: false,
       personalSMTPLoaded: false,
+      // Per-organization readiness of a platform-level public-pool campaign.
+      poolSendStatus: null,
       replyMailboxes: [],
       replyMailboxesLoaded: false,
       customFields: [],
@@ -712,6 +733,11 @@ export default Vue.extend({
 
         this.data = data;
         const normalizedMessenger = data.messenger?.startsWith('email-') ? 'email' : (data.messenger || 'email');
+        // A platform-level public-pool campaign reports per-organization
+        // mailbox/SMTP readiness instead of the owner's personal SMTP.
+        if (data.poolScope === 'all_organizations' || data.pool_scope === 'all_organizations') {
+          this.loadPoolSendStatus();
+        }
         this.form = {
           ...this.form,
           ...data,
@@ -797,6 +823,9 @@ export default Vue.extend({
         media: this.form.media.map((m) => m.id),
         visibility: this.form.visibility,
         reply_mailbox_id: this.campaignReplyMailboxID,
+        // Platform-level public pool: the audience is every active
+        // organization's allocation of the selected first-level pool.
+        pool_scope: this.isPlatformPoolCampaign ? 'all_organizations' : 'organization',
       };
 
       this.$api.createCampaign(data).then((d) => {
@@ -939,6 +968,20 @@ export default Vue.extend({
       });
     },
 
+    loadPoolSendStatus() {
+      this.poolSendStatus = null;
+      return this.$api.getCampaignPoolSendStatus(this.data.id).then((data) => {
+        this.poolSendStatus = {
+          ready: !!(data && data.ready),
+          organizations: (data && Array.isArray(data.organizations)) ? data.organizations : [],
+          issues: (data && Array.isArray(data.issues)) ? data.issues : [],
+        };
+      }).catch(() => {
+        // Fail closed: a status read failure must not enable delivery.
+        this.poolSendStatus = { ready: false, organizations: [], issues: [] };
+      });
+    },
+
     loadReplyMailboxes() {
       this.replyMailboxesLoaded = false;
       return this.$api.getReplyMailboxes().then((data) => {
@@ -1000,6 +1043,11 @@ export default Vue.extend({
       if (this.isNew) {
         return true;
       }
+      // A platform-level public-pool campaign never uses the owner's personal
+      // SMTP; the dedicated permission authorizes starting it.
+      if (this.isPlatformPoolCampaign) {
+        return this.$can('campaigns:public_pool_send');
+      }
       const ownerID = Number(this.data.ownerUserId || this.data.owner_user_id) || 0;
       return ownerID > 0 && ownerID === Number(this.profile && this.profile.id);
     },
@@ -1017,10 +1065,13 @@ export default Vue.extend({
 
     canSchedule() {
       const ownerID = Number(this.data.ownerUserId || this.data.owner_user_id) || 0;
+      const sendAuthorized = this.isPlatformPoolCampaign
+        ? this.$can('campaigns:public_pool_send')
+        : (this.isNew || (ownerID > 0 && ownerID === Number(this.profile && this.profile.id)));
       return this.canManage
         && this.$can('campaigns:schedule')
-        && (this.isNew || (ownerID > 0 && ownerID === Number(this.profile && this.profile.id)))
-        && (!this.isSMTPMessenger || this.personalSMTPAvailable)
+        && sendAuthorized
+        && (!this.isSMTPMessenger || this.smtpReadyForSend)
         && (this.data.status === 'draft' || this.data.status === 'paused' || this.data.status === 'deferred')
         && (this.form.sendLater && this.form.sendAtDate);
     },
@@ -1031,7 +1082,7 @@ export default Vue.extend({
 
     canStart() {
       return this.canSendCampaign
-        && (!this.isSMTPMessenger || this.personalSMTPAvailable)
+        && (!this.isSMTPMessenger || this.smtpReadyForSend)
         && (this.data.status === 'draft' || this.data.status === 'paused' || this.data.status === 'deferred')
         && !this.form.sendLater;
     },
@@ -1074,6 +1125,24 @@ export default Vue.extend({
 
     isLimitedSMTPCampaign() {
       return this.isSMTPMessenger && this.data.type !== 'optin';
+    },
+
+    // A platform-level public-pool campaign sends through every active
+    // organization's member SMTP pool, so its readiness is the per-organization
+    // status instead of the caller's personal SMTP.
+    isPlatformPoolCampaign() {
+      if (this.isNew) {
+        return this.$can('campaigns:public_pool_send')
+          && this.selectedPoolLists.some((list) => list.type === 'pool');
+      }
+      return (this.data.poolScope || this.data.pool_scope) === 'all_organizations';
+    },
+
+    smtpReadyForSend() {
+      if (!this.isPlatformPoolCampaign) {
+        return this.personalSMTPAvailable;
+      }
+      return !!this.poolSendStatus && this.poolSendStatus.ready === true;
     },
 
     listsLocked() {

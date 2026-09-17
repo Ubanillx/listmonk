@@ -143,6 +143,18 @@ CREATE TABLE campaigns (
     next_resume_at   TIMESTAMP WITH TIME ZONE,
     tags             VARCHAR(100)[],
 
+    -- Public-pool audience scope. 'organization' keeps the legacy
+    -- single-organization resolution (the campaign workspace's pool
+    -- allocation). 'all_organizations' marks a platform-level campaign that
+    -- resolves every active organization's pool allocation of the selected
+    -- first-level pool, rotates organizations fairly and sends each recipient
+    -- through the target organization's member SMTP pool.
+    pool_scope          TEXT NOT NULL DEFAULT 'organization' CHECK (pool_scope IN ('organization', 'all_organizations')),
+    -- Round-robin position into the campaign's persisted organization order.
+    -- It advances whenever a recipient is claimed for an organization, so a
+    -- paused/restarted campaign resumes rotating where it stopped.
+    pool_next_org_index INT NOT NULL DEFAULT 0,
+
     -- The subscription statuses of customers to which a campaign will be sent.
     -- For opt-in campaigns, this will be 'unsubscribed'.
     type campaign_type DEFAULT 'regular',
@@ -1046,9 +1058,43 @@ CREATE TABLE campaign_pool_recipients (
     status campaign_recipient_status NOT NULL DEFAULT 'pending',
     email_snapshot TEXT NOT NULL,
     name_snapshot TEXT NOT NULL DEFAULT '',
+    -- Immutable send provenance of the SMTP account that this recipient was
+    -- assigned to by the organization pool allocator. These are snapshots:
+    -- deleting the SMTP row, the member or the account must not erase the
+    -- delivery fact, so they deliberately carry no foreign keys.
+    sender_smtp_uuid UUID NULL,
+    sender_user_id INTEGER NULL,
+    sender_from_snapshot TEXT NOT NULL DEFAULT '',
+    sender_assigned_at TIMESTAMPTZ NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (campaign_id, pool_contact_id)
+);
+CREATE INDEX idx_campaign_pool_recipients_sender ON campaign_pool_recipients(sender_smtp_uuid) WHERE sender_smtp_uuid IS NOT NULL;
+
+-- Fair organization rotation for platform-level ('all_organizations')
+-- public-pool campaigns. The order is generated once, when the campaign first
+-- becomes runnable, and is never re-shuffled: pausing, restarting the service
+-- or resuming the next day keeps the same sequence.
+DROP TABLE IF EXISTS campaign_pool_org_orders CASCADE;
+CREATE TABLE campaign_pool_org_orders (
+    campaign_id     INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    organization_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    dispatch_order  INTEGER NOT NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (campaign_id, organization_id)
+);
+CREATE INDEX idx_campaign_pool_org_orders_campaign ON campaign_pool_org_orders(campaign_id, dispatch_order);
+
+-- Durable organization SMTP round-robin cursor. It is shared by every
+-- platform-level public-pool campaign that sends through the organization's
+-- member SMTP pool, so consecutive claims continue the rotation instead of
+-- every campaign starting over at the first account.
+DROP TABLE IF EXISTS org_pool_smtp_cursors CASCADE;
+CREATE TABLE org_pool_smtp_cursors (
+    organization_id BIGINT PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    next_smtp_uuid  UUID NULL,
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 ALTER TABLE bounces ADD COLUMN IF NOT EXISTS pool_contact_id BIGINT;
@@ -1100,7 +1146,8 @@ CREATE INDEX idx_audit_events_request ON audit_events(request_id) WHERE request_
 --     the campaign's owner in the same workspace (a moved or transfer-pending
 --     customer will never be sent to),
 --   * a pool snapshot row counts only while it still belongs to the campaign's
---     organization,
+--     organization, except for platform-level 'all_organizations' campaigns
+--     whose pool rows carry the target organization of each contact,
 --   * unsent_count applies the persisted to_send/sent fallback only when the
 --     campaign has no valid snapshot rows at all, which is the state of a draft
 --     that has not been expanded yet.
@@ -1140,5 +1187,5 @@ LEFT JOIN LATERAL (
         COUNT(*) FILTER (WHERE cpr.status = ANY('{pending,queued,deferred}'::campaign_recipient_status[])) AS unsent
     FROM campaign_pool_recipients cpr
     WHERE cpr.campaign_id = c.id
-        AND cpr.organization_id IS NOT DISTINCT FROM c.organization_id
+        AND (c.pool_scope = 'all_organizations' OR cpr.organization_id IS NOT DISTINCT FROM c.organization_id)
 ) po ON TRUE;

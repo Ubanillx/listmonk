@@ -776,7 +776,7 @@ export default Vue.extend({
       const poolID = Number(this.poolImportResult
         && (this.poolImportResult.poolId || this.poolImportResult.pool_id));
       if (poolID > 0) {
-        this.$router.push({ name: 'poolContacts', params: { customerListID: poolID } });
+        this.$router.push({ name: 'customersCustomerList', params: { customerListID: poolID } });
       }
     },
   },

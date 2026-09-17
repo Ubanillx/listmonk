@@ -4,40 +4,45 @@
       <div class="column is-10">
         <h1 class="title is-4">
           {{ $t('globals.terms.customers') }}
-          <span v-if="!isNaN(customers.total)">
-            (<span data-cy="count">{{ customers.total }}</span>)
+          <span v-if="dataCount !== null">
+            (<span data-cy="count">{{ dataCount }}</span>)
           </span>
-          <span v-if="currentList">
-            &raquo; {{ currentList.name }}
+          <span v-if="activeList">
+            &raquo; {{ activeList.name }}
+            <b-tag v-if="isPoolList" size="is-small" class="is-light" data-cy="pool-list-type">
+              {{ $t(`customer_lists.types.${activeList.type}`) }}
+            </b-tag>
             <span v-if="queryParams.subStatus" class="has-text-grey has-text-weight-normal is-capitalized">({{
               queryParams.subStatus }})</span>
           </span>
         </h1>
+        <p v-if="isPoolList" class="help" data-cy="pool-list-help">{{ $t('pool.listViewHelp') }}</p>
       </div>
       <div class="column has-text-right">
-        <b-field v-if="canManageCustomers" expanded>
+        <b-field v-if="canManageCustomers && !isPoolList" expanded>
           <b-button expanded type="is-primary" icon-left="plus" @click="showNewForm" data-cy="btn-new" class="btn-new">
             {{ $t('globals.buttons.new') }}
           </b-button>
         </b-field>
       </div>
     </header>
-    <section class="customers-controls">
+    <section v-if="listState !== 'error'" class="customers-controls">
       <div class="columns">
         <div class="column is-8">
           <form @submit.prevent="onSubmit">
             <div>
               <b-field addons>
                 <b-input @input="onSimpleQueryInput" v-model="queryInput" expanded
-                  :placeholder="$t('customers.queryPlaceholder')" icon="magnify" ref="query"
-                  :disabled="isSearchAdvanced" data-cy="search" />
+                  :placeholder="isPoolList ? $t('pool.searchPlaceholder') : $t('customers.queryPlaceholder')"
+                  icon="magnify" ref="query"
+                  :disabled="isSearchAdvanced" :data-cy="isPoolList ? 'pool-search' : 'search'" />
                 <p class="controls">
                   <b-button native-type="submit" type="is-primary" icon-left="magnify" :disabled="isSearchAdvanced"
                     data-cy="btn-search" />
                 </p>
               </b-field>
 
-              <div v-if="isSearchAdvanced">
+              <div v-if="isSearchAdvanced && !isPoolList">
                 <b-input v-model="queryParams.queryExp" @keydown.native.enter="onAdvancedQueryEnter" type="textarea"
                   ref="queryExp" placeholder="customers.name LIKE '%user%' or customers.status='blocklisted'"
                   data-cy="query" />
@@ -56,7 +61,7 @@
               </div><!-- advanced query -->
             </div>
           </form>
-          <div v-if="!isSearchAdvanced" class="toggle-advanced">
+          <div v-if="!isSearchAdvanced && !isPoolList" class="toggle-advanced">
             <a href="#" @click.prevent="toggleAdvancedSearch" data-cy="btn-advanced-search">
               <b-icon icon="cog-outline" size="is-small" />
               {{ $t('customers.advancedQuery') }}
@@ -67,7 +72,58 @@
     </section><!-- control -->
 
     <br />
-    <b-table :data="customers.results ?? []" :loading="loading.customers" @check-all="onTableCheck"
+    <!-- Pool lists keep their contacts in a separate store; they are rendered
+         here instead of on a dedicated page so the customer area stays one
+         screen. -->
+    <!-- Buefy's b-table does not forward `data-cy` to the DOM, so the pool
+         table is wrapped for tests. -->
+    <div v-if="isPoolList" data-cy="pool-contacts-table">
+      <b-table :data="poolContacts" :loading="poolLoading" :mobile-cards="false" hoverable>
+        <b-table-column v-slot="props" field="customerCode" :label="$t('pool.tableCustomerCode')"
+          header-class="cy-pool-customer_code" sortable>
+          {{ props.row.customerCode || props.row.customer_code || '-' }}
+        </b-table-column>
+
+        <b-table-column v-slot="props" field="name" :label="$t('pool.tableName')" header-class="cy-pool-name" sortable>
+          {{ props.row.name || '-' }}
+        </b-table-column>
+
+        <b-table-column v-slot="props" field="companyName" :label="$t('pool.tableCompanyName')"
+          header-class="cy-pool-company_name" sortable>
+          {{ props.row.companyName || props.row.company_name || '-' }}
+        </b-table-column>
+
+        <b-table-column v-slot="props" field="email" :label="$t('pool.tableEmail')" header-class="cy-pool-email">
+          {{ props.row.email || '-' }}
+        </b-table-column>
+
+        <b-table-column v-slot="props" field="allocationDepartment" :label="$t('pool.tableDepartment')"
+          header-class="cy-pool-department">
+          {{ props.row.allocationDepartment || props.row.allocation_department || '-' }}
+        </b-table-column>
+
+        <b-table-column v-slot="props" field="status" :label="$t('pool.tableStatus')" header-class="cy-pool-status">
+          {{ poolContactStatus(props.row) }}
+        </b-table-column>
+
+        <template #empty v-if="!poolLoading">
+          <empty-placeholder :label="$t('globals.messages.emptyState')" />
+        </template>
+      </b-table>
+    </div>
+
+    <!-- The filtered list is still being resolved, or it cannot be read: never
+         fall back to the ordinary customer table, whose rows and actions would
+         belong to a different scope. -->
+    <div v-else-if="listState === 'pending'" class="has-text-centered" data-cy="list-load-pending">
+      <span class="spinner"><b-loading :is-full-page="false" active /></span>
+    </div>
+
+    <p v-else-if="listState === 'error'" class="has-text-grey" data-cy="list-load-error">
+      {{ $t('globals.messages.notFound', { name: $t('globals.terms.customer_lists') }) }}
+    </p>
+
+    <b-table v-else :data="customers.results ?? []" :loading="loading.customers" @check-all="onTableCheck"
       @check="onTableCheck" :checked-rows.sync="bulk.checked" paginated backend-pagination pagination-position="both"
       @page-change="onPageChange" :current-page="queryParams.page" :per-page="customers.perPage"
       :total="customers.total" hoverable :checkable="canSelectCustomerRows"
@@ -219,6 +275,19 @@ export default Vue.extend({
       isFormVisible: false,
       isBulkListFormVisible: false,
 
+      // Pool lists (first-level public pools and their organization
+      // allocations) keep their contacts in a separate store. They are
+      // rendered inside this same customers view so that viewing a pool list
+      // does not feel like leaving the customer area.
+      listDetail: null,
+      poolContacts: [],
+      poolLoading: false,
+
+      // Whether the filtered list is resolved yet: 'ready' | 'pending' |
+      // 'error'. Only a resolved, non-pool list may render the ordinary
+      // customer table.
+      listState: 'ready',
+
       // Table bulk row selection states.
       bulk: {
         checked: [],
@@ -283,6 +352,79 @@ export default Vue.extend({
       const organizationID = Number(this.workspace.organizationId) || 0;
       const suffix = organizationID > 0 ? `?organization_id=${organizationID}` : '';
       return `/api/customers/${id}/export${suffix}`;
+    },
+
+    // Loads the contacts of the selected pool list. The endpoint masks e-mail
+    // addresses for everyone but the highest administrator and answers with
+    // camelCased fields, so both shapes are rendered defensively.
+    loadPoolContacts() {
+      const id = this.queryParams.customerListID;
+      if (!id) {
+        return Promise.resolve();
+      }
+      this.poolLoading = true;
+      const customerCode = (this.queryInput || '').trim();
+      const params = customerCode ? { customer_code: customerCode } : {};
+      return this.$api.getPoolContacts(id, params)
+        .then((rows) => {
+          this.poolContacts = Array.isArray(rows) ? rows : [];
+        })
+        .finally(() => {
+          this.poolLoading = false;
+        });
+    },
+
+    poolContactStatus(contact) {
+      if (contact.excluded) {
+        return this.$t('pool.statusRemoved');
+      }
+      return contact.status === 'archived'
+        ? this.$t('pool.statusArchived')
+        : this.$t('pool.statusNormal');
+    },
+
+    // Resolves the filtered list and then loads whichever contact store it
+    // uses: ordinary customers, or the pool contacts of a first-level pool /
+    // organization pool allocation. A list that cannot be resolved must not
+    // fall back to the ordinary customer table, whose rows and actions would
+    // belong to a different scope.
+    loadCustomerListView() {
+      const known = this.currentList;
+      if (known) {
+        this.listDetail = known;
+        this.listState = 'ready';
+        if (this.isPoolList) {
+          return this.loadPoolContacts();
+        }
+        this.queryCustomers();
+        return Promise.resolve();
+      }
+      // The list is not in the store yet (direct link, or the app shell is
+      // still loading lists): resolve its type before picking the store.
+      this.listState = 'pending';
+      return this.$api.getList(this.queryParams.customerListID).then((list) => {
+        this.listDetail = list;
+        this.listState = 'ready';
+        if (this.isPoolList) {
+          return this.loadPoolContacts();
+        }
+        this.queryCustomers();
+        return null;
+      }).catch(() => {
+        // Deleted, or not shared with this workspace: the interceptor has
+        // already surfaced the server error.
+        this.listState = 'error';
+        return null;
+      });
+    },
+
+    // Refresh handler for both modes (the app shell emits `page.refresh`).
+    refreshPage() {
+      if (this.isPoolList) {
+        this.loadPoolContacts();
+        return;
+      }
+      this.queryCustomers();
     },
 
     toggleAdvancedSearch() {
@@ -376,6 +518,10 @@ export default Vue.extend({
     },
 
     onSubmit() {
+      if (this.isPoolList) {
+        this.loadPoolContacts();
+        return;
+      }
       this.queryCustomers({ page: 1 });
     },
 
@@ -590,6 +736,35 @@ export default Vue.extend({
       return this.bulk.checked.length;
     },
 
+    // Returns the customer list the current view is filtered by: the freshly
+    // fetched detail when available, otherwise the copy already loaded by the
+    // app shell.
+    activeList() {
+      return this.listDetail || this.currentList;
+    },
+
+    // True while the view shows a public-pool list. Pool lists have no rows in
+    // the ordinary customer membership tables, so their contacts come from the
+    // pool store instead.
+    isPoolList() {
+      const type = (this.listDetail && this.listDetail.type)
+        || (this.currentList && this.currentList.type);
+      return type === 'pool' || type === 'org_pool_allocation';
+    },
+
+    // Row count of whatever this view currently lists: pool contacts or
+    // ordinary customers. `null` means "not known yet" (the customers model is
+    // an empty array before the first response).
+    dataCount() {
+      if (this.isPoolList) {
+        return this.poolContacts.length;
+      }
+      if (this.customers.total === undefined || Number.isNaN(Number(this.customers.total))) {
+        return null;
+      }
+      return this.customers.total;
+    },
+
     // Returns the customerList that the customers are being filtered by in.
     currentList() {
       if (!this.queryParams.customerListID || !this.customer_lists.results) {
@@ -601,11 +776,11 @@ export default Vue.extend({
   },
 
   created() {
-    this.$root.$on('page.refresh', this.queryCustomers);
+    this.$root.$on('page.refresh', this.refreshPage);
   },
 
   destroyed() {
-    this.$root.$off('page.refresh', this.queryCustomers);
+    this.$root.$off('page.refresh', this.refreshPage);
   },
 
   mounted() {
@@ -620,10 +795,18 @@ export default Vue.extend({
       this.$api.getCustomer(parseInt(this.$route.params.id, 10)).then((data) => {
         this.showEditForm(data);
       });
-    } else {
-      // Get customers on load.
-      this.queryCustomers();
+      return;
     }
+
+    // Resolve the filtered list first: a pool list has to render its pool
+    // contacts instead of an empty ordinary-customer table.
+    if (this.queryParams.customerListID) {
+      this.loadCustomerListView();
+      return;
+    }
+
+    // Get customers on load.
+    this.queryCustomers();
   },
 });
 </script>

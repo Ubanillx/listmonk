@@ -162,4 +162,20 @@ describe('Public pools', function poolSuite() { // eslint-disable-line prefer-ar
     cy.request({ url: `/api/customer-lists/${poolID}`, failOnStatusCode: false })
       .its('status').should('eq', 403);
   });
+
+  it('opens a pool list inside the customers view instead of a dedicated page', () => {
+    loginAs(Cypress.env('POOL_QA_SUPER_USER') || 'root', undefined, superPassword);
+    // The list name opens the edit form; the customer count opens the
+    // customers view, which now renders the pool contacts in place.
+    cy.contains('tr', 'wsqa-pool-primary')
+      .find('a[href*="/customers/customer-lists/"]').first().click();
+    cy.url().should('include', '/admin/customers/customer-lists/');
+    cy.get('[data-cy=pool-list-type]').filter(':visible').should('be.visible');
+    cy.get('[data-cy=pool-contacts-table]').filter(':visible').should('contain', 'DUP-001');
+    cy.get('[data-cy=pool-search]').filter(':visible').should('be.visible');
+    // The removed standalone page redirects to the same customers view.
+    cy.visit(`/admin/customers/pool-lists/${poolID}`);
+    cy.url().should('include', '/admin/customers/customer-lists/');
+    cy.get('[data-cy=pool-contacts-table]').filter(':visible').should('contain', 'DUP-001');
+  });
 });

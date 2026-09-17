@@ -54,6 +54,7 @@
 - 公海联系人新增统一通过 `POST /api/import/customers`：请求只允许一个一级 `pool` 列表，后端在首个 CSV/XLSX 工作表解析 `customer_code`、`name`、`email`、`allocation_department` 四个字段，额外模板列丢弃；`allocation_department` 必须匹配启用中的 `organizations.name`，未知或已归档组织的行记为无效并跳过写入；合法值才写入 `pool_contacts`，且不触发组织创建。若对应一级公海已有该组织公海分配，导入事务同时写入 `org_pool_allocation_members`；`CreateOrgPoolAllocation` 对先前导入的联系人执行同样的部门回填。该同步分支由 `poolImportMu` 串行化并在事务内按完整规范化记录幂等，编码相同但比较字段不同则写冲突审计。
 - `pool` 导入与联系人维护仍由最高管理员的写路由守卫；公海分配创建/绑定是双路径——平台管理员可为任意活跃组织执行，组织经理只能为自己所在的工作区组织执行（请求的 `organization_id` 必须等于当前工作区组织，否则 403），普通成员一律 403，且不能通过伪造前端请求绕过：`cmd/pools.go` 的 `CreateOrgPoolAllocation` 在非平台管理员分支解析 `workspaceAccess` 并校验 `IsOrganizationManager`，`internal/core/workspace_mutations.go` 的 `withWorkspaceCreation` 在事务内锁定目标组织、要求其处于活跃状态并复核调用者成员资格。公海管理组件只调用 `management-target`（仅平台管理员路径）、`org-pool-allocations` 和 `POST /api/org-pool-allocations`，不再上传或维护联系人。历史 `import-members`/`pools/import` 路由仅为兼容保留，不作为产品入口。
 - 数据库唯一约束保证每个 `(pool_id, organization_id)` 只有一个已绑定公海分配，因此同一组织内的公海联系人只有唯一归属和回件邮箱来源；若产品放开重叠归属，受众解析必须要求显式公海分配选择，不能静默猜测回件邮箱。一级公海活动可保存草稿但缺少有效归属/邮箱时不得预览或发送。回件邮箱作为公司内部地址明文保留和展示，不进入客户联系方式脱敏策略。
+- 公海联系人的查看面收进客户视图：`frontend/src/views/Customers.vue` 增加公海列表模式（`isPoolList` 依据被过滤列表的 `type` 判定），公海/公海分配的联系人用 `GET /api/customer-lists/:id/pool-contacts` 渲染只读表格，普通客户的批量选择、导出、编辑入口在公海模式下不渲染；`frontend/src/views/PoolContacts.vue` 与其独立路由已删除，`/customers/pool-lists/:customerListID` 仅作重定向。前后端数据边界未变：仍是独立存储 + 安全 DTO，未把 `pool_contacts` 合并进 `/api/customers` 结果。
 
 ## 退信邮箱检测（2026-09-08）
 

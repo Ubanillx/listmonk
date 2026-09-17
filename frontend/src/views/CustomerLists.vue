@@ -422,10 +422,9 @@ export default Vue.extend({
       return resource.transferPendingAt || resource.transfer_pending_at;
     },
 
+    // Pool lists render their contacts inside the customers view, so every
+    // list opens the same customer page.
     customerListCustomersRoute(customerList) {
-      if (customerList.type === 'pool' || customerList.type === 'org_pool_allocation') {
-        return { name: 'poolContacts', params: { customerListID: customerList.id } };
-      }
       return { name: 'customersCustomerList', params: { customerListID: customerList.id } };
     },
   },

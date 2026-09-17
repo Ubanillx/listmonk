@@ -60,10 +60,11 @@ const routes = [
     component: () => import('../views/Customers.vue'),
   },
   {
+    // Pool contacts are rendered inside the customers view now; keep this
+    // path working for existing links and bookmarks.
     path: '/customers/pool-lists/:customerListID',
     name: 'poolContacts',
-    meta: { title: 'globals.terms.customers', group: 'customers' },
-    component: () => import('../views/PoolContacts.vue'),
+    redirect: (to) => ({ name: 'customersCustomerList', params: { customerListID: to.params.customerListID } }),
   },
   {
     path: '/customers/:id',

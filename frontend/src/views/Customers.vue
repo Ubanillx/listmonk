@@ -135,7 +135,8 @@
 
         <b-table-column v-slot="props" field="customer_code" :label="$t('customers.customerCode')"
           header-class="cy-pool-customer_code" sortable>
-          <copy-text v-if="props.row.customer_code" :text="`${props.row.customer_code}`" />
+          <copy-text v-if="poolRowValue(props.row, 'customerCode', 'customer_code')"
+            :text="`${poolRowValue(props.row, 'customerCode', 'customer_code')}`" />
           <span v-else>-</span>
         </b-table-column>
 
@@ -149,7 +150,7 @@
 
         <b-table-column v-slot="props" field="allocation_department" :label="$t('pool.tableDepartment')"
           header-class="cy-pool-department" sortable>
-          {{ props.row.allocation_department || '-' }}
+          {{ poolRowValue(props.row, 'allocationDepartment', 'allocation_department') || '-' }}
         </b-table-column>
 
         <b-table-column v-slot="props" field="status" :label="$t('pool.tableStatus')" header-class="cy-pool-status" sortable>
@@ -157,11 +158,11 @@
         </b-table-column>
 
         <b-table-column v-slot="props" field="created_at" :label="$t('globals.fields.createdAt')" sortable>
-          {{ $utils.niceDate(props.row.created_at) }}
+          {{ $utils.niceDate(poolRowValue(props.row, 'createdAt', 'created_at')) }}
         </b-table-column>
 
         <b-table-column v-slot="props" field="updated_at" :label="$t('globals.fields.updatedAt')" sortable>
-          {{ $utils.niceDate(props.row.updated_at) }}
+          {{ $utils.niceDate(poolRowValue(props.row, 'updatedAt', 'updated_at')) }}
         </b-table-column>
 
         <b-table-column v-slot="props" cell-class="actions" align="right">
@@ -547,8 +548,9 @@ export default Vue.extend({
         const results = Array.isArray(resp) ? resp : (resp.results || []);
         this.pool.results = results;
         this.pool.total = Array.isArray(resp) ? results.length : (Number(resp.total) || 0);
-        if (!Array.isArray(resp) && Number(resp.per_page) > 0) {
-          this.pool.perPage = Number(resp.per_page);
+        const perPage = Number(resp.perPage || resp.per_page);
+        if (perPage > 0) {
+          this.pool.perPage = perPage;
         }
       }).finally(() => {
         this.poolLoading = false;
@@ -709,6 +711,16 @@ export default Vue.extend({
       return contact.status === 'archived'
         ? this.$t('pool.statusArchived')
         : this.$t('pool.statusNormal');
+    },
+
+    // The API client camel-cases response keys (`allocation_department` ->
+    // `allocationDepartment`); both shapes are read so the table keeps
+    // rendering even if that conversion is disabled for a call.
+    poolRowValue(row, camelKey, snakeKey) {
+      if (row[camelKey] !== undefined && row[camelKey] !== null) {
+        return row[camelKey];
+      }
+      return row[snakeKey];
     },
 
     // Resolves the filtered list and then loads whichever contact store it

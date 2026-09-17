@@ -200,7 +200,9 @@ describe('Public pools', function poolSuite() { // eslint-disable-line prefer-ar
     cy.get('[data-cy=customer-area-tabs]').filter(':visible').should('be.visible');
     cy.get('[data-cy=tab-pool-contacts]').filter(':visible').closest('li').should('have.class', 'is-active');
     cy.get('[data-cy=pool-contacts-table]').filter(':visible').within(() => {
-      cy.get('.cy-pool-customer_code').should('exist');
+      // The customer code is camel-cased in the API response; a snake-case-only
+      // renderer would show "-" here.
+      cy.get('.cy-pool-customer_code').should('contain', 'DUP-001');
       cy.get('.cy-pool-company_name').should('not.exist');
       cy.get('.pagination').should('exist');
     });

@@ -124,6 +124,7 @@
     "dashboard.campaignViews": "活動開信",
     "dashboard.linkClicks": "連結點擊次數",
     "dashboard.messagesSent": "訊息已發送",
+    "dashboard.noChartData": "目前工作區暫無開信或點擊資料。",
     "dashboard.orphanSubs": "孤兒",
     "email.data.info": "記錄在您身上的所有資料副本作為 JSON 格式的檔案附加。它可以在文字編輯器中檢視。",
     "email.data.title": "您的數據",

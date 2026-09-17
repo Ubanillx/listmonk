@@ -169,6 +169,7 @@
     "dashboard.campaignViews": "营销活动浏览量",
     "dashboard.linkClicks": "链接点击次数",
     "dashboard.messagesSent": "消息已发送",
+    "dashboard.noChartData": "当前工作区暂无浏览或点击数据。",
     "dashboard.orphanSubs": "孤立客户",
     "email.data.info": "记录在您身上的所有数据的副本作为 JSON 格式的文件附加。它可以在文本编辑器中查看。",
     "email.data.title": "您的数据",

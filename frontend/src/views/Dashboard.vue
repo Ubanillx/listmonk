@@ -125,12 +125,18 @@
                     {{ $t('dashboard.campaignViews') }}
                   </h3><br />
                   <chart type="line" v-if="campaignViews" :data="campaignViews" />
+                  <p v-else-if="!isChartsLoading" class="has-text-grey">
+                    {{ $t('dashboard.noChartData') }}
+                  </p>
                 </div>
                 <div class="column is-6">
                   <h3 class="title is-size-6 has-text-right">
                     {{ $t('dashboard.linkClicks') }}
                   </h3><br />
                   <chart type="line" v-if="campaignClicks" :data="campaignClicks" />
+                  <p v-else-if="!isChartsLoading" class="has-text-grey has-text-right">
+                    {{ $t('dashboard.noChartData') }}
+                  </p>
                 </div>
               </div>
             </article>
@@ -189,8 +195,8 @@ export default Vue.extend({
     },
 
     makeChart(data) {
-      if (data.length === 0) {
-        return {};
+      if (!data || data.length === 0) {
+        return null;
       }
       return {
         labels: data.map((d) => dayjs(d.date).format('DD MMM')),

@@ -416,7 +416,7 @@ ______________________________________________________________________
 
 #### GET /api/events
 
-Streams live server events. Requires `settings:get` (`cmd/handlers.go:126`).
+Streams live server events. Requires `settings:get` (`cmd/handlers.go:126`). The stream mirrors the process error log, so it follows the same boundary as `GET /api/logs`; the admin UI only opens it for accounts holding `settings:get` (`frontend/src/App.vue`), because an unpermitted `EventSource` would otherwise retry the 403 response forever.
 
 The response is `Content-Type: text/event-stream` with `Cache-Control: no-store` and `Connection: keep-alive`. Every event is sent as a `retry: 3000` hint followed by a `data:` line holding the JSON-encoded event, and the connection stays open until the client disconnects (`cmd/events.go:16`, `cmd/events.go:28`). The handler reads no query parameters (the admin UI nevertheless subscribes to `/api/events?type=error`, `frontend/src/constants.js:38`).
 

@@ -221,7 +221,9 @@ export default Vue.extend({
         const d = JSON.parse(e.data);
         if (d && d.type === 'error') {
           const msg = reMatchLog.exec(d.message.trim());
-          this.$utils.toast(msg[2], 'is-danger', null, true);
+          if (msg) {
+            this.$utils.toast(msg[2], 'is-danger', null, true);
+          }
         }
       };
     },
@@ -279,7 +281,12 @@ export default Vue.extend({
       this.windowWidth = window.innerWidth;
     });
 
-    this.listenEvents();
+    // The event stream mirrors the server log, so it follows the same
+    // settings:get boundary as the logs page. Opening it without the
+    // permission only produces an endless stream of 403 responses.
+    if (this.$can('settings:get')) {
+      this.listenEvents();
+    }
   },
 });
 </script>

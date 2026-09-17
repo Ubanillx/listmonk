@@ -62,6 +62,8 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 
 可见性为 `private`、`organization`、`global`。名单和订阅者始终是所有者私有的；媒体不能全局公开。组织成员可以读取组织共享资源，组织经理可审查同组织成员资源及待转移资源，但只能写自己的资源，不能使用他人的私有发送资源。客户列表查询及客户、导入、批量操作和活动的普通列表选择器都按当前工作区收敛；客户新建/编辑/普通导入还要求目标列表属于当前操作者，一级公海则走独立的跨工作区投放/导入授权。客户 CSV、单客户资料和审计日志均为直接 HTTP 导出，仍执行工作区、所有权和脱敏边界，不建立持久化导出任务。归档组织禁止普通写入及导出；仅平台管理员可执行受限的清理/转移流程。前端的 `$can*` 仅隐藏不允许的操作，Go 服务是唯一权威。
 
+平台可观测性出口与业务聚合数据的边界：`GET /api/logs` 与 `GET /api/events`（SSE 实时错误流）都是进程日志的出口，统一由 `settings:get` 控制，与 `/api/settings` 共用同一平台权限；管理端也只为持有该权限的账号建立 `EventSource`，无权限账号不会打开连接（否则浏览器会对 403 无限重试）。这两个接口不属于工作区数据面。相对地，仪表板的 `GET /api/dashboard/counts` 与 `GET /api/dashboard/charts` 不设角色权限门：任何登录用户在其当前工作区都可读取，但结果由工作区、所有权和可见性谓词收敛（只有平台管理员读取全局物化视图）。图表没有数据只表示该工作区内没有可统计的浏览/点击行（或数据落在 30 天窗口之外），不是权限拒绝。
+
 ### 角色动作细分权限（v6.38.0）
 
 用户角色中的权限是全局功能门，不替代工作区、资源所有者、组织成员或 API Key scope 校验。业务动作按以下独立权限管理：`customers:delete`、`customers:blocklist`、`customers:membership_manage`、`customers:export`、`customers:sensitive_read`；`campaigns:send`、`campaigns:test`、`campaigns:schedule`、`campaigns:control`、`campaigns:recipients`；`bounces:delete`、`bounces:blocklist`；`users:tokens`；以及 `organizations:platform_manage`。`tx:send` 仍使用原权限 ID，但在角色界面归入事务消息组。

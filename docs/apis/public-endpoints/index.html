@@ -2225,6 +2225,11 @@ listed by <code>GET /api/pools/:id/allocations</code>, which is the same handler
 <code>GET /api/customer-lists/:id/org-pool-allocations</code>. There is no
 <code>GET /api/org-pool-allocations/...</code> listing route. Both prefixes allow a 32 MB request
 body for allocation member imports (<code>cmd/body_limit.go</code>).</p>
+<p>Pool-contact member routes additionally require the configurable <code>pools:manage</code>
+permission; browsing uses <code>pools:get</code> and <code>GET /api/pools/:id/contacts[/export]</code>
+(alias <code>GET /api/customer-lists/:id/pool-contacts[/export]</code>) uses
+<code>pools:get</code> / <code>pools:export</code>. Platform administrators bypass the grants, every
+other caller is scoped to the active workspace organization.</p>
 <p>Payloads and pool semantics, including the highest-administrator and
 organization boundaries, are documented once in <a href="../pools/">Public pools</a>; this
 page does not repeat them.</p>

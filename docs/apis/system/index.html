@@ -3847,7 +3847,7 @@
 </code></pre></div>
 <hr />
 <h4 id="get-apievents">GET /api/events<a class="headerlink" href="#get-apievents" title="Permanent link">&para;</a></h4>
-<p>Streams live server events. Requires <code>settings:get</code> (<code>cmd/handlers.go:126</code>).</p>
+<p>Streams live server events. Requires <code>settings:get</code> (<code>cmd/handlers.go:126</code>). The stream mirrors the process error log, so it follows the same boundary as <code>GET /api/logs</code>; the admin UI only opens it for accounts holding <code>settings:get</code> (<code>frontend/src/App.vue</code>), because an unpermitted <code>EventSource</code> would otherwise retry the 403 response forever.</p>
 <p>The response is <code>Content-Type: text/event-stream</code> with <code>Cache-Control: no-store</code> and <code>Connection: keep-alive</code>. Every event is sent as a <code>retry: 3000</code> hint followed by a <code>data:</code> line holding the JSON-encoded event, and the connection stays open until the client disconnects (<code>cmd/events.go:16</code>, <code>cmd/events.go:28</code>). The handler reads no query parameters (the admin UI nevertheless subscribes to <code>/api/events?type=error</code>, <code>frontend/src/constants.js:38</code>).</p>
 <h5 id="example-request_10">Example Request<a class="headerlink" href="#example-request_10" title="Permanent link">&para;</a></h5>
 <div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span>-N<span class="w"> </span><span class="s1">'http://localhost:9000/api/events'</span>

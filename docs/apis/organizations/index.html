@@ -5753,7 +5753,7 @@ boundary can never be widened by a global role
 global asset cannot change its publication contract
 (<code>internal/core/workspace_migration.go:210</code>). Customer lists are owner-private by
 design: the migration takes the caller's own personal rows, normalizes them to
-<code>private</code>, and excludes first-level pools and secondary lists, which are platform
+<code>private</code>, and excludes first-level pools and pool allocations, which are platform
 assets rather than personal resources (<code>internal/core/workspace_migration.go:95</code>,
 <code>internal/core/workspace.go:384</code>; see <a href="../pools/">Public pools</a>).</p>
 <h4 id="post-apiorganizationsresourcesmigrate">POST /api/organizations/resources/migrate<a class="headerlink" href="#post-apiorganizationsresourcesmigrate" title="Permanent link">&para;</a></h4>

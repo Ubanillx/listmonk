@@ -1755,24 +1755,24 @@
 
 <h1 id="public-pools">Public pools<a class="headerlink" href="#public-pools" title="Permanent link">&para;</a></h1>
 <p>Public customer pools are first-class <code>customer_list</code> types (<code>pool</code> and
-<code>pool_segment</code>). Contact records retain the imported customer code (which may
+<code>org_pool_allocation</code>). Contact records retain the imported customer code (which may
 repeat), name, allocation department and real email server-side; all
 non-highest-administrator responses return a masked email. Internal reply
 mailbox addresses are not masked.</p>
-<p>First-level <code>pool</code> rows use the platform-wide <code>global</code> scope. A <code>pool_segment</code>
+<p>First-level <code>pool</code> rows use the platform-wide <code>global</code> scope. A <code>org_pool_allocation</code>
 row uses the selected organization's scope and exposes that organization's
 name as <code>organization_name</code>; the creating administrator remains available in
 the owner fields for audit purposes.</p>
 <p>Key endpoints:</p>
 <ul>
-<li><code>GET /api/pools/:id/contacts?customer_code=...</code> — locate first-level or secondary-list contacts by imported code. The equivalent <code>GET /api/customer-lists/:id/pool-contacts</code> route also accepts a <code>pool_segment</code> list ID; secondary-list reads are limited to that segment.</li>
+<li><code>GET /api/pools/:id/contacts?customer_code=...</code> — locate first-level or pool-allocation contacts by imported code. The equivalent <code>GET /api/customer-lists/:id/pool-contacts</code> route also accepts a <code>org_pool_allocation</code> list ID; pool-allocation reads are limited to that allocation.</li>
 <li><code>POST /api/pools/:id/contacts</code> — legacy single-contact compatibility route
   (highest administrator); the product import entry is the unified customer
   import endpoint below.</li>
-<li><code>POST /api/pools/segments</code> — split a first-level pool into a new organization segment. The list, pool grant and binding are created atomically; the organization manager configures its reply mailbox separately from <strong>Organizations -&gt; Manage organizations -&gt; Organization reply mailboxes</strong>.</li>
-<li><code>PUT /api/pools/segments/:id/reply-mailbox</code> — update the segment's internal reply mailbox (organization manager in the segment's organization only).</li>
-<li><code>POST|DELETE|PUT /api/pools/segments/members</code> — assign, logically remove, or restore a contact.</li>
-<li><code>POST /api/pools/segments/:id/import-members</code> — legacy compatibility route;
+<li><code>POST /api/pools/allocations</code> — split a first-level pool into a new organization allocation. The list, pool grant and binding are created atomically; the organization manager configures its reply mailbox separately from <strong>Organizations -&gt; Manage organizations -&gt; Organization reply mailboxes</strong>.</li>
+<li><code>PUT /api/pools/allocations/:id/reply-mailbox</code> — update the allocation's internal reply mailbox (organization manager in the allocation's organization only).</li>
+<li><code>POST|DELETE|PUT /api/pools/allocations/members</code> — assign, logically remove, or restore a contact.</li>
+<li><code>POST /api/pools/allocations/:id/import-members</code> — legacy compatibility route;
   it is not the management UI's import path and is highest-administrator-only.</li>
 <li><code>POST /api/import/customers</code> — unified customer import endpoint. When
   <code>customer_list_ids</code> contains exactly one first-level <code>pool</code>, the first CSV
@@ -1782,28 +1782,42 @@ the owner fields for audit purposes.</p>
   Only the highest administrator may use this branch. <code>分配部门</code> must match an
   active <code>organizations.name</code>; unknown or archived departments are rejected
   row-by-row and are not written. A valid value is stored on the pool contact
-  and, when that organization already has a secondary list for the pool, also
-  creates the corresponding secondary-list membership. Creating the secondary
+  and, when that organization already has a pool allocation for the pool, also
+  creates the corresponding pool-allocation membership. Creating the pool allocation
   list later backfills existing matching contacts; it never creates an
   organization.</li>
 <li><code>POST /api/pools/import</code> — legacy ordinary-list-to-pool compatibility route;
   new product flows use the unified customer import endpoint.</li>
-<li><code>GET /api/pools/:id/management-target?organization_id=...</code> — highest-admin-only target context: the target organization's existing segment state.</li>
-<li><code>POST /api/campaigns/:id/pools</code> — attach a pool or segment audience to a campaign draft.</li>
+<li><code>GET /api/pools/:id/management-target?organization_id=...</code> — highest-admin-only target context: the target organization's existing allocation state.</li>
+<li><code>POST /api/campaigns/:id/pools</code> — attach a pool or allocation audience to a campaign draft.</li>
 </ul>
 <p>Preview and send operations reject unresolved pool audiences (missing an
-organization segment or its reply mailbox). Pool exclusions are organization
-scoped and do not physically delete the first-level pool contact.</p>
+organization allocation or its reply mailbox) and answer with HTTP <code>400</code>. The
+message keeps the leading sentence
+<code>public-pool audience requires an organization allocation and reply mailbox before previewing or sending</code>
+and then names every unresolved audience of the campaign with its organization,
+its pool allocation and the first failing condition: <code>has no target
+organization</code>, <code>no pool allocation is bound for the organization</code>, <code>the pool allocation
+list has no reply mailbox</code>, or <code>the reply mailbox "&lt;address&gt;" is not verified
+and active</code>. At most five audiences are listed, the remainder is summarized as
+<code>(+N more)</code>, and the message ends with
+<code>Configure it in Customer lists -&gt; Public pool management.</code></p>
+<p>The rejection never falls back to a personal, organization-level or system
+mailbox: an unresolved pool audience is a configuration gap in that
+organization's pool allocation, and the organization manager fixes it by binding
+the mailbox to the pool allocation (<code>PUT /api/org-pool-allocations/:id/reply-mailbox</code>).
+Pool exclusions are organization scoped and do not physically delete the
+first-level pool contact.</p>
 <p>Pool contacts are not part of the legacy customer export surface. Non-highest
 administrators cannot obtain a pool contact's real email through list, detail,
 CSV, or API-key responses.</p>
 <p>Campaign responses include <code>customer_pools[].reply_mailbox_email</code> so operators
-can see the effective internal reply route (<code>一级公海 -&gt; 二级列表 -&gt; 回件邮箱</code>).
-When the selected audience is an explicit secondary list,
-<code>customer_pools[].segment_list_id</code> and <code>customer_pools[].segment_list_name</code> identify the
-selector-compatible <code>pool_segment</code> list; <code>segment_id</code> remains the internal
+can see the effective internal reply route (<code>一级公海 -&gt; 公海分配 -&gt; 回件邮箱</code>).
+When the selected audience is an explicit pool allocation,
+<code>customer_pools[].allocation_list_id</code> and <code>customer_pools[].allocation_list_name</code> identify the
+selector-compatible <code>org_pool_allocation</code> list; <code>allocation_id</code> remains the internal
 pool-to-organization binding ID. This lets the campaign editor round-trip a
-secondary-list audience without silently changing it to its parent pool.
+pool-allocation audience without silently changing it to its parent pool.
 This is an internal company address and is not masked; customer contact emails
 remain protected by the pool contact DTO policy.</p>
 <h2 id="admin-workflow">Admin workflow<a class="headerlink" href="#admin-workflow" title="Permanent link">&para;</a></h2>
@@ -1812,23 +1826,28 @@ For a highest administrator, first choose the <strong>target organization</stron
 management dialog. This is an allocation target, not a workspace switch and
 not an organization-membership action: the administrator does not need to join
 the organization and remains in the current workspace. The dialog then offers
-one <strong>Create and bind</strong> action. It creates the secondary list, grants delivery
-access and binds it to the open pool in one transaction. The target organization
-configures its internal reply mailbox from its own organization workspace. A secondary list cannot be created from the
-generic customer-list form, and there is no secondary-to-primary merge flow.
-A highest administrator performs the split through <code>POST /api/pool-segments</code>
-(the <code>/api/pools/segments</code> alias is equivalent) with the target organization's
+one <strong>Create and bind</strong> action. It creates the pool allocation, grants delivery
+access and binds it to the open pool in one transaction. In that same dialog the
+target organization's manager selects the pool allocation and saves its
+<strong>unified reply mailbox</strong> (<code>PUT /api/org-pool-allocations/:id/reply-mailbox</code>). That
+mailbox is the reply route for that organization's pool recipients; the
+organization-level reply mailbox maintained under <strong>Manage organizations</strong> and
+the campaign field <strong>customer reply mailbox</strong> do not feed this route. A
+pool allocation cannot be created from the generic customer-list form, and there
+is no pool-allocation-to-first-level merge flow.
+A highest administrator performs the split through <code>POST /api/org-pool-allocations</code>
+(the <code>/api/pools/allocations</code> alias is equivalent) with the target organization's
 <code>organization_id</code>, without joining it. An organization manager may perform the
 same split for their own organization: the request must carry that organization's
 <code>organization_id</code>, and any other organization is rejected with <code>403</code>. Ordinary
 organization members cannot create lists.</p>
-<p>Each first-level pool can have one bound secondary list per organization. The
+<p>Each first-level pool can have one bound pool allocation per organization. The
 dialog does not import contact files. Import the four-column pool template from
 the unified <strong>Customer import</strong> page; rows whose <code>分配部门</code> matches an existing
-secondary-list organization are allocated during import. If the secondary list
+pool-allocation organization are allocated during import. If the pool allocation
 is created afterwards, the create-and-bind transaction backfills those rows. The
-dialog is used to select a target organization and create/bind its secondary list.
-The customer-count link for a first-level or secondary list opens the dedicated
+dialog is used to select a target organization and create/bind its pool allocation.
+The customer-count link for a first-level or pool allocation opens the dedicated
 pool contact view; it does not use the ordinary customer table. That view keeps
 the pool data model separate and applies the same masked DTO policy as the API.
 Organization operators continue to work only inside their own organization

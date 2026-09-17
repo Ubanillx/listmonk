@@ -1478,10 +1478,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#apipool-segments" class="md-nav__link">
+  <a href="#apiorg-pool-allocations" class="md-nav__link">
     <span class="md-ellipsis">
       
-        /api/pool-segments/*
+        /api/org-pool-allocations/*
       
     </span>
   </a>
@@ -1891,10 +1891,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#apipool-segments" class="md-nav__link">
+  <a href="#apiorg-pool-allocations" class="md-nav__link">
     <span class="md-ellipsis">
       
-        /api/pool-segments/*
+        /api/org-pool-allocations/*
       
     </span>
   </a>
@@ -1990,8 +1990,8 @@ requests are still written to the audit log (<code>cmd/audit.go</code>).</p>
 </tr>
 <tr>
 <td>POST, PUT, DELETE</td>
-<td><a href="#apipool-segments">/api/pool-segments/*</a></td>
-<td>Alias family for <code>/api/pools/segments/*</code></td>
+<td><a href="#apiorg-pool-allocations">/api/org-pool-allocations/*</a></td>
+<td>Alias family for <code>/api/pools/allocations/*</code></td>
 </tr>
 </tbody>
 </table>
@@ -2180,51 +2180,51 @@ XHTML uploads are refused by the media library in the first place
 the root URL) are routed through the same compatibility handler and the same
 header policy (<code>cmd/init.go</code>).</p>
 <hr />
-<h4 id="apipool-segments">/api/pool-segments/*<a class="headerlink" href="#apipool-segments" title="Permanent link">&para;</a></h4>
-<p><code>/api/pool-segments/*</code> is a second, fully equivalent spelling of
-<code>/api/pools/segments/*</code>. Every pair below is registered on the same handler
+<h4 id="apiorg-pool-allocations">/api/org-pool-allocations/*<a class="headerlink" href="#apiorg-pool-allocations" title="Permanent link">&para;</a></h4>
+<p><code>/api/org-pool-allocations/*</code> is a second, fully equivalent spelling of
+<code>/api/pools/allocations/*</code>. Every pair below is registered on the same handler
 function with the same API-key scope (<code>customer_lists:read</code> /
 <code>customer_lists:write</code>), so requests and responses are identical — this is one
 resource with two route spellings, not two APIs:</p>
 <table>
 <thead>
 <tr>
-<th style="text-align: left;"><code>/api/pool-segments/*</code></th>
-<th style="text-align: left;"><code>/api/pools/segments/*</code></th>
+<th style="text-align: left;"><code>/api/org-pool-allocations/*</code></th>
+<th style="text-align: left;"><code>/api/pools/allocations/*</code></th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;"><code>POST /api/pool-segments</code></td>
-<td style="text-align: left;"><code>POST /api/pools/segments</code></td>
+<td style="text-align: left;"><code>POST /api/org-pool-allocations</code></td>
+<td style="text-align: left;"><code>POST /api/pools/allocations</code></td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>PUT /api/pool-segments/:id/reply-mailbox</code></td>
-<td style="text-align: left;"><code>PUT /api/pools/segments/:id/reply-mailbox</code></td>
+<td style="text-align: left;"><code>PUT /api/org-pool-allocations/:id/reply-mailbox</code></td>
+<td style="text-align: left;"><code>PUT /api/pools/allocations/:id/reply-mailbox</code></td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>POST /api/pool-segments/members</code></td>
-<td style="text-align: left;"><code>POST /api/pools/segments/members</code></td>
+<td style="text-align: left;"><code>POST /api/org-pool-allocations/members</code></td>
+<td style="text-align: left;"><code>POST /api/pools/allocations/members</code></td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>PUT /api/pool-segments/members</code></td>
-<td style="text-align: left;"><code>PUT /api/pools/segments/members</code></td>
+<td style="text-align: left;"><code>PUT /api/org-pool-allocations/members</code></td>
+<td style="text-align: left;"><code>PUT /api/pools/allocations/members</code></td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>DELETE /api/pool-segments/members</code></td>
-<td style="text-align: left;"><code>DELETE /api/pools/segments/members</code></td>
+<td style="text-align: left;"><code>DELETE /api/org-pool-allocations/members</code></td>
+<td style="text-align: left;"><code>DELETE /api/pools/allocations/members</code></td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>POST /api/pool-segments/:id/import-members</code></td>
-<td style="text-align: left;"><code>POST /api/pools/segments/:id/import-members</code></td>
+<td style="text-align: left;"><code>POST /api/org-pool-allocations/:id/import-members</code></td>
+<td style="text-align: left;"><code>POST /api/pools/allocations/:id/import-members</code></td>
 </tr>
 </tbody>
 </table>
-<p>Unlike the write routes, the read routes are not symmetrical: segments are
-listed by <code>GET /api/pools/:id/segments</code>, which is the same handler as
-<code>GET /api/customer-lists/:id/pool-segments</code>. There is no
-<code>GET /api/pool-segments/...</code> listing route. Both prefixes allow a 32 MB request
-body for segment member imports (<code>cmd/body_limit.go</code>).</p>
+<p>Unlike the write routes, the read routes are not symmetrical: allocations are
+listed by <code>GET /api/pools/:id/allocations</code>, which is the same handler as
+<code>GET /api/customer-lists/:id/org-pool-allocations</code>. There is no
+<code>GET /api/org-pool-allocations/...</code> listing route. Both prefixes allow a 32 MB request
+body for allocation member imports (<code>cmd/body_limit.go</code>).</p>
 <p>Payloads and pool semantics, including the highest-administrator and
 organization boundaries, are documented once in <a href="../pools/">Public pools</a>; this
 page does not repeat them.</p>

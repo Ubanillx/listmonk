@@ -36,9 +36,20 @@ func (a *App) GetReplyMailboxes(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	userID := auth.GetUser(c).ID
 	rows := make([]models.ReplyMailbox, 0)
-	if err := a.queries.GetReplyMailboxes.Select(&rows, auth.GetUser(c).ID, nullableOrganizationID(access.OrganizationID)); err != nil {
+	if err := a.queries.GetReplyMailboxes.Select(&rows, userID, nullableOrganizationID(access.OrganizationID)); err != nil {
 		return err
+	}
+	// The listing is what the management UI renders, so each row carries the
+	// deletion right the delete endpoint enforces: the owner, or a manager of
+	// the organization the mailbox belongs to. Rows without it stay without a
+	// delete button instead of offering a request the server answers with 404.
+	managesOrganization := access.OrganizationID > 0 && access.IsOrganizationManager()
+	for i := range rows {
+		rows[i].Deletable = rows[i].UserID == userID ||
+			(managesOrganization && rows[i].OrganizationID.Valid &&
+				rows[i].OrganizationID.Int == access.OrganizationID)
 	}
 	return c.JSON(http.StatusOK, okResp{rows})
 }
@@ -124,6 +135,59 @@ func (a *App) DisableReplyMailbox(c echo.Context) error {
 	userID, id := auth.GetUser(c).ID, getID(c)
 	var disabledID int
 	if err := a.queries.DisableReplyMailbox.Get(&disabledID, id, userID, nullableOrganizationID(access.OrganizationID)); err != nil {
+		return echo.NewHTTPError(http.StatusNotFound, "reply mailbox not found")
+	}
+	return c.JSON(http.StatusOK, okResp{true})
+}
+
+// DeleteReplyMailbox removes a mailbox for good. The owner can always remove
+// their own mailbox, and a manager of the owning organization can remove a
+// stale one, which is how a mailbox left behind by a former member is cleaned
+// up; everybody else receives the same 404 the rest of this surface returns.
+// Two still-in-use cases are refused instead of silently breaking routing: the
+// organization's unified reply mailbox and a mailbox an active reply forwarding
+// rule depends on.
+func (a *App) DeleteReplyMailbox(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
+	user, id := auth.GetUser(c), getID(c)
+
+	var row struct {
+		OwnerID        int   `db:"user_id"`
+		OrganizationID int64 `db:"organization_id"`
+	}
+	if err := a.db.Get(&row, `SELECT user_id,COALESCE(organization_id,0) AS organization_id FROM reply_mailboxes WHERE id=$1`, id); err != nil {
+		return echo.NewHTTPError(http.StatusNotFound, "reply mailbox not found")
+	}
+	// A mailbox is addressed from its own workspace, exactly like update,
+	// disable and enable: a personal mailbox from the caller's personal
+	// workspace and an organization mailbox from that organization's workspace.
+	matchesWorkspace := (row.OrganizationID == 0 && int64(access.OrganizationID) == 0) ||
+		(row.OrganizationID > 0 && row.OrganizationID == int64(access.OrganizationID))
+	managesOwningOrganization := row.OrganizationID > 0 &&
+		matchesWorkspace && access.IsOrganizationManager()
+	if !matchesWorkspace || (row.OwnerID != user.ID && !managesOwningOrganization) {
+		return echo.NewHTTPError(http.StatusNotFound, "reply mailbox not found")
+	}
+
+	var inUse bool
+	if err := a.db.Get(&inUse, `SELECT EXISTS(SELECT 1 FROM organizations WHERE reply_mailbox_id=$1)`, id); err != nil {
+		return err
+	}
+	if inUse {
+		return echo.NewHTTPError(http.StatusConflict, "reply mailbox is the organization's unified reply mailbox; select another one first")
+	}
+	if err := a.db.Get(&inUse, `SELECT EXISTS(SELECT 1 FROM reply_forward_rules WHERE reply_mailbox_id=$1 AND status='active')`, id); err != nil {
+		return err
+	}
+	if inUse {
+		return echo.NewHTTPError(http.StatusConflict, "reply mailbox has an active reply forwarding rule; remove it first")
+	}
+
+	var deleted int
+	if err := a.queries.DeleteReplyMailbox.Get(&deleted, id); err != nil {
 		return echo.NewHTTPError(http.StatusNotFound, "reply mailbox not found")
 	}
 	return c.JSON(http.StatusOK, okResp{true})
@@ -220,6 +284,10 @@ func (a *App) getReplyMailboxResponse(c echo.Context, userID, id, organizationID
 	if err := a.queries.GetReplyMailbox.Get(&row, id, userID, nullableOrganizationID(organizationID)); err != nil {
 		return err
 	}
+	// The row comes from an owner-scoped read, so the caller may always delete
+	// it; the flag keeps the card rendered after a save in step with the
+	// listing, which computes the same right for every row.
+	row.Deletable = true
 	return c.JSON(http.StatusOK, okResp{row})
 }
 

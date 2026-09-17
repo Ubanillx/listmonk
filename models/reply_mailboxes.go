@@ -39,7 +39,13 @@ type ReplyMailbox struct {
 	// Manageable is true only when the caller owns the mailbox. In an
 	// organization workspace the listing also returns mailboxes the caller may
 	// select for a campaign but cannot manage.
-	Manageable     bool       `db:"manageable" json:"manageable"`
+	Manageable bool `db:"manageable" json:"manageable"`
+	// Deletable mirrors the right the delete endpoint enforces for this caller:
+	// the owner may always remove their own mailbox, and a manager of the
+	// mailbox's organization may remove a stale one (a platform administrator
+	// counts as a manager of the organization the request selected). The listing
+	// handler computes it, so it carries no database column.
+	Deletable bool `db:"-" json:"deletable"`
 }
 
 // ReplyForwardRule describes server-side application forwarding that is

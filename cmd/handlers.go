@@ -284,6 +284,7 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.PUT("/api/profile/reply-mailboxes/:id", hasID(a.UpdateReplyMailbox))
 		g.DELETE("/api/profile/reply-mailboxes/:id", hasID(a.DisableReplyMailbox))
 		g.PUT("/api/profile/reply-mailboxes/:id/enable", hasID(a.EnableReplyMailbox))
+		g.POST("/api/profile/reply-mailboxes/:id/delete", hasID(a.DeleteReplyMailbox))
 		g.POST("/api/profile/reply-mailboxes/test", a.TestReplyMailbox)
 
 		// Organization workspaces. Workspace-scoped endpoints use the

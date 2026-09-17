@@ -957,6 +957,15 @@ export const enableReplyMailbox = (id, organizationID) => http.put(
   {},
   { loading: models.users, ...organizationWorkspaceConfig(organizationID) },
 );
+// purgeReplyMailbox removes the mailbox row for good; disabling it is
+// deleteReplyMailbox above. Only the owner, or a manager of the owning
+// organization, may purge one, and the server refuses a mailbox that is the
+// organization's unified reply mailbox or that an active forwarding rule uses.
+export const purgeReplyMailbox = (id, organizationID) => http.post(
+  `/api/profile/reply-mailboxes/${id}/delete`,
+  {},
+  { loading: models.users, ...organizationWorkspaceConfig(organizationID) },
+);
 
 export const testReplyMailbox = (data, organizationID) => http.post(
   '/api/profile/reply-mailboxes/test',

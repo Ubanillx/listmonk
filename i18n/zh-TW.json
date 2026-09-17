@@ -1113,7 +1113,8 @@
     "settings.bounces.testStep.connect": "連線（含 TLS）",
     "settings.bounces.testStep.login": "登入",
     "settings.bounces.testStep.read": "讀取郵件",
-    "settings.bounces.testStep.parse": "解析退信",
+    "settings.bounces.testStep.parse": "解析退信"
+,
     "analytics.applyFilters": "应用筛选",
     "analytics.clickRate": "点击率",
     "analytics.campaignSearch": "搜索并添加营销活动",
@@ -1248,6 +1249,9 @@
     "replyMailbox.toastDisabled": "回信邮箱已停用",
     "replyMailbox.toastEnabled": "回信邮箱已啟用",
     "replyMailbox.confirmDisable": "停用后，新的营销活动不能使用此回信邮箱。",
+    "replyMailbox.delete": "刪除",
+    "replyMailbox.confirmDelete": "確定刪除 {email} 嗎？刪除後憑證與回信轉發規則會一併移除且無法恢復；已發送的活動仍保留記錄，但不再關聯該信箱。若它仍是組織的統一回件信箱或仍有生效中的回信轉發規則，需先解除後再刪除。",
+    "replyMailbox.toastDeleted": "回信信箱已刪除",
     "pool.title": "一级公海拆分",
     "pool.intro": "僅最高管理員可在這裡指定目標組織並建立公海分配，不需要切換或加入目標組織。",
     "pool.introManager": "組織管理員可在自己所在組織內建立公海分配，目前工作區不會被切換。",

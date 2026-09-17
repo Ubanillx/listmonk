@@ -26,14 +26,20 @@
           </div>
           <p class="reply-card-subtitle">{{ mailbox.email || $t('replyMailbox.noEmail') }}</p>
         </div>
-        <b-button v-if="mailbox.id && mailbox.status !== 'disabled' && !mailbox.readOnly" type="is-danger" outlined
-          size="is-small" icon-left="trash-can-outline" @click="disableMailbox(mailbox, index)">
-          {{ $t('replyMailbox.disable') }}
-        </b-button>
-        <b-button v-else-if="mailbox.id" type="is-primary" outlined size="is-small" icon-left="play-circle-outline"
-          :loading="enabling === index" @click="enableMailbox(mailbox, index)">
-          {{ $t('replyMailbox.enable') }}
-        </b-button>
+        <div class="buttons mb-0">
+          <b-button v-if="mailbox.id && mailbox.status !== 'disabled' && !mailbox.readOnly" type="is-danger" outlined
+            size="is-small" icon-left="pause-circle-outline" @click="disableMailbox(mailbox, index)">
+            {{ $t('replyMailbox.disable') }}
+          </b-button>
+          <b-button v-else-if="mailbox.id && !mailbox.readOnly" type="is-primary" outlined size="is-small"
+            icon-left="play-circle-outline" :loading="enabling === index" @click="enableMailbox(mailbox, index)">
+            {{ $t('replyMailbox.enable') }}
+          </b-button>
+          <b-button v-if="mailbox.id && mailbox.deletable === true" type="is-danger" outlined size="is-small" icon-left="trash-can-outline"
+            :loading="deleting === index" data-cy="reply-mailbox-delete" @click="removeMailbox(mailbox, index)">
+            {{ $t('replyMailbox.delete') }}
+          </b-button>
+        </div>
       </div>
 
       <div class="columns is-multiline reply-grid">
@@ -143,6 +149,7 @@ export default Vue.extend({
       saving: null,
       testing: null,
       enabling: null,
+      deleting: null,
       loadedWorkspace: null,
     };
   },
@@ -176,7 +183,10 @@ export default Vue.extend({
     // The listing returns every reply mailbox of the organization so the
     // workspace sees its full inventory. A row that belongs to another member is
     // rendered read-only: the address is usable by the whole workspace, but
-    // editing, testing and disabling it requires ownership.
+    // editing, testing and disabling it requires ownership. Each row also
+    // carries `deletable` from the API, which is the deletion right the server
+    // enforces for this caller, so the delete button only appears where the
+    // request can succeed.
     load() {
       this.loadedWorkspace = this.workspaceKey;
       this.$api.getReplyMailboxes(this.apiOrganizationID).then((data) => {
@@ -266,6 +276,28 @@ export default Vue.extend({
           this.$utils.toast(this.$t('replyMailbox.toastDisabled'));
         });
       });
+    },
+
+    // removeMailbox purges the row for good; disabling it is disableMailbox
+    // above. The server refuses a mailbox that is the organization's unified
+    // reply mailbox or that an active forwarding rule still depends on, and its
+    // message is surfaced by the default error toast.
+    removeMailbox(mailbox, index) {
+      if (!mailbox.id) {
+        return;
+      }
+      this.$utils.confirm(
+        this.$t('replyMailbox.confirmDelete', { email: mailbox.email || mailbox.name }),
+        () => {
+          this.deleting = index;
+          this.$api.purgeReplyMailbox(mailbox.id, this.apiOrganizationID).then(() => {
+            this.mailboxes.splice(index, 1);
+            this.$utils.toast(this.$t('replyMailbox.toastDeleted'));
+          }).finally(() => {
+            this.deleting = null;
+          });
+        },
+      );
     },
 
     enableMailbox(mailbox, index) {

@@ -57,6 +57,14 @@ SET status = 'disabled', is_default = FALSE, ai_enabled = FALSE, updated_at = NO
 WHERE id = $1 AND user_id = $2 AND organization_id IS NOT DISTINCT FROM $3
 RETURNING id;
 
+-- name: delete-reply-mailbox
+-- The caller is authorized as the mailbox owner or as a manager of the owning
+-- organization before this runs. Removing the row also removes the forwarding
+-- rules and reply-AI events that depend on it (ON DELETE CASCADE), while sent
+-- campaigns and delivery snapshots keep their history through ON DELETE SET
+-- NULL, so the audit trail loses only the mailbox association.
+DELETE FROM reply_mailboxes WHERE id = $1 RETURNING id;
+
 -- name: enable-reply-mailbox
 -- A disabled mailbox keeps its last successful verification. Restore that
 -- state without requiring the user to re-enter a password that is never

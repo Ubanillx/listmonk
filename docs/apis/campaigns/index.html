@@ -1632,13 +1632,30 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#put-apicampaignscampaign_id_1" class="md-nav__link">
+  <a href="#get-apicampaignscampaign_idpool-send-status" class="md-nav__link">
     <span class="md-ellipsis">
       
-        PUT /api/campaigns/{campaign_id}
+        GET /api/campaigns/{campaign_id}/pool-send-status
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="GET /api/campaigns/{campaign_id}/pool-send-status">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#example-response_11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1688,7 +1705,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#example-response_11" class="md-nav__link">
+  <a href="#example-response_12" class="md-nav__link">
     <span class="md-ellipsis">
       
         Example Response
@@ -1738,7 +1755,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#example-response_12" class="md-nav__link">
+  <a href="#example-response_13" class="md-nav__link">
     <span class="md-ellipsis">
       
         Example Response
@@ -1788,7 +1805,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#example-response_13" class="md-nav__link">
+  <a href="#example-response_14" class="md-nav__link">
     <span class="md-ellipsis">
       
         Example Response
@@ -1849,7 +1866,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#example-response_14" class="md-nav__link">
+  <a href="#example-response_15" class="md-nav__link">
     <span class="md-ellipsis">
       
         Example Response
@@ -3026,13 +3043,30 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#put-apicampaignscampaign_id_1" class="md-nav__link">
+  <a href="#get-apicampaignscampaign_idpool-send-status" class="md-nav__link">
     <span class="md-ellipsis">
       
-        PUT /api/campaigns/{campaign_id}
+        GET /api/campaigns/{campaign_id}/pool-send-status
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="GET /api/campaigns/{campaign_id}/pool-send-status">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#example-response_11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -3082,7 +3116,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#example-response_11" class="md-nav__link">
+  <a href="#example-response_12" class="md-nav__link">
     <span class="md-ellipsis">
       
         Example Response
@@ -3132,7 +3166,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#example-response_12" class="md-nav__link">
+  <a href="#example-response_13" class="md-nav__link">
     <span class="md-ellipsis">
       
         Example Response
@@ -3182,7 +3216,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#example-response_13" class="md-nav__link">
+  <a href="#example-response_14" class="md-nav__link">
     <span class="md-ellipsis">
       
         Example Response
@@ -3243,7 +3277,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#example-response_14" class="md-nav__link">
+  <a href="#example-response_15" class="md-nav__link">
     <span class="md-ellipsis">
       
         Example Response
@@ -4030,6 +4064,12 @@ This is a test e-mail campaign. Your second name is Doe and you are from Bengalu
 <td style="text-align: left;"></td>
 <td style="text-align: left;">Optional JSON object attributes that can be used in the campaign message template. Example <code>{"location": "Somewhere"}</code></td>
 </tr>
+<tr>
+<td style="text-align: left;">pool_scope</td>
+<td style="text-align: left;">string</td>
+<td style="text-align: left;"></td>
+<td style="text-align: left;">Public-pool audience scope: <code>organization</code> (default) resolves the campaign workspace's pool allocation; <code>all_organizations</code> makes the campaign cover every active organization's pool allocation of the selected first-level pool and requires the caller to hold <code>campaigns:public_pool_send</code>. An <code>all_organizations</code> campaign accepts first-level public pool audiences only (no explicit pool-allocation lists, no regular customer lists), persists a random fair organization rotation, and sends each recipient through the target organization's member SMTP pool with the organization's unified reply mailbox as Reply-To. It is immutable after creation.</td>
+</tr>
 </tbody>
 </table>
 <h5 id="example-request_10">Example request<a class="headerlink" href="#example-request_10" title="Permanent link">&para;</a></h5>
@@ -4095,16 +4135,42 @@ This is a test e-mail campaign. Your second name is Doe and you are from Bengalu
 </table>
 <hr />
 <h4 id="put-apicampaignscampaign_id">PUT /api/campaigns/{campaign_id}<a class="headerlink" href="#put-apicampaignscampaign_id" title="Permanent link">&para;</a></h4>
-<p>Update a campaign.</p>
-<blockquote>
-<p>Refer to parameters from <a href="#post-apicampaigns">POST /api/campaigns</a></p>
-</blockquote>
-<hr />
-<h4 id="put-apicampaignscampaign_id_1">PUT /api/campaigns/{campaign_id}<a class="headerlink" href="#put-apicampaignscampaign_id_1" title="Permanent link">&para;</a></h4>
 <p>Update a specific campaign.</p>
 <blockquote>
-<p>Refer to parameters from <a href="#post-apicampaigns">POST /api/campaigns</a></p>
+<p>Refer to parameters from <a href="#post-apicampaigns">POST /api/campaigns</a>
+<code>pool_scope</code> is immutable: an existing campaign keeps the scope it was created with.</p>
 </blockquote>
+<hr />
+<h4 id="get-apicampaignscampaign_idpool-send-status">GET /api/campaigns/{campaign_id}/pool-send-status<a class="headerlink" href="#get-apicampaignscampaign_idpool-send-status" title="Permanent link">&para;</a></h4>
+<p>Readiness of a platform-level public-pool campaign (<code>pool_scope = all_organizations</code>). The response names each target organization with its unified reply mailbox readiness and its number of eligible member SMTP accounts, plus one issue string per unready organization. It never returns SMTP credentials.</p>
+<p>Legacy campaigns (<code>pool_scope = organization</code>) resolve their sender through the campaign owner's personal SMTP pool and always report <code>ready: true</code> here.</p>
+<h5 id="example-response_11">Example Response<a class="headerlink" href="#example-response_11" title="Permanent link">&para;</a></h5>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">    </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"pool_scope"</span><span class="p">:</span><span class="w"> </span><span class="s2">"all_organizations"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"ready"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"organizations"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">            </span><span class="p">{</span>
+<span class="w">                </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">                </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Acme"</span><span class="p">,</span>
+<span class="w">                </span><span class="nt">"active"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">                </span><span class="nt">"mailbox_ready"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">                </span><span class="nt">"mailbox_email"</span><span class="p">:</span><span class="w"> </span><span class="s2">"replies@acme.example"</span><span class="p">,</span>
+<span class="w">                </span><span class="nt">"smtp_count"</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span>
+<span class="w">            </span><span class="p">},</span>
+<span class="w">            </span><span class="p">{</span>
+<span class="w">                </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
+<span class="w">                </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Globex"</span><span class="p">,</span>
+<span class="w">                </span><span class="nt">"active"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">                </span><span class="nt">"mailbox_ready"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">                </span><span class="nt">"mailbox_email"</span><span class="p">:</span><span class="w"> </span><span class="s2">""</span><span class="p">,</span>
+<span class="w">                </span><span class="nt">"smtp_count"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">        </span><span class="p">],</span>
+<span class="w">        </span><span class="nt">"issues"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"Globex: unified reply mailbox is missing or not verified"</span><span class="p">]</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
 <hr />
 <h4 id="put-apicampaignscampaign_idstatus">PUT /api/campaigns/{campaign_id}/status<a class="headerlink" href="#put-apicampaignscampaign_idstatus" title="Permanent link">&para;</a></h4>
 <p>Change status of a campaign.</p>
@@ -4147,7 +4213,7 @@ This is a test e-mail campaign. Your second name is Doe and you are from Bengalu
 --header<span class="w"> </span><span class="s1">'Content-Type: application/json'</span><span class="w"> </span><span class="se">\</span>
 --data-raw<span class="w"> </span><span class="s1">'{"status":"scheduled"}'</span>
 </code></pre></div>
-<h5 id="example-response_11">Example Response<a class="headerlink" href="#example-response_11" title="Permanent link">&para;</a></h5>
+<h5 id="example-response_12">Example Response<a class="headerlink" href="#example-response_12" title="Permanent link">&para;</a></h5>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
 <span class="w">    </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">        </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
@@ -4232,7 +4298,7 @@ This is a test e-mail campaign. Your second name is Doe and you are from Bengalu
 --header<span class="w"> </span><span class="s1">'Content-Type: application/json'</span><span class="w"> </span>
 --data-raw<span class="w"> </span><span class="s1">'{"archive":true,"archive_template_id":1,"archive_meta":{},"archive_slug":"my-newsletter-old-edition"}'</span>
 </code></pre></div>
-<h5 id="example-response_12">Example Response<a class="headerlink" href="#example-response_12" title="Permanent link">&para;</a></h5>
+<h5 id="example-response_13">Example Response<a class="headerlink" href="#example-response_13" title="Permanent link">&para;</a></h5>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
 <span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nt">"archive"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
@@ -4267,7 +4333,7 @@ This is a test e-mail campaign. Your second name is Doe and you are from Bengalu
 <h5 id="example-request_13">Example Request<a class="headerlink" href="#example-request_13" title="Permanent link">&para;</a></h5>
 <div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s2">"api_user:token"</span><span class="w"> </span>-X<span class="w"> </span>DELETE<span class="w"> </span><span class="s1">'http://localhost:9000/api/campaigns/34'</span>
 </code></pre></div>
-<h5 id="example-response_13">Example Response<a class="headerlink" href="#example-response_13" title="Permanent link">&para;</a></h5>
+<h5 id="example-response_14">Example Response<a class="headerlink" href="#example-response_14" title="Permanent link">&para;</a></h5>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
 <span class="w">    </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
 <span class="p">}</span>
@@ -4306,7 +4372,7 @@ This is a test e-mail campaign. Your second name is Doe and you are from Bengalu
 <h5 id="example-request-by-search-query">Example Request (by search query)<a class="headerlink" href="#example-request-by-search-query" title="Permanent link">&para;</a></h5>
 <div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s2">"api_user:token"</span><span class="w"> </span>-X<span class="w"> </span>DELETE<span class="w"> </span><span class="s1">'http://localhost:9000/api/campaigns?query=test%20campaign'</span>
 </code></pre></div>
-<h5 id="example-response_14">Example Response<a class="headerlink" href="#example-response_14" title="Permanent link">&para;</a></h5>
+<h5 id="example-response_15">Example Response<a class="headerlink" href="#example-response_15" title="Permanent link">&para;</a></h5>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
 <span class="w">    </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
 <span class="p">}</span>

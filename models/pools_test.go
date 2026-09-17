@@ -15,10 +15,10 @@ func TestMaskPoolEmail(t *testing.T) {
 	}
 }
 
-func TestSafePoolContactDoesNotExposePersonName(t *testing.T) {
-	p := PoolContact{ID: 9, CustomerCode: "C-9", CompanyName: "Acme", Email: "contact@example.com", Name: "Jane Doe", Status: "active"}
+func TestSafePoolContactKeepsNameAndMasksEmail(t *testing.T) {
+	p := PoolContact{ID: 9, CustomerCode: "C-9", Email: "contact@example.com", Name: "Jane Doe", AllocationDepartment: "Sales", Status: "active"}
 	got := p.Safe()
-	if got.Name != "" || got.Email != "conxxxx@example.com" || got.CustomerCode != "C-9" || got.CompanyName != "Acme" {
+	if got.Name != "Jane Doe" || got.Email != "conxxxx@example.com" || got.CustomerCode != "C-9" || got.AllocationDepartment != "Sales" {
 		t.Fatalf("unexpected safe pool contact: %+v", got)
 	}
 }

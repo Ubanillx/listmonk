@@ -99,7 +99,6 @@ CREATE TABLE pool_contacts (
     id            BIGSERIAL PRIMARY KEY,
     uuid          UUID NOT NULL DEFAULT gen_random_uuid(),
     customer_code TEXT NOT NULL DEFAULT '',
-    company_name  TEXT NOT NULL DEFAULT '',
     email         TEXT NOT NULL,
     name          TEXT NOT NULL DEFAULT '',
     attribs       JSONB NOT NULL DEFAULT '{}',
@@ -308,8 +307,8 @@ func (env *poolRecipientsTestEnv) seedAllocation(poolID int, organizationID int6
 
 func (env *poolRecipientsTestEnv) seedContact(code, name, email, status string) int64 {
 	env.t.Helper()
-	return env.id(`INSERT INTO pool_contacts(customer_code,company_name,email,name,status) VALUES($1,$2,$3,$4,$5) RETURNING id`,
-		code, "Company "+code, email, name, status)
+	return env.id(`INSERT INTO pool_contacts(customer_code,email,name,status) VALUES($1,$2,$3,$4) RETURNING id`,
+		code, email, name, status)
 }
 
 func (env *poolRecipientsTestEnv) joinPool(poolID int, contactID int64) {

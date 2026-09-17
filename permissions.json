@@ -24,6 +24,15 @@
         ]
     },
     {
+        "group": "pools",
+        "permissions":
+        [
+            "pools:get",
+            "pools:manage",
+            "pools:export"
+        ]
+    },
+    {
         "group": "transactional",
         "permissions":
         [

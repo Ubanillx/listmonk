@@ -241,7 +241,9 @@ export const grantPoolOrganization = (data) => http.post('/api/pools/permissions
 export const revokePoolOrganization = (data) => http.delete('/api/pools/permissions', { data });
 export const restorePoolContact = (data) => http.put('/api/pools/allocations/members', data);
 export const importPoolList = (data) => http.post('/api/pools/import', data);
-export const clearPoolContactEmail = (poolID, contactID) => http.delete(`/api/pools/${poolID}/contacts/${contactID}/email`);
+// The route accepts a first-level pool list or one of its allocation lists and
+// resolves the first-level pool server-side.
+export const clearPoolContactEmail = (listID, contactID) => http.delete(`/api/customer-lists/${listID}/pool-contacts/${contactID}/email`);
 
 // Organizations and workspaces.
 export const getCurrentWorkspace = (config = {}) => http.get('/api/workspace', config);

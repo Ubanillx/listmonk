@@ -16,7 +16,6 @@ type PoolContact struct {
 	ID                   int64                  `db:"id" json:"id"`
 	UUID                 string                 `db:"uuid" json:"uuid"`
 	CustomerCode         string                 `db:"customer_code" json:"customer_code"`
-	CompanyName          string                 `db:"company_name" json:"company_name"`
 	Email                string                 `db:"email" json:"email"`
 	Name                 string                 `db:"name" json:"name"`
 	AllocationDepartment string                 `db:"allocation_department" json:"allocation_department"`
@@ -36,17 +35,20 @@ type PoolExclusionSummary struct {
 	Source           string `json:"source,omitempty"`
 }
 
-// SafePoolContact is returned to non-highest-admin users. Email is always masked.
+// SafePoolContact is returned to non-highest-admin users. E-mail addresses are
+// always masked; the contact name is visible inside the organization's own
+// allocation so members can identify the row.
 type SafePoolContact struct {
-	ID                   int64  `json:"id"`
-	CustomerCode         string `json:"customer_code"`
-	CompanyName          string `json:"company_name"`
-	Email                string `json:"email"`
-	Name                 string `json:"name,omitempty"`
-	AllocationDepartment string `json:"allocation_department,omitempty"`
-	Status               string `json:"status"`
-	Excluded             bool   `json:"excluded,omitempty"`
-	ExclusionReason      string `json:"exclusion_reason,omitempty"`
+	ID                   int64     `json:"id"`
+	CustomerCode         string    `json:"customer_code"`
+	Email                string    `json:"email"`
+	Name                 string    `json:"name"`
+	AllocationDepartment string    `json:"allocation_department,omitempty"`
+	Status               string    `json:"status"`
+	CreatedAt            time.Time `json:"created_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
+	Excluded             bool      `json:"excluded,omitempty"`
+	ExclusionReason      string    `json:"exclusion_reason,omitempty"`
 }
 
 type OrgPoolAllocation struct {
@@ -160,7 +162,16 @@ func MaskPoolEmail(email string) string {
 }
 
 func (p PoolContact) Safe() SafePoolContact {
-	// Contact person names are customer PII as well; non-highest administrators
-	// receive only the imported code, company name, status and masked address.
-	return SafePoolContact{ID: p.ID, CustomerCode: p.CustomerCode, CompanyName: p.CompanyName, Email: MaskPoolEmail(p.Email), AllocationDepartment: p.AllocationDepartment, Status: p.Status}
+	// The name and masked address let members identify a contact inside their
+	// own allocation; the raw address and internal identifiers stay hidden.
+	return SafePoolContact{
+		ID:                   p.ID,
+		CustomerCode:         p.CustomerCode,
+		Email:                MaskPoolEmail(p.Email),
+		Name:                 p.Name,
+		AllocationDepartment: p.AllocationDepartment,
+		Status:               p.Status,
+		CreatedAt:            p.CreatedAt,
+		UpdatedAt:            p.UpdatedAt,
+	}
 }

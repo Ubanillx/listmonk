@@ -45,7 +45,7 @@ func (c *Core) FindReplyAIPoolContact(access models.WorkspaceAccess, email strin
 		models.PoolContact
 		PublicPoolRecipient
 	}
-	err := c.db.Get(&row, `SELECT pc.id,pc.uuid,pc.customer_code,pc.company_name,pc.email,pc.name,pc.attribs,pc.status,pc.created_at,pc.updated_at,cpr.campaign_id,cpr.pool_contact_id,cpr.organization_id,cpr.allocation_id FROM pool_contacts pc JOIN campaign_pool_recipients cpr ON cpr.pool_contact_id=pc.id WHERE LOWER(pc.email)=LOWER($1) AND cpr.organization_id=$2 AND pc.status='active' AND cpr.status IN ('pending','queued','sent') ORDER BY cpr.created_at DESC LIMIT 1`, email, access.OrganizationID)
+	err := c.db.Get(&row, `SELECT pc.id,pc.uuid,pc.customer_code,pc.email,pc.name,pc.attribs,pc.status,pc.created_at,pc.updated_at,cpr.campaign_id,cpr.pool_contact_id,cpr.organization_id,cpr.allocation_id FROM pool_contacts pc JOIN campaign_pool_recipients cpr ON cpr.pool_contact_id=pc.id WHERE LOWER(pc.email)=LOWER($1) AND cpr.organization_id=$2 AND pc.status='active' AND cpr.status IN ('pending','queued','sent') ORDER BY cpr.created_at DESC LIMIT 1`, email, access.OrganizationID)
 	if err == sql.ErrNoRows {
 		return models.PoolContact{}, PublicPoolRecipient{}, false, nil
 	}

@@ -178,4 +178,35 @@ describe('Public pools', function poolSuite() { // eslint-disable-line prefer-ar
     cy.url().should('include', '/admin/customers/customer-lists/');
     cy.get('[data-cy=pool-contacts-table]').filter(':visible').should('contain', 'DUP-001');
   });
+
+  it('serves pool contacts as a paginated page with sortable columns and no company name', () => {
+    loginAs(Cypress.env('POOL_QA_SUPER_USER') || 'root', undefined, superPassword);
+
+    cy.request(`/api/customer-lists/${poolID}/pool-contacts?page=1&per_page=2&order_by=customer_code&order=asc`)
+      .then((response) => {
+        expect(response.status).to.eq(200);
+        const page = response.body.data;
+        expect(page).to.have.property('total');
+        expect(page).to.have.property('page', 1);
+        expect(page).to.have.property('per_page', 2);
+        expect(page.results).to.have.length.at.most(2);
+        expect(page.results[0]).to.not.have.property('company_name');
+        expect(page.results[0]).to.have.property('name');
+      });
+
+    // The pool tab renders the same table shape as ordinary customers.
+    cy.contains('tr', 'wsqa-pool-primary')
+      .find('a[href*="/customers/customer-lists/"]').first().click();
+    cy.get('[data-cy=customer-area-tabs]').filter(':visible').should('be.visible');
+    cy.get('[data-cy=tab-pool-contacts]').filter(':visible').closest('li').should('have.class', 'is-active');
+    cy.get('[data-cy=pool-contacts-table]').filter(':visible').within(() => {
+      cy.get('.cy-pool-customer_code').should('exist');
+      cy.get('.cy-pool-company_name').should('not.exist');
+      cy.get('.pagination').should('exist');
+    });
+
+    // Switching back to the all-customers tab leaves the pool store.
+    cy.get('[data-cy=tab-all-customers]').filter(':visible').click();
+    cy.url().should('match', /\/admin\/customers\/?$/);
+  });
 });

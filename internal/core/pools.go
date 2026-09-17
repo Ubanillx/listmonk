@@ -113,7 +113,7 @@ func (c *Core) HasPoolOrganizationPermission(poolID int, organizationID int64) (
 
 func (c *Core) GetPoolContactByUUID(rawUUID string) (models.PoolContact, error) {
 	var p models.PoolContact
-	if err := c.db.Get(&p, `SELECT id,uuid,customer_code,company_name,email,name,allocation_department,attribs,status,created_at,updated_at FROM pool_contacts WHERE uuid=$1::uuid`, rawUUID); err != nil {
+	if err := c.db.Get(&p, `SELECT id,uuid,customer_code,email,name,allocation_department,attribs,status,created_at,updated_at FROM pool_contacts WHERE uuid=$1::uuid`, rawUUID); err != nil {
 		return p, err
 	}
 	return p, nil
@@ -264,6 +264,31 @@ func (c *Core) getPoolListScope(listID int) (poolListScope, error) {
 	return scope, nil
 }
 
+// PoolAllocationOrganizationID resolves the owning organization of a pool
+// allocation so callers can enforce the workspace organization boundary of
+// contact mutations.
+func (c *Core) PoolAllocationOrganizationID(allocationID int64) (int64, error) {
+	var organizationID int64
+	if err := c.db.Get(&organizationID, `SELECT organization_id FROM org_pool_allocations WHERE id=$1`, allocationID); err != nil {
+		if err == sql.ErrNoRows {
+			return 0, echo.NewHTTPError(http.StatusNotFound, "pool allocation not found")
+		}
+		return 0, err
+	}
+	return organizationID, nil
+}
+
+// ResolvePoolListPoolID maps a first-level pool list or one of its allocation
+// lists to the first-level pool id and its owning organization, as required by
+// contact mutations that are keyed by the pool.
+func (c *Core) ResolvePoolListPoolID(listID int) (int, int64, error) {
+	scope, err := c.getPoolListScope(listID)
+	if err != nil {
+		return 0, 0, err
+	}
+	return scope.PoolID, scope.OrganizationID, nil
+}
+
 // PoolListCustomerCount returns the number of rows represented by a first-level
 // pool or one of its pool allocations. Pool contacts intentionally remain outside
 // the legacy customer membership tables, so their counts need a dedicated query.
@@ -281,12 +306,58 @@ func (c *Core) PoolListCustomerCount(listID int) (int, error) {
 	return count, err
 }
 
-// QueryPoolContacts returns complete records only for platform administrators.
-// All other callers receive a DTO containing a masked email.
-func (c *Core) QueryPoolContacts(poolID int, organizationID int, platformAdmin bool, customerCode string) (any, error) {
+// poolContactSortFields is the whitelist of sortable pool-contact columns.
+var poolContactSortFields = map[string]string{
+	"id":                    "id",
+	"customer_code":         "customer_code",
+	"name":                  "name",
+	"email":                 "email",
+	"allocation_department": "allocation_department",
+	"status":                "status",
+	"created_at":            "created_at",
+	"updated_at":            "updated_at",
+}
+
+// AuthorizePoolListAccess applies the organization scope of a pool list to a
+// non-platform-admin caller: a first-level pool must be granted to the active
+// organization (directly or through one of its allocations), and an allocation
+// list belongs to exactly one organization.
+func (c *Core) AuthorizePoolListAccess(listID int, organizationID int64) error {
+	scope, err := c.getPoolListScope(listID)
+	if err != nil {
+		return err
+	}
+	if scope.AllocationID != nil {
+		if scope.OrganizationID != organizationID {
+			return echo.NewHTTPError(http.StatusForbidden, "public pool is not authorized for this organization")
+		}
+		return nil
+	}
+	var allowed bool
+	if err := c.db.Get(&allowed, `SELECT EXISTS(SELECT 1 FROM pool_organization_permissions WHERE pool_id=$1 AND organization_id=$2)`, scope.PoolID, organizationID); err != nil {
+		return err
+	}
+	if !allowed {
+		if err := c.db.Get(&allowed, `SELECT EXISTS(SELECT 1 FROM org_pool_allocations WHERE pool_id=$1 AND organization_id=$2)`, scope.PoolID, organizationID); err != nil {
+			return err
+		}
+	}
+	if !allowed {
+		return echo.NewHTTPError(http.StatusForbidden, "public pool is not authorized for this organization")
+	}
+	return nil
+}
+
+// QueryPoolContacts returns one server-paginated page of the contacts of a
+// first-level pool or one of its organization allocations, together with the
+// total number of rows matching the same filters. Complete records are returned
+// only to platform administrators; every other caller receives the masked DTO.
+// Search matches the customer code, name and e-mail; sorting is restricted to
+// the whitelisted columns.
+func (c *Core) QueryPoolContacts(poolID int, organizationID int, platformAdmin bool, search, orderBy, order string, offset, limit int) (any, int, error) {
 	scope, err := c.getPoolListScope(poolID)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	args := []any{scope.PoolID}
 	where := ""
@@ -298,11 +369,11 @@ func (c *Core) QueryPoolContacts(poolID int, organizationID int, platformAdmin b
 	}
 	if !platformAdmin {
 		if organizationID <= 0 {
-			return []models.SafePoolContact{}, nil
+			return []models.SafePoolContact{}, 0, nil
 		}
 		if scope.AllocationID != nil {
 			if scope.OrganizationID != int64(organizationID) {
-				return []models.SafePoolContact{}, nil
+				return []models.SafePoolContact{}, 0, nil
 			}
 			args = append(args, organizationID)
 			join += ` LEFT JOIN org_pool_allocation_exclusions ex ON ex.pool_id=pm.pool_id AND ex.organization_id=$3 AND ex.contact_id=pc.id AND ex.restored_at IS NULL`
@@ -313,26 +384,57 @@ func (c *Core) QueryPoolContacts(poolID int, organizationID int, platformAdmin b
 			where = ` AND ps.organization_id=$2 AND (psm.status IN ('active','removed') OR ex.contact_id IS NOT NULL)`
 		}
 	}
-	if strings.TrimSpace(customerCode) != "" {
-		args = append(args, "%"+strings.TrimSpace(customerCode)+"%")
-		placeholder := len(args)
-		where += " AND pc.customer_code ILIKE $" + strconv.Itoa(placeholder)
+	if s := strings.TrimSpace(search); s != "" {
+		args = append(args, "%"+s+"%")
+		placeholder := strconv.Itoa(len(args))
+		where += " AND (pc.customer_code ILIKE $" + placeholder + " OR pc.name ILIKE $" + placeholder + " OR pc.email ILIKE $" + placeholder + ")"
 	}
-	q := `SELECT pc.id, pc.uuid, pc.customer_code, pc.company_name, pc.email, pc.name, pc.allocation_department, pc.status
+
+	// The filtered rows are built as a subquery so the requested sort can be
+	// applied outside a DISTINCT ON selection, whose ORDER BY prefix is fixed.
+	inner := `SELECT pc.id, pc.uuid, pc.customer_code, pc.email, pc.name, pc.allocation_department, pc.status, pc.created_at, pc.updated_at
 		FROM pool_contacts pc JOIN pool_members pm ON pm.contact_id=pc.id` + join + `
-		WHERE pm.pool_id=$1` + where + ` ORDER BY pc.id`
+		WHERE pm.pool_id=$1` + where
 	if !platformAdmin {
-		q = `SELECT DISTINCT ON (pc.id) pc.id, pc.uuid, pc.customer_code, pc.company_name, pc.email, pc.name, pc.allocation_department, pc.status,
+		inner = `SELECT DISTINCT ON (pc.id) pc.id, pc.uuid, pc.customer_code, pc.email, pc.name, pc.allocation_department, pc.status, pc.created_at, pc.updated_at,
 			(psm.status='removed' OR ex.contact_id IS NOT NULL) AS excluded, COALESCE(NULLIF(psm.removed_reason,''), ex.reason, '') AS exclusion_reason
 			FROM pool_contacts pc JOIN pool_members pm ON pm.contact_id=pc.id` + join + `
 			WHERE pm.pool_id=$1` + where + ` ORDER BY pc.id, psm.updated_at DESC`
+	}
+	sortField, ok := poolContactSortFields[orderBy]
+	if !ok {
+		sortField = "id"
+	}
+	direction := "DESC"
+	if strings.EqualFold(order, SortAsc) {
+		direction = "ASC"
+	}
+	sortExpr := sortField + " " + direction
+	if sortField != "id" {
+		sortExpr += ", id DESC"
+	}
+
+	var total int
+	if err := c.db.Get(&total,
+		`SELECT COUNT(DISTINCT pc.id) FROM pool_contacts pc JOIN pool_members pm ON pm.contact_id=pc.id`+join+`
+			WHERE pm.pool_id=$1`+where, args...); err != nil {
+		return nil, 0, err
+	}
+
+	// A non-positive limit means "return every row", matching the paginator's
+	// allow-all mode.
+	q := `SELECT * FROM (` + inner + `) pool_rows ORDER BY ` + sortExpr + fmt.Sprintf(
+		` OFFSET $%d LIMIT (CASE WHEN $%d < 1 THEN NULL ELSE $%d END)`, len(args)+1, len(args)+2, len(args)+2)
+	pageArgs := append(append([]any{}, args...), offset, limit)
+
+	if !platformAdmin {
 		var rows []struct {
 			models.PoolContact
 			Excluded        bool   `db:"excluded"`
 			ExclusionReason string `db:"exclusion_reason"`
 		}
-		if err := c.db.Select(&rows, q, args...); err != nil {
-			return nil, err
+		if err := c.db.Select(&rows, q, pageArgs...); err != nil {
+			return nil, 0, err
 		}
 		out := make([]models.SafePoolContact, 0, len(rows))
 		for _, row := range rows {
@@ -341,11 +443,11 @@ func (c *Core) QueryPoolContacts(poolID int, organizationID int, platformAdmin b
 			s.ExclusionReason = row.ExclusionReason
 			out = append(out, s)
 		}
-		return out, nil
+		return out, total, nil
 	}
 	var rows []models.PoolContact
-	if err := c.db.Select(&rows, q, args...); err != nil {
-		return nil, err
+	if err := c.db.Select(&rows, q, pageArgs...); err != nil {
+		return nil, 0, err
 	}
 	if len(rows) > 0 {
 		type exclusionRow struct {
@@ -355,9 +457,13 @@ func (c *Core) QueryPoolContacts(poolID int, organizationID int, platformAdmin b
 			Reason           string `db:"reason"`
 			Source           string `db:"source"`
 		}
+		ids := make([]int64, 0, len(rows))
+		for i := range rows {
+			ids = append(ids, rows[i].ID)
+		}
 		var exclusions []exclusionRow
-		if err := c.db.Select(&exclusions, `SELECT e.contact_id,e.organization_id,COALESCE(o.name,'') AS organization_name,e.reason,e.source FROM org_pool_allocation_exclusions e LEFT JOIN organizations o ON o.id=e.organization_id WHERE e.pool_id=$1 AND e.restored_at IS NULL ORDER BY e.contact_id,e.organization_id`, poolID); err != nil {
-			return nil, err
+		if err := c.db.Select(&exclusions, `SELECT e.contact_id,e.organization_id,COALESCE(o.name,'') AS organization_name,e.reason,e.source FROM org_pool_allocation_exclusions e LEFT JOIN organizations o ON o.id=e.organization_id WHERE e.pool_id=$1 AND e.restored_at IS NULL AND e.contact_id = ANY($2) ORDER BY e.contact_id,e.organization_id`, poolID, pq.Array(ids)); err != nil {
+			return nil, 0, err
 		}
 		byContact := make(map[int64][]models.PoolExclusionSummary)
 		for _, e := range exclusions {
@@ -367,7 +473,7 @@ func (c *Core) QueryPoolContacts(poolID int, organizationID int, platformAdmin b
 			rows[i].Exclusions = byContact[rows[i].ID]
 		}
 	}
-	return rows, nil
+	return rows, total, nil
 }
 
 func (c *Core) CreatePoolContact(poolID int, p models.PoolContact) (models.PoolContact, error) {
@@ -377,7 +483,6 @@ func (c *Core) CreatePoolContact(poolID int, p models.PoolContact) (models.PoolC
 		}
 	}
 	p.CustomerCode = strings.TrimSpace(p.CustomerCode)
-	p.CompanyName = strings.TrimSpace(p.CompanyName)
 	p.Email = strings.TrimSpace(p.Email)
 	p.Name = strings.TrimSpace(p.Name)
 	p.AllocationDepartment = strings.TrimSpace(p.AllocationDepartment)
@@ -401,7 +506,7 @@ func (c *Core) CreatePoolContact(poolID int, p models.PoolContact) (models.PoolC
 		}
 	}
 	var id int64
-	if err = tx.Get(&id, `INSERT INTO pool_contacts(customer_code,company_name,email,name,allocation_department,attribs) VALUES($1,$2,$3,$4,$5,$6::jsonb) RETURNING id`, p.CustomerCode, p.CompanyName, p.Email, p.Name, p.AllocationDepartment, `{}`); err != nil {
+	if err = tx.Get(&id, `INSERT INTO pool_contacts(customer_code,email,name,allocation_department,attribs) VALUES($1,$2,$3,$4,$5::jsonb) RETURNING id`, p.CustomerCode, p.Email, p.Name, p.AllocationDepartment, `{}`); err != nil {
 		return models.PoolContact{}, err
 	}
 	if poolID > 0 {
@@ -426,9 +531,9 @@ func (c *Core) CreatePoolContact(poolID int, p models.PoolContact) (models.PoolC
 	if err = tx.Commit(); err != nil {
 		return models.PoolContact{}, err
 	}
-	p.ID = id
-	_ = c.db.Get(&p.UUID, `SELECT uuid FROM pool_contacts WHERE id=$1`, id)
-	p.Status = "active"
+	if err := c.db.Get(&p, `SELECT id,uuid,customer_code,email,name,allocation_department,attribs,status,created_at,updated_at FROM pool_contacts WHERE id=$1`, id); err != nil {
+		return models.PoolContact{}, err
+	}
 	return p, nil
 }
 
@@ -541,8 +646,8 @@ func (c *Core) ImportPoolContacts(poolID, userID int, rows []models.PoolContactI
 			if codeErr != nil && codeErr != sql.ErrNoRows {
 				return result, codeErr
 			}
-			if err = tx.Get(&contactID, `INSERT INTO pool_contacts(customer_code,company_name,email,name,allocation_department,attribs)
-				VALUES($1,'',$2,$3,$4,'{}'::jsonb) RETURNING id`, code, email, name, department); err != nil {
+			if err = tx.Get(&contactID, `INSERT INTO pool_contacts(customer_code,email,name,allocation_department,attribs)
+				VALUES($1,$2,$3,$4,'{}'::jsonb) RETURNING id`, code, email, name, department); err != nil {
 				return result, err
 			}
 			result.Created++
@@ -1245,7 +1350,7 @@ const poolRecipientMembershipSQL = `
 // stable internal ID, which is also the snapshot's primary key. The reply
 // mailbox of every row is the organization's unified reply mailbox, exposed by
 // the shared fragment as rm.id.
-const poolRecipientSelectSQL = `SELECT DISTINCT ON (pc.id) pc.id,pc.customer_code,pc.company_name,pc.email,pc.name,pc.status,s.id AS allocation_id,s.organization_id,rm.id AS reply_mailbox_id` + poolRecipientMembershipSQL + ` ORDER BY pc.id,s.id`
+const poolRecipientSelectSQL = `SELECT DISTINCT ON (pc.id) pc.id,pc.customer_code,pc.email,pc.name,pc.status,s.id AS allocation_id,s.organization_id,rm.id AS reply_mailbox_id` + poolRecipientMembershipSQL + ` ORDER BY pc.id,s.id`
 
 // poolSnapshotRefreshStatuses lists the snapshot statuses a refresh owns: a row
 // in one of these states has not been handed to delivery yet, so the refresh may
@@ -1660,7 +1765,7 @@ func (c *Core) ImportListIntoPool(listID, poolID, userID int) error {
 		}
 		err = tx.Get(&id, `SELECT id FROM pool_contacts WHERE customer_code=$1 AND LOWER(email)=LOWER($2) AND name=$3 AND attribs=$4::jsonb LIMIT 1`, code, email, name, string(attribs))
 		if err == sql.ErrNoRows {
-			if err = tx.Get(&id, `INSERT INTO pool_contacts(customer_code,company_name,email,name,attribs) VALUES($1,'',$2,$3,$4::jsonb) RETURNING id`, code, email, name, string(attribs)); err != nil {
+			if err = tx.Get(&id, `INSERT INTO pool_contacts(customer_code,email,name,attribs) VALUES($1,$2,$3,$4::jsonb) RETURNING id`, code, email, name, string(attribs)); err != nil {
 				return err
 			}
 		} else if err != nil {

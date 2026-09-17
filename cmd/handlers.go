@@ -179,6 +179,7 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.DELETE("/api/customer-lists", apiKeyScope(a.DeleteLists, apiKeyScopeListsWrite))
 		g.DELETE("/api/customer-lists/:id", apiKeyScope(hasID(a.DeleteList), apiKeyScopeListsWrite))
 		g.GET("/api/customer-lists/:id/pool-contacts", apiKeyScope(hasID(a.GetPoolContacts), apiKeyScopeListsRead))
+		g.GET("/api/customer-lists/:id/pool-contacts/export", apiKeyScope(hasID(a.ExportPoolContacts), apiKeyScopeListsRead))
 		g.GET("/api/customer-lists/:id/org-pool-allocations", apiKeyScope(hasID(a.GetOrgPoolAllocations), apiKeyScopeListsRead))
 		g.POST("/api/customer-lists/:id/pool-contacts", apiKeyScope(hasID(a.CreatePoolContact), apiKeyScopeListsWrite))
 		g.DELETE("/api/customer-lists/:id/pool-contacts/:contact_id/email", apiKeyScope(a.ClearPoolContactEmail, apiKeyScopeListsWrite))
@@ -190,6 +191,7 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		// Explicit pool aliases keep the public-pool API independent from legacy
 		// customer-list endpoints while retaining backwards-compatible routing.
 		g.GET("/api/pools/:id/contacts", apiKeyScope(hasID(a.GetPoolContacts), apiKeyScopeListsRead))
+		g.GET("/api/pools/:id/contacts/export", apiKeyScope(hasID(a.ExportPoolContacts), apiKeyScopeListsRead))
 		g.GET("/api/pools/:id/allocations", apiKeyScope(hasID(a.GetOrgPoolAllocations), apiKeyScopeListsRead))
 		g.GET("/api/pools/:id/management-target", apiKeyScope(hasID(a.GetPoolManagementTarget), apiKeyScopeListsRead))
 		g.GET("/api/pools/:id/import-conflicts", apiKeyScope(hasID(a.GetPoolImportConflicts), apiKeyScopeListsRead))

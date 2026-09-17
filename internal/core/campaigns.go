@@ -127,7 +127,7 @@ func (c *Core) GetPublicCampaignMessage(campUUID, subUUID string) (models.Campai
 			return models.Campaign{}, models.Customer{}, campaignErr
 		}
 		var poolContact models.PoolContact
-		if contactErr := c.db.Get(&poolContact, `SELECT id,uuid,customer_code,company_name,email,name,attribs,status,created_at,updated_at FROM pool_contacts WHERE id=$1`, poolRecipient.PoolContactID); contactErr != nil {
+		if contactErr := c.db.Get(&poolContact, `SELECT id,uuid,customer_code,email,name,attribs,status,created_at,updated_at FROM pool_contacts WHERE id=$1`, poolRecipient.PoolContactID); contactErr != nil {
 			if contactErr == sql.ErrNoRows {
 				return models.Campaign{}, models.Customer{}, echo.NewHTTPError(http.StatusNotFound,
 					c.i18n.Ts("globals.messages.notFound", "name", "{globals.terms.customer}"))

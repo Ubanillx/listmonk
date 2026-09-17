@@ -56,7 +56,7 @@ $allocB = SqlOne "INSERT INTO org_pool_allocations(list_id,pool_id,organization_
 # 3 belongs to organization A only, 4 belongs to organization B only. The two
 # single-organization contacts prove per-organization SMTP pool routing.
 foreach ($i in 1..4) {
-  $cid = SqlOne "INSERT INTO pool_contacts(uuid,customer_code,company_name,email,name,status) VALUES(gen_random_uuid(),'E2E-$stamp-$i','E2E Co $i','e2e-allorg-$stamp-$i@example.test','Contact $i','active') RETURNING id"
+  $cid = SqlOne "INSERT INTO pool_contacts(uuid,customer_code,email,name,status) VALUES(gen_random_uuid(),'E2E-$stamp-$i','e2e-allorg-$stamp-$i@example.test','Contact $i','active') RETURNING id"
   SqlRun "INSERT INTO pool_members(pool_id,contact_id) VALUES($pool,$cid)"
   if ($i -le 3) {
     SqlRun "INSERT INTO org_pool_allocation_members(allocation_id,contact_id,status) VALUES($allocA,$cid,'active')"

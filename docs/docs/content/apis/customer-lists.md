@@ -23,7 +23,8 @@ organization delivery permissions are stored separately.
 | GET | [/api/customer-lists](#get-apicustomer-lists) | Retrieve all customer_lists. |
 | GET | [/api/public/customer-lists](#get-apipubliccustomer-lists) | Retrieve public customer_lists. |
 | GET | [/api/customer-lists/{customer_list_id}](#get-apicustomer-listscustomer_list_id) | Retrieve a specific customer_list. |
-| GET | [/api/customer-lists/{customer_list_id}/pool-contacts](#get-apicustomer-listscustomer_list_idpool-contacts) | Retrieve contacts of a pool customer_list. |
+| GET | [/api/customer-lists/{customer_list_id}/pool-contacts](#get-apicustomer-listscustomer_list_idpool-contacts) | Retrieve a page of pool contacts. |
+| GET | [/api/customer-lists/{customer_list_id}/pool-contacts/export](#get-apicustomer-listscustomer_list_idpool-contactsexport) | Export pool contacts as CSV. |
 | GET | [/api/customer-lists/{customer_list_id}/org-pool-allocations](#get-apicustomer-listscustomer_list_idorg-pool-allocations) | Retrieve organization allocations of a pool customer_list. |
 | POST | [/api/customer-lists](#post-apicustomer-lists) | Create a new customer_list. |
 | POST | [/api/customer-lists/{customer_list_id}/pool-contacts](#post-apicustomer-listscustomer_list_idpool-contacts) | Add a contact to a pool customer_list. |
@@ -321,41 +322,81 @@ ______________________________________________________________________
 
 #### GET /api/customer-lists/{customer_list_id}/pool-contacts
 
-Retrieve the contacts of a `pool` or `org_pool_allocation` customer_list. This is a compatibility alias of `GET /api/pools/:id/contacts` for first-level pools; for a pool allocation, the response is limited to that allocation. See [Public pools](pools.md) for masking and exclusion rules.
+Retrieve one server-paginated page of the contacts of a `pool` or `org_pool_allocation` customer_list. This is a compatibility alias of `GET /api/pools/:id/contacts` for first-level pools; for a pool allocation, the response is limited to that allocation. See [Public pools](pools.md) for masking and exclusion rules.
 
 Highest administrators receive complete contact records. Other callers receive only the contacts of their own organization's allocation, with masked e-mail addresses.
 
-> **Note:** Requires the `customer_lists:read` API-key scope (`cmd/handlers.go:181`).
+> **Note:** Requires the `pools:get` permission (platform administrators bypass the role grant) and the `customer_lists:read` API-key scope (`cmd/handlers.go:181`). A non-platform-admin caller must have the pool granted to the active organization.
 
 ##### Parameters
 
 | Name | Type | Required | Description |
 | :--- | :--- | :------- | :---------- |
 | customer_list_id | number | Yes | ID of a `pool` or `org_pool_allocation` customer_list. |
-| customer_code | string | | Case-insensitive substring filter on the imported customer code. |
+| search | string | | Case-insensitive substring filter on the customer code, name, or e-mail. |
+| customer_code | string | | Deprecated alias of `search` used only when `search` is empty. |
+| page | number | | Page number, starting at 1. Default 1. |
+| per_page | number | | Page size. Default 20, maximum 50. `0` returns every row. |
+| order_by | string | | Sort column: `id`, `customer_code`, `name`, `email`, `allocation_department`, `status`, `created_at`, `updated_at`. Default `id`. |
+| order | string | | `asc` or `desc`. Default `desc`. |
 
 ##### Example Request
 
 ```shell
-curl -u "api_user:token" -X GET 'http://localhost:9000/api/customer-lists/5/pool-contacts?customer_code=A100'
+curl -u "api_user:token" -X GET 'http://localhost:9000/api/customer-lists/5/pool-contacts?search=A100&page=1&per_page=20&order_by=created_at&order=desc'
 ```
 
 ##### Example Response
 
 ```json
 {
-    "data": [
-        {
-            "id": 1,
-            "customer_code": "A100",
-            "company_name": "Example Ltd",
-            "email": "johx@example.com",
-            "allocation_department": "Sales",
-            "status": "active"
-        }
-    ]
+    "data": {
+        "results": [
+            {
+                "id": 1,
+                "uuid": "c2cc0b31-b485-4d72-8ce8-b47081beadec",
+                "customer_code": "A100",
+                "email": "johx@example.com",
+                "name": "John Doe",
+                "allocation_department": "Sales",
+                "status": "active",
+                "created_at": "2026-09-17T10:00:00Z",
+                "updated_at": "2026-09-17T10:00:00Z"
+            }
+        ],
+        "search": "A100",
+        "query": "",
+        "total": 1,
+        "per_page": 20,
+        "page": 1
+    }
 }
 ```
+
+______________________________________________________________________
+
+#### GET /api/customer-lists/{customer_list_id}/pool-contacts/export
+
+Stream the filtered pool contacts as CSV, in the same order as the listing and independent of pagination. Non-platform-administrators may only export pools granted to the active organization and always receive masked e-mail addresses.
+
+> **Note:** Requires the `pools:export` permission and the `customer_lists:read` API-key scope. Accepts the same `search`, `customer_code`, `order_by`, and `order` filters as the listing.
+
+##### Parameters
+
+| Name | Type | Required | Description |
+| :--- | :--- | :------- | :---------- |
+| customer_list_id | number | Yes | ID of a `pool` or `org_pool_allocation` customer_list. |
+| search | string | | Case-insensitive substring filter on the customer code, name, or e-mail. |
+| order_by | string | | Sort column, as in the listing. |
+| order | string | | `asc` or `desc`. |
+
+##### Example Request
+
+```shell
+curl -u "api_user:token" -X GET 'http://localhost:9000/api/customer-lists/5/pool-contacts/export?search=A100' -o pool-contacts.csv
+```
+
+The response is `text/csv` with the columns `customer_code`, `name`, `email`, `allocation_department`, `status`, `created_at`, `updated_at`.
 
 ______________________________________________________________________
 
@@ -402,7 +443,7 @@ ______________________________________________________________________
 
 #### POST /api/customer-lists/{customer_list_id}/pool-contacts
 
-Add a single contact to a `pool` customer_list. This is a compatibility alias of `POST /api/pools/:id/contacts`; see [Public pools](pools.md). Only the highest administrator may call this endpoint.
+Add a single contact to a `pool` customer_list. This is a compatibility alias of `POST /api/pools/:id/contacts`; see [Public pools](pools.md). Requires the `pools:manage` permission; a non-platform-admin caller may only add contacts to its own organization and the server pins `allocation_department` to that organization.
 
 ##### Parameters
 
@@ -411,16 +452,15 @@ Add a single contact to a `pool` customer_list. This is a compatibility alias of
 | customer_list_id | number | Yes | ID of the pool customer_list. |
 | email | string | Yes | Contact e-mail address. |
 | customer_code | string | | Imported customer code. May repeat across contacts. |
-| company_name | string | | Company name. |
 | name | string | | Contact person name. |
-| allocation_department | string | | Must match the name of an active organization. |
+| allocation_department | string | | Must match the name of an active organization. Platform administrators only; other callers are pinned to their own organization. |
 
 ##### Example Request
 
 ```shell
 curl -u 'api_username:access_token' -X POST 'http://localhost:9000/api/customer-lists/5/pool-contacts' \
 -H 'Content-Type: application/json' \
---data-raw '{"customer_code":"A100","company_name":"Example Ltd","email":"john@example.com","name":"John Doe","allocation_department":"Sales"}'
+--data-raw '{"customer_code":"A100","email":"john@example.com","name":"John Doe","allocation_department":"Sales"}'
 ```
 
 ##### Example Response
@@ -431,7 +471,6 @@ curl -u 'api_username:access_token' -X POST 'http://localhost:9000/api/customer-
         "id": 1,
         "uuid": "c2cc0b31-b485-4d72-8ce8-b47081beadec",
         "customer_code": "A100",
-        "company_name": "Example Ltd",
         "email": "john@example.com",
         "name": "John Doe",
         "allocation_department": "Sales",
@@ -444,13 +483,13 @@ ______________________________________________________________________
 
 #### DELETE /api/customer-lists/{customer_list_id}/pool-contacts/{contact_id}/email
 
-Clear the stored e-mail address of a pool contact. This is a compatibility alias of the pool contact e-mail cleanup route; see [Public pools](pools.md). Only the highest administrator may call this endpoint.
+Clear the stored e-mail address of a pool contact. This is a compatibility alias of the pool contact e-mail cleanup route; see [Public pools](pools.md). Requires the `pools:manage` permission; non-platform-administrators may only clear contacts of their own organization's allocation.
 
 ##### Parameters
 
 | Name | Type | Required | Description |
 | :--- | :--- | :------- | :---------- |
-| customer_list_id | number | Yes | ID of the pool customer_list. |
+| customer_list_id | number | Yes | ID of a `pool` or `org_pool_allocation` customer_list; the first-level pool is resolved server-side. |
 | contact_id | number | Yes | ID of the pool contact. |
 
 ##### Example Request

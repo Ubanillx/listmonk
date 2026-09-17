@@ -54,6 +54,34 @@ $allocationID = if ($env:POOL_QA_SEGMENT_ID) { [int]$env:POOL_QA_SEGMENT_ID } el
 $replyMailboxID = [int](DbScalar "SELECT reply_mailbox_id FROM organizations WHERE id=1")
 $removableContactID = [int](DbScalar "SELECT id FROM pool_contacts WHERE email='beta-pool@example.test'")
 
+# v6.45.0: public-pool contacts are governed by the configurable permissions
+# pools:get / pools:manage / pools:export. The fixture manager role does not
+# hold them by default (the migration only backfills the Super Admin role), so
+# this script grants them for its own lifetime and restores the exact previous
+# grant no matter how it exits.
+function DbExec($sql) {
+  & docker exec $dbContainer psql -X -v ON_ERROR_STOP=1 -U $dbUser -d $dbName -c $sql | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw "database execution failed" }
+}
+
+$script:managerRoleBackup = ''
+function GrantManagerPoolPermissions {
+  $script:managerRoleBackup = DbScalar "SELECT array_to_string(permissions,',') FROM roles WHERE id=4"
+  DbExec "UPDATE roles SET permissions = ARRAY(SELECT DISTINCT p FROM unnest(permissions || ARRAY['pools:get','pools:manage','pools:export']) AS p) WHERE id=4"
+}
+function RestoreManagerRole {
+  if (-not $script:managerRoleBackup) { return }
+  $quoted = ($script:managerRoleBackup -split ',' | ForEach-Object { "'" + $_.Trim() + "'" }) -join ','
+  DbExec "UPDATE roles SET permissions = ARRAY[$quoted]::TEXT[] WHERE id=4"
+  $script:managerRoleBackup = ''
+}
+
+trap {
+  RestoreManagerRole
+  throw
+}
+
+GrantManagerPoolPermissions
 $root = LoginUser 'root' $superPassword
 $manager = LoginUser 'wsqa_pool_manager'
 $otherOrg = LoginUser 'wsqa_multi'
@@ -70,10 +98,16 @@ Check 'highest administrator can read pool contacts' ($contacts.Status -eq 200)
 Check 'highest administrator sees source email' ($contacts.Raw.Contains('alpha-pool@example.test'))
 
 $dup = Api 'GET' "/api/pools/$poolID/contacts?customer_code=DUP-001" $manager 1 $null
-$dupRows = @($dup.Json.data)
+$dupRows = @($dup.Json.data.results)
 Check 'duplicate imported customer code returns two records' ($dup.Status -eq 200 -and $dupRows.Count -eq 2)
+Check 'pool contacts are server-paginated' ($dup.Json.data.page -eq 1 -and $dup.Json.data.per_page -ge 2 -and $dup.Json.data.total -eq 2)
 Check 'ordinary manager receives safe contact DTO only' (-not ($dup.Raw.Contains('alpha-pool@example.test') -or $dup.Raw.Contains('beta-pool@example.test')))
 Check 'ordinary manager receives masked email' (($dupRows | Where-Object { $_.email -match 'x+@' }).Count -eq 2)
+Check 'ordinary manager sees the contact name' (($dupRows | Where-Object { -not $_.name }).Count -eq 0)
+Check 'safe contact DTO no longer carries a company name' (-not $dup.Raw.Contains('company_name'))
+$poolExport = Api 'GET' "/api/pools/$poolID/contacts/export" $manager 1 $null
+Check 'pool contact export is allowed with pools:export' ($poolExport.Status -eq 200)
+Check 'pool contact export masks customer email' (-not ($poolExport.Raw.Contains('alpha-pool@example.test') -or $poolExport.Raw.Contains('beta-pool@example.test')))
 $export = Api 'GET' "/api/customers/export?customer_list_id=$poolID" $manager 1 $null
 Check 'pool export cannot expose customer email' (-not ($export.Raw.Contains('alpha-pool@example.test') -or $export.Raw.Contains('beta-pool@example.test')))
 
@@ -83,21 +117,22 @@ Check 'organization can inspect its pool allocation' ($allocations.Status -eq 20
 Check 'pool allocations no longer expose a per-allocation reply mailbox' (-not $allocations.Raw.Contains('reply_mailbox'))
 
 $otherRead = Api 'GET' "/api/pools/$poolID/contacts" $otherOrg 2 $null
-Check 'organization without pool grant receives no contacts' ($otherRead.Status -eq 200 -and @($otherRead.Json.data).Count -eq 0)
+Check 'organization without pool grant receives no contacts' ($otherRead.Status -eq 200 -and @($otherRead.Json.data.results).Count -eq 0)
 $otherWrite = Api 'POST' '/api/pools/allocations/members' $otherOrg 2 ([pscustomobject]@{ allocation_id = $allocationID; contact_id = $removableContactID })
 Check 'cross-organization allocation write is denied' ($otherWrite.Status -eq 403)
 
-# Contact maintenance is highest-administrator-only (see docs/ARCHITECTURE.md,
-# "一级公海与组织公海分配"): an organization manager can create and bind its
-# pool allocation and configure the organization's unified reply mailbox, but
-# every contact write is rejected for it. The assertions below lock both sides
-# of that boundary.
+# Contact maintenance is governed by the configurable pools:manage permission
+# (see docs/ARCHITECTURE.md, "一级公海与组织公海分配") and additionally scoped
+# to the caller's own organization. This script grants the fixture manager role
+# that permission for its own lifetime, so the assertions below lock the
+# own-organization path for a permission holder; the cross-organization denial
+# above covers the boundary.
 $managerAssign = Api 'POST' '/api/pools/allocations/members' $manager 1 ([pscustomobject]@{ allocation_id = $allocationID; contact_id = $removableContactID })
-Check 'organization manager cannot assign pool contacts' ($managerAssign.Status -eq 403)
+Check 'organization manager with pools:manage can assign pool contacts' ($managerAssign.Status -eq 200)
 $managerRemove = Api 'DELETE' '/api/org-pool-allocations/members' $manager 1 ([pscustomobject]@{ allocation_id = $allocationID; contact_id = $removableContactID; reason = 'e2e' })
-Check 'organization manager cannot remove pool contacts' ($managerRemove.Status -eq 403)
+Check 'organization manager with pools:manage can remove pool contacts' ($managerRemove.Status -eq 200)
 $managerRestore = Api 'PUT' '/api/pools/allocations/members' $manager 1 ([pscustomobject]@{ allocation_id = $allocationID; contact_id = $removableContactID })
-Check 'organization manager cannot restore pool contacts' ($managerRestore.Status -eq 403)
+Check 'organization manager with pools:manage can restore pool contacts' ($managerRestore.Status -eq 200)
 
 # The highest administrator performs the logical remove and restore. The primary
 # pool row remains present and is annotated for the source organization; restore
@@ -107,7 +142,7 @@ Check 'fixture starts with restored member' ($restore.Status -eq 200)
 $remove = Api 'DELETE' '/api/pools/allocations/members' $root 1 ([pscustomobject]@{ allocation_id = $allocationID; contact_id = $removableContactID; reason = 'e2e' })
 Check 'highest administrator can logically remove member' ($remove.Status -eq 200)
 $marked = Api 'GET' "/api/pools/$poolID/contacts" $manager 1 $null
-$markedRow = @($marked.Json.data | Where-Object { $_.id -eq $removableContactID })[0]
+$markedRow = @($marked.Json.data.results | Where-Object { $_.id -eq $removableContactID })[0]
 Check 'primary pool marks organization removal' ($markedRow.excluded -eq $true -and $markedRow.exclusion_reason -eq 'e2e')
 $restore = Api 'PUT' '/api/pools/allocations/members' $root 1 ([pscustomobject]@{ allocation_id = $allocationID; contact_id = $removableContactID })
 Check 'highest administrator can restore member' ($restore.Status -eq 200)
@@ -188,4 +223,5 @@ try {
   Check 'organization unified reply mailbox is restored after validation' ($mailboxRestored.Status -eq 200)
 }
 
+RestoreManagerRole
 Write-Host 'Public-pool E2E verification complete.'

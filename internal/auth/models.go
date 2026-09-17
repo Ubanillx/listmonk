@@ -49,31 +49,31 @@ const (
 
 // CustomerList of all granular permissions.
 const (
-	PermListGetAll                  = "customer_lists:get_all"
-	PermListManageAll               = "customer_lists:manage_all"
-	PermListManage                  = "customer_list:manage"
-	PermListGet                     = "customer_list:get"
-	PermCustomersGet                = "customers:get"
-	PermCustomersGetAll             = "customers:get_all"
-	PermCustomersManage             = "customers:manage"
-	PermCustomersDelete             = "customers:delete"
-	PermCustomersBlocklist          = "customers:blocklist"
-	PermCustomersMembershipManage   = "customers:membership_manage"
-	PermCustomersImport             = "customers:import"
-	PermCustomersExport             = "customers:export"
-	PermCustomersSensitiveRead      = "customers:sensitive_read"
-	PermCustomersSqlQuery           = "customers:sql_query"
-	PermTxSend                      = "tx:send"
-	PermCampaignsGet                = "campaigns:get"
-	PermCampaignsGetAll             = "campaigns:get_all"
-	PermCampaignsGetAnalytics       = "campaigns:get_analytics"
-	PermCampaignsManage             = "campaigns:manage"
-	PermCampaignsManageAll          = "campaigns:manage_all"
-	PermCampaignsSend               = "campaigns:send"
-	PermCampaignsTest               = "campaigns:test"
-	PermCampaignsSchedule           = "campaigns:schedule"
-	PermCampaignsControl            = "campaigns:control"
-	PermCampaignsRecipients         = "campaigns:recipients"
+	PermListGetAll                = "customer_lists:get_all"
+	PermListManageAll             = "customer_lists:manage_all"
+	PermListManage                = "customer_list:manage"
+	PermListGet                   = "customer_list:get"
+	PermCustomersGet              = "customers:get"
+	PermCustomersGetAll           = "customers:get_all"
+	PermCustomersManage           = "customers:manage"
+	PermCustomersDelete           = "customers:delete"
+	PermCustomersBlocklist        = "customers:blocklist"
+	PermCustomersMembershipManage = "customers:membership_manage"
+	PermCustomersImport           = "customers:import"
+	PermCustomersExport           = "customers:export"
+	PermCustomersSensitiveRead    = "customers:sensitive_read"
+	PermCustomersSqlQuery         = "customers:sql_query"
+	PermTxSend                    = "tx:send"
+	PermCampaignsGet              = "campaigns:get"
+	PermCampaignsGetAll           = "campaigns:get_all"
+	PermCampaignsGetAnalytics     = "campaigns:get_analytics"
+	PermCampaignsManage           = "campaigns:manage"
+	PermCampaignsManageAll        = "campaigns:manage_all"
+	PermCampaignsSend             = "campaigns:send"
+	PermCampaignsTest             = "campaigns:test"
+	PermCampaignsSchedule         = "campaigns:schedule"
+	PermCampaignsControl          = "campaigns:control"
+	PermCampaignsRecipients       = "campaigns:recipients"
 	// PermCampaignsPublicPoolSend authorizes platform-level public-pool
 	// campaigns: creating, editing, scheduling and starting campaigns whose
 	// audience is the whole first-level pool across every active
@@ -81,6 +81,14 @@ const (
 	// cross-organization audience and the organization member SMTP pool are
 	// only usable by explicitly granted accounts.
 	PermCampaignsPublicPoolSend = "campaigns:public_pool_send"
+	// PermPoolsGet / PermPoolsManage / PermPoolsExport govern public-pool
+	// contact browsing, mutation and export. They are independent grants: a
+	// role that may manage or export pool contacts still needs pools:get to
+	// browse them. Non-platform-admin holders are additionally restricted to
+	// the active workspace organization's own pool allocations.
+	PermPoolsGet                    = "pools:get"
+	PermPoolsManage                 = "pools:manage"
+	PermPoolsExport                 = "pools:export"
 	PermBouncesGet                  = "bounces:get"
 	PermBouncesManage               = "bounces:manage"
 	PermBouncesDelete               = "bounces:delete"

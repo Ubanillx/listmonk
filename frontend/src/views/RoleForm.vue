@@ -177,7 +177,7 @@ export default Vue.extend({
         'customers:sql_query', 'customers:delete', 'customers:blocklist', 'customers:membership_manage',
         'customers:export', 'customers:sensitive_read', 'campaigns:send', 'campaigns:test',
         'campaigns:schedule', 'campaigns:control', 'campaigns:recipients', 'bounces:delete',
-        'bounces:blocklist', 'users:tokens',
+        'bounces:blocklist', 'users:tokens', 'pools:manage', 'pools:export',
         'organizations:platform_manage',
       ].includes(permission);
     },
@@ -303,6 +303,8 @@ export default Vue.extend({
         'bounces:delete',
         'bounces:blocklist',
         'users:tokens',
+        'pools:manage',
+        'pools:export',
         'organizations:platform_manage',
       ];
       this.form.permissions = this.serverConfig.permissions.reduce((acc, item) => {

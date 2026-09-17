@@ -13,14 +13,16 @@ the owner fields for audit purposes.
 
 Key endpoints:
 
-- `GET /api/pools/:id/contacts?customer_code=...` — locate first-level or pool-allocation contacts by imported code. The equivalent `GET /api/customer-lists/:id/pool-contacts` route also accepts a `org_pool_allocation` list ID; pool-allocation reads are limited to that allocation.
-- `POST /api/pools/:id/contacts` — legacy single-contact compatibility route
-  (highest administrator); the product import entry is the unified customer
+- `GET /api/pools/:id/contacts?search=...&page=1&per_page=20&order_by=created_at&order=desc` — page through first-level or pool-allocation contacts by imported code, name, or e-mail. The equivalent `GET /api/customer-lists/:id/pool-contacts` route also accepts a `org_pool_allocation` list ID; pool-allocation reads are limited to that allocation. The legacy `customer_code` filter remains as a fallback alias of `search`. Requires `pools:get`; non-platform-administrators must have the pool granted to the active organization.
+- `GET /api/pools/:id/contacts/export` (alias `GET /api/customer-lists/:id/pool-contacts/export`) — stream the same filtered rows as CSV with masked e-mails. Requires `pools:export`.
+- `POST /api/pools/:id/contacts` — single-contact compatibility route
+  (requires `pools:manage`); the product import entry is the unified customer
   import endpoint below.
 - `POST /api/pools/allocations` — split a first-level pool into a new organization allocation. The list, pool grant and binding are created atomically. The allocation carries no reply mailbox of its own: pool recipients reply to the organization's unified reply mailbox, configured once from **Organizations -> Manage organizations -> Organization reply mailboxes**.
-- `POST|DELETE|PUT /api/pools/allocations/members` — assign, logically remove, or restore a contact.
+- `POST|DELETE|PUT /api/pools/allocations/members` — assign, logically remove, or restore a contact. Requires `pools:manage`; a non-platform-administrator is restricted to its own organization's allocation.
 - `POST /api/pools/allocations/:id/import-members` — legacy compatibility route;
-  it is not the management UI's import path and is highest-administrator-only.
+  it is not the management UI's import path. Requires `pools:manage` and the
+  caller's organization boundary.
 - `POST /api/import/customers` — unified customer import endpoint. When
   `customer_list_ids` contains exactly one first-level `pool`, the first CSV
   sheet or XLSX worksheet must map `customer_code`, `name`, `email` and
@@ -63,9 +65,16 @@ organization's manager fixes it by setting the organization's unified reply
 mailbox. Pool exclusions are organization scoped and do not physically delete
 the first-level pool contact.
 
-Pool contacts are not part of the legacy customer export surface. Non-highest
-administrators cannot obtain a pool contact's real email through list, detail,
-CSV, or API-key responses.
+Pool contacts are not part of the legacy customer export surface, and they never
+appear in `/api/customers` results. Their dedicated CSV export requires
+`pools:export`. Non-highest administrators cannot obtain a pool contact's real
+email through list, detail, CSV, or API-key responses.
+
+Public-pool contact access is governed by three independent, role-configurable
+permissions: `pools:get` (browse/search), `pools:manage` (create, assign,
+remove, restore, clear e-mail) and `pools:export`. Platform administrators
+bypass the grants; every other caller is additionally restricted to the pool
+lists and allocations granted to the active workspace organization.
 
 Campaign responses include `customer_pools[].reply_mailbox_email` so operators
 can see the effective internal reply route (一级公海 -> 公海分配 -> 组织统一回件邮箱).
@@ -106,9 +115,11 @@ the unified **Customer import** page; rows whose `分配部门` matches an exist
 pool-allocation organization are allocated during import. If the pool allocation
 is created afterwards, the create-and-bind transaction backfills those rows. The
 dialog is used to select a target organization and create/bind its pool allocation.
-The customer-count link for a first-level or pool allocation opens the dedicated
-pool contact view; it does not use the ordinary customer table. That view keeps
-the pool data model separate and applies the same masked DTO policy as the API.
+The customer-count link for a first-level or pool allocation opens the customer
+area's public-pool tab (`Customers.vue`), which renders the contacts with the
+same toolbar, pagination, sorting and row actions as ordinary customers instead
+of a dedicated page. That view keeps the pool data model separate and applies
+the same masked DTO policy as the API.
 Organization operators continue to work only inside their own organization
 workspace; they cannot select another target organization or manage a
 first-level pool. The server enforces the same boundary for direct API calls.

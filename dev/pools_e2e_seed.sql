@@ -57,13 +57,13 @@ INSERT INTO pool_organization_permissions (pool_id,organization_id,granted_by_us
 SELECT id,1,1 FROM customer_lists WHERE name='wsqa-pool-primary'
 ON CONFLICT (pool_id,organization_id) DO NOTHING;
 
-INSERT INTO pool_contacts (uuid,customer_code,company_name,email,name,attribs,status)
-SELECT gen_random_uuid(), v.customer_code, v.company_name, v.email, v.name, v.attribs, v.status
+INSERT INTO pool_contacts (uuid,customer_code,email,name,attribs,status)
+SELECT gen_random_uuid(), v.customer_code, v.email, v.name, v.attribs, v.status
 FROM (VALUES
-  ('DUP-001','QA Alpha Co','alpha-pool@example.test','Alpha Contact','{}'::jsonb,'active'),
-  ('DUP-001','QA Beta Co','beta-pool@example.test','Beta Contact','{}'::jsonb,'active'),
-  ('UNIQUE-001','QA Unique Co','unique-pool@example.test','Unique Contact','{}'::jsonb,'active')
-) AS v(customer_code,company_name,email,name,attribs,status)
+  ('DUP-001','alpha-pool@example.test','Alpha Contact','{}'::jsonb,'active'),
+  ('DUP-001','beta-pool@example.test','Beta Contact','{}'::jsonb,'active'),
+  ('UNIQUE-001','unique-pool@example.test','Unique Contact','{}'::jsonb,'active')
+) AS v(customer_code,email,name,attribs,status)
 WHERE NOT EXISTS (SELECT 1 FROM pool_contacts WHERE customer_code IN ('DUP-001','UNIQUE-001') AND email=v.email);
 
 INSERT INTO pool_members (pool_id,contact_id)

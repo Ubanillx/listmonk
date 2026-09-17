@@ -24,8 +24,30 @@
             {{ $t('globals.buttons.new') }}
           </b-button>
         </b-field>
+        <b-field v-else-if="isPoolList && isFirstLevelPool && canManagePoolContacts" expanded>
+          <b-button expanded type="is-primary" icon-left="plus" @click="isPoolFormVisible = true" data-cy="btn-new-pool-contact"
+            class="btn-new">
+            {{ $t('globals.buttons.new') }}
+          </b-button>
+        </b-field>
       </div>
     </header>
+
+    <!-- One customer area with two data sources: ordinary customers and the
+         contacts of a public-pool list. The tabs keep the two stores visually
+         in the same place. -->
+    <div v-if="!$route.params.id" class="tabs is-boxed customer-area-tabs" data-cy="customer-area-tabs">
+      <ul>
+        <li :class="{ 'is-active': !isPoolList }">
+          <router-link :to="{ name: 'customers' }" data-cy="tab-all-customers">
+            {{ $t('menu.allCustomers') }}
+          </router-link>
+        </li>
+        <li :class="{ 'is-active': isPoolList }">
+          <a href="#" data-cy="tab-pool-contacts" @click.prevent="goToPoolTab">{{ $t('pool.tabPoolContacts') }}</a>
+        </li>
+      </ul>
+    </div>
     <section v-if="listState !== 'error'" class="customers-controls">
       <div class="columns">
         <div class="column is-8">
@@ -72,38 +94,105 @@
     </section><!-- control -->
 
     <br />
-    <!-- Pool lists keep their contacts in a separate store; they are rendered
-         here instead of on a dedicated page so the customer area stays one
-         screen. -->
-    <!-- Buefy's b-table does not forward `data-cy` to the DOM, so the pool
-         table is wrapped for tests. -->
+    <!-- Pool lists keep their contacts in a separate store and are rendered
+         with the same table shape, toolbar and pagination as ordinary
+         customers. Buefy's b-table does not forward `data-cy` to the DOM, so
+         the pool table is wrapped for tests. -->
     <div v-if="isPoolList" data-cy="pool-contacts-table">
-      <b-table :data="poolContacts" :loading="poolLoading" :mobile-cards="false" hoverable>
-        <b-table-column v-slot="props" field="customerCode" :label="$t('pool.tableCustomerCode')"
+      <b-table :data="pool.results" :loading="poolLoading" :mobile-cards="false" hoverable
+        paginated backend-pagination pagination-position="both" @page-change="onPoolPageChange"
+        :current-page="pool.page" :per-page="pool.perPage" :total="pool.total"
+        :checked-rows.sync="poolBulk.checked" :checkable="canManagePoolContacts" backend-sorting
+        @sort="onPoolSort">
+        <template #top-left>
+          <div class="actions">
+            <a v-if="canExportPoolContacts" class="a" href="#" @click.prevent="exportPoolContacts"
+              data-cy="btn-export-pool-contacts">
+              <b-icon icon="cloud-download-outline" size="is-small" />
+              {{ $t('customers.export') }}
+            </a>
+            <template v-if="poolBulk.checked.length > 0">
+              <a v-if="canManagePoolContacts && isFirstLevelPool" class="a" href="#" @click.prevent="showPoolAssignForm(null)"
+                data-cy="btn-assign-pool-contacts">
+                <b-icon icon="account-arrow-right-outline" size="is-small" /> {{ $t('pool.assignSelected') }}
+              </a>
+              <a v-if="canManagePoolContacts && isAllocationList && hasRemovablePoolContacts" class="a" href="#"
+                @click.prevent="showPoolRemovalForm(null)" data-cy="btn-remove-pool-contacts">
+                <b-icon icon="account-off-outline" size="is-small" /> {{ $t('pool.removeSelected') }}
+              </a>
+              <a v-if="canManagePoolContacts && isAllocationList && hasRestorablePoolContacts" class="a" href="#"
+                @click.prevent="restorePoolContacts(null)" data-cy="btn-restore-pool-contacts">
+                <b-icon icon="account-check-outline" size="is-small" /> {{ $t('pool.restoreSelected') }}
+              </a>
+              <a v-if="canManagePoolContacts && hasEmailablePoolContacts" class="a" href="#"
+                @click.prevent="clearPoolContactsEmail" data-cy="btn-clear-pool-emails">
+                <b-icon icon="email-off-outline" size="is-small" /> {{ $t('pool.clearSelected') }}
+              </a>
+              <span class="a">{{ $t('globals.messages.numSelected', { num: poolBulk.checked.length }) }}</span>
+            </template>
+          </div>
+        </template>
+
+        <b-table-column v-slot="props" field="customer_code" :label="$t('customers.customerCode')"
           header-class="cy-pool-customer_code" sortable>
-          {{ props.row.customerCode || props.row.customer_code || '-' }}
+          <copy-text v-if="props.row.customer_code" :text="`${props.row.customer_code}`" />
+          <span v-else>-</span>
         </b-table-column>
 
         <b-table-column v-slot="props" field="name" :label="$t('pool.tableName')" header-class="cy-pool-name" sortable>
           {{ props.row.name || '-' }}
         </b-table-column>
 
-        <b-table-column v-slot="props" field="companyName" :label="$t('pool.tableCompanyName')"
-          header-class="cy-pool-company_name" sortable>
-          {{ props.row.companyName || props.row.company_name || '-' }}
-        </b-table-column>
-
-        <b-table-column v-slot="props" field="email" :label="$t('pool.tableEmail')" header-class="cy-pool-email">
+        <b-table-column v-slot="props" field="email" :label="$t('pool.tableEmail')" header-class="cy-pool-email" sortable>
           {{ props.row.email || '-' }}
         </b-table-column>
 
-        <b-table-column v-slot="props" field="allocationDepartment" :label="$t('pool.tableDepartment')"
-          header-class="cy-pool-department">
-          {{ props.row.allocationDepartment || props.row.allocation_department || '-' }}
+        <b-table-column v-slot="props" field="allocation_department" :label="$t('pool.tableDepartment')"
+          header-class="cy-pool-department" sortable>
+          {{ props.row.allocation_department || '-' }}
         </b-table-column>
 
-        <b-table-column v-slot="props" field="status" :label="$t('pool.tableStatus')" header-class="cy-pool-status">
+        <b-table-column v-slot="props" field="status" :label="$t('pool.tableStatus')" header-class="cy-pool-status" sortable>
           {{ poolContactStatus(props.row) }}
+        </b-table-column>
+
+        <b-table-column v-slot="props" field="created_at" :label="$t('globals.fields.createdAt')" sortable>
+          {{ $utils.niceDate(props.row.created_at) }}
+        </b-table-column>
+
+        <b-table-column v-slot="props" field="updated_at" :label="$t('globals.fields.updatedAt')" sortable>
+          {{ $utils.niceDate(props.row.updated_at) }}
+        </b-table-column>
+
+        <b-table-column v-slot="props" cell-class="actions" align="right">
+          <div>
+            <a v-if="canManagePoolContacts && isFirstLevelPool" href="#" @click.prevent="showPoolAssignForm(props.row)"
+              data-cy="btn-assign-pool-contact" :aria-label="$t('pool.actionAssign')">
+              <b-tooltip :label="$t('pool.actionAssign')" type="is-dark">
+                <b-icon icon="account-arrow-right-outline" size="is-small" />
+              </b-tooltip>
+            </a>
+            <a v-if="canManagePoolContacts && isAllocationList && !props.row.excluded" href="#"
+              @click.prevent="showPoolRemovalForm(props.row)" data-cy="btn-remove-pool-contact"
+              :aria-label="$t('pool.actionRemove')">
+              <b-tooltip :label="$t('pool.actionRemove')" type="is-dark">
+                <b-icon icon="account-off-outline" size="is-small" />
+              </b-tooltip>
+            </a>
+            <a v-if="canManagePoolContacts && isAllocationList && props.row.excluded" href="#"
+              @click.prevent="restorePoolContacts(props.row)" data-cy="btn-restore-pool-contact"
+              :aria-label="$t('pool.actionRestore')">
+              <b-tooltip :label="$t('pool.actionRestore')" type="is-dark">
+                <b-icon icon="account-check-outline" size="is-small" />
+              </b-tooltip>
+            </a>
+            <a v-if="canManagePoolContacts && props.row.email" href="#" @click.prevent="clearPoolContactEmail(props.row)"
+              data-cy="btn-clear-pool-email" :aria-label="$t('pool.actionClearEmail')">
+              <b-tooltip :label="$t('pool.actionClearEmail')" type="is-dark">
+                <b-icon icon="email-off-outline" size="is-small" />
+              </b-tooltip>
+            </a>
+          </div>
         </b-table-column>
 
         <template #empty v-if="!poolLoading">
@@ -246,6 +335,59 @@
     <b-modal scroll="keep" :aria-modal="true" :active.sync="isFormVisible" :width="850" @close="onFormClose">
       <customer-form :data="curItem" :is-editing="isEditing" @finished="queryCustomers" />
     </b-modal>
+
+    <!-- New public-pool contact modal -->
+    <b-modal scroll="keep" :aria-modal="true" :active.sync="isPoolFormVisible" :width="600" class="has-overflow">
+      <pool-contact-form :pool-list-id="queryParams.customerListID" :is-platform-admin="workspace.platformAdmin"
+        @finished="loadPoolContacts" />
+    </b-modal>
+
+    <!-- Remove pool contacts from this organization, with a shared reason -->
+    <b-modal scroll="keep" :aria-modal="true" :active.sync="isPoolRemovalVisible" :width="480" class="has-overflow">
+      <div class="modal-card" style="width: auto;">
+        <header class="modal-card-head">
+          <p class="modal-card-title">{{ $t('pool.actionRemove') }}</p>
+        </header>
+        <section class="modal-card-body">
+          <p>{{ $t('pool.removeSelectedHelp', { num: poolPendingContacts.length }) }}</p>
+          <b-field :label="$t('pool.tableRemoveReason')">
+            <b-input v-model.trim="poolRemovalReason" type="textarea" data-cy="pool-removal-reason" />
+          </b-field>
+        </section>
+        <footer class="modal-card-foot has-text-right">
+          <b-button @click="isPoolRemovalVisible = false">{{ $t('globals.buttons.cancel') }}</b-button>
+          <b-button type="is-primary" @click="removePoolContacts" data-cy="btn-confirm-pool-removal">
+            {{ $t('globals.buttons.ok') }}
+          </b-button>
+        </footer>
+      </div>
+    </b-modal>
+
+    <!-- Assign pool contacts to one of the pool's allocations -->
+    <b-modal scroll="keep" :aria-modal="true" :active.sync="isPoolAssignVisible" :width="480" class="has-overflow">
+      <div class="modal-card" style="width: auto;">
+        <header class="modal-card-head">
+          <p class="modal-card-title">{{ $t('pool.actionAssign') }}</p>
+        </header>
+        <section class="modal-card-body">
+          <p>{{ $t('pool.assignSelectedHelp', { num: poolPendingContacts.length }) }}</p>
+          <b-field :label="$t('pool.assignTargetLabel')">
+            <b-select v-model.number="poolAssignAllocationID" expanded data-cy="pool-assign-allocation">
+              <option v-for="allocation in poolAllocations" :key="allocation.id" :value="Number(allocation.id)">
+                {{ allocation.listName || allocation.list_name || allocation.organizationName || allocation.organization_name }}
+              </option>
+            </b-select>
+          </b-field>
+        </section>
+        <footer class="modal-card-foot has-text-right">
+          <b-button @click="isPoolAssignVisible = false">{{ $t('globals.buttons.cancel') }}</b-button>
+          <b-button type="is-primary" :disabled="!poolAssignAllocationID" @click="assignPoolContacts"
+            data-cy="btn-confirm-pool-assign">
+            {{ $t('globals.buttons.ok') }}
+          </b-button>
+        </footer>
+      </div>
+    </b-modal>
   </section>
 </template>
 
@@ -256,12 +398,14 @@ import { uris } from '../constants';
 import EmptyPlaceholder from '../components/EmptyPlaceholder.vue';
 import CustomerBulkList from './CustomerBulkList.vue';
 import CustomerForm from './CustomerForm.vue';
+import PoolContactForm from './PoolContactForm.vue';
 import CopyText from '../components/CopyText.vue';
 
 export default Vue.extend({
   components: {
     CustomerForm,
     CustomerBulkList,
+    PoolContactForm,
     CopyText,
     EmptyPlaceholder,
   },
@@ -280,8 +424,28 @@ export default Vue.extend({
       // rendered inside this same customers view so that viewing a pool list
       // does not feel like leaving the customer area.
       listDetail: null,
-      poolContacts: [],
+      pool: {
+        results: [],
+        total: 0,
+        perPage: 20,
+        page: 1,
+        orderBy: 'id',
+        order: 'desc',
+        search: '',
+      },
       poolLoading: false,
+      poolAllocations: [],
+
+      // Pool contact mutations.
+      poolBulk: {
+        checked: [],
+      },
+      poolPendingContacts: [],
+      poolRemovalReason: '',
+      poolAssignAllocationID: null,
+      isPoolRemovalVisible: false,
+      isPoolAssignVisible: false,
+      isPoolFormVisible: false,
 
       // Whether the filtered list is resolved yet: 'ready' | 'pending' |
       // 'error'. Only a resolved, non-pool list may render the ordinary
@@ -354,24 +518,188 @@ export default Vue.extend({
       return `/api/customers/${id}/export${suffix}`;
     },
 
-    // Loads the contacts of the selected pool list. The endpoint masks e-mail
-    // addresses for everyone but the highest administrator and answers with
-    // camelCased fields, so both shapes are rendered defensively.
-    loadPoolContacts() {
+    // Loads one server-paginated page of the contacts of the selected pool
+    // list. The endpoint masks e-mail addresses for everyone but the highest
+    // administrator, so the table renders them verbatim.
+    loadPoolContacts(params = {}) {
       const id = this.queryParams.customerListID;
       if (!id) {
         return Promise.resolve();
       }
+      this.pool = { ...this.pool, ...params };
       this.poolLoading = true;
-      const customerCode = (this.queryInput || '').trim();
-      const params = customerCode ? { customer_code: customerCode } : {};
-      return this.$api.getPoolContacts(id, params)
-        .then((rows) => {
-          this.poolContacts = Array.isArray(rows) ? rows : [];
-        })
-        .finally(() => {
-          this.poolLoading = false;
+      this.poolBulk.checked = [];
+
+      const qp = {
+        page: this.pool.page,
+        order_by: this.pool.orderBy,
+        order: this.pool.order,
+      };
+      if (this.pool.perPage > 0) {
+        qp.per_page = this.pool.perPage;
+      }
+      if (this.pool.search) {
+        qp.search = this.pool.search;
+      }
+
+      return this.$api.getPoolContacts(id, qp).then((resp) => {
+        // Tolerate the legacy bare-array response shape.
+        const results = Array.isArray(resp) ? resp : (resp.results || []);
+        this.pool.results = results;
+        this.pool.total = Array.isArray(resp) ? results.length : (Number(resp.total) || 0);
+        if (!Array.isArray(resp) && Number(resp.per_page) > 0) {
+          this.pool.perPage = Number(resp.per_page);
+        }
+      }).finally(() => {
+        this.poolLoading = false;
+      });
+    },
+
+    loadPoolAllocations() {
+      const id = this.queryParams.customerListID;
+      if (!id) {
+        return Promise.resolve();
+      }
+      return this.$api.getOrgPoolAllocations(id).then((rows) => {
+        this.poolAllocations = Array.isArray(rows) ? rows : [];
+      }).catch(() => {
+        this.poolAllocations = [];
+      });
+    },
+
+    onPoolPageChange(page) {
+      this.loadPoolContacts({ page });
+    },
+
+    onPoolSort(field, direction) {
+      this.loadPoolContacts({ orderBy: field, order: direction, page: 1 });
+    },
+
+    // Pool contacts live in a separate store: the pool tab reopens the last
+    // pool list the user visited and falls back to the first accessible one.
+    goToPoolTab() {
+      if (this.isPoolList) {
+        return;
+      }
+      const pools = this.accessiblePoolLists;
+      if (pools.length === 0) {
+        this.$utils.toast(this.$t('pool.noAccessiblePool'), 'is-danger');
+        return;
+      }
+      const lastID = Number(window.localStorage.getItem('poolLastListID'));
+      const target = pools.find((l) => l.id === lastID) || pools[0];
+      this.$router.push({ name: 'customersCustomerList', params: { customerListID: target.id } });
+    },
+
+    exportPoolContacts() {
+      const id = this.queryParams.customerListID;
+      if (!id) {
+        return;
+      }
+      this.$utils.confirm(this.$t('customers.confirmExport', { num: this.pool.total }), () => {
+        const q = new URLSearchParams();
+        if (this.pool.search) {
+          q.append('search', this.pool.search);
+        }
+        if (this.pool.orderBy) {
+          q.append('order_by', this.pool.orderBy);
+        }
+        if (this.pool.order) {
+          q.append('order', this.pool.order);
+        }
+        document.location.href = `/api/customer-lists/${id}/pool-contacts/export?${q.toString()}`;
+      });
+    },
+
+    // Removal and assignment target either the clicked row or, with a null
+    // argument, the current page selection.
+    showPoolRemovalForm(contact) {
+      this.poolPendingContacts = contact ? [contact] : this.poolBulk.checked;
+      this.poolRemovalReason = '';
+      this.isPoolRemovalVisible = true;
+    },
+
+    removePoolContacts() {
+      const allocationID = this.poolAllocationID;
+      if (!allocationID || this.poolPendingContacts.length === 0) {
+        return;
+      }
+      const reason = this.poolRemovalReason.trim();
+      const targets = this.poolPendingContacts;
+      const calls = targets.map((contact) => this.$api.removePoolContact({
+        allocation_id: allocationID,
+        contact_id: contact.id,
+        reason,
+      }));
+      Promise.all(calls).then(() => {
+        this.isPoolRemovalVisible = false;
+        this.poolPendingContacts = [];
+        this.loadPoolContacts();
+        this.$utils.toast(this.$t('pool.toastContactsRemoved', { num: targets.length }));
+      });
+    },
+
+    restorePoolContacts(contact) {
+      const allocationID = this.poolAllocationID;
+      const targets = contact ? [contact] : this.poolBulk.checked.filter((c) => c.excluded);
+      if (!allocationID || targets.length === 0) {
+        return;
+      }
+      const calls = targets.map((c) => this.$api.restorePoolContact({
+        allocation_id: allocationID,
+        contact_id: c.id,
+      }));
+      Promise.all(calls).then(() => {
+        this.loadPoolContacts();
+        this.$utils.toast(this.$t('pool.toastContactsRestored', { num: targets.length }));
+      });
+    },
+
+    clearPoolContactEmail(contact) {
+      this.$utils.confirm(this.$t('pool.confirmClearEmail'), () => {
+        this.$api.clearPoolContactEmail(this.queryParams.customerListID, contact.id).then(() => {
+          this.loadPoolContacts();
+          this.$utils.toast(this.$t('pool.toastEmailCleared'));
         });
+      });
+    },
+
+    clearPoolContactsEmail() {
+      const targets = this.poolBulk.checked.filter((c) => c.email);
+      if (targets.length === 0) {
+        return;
+      }
+      this.$utils.confirm(this.$t('pool.confirmClearEmail'), () => {
+        const calls = targets.map((c) => this.$api.clearPoolContactEmail(this.queryParams.customerListID, c.id));
+        Promise.all(calls).then(() => {
+          this.loadPoolContacts();
+          this.$utils.toast(this.$t('pool.toastEmailCleared'));
+        });
+      });
+    },
+
+    showPoolAssignForm(contact) {
+      this.poolPendingContacts = contact ? [contact] : this.poolBulk.checked;
+      const own = this.poolAllocations[0];
+      this.poolAssignAllocationID = own ? Number(own.id) : null;
+      this.isPoolAssignVisible = true;
+    },
+
+    assignPoolContacts() {
+      if (!this.poolAssignAllocationID || this.poolPendingContacts.length === 0) {
+        return;
+      }
+      const targets = this.poolPendingContacts;
+      const calls = targets.map((c) => this.$api.assignPoolContact({
+        allocation_id: this.poolAssignAllocationID,
+        contact_id: c.id,
+      }));
+      Promise.all(calls).then(() => {
+        this.isPoolAssignVisible = false;
+        this.poolPendingContacts = [];
+        this.loadPoolContacts();
+        this.$utils.toast(this.$t('pool.toastContactsAssigned', { num: targets.length }));
+      });
     },
 
     poolContactStatus(contact) {
@@ -394,6 +722,8 @@ export default Vue.extend({
         this.listDetail = known;
         this.listState = 'ready';
         if (this.isPoolList) {
+          this.rememberPoolList();
+          this.loadPoolAllocations();
           return this.loadPoolContacts();
         }
         this.queryCustomers();
@@ -406,6 +736,8 @@ export default Vue.extend({
         this.listDetail = list;
         this.listState = 'ready';
         if (this.isPoolList) {
+          this.rememberPoolList();
+          this.loadPoolAllocations();
           return this.loadPoolContacts();
         }
         this.queryCustomers();
@@ -416,6 +748,12 @@ export default Vue.extend({
         this.listState = 'error';
         return null;
       });
+    },
+
+    rememberPoolList() {
+      if (this.queryParams.customerListID) {
+        window.localStorage.setItem('poolLastListID', String(this.queryParams.customerListID));
+      }
     },
 
     // Refresh handler for both modes (the app shell emits `page.refresh`).
@@ -519,7 +857,7 @@ export default Vue.extend({
 
     onSubmit() {
       if (this.isPoolList) {
-        this.loadPoolContacts();
+        this.loadPoolContacts({ search: (this.queryInput || '').trim(), page: 1 });
         return;
       }
       this.queryCustomers({ page: 1 });
@@ -752,12 +1090,69 @@ export default Vue.extend({
       return type === 'pool' || type === 'org_pool_allocation';
     },
 
+    // First-level public pools carry the whole pool; organization allocations
+    // are one organization's slice of it. A few row actions only make sense in
+    // one of the two contexts.
+    isFirstLevelPool() {
+      const type = (this.listDetail && this.listDetail.type)
+        || (this.currentList && this.currentList.type);
+      return type === 'pool';
+    },
+
+    isAllocationList() {
+      const type = (this.listDetail && this.listDetail.type)
+        || (this.currentList && this.currentList.type);
+      return type === 'org_pool_allocation';
+    },
+
+    // The allocation of the currently viewed allocation list, used by the
+    // per-organization remove/restore actions.
+    poolAllocationID() {
+      if (!this.isAllocationList) {
+        return null;
+      }
+      const listID = Number(this.queryParams.customerListID);
+      const row = this.poolAllocations.find(
+        (allocation) => Number(allocation.listId || allocation.list_id) === listID,
+      );
+      return row ? Number(row.id) : null;
+    },
+
+    accessiblePoolLists() {
+      if (!this.customer_lists.results) {
+        return [];
+      }
+      return this.customer_lists.results.filter(
+        (l) => l.type === 'pool' || l.type === 'org_pool_allocation',
+      );
+    },
+
+    canManagePoolContacts() {
+      return this.$can('pools:manage');
+    },
+
+    canExportPoolContacts() {
+      return this.$can('pools:export');
+    },
+
+    hasRemovablePoolContacts() {
+      return this.poolBulk.checked.some((contact) => !contact.excluded);
+    },
+
+    hasRestorablePoolContacts() {
+      return this.poolBulk.checked.some((contact) => contact.excluded);
+    },
+
+    hasEmailablePoolContacts() {
+      return this.poolBulk.checked.some((contact) => !!contact.email);
+    },
+
     // Row count of whatever this view currently lists: pool contacts or
     // ordinary customers. `null` means "not known yet" (the customers model is
     // an empty array before the first response).
     dataCount() {
       if (this.isPoolList) {
-        return this.poolContacts.length;
+        return this.pool.total;
       }
       if (this.customers.total === undefined || Number.isNaN(Number(this.customers.total))) {
         return null;

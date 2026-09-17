@@ -957,7 +957,6 @@ CREATE TABLE pool_contacts (
     id BIGSERIAL PRIMARY KEY,
     uuid UUID NOT NULL DEFAULT gen_random_uuid() UNIQUE,
     customer_code TEXT NOT NULL DEFAULT '',
-    company_name TEXT NOT NULL DEFAULT '',
     email TEXT NOT NULL,
     name TEXT NOT NULL DEFAULT '',
     allocation_department TEXT NOT NULL DEFAULT '',

@@ -69,14 +69,14 @@ func (c *Core) RecordBounce(b models.Bounce) error {
 	// logical exclusion and an auditable bounce row.
 	if b.CampaignUUID != "" && b.CustomerUUID != "" {
 		var pool struct {
-			ContactID int64         `db:"pool_contact_id"`
-			PoolID    int           `db:"pool_id"`
-			SegmentID sql.NullInt64 `db:"segment_id"`
-			OrgID     sql.NullInt64 `db:"organization_id"`
-			CampID    int           `db:"campaign_id"`
+			ContactID    int64         `db:"pool_contact_id"`
+			PoolID       int           `db:"pool_id"`
+			AllocationID sql.NullInt64 `db:"allocation_id"`
+			OrgID        sql.NullInt64 `db:"organization_id"`
+			CampID       int           `db:"campaign_id"`
 		}
-		if err := c.db.Get(&pool, `SELECT cpr.pool_contact_id,cpr.pool_id,cpr.segment_id,cpr.organization_id,cpr.campaign_id FROM campaigns c JOIN campaign_pool_recipients cpr ON cpr.campaign_id=c.id JOIN pool_contacts pc ON pc.id=cpr.pool_contact_id WHERE c.uuid=$1::UUID AND pc.uuid=$2::UUID LIMIT 1`, b.CampaignUUID, b.CustomerUUID); err == nil {
-			return c.recordPoolBounce(b, action.Action, action.Count, pool.ContactID, pool.PoolID, pool.SegmentID, pool.OrgID, pool.CampID)
+		if err := c.db.Get(&pool, `SELECT cpr.pool_contact_id,cpr.pool_id,cpr.allocation_id,cpr.organization_id,cpr.campaign_id FROM campaigns c JOIN campaign_pool_recipients cpr ON cpr.campaign_id=c.id JOIN pool_contacts pc ON pc.id=cpr.pool_contact_id WHERE c.uuid=$1::UUID AND pc.uuid=$2::UUID LIMIT 1`, b.CampaignUUID, b.CustomerUUID); err == nil {
+			return c.recordPoolBounce(b, action.Action, action.Count, pool.ContactID, pool.PoolID, pool.AllocationID, pool.OrgID, pool.CampID)
 		}
 	}
 
@@ -103,7 +103,7 @@ func (c *Core) RecordBounce(b models.Bounce) error {
 	return err
 }
 
-func (c *Core) recordPoolBounce(b models.Bounce, configuredAction string, threshold int, contactID int64, poolID int, segmentID, organizationID sql.NullInt64, campaignID int) error {
+func (c *Core) recordPoolBounce(b models.Bounce, configuredAction string, threshold int, contactID int64, poolID int, allocationID, organizationID sql.NullInt64, campaignID int) error {
 	tx, err := c.db.Beginx()
 	if err != nil {
 		return err
@@ -113,7 +113,7 @@ func (c *Core) recordPoolBounce(b models.Bounce, configuredAction string, thresh
 	if len(meta) == 0 {
 		meta = []byte(`{}`)
 	}
-	if _, err = tx.Exec(`INSERT INTO bounces(pool_contact_id,campaign_id,type,source,meta,created_at,source_pool_id,source_segment_id,source_organization_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, contactID, campaignID, b.Type, b.Source, meta, b.CreatedAt, poolID, nullIntValue(segmentID), nullIntValue(organizationID)); err != nil {
+	if _, err = tx.Exec(`INSERT INTO bounces(pool_contact_id,campaign_id,type,source,meta,created_at,source_pool_id,source_allocation_id,source_organization_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, contactID, campaignID, b.Type, b.Source, meta, b.CreatedAt, poolID, nullIntValue(allocationID), nullIntValue(organizationID)); err != nil {
 		return err
 	}
 	var count int
@@ -121,7 +121,7 @@ func (c *Core) recordPoolBounce(b models.Bounce, configuredAction string, thresh
 		return err
 	}
 	if configuredAction == "blocklist" && (threshold < 1 || count >= threshold) && organizationID.Valid {
-		if _, err = tx.Exec(`INSERT INTO pool_segment_exclusions(pool_id,organization_id,contact_id,segment_id,reason,source,removed_at,restored_at) VALUES($1,$2,$3,$4,$5,'bounce',NOW(),NULL) ON CONFLICT(pool_id,organization_id,contact_id) DO UPDATE SET segment_id=EXCLUDED.segment_id,reason=EXCLUDED.reason,source='bounce',removed_at=NOW(),restored_at=NULL`, poolID, organizationID.Int64, contactID, nullIntValue(segmentID), b.Type); err != nil {
+		if _, err = tx.Exec(`INSERT INTO org_pool_allocation_exclusions(pool_id,organization_id,contact_id,allocation_id,reason,source,removed_at,restored_at) VALUES($1,$2,$3,$4,$5,'bounce',NOW(),NULL) ON CONFLICT(pool_id,organization_id,contact_id) DO UPDATE SET allocation_id=EXCLUDED.allocation_id,reason=EXCLUDED.reason,source='bounce',removed_at=NOW(),restored_at=NULL`, poolID, organizationID.Int64, contactID, nullIntValue(allocationID), b.Type); err != nil {
 			return err
 		}
 	}

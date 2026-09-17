@@ -27,7 +27,7 @@ type Bounce struct {
 	CustomerID           int      `db:"customer_id" json:"customer_id,omitempty"`
 	PoolContactID        int64    `db:"pool_contact_id" json:"pool_contact_id,omitempty"`
 	SourcePoolID         int      `db:"source_pool_id" json:"source_pool_id,omitempty"`
-	SourceSegmentID      int64    `db:"source_segment_id" json:"source_segment_id,omitempty"`
+	SourceAllocationID   int64    `db:"source_allocation_id" json:"source_allocation_id,omitempty"`
 	SourceOrganizationID null.Int `db:"source_organization_id" json:"source_organization_id,omitempty"`
 	CustomerStatus       string   `db:"customer_status" json:"customer_status"`
 	// Bounce records inherit their access boundary from the customer. These

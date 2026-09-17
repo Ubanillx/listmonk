@@ -28,7 +28,7 @@
 
         <!-- Organization admins are bound to the organization of the workspace
              they are currently in, so the target is shown read-only. -->
-        <div v-else class="pool-manager__segment-summary" data-cy="pool-current-organization">
+        <div v-else class="pool-manager__allocation-summary" data-cy="pool-current-organization">
           <div>
             <span>{{ $t('pool.targetOrganizationLabel') }}</span>
             <strong>{{ currentOrganizationName }}</strong>
@@ -37,27 +37,27 @@
       </div>
     </section>
 
-    <section v-if="organizationID" class="pool-manager__section" data-cy="pool-secondary-list-panel">
+    <section v-if="organizationID" class="pool-manager__section" data-cy="pool-allocation-panel">
       <div class="pool-manager__section-heading">
         <span class="pool-manager__section-number">2</span>
         <div>
-          <h4>{{ $t('pool.secondaryTitle') }}</h4>
-          <p>{{ $t('pool.secondaryHelp') }}</p>
+          <h4>{{ $t('pool.allocationTitle') }}</h4>
+          <p>{{ $t('pool.allocationHelp') }}</p>
         </div>
       </div>
       <div class="pool-manager__section-content">
-        <div v-if="selectedSegment" class="pool-manager__segment-summary" data-cy="pool-segment-summary">
+        <div v-if="selectedAllocation" class="pool-manager__allocation-summary" data-cy="org-pool-allocation-summary">
           <div>
-            <span>{{ $t('pool.segmentNameLabel') }}</span>
-            <strong>{{ selectedSegment.listName || selectedSegment.listId }}</strong>
+            <span>{{ $t('pool.allocationNameLabel') }}</span>
+            <strong>{{ selectedAllocation.listName || selectedAllocation.listId }}</strong>
           </div>
           <div>
-            <span>{{ $t('pool.segmentOrganizationLabel') }}</span>
-            <strong>{{ selectedSegment.organizationName || targetOrganizationName }}</strong>
+            <span>{{ $t('pool.allocationOrganizationLabel') }}</span>
+            <strong>{{ selectedAllocation.organizationName || targetOrganizationName }}</strong>
           </div>
           <div>
-            <span>{{ $t('pool.segmentMailboxLabel') }}</span>
-            <strong>{{ selectedSegment.replyMailboxEmail || $t('pool.notConfigured') }}</strong>
+            <span>{{ $t('pool.allocationMailboxLabel') }}</span>
+            <strong>{{ selectedAllocation.replyMailboxEmail || $t('pool.notConfigured') }}</strong>
           </div>
           <p v-if="isPlatformAdmin" class="help pool-manager__organization-note-text">
             <b-icon icon="information-outline" size="is-small" />
@@ -65,9 +65,9 @@
           </p>
         </div>
 
-        <div v-if="selectedSegment && !isPlatformAdmin" class="pool-manager__reply-mailbox">
+        <div v-if="selectedAllocation && !isPlatformAdmin" class="pool-manager__reply-mailbox">
           <b-field :label="$t('pool.unifiedMailboxLabel')" label-position="on-border">
-            <b-select v-model="replyMailboxID" expanded :disabled="!canManageSegments" data-cy="pool-reply-mailbox">
+            <b-select v-model="replyMailboxID" expanded :disabled="!canManageAllocations" data-cy="pool-reply-mailbox">
               <option :value="null">{{ $t('pool.mailboxRequiredOption') }}</option>
               <option v-for="mailbox in replyMailboxes" :key="mailbox.id" :value="mailbox.id">
                 {{ mailbox.name || mailbox.email }}（{{ mailbox.email }}）
@@ -76,15 +76,15 @@
           </b-field>
           <div class="pool-manager__inline-action">
             <b-button size="is-small" type="is-primary" :loading="savingReplyMailbox"
-              :disabled="!canManageSegments" @click="saveReplyMailbox">
+              :disabled="!canManageAllocations" @click="saveReplyMailbox">
               {{ $t('pool.saveMailbox') }}
             </b-button>
             <p class="help">{{ $t('pool.mailboxHelp') }}</p>
           </div>
         </div>
 
-        <div v-else-if="!selectedSegment" class="pool-manager__create-segment" data-cy="pool-segment-create">
-          <div class="pool-manager__create-segment-title">
+        <div v-else-if="!selectedAllocation" class="pool-manager__create-allocation" data-cy="org-pool-allocation-create">
+          <div class="pool-manager__create-allocation-title">
             <div>
               <span>{{ $t('pool.targetOrganizationLabel') }}</span>
               <strong>{{ targetOrganizationName }}</strong>
@@ -92,12 +92,12 @@
             <small>{{ $t('pool.createBindsPool') }}</small>
           </div>
           <b-field :label="$t('pool.createNameLabel')" label-position="on-border">
-            <b-input v-model.trim="newSegment.name" maxlength="200"
-              :placeholder="$t('pool.createNamePlaceholder')" data-cy="pool-segment-name" />
+            <b-input v-model.trim="newAllocation.name" maxlength="200"
+              :placeholder="$t('pool.createNamePlaceholder')" data-cy="org-pool-allocation-name" />
           </b-field>
           <p class="help pool-manager__organization-note-text">{{ $t('pool.createPlatformNote') }}</p>
-          <b-button type="is-primary" :loading="creatingSegment" :disabled="!newSegment.name"
-            data-cy="create-pool-segment" @click="createSegment">
+          <b-button type="is-primary" :loading="creatingAllocation" :disabled="!newAllocation.name"
+            data-cy="create-org-pool-allocation" @click="createAllocation">
             {{ $t('pool.createAndBind') }}
           </b-button>
         </div>
@@ -105,7 +105,7 @@
     </section>
 
     <section v-else class="pool-manager__empty-state pool-manager__empty-state--top"
-      data-cy="pool-secondary-list-empty">
+      data-cy="pool-allocation-empty">
       <b-icon icon="account-group-outline" size="is-medium" />
       <div>
         <strong>{{ $t('pool.noOrgTitle') }}</strong>
@@ -128,15 +128,15 @@ export default Vue.extend({
 
   data() {
     return {
-      segments: [],
+      allocations: [],
       targetOrganizationID: null,
       targetOrganizationNameOverride: '',
-      selectedSegmentID: null,
+      selectedAllocationID: null,
       replyMailboxes: [],
       replyMailboxID: null,
       savingReplyMailbox: false,
-      creatingSegment: false,
-      newSegment: { name: '' },
+      creatingAllocation: false,
+      newAllocation: { name: '' },
     };
   },
 
@@ -183,11 +183,11 @@ export default Vue.extend({
       return org ? org.name : this.$t('pool.organizationFallback', { id: this.organizationID });
     },
 
-    selectedSegment() {
-      return this.segments.find((segment) => Number(segment.id) === Number(this.selectedSegmentID));
+    selectedAllocation() {
+      return this.allocations.find((allocation) => Number(allocation.id) === Number(this.selectedAllocationID));
     },
 
-    canManageSegments() {
+    canManageAllocations() {
       return !this.isPlatformAdmin && Boolean(
         this.workspace && this.workspace.organizationId && this.workspace.role === 'manager',
       );
@@ -196,76 +196,76 @@ export default Vue.extend({
 
   watch: {
     targetOrganizationID() {
-      this.selectedSegmentID = null;
+      this.selectedAllocationID = null;
       this.targetOrganizationNameOverride = '';
       this.loadTargetOrganization();
     },
-    selectedSegmentID() {
-      const mailboxID = this.selectedSegment && (
-        this.selectedSegment.replyMailboxId || this.selectedSegment.reply_mailbox_id
+    selectedAllocationID() {
+      const mailboxID = this.selectedAllocation && (
+        this.selectedAllocation.replyMailboxId || this.selectedAllocation.reply_mailbox_id
       );
       this.replyMailboxID = mailboxID ? Number(mailboxID) : null;
     },
   },
 
   methods: {
-    loadSegments() {
-      return this.$api.getPoolSegments(this.pool.id).then((rows) => {
-        this.segments = Array.isArray(rows) ? rows : [];
-        const current = this.segments.find((segment) => Number(segment.organizationId || segment.organization_id) === this.organizationID);
-        this.selectedSegmentID = current ? current.id : null;
+    loadAllocations() {
+      return this.$api.getOrgPoolAllocations(this.pool.id).then((rows) => {
+        this.allocations = Array.isArray(rows) ? rows : [];
+        const current = this.allocations.find((allocation) => Number(allocation.organizationId || allocation.organization_id) === this.organizationID);
+        this.selectedAllocationID = current ? current.id : null;
       });
     },
 
     loadTargetOrganization() {
       // Resolving an arbitrary organization's target is highest-administrator
       // only (`GET /api/pools/:id/management-target`). Organization admins are
-      // fixed to their own workspace, so their own segments are all that has to
+      // fixed to their own workspace, so their own allocations are all that has to
       // be reloaded.
       if (!this.isPlatformAdmin) {
         return Promise.all([
           this.$api.getReplyMailboxes(this.organizationID),
-          this.loadSegments(),
+          this.loadAllocations(),
         ]).then(([mailboxes]) => {
           this.replyMailboxes = Array.isArray(mailboxes) ? mailboxes : [];
         });
       }
       if (!this.organizationID) {
-        this.segments = [];
+        this.allocations = [];
         this.replyMailboxes = [];
         return Promise.resolve();
       }
       return this.$api.getPoolManagementTarget(this.pool.id, this.organizationID)
         .then((target) => {
           this.targetOrganizationNameOverride = target.organizationName || target.organization_name || '';
-          return this.loadSegments();
+          return this.loadAllocations();
         });
     },
 
-    createSegment() {
-      if (!this.organizationID || !this.newSegment.name) {
+    createAllocation() {
+      if (!this.organizationID || !this.newAllocation.name) {
         return Promise.resolve();
       }
-      this.creatingSegment = true;
-      return this.$api.createPoolSegment({
+      this.creatingAllocation = true;
+      return this.$api.createOrgPoolAllocation({
         pool_id: this.pool.id,
         organization_id: this.organizationID,
-        name: this.newSegment.name,
+        name: this.newAllocation.name,
       }).then(() => {
-        this.newSegment = { name: '' };
+        this.newAllocation = { name: '' };
         this.$utils.toast(this.$t('pool.toastCreated'));
         return this.loadTargetOrganization();
       }).finally(() => {
-        this.creatingSegment = false;
+        this.creatingAllocation = false;
       });
     },
 
     saveReplyMailbox() {
-      if (!this.selectedSegment || !this.canManageSegments) {
+      if (!this.selectedAllocation || !this.canManageAllocations) {
         return Promise.resolve();
       }
       this.savingReplyMailbox = true;
-      return this.$api.updatePoolSegmentReplyMailbox(this.selectedSegment.id, this.replyMailboxID)
+      return this.$api.updateOrgPoolAllocationReplyMailbox(this.selectedAllocation.id, this.replyMailboxID)
         .then(() => {
           this.$utils.toast(this.$t('pool.toastMailboxSaved'));
           return this.loadTargetOrganization();

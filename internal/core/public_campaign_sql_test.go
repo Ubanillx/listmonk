@@ -66,10 +66,10 @@ func TestPublicCampaignSQLGuards(t *testing.T) {
 
 	// First-class public pools must re-check organization exclusions and retain
 	// immutable snapshot fields at queue time; this protects the primary pool
-	// when a secondary list is edited during an in-flight campaign.
+	// when a pool allocation is edited during an in-flight campaign.
 	requireQueryTerms(t, queries, "queue-campaign-pool-customers",
 		"campaign_pool_recipients",
-		"pool_segment_exclusions",
+		"org_pool_allocation_exclusions",
 		"restored_at IS NULL",
 		"email_snapshot",
 		"organization_id",
@@ -84,7 +84,7 @@ func TestPublicCampaignSQLGuards(t *testing.T) {
 	requireQueryTerms(t, queries, "sync-campaign-progress", "campaign_send_counts")
 	// The recipient snapshot's composite key is the final de-duplication
 	// boundary when a campaign selects both a first-level pool and an explicit
-	// secondary list.  Every expansion path uses ON CONFLICT against this key.
+	// pool allocation.  Every expansion path uses ON CONFLICT against this key.
 	_, testFile, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("locating schema.sql")

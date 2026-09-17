@@ -8,7 +8,7 @@ describe('Public pools', function poolSuite() { // eslint-disable-line prefer-ar
   const superPassword = Cypress.env('POOL_QA_SUPER_PASSWORD') || password;
   let poolID = Number(Cypress.env('POOL_QA_POOL_ID')) || 0;
   let guidedOrganizationID = Number(Cypress.env('POOL_QA_GUIDED_ORGANIZATION_ID')) || 0;
-  let temporarySegmentListID = 0;
+  let temporaryAllocationListID = 0;
 
   before(function requirePoolFixture() {
     const enabled = Cypress.env('POOL_E2E');
@@ -44,7 +44,7 @@ describe('Public pools', function poolSuite() { // eslint-disable-line prefer-ar
       .then(() => cy.request('/api/organizations')).then((response) => {
       const name = Cypress.env('POOL_QA_GUIDED_ORGANIZATION_NAME') || 'wsqa-pool-guided-org';
       const organization = (response.body.data || []).find((item) => item.name === name);
-      expect(organization, 'guided secondary-list organization').to.exist;
+      expect(organization, 'guided pool-allocation organization').to.exist;
       guidedOrganizationID = Number(organization.id);
       });
   });
@@ -82,13 +82,13 @@ describe('Public pools', function poolSuite() { // eslint-disable-line prefer-ar
   }
 
   afterEach(() => {
-    if (!temporarySegmentListID) return;
+    if (!temporaryAllocationListID) return;
     cy.request({
       method: 'DELETE',
-      url: `/api/customer-lists/${temporarySegmentListID}`,
+      url: `/api/customer-lists/${temporaryAllocationListID}`,
       headers: { 'X-Listmonk-Organization-ID': String(guidedOrganizationID) },
     }).its('status').should('eq', 200);
-    temporarySegmentListID = 0;
+    temporaryAllocationListID = 0;
   });
 
   it('lets an organization admin split the pool inside the current organization', () => {
@@ -99,7 +99,7 @@ describe('Public pools', function poolSuite() { // eslint-disable-line prefer-ar
     // read-only label showing that organization.
     cy.get('[data-cy=pool-target-organization]').should('not.exist');
     cy.get('[data-cy=pool-current-organization]').should('be.visible');
-    cy.get('[data-cy=pool-secondary-list-panel]').scrollIntoView().should('be.visible');
+    cy.get('[data-cy=pool-allocation-panel]').scrollIntoView().should('be.visible');
     // Resolving an arbitrary organization's target stays highest-admin only.
     cy.request({
       url: `/api/pools/${poolID}/management-target?organization_id=1`,
@@ -107,15 +107,15 @@ describe('Public pools', function poolSuite() { // eslint-disable-line prefer-ar
     }).its('status').should('eq', 403);
   });
 
-  it('guides the highest administrator from organization selection to a ready-to-use secondary list', () => {
+  it('guides the highest administrator from organization selection to a ready-to-use pool allocation', () => {
     loginAs(Cypress.env('POOL_QA_SUPER_USER') || 'root', undefined, superPassword);
     cy.contains('a', 'wsqa-pool-primary').closest('tr').find('[data-cy=btn-manage-pool]').click();
-    cy.get('[data-cy=pool-secondary-list-empty]').should('be.visible');
+    cy.get('[data-cy=pool-allocation-empty]').should('be.visible');
     cy.get('[data-cy=pool-contact-allocation]').should('not.exist');
     cy.get('[data-cy=pool-target-organization]').select('1');
-    cy.get('[data-cy=pool-secondary-list-panel]').should('be.visible');
+    cy.get('[data-cy=pool-allocation-panel]').should('be.visible');
     cy.get('.pool-manager').should('be.visible');
-    cy.get('[data-cy=pool-segment-summary]').contains('wsqa-pool-segment');
+    cy.get('[data-cy=org-pool-allocation-summary]').contains('wsqa-org-pool-allocation');
     cy.get('[data-cy=pool-contact-allocation]').should('not.exist');
   });
 
@@ -124,14 +124,14 @@ describe('Public pools', function poolSuite() { // eslint-disable-line prefer-ar
     cy.contains('a', 'wsqa-pool-primary').closest('tr').find('[data-cy=btn-manage-pool]').click();
     cy.get('[data-cy=pool-target-organization]').select(String(guidedOrganizationID));
     cy.window().its('localStorage').invoke('getItem', 'listmonk.workspace.organizationId').should('be.null');
-    cy.get('[data-cy=pool-segment-create]').scrollIntoView().should('be.visible');
-    cy.get('[data-cy=create-pool-segment]').scrollIntoView().should('be.visible');
-    cy.get('[data-cy=pool-segment-merge]').should('not.exist');
-    cy.get('.pool-manager').should('not.contain', '合并已有二级列表');
+    cy.get('[data-cy=org-pool-allocation-create]').scrollIntoView().should('be.visible');
+    cy.get('[data-cy=create-org-pool-allocation]').scrollIntoView().should('be.visible');
+    cy.get('[data-cy=org-pool-allocation-merge]').should('not.exist');
+    cy.get('.pool-manager').should('not.contain', '合并已有公海分配');
   });
 
-  it('creates and binds a secondary list from the guided workflow', () => {
-    const segmentName = `wsqa-ui-segment-${Date.now()}`;
+  it('creates and binds a pool allocation from the guided workflow', () => {
+    const allocationName = `wsqa-ui-allocation-${Date.now()}`;
     const superUsername = Cypress.env('POOL_QA_SUPER_USER') || 'root';
     let superMembershipCount = 0;
     loginAs(Cypress.env('POOL_QA_SUPER_USER') || 'root', undefined, superPassword);
@@ -140,15 +140,15 @@ describe('Public pools', function poolSuite() { // eslint-disable-line prefer-ar
     });
     cy.contains('a', 'wsqa-pool-primary').closest('tr').find('[data-cy=btn-manage-pool]').click();
     cy.get('[data-cy=pool-target-organization]').select(String(guidedOrganizationID));
-    cy.intercept('POST', '/api/pool-segments').as('createSegment');
-    cy.get('[data-cy=pool-segment-name]').scrollIntoView().type(segmentName);
-    cy.get('[data-cy=create-pool-segment]').click();
-    cy.wait('@createSegment').then(({ request, response }) => {
+    cy.intercept('POST', '/api/org-pool-allocations').as('createAllocation');
+    cy.get('[data-cy=org-pool-allocation-name]').scrollIntoView().type(allocationName);
+    cy.get('[data-cy=create-org-pool-allocation]').click();
+    cy.wait('@createAllocation').then(({ request, response }) => {
       expect(response.statusCode).to.eq(200);
       expect(request.body.organization_id).to.eq(guidedOrganizationID);
-      temporarySegmentListID = Number(response.body.data.list_id);
+      temporaryAllocationListID = Number(response.body.data.list_id);
     });
-    cy.get('.pool-manager').contains(segmentName).should('be.visible');
+    cy.get('.pool-manager').contains(allocationName).should('be.visible');
     cy.request(`/api/organizations/${guidedOrganizationID}/members`).then((response) => {
       const currentCount = (response.body.data || []).filter((member) => member.username === superUsername).length;
       expect(currentCount).to.eq(superMembershipCount);

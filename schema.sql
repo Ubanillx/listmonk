@@ -1,4 +1,4 @@
-DROP TYPE IF EXISTS customer_list_type CASCADE; CREATE TYPE customer_list_type AS ENUM ('public', 'private', 'temporary', 'pool', 'pool_segment');
+DROP TYPE IF EXISTS customer_list_type CASCADE; CREATE TYPE customer_list_type AS ENUM ('public', 'private', 'temporary', 'pool', 'org_pool_allocation');
 DROP TYPE IF EXISTS customer_list_optin CASCADE; CREATE TYPE customer_list_optin AS ENUM ('single', 'double');
 DROP TYPE IF EXISTS customer_list_status CASCADE; CREATE TYPE customer_list_status AS ENUM ('active', 'archived');
 DROP TYPE IF EXISTS customer_status CASCADE; CREATE TYPE customer_status AS ENUM ('enabled', 'disabled', 'blocklisted');
@@ -401,7 +401,7 @@ CREATE TABLE bounces (
     customer_id    INTEGER NULL REFERENCES customers(id) ON DELETE CASCADE ON UPDATE CASCADE,
     pool_contact_id BIGINT NULL,
     source_pool_id INTEGER NULL,
-    source_segment_id BIGINT NULL,
+    source_allocation_id BIGINT NULL,
     source_organization_id BIGINT NULL,
     campaign_id      INTEGER NULL REFERENCES campaigns(id) ON DELETE SET NULL ON UPDATE CASCADE,
     type             bounce_type NOT NULL DEFAULT 'hard',
@@ -662,7 +662,7 @@ CREATE TABLE reply_ai_events (
     customer_id       INTEGER NULL REFERENCES customers(id) ON DELETE SET NULL ON UPDATE CASCADE,
     pool_contact_id   BIGINT NULL,
     pool_id           INTEGER NULL,
-    source_segment_id BIGINT NULL,
+    source_allocation_id BIGINT NULL,
     source_organization_id BIGINT NULL,
     message_key       TEXT NOT NULL,
     from_email        TEXT NOT NULL DEFAULT '',
@@ -928,16 +928,16 @@ CREATE MATERIALIZED VIEW mat_customer_list_customer_stats AS
     SELECT NOW() AS updated_at, 0 AS customer_list_id, NULL AS status, COUNT(id) AS customer_count FROM customers;
 DROP INDEX IF EXISTS mat_customer_list_customer_stats_idx; CREATE UNIQUE INDEX mat_customer_list_customer_stats_idx ON mat_customer_list_customer_stats (customer_list_id, status);
 
--- First-class public customer pools and organization segments.
+-- First-class public customer pools and organization allocations.
 ALTER TABLE customer_lists ADD COLUMN IF NOT EXISTS pool_reply_mailbox_id INTEGER NULL REFERENCES reply_mailboxes(id) ON DELETE SET NULL;
 DROP INDEX IF EXISTS idx_customer_lists_pool_reply_mailbox; CREATE INDEX idx_customer_lists_pool_reply_mailbox ON customer_lists(pool_reply_mailbox_id);
 
 DROP TABLE IF EXISTS campaign_pool_recipients CASCADE;
 DROP TABLE IF EXISTS pool_merge_conflicts CASCADE;
-DROP TABLE IF EXISTS pool_segment_exclusions CASCADE;
+DROP TABLE IF EXISTS org_pool_allocation_exclusions CASCADE;
 DROP TABLE IF EXISTS pool_organization_permissions CASCADE;
-DROP TABLE IF EXISTS pool_segment_members CASCADE;
-DROP TABLE IF EXISTS pool_segments CASCADE;
+DROP TABLE IF EXISTS org_pool_allocation_members CASCADE;
+DROP TABLE IF EXISTS org_pool_allocations CASCADE;
 DROP TABLE IF EXISTS pool_members CASCADE;
 DROP TABLE IF EXISTS pool_contacts CASCADE;
 
@@ -965,7 +965,7 @@ CREATE TABLE pool_members (
     PRIMARY KEY (pool_id, contact_id)
 );
 
-CREATE TABLE pool_segments (
+CREATE TABLE org_pool_allocations (
     id BIGSERIAL PRIMARY KEY,
     list_id INTEGER NOT NULL UNIQUE REFERENCES customer_lists(id) ON DELETE CASCADE,
     pool_id INTEGER NULL REFERENCES customer_lists(id) ON DELETE CASCADE,
@@ -974,10 +974,10 @@ CREATE TABLE pool_segments (
     created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE UNIQUE INDEX idx_pool_segments_pool_org ON pool_segments(pool_id, organization_id);
+CREATE UNIQUE INDEX idx_org_pool_allocations_pool_org ON org_pool_allocations(pool_id, organization_id);
 
-CREATE TABLE pool_segment_members (
-    segment_id BIGINT NOT NULL REFERENCES pool_segments(id) ON DELETE CASCADE,
+CREATE TABLE org_pool_allocation_members (
+    allocation_id BIGINT NOT NULL REFERENCES org_pool_allocations(id) ON DELETE CASCADE,
     contact_id BIGINT NOT NULL REFERENCES pool_contacts(id) ON DELETE CASCADE,
     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','removed')),
     removed_reason TEXT NOT NULL DEFAULT '',
@@ -985,7 +985,7 @@ CREATE TABLE pool_segment_members (
     removed_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (segment_id, contact_id)
+    PRIMARY KEY (allocation_id, contact_id)
 );
 
 CREATE TABLE pool_organization_permissions (
@@ -996,13 +996,13 @@ CREATE TABLE pool_organization_permissions (
     PRIMARY KEY (pool_id, organization_id)
 );
 
-CREATE TABLE pool_segment_exclusions (
+CREATE TABLE org_pool_allocation_exclusions (
     pool_id INTEGER NOT NULL REFERENCES customer_lists(id) ON DELETE CASCADE,
     organization_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     contact_id BIGINT NOT NULL REFERENCES pool_contacts(id) ON DELETE CASCADE,
-    segment_id BIGINT REFERENCES pool_segments(id) ON DELETE SET NULL,
+    allocation_id BIGINT REFERENCES org_pool_allocations(id) ON DELETE SET NULL,
     reason TEXT NOT NULL DEFAULT 'manual',
-    source TEXT NOT NULL DEFAULT 'segment',
+    source TEXT NOT NULL DEFAULT 'allocation',
     removed_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     removed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     restored_at TIMESTAMPTZ,
@@ -1021,21 +1021,21 @@ CREATE TABLE pool_merge_conflicts (
 );
 
 ALTER TABLE campaign_customer_lists ADD COLUMN IF NOT EXISTS pool_id INTEGER REFERENCES customer_lists(id) ON DELETE SET NULL;
-ALTER TABLE campaign_customer_lists ADD COLUMN IF NOT EXISTS pool_segment_id BIGINT REFERENCES pool_segments(id) ON DELETE SET NULL;
+ALTER TABLE campaign_customer_lists ADD COLUMN IF NOT EXISTS org_pool_allocation_id BIGINT REFERENCES org_pool_allocations(id) ON DELETE SET NULL;
 ALTER TABLE campaign_customer_lists ADD COLUMN IF NOT EXISTS source_organization_id BIGINT REFERENCES organizations(id) ON DELETE SET NULL;
 ALTER TABLE campaign_customer_lists ADD COLUMN IF NOT EXISTS resolved_reply_mailbox_id INTEGER REFERENCES reply_mailboxes(id) ON DELETE SET NULL;
-CREATE INDEX IF NOT EXISTS idx_campaign_customer_lists_pool ON campaign_customer_lists(pool_id, pool_segment_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_campaign_customer_lists_pool_unique ON campaign_customer_lists(campaign_id, pool_id, COALESCE(pool_segment_id, 0)) WHERE pool_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_campaign_customer_lists_pool ON campaign_customer_lists(pool_id, org_pool_allocation_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_campaign_customer_lists_pool_unique ON campaign_customer_lists(campaign_id, pool_id, COALESCE(org_pool_allocation_id, 0)) WHERE pool_id IS NOT NULL;
 ALTER TABLE campaign_recipients ADD COLUMN IF NOT EXISTS pool_contact_id BIGINT REFERENCES pool_contacts(id) ON DELETE SET NULL;
 ALTER TABLE campaign_recipients ADD COLUMN IF NOT EXISTS source_pool_id INTEGER REFERENCES customer_lists(id) ON DELETE SET NULL;
-ALTER TABLE campaign_recipients ADD COLUMN IF NOT EXISTS source_segment_id BIGINT REFERENCES pool_segments(id) ON DELETE SET NULL;
+ALTER TABLE campaign_recipients ADD COLUMN IF NOT EXISTS source_allocation_id BIGINT REFERENCES org_pool_allocations(id) ON DELETE SET NULL;
 ALTER TABLE campaign_recipients ADD COLUMN IF NOT EXISTS source_organization_id BIGINT REFERENCES organizations(id) ON DELETE SET NULL;
 ALTER TABLE campaign_recipients ADD COLUMN IF NOT EXISTS reply_mailbox_id INTEGER REFERENCES reply_mailboxes(id) ON DELETE SET NULL;
 CREATE TABLE campaign_pool_recipients (
     campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
     pool_contact_id BIGINT NOT NULL REFERENCES pool_contacts(id) ON DELETE CASCADE,
     pool_id INTEGER NOT NULL REFERENCES customer_lists(id) ON DELETE CASCADE,
-    segment_id BIGINT REFERENCES pool_segments(id) ON DELETE SET NULL,
+    allocation_id BIGINT REFERENCES org_pool_allocations(id) ON DELETE SET NULL,
     organization_id BIGINT REFERENCES organizations(id) ON DELETE SET NULL,
     reply_mailbox_id INTEGER REFERENCES reply_mailboxes(id) ON DELETE SET NULL,
     status campaign_recipient_status NOT NULL DEFAULT 'pending',
@@ -1048,7 +1048,7 @@ CREATE TABLE campaign_pool_recipients (
 
 ALTER TABLE bounces ADD COLUMN IF NOT EXISTS pool_contact_id BIGINT;
 ALTER TABLE bounces ADD COLUMN IF NOT EXISTS source_pool_id INTEGER;
-ALTER TABLE bounces ADD COLUMN IF NOT EXISTS source_segment_id BIGINT;
+ALTER TABLE bounces ADD COLUMN IF NOT EXISTS source_allocation_id BIGINT;
 ALTER TABLE bounces ADD COLUMN IF NOT EXISTS source_organization_id BIGINT;
 CREATE INDEX IF NOT EXISTS idx_bounces_pool_contact ON bounces(pool_contact_id);
 

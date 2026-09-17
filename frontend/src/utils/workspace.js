@@ -1,4 +1,4 @@
-const poolListTypes = ['pool', 'pool_segment'];
+const poolListTypes = ['pool', 'org_pool_allocation'];
 
 export function isPoolCustomerList(customerList) {
   return !!customerList && poolListTypes.indexOf(customerList.type) > -1;

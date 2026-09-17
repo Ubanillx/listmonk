@@ -30,7 +30,7 @@ GET    | [/api/public/captcha/altcha](#get-apipubliccaptchaaltcha) | Get an Altc
 GET    | [/api/public/archive](#get-apipublicarchive) | List campaigns published to the public archive
 GET    | [/api/media/file/{media_id}/{filename}](#get-apimediafilemedia_idfilename) | Serve a media file by ID (canonical URL)
 GET    | [/api/media/file/{filename}](#get-apimediafilefilename) | Serve a media file by stored filename (legacy URL)
-POST, PUT, DELETE | [/api/pool-segments/*](#apipool-segments) | Alias family for `/api/pools/segments/*`
+POST, PUT, DELETE | [/api/org-pool-allocations/*](#apiorg-pool-allocations) | Alias family for `/api/pools/allocations/*`
 
 ______________________________________________________________________
 
@@ -220,28 +220,28 @@ header policy (`cmd/init.go`).
 
 ______________________________________________________________________
 
-#### /api/pool-segments/*
+#### /api/org-pool-allocations/*
 
-`/api/pool-segments/*` is a second, fully equivalent spelling of
-`/api/pools/segments/*`. Every pair below is registered on the same handler
+`/api/org-pool-allocations/*` is a second, fully equivalent spelling of
+`/api/pools/allocations/*`. Every pair below is registered on the same handler
 function with the same API-key scope (`customer_lists:read` /
 `customer_lists:write`), so requests and responses are identical — this is one
 resource with two route spellings, not two APIs:
 
-| `/api/pool-segments/*`                        | `/api/pools/segments/*`                        |
+| `/api/org-pool-allocations/*`                        | `/api/pools/allocations/*`                        |
 |:----------------------------------------------|:-----------------------------------------------|
-| `POST /api/pool-segments`                     | `POST /api/pools/segments`                     |
-| `PUT /api/pool-segments/:id/reply-mailbox`    | `PUT /api/pools/segments/:id/reply-mailbox`    |
-| `POST /api/pool-segments/members`             | `POST /api/pools/segments/members`             |
-| `PUT /api/pool-segments/members`              | `PUT /api/pools/segments/members`              |
-| `DELETE /api/pool-segments/members`           | `DELETE /api/pools/segments/members`           |
-| `POST /api/pool-segments/:id/import-members`  | `POST /api/pools/segments/:id/import-members`  |
+| `POST /api/org-pool-allocations`                     | `POST /api/pools/allocations`                     |
+| `PUT /api/org-pool-allocations/:id/reply-mailbox`    | `PUT /api/pools/allocations/:id/reply-mailbox`    |
+| `POST /api/org-pool-allocations/members`             | `POST /api/pools/allocations/members`             |
+| `PUT /api/org-pool-allocations/members`              | `PUT /api/pools/allocations/members`              |
+| `DELETE /api/org-pool-allocations/members`           | `DELETE /api/pools/allocations/members`           |
+| `POST /api/org-pool-allocations/:id/import-members`  | `POST /api/pools/allocations/:id/import-members`  |
 
-Unlike the write routes, the read routes are not symmetrical: segments are
-listed by `GET /api/pools/:id/segments`, which is the same handler as
-`GET /api/customer-lists/:id/pool-segments`. There is no
-`GET /api/pool-segments/...` listing route. Both prefixes allow a 32 MB request
-body for segment member imports (`cmd/body_limit.go`).
+Unlike the write routes, the read routes are not symmetrical: allocations are
+listed by `GET /api/pools/:id/allocations`, which is the same handler as
+`GET /api/customer-lists/:id/org-pool-allocations`. There is no
+`GET /api/org-pool-allocations/...` listing route. Both prefixes allow a 32 MB request
+body for allocation member imports (`cmd/body_limit.go`).
 
 Payloads and pool semantics, including the highest-administrator and
 organization boundaries, are documented once in [Public pools](pools.md); this

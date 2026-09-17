@@ -53,8 +53,8 @@ func (c *Core) GetCampaignCustomerListIDsInWorkspace(access models.WorkspaceAcce
 	idArg := len(args) + 1
 	stmt := fmt.Sprintf(`
 		SELECT COALESCE(cl.customer_list_id,
-			CASE WHEN cl.pool_segment_id IS NOT NULL THEN (
-				SELECT ps.list_id FROM pool_segments ps WHERE ps.id = cl.pool_segment_id
+			CASE WHEN cl.org_pool_allocation_id IS NOT NULL THEN (
+				SELECT ps.list_id FROM org_pool_allocations ps WHERE ps.id = cl.org_pool_allocation_id
 			) ELSE cl.pool_id END,
 			0) AS id
 		FROM campaign_customer_lists cl

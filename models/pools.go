@@ -10,8 +10,8 @@ import (
 // PoolContact is a contact imported into a first-class public customer pool.
 // CustomerCode is intentionally not unique; the contact ID is the stable key.
 // AllocationDepartment stores the validated active organization name supplied
-// by the source template. When a matching secondary list exists, the import
-// path also creates the corresponding pool-segment membership.
+// by the source template. When a matching pool allocation exists, the import
+// path also creates the corresponding org-pool-allocation membership.
 type PoolContact struct {
 	ID                   int64                  `db:"id" json:"id"`
 	UUID                 string                 `db:"uuid" json:"uuid"`
@@ -49,7 +49,7 @@ type SafePoolContact struct {
 	ExclusionReason      string `json:"exclusion_reason,omitempty"`
 }
 
-type PoolSegment struct {
+type OrgPoolAllocation struct {
 	ID                int64    `db:"id" json:"id"`
 	ListID            int      `db:"list_id" json:"list_id"`
 	ListName          string   `db:"list_name" json:"list_name,omitempty"`
@@ -60,7 +60,7 @@ type PoolSegment struct {
 	ReplyMailboxEmail string   `db:"reply_mailbox_email" json:"reply_mailbox_email,omitempty"`
 }
 
-// PoolImportRow is one customer_code/email pair from a secondary-list
+// PoolImportRow is one customer_code/email pair from a pool-allocation
 // allocation file. Row is the 1-based source row (including the header) so
 // callers can fix rejected records in the original file.
 type PoolImportRow struct {
@@ -129,20 +129,20 @@ type PoolImportResult struct {
 
 // PoolManagementTarget is the independent target-organization context used by
 // highest administrators when allocating a first-level public pool. It only
-// identifies the target and its bound secondary list; the target organization
+// identifies the target and its bound pool allocation; the target organization
 // owns its reply-mailbox configuration. Selecting it does not create an
 // organization membership or change the active workspace.
 type PoolManagementTarget struct {
-	OrganizationID   int          `json:"organization_id"`
-	OrganizationName string       `json:"organization_name"`
-	Segment          *PoolSegment `json:"segment,omitempty"`
+	OrganizationID   int                `json:"organization_id"`
+	OrganizationName string             `json:"organization_name"`
+	Allocation       *OrgPoolAllocation `json:"allocation,omitempty"`
 }
 
 type PoolExclusion struct {
 	PoolID         int    `db:"pool_id" json:"pool_id"`
 	OrganizationID int64  `db:"organization_id" json:"organization_id"`
 	ContactID      int64  `db:"contact_id" json:"contact_id"`
-	SegmentID      *int64 `db:"segment_id" json:"segment_id,omitempty"`
+	AllocationID   *int64 `db:"allocation_id" json:"allocation_id,omitempty"`
 	Reason         string `db:"reason" json:"reason"`
 	Source         string `db:"source" json:"source"`
 }

@@ -17,7 +17,7 @@ import (
 )
 
 // Pool allocation file limits. The upload is a CSV or XLSX holding
-// customer_code/email pairs for one segment; the archive limits bound what an
+// customer_code/email pairs for one allocation; the archive limits bound what an
 // XLSX may expand to, since a spreadsheet is a ZIP archive.
 const (
 	maxPoolAllocationUploadSize = 25 << 20
@@ -214,7 +214,7 @@ func (a *App) GetPoolContacts(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{rows})
 }
 
-func (a *App) GetPoolSegments(c echo.Context) error {
+func (a *App) GetOrgPoolAllocations(c echo.Context) error {
 	access, err := a.workspaceAccess(c)
 	if err != nil {
 		return err
@@ -223,7 +223,7 @@ func (a *App) GetPoolSegments(c echo.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid pool id")
 	}
-	rows, err := a.core.QueryPoolSegments(id, int64(access.OrganizationID), auth.GetUser(c).IsPlatformAdmin())
+	rows, err := a.core.QueryOrgPoolAllocations(id, int64(access.OrganizationID), auth.GetUser(c).IsPlatformAdmin())
 	if err != nil {
 		return err
 	}
@@ -369,15 +369,15 @@ func (a *App) ClearPoolContactEmail(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{true})
 }
 
-type poolSegmentRequest struct {
+type orgPoolAllocationRequest struct {
 	PoolID         int    `json:"pool_id"`
 	OrganizationID int64  `json:"organization_id"`
 	Name           string `json:"name"`
 	ReplyMailboxID *int   `json:"reply_mailbox_id"`
 }
 
-// CreatePoolSegment splits a first-level public pool into a new organization
-// secondary list and binds both in a single transaction. Authorization is
+// CreateOrgPoolAllocation splits a first-level public pool into a new organization
+// pool allocation and binds both in a single transaction. Authorization is
 // two-tiered: a platform administrator may split a pool for any active
 // organization without being a member of it and without switching the current
 // workspace, while an organization manager may only split a pool for the
@@ -385,8 +385,8 @@ type poolSegmentRequest struct {
 // non-members are rejected. The core layer re-verifies, while holding the
 // organization row lock, that the target organization is active and that a
 // non-platform-admin caller is an active member of it.
-func (a *App) CreatePoolSegment(c echo.Context) error {
-	var req poolSegmentRequest
+func (a *App) CreateOrgPoolAllocation(c echo.Context) error {
+	var req orgPoolAllocationRequest
 	if err := c.Bind(&req); err != nil {
 		return err
 	}
@@ -411,7 +411,7 @@ func (a *App) CreatePoolSegment(c echo.Context) error {
 		}
 	}
 	setAuditOrganizationID(c, int(req.OrganizationID))
-	out, err := a.core.CreatePoolSegment(req.PoolID, req.OrganizationID, req.Name, nil, u.ID, platformAdmin)
+	out, err := a.core.CreateOrgPoolAllocation(req.PoolID, req.OrganizationID, req.Name, nil, u.ID, platformAdmin)
 	if err != nil {
 		return err
 	}
@@ -419,11 +419,11 @@ func (a *App) CreatePoolSegment(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{out})
 }
 
-type poolSegmentMailboxRequest struct {
+type orgPoolAllocationMailboxRequest struct {
 	ReplyMailboxID *int `json:"reply_mailbox_id"`
 }
 
-func (a *App) UpdatePoolSegmentReplyMailbox(c echo.Context) error {
+func (a *App) UpdateOrgPoolAllocationReplyMailbox(c echo.Context) error {
 	access, err := a.workspaceAccess(c)
 	if err != nil {
 		return err
@@ -434,43 +434,43 @@ func (a *App) UpdatePoolSegmentReplyMailbox(c echo.Context) error {
 	if auth.GetUser(c).IsPlatformAdmin() {
 		return echo.NewHTTPError(http.StatusForbidden, "reply mailbox must be configured in the organization workspace")
 	}
-	segmentID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	allocationID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid segment id")
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid allocation id")
 	}
-	var req poolSegmentMailboxRequest
+	var req orgPoolAllocationMailboxRequest
 	if err := c.Bind(&req); err != nil {
 		return err
 	}
 	if !auth.GetUser(c).IsPlatformAdmin() {
 		var orgID int64
-		if err := a.db.Get(&orgID, `SELECT organization_id FROM pool_segments WHERE id=$1`, segmentID); err != nil {
+		if err := a.db.Get(&orgID, `SELECT organization_id FROM org_pool_allocations WHERE id=$1`, allocationID); err != nil {
 			return err
 		}
 		if orgID != int64(access.OrganizationID) {
 			return echo.NewHTTPError(http.StatusForbidden, "organization scope mismatch")
 		}
 	}
-	if err := a.core.UpdatePoolSegmentReplyMailbox(segmentID, req.ReplyMailboxID); err != nil {
+	if err := a.core.UpdateOrgPoolAllocationReplyMailbox(allocationID, req.ReplyMailboxID); err != nil {
 		return err
 	}
 	return c.JSON(http.StatusOK, okResp{true})
 }
 
 type poolMembershipRequest struct {
-	SegmentID int64  `json:"segment_id"`
-	ContactID int64  `json:"contact_id"`
-	Reason    string `json:"reason"`
+	AllocationID int64  `json:"allocation_id"`
+	ContactID    int64  `json:"contact_id"`
+	Reason       string `json:"reason"`
 }
 
 type campaignPoolRequest struct {
-	PoolID         int    `json:"pool_id"`
-	PoolSegmentID  *int64 `json:"pool_segment_id"`
-	OrganizationID int64  `json:"organization_id"`
+	PoolID              int    `json:"pool_id"`
+	OrgPoolAllocationID *int64 `json:"org_pool_allocation_id"`
+	OrganizationID      int64  `json:"organization_id"`
 }
 
 // ImportListIntoPool remains a separate, explicit maintenance operation for
-// ordinary lists. It does not create or bind secondary pool lists.
+// ordinary lists. It does not create or bind pool allocation lists.
 type poolImportRequest struct {
 	ListID int `json:"list_id"`
 	PoolID int `json:"pool_id"`
@@ -518,7 +518,7 @@ func (a *App) AttachCampaignPool(c echo.Context) error {
 	if auth.GetUser(c).IsPlatformAdmin() && req.OrganizationID > 0 {
 		orgID = req.OrganizationID
 	}
-	if err := a.core.AttachPoolToCampaign(campaignID, req.PoolID, req.PoolSegmentID, orgID); err != nil {
+	if err := a.core.AttachPoolToCampaign(campaignID, req.PoolID, req.OrgPoolAllocationID, orgID); err != nil {
 		return err
 	}
 	return c.JSON(http.StatusOK, okResp{true})
@@ -533,23 +533,23 @@ func (a *App) AssignPoolContact(c echo.Context) error {
 		return err
 	}
 	setAuditObjectID(c, strconv.FormatInt(req.ContactID, 10))
-	setAuditMetadata(c, map[string]any{"segment_id": req.SegmentID})
-	if err := a.core.AssignPoolContact(req.SegmentID, req.ContactID); err != nil {
+	setAuditMetadata(c, map[string]any{"allocation_id": req.AllocationID})
+	if err := a.core.AssignPoolContact(req.AllocationID, req.ContactID); err != nil {
 		return err
 	}
 	return c.JSON(http.StatusOK, okResp{true})
 }
 
-// ImportPoolSegmentMembers accepts a CSV or XLSX file with customer_code and
+// ImportOrgPoolAllocationMembers accepts a CSV or XLSX file with customer_code and
 // email columns. The server performs the match against the selected pool so
 // clients never need to send thousands of contact IDs over individual calls.
-func (a *App) ImportPoolSegmentMembers(c echo.Context) error {
+func (a *App) ImportOrgPoolAllocationMembers(c echo.Context) error {
 	if err := requirePoolAdministrator(c); err != nil {
 		return err
 	}
-	segmentID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil || segmentID <= 0 {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid pool segment id")
+	allocationID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || allocationID <= 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid pool allocation id")
 	}
 	file, err := c.FormFile("file")
 	if err != nil {
@@ -573,11 +573,11 @@ func (a *App) ImportPoolSegmentMembers(c echo.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
-	result, err := a.core.ImportPoolSegmentMembers(segmentID, rows)
+	result, err := a.core.ImportOrgPoolAllocationMembers(allocationID, rows)
 	if err != nil {
 		return err
 	}
-	setAuditObjectID(c, strconv.FormatInt(segmentID, 10))
+	setAuditObjectID(c, strconv.FormatInt(allocationID, 10))
 	setAuditMetadata(c, map[string]any{
 		"total":       result.Total,
 		"valid":       result.Valid,
@@ -695,9 +695,9 @@ func (a *App) RemovePoolContact(c echo.Context) error {
 		return err
 	}
 	setAuditObjectID(c, strconv.FormatInt(req.ContactID, 10))
-	setAuditMetadata(c, map[string]any{"segment_id": req.SegmentID})
+	setAuditMetadata(c, map[string]any{"allocation_id": req.AllocationID})
 	u := auth.GetUser(c)
-	if err := a.core.RemovePoolContact(req.SegmentID, req.ContactID, u.ID, req.Reason); err != nil {
+	if err := a.core.RemovePoolContact(req.AllocationID, req.ContactID, u.ID, req.Reason); err != nil {
 		return err
 	}
 	return c.JSON(http.StatusOK, okResp{true})
@@ -712,8 +712,8 @@ func (a *App) RestorePoolContact(c echo.Context) error {
 		return err
 	}
 	setAuditObjectID(c, strconv.FormatInt(req.ContactID, 10))
-	setAuditMetadata(c, map[string]any{"segment_id": req.SegmentID})
-	if err := a.core.RestorePoolContact(req.SegmentID, req.ContactID); err != nil {
+	setAuditMetadata(c, map[string]any{"allocation_id": req.AllocationID})
+	if err := a.core.RestorePoolContact(req.AllocationID, req.ContactID); err != nil {
 		return err
 	}
 	return c.JSON(http.StatusOK, okResp{true})

@@ -214,33 +214,33 @@ export const deleteLists = (params) => http.delete(
   { params, loading: models.customer_lists },
 );
 
-// Public pool contacts and organization segments. The server always applies
+// Public pool contacts and organization allocations. The server always applies
 // masking for non-highest administrators; reply mailbox fields are internal
 // addresses and are intentionally not transformed here.
 export const getPoolContacts = (id, params) => http.get(`/api/customer-lists/${id}/pool-contacts`, { params });
-export const getPoolSegments = (id) => http.get(`/api/customer-lists/${id}/pool-segments`);
+export const getOrgPoolAllocations = (id) => http.get(`/api/customer-lists/${id}/org-pool-allocations`);
 export const getPoolManagementTarget = (id, organizationID) => http.get(`/api/pools/${id}/management-target`, {
   params: { organization_id: organizationID },
 });
 export const getPoolImportConflicts = (id) => http.get(`/api/pools/${id}/import-conflicts`);
 export const createPoolContact = (id, data) => http.post(`/api/customer-lists/${id}/pool-contacts`, data);
-export const createPoolSegment = (data) => http.post('/api/pool-segments', data);
-export const updatePoolSegmentReplyMailbox = (id, replyMailboxID) => http.put(
-  `/api/pool-segments/${id}/reply-mailbox`,
+export const createOrgPoolAllocation = (data) => http.post('/api/org-pool-allocations', data);
+export const updateOrgPoolAllocationReplyMailbox = (id, replyMailboxID) => http.put(
+  `/api/org-pool-allocations/${id}/reply-mailbox`,
   { reply_mailbox_id: replyMailboxID || null },
 );
-export const assignPoolContact = (data) => http.post('/api/pool-segments/members', data);
-export const importPoolSegmentMembers = (segmentID, file) => {
+export const assignPoolContact = (data) => http.post('/api/org-pool-allocations/members', data);
+export const importOrgPoolAllocationMembers = (allocationID, file) => {
   const form = new FormData();
   form.append('file', file);
   // Let the browser/axios set the multipart boundary automatically.
-  return http.post(`/api/pool-segments/${segmentID}/import-members`, form);
+  return http.post(`/api/org-pool-allocations/${allocationID}/import-members`, form);
 };
-export const removePoolContact = (data) => http.delete('/api/pool-segments/members', { data });
+export const removePoolContact = (data) => http.delete('/api/org-pool-allocations/members', { data });
 export const attachCampaignPool = (id, data) => http.post(`/api/campaigns/${id}/pools`, data);
 export const grantPoolOrganization = (data) => http.post('/api/pools/permissions', data);
 export const revokePoolOrganization = (data) => http.delete('/api/pools/permissions', { data });
-export const restorePoolContact = (data) => http.put('/api/pools/segments/members', data);
+export const restorePoolContact = (data) => http.put('/api/pools/allocations/members', data);
 export const importPoolList = (data) => http.post('/api/pools/import', data);
 export const clearPoolContactEmail = (poolID, contactID) => http.delete(`/api/pools/${poolID}/contacts/${contactID}/email`);
 

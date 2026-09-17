@@ -13,8 +13,8 @@ import (
 
 // The "active and not excluded pool member" rule is defined once in pools.go,
 // but three code paths expand a pool audience: the first-level resolve
-// (ResolvePoolRecipients), the secondary-list resolve
-// (resolvePoolRecipientsForSegment) and the campaign snapshot writer shared by
+// (ResolvePoolRecipients), the pool-allocation resolve
+// (resolvePoolRecipientsForAllocation) and the campaign snapshot writer shared by
 // AttachPoolToCampaign and EnsurePoolCampaignRecipients. These tests need a real
 // PostgreSQL server because the rule is a SQL fragment embedded in both a SELECT
 // and an INSERT ... SELECT, and because the refresh semantics depend on
@@ -78,7 +78,7 @@ CREATE TABLE pool_members (
     PRIMARY KEY (pool_id, contact_id)
 );
 
-CREATE TABLE pool_segments (
+CREATE TABLE org_pool_allocations (
     id                 BIGSERIAL PRIMARY KEY,
     list_id            INTEGER,
     pool_id            INTEGER REFERENCES customer_lists(id) ON DELETE CASCADE,
@@ -87,10 +87,10 @@ CREATE TABLE pool_segments (
     created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE UNIQUE INDEX idx_pool_segments_pool_org ON pool_segments(pool_id, organization_id);
+CREATE UNIQUE INDEX idx_org_pool_allocations_pool_org ON org_pool_allocations(pool_id, organization_id);
 
-CREATE TABLE pool_segment_members (
-    segment_id         BIGINT NOT NULL REFERENCES pool_segments(id) ON DELETE CASCADE,
+CREATE TABLE org_pool_allocation_members (
+    allocation_id         BIGINT NOT NULL REFERENCES org_pool_allocations(id) ON DELETE CASCADE,
     contact_id         BIGINT NOT NULL REFERENCES pool_contacts(id) ON DELETE CASCADE,
     status             TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','removed')),
     removed_reason     TEXT NOT NULL DEFAULT '',
@@ -98,16 +98,16 @@ CREATE TABLE pool_segment_members (
     removed_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (segment_id, contact_id)
+    PRIMARY KEY (allocation_id, contact_id)
 );
 
-CREATE TABLE pool_segment_exclusions (
+CREATE TABLE org_pool_allocation_exclusions (
     pool_id            INTEGER NOT NULL REFERENCES customer_lists(id) ON DELETE CASCADE,
     organization_id    BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     contact_id         BIGINT NOT NULL REFERENCES pool_contacts(id) ON DELETE CASCADE,
-    segment_id         BIGINT REFERENCES pool_segments(id) ON DELETE SET NULL,
+    allocation_id         BIGINT REFERENCES org_pool_allocations(id) ON DELETE SET NULL,
     reason             TEXT NOT NULL DEFAULT 'manual',
-    source             TEXT NOT NULL DEFAULT 'segment',
+    source             TEXT NOT NULL DEFAULT 'allocation',
     removed_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     removed_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     restored_at        TIMESTAMPTZ,
@@ -132,17 +132,17 @@ CREATE TABLE campaign_customer_lists (
     customer_list_id          INTEGER,
     customer_list_name        TEXT NOT NULL DEFAULT '',
     pool_id                   INTEGER REFERENCES customer_lists(id) ON DELETE SET NULL,
-    pool_segment_id           BIGINT REFERENCES pool_segments(id) ON DELETE SET NULL,
+    org_pool_allocation_id           BIGINT REFERENCES org_pool_allocations(id) ON DELETE SET NULL,
     source_organization_id    BIGINT REFERENCES organizations(id) ON DELETE SET NULL,
     resolved_reply_mailbox_id INTEGER REFERENCES reply_mailboxes(id) ON DELETE SET NULL
 );
-CREATE UNIQUE INDEX idx_campaign_customer_lists_pool_unique ON campaign_customer_lists(campaign_id, pool_id, COALESCE(pool_segment_id, 0)) WHERE pool_id IS NOT NULL;
+CREATE UNIQUE INDEX idx_campaign_customer_lists_pool_unique ON campaign_customer_lists(campaign_id, pool_id, COALESCE(org_pool_allocation_id, 0)) WHERE pool_id IS NOT NULL;
 
 CREATE TABLE campaign_pool_recipients (
     campaign_id      INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
     pool_contact_id  BIGINT NOT NULL REFERENCES pool_contacts(id) ON DELETE CASCADE,
     pool_id          INTEGER NOT NULL REFERENCES customer_lists(id) ON DELETE CASCADE,
-    segment_id       BIGINT REFERENCES pool_segments(id) ON DELETE SET NULL,
+    allocation_id       BIGINT REFERENCES org_pool_allocations(id) ON DELETE SET NULL,
     organization_id  BIGINT REFERENCES organizations(id) ON DELETE SET NULL,
     reply_mailbox_id INTEGER REFERENCES reply_mailboxes(id) ON DELETE SET NULL,
     status           campaign_recipient_status NOT NULL DEFAULT 'pending',
@@ -233,9 +233,9 @@ func (env *poolRecipientsTestEnv) seedMailbox(organizationID int64, email string
 	return env.id(`INSERT INTO reply_mailboxes(organization_id,email,status,verified_at) VALUES($1,$2,'active',NOW()) RETURNING id`, organizationID, email)
 }
 
-func (env *poolRecipientsTestEnv) seedSegment(poolID int, organizationID int64, mailboxID *int64) int64 {
+func (env *poolRecipientsTestEnv) seedAllocation(poolID int, organizationID int64, mailboxID *int64) int64 {
 	env.t.Helper()
-	return env.id(`INSERT INTO pool_segments(pool_id,organization_id,reply_mailbox_id,created_by_user_id) VALUES($1,$2,$3,1) RETURNING id`, poolID, organizationID, mailboxID)
+	return env.id(`INSERT INTO org_pool_allocations(pool_id,organization_id,reply_mailbox_id,created_by_user_id) VALUES($1,$2,$3,1) RETURNING id`, poolID, organizationID, mailboxID)
 }
 
 func (env *poolRecipientsTestEnv) seedContact(code, name, email, status string) int64 {
@@ -249,15 +249,15 @@ func (env *poolRecipientsTestEnv) joinPool(poolID int, contactID int64) {
 	env.exec(`INSERT INTO pool_members(pool_id,contact_id) VALUES($1,$2)`, poolID, contactID)
 }
 
-func (env *poolRecipientsTestEnv) allocate(segmentID, contactID int64, status string) {
+func (env *poolRecipientsTestEnv) allocate(allocationID, contactID int64, status string) {
 	env.t.Helper()
-	env.exec(`INSERT INTO pool_segment_members(segment_id,contact_id,status) VALUES($1,$2,$3)`, segmentID, contactID, status)
+	env.exec(`INSERT INTO org_pool_allocation_members(allocation_id,contact_id,status) VALUES($1,$2,$3)`, allocationID, contactID, status)
 }
 
-func (env *poolRecipientsTestEnv) exclude(poolID int, organizationID int64, segmentID, contactID int64, restored bool) {
+func (env *poolRecipientsTestEnv) exclude(poolID int, organizationID int64, allocationID, contactID int64, restored bool) {
 	env.t.Helper()
-	env.exec(`INSERT INTO pool_segment_exclusions(pool_id,organization_id,contact_id,segment_id,reason,restored_at)
-		VALUES($1,$2,$3,$4,'manual',CASE WHEN $5 THEN NOW() ELSE NULL END)`, poolID, organizationID, contactID, segmentID, restored)
+	env.exec(`INSERT INTO org_pool_allocation_exclusions(pool_id,organization_id,contact_id,allocation_id,reason,restored_at)
+		VALUES($1,$2,$3,$4,'manual',CASE WHEN $5 THEN NOW() ELSE NULL END)`, poolID, organizationID, contactID, allocationID, restored)
 }
 
 func (env *poolRecipientsTestEnv) seedCampaign() int {
@@ -266,12 +266,12 @@ func (env *poolRecipientsTestEnv) seedCampaign() int {
 }
 
 // seedAudience writes the campaign relation EnsurePoolCampaignRecipients reads.
-// A nil segmentID is a first-level selection; it resolves to the single
-// secondary list the organization owns.
-func (env *poolRecipientsTestEnv) seedAudience(campaignID, poolID int, organizationID int64, segmentID, mailboxID *int64) {
+// A nil allocationID is a first-level selection; it resolves to the single
+// pool allocation the organization owns.
+func (env *poolRecipientsTestEnv) seedAudience(campaignID, poolID int, organizationID int64, allocationID, mailboxID *int64) {
 	env.t.Helper()
-	env.exec(`INSERT INTO campaign_customer_lists(campaign_id,customer_list_id,customer_list_name,pool_id,pool_segment_id,source_organization_id,resolved_reply_mailbox_id)
-		VALUES($1,NULL,'pool audience',$2,$3,$4,$5)`, campaignID, poolID, segmentID, organizationID, mailboxID)
+	env.exec(`INSERT INTO campaign_customer_lists(campaign_id,customer_list_id,customer_list_name,pool_id,org_pool_allocation_id,source_organization_id,resolved_reply_mailbox_id)
+		VALUES($1,NULL,'pool audience',$2,$3,$4,$5)`, campaignID, poolID, allocationID, organizationID, mailboxID)
 }
 
 // recipientIDs returns the resolved pool contact IDs in the order the shared
@@ -347,7 +347,7 @@ func (env *poolRecipientsTestEnv) querySnapshotIDs(campaignID int, filter string
 type poolSnapshotRow struct {
 	PoolContactID   int64  `db:"pool_contact_id"`
 	PoolID          int    `db:"pool_id"`
-	SegmentID       *int64 `db:"segment_id"`
+	AllocationID    *int64 `db:"allocation_id"`
 	OrganizationID  *int64 `db:"organization_id"`
 	ReplyMailboxID  *int64 `db:"reply_mailbox_id"`
 	Status          string `db:"status"`
@@ -359,7 +359,7 @@ type poolSnapshotRow struct {
 func (env *poolRecipientsTestEnv) snapshotRows(campaignID int) map[int64]poolSnapshotRow {
 	env.t.Helper()
 	var rows []poolSnapshotRow
-	if err := env.db.Select(&rows, `SELECT cpr.pool_contact_id,cpr.pool_id,cpr.segment_id,cpr.organization_id,cpr.reply_mailbox_id,
+	if err := env.db.Select(&rows, `SELECT cpr.pool_contact_id,cpr.pool_id,cpr.allocation_id,cpr.organization_id,cpr.reply_mailbox_id,
 			cpr.status::TEXT AS status,cpr.email_snapshot,cpr.name_snapshot,pc.email AS pool_contact_email
 		FROM campaign_pool_recipients cpr
 		JOIN pool_contacts pc ON pc.id=cpr.pool_contact_id
@@ -383,8 +383,8 @@ func (env *poolRecipientsTestEnv) countRows(query string, args ...any) int {
 }
 
 // TestValidatePoolCampaignAudienceRefreshesRoutes covers drafts that were
-// created before the organization manager configured the secondary-list
-// mailbox. Preview/send validation must use the current segment setting and
+// created before the organization manager configured the pool-allocation
+// mailbox. Preview/send validation must use the current allocation setting and
 // repair the campaign relation instead of keeping the old NULL forever.
 func TestValidatePoolCampaignAudienceRefreshesRoutes(t *testing.T) {
 	env := newPoolRecipientsTestEnv(t)
@@ -392,17 +392,17 @@ func TestValidatePoolCampaignAudienceRefreshesRoutes(t *testing.T) {
 	org := env.seedOrganization("org-a")
 	poolID := env.seedPool("ws-pool")
 	mailbox := env.seedMailbox(org, "pool-a@example.invalid")
-	segment := env.seedSegment(poolID, org, nil)
+	allocation := env.seedAllocation(poolID, org, nil)
 	campaign := env.seedCampaign()
 	env.seedAudience(campaign, poolID, org, nil, nil)
 
 	if err := env.core.ValidatePoolCampaignAudience(campaign); err == nil {
-		t.Fatal("ValidatePoolCampaignAudience accepted an unconfigured segment mailbox")
-	} else if err.Error() != "code=400, message=public-pool audience requires an organization segment and reply mailbox before previewing or sending" {
+		t.Fatal("ValidatePoolCampaignAudience accepted an unconfigured allocation mailbox")
+	} else if err.Error() != "code=400, message=public-pool audience requires an organization allocation and reply mailbox before previewing or sending" {
 		t.Fatalf("ValidatePoolCampaignAudience error = %v, want the unresolved preview/send message", err)
 	}
 
-	env.exec(`UPDATE pool_segments SET reply_mailbox_id=$2 WHERE id=$1`, segment, mailbox)
+	env.exec(`UPDATE org_pool_allocations SET reply_mailbox_id=$2 WHERE id=$1`, allocation, mailbox)
 	if err := env.core.ValidatePoolCampaignAudience(campaign); err != nil {
 		t.Fatalf("ValidatePoolCampaignAudience after mailbox configuration: %v", err)
 	}
@@ -423,8 +423,8 @@ func TestValidatePoolCampaignAudienceRefreshesRoutes(t *testing.T) {
 
 // TestPoolRecipientPathsAgreeOnDeliverableMembers is the drift test: the same
 // fixture is expanded by both resolve paths, by AttachPoolToCampaign for a
-// secondary-list and for a first-level audience, and by
-// EnsurePoolCampaignRecipients for a segment-scoped and a pool-wide relation.
+// pool-allocation and for a first-level audience, and by
+// EnsurePoolCampaignRecipients for a allocation-scoped and a pool-wide relation.
 // All of them must produce the same recipient set, including the boundary
 // members: an excluded contact, a restored exclusion, a removed allocation, an
 // archived contact, an allocation without pool membership, and a contact that
@@ -437,8 +437,8 @@ func TestPoolRecipientPathsAgreeOnDeliverableMembers(t *testing.T) {
 	poolID := env.seedPool("ws-pool")
 	mailboxA := env.seedMailbox(orgA, "pool-a@example.invalid")
 	mailboxB := env.seedMailbox(orgB, "pool-b@example.invalid")
-	segmentA := env.seedSegment(poolID, orgA, &mailboxA)
-	segmentB := env.seedSegment(poolID, orgB, &mailboxB)
+	allocationA := env.seedAllocation(poolID, orgA, &mailboxA)
+	allocationB := env.seedAllocation(poolID, orgB, &mailboxB)
 
 	deliverable := env.seedContact("C-1", "Deliverable", "keep@example.invalid", "active")
 	excluded := env.seedContact("C-2", "Excluded", "excluded@example.invalid", "active")
@@ -452,17 +452,17 @@ func TestPoolRecipientPathsAgreeOnDeliverableMembers(t *testing.T) {
 	for _, id := range []int64{deliverable, excluded, removedAllocation, archivedContact, restored, orgBOnly, shared} {
 		env.joinPool(poolID, id)
 	}
-	env.allocate(segmentA, deliverable, "active")
-	env.allocate(segmentA, excluded, "active")
-	env.allocate(segmentA, removedAllocation, "removed")
-	env.allocate(segmentA, archivedContact, "active")
-	env.allocate(segmentA, restored, "active")
-	env.allocate(segmentA, unallocated, "active")
-	env.allocate(segmentB, orgBOnly, "active")
-	env.allocate(segmentA, shared, "active")
-	env.allocate(segmentB, shared, "active")
-	env.exclude(poolID, orgA, segmentA, excluded, false)
-	env.exclude(poolID, orgA, segmentA, restored, true)
+	env.allocate(allocationA, deliverable, "active")
+	env.allocate(allocationA, excluded, "active")
+	env.allocate(allocationA, removedAllocation, "removed")
+	env.allocate(allocationA, archivedContact, "active")
+	env.allocate(allocationA, restored, "active")
+	env.allocate(allocationA, unallocated, "active")
+	env.allocate(allocationB, orgBOnly, "active")
+	env.allocate(allocationA, shared, "active")
+	env.allocate(allocationB, shared, "active")
+	env.exclude(poolID, orgA, allocationA, excluded, false)
+	env.exclude(poolID, orgA, allocationA, restored, true)
 
 	wantA := []int64{deliverable, restored, shared}
 	wantB := []int64{orgBOnly, shared}
@@ -473,39 +473,39 @@ func TestPoolRecipientPathsAgreeOnDeliverableMembers(t *testing.T) {
 	})
 	assertSameIDs(t, "ResolvePoolRecipients", firstLevel, wantA)
 
-	// Path 2: secondary-list resolve. It must not merely contain the same
+	// Path 2: pool-allocation resolve. It must not merely contain the same
 	// contacts but return them in the same order for the same audience.
-	segmentResolve := mustResolve(t, "resolvePoolRecipientsForSegment", func() ([]PoolRecipient, error) {
-		return env.core.resolvePoolRecipientsForSegment(poolID, orgA, segmentA)
+	allocationResolve := mustResolve(t, "resolvePoolRecipientsForAllocation", func() ([]PoolRecipient, error) {
+		return env.core.resolvePoolRecipientsForAllocation(poolID, orgA, allocationA)
 	})
-	assertSameIDs(t, "resolvePoolRecipientsForSegment", segmentResolve, wantA)
-	if !slices.Equal(firstLevel, segmentResolve) {
-		t.Errorf("resolve paths disagree on row order/content: first-level=%v segment=%v", firstLevel, segmentResolve)
+	assertSameIDs(t, "resolvePoolRecipientsForAllocation", allocationResolve, wantA)
+	if !slices.Equal(firstLevel, allocationResolve) {
+		t.Errorf("resolve paths disagree on row order/content: first-level=%v allocation=%v", firstLevel, allocationResolve)
 	}
 
-	// Path 3: attach an explicitly selected secondary list.
-	segmentCampaign := env.seedCampaign()
-	if err := env.core.AttachPoolToCampaign(segmentCampaign, poolID, &segmentA, orgA); err != nil {
-		t.Fatalf("AttachPoolToCampaign(segment): %v", err)
+	// Path 3: attach an explicitly selected pool allocation.
+	allocationCampaign := env.seedCampaign()
+	if err := env.core.AttachPoolToCampaign(allocationCampaign, poolID, &allocationA, orgA); err != nil {
+		t.Fatalf("AttachPoolToCampaign(allocation): %v", err)
 	}
-	assertSameIDs(t, "AttachPoolToCampaign(segment)", env.snapshotIDs(segmentCampaign), wantA)
-	assertSameIDs(t, "AttachPoolToCampaign(segment) owned rows", env.ownedSnapshotIDs(segmentCampaign), wantA)
+	assertSameIDs(t, "AttachPoolToCampaign(allocation)", env.snapshotIDs(allocationCampaign), wantA)
+	assertSameIDs(t, "AttachPoolToCampaign(allocation) owned rows", env.ownedSnapshotIDs(allocationCampaign), wantA)
 
 	// Path 4: attach the first-level pool, which resolves to the organization's
-	// single secondary list.
+	// single pool allocation.
 	firstLevelCampaign := env.seedCampaign()
 	if err := env.core.AttachPoolToCampaign(firstLevelCampaign, poolID, nil, orgA); err != nil {
 		t.Fatalf("AttachPoolToCampaign(first-level): %v", err)
 	}
 	assertSameIDs(t, "AttachPoolToCampaign(first-level)", env.snapshotIDs(firstLevelCampaign), wantA)
 
-	// Path 5: refresh a segment-scoped campaign_customer_lists relation.
-	ensureSegmentCampaign := env.seedCampaign()
-	env.seedAudience(ensureSegmentCampaign, poolID, orgA, &segmentA, &mailboxA)
-	if err := env.core.EnsurePoolCampaignRecipients(ensureSegmentCampaign); err != nil {
-		t.Fatalf("EnsurePoolCampaignRecipients(segment): %v", err)
+	// Path 5: refresh a allocation-scoped campaign_customer_lists relation.
+	ensureAllocationCampaign := env.seedCampaign()
+	env.seedAudience(ensureAllocationCampaign, poolID, orgA, &allocationA, &mailboxA)
+	if err := env.core.EnsurePoolCampaignRecipients(ensureAllocationCampaign); err != nil {
+		t.Fatalf("EnsurePoolCampaignRecipients(allocation): %v", err)
 	}
-	assertSameIDs(t, "EnsurePoolCampaignRecipients(segment)", env.snapshotIDs(ensureSegmentCampaign), wantA)
+	assertSameIDs(t, "EnsurePoolCampaignRecipients(allocation)", env.snapshotIDs(ensureAllocationCampaign), wantA)
 
 	// Path 6: refresh a pool-wide relation, twice, to prove idempotence.
 	ensurePoolCampaign := env.seedCampaign()
@@ -525,27 +525,27 @@ func TestPoolRecipientPathsAgreeOnDeliverableMembers(t *testing.T) {
 	})
 	assertSameIDs(t, "ResolvePoolRecipients(org B)", otherOrg, wantB)
 	otherOrgCampaign := env.seedCampaign()
-	env.seedAudience(otherOrgCampaign, poolID, orgB, &segmentB, &mailboxB)
+	env.seedAudience(otherOrgCampaign, poolID, orgB, &allocationB, &mailboxB)
 	if err := env.core.EnsurePoolCampaignRecipients(otherOrgCampaign); err != nil {
 		t.Fatalf("EnsurePoolCampaignRecipients(org B): %v", err)
 	}
 	assertSameIDs(t, "EnsurePoolCampaignRecipients(org B)", env.snapshotIDs(otherOrgCampaign), wantB)
 
 	// De-duplication by pool contact id: a campaign that selects both the
-	// first-level pool and its secondary list still holds exactly one row per
+	// first-level pool and its pool allocation still holds exactly one row per
 	// contact.
 	dedupCampaign := env.seedCampaign()
-	env.seedAudience(dedupCampaign, poolID, orgA, &segmentA, &mailboxA)
+	env.seedAudience(dedupCampaign, poolID, orgA, &allocationA, &mailboxA)
 	env.seedAudience(dedupCampaign, poolID, orgA, nil, &mailboxA)
 	if err := env.core.EnsurePoolCampaignRecipients(dedupCampaign); err != nil {
-		t.Fatalf("EnsurePoolCampaignRecipients(segment + first-level): %v", err)
+		t.Fatalf("EnsurePoolCampaignRecipients(allocation + first-level): %v", err)
 	}
-	assertSameIDs(t, "EnsurePoolCampaignRecipients(segment + first-level)", env.snapshotIDs(dedupCampaign), wantA)
+	assertSameIDs(t, "EnsurePoolCampaignRecipients(allocation + first-level)", env.snapshotIDs(dedupCampaign), wantA)
 	if n := env.countRows(`SELECT COUNT(*) FROM campaign_pool_recipients WHERE campaign_id=$1`, dedupCampaign); n != len(wantA) {
 		t.Errorf("snapshot rows for a doubly-selected audience = %d, want %d", n, len(wantA))
 	}
 
-	// Provenance: every snapshot row names the resolved secondary list,
+	// Provenance: every snapshot row names the resolved pool allocation,
 	// organization and per-list reply mailbox.
 	rows := env.snapshotRows(firstLevelCampaign)
 	for _, contactID := range wantA {
@@ -553,8 +553,8 @@ func TestPoolRecipientPathsAgreeOnDeliverableMembers(t *testing.T) {
 		if !ok {
 			t.Fatalf("contact %d is missing from the snapshot", contactID)
 		}
-		if row.SegmentID == nil || *row.SegmentID != segmentA {
-			t.Errorf("contact %d segment_id = %v, want %d", contactID, row.SegmentID, segmentA)
+		if row.AllocationID == nil || *row.AllocationID != allocationA {
+			t.Errorf("contact %d allocation_id = %v, want %d", contactID, row.AllocationID, allocationA)
 		}
 		if row.OrganizationID == nil || *row.OrganizationID != orgA {
 			t.Errorf("contact %d organization_id = %v, want %d", contactID, row.OrganizationID, orgA)
@@ -578,17 +578,17 @@ func TestPoolRecipientSnapshotRefreshAfterExclusion(t *testing.T) {
 	org := env.seedOrganization("org-a")
 	poolID := env.seedPool("ws-pool")
 	mailbox := env.seedMailbox(org, "pool-a@example.invalid")
-	segment := env.seedSegment(poolID, org, &mailbox)
+	allocation := env.seedAllocation(poolID, org, &mailbox)
 
 	keep := env.seedContact("C-1", "Keep", "keep@example.invalid", "active")
 	excludedLater := env.seedContact("C-2", "Excluded later", "later@example.invalid", "active")
 	for _, id := range []int64{keep, excludedLater} {
 		env.joinPool(poolID, id)
-		env.allocate(segment, id, "active")
+		env.allocate(allocation, id, "active")
 	}
 
 	campaign := env.seedCampaign()
-	if err := env.core.AttachPoolToCampaign(campaign, poolID, &segment, org); err != nil {
+	if err := env.core.AttachPoolToCampaign(campaign, poolID, &allocation, org); err != nil {
 		t.Fatalf("AttachPoolToCampaign: %v", err)
 	}
 	assertSameIDs(t, "snapshot after attach", env.snapshotIDs(campaign), []int64{keep, excludedLater})
@@ -596,14 +596,14 @@ func TestPoolRecipientSnapshotRefreshAfterExclusion(t *testing.T) {
 	// The organization removes the contact from its allocation. This is the
 	// shipped removal path: it deactivates the allocation and writes the
 	// organization-scoped exclusion.
-	if err := env.core.RemovePoolContact(segment, excludedLater, 1, "manual"); err != nil {
+	if err := env.core.RemovePoolContact(allocation, excludedLater, 1, "manual"); err != nil {
 		t.Fatalf("RemovePoolContact: %v", err)
 	}
 	assertSameIDs(t, "ResolvePoolRecipients after exclusion", mustResolve(t, "ResolvePoolRecipients", func() ([]PoolRecipient, error) {
 		return env.core.ResolvePoolRecipients(poolID, org)
 	}), []int64{keep})
-	assertSameIDs(t, "resolvePoolRecipientsForSegment after exclusion", mustResolve(t, "resolvePoolRecipientsForSegment", func() ([]PoolRecipient, error) {
-		return env.core.resolvePoolRecipientsForSegment(poolID, org, segment)
+	assertSameIDs(t, "resolvePoolRecipientsForAllocation after exclusion", mustResolve(t, "resolvePoolRecipientsForAllocation", func() ([]PoolRecipient, error) {
+		return env.core.resolvePoolRecipientsForAllocation(poolID, org, allocation)
 	}), []int64{keep})
 	// The snapshot is still stale at this point: nothing has refreshed it yet.
 	assertSameIDs(t, "snapshot before refresh", env.snapshotIDs(campaign), []int64{keep, excludedLater})
@@ -619,7 +619,7 @@ func TestPoolRecipientSnapshotRefreshAfterExclusion(t *testing.T) {
 
 	// Re-attaching the same audience is a refresh too, so it cannot bring the
 	// excluded contact back.
-	if err := env.core.AttachPoolToCampaign(campaign, poolID, &segment, org); err != nil {
+	if err := env.core.AttachPoolToCampaign(campaign, poolID, &allocation, org); err != nil {
 		t.Fatalf("AttachPoolToCampaign after exclusion: %v", err)
 	}
 	assertSameIDs(t, "snapshot after re-attach", env.snapshotIDs(campaign), []int64{keep})
@@ -627,7 +627,7 @@ func TestPoolRecipientSnapshotRefreshAfterExclusion(t *testing.T) {
 
 	// Restoring the allocation must make the contact deliverable again, and the
 	// refresh must re-add the row it pruned.
-	if err := env.core.RestorePoolContact(segment, excludedLater); err != nil {
+	if err := env.core.RestorePoolContact(allocation, excludedLater); err != nil {
 		t.Fatalf("RestorePoolContact: %v", err)
 	}
 	assertSameIDs(t, "ResolvePoolRecipients after restore", mustResolve(t, "ResolvePoolRecipients", func() ([]PoolRecipient, error) {
@@ -649,33 +649,33 @@ func TestPoolRecipientSnapshotRefreshDropsNonExclusionRemovals(t *testing.T) {
 	org := env.seedOrganization("org-a")
 	poolID := env.seedPool("ws-pool")
 	mailbox := env.seedMailbox(org, "pool-a@example.invalid")
-	segment := env.seedSegment(poolID, org, &mailbox)
+	allocation := env.seedAllocation(poolID, org, &mailbox)
 
 	keep := env.seedContact("C-1", "Keep", "keep@example.invalid", "active")
 	removedAllocation := env.seedContact("C-2", "Reallocated", "reallocated@example.invalid", "active")
 	archived := env.seedContact("C-3", "Archived", "archived@example.invalid", "active")
 	for _, id := range []int64{keep, removedAllocation, archived} {
 		env.joinPool(poolID, id)
-		env.allocate(segment, id, "active")
+		env.allocate(allocation, id, "active")
 	}
 
 	campaign := env.seedCampaign()
-	if err := env.core.AttachPoolToCampaign(campaign, poolID, &segment, org); err != nil {
+	if err := env.core.AttachPoolToCampaign(campaign, poolID, &allocation, org); err != nil {
 		t.Fatalf("AttachPoolToCampaign: %v", err)
 	}
 	assertSameIDs(t, "snapshot after attach", env.snapshotIDs(campaign), []int64{keep, removedAllocation, archived})
 
-	env.exec(`UPDATE pool_segment_members SET status='removed',removed_reason='reallocated',removed_at=NOW() WHERE segment_id=$1 AND contact_id=$2`, segment, removedAllocation)
+	env.exec(`UPDATE org_pool_allocation_members SET status='removed',removed_reason='reallocated',removed_at=NOW() WHERE allocation_id=$1 AND contact_id=$2`, allocation, removedAllocation)
 	env.exec(`UPDATE pool_contacts SET status='archived',updated_at=NOW() WHERE id=$1`, archived)
 
-	if n := env.countRows(`SELECT COUNT(*) FROM pool_segment_exclusions`); n != 0 {
+	if n := env.countRows(`SELECT COUNT(*) FROM org_pool_allocation_exclusions`); n != 0 {
 		t.Fatalf("fixture wrote %d exclusion rows; this case must not rely on one", n)
 	}
 	assertSameIDs(t, "ResolvePoolRecipients", mustResolve(t, "ResolvePoolRecipients", func() ([]PoolRecipient, error) {
 		return env.core.ResolvePoolRecipients(poolID, org)
 	}), []int64{keep})
-	assertSameIDs(t, "resolvePoolRecipientsForSegment", mustResolve(t, "resolvePoolRecipientsForSegment", func() ([]PoolRecipient, error) {
-		return env.core.resolvePoolRecipientsForSegment(poolID, org, segment)
+	assertSameIDs(t, "resolvePoolRecipientsForAllocation", mustResolve(t, "resolvePoolRecipientsForAllocation", func() ([]PoolRecipient, error) {
+		return env.core.resolvePoolRecipientsForAllocation(poolID, org, allocation)
 	}), []int64{keep})
 
 	if err := env.core.EnsurePoolCampaignRecipients(campaign); err != nil {
@@ -694,7 +694,7 @@ func TestPoolRecipientSnapshotRefreshRewritesOwnedRowsOnly(t *testing.T) {
 	org := env.seedOrganization("org-a")
 	poolID := env.seedPool("ws-pool")
 	mailbox := env.seedMailbox(org, "pool-a@example.invalid")
-	segment := env.seedSegment(poolID, org, &mailbox)
+	allocation := env.seedAllocation(poolID, org, &mailbox)
 
 	pending := env.seedContact("C-1", "Pending", "pending@example.invalid", "active")
 	sent := env.seedContact("C-2", "Sent", "sent@example.invalid", "active")
@@ -704,11 +704,11 @@ func TestPoolRecipientSnapshotRefreshRewritesOwnedRowsOnly(t *testing.T) {
 	stillDeliverable := env.seedContact("C-6", "Still deliverable", "still@example.invalid", "active")
 	for _, id := range []int64{pending, sent, queued, deferred, cancelled, stillDeliverable} {
 		env.joinPool(poolID, id)
-		env.allocate(segment, id, "active")
+		env.allocate(allocation, id, "active")
 	}
 
 	campaign := env.seedCampaign()
-	if err := env.core.AttachPoolToCampaign(campaign, poolID, &segment, org); err != nil {
+	if err := env.core.AttachPoolToCampaign(campaign, poolID, &allocation, org); err != nil {
 		t.Fatalf("AttachPoolToCampaign: %v", err)
 	}
 	if n := env.countRows(`SELECT COUNT(*) FROM campaign_pool_recipients WHERE campaign_id=$1`, campaign); n != 6 {
@@ -725,7 +725,7 @@ func TestPoolRecipientSnapshotRefreshRewritesOwnedRowsOnly(t *testing.T) {
 
 	// Every contact except the last one is excluded afterwards.
 	for _, id := range []int64{pending, sent, queued, deferred, cancelled} {
-		env.exclude(poolID, org, segment, id, false)
+		env.exclude(poolID, org, allocation, id, false)
 	}
 	// The contact that is still deliverable was edited after the snapshot was
 	// written; the sent row's contact was edited too, but its snapshot must stay
@@ -741,8 +741,8 @@ func TestPoolRecipientSnapshotRefreshRewritesOwnedRowsOnly(t *testing.T) {
 	// The refresh-owned rows equal the resolved audience exactly, which is the
 	// invariant the three paths share.
 	assertSameIDs(t, "owned snapshot rows after refresh", env.ownedSnapshotIDs(campaign), []int64{stillDeliverable})
-	assertSameIDs(t, "resolved audience after exclusion", mustResolve(t, "resolvePoolRecipientsForSegment", func() ([]PoolRecipient, error) {
-		return env.core.resolvePoolRecipientsForSegment(poolID, org, segment)
+	assertSameIDs(t, "resolved audience after exclusion", mustResolve(t, "resolvePoolRecipientsForAllocation", func() ([]PoolRecipient, error) {
+		return env.core.resolvePoolRecipientsForAllocation(poolID, org, allocation)
 	}), []int64{stillDeliverable})
 
 	rows := env.snapshotRows(campaign)

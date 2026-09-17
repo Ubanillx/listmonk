@@ -47,8 +47,8 @@ type campReq struct {
 }
 
 type campaignPoolAudience struct {
-	PoolID    int
-	SegmentID *int64
+	PoolID       int
+	AllocationID *int64
 }
 
 type campaignCloneReq struct {
@@ -159,7 +159,7 @@ func (a *App) redactCampaignSensitiveFields(access models.WorkspaceAccess, campa
 	campaign.Headers = nil
 	// Reply mailboxes are company-internal routing addresses, not customer
 	// contact data. Keep them visible so operators can verify the effective
-	// pool/segment return path; customer addresses remain protected by the pool
+	// pool/allocation return path; customer addresses remain protected by the pool
 	// contact DTO and snapshot boundaries.
 	campaign.CustomerLists = []byte("[]")
 }
@@ -387,7 +387,7 @@ func (a *App) CreateCampaign(c echo.Context) error {
 	}
 	out.ReplyMailboxID = o.ReplyMailboxID
 	for _, audience := range poolAudiences {
-		if err := a.core.AttachPoolToCampaign(out.ID, audience.PoolID, audience.SegmentID, int64(access.OrganizationID)); err != nil {
+		if err := a.core.AttachPoolToCampaign(out.ID, audience.PoolID, audience.AllocationID, int64(access.OrganizationID)); err != nil {
 			return err
 		}
 	}
@@ -550,15 +550,15 @@ func (a *App) UpdateCampaign(c echo.Context) error {
 	}
 	// Pool audience rows are maintained separately from legacy customer-list
 	// rows. Remove pools omitted by the current draft, then attach the selected
-	// first-level/secondary pools. Attach is idempotent and resolves a first-level
-	// pool to the target organization's secondary segment at send time.
+	// first-level/pool-allocation pools. Attach is idempotent and resolves a first-level
+	// pool to the target organization's pool allocation at send time.
 	poolIDs := make([]int, 0, len(poolAudiences))
 	for _, audience := range poolAudiences {
 		poolIDs = append(poolIDs, audience.PoolID)
 	}
 	if !hasRecipients {
 		// A draft has no immutable send snapshot yet. Rebuild all pool
-		// associations so removing a secondary list (or replacing it with a
+		// associations so removing a pool allocation (or replacing it with a
 		// different one under the same first-level pool) cannot leave stale
 		// audience metadata or recipients behind.
 		if _, err := a.db.Exec(`DELETE FROM campaign_pool_recipients WHERE campaign_id=$1`, id); err != nil {
@@ -583,7 +583,7 @@ func (a *App) UpdateCampaign(c echo.Context) error {
 		}
 	}
 	for _, audience := range poolAudiences {
-		if err := a.core.AttachPoolToCampaign(id, audience.PoolID, audience.SegmentID, int64(access.OrganizationID)); err != nil {
+		if err := a.core.AttachPoolToCampaign(id, audience.PoolID, audience.AllocationID, int64(access.OrganizationID)); err != nil {
 			return err
 		}
 	}
@@ -1676,7 +1676,7 @@ func (a *App) requireUsableCampaignResources(c echo.Context, access models.Works
 }
 
 // splitCampaignAudienceIDs separates legacy customer lists from first-class
-// public pools. Pool IDs are authorized through pool delivery grants/segments,
+// public pools. Pool IDs are authorized through pool delivery grants/allocations,
 // not through customer-list read/manage permissions; this is what permits an
 // organization to select a pool while keeping contact details hidden.
 func (a *App) splitCampaignAudienceIDs(access models.WorkspaceAccess, ids []int) ([]int, []campaignPoolAudience, error) {
@@ -1714,7 +1714,7 @@ func (a *App) splitCampaignAudienceIDs(access models.WorkspaceAccess, ids []int)
 					return nil, nil, err
 				}
 				if !ok {
-					if err := a.db.Get(&ok, `SELECT EXISTS(SELECT 1 FROM pool_segments WHERE pool_id=$1 AND organization_id=$2)`, row.ID, access.OrganizationID); err != nil {
+					if err := a.db.Get(&ok, `SELECT EXISTS(SELECT 1 FROM org_pool_allocations WHERE pool_id=$1 AND organization_id=$2)`, row.ID, access.OrganizationID); err != nil {
 						return nil, nil, err
 					}
 				}
@@ -1724,22 +1724,22 @@ func (a *App) splitCampaignAudienceIDs(access models.WorkspaceAccess, ids []int)
 			}
 			p := campaignPoolAudience{PoolID: row.ID}
 			pools = append(pools, p)
-		case models.CustomerListTypePoolSegment:
+		case models.CustomerListTypeOrgPoolAllocation:
 			if !row.PoolID.Valid {
-				return nil, nil, echo.NewHTTPError(http.StatusBadRequest, "public-pool segment is not bound to a first-level pool")
+				return nil, nil, echo.NewHTTPError(http.StatusBadRequest, "public-pool allocation is not bound to a first-level pool")
 			}
 			var orgID int64
-			if err := a.db.Get(&orgID, `SELECT organization_id FROM pool_segments WHERE list_id=$1 AND pool_id=$2`, row.ID, row.PoolID.Int); err != nil {
+			if err := a.db.Get(&orgID, `SELECT organization_id FROM org_pool_allocations WHERE list_id=$1 AND pool_id=$2`, row.ID, row.PoolID.Int); err != nil {
 				return nil, nil, err
 			}
 			if !access.PlatformAdmin && (!access.IsOrganization() || orgID != int64(access.OrganizationID)) {
-				return nil, nil, echo.NewHTTPError(http.StatusForbidden, "pool segment is outside the active organization")
+				return nil, nil, echo.NewHTTPError(http.StatusForbidden, "pool allocation is outside the active organization")
 			}
-			segmentID := int64(row.ID)
-			if err := a.db.Get(&segmentID, `SELECT id FROM pool_segments WHERE list_id=$1 AND pool_id=$2`, row.ID, row.PoolID.Int); err != nil {
+			allocationID := int64(row.ID)
+			if err := a.db.Get(&allocationID, `SELECT id FROM org_pool_allocations WHERE list_id=$1 AND pool_id=$2`, row.ID, row.PoolID.Int); err != nil {
 				return nil, nil, err
 			}
-			pools = append(pools, campaignPoolAudience{PoolID: int(row.PoolID.Int), SegmentID: &segmentID})
+			pools = append(pools, campaignPoolAudience{PoolID: int(row.PoolID.Int), AllocationID: &allocationID})
 		default:
 			regular = append(regular, row.ID)
 		}

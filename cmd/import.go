@@ -24,9 +24,9 @@ import (
 const maxImportUploadSize = 64 << 20
 
 type importTargetInfo struct {
-	PoolIDs        []int
-	PoolSegmentIDs []int
-	RegularIDs     []int
+	PoolIDs              []int
+	OrgPoolAllocationIDs []int
+	RegularIDs           []int
 }
 
 func normalizeImportFieldMap(fieldMap map[string]string) map[string]string {
@@ -62,8 +62,8 @@ func (a *App) classifyImportTargets(ids []int) (importTargetInfo, error) {
 		switch typ {
 		case models.CustomerListTypePool:
 			info.PoolIDs = append(info.PoolIDs, id)
-		case models.CustomerListTypePoolSegment:
-			info.PoolSegmentIDs = append(info.PoolSegmentIDs, id)
+		case models.CustomerListTypeOrgPoolAllocation:
+			info.OrgPoolAllocationIDs = append(info.OrgPoolAllocationIDs, id)
 		default:
 			info.RegularIDs = append(info.RegularIDs, id)
 		}
@@ -103,7 +103,7 @@ func (a *App) ImportCustomers(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	isPoolImport := len(targets.PoolIDs) > 0 || len(targets.PoolSegmentIDs) > 0
+	isPoolImport := len(targets.PoolIDs) > 0 || len(targets.OrgPoolAllocationIDs) > 0
 	// Reject mappings for unsupported import fields.
 	if len(opt.FieldMap) > 0 {
 		allowed := map[string]bool{"email": true, "name": true, "customer_code": true}
@@ -117,7 +117,7 @@ func (a *App) ImportCustomers(c echo.Context) error {
 		}
 	}
 	if isPoolImport {
-		if len(targets.PoolIDs) != 1 || len(targets.PoolSegmentIDs) > 0 || len(targets.RegularIDs) > 0 {
+		if len(targets.PoolIDs) != 1 || len(targets.OrgPoolAllocationIDs) > 0 || len(targets.RegularIDs) > 0 {
 			return echo.NewHTTPError(http.StatusBadRequest, "public-pool import requires exactly one first-level public pool")
 		}
 		if !auth.GetUser(c).IsPlatformAdmin() {

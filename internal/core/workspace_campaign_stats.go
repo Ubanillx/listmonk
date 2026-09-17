@@ -144,17 +144,17 @@ func (c *Core) loadWorkspaceCampaignStats(access models.WorkspaceAccess, camps m
 				JSON_AGG(JSON_BUILD_OBJECT('id', cl.customer_list_id, 'name', cl.customer_list_name)
 					ORDER BY cl.customer_list_id NULLS LAST, cl.customer_list_name)
 					FILTER (WHERE cl.pool_id IS NULL) AS customer_lists,
-				JSON_AGG(JSON_BUILD_OBJECT('pool_id', cl.pool_id, 'segment_id', cl.pool_segment_id,
-					'segment_list_id', pool_segment.list_id, 'segment_list_name', pool_segment_list.name,
+				JSON_AGG(JSON_BUILD_OBJECT('pool_id', cl.pool_id, 'allocation_id', cl.org_pool_allocation_id,
+					'allocation_list_id', org_pool_allocation.list_id, 'allocation_list_name', org_pool_allocation_list.name,
 					'organization_id', cl.source_organization_id, 'reply_mailbox_id', cl.resolved_reply_mailbox_id,
 					'reply_mailbox_email', COALESCE(pool_reply.email, ''), 'name', cl.customer_list_name)
-					ORDER BY cl.pool_id, cl.pool_segment_id NULLS FIRST)
+					ORDER BY cl.pool_id, cl.org_pool_allocation_id NULLS FIRST)
 					FILTER (WHERE cl.pool_id IS NOT NULL) AS customer_pools
 			FROM campaign_customer_lists cl
 			JOIN scoped_campaigns sc ON sc.id = cl.campaign_id
 			LEFT JOIN customer_lists cl_list ON cl_list.id = cl.customer_list_id
-			LEFT JOIN pool_segments pool_segment ON pool_segment.id = cl.pool_segment_id
-			LEFT JOIN customer_lists pool_segment_list ON pool_segment_list.id = pool_segment.list_id
+			LEFT JOIN org_pool_allocations org_pool_allocation ON org_pool_allocation.id = cl.org_pool_allocation_id
+			LEFT JOIN customer_lists org_pool_allocation_list ON org_pool_allocation_list.id = org_pool_allocation.list_id
 			LEFT JOIN reply_mailboxes pool_reply ON pool_reply.id = cl.resolved_reply_mailbox_id
 			WHERE (%s)
 			GROUP BY cl.campaign_id

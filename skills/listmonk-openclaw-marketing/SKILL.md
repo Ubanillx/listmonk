@@ -76,7 +76,7 @@ The shared implementation lives under `scripts/listmonk_marketing/`. When updati
    - Require `email` and `customer_code` for every JSON row. Native batch import supports only `email`, `name`, and `customer_code`; it writes a temporary CSV with `customer_list_ids` and polls the importer status/logs.
    - For JSON rows containing non-empty `attribs`, use direct `POST /api/customers` calls so attributes are not lost. This is slower and per-row, but preserves the submitted data.
    - For `.xlsx`, map `email_column`, `customer_code_column`, and optional `name_column`. Other non-empty columns become `attribs` and therefore use the direct customer API path.
-   - Normal workflow lists may be `private` or `public`. Do not pass `pool` or `pool_segment` lists through this workflow; public-pool allocation uses the dedicated pool APIs and import rules.
+   - Normal workflow lists may be `private` or `public`. Do not pass `pool` or `org_pool_allocation` lists through this workflow; public-pool allocation uses the dedicated pool APIs and import rules.
 6. Source selection:
    - If `source_template_id` is provided, clone the base template with `POST /api/templates/{id}/clone`.
    - If `source_campaign_id` or `source_campaign_name` is provided, fetch that campaign and use it as a blueprint for the new campaign.

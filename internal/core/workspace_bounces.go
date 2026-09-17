@@ -60,7 +60,7 @@ func (c *Core) QueryWorkspaceBounces(access models.WorkspaceAccess, bounceID, ca
 		SELECT COUNT(*) OVER () AS total,
 			b.id, b.type, b.source, b.meta, b.created_at, COALESCE(b.customer_id, 0) AS customer_id,
 			COALESCE(b.pool_contact_id, 0) AS pool_contact_id, COALESCE(b.source_pool_id, 0) AS source_pool_id,
-			COALESCE(b.source_segment_id, 0) AS source_segment_id, b.source_organization_id,
+			COALESCE(b.source_allocation_id, 0) AS source_allocation_id, b.source_organization_id,
 			COALESCE(s.uuid::text, pc.uuid::text, '') AS customer_uuid,
 			COALESCE(s.email, pc.email, '') AS email, COALESCE(s.status::text, pc.status, '') AS customer_status,
 			s.organization_id, s.owner_user_id, s.transfer_pending_at,
@@ -156,8 +156,8 @@ func (c *Core) BlocklistWorkspaceBouncedCustomers(access models.WorkspaceAccess)
 	}
 	// Logical pool exclusions are organization-scoped; unlike legacy customers,
 	// no global blocklist row is mutated.
-	poolStmt := `INSERT INTO pool_segment_exclusions(pool_id,organization_id,contact_id,segment_id,reason,source)
-		SELECT source_pool_id,source_organization_id,pool_contact_id,source_segment_id,'bounce','bounce'
+	poolStmt := `INSERT INTO org_pool_allocation_exclusions(pool_id,organization_id,contact_id,allocation_id,reason,source)
+		SELECT source_pool_id,source_organization_id,pool_contact_id,source_allocation_id,'bounce','bounce'
 		FROM bounces WHERE pool_contact_id IS NOT NULL AND source_pool_id IS NOT NULL AND source_organization_id IS NOT NULL %s
 		ON CONFLICT(pool_id,organization_id,contact_id) DO UPDATE SET reason='bounce',source='bounce',removed_at=NOW(),restored_at=NULL`
 	if access.PlatformAdmin {

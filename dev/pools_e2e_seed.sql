@@ -19,11 +19,11 @@ INSERT INTO organizations (name,description,status,created_by_user_id)
 SELECT 'wsqa-pool-unassigned-org','Pool E2E organization without delivery access','active',1
 WHERE NOT EXISTS (SELECT 1 FROM organizations WHERE name='wsqa-pool-unassigned-org');
 
--- This organization intentionally starts without a secondary list. It drives
+-- This organization intentionally starts without a pool allocation. It drives
 -- the highest-admin create-and-bind workflow without conflicting with the
--- primary test organization's already-bound segment.
+-- primary test organization's already-bound allocation.
 INSERT INTO organizations (name,description,status,created_by_user_id)
-SELECT 'wsqa-pool-guided-org','Pool E2E organization for secondary-list creation','active',1
+SELECT 'wsqa-pool-guided-org','Pool E2E organization for pool-allocation creation','active',1
 WHERE NOT EXISTS (SELECT 1 FROM organizations WHERE name='wsqa-pool-guided-org');
 
 INSERT INTO users (username, password_login, password, email, name, type, user_role_id, status)
@@ -42,16 +42,16 @@ SELECT gen_random_uuid(),'wsqa-pool-primary','pool','single','active','{}','pool
 WHERE NOT EXISTS (SELECT 1 FROM customer_lists WHERE name='wsqa-pool-primary');
 
 INSERT INTO customer_lists (uuid,name,type,optin,status,tags,description,mask_emails,organization_id,owner_user_id,visibility,pool_parent_id)
-SELECT gen_random_uuid(),'wsqa-pool-segment','pool_segment','single','active','{}','segment E2E fixture',true,1,u.id,'organization',p.id
+SELECT gen_random_uuid(),'wsqa-org-pool-allocation','org_pool_allocation','single','active','{}','allocation E2E fixture',true,1,u.id,'organization',p.id
 FROM users u, customer_lists p
 WHERE u.id=1 AND p.name='wsqa-pool-primary'
-  AND NOT EXISTS (SELECT 1 FROM customer_lists WHERE name='wsqa-pool-segment');
+  AND NOT EXISTS (SELECT 1 FROM customer_lists WHERE name='wsqa-org-pool-allocation');
 
-INSERT INTO pool_segments (list_id,pool_id,organization_id,created_by_user_id)
+INSERT INTO org_pool_allocations (list_id,pool_id,organization_id,created_by_user_id)
 SELECT s.id,p.id,1,1
 FROM customer_lists s, customer_lists p
-WHERE s.name='wsqa-pool-segment' AND p.name='wsqa-pool-primary'
-  AND NOT EXISTS (SELECT 1 FROM pool_segments ps WHERE ps.list_id=s.id);
+WHERE s.name='wsqa-org-pool-allocation' AND p.name='wsqa-pool-primary'
+  AND NOT EXISTS (SELECT 1 FROM org_pool_allocations ps WHERE ps.list_id=s.id);
 
 INSERT INTO pool_organization_permissions (pool_id,organization_id,granted_by_user_id)
 SELECT id,1,1 FROM customer_lists WHERE name='wsqa-pool-primary'
@@ -70,8 +70,8 @@ INSERT INTO pool_members (pool_id,contact_id)
 SELECT p.id,c.id FROM customer_lists p JOIN pool_contacts c ON c.email IN ('alpha-pool@example.test','beta-pool@example.test','unique-pool@example.test')
 WHERE p.name='wsqa-pool-primary' ON CONFLICT DO NOTHING;
 
-INSERT INTO pool_segment_members (segment_id,contact_id,status)
-SELECT ps.id,c.id,'active' FROM pool_segments ps JOIN customer_lists p ON p.id=ps.pool_id
+INSERT INTO org_pool_allocation_members (allocation_id,contact_id,status)
+SELECT ps.id,c.id,'active' FROM org_pool_allocations ps JOIN customer_lists p ON p.id=ps.pool_id
 JOIN pool_contacts c ON c.email IN ('alpha-pool@example.test','beta-pool@example.test','unique-pool@example.test')
 WHERE p.name='wsqa-pool-primary' ON CONFLICT DO NOTHING;
 
@@ -79,8 +79,8 @@ INSERT INTO reply_mailboxes (user_id,organization_id,email,name,username,passwor
 SELECT 1,1,'pool-replies@example.test','Pool QA Replies','pool-qa','fixture-secret','active',NOW(),true,false
 WHERE NOT EXISTS (SELECT 1 FROM reply_mailboxes WHERE user_id=1 AND organization_id=1 AND email='pool-replies@example.test');
 
-UPDATE pool_segments ps SET reply_mailbox_id=rm.id
+UPDATE org_pool_allocations ps SET reply_mailbox_id=rm.id
 FROM customer_lists s, reply_mailboxes rm
-WHERE ps.list_id=s.id AND s.name='wsqa-pool-segment' AND rm.email='pool-replies@example.test';
+WHERE ps.list_id=s.id AND s.name='wsqa-org-pool-allocation' AND rm.email='pool-replies@example.test';
 
 COMMIT;

@@ -42,7 +42,7 @@ type ReplyAIEvent struct {
 	CustomerID           null.Int `db:"customer_id" json:"customer_id"`
 	PoolContactID        null.Int `db:"pool_contact_id" json:"pool_contact_id"`
 	PoolID               null.Int `db:"pool_id" json:"pool_id"`
-	SourceSegmentID      null.Int `db:"source_segment_id" json:"source_segment_id"`
+	SourceAllocationID   null.Int `db:"source_allocation_id" json:"source_allocation_id"`
 	SourceOrganizationID null.Int `db:"source_organization_id" json:"source_organization_id"`
 	FromEmail            string   `db:"from_email" json:"from_email"`
 	Subject              string   `db:"subject" json:"subject"`

@@ -97,14 +97,14 @@ func (c *Core) MigratePersonalListsToOrganization(sourceUserID, targetOrganizati
 	// they would otherwise match this personal-source query. Moving one would
 	// silently hand a platform asset to an organization as a private list, the
 	// same contract change the resource migration refuses for global templates,
-	// campaigns, and media. Secondary lists always carry an organization_id and
+	// campaigns, and media. Pool allocations always carry an organization_id and
 	// are excluded with them.
 	var customer_lists []models.CustomerList
 	if err := tx.Select(&customer_lists, `
 		SELECT * FROM customer_lists
 		WHERE id = ANY($1::INT[]) AND organization_id IS NULL
 			AND owner_user_id = $2 AND transfer_pending_at IS NULL
-			AND type NOT IN ('pool', 'pool_segment')
+			AND type NOT IN ('pool', 'org_pool_allocation')
 		ORDER BY id FOR UPDATE`, pq.Array(sourceCustomerListIDs), sourceUserID); err != nil {
 		return nil, workspaceQueryError("reading personal customer_lists", err)
 	}

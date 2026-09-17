@@ -29,7 +29,7 @@ const (
 	replyAITestOrganizationID = 10
 	replyAITestPoolID         = 42
 	replyAITestPoolContactID  = 7
-	replyAITestSegmentID      = 3
+	replyAITestAllocationID   = 3
 
 	replyAITestRequeueToken = "22222222-2222-2222-2222-222222222222"
 )
@@ -50,7 +50,7 @@ CREATE TABLE reply_ai_events (
     customer_id            INTEGER NULL,
     pool_contact_id        BIGINT NULL,
     pool_id                INTEGER NULL,
-    source_segment_id      BIGINT NULL,
+    source_allocation_id      BIGINT NULL,
     source_organization_id BIGINT NULL,
     message_key            TEXT NOT NULL,
     from_email             TEXT NOT NULL DEFAULT '',
@@ -82,7 +82,7 @@ CREATE TABLE bounces (
     customer_id            INTEGER NULL,
     pool_contact_id        BIGINT NULL,
     source_pool_id         INTEGER NULL,
-    source_segment_id      BIGINT NULL,
+    source_allocation_id      BIGINT NULL,
     source_organization_id BIGINT NULL,
     campaign_id            INTEGER NULL,
     type                   TEXT NOT NULL DEFAULT 'hard',
@@ -93,13 +93,13 @@ CREATE TABLE bounces (
 );
 CREATE UNIQUE INDEX idx_bounces_reply_ai_event ON bounces(reply_ai_event_id);
 
-CREATE TABLE pool_segment_exclusions (
+CREATE TABLE org_pool_allocation_exclusions (
     pool_id         INTEGER NOT NULL,
     organization_id BIGINT NOT NULL,
     contact_id      BIGINT NOT NULL,
-    segment_id      BIGINT NULL,
+    allocation_id      BIGINT NULL,
     reason          TEXT NOT NULL DEFAULT 'manual',
-    source          TEXT NOT NULL DEFAULT 'segment',
+    source          TEXT NOT NULL DEFAULT 'allocation',
     removed_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     restored_at     TIMESTAMPTZ,
     PRIMARY KEY (pool_id, organization_id, contact_id)
@@ -255,7 +255,7 @@ func (env *replyAITestEnv) countEventBounces(eventID int) int {
 func (env *replyAITestEnv) countExclusions() int {
 	env.t.Helper()
 	var n int
-	if err := env.admin.Get(&n, `SELECT COUNT(*) FROM pool_segment_exclusions`); err != nil {
+	if err := env.admin.Get(&n, `SELECT COUNT(*) FROM org_pool_allocation_exclusions`); err != nil {
 		env.t.Fatalf("count exclusions: %v", err)
 	}
 	return n
@@ -300,7 +300,7 @@ func replyAITestAction(eventID int, token string) ReplyAIAction {
 		LeaseToken:           token,
 		PoolContactID:        replyAITestPoolContactID,
 		PoolID:               replyAITestPoolID,
-		SourceSegmentID:      replyAITestSegmentID,
+		SourceAllocationID:   replyAITestAllocationID,
 		SourceOrganizationID: int64(replyAITestOrganizationID),
 		Intent:               models.ReplyAIIntentComplaint,
 		Confidence:           0.97,

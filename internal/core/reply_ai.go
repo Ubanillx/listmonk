@@ -33,7 +33,7 @@ type ReplyAIAction struct {
 	OccurredAt           time.Time
 	PoolContactID        int64
 	PoolID               int
-	SourceSegmentID      int64
+	SourceAllocationID   int64
 	SourceOrganizationID int64
 }
 
@@ -45,7 +45,7 @@ func (c *Core) FindReplyAIPoolContact(access models.WorkspaceAccess, email strin
 		models.PoolContact
 		PublicPoolRecipient
 	}
-	err := c.db.Get(&row, `SELECT pc.id,pc.uuid,pc.customer_code,pc.company_name,pc.email,pc.name,pc.attribs,pc.status,pc.created_at,pc.updated_at,cpr.campaign_id,cpr.pool_contact_id,cpr.organization_id,cpr.segment_id FROM pool_contacts pc JOIN campaign_pool_recipients cpr ON cpr.pool_contact_id=pc.id WHERE LOWER(pc.email)=LOWER($1) AND cpr.organization_id=$2 AND pc.status='active' AND cpr.status IN ('pending','queued','sent') ORDER BY cpr.created_at DESC LIMIT 1`, email, access.OrganizationID)
+	err := c.db.Get(&row, `SELECT pc.id,pc.uuid,pc.customer_code,pc.company_name,pc.email,pc.name,pc.attribs,pc.status,pc.created_at,pc.updated_at,cpr.campaign_id,cpr.pool_contact_id,cpr.organization_id,cpr.allocation_id FROM pool_contacts pc JOIN campaign_pool_recipients cpr ON cpr.pool_contact_id=pc.id WHERE LOWER(pc.email)=LOWER($1) AND cpr.organization_id=$2 AND pc.status='active' AND cpr.status IN ('pending','queued','sent') ORDER BY cpr.created_at DESC LIMIT 1`, email, access.OrganizationID)
 	if err == sql.ErrNoRows {
 		return models.PoolContact{}, PublicPoolRecipient{}, false, nil
 	}
@@ -133,14 +133,14 @@ func (c *Core) ApplyReplyAIAction(access models.WorkspaceAccess, action ReplyAIA
 			// The event id is the idempotency key, exactly as in the customer
 			// branch: complaint counts must not double when the same durable
 			// event is applied more than once.
-			if _, err := tx.Exec(`INSERT INTO bounces(pool_contact_id,type,source,meta,created_at,source_pool_id,source_segment_id,source_organization_id,reply_ai_event_id) VALUES($1,'complaint',$2,$3,$4,$5,NULLIF($6,0),$7,$8) ON CONFLICT (reply_ai_event_id) DO NOTHING`, action.PoolContactID, models.ReplyAISource, meta, action.OccurredAt, action.PoolID, action.SourceSegmentID, action.SourceOrganizationID, action.EventID); err != nil {
+			if _, err := tx.Exec(`INSERT INTO bounces(pool_contact_id,type,source,meta,created_at,source_pool_id,source_allocation_id,source_organization_id,reply_ai_event_id) VALUES($1,'complaint',$2,$3,$4,$5,NULLIF($6,0),$7,$8) ON CONFLICT (reply_ai_event_id) DO NOTHING`, action.PoolContactID, models.ReplyAISource, meta, action.OccurredAt, action.PoolID, action.SourceAllocationID, action.SourceOrganizationID, action.EventID); err != nil {
 				return err
 			}
 		}
-		if _, err := tx.Exec(`INSERT INTO pool_segment_exclusions(pool_id,organization_id,contact_id,segment_id,reason,source) VALUES($1,$2,$3,NULLIF($4,0),$5,'reply_ai') ON CONFLICT(pool_id,organization_id,contact_id) DO UPDATE SET reason=EXCLUDED.reason,source='reply_ai',removed_at=NOW(),restored_at=NULL`, action.PoolID, action.SourceOrganizationID, action.PoolContactID, action.SourceSegmentID, action.Intent); err != nil {
+		if _, err := tx.Exec(`INSERT INTO org_pool_allocation_exclusions(pool_id,organization_id,contact_id,allocation_id,reason,source) VALUES($1,$2,$3,NULLIF($4,0),$5,'reply_ai') ON CONFLICT(pool_id,organization_id,contact_id) DO UPDATE SET reason=EXCLUDED.reason,source='reply_ai',removed_at=NOW(),restored_at=NULL`, action.PoolID, action.SourceOrganizationID, action.PoolContactID, action.SourceAllocationID, action.Intent); err != nil {
 			return err
 		}
-		res, err := tx.Exec(`UPDATE reply_ai_events SET pool_contact_id=$2,pool_id=$3,source_segment_id=$4,source_organization_id=$5,intent=$6,confidence=$7,reason_code=$8,model=$9,action='blocklisted',status='processed',body='',classified_at=NOW(),actioned_at=NOW(),lease_expires_at=NULL,lease_token=NULL,updated_at=NOW() WHERE id=$1 AND status='processing' AND lease_token=$10::UUID`, action.EventID, action.PoolContactID, action.PoolID, action.SourceSegmentID, action.SourceOrganizationID, action.Intent, action.Confidence, action.ReasonCode, action.Model, action.LeaseToken)
+		res, err := tx.Exec(`UPDATE reply_ai_events SET pool_contact_id=$2,pool_id=$3,source_allocation_id=$4,source_organization_id=$5,intent=$6,confidence=$7,reason_code=$8,model=$9,action='blocklisted',status='processed',body='',classified_at=NOW(),actioned_at=NOW(),lease_expires_at=NULL,lease_token=NULL,updated_at=NOW() WHERE id=$1 AND status='processing' AND lease_token=$10::UUID`, action.EventID, action.PoolContactID, action.PoolID, action.SourceAllocationID, action.SourceOrganizationID, action.Intent, action.Confidence, action.ReasonCode, action.Model, action.LeaseToken)
 		if err != nil {
 			return err
 		}

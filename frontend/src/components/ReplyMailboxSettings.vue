@@ -173,7 +173,11 @@ export default Vue.extend({
     load() {
       this.loadedWorkspace = this.workspaceKey;
       this.$api.getReplyMailboxes(this.apiOrganizationID).then((data) => {
-        this.mailboxes = (Array.isArray(data) ? data : []).map(this.normalize);
+        const rows = Array.isArray(data) ? data : [];
+        // The listing may include organization reply mailboxes the caller can
+        // select in a campaign but does not own. The manage surface only shows
+        // mailboxes the caller actually owns and may edit, disable or test.
+        this.mailboxes = rows.filter((row) => row.manageable !== false).map(this.normalize);
       });
     },
 

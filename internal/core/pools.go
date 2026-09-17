@@ -17,7 +17,7 @@ import (
 // PoolRecipient is the server-side sending snapshot source for a pool contact.
 type PoolRecipient struct {
 	models.PoolContact
-	SegmentID      int64 `db:"segment_id" json:"segment_id"`
+	AllocationID   int64 `db:"allocation_id" json:"allocation_id"`
 	OrganizationID int64 `db:"organization_id" json:"organization_id"`
 	ReplyMailboxID *int  `db:"reply_mailbox_id" json:"reply_mailbox_id,omitempty"`
 }
@@ -26,14 +26,14 @@ func normalizePoolAllocationDepartment(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
 }
 
-// UpdatePoolSegmentReplyMailbox changes the internal reply destination for an
-// organization segment. The mailbox must belong to the same organization as
-// the segment; customer addresses are never involved in this operation.
-func (c *Core) UpdatePoolSegmentReplyMailbox(segmentID int64, replyMailboxID *int) error {
+// UpdateOrgPoolAllocationReplyMailbox changes the internal reply destination for an
+// organization allocation. The mailbox must belong to the same organization as
+// the allocation; customer addresses are never involved in this operation.
+func (c *Core) UpdateOrgPoolAllocationReplyMailbox(allocationID int64, replyMailboxID *int) error {
 	var organizationID int64
-	if err := c.db.Get(&organizationID, `SELECT organization_id FROM pool_segments WHERE id=$1`, segmentID); err != nil {
+	if err := c.db.Get(&organizationID, `SELECT organization_id FROM org_pool_allocations WHERE id=$1`, allocationID); err != nil {
 		if err == sql.ErrNoRows {
-			return echo.NewHTTPError(http.StatusNotFound, "pool segment not found")
+			return echo.NewHTTPError(http.StatusNotFound, "pool allocation not found")
 		}
 		return err
 	}
@@ -43,24 +43,24 @@ func (c *Core) UpdatePoolSegmentReplyMailbox(segmentID int64, replyMailboxID *in
 			return echo.NewHTTPError(http.StatusBadRequest, "invalid reply mailbox")
 		}
 		if !mailboxOrg.Valid || mailboxOrg.Int64 != organizationID {
-			return echo.NewHTTPError(http.StatusForbidden, "reply mailbox must belong to segment organization")
+			return echo.NewHTTPError(http.StatusForbidden, "reply mailbox must belong to allocation organization")
 		}
 	}
-	_, err := c.db.Exec(`UPDATE pool_segments SET reply_mailbox_id=$2 WHERE id=$1`, segmentID, replyMailboxID)
+	_, err := c.db.Exec(`UPDATE org_pool_allocations SET reply_mailbox_id=$2 WHERE id=$1`, allocationID, replyMailboxID)
 	return err
 }
 
-func (c *Core) QueryPoolSegments(poolID int, organizationID int64, platformAdmin bool) ([]models.PoolSegment, error) {
+func (c *Core) QueryOrgPoolAllocations(poolID int, organizationID int64, platformAdmin bool) ([]models.OrgPoolAllocation, error) {
 	if err := c.ensurePool(poolID); err != nil {
 		return nil, err
 	}
-	q := `SELECT s.id,s.list_id,COALESCE(l.name,'') AS list_name,s.pool_id,s.organization_id,COALESCE(o.name,'') AS organization_name,s.reply_mailbox_id,COALESCE(r.email,'') AS reply_mailbox_email FROM pool_segments s JOIN customer_lists l ON l.id=s.list_id JOIN organizations o ON o.id=s.organization_id LEFT JOIN reply_mailboxes r ON r.id=s.reply_mailbox_id WHERE s.pool_id=$1`
+	q := `SELECT s.id,s.list_id,COALESCE(l.name,'') AS list_name,s.pool_id,s.organization_id,COALESCE(o.name,'') AS organization_name,s.reply_mailbox_id,COALESCE(r.email,'') AS reply_mailbox_email FROM org_pool_allocations s JOIN customer_lists l ON l.id=s.list_id JOIN organizations o ON o.id=s.organization_id LEFT JOIN reply_mailboxes r ON r.id=s.reply_mailbox_id WHERE s.pool_id=$1`
 	args := []any{poolID}
 	if !platformAdmin {
 		q += ` AND s.organization_id=$2`
 		args = append(args, organizationID)
 	}
-	var out []models.PoolSegment
+	var out []models.OrgPoolAllocation
 	if err := c.db.Select(&out, q, args...); err != nil {
 		return nil, err
 	}
@@ -90,18 +90,18 @@ func (c *Core) QueryPoolManagementTarget(poolID, organizationID int) (models.Poo
 	out.OrganizationID = org.ID
 	out.OrganizationName = org.Name
 
-	var segment models.PoolSegment
-	err = c.db.Get(&segment, `
+	var allocation models.OrgPoolAllocation
+	err = c.db.Get(&allocation, `
 		SELECT s.id,s.list_id,COALESCE(l.name,'') AS list_name,s.pool_id,s.organization_id,
 			COALESCE(o.name,'') AS organization_name,s.reply_mailbox_id,
 			COALESCE(r.email,'') AS reply_mailbox_email
-		FROM pool_segments s
+		FROM org_pool_allocations s
 		JOIN customer_lists l ON l.id=s.list_id
 		JOIN organizations o ON o.id=s.organization_id
 		LEFT JOIN reply_mailboxes r ON r.id=s.reply_mailbox_id
 		WHERE s.pool_id=$1 AND s.organization_id=$2`, poolID, organizationID)
 	if err == nil {
-		out.Segment = &segment
+		out.Allocation = &allocation
 	} else if err != sql.ErrNoRows {
 		return out, err
 	}
@@ -163,14 +163,14 @@ func (c *Core) QueryAuthorizedPoolLists(access models.WorkspaceAccess) ([]models
 				CASE WHEN l.type='pool' THEN (
 					SELECT COUNT(*) FROM pool_members pm WHERE pm.pool_id=l.id
 				) ELSE (
-					SELECT COUNT(*) FROM pool_segment_members sm
-					JOIN pool_segments ps ON ps.id=sm.segment_id
+					SELECT COUNT(*) FROM org_pool_allocation_members sm
+					JOIN org_pool_allocations ps ON ps.id=sm.allocation_id
 					WHERE ps.list_id=l.id AND sm.status='active'
 				) END AS customer_count
 			FROM customer_lists l
 			LEFT JOIN organizations o ON o.id = l.organization_id
 			LEFT JOIN users u ON u.id = COALESCE(l.owner_user_id, l.original_owner_user_id)
-			WHERE l.type IN ('pool','pool_segment') AND l.status='active'
+			WHERE l.type IN ('pool','org_pool_allocation') AND l.status='active'
 			ORDER BY l.name, l.id`)
 		for i := range out {
 			out[i].PoolDeliveryAllowed = true
@@ -185,12 +185,12 @@ func (c *Core) QueryAuthorizedPoolLists(access models.WorkspaceAccess) ([]models
 		SELECT l.*, COALESCE(o.name, '') AS organization_name,
 			COALESCE(u.username, '') AS owner_username, COALESCE(u.name, '') AS owner_name,
 			CASE WHEN l.type='pool' THEN (
-				SELECT COUNT(*) FROM pool_segment_members sm
-				JOIN pool_segments ps ON ps.id=sm.segment_id
+				SELECT COUNT(*) FROM org_pool_allocation_members sm
+				JOIN org_pool_allocations ps ON ps.id=sm.allocation_id
 				WHERE ps.pool_id=l.id AND ps.organization_id=$1 AND sm.status='active'
 			) ELSE (
-				SELECT COUNT(*) FROM pool_segment_members sm
-				JOIN pool_segments ps ON ps.id=sm.segment_id
+				SELECT COUNT(*) FROM org_pool_allocation_members sm
+				JOIN org_pool_allocations ps ON ps.id=sm.allocation_id
 				WHERE ps.list_id=l.id AND sm.status='active'
 			) END AS customer_count
 		FROM customer_lists l
@@ -201,11 +201,11 @@ func (c *Core) QueryAuthorizedPoolLists(access models.WorkspaceAccess) ([]models
 				SELECT 1 FROM pool_organization_permissions p
 				WHERE p.pool_id=l.id AND p.organization_id=$1
 			) OR EXISTS (
-				SELECT 1 FROM pool_segments s
+				SELECT 1 FROM org_pool_allocations s
 				WHERE s.pool_id=l.id AND s.organization_id=$1
 			))) OR
-			(l.type='pool_segment' AND EXISTS (
-				SELECT 1 FROM pool_segments s
+			(l.type='org_pool_allocation' AND EXISTS (
+				SELECT 1 FROM org_pool_allocations s
 				WHERE s.list_id=l.id AND s.pool_id IS NOT NULL AND s.organization_id=$1
 			))
 		) ORDER BY l.name, l.id`, access.OrganizationID)
@@ -217,23 +217,23 @@ func (c *Core) QueryAuthorizedPoolLists(access models.WorkspaceAccess) ([]models
 
 type poolListScope struct {
 	PoolID         int
-	SegmentID      *int64
+	AllocationID   *int64
 	OrganizationID int64
 }
 
 func (c *Core) getPoolListScope(listID int) (poolListScope, error) {
 	var row struct {
 		PoolID         sql.NullInt64 `db:"pool_id"`
-		SegmentID      sql.NullInt64 `db:"segment_id"`
+		AllocationID   sql.NullInt64 `db:"allocation_id"`
 		OrganizationID sql.NullInt64 `db:"organization_id"`
 	}
 	if err := c.db.Get(&row, `
 		SELECT CASE WHEN l.type='pool' THEN l.id ELSE ps.pool_id END AS pool_id,
-			CASE WHEN l.type='pool_segment' THEN ps.id END AS segment_id,
+			CASE WHEN l.type='org_pool_allocation' THEN ps.id END AS allocation_id,
 			ps.organization_id
 		FROM customer_lists l
-		LEFT JOIN pool_segments ps ON ps.list_id=l.id
-		WHERE l.id=$1 AND l.type IN ('pool','pool_segment')`, listID); err != nil {
+		LEFT JOIN org_pool_allocations ps ON ps.list_id=l.id
+		WHERE l.id=$1 AND l.type IN ('pool','org_pool_allocation')`, listID); err != nil {
 		if err == sql.ErrNoRows {
 			return poolListScope{}, echo.NewHTTPError(http.StatusNotFound, "public pool list not found")
 		}
@@ -243,9 +243,9 @@ func (c *Core) getPoolListScope(listID int) (poolListScope, error) {
 		return poolListScope{}, echo.NewHTTPError(http.StatusBadRequest, "public pool list is not bound")
 	}
 	scope := poolListScope{PoolID: int(row.PoolID.Int64)}
-	if row.SegmentID.Valid {
-		segmentID := row.SegmentID.Int64
-		scope.SegmentID = &segmentID
+	if row.AllocationID.Valid {
+		allocationID := row.AllocationID.Int64
+		scope.AllocationID = &allocationID
 	}
 	if row.OrganizationID.Valid {
 		scope.OrganizationID = row.OrganizationID.Int64
@@ -254,7 +254,7 @@ func (c *Core) getPoolListScope(listID int) (poolListScope, error) {
 }
 
 // PoolListCustomerCount returns the number of rows represented by a first-level
-// pool or one of its secondary lists. Pool contacts intentionally remain outside
+// pool or one of its pool allocations. Pool contacts intentionally remain outside
 // the legacy customer membership tables, so their counts need a dedicated query.
 func (c *Core) PoolListCustomerCount(listID int) (int, error) {
 	scope, err := c.getPoolListScope(listID)
@@ -262,10 +262,10 @@ func (c *Core) PoolListCustomerCount(listID int) (int, error) {
 		return 0, err
 	}
 	var count int
-	if scope.SegmentID == nil {
+	if scope.AllocationID == nil {
 		err = c.db.Get(&count, `SELECT COUNT(*) FROM pool_members WHERE pool_id=$1`, scope.PoolID)
 	} else {
-		err = c.db.Get(&count, `SELECT COUNT(*) FROM pool_segment_members WHERE segment_id=$1 AND status='active'`, *scope.SegmentID)
+		err = c.db.Get(&count, `SELECT COUNT(*) FROM org_pool_allocation_members WHERE allocation_id=$1 AND status='active'`, *scope.AllocationID)
 	}
 	return count, err
 }
@@ -280,25 +280,25 @@ func (c *Core) QueryPoolContacts(poolID int, organizationID int, platformAdmin b
 	args := []any{scope.PoolID}
 	where := ""
 	join := ""
-	if scope.SegmentID != nil {
-		args = append(args, *scope.SegmentID)
-		join = ` JOIN pool_segment_members psm ON psm.contact_id=pc.id AND psm.segment_id=$2`
+	if scope.AllocationID != nil {
+		args = append(args, *scope.AllocationID)
+		join = ` JOIN org_pool_allocation_members psm ON psm.contact_id=pc.id AND psm.allocation_id=$2`
 		where = ` AND psm.status IN ('active','removed')`
 	}
 	if !platformAdmin {
 		if organizationID <= 0 {
 			return []models.SafePoolContact{}, nil
 		}
-		if scope.SegmentID != nil {
+		if scope.AllocationID != nil {
 			if scope.OrganizationID != int64(organizationID) {
 				return []models.SafePoolContact{}, nil
 			}
 			args = append(args, organizationID)
-			join += ` LEFT JOIN pool_segment_exclusions ex ON ex.pool_id=pm.pool_id AND ex.organization_id=$3 AND ex.contact_id=pc.id AND ex.restored_at IS NULL`
+			join += ` LEFT JOIN org_pool_allocation_exclusions ex ON ex.pool_id=pm.pool_id AND ex.organization_id=$3 AND ex.contact_id=pc.id AND ex.restored_at IS NULL`
 			where += ` AND (psm.status IN ('active','removed') OR ex.contact_id IS NOT NULL)`
 		} else {
 			args = append(args, organizationID)
-			join = ` JOIN pool_segment_members psm ON psm.contact_id=pc.id JOIN pool_segments ps ON ps.id=psm.segment_id AND ps.pool_id=pm.pool_id LEFT JOIN pool_segment_exclusions ex ON ex.pool_id=pm.pool_id AND ex.organization_id=ps.organization_id AND ex.contact_id=pc.id AND ex.restored_at IS NULL`
+			join = ` JOIN org_pool_allocation_members psm ON psm.contact_id=pc.id JOIN org_pool_allocations ps ON ps.id=psm.allocation_id AND ps.pool_id=pm.pool_id LEFT JOIN org_pool_allocation_exclusions ex ON ex.pool_id=pm.pool_id AND ex.organization_id=ps.organization_id AND ex.contact_id=pc.id AND ex.restored_at IS NULL`
 			where = ` AND ps.organization_id=$2 AND (psm.status IN ('active','removed') OR ex.contact_id IS NOT NULL)`
 		}
 	}
@@ -345,7 +345,7 @@ func (c *Core) QueryPoolContacts(poolID int, organizationID int, platformAdmin b
 			Source           string `db:"source"`
 		}
 		var exclusions []exclusionRow
-		if err := c.db.Select(&exclusions, `SELECT e.contact_id,e.organization_id,COALESCE(o.name,'') AS organization_name,e.reason,e.source FROM pool_segment_exclusions e LEFT JOIN organizations o ON o.id=e.organization_id WHERE e.pool_id=$1 AND e.restored_at IS NULL ORDER BY e.contact_id,e.organization_id`, poolID); err != nil {
+		if err := c.db.Select(&exclusions, `SELECT e.contact_id,e.organization_id,COALESCE(o.name,'') AS organization_name,e.reason,e.source FROM org_pool_allocation_exclusions e LEFT JOIN organizations o ON o.id=e.organization_id WHERE e.pool_id=$1 AND e.restored_at IS NULL ORDER BY e.contact_id,e.organization_id`, poolID); err != nil {
 			return nil, err
 		}
 		byContact := make(map[int64][]models.PoolExclusionSummary)
@@ -403,11 +403,11 @@ func (c *Core) CreatePoolContact(poolID int, p models.PoolContact) (models.PoolC
 				return models.PoolContact{}, err
 			}
 			if _, err = tx.Exec(`
-				INSERT INTO pool_segment_members(segment_id,contact_id,status)
+				INSERT INTO org_pool_allocation_members(allocation_id,contact_id,status)
 				SELECT ps.id,$2,'active'
-				FROM pool_segments ps
+				FROM org_pool_allocations ps
 				WHERE ps.pool_id=$1 AND ps.organization_id=$3
-				ON CONFLICT (segment_id,contact_id) DO NOTHING`, poolID, id, organizationID); err != nil {
+				ON CONFLICT (allocation_id,contact_id) DO NOTHING`, poolID, id, organizationID); err != nil {
 				return models.PoolContact{}, err
 			}
 		}
@@ -551,16 +551,16 @@ func (c *Core) ImportPoolContacts(poolID, userID int, rows []models.PoolContactI
 			return result, err
 		}
 		// The imported department is the allocation target. If that
-		// organization already has a secondary list for this pool, make the
+		// organization already has a pool allocation for this pool, make the
 		// contact a member of it immediately. Keep an existing removed row
 		// untouched so a deliberate organization-level exclusion is preserved.
 		if organizationID, ok := departmentOrganizations[normalizePoolAllocationDepartment(department)]; ok {
 			if _, err = tx.Exec(`
-				INSERT INTO pool_segment_members(segment_id,contact_id,status)
+				INSERT INTO org_pool_allocation_members(allocation_id,contact_id,status)
 				SELECT ps.id,$2,'active'
-				FROM pool_segments ps
+				FROM org_pool_allocations ps
 				WHERE ps.pool_id=$1 AND ps.organization_id=$3
-				ON CONFLICT (segment_id,contact_id) DO NOTHING`, poolID, contactID, organizationID); err != nil {
+				ON CONFLICT (allocation_id,contact_id) DO NOTHING`, poolID, contactID, organizationID); err != nil {
 				return result, err
 			}
 		}
@@ -571,25 +571,25 @@ func (c *Core) ImportPoolContacts(poolID, userID int, rows []models.PoolContactI
 	return result, nil
 }
 
-// CreatePoolSegment splits a first-level pool into one organization-owned
-// secondary list. The list, delivery grant and segment are created in one
-// transaction, so a standalone secondary list can never be staged for a
+// CreateOrgPoolAllocation splits a first-level pool into one organization-owned
+// pool allocation. The list, delivery grant and allocation are created in one
+// transaction, so a standalone pool allocation can never be staged for a
 // later binding.
-func (c *Core) CreatePoolSegment(poolID int, organizationID int64, name string, replyMailboxID *int, userID int, platformAdmin bool) (models.PoolSegment, error) {
+func (c *Core) CreateOrgPoolAllocation(poolID int, organizationID int64, name string, replyMailboxID *int, userID int, platformAdmin bool) (models.OrgPoolAllocation, error) {
 	if poolID <= 0 || organizationID <= 0 || strings.TrimSpace(name) == "" {
-		return models.PoolSegment{}, echo.NewHTTPError(http.StatusBadRequest, "pool, organization and secondary list name are required")
+		return models.OrgPoolAllocation{}, echo.NewHTTPError(http.StatusBadRequest, "pool, organization and pool allocation name are required")
 	}
 
 	uuidValue, err := uuid.NewV4()
 	if err != nil {
-		return models.PoolSegment{}, err
+		return models.OrgPoolAllocation{}, err
 	}
 	target := models.WorkspaceAccess{
 		Workspace: models.Workspace{OrganizationID: int(organizationID), PlatformAdmin: platformAdmin},
 		UserID:    userID,
 	}
 	scope := ApplyWorkspaceScope(target, models.ResourceVisibilityOrganization)
-	var out models.PoolSegment
+	var out models.OrgPoolAllocation
 	err = c.withWorkspaceCreation(target, func(tx *sqlx.Tx) error {
 		var poolType string
 		if err := tx.Get(&poolType, `SELECT type::text FROM customer_lists WHERE id=$1 FOR UPDATE`, poolID); err != nil {
@@ -602,11 +602,11 @@ func (c *Core) CreatePoolSegment(poolID int, organizationID int64, name string, 
 			return echo.NewHTTPError(http.StatusBadRequest, "customer list is not a public pool")
 		}
 		var exists bool
-		if err := tx.Get(&exists, `SELECT EXISTS(SELECT 1 FROM pool_segments WHERE pool_id=$1 AND organization_id=$2)`, poolID, organizationID); err != nil {
+		if err := tx.Get(&exists, `SELECT EXISTS(SELECT 1 FROM org_pool_allocations WHERE pool_id=$1 AND organization_id=$2)`, poolID, organizationID); err != nil {
 			return err
 		}
 		if exists {
-			return echo.NewHTTPError(http.StatusConflict, "organization already has a secondary list for this public pool")
+			return echo.NewHTTPError(http.StatusConflict, "organization already has a pool allocation for this public pool")
 		}
 		if replyMailboxID != nil {
 			var mailboxOrg sql.NullInt64
@@ -620,7 +620,7 @@ func (c *Core) CreatePoolSegment(poolID int, organizationID int64, name string, 
 
 		var listID int
 		if err := tx.Stmtx(c.q.CreateList).Get(&listID,
-			uuidValue.String(), strings.TrimSpace(name), models.CustomerListTypePoolSegment,
+			uuidValue.String(), strings.TrimSpace(name), models.CustomerListTypeOrgPoolAllocation,
 			models.CustomerListOptinSingle, models.CustomerListStatusActive, pq.StringArray{}, "", true,
 			scope.OrganizationID, scope.OwnerUserID, scope.OriginalOwnerUserID, scope.Visibility); err != nil {
 			return err
@@ -631,25 +631,25 @@ func (c *Core) CreatePoolSegment(poolID int, organizationID int64, name string, 
 		if _, err := tx.Exec(`INSERT INTO pool_organization_permissions(pool_id,organization_id,granted_by_user_id) VALUES($1,$2,$3) ON CONFLICT(pool_id,organization_id) DO UPDATE SET granted_by_user_id=EXCLUDED.granted_by_user_id`, poolID, organizationID, userID); err != nil {
 			return err
 		}
-		if err := tx.Get(&out, `INSERT INTO pool_segments(list_id,pool_id,organization_id,reply_mailbox_id,created_by_user_id)
+		if err := tx.Get(&out, `INSERT INTO org_pool_allocations(list_id,pool_id,organization_id,reply_mailbox_id,created_by_user_id)
 			VALUES($1,$2,$3,$4,$5)
-			RETURNING id,list_id,(SELECT name FROM customer_lists WHERE id=pool_segments.list_id) AS list_name,
-				pool_id,organization_id,(SELECT name FROM organizations WHERE id=pool_segments.organization_id) AS organization_name,reply_mailbox_id`,
+			RETURNING id,list_id,(SELECT name FROM customer_lists WHERE id=org_pool_allocations.list_id) AS list_name,
+				pool_id,organization_id,(SELECT name FROM organizations WHERE id=org_pool_allocations.organization_id) AS organization_name,reply_mailbox_id`,
 			listID, poolID, organizationID, replyMailboxID, userID); err != nil {
 			return err
 		}
-		// Existing contacts imported before this secondary list was created
+		// Existing contacts imported before this pool allocation was created
 		// must be allocated from their validated department as well. This keeps
-		// the import order independent: create the segment first or import the
+		// the import order independent: create the allocation first or import the
 		// pool first, the resulting membership is the same.
 		if _, err := tx.Exec(`
-			INSERT INTO pool_segment_members(segment_id,contact_id,status)
+			INSERT INTO org_pool_allocation_members(allocation_id,contact_id,status)
 			SELECT $1,pm.contact_id,'active'
 			FROM pool_members pm
 			JOIN pool_contacts pc ON pc.id=pm.contact_id
 			JOIN organizations o ON o.id=$2 AND o.status=$4
 			WHERE pm.pool_id=$3 AND LOWER(TRIM(pc.allocation_department))=LOWER(TRIM(o.name))
-			ON CONFLICT (segment_id,contact_id) DO NOTHING`, out.ID, organizationID, poolID, models.OrganizationStatusActive); err != nil {
+			ON CONFLICT (allocation_id,contact_id) DO NOTHING`, out.ID, organizationID, poolID, models.OrganizationStatusActive); err != nil {
 			return err
 		}
 		if replyMailboxID != nil {
@@ -660,8 +660,8 @@ func (c *Core) CreatePoolSegment(poolID int, organizationID int64, name string, 
 	return out, err
 }
 
-func (c *Core) AssignPoolContact(segmentID, contactID int64) error {
-	res, err := c.db.Exec(`INSERT INTO pool_segment_members(segment_id,contact_id) SELECT $1,$2 WHERE EXISTS (SELECT 1 FROM pool_segments s JOIN pool_members m ON m.pool_id=s.pool_id AND m.contact_id=$2 WHERE s.id=$1) ON CONFLICT(segment_id,contact_id) DO UPDATE SET status='active',removed_at=NULL,removed_reason=''`, segmentID, contactID)
+func (c *Core) AssignPoolContact(allocationID, contactID int64) error {
+	res, err := c.db.Exec(`INSERT INTO org_pool_allocation_members(allocation_id,contact_id) SELECT $1,$2 WHERE EXISTS (SELECT 1 FROM org_pool_allocations s JOIN pool_members m ON m.pool_id=s.pool_id AND m.contact_id=$2 WHERE s.id=$1) ON CONFLICT(allocation_id,contact_id) DO UPDATE SET status='active',removed_at=NULL,removed_reason=''`, allocationID, contactID)
 	if err != nil {
 		return err
 	}
@@ -673,17 +673,17 @@ func (c *Core) AssignPoolContact(segmentID, contactID int64) error {
 	return nil
 }
 
-// ImportPoolSegmentMembers resolves a batch of customer_code/email pairs
+// ImportOrgPoolAllocationMembers resolves a batch of customer_code/email pairs
 // against the selected first-level pool and upserts the matching contacts into
-// its organization segment. Matching is intentionally performed on both
+// its organization allocation. Matching is intentionally performed on both
 // normalized fields because customer codes are imported and are not unique.
 // The operation is one transaction, while row-level mismatches are reported
 // in the result so a large file can be corrected without retrying successes.
-func (c *Core) ImportPoolSegmentMembers(segmentID int64, rows []models.PoolImportRow) (models.PoolImportResult, error) {
+func (c *Core) ImportOrgPoolAllocationMembers(allocationID int64, rows []models.PoolImportRow) (models.PoolImportResult, error) {
 	var result models.PoolImportResult
 	result.Total = len(rows)
-	if segmentID <= 0 {
-		return result, echo.NewHTTPError(http.StatusBadRequest, "segment_id is required")
+	if allocationID <= 0 {
+		return result, echo.NewHTTPError(http.StatusBadRequest, "allocation_id is required")
 	}
 
 	tx, err := c.db.Beginx()
@@ -692,9 +692,9 @@ func (c *Core) ImportPoolSegmentMembers(segmentID int64, rows []models.PoolImpor
 	}
 	defer tx.Rollback()
 	var poolID int
-	if err = tx.Get(&poolID, `SELECT s.pool_id FROM pool_segments s JOIN customer_lists l ON l.id=s.pool_id WHERE s.id=$1 AND l.type='pool'`, segmentID); err != nil {
+	if err = tx.Get(&poolID, `SELECT s.pool_id FROM org_pool_allocations s JOIN customer_lists l ON l.id=s.pool_id WHERE s.id=$1 AND l.type='pool'`, allocationID); err != nil {
 		if err == sql.ErrNoRows {
-			return result, echo.NewHTTPError(http.StatusNotFound, "pool segment not found")
+			return result, echo.NewHTTPError(http.StatusNotFound, "pool allocation not found")
 		}
 		return result, err
 	}
@@ -719,7 +719,7 @@ func (c *Core) ImportPoolSegmentMembers(segmentID int64, rows []models.PoolImpor
 		ContactID int64  `db:"contact_id"`
 		Status    string `db:"status"`
 	}
-	if err = tx.Select(&existing, `SELECT contact_id,status FROM pool_segment_members WHERE segment_id=$1`, segmentID); err != nil {
+	if err = tx.Select(&existing, `SELECT contact_id,status FROM org_pool_allocation_members WHERE allocation_id=$1`, allocationID); err != nil {
 		return result, err
 	}
 	statusByContact := make(map[int64]string, len(existing))
@@ -765,15 +765,15 @@ func (c *Core) ImportPoolSegmentMembers(segmentID int64, rows []models.PoolImpor
 		case "active":
 			result.AlreadyAssigned++
 		case "removed":
-			if _, err = tx.Exec(`UPDATE pool_segment_members SET status='active',removed_at=NULL,removed_reason='',removed_by_user_id=NULL,updated_at=NOW() WHERE segment_id=$1 AND contact_id=$2`, segmentID, contactID); err != nil {
+			if _, err = tx.Exec(`UPDATE org_pool_allocation_members SET status='active',removed_at=NULL,removed_reason='',removed_by_user_id=NULL,updated_at=NOW() WHERE allocation_id=$1 AND contact_id=$2`, allocationID, contactID); err != nil {
 				return result, err
 			}
-			if _, err = tx.Exec(`UPDATE pool_segment_exclusions ex SET restored_at=NOW() FROM pool_segments s WHERE ex.segment_id=s.id AND s.id=$1 AND ex.contact_id=$2 AND ex.restored_at IS NULL`, segmentID, contactID); err != nil {
+			if _, err = tx.Exec(`UPDATE org_pool_allocation_exclusions ex SET restored_at=NOW() FROM org_pool_allocations s WHERE ex.allocation_id=s.id AND s.id=$1 AND ex.contact_id=$2 AND ex.restored_at IS NULL`, allocationID, contactID); err != nil {
 				return result, err
 			}
 			result.Reactivated++
 		default:
-			if _, err = tx.Exec(`INSERT INTO pool_segment_members(segment_id,contact_id,status) VALUES($1,$2,'active') ON CONFLICT(segment_id,contact_id) DO UPDATE SET status='active',removed_at=NULL,removed_reason='',updated_at=NOW()`, segmentID, contactID); err != nil {
+			if _, err = tx.Exec(`INSERT INTO org_pool_allocation_members(allocation_id,contact_id,status) VALUES($1,$2,'active') ON CONFLICT(allocation_id,contact_id) DO UPDATE SET status='active',removed_at=NULL,removed_reason='',updated_at=NOW()`, allocationID, contactID); err != nil {
 				return result, err
 			}
 			result.Created++
@@ -787,7 +787,7 @@ func (c *Core) ImportPoolSegmentMembers(segmentID int64, rows []models.PoolImpor
 
 // RemovePoolContact performs a logical organization-scoped exclusion. The pool
 // member remains available for other organizations and for audit by admins.
-func (c *Core) RemovePoolContact(segmentID, contactID int64, userID int, reason string) error {
+func (c *Core) RemovePoolContact(allocationID, contactID int64, userID int, reason string) error {
 	tx, err := c.db.Beginx()
 	if err != nil {
 		return err
@@ -795,44 +795,44 @@ func (c *Core) RemovePoolContact(segmentID, contactID int64, userID int, reason 
 	defer tx.Rollback()
 	var poolID sql.NullInt64
 	var orgID int64
-	if err = tx.QueryRow(`SELECT pool_id,organization_id FROM pool_segments WHERE id=$1`, segmentID).Scan(&poolID, &orgID); err != nil {
+	if err = tx.QueryRow(`SELECT pool_id,organization_id FROM org_pool_allocations WHERE id=$1`, allocationID).Scan(&poolID, &orgID); err != nil {
 		return err
 	}
 	var memberExists bool
-	if err = tx.Get(&memberExists, `SELECT EXISTS(SELECT 1 FROM pool_segment_members WHERE segment_id=$1 AND contact_id=$2)`, segmentID, contactID); err != nil {
+	if err = tx.Get(&memberExists, `SELECT EXISTS(SELECT 1 FROM org_pool_allocation_members WHERE allocation_id=$1 AND contact_id=$2)`, allocationID, contactID); err != nil {
 		return err
 	}
 	if !memberExists {
-		return echo.NewHTTPError(http.StatusBadRequest, "contact is not assigned to the selected pool segment")
+		return echo.NewHTTPError(http.StatusBadRequest, "contact is not assigned to the selected pool allocation")
 	}
-	if _, err = tx.Exec(`UPDATE pool_segment_members SET status='removed',removed_reason=$3,removed_at=NOW(),removed_by_user_id=$4,updated_at=NOW() WHERE segment_id=$1 AND contact_id=$2`, segmentID, contactID, reason, userID); err != nil {
+	if _, err = tx.Exec(`UPDATE org_pool_allocation_members SET status='removed',removed_reason=$3,removed_at=NOW(),removed_by_user_id=$4,updated_at=NOW() WHERE allocation_id=$1 AND contact_id=$2`, allocationID, contactID, reason, userID); err != nil {
 		return err
 	}
 	if poolID.Valid {
-		if _, err = tx.Exec(`INSERT INTO pool_segment_exclusions(pool_id,organization_id,contact_id,segment_id,reason,removed_by_user_id) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(pool_id,organization_id,contact_id) DO UPDATE SET segment_id=EXCLUDED.segment_id,reason=EXCLUDED.reason,source='segment',removed_by_user_id=EXCLUDED.removed_by_user_id,removed_at=NOW(),restored_at=NULL`, poolID.Int64, orgID, contactID, segmentID, reason, userID); err != nil {
+		if _, err = tx.Exec(`INSERT INTO org_pool_allocation_exclusions(pool_id,organization_id,contact_id,allocation_id,reason,removed_by_user_id) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(pool_id,organization_id,contact_id) DO UPDATE SET allocation_id=EXCLUDED.allocation_id,reason=EXCLUDED.reason,source='allocation',removed_by_user_id=EXCLUDED.removed_by_user_id,removed_at=NOW(),restored_at=NULL`, poolID.Int64, orgID, contactID, allocationID, reason, userID); err != nil {
 			return err
 		}
 	}
 	return tx.Commit()
 }
 
-func (c *Core) RestorePoolContact(segmentID, contactID int64) error {
+func (c *Core) RestorePoolContact(allocationID, contactID int64) error {
 	tx, err := c.db.Beginx()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 	var memberExists bool
-	if err = tx.Get(&memberExists, `SELECT EXISTS(SELECT 1 FROM pool_segment_members WHERE segment_id=$1 AND contact_id=$2)`, segmentID, contactID); err != nil {
+	if err = tx.Get(&memberExists, `SELECT EXISTS(SELECT 1 FROM org_pool_allocation_members WHERE allocation_id=$1 AND contact_id=$2)`, allocationID, contactID); err != nil {
 		return err
 	}
 	if !memberExists {
-		return echo.NewHTTPError(http.StatusBadRequest, "contact is not assigned to the selected pool segment")
+		return echo.NewHTTPError(http.StatusBadRequest, "contact is not assigned to the selected pool allocation")
 	}
-	if _, err = tx.Exec(`UPDATE pool_segment_members SET status='active',removed_reason='',removed_at=NULL,updated_at=NOW() WHERE segment_id=$1 AND contact_id=$2`, segmentID, contactID); err != nil {
+	if _, err = tx.Exec(`UPDATE org_pool_allocation_members SET status='active',removed_reason='',removed_at=NULL,updated_at=NOW() WHERE allocation_id=$1 AND contact_id=$2`, allocationID, contactID); err != nil {
 		return err
 	}
-	if _, err = tx.Exec(`UPDATE pool_segment_exclusions ex SET restored_at=NOW() FROM pool_segments s WHERE ex.segment_id=s.id AND s.id=$1 AND ex.contact_id=$2 AND ex.restored_at IS NULL`, segmentID, contactID); err != nil {
+	if _, err = tx.Exec(`UPDATE org_pool_allocation_exclusions ex SET restored_at=NOW() FROM org_pool_allocations s WHERE ex.allocation_id=s.id AND s.id=$1 AND ex.contact_id=$2 AND ex.restored_at IS NULL`, allocationID, contactID); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -847,7 +847,7 @@ func (c *Core) ClearPoolContactEmail(poolID int, contactID int64, organizationID
 	guard := `EXISTS (SELECT 1 FROM pool_members WHERE pool_id=$2 AND contact_id=$1)`
 	args := []any{contactID, poolID}
 	if !platformAdmin {
-		guard += ` AND EXISTS (SELECT 1 FROM pool_segments s JOIN pool_segment_members sm ON sm.segment_id=s.id WHERE s.pool_id=$2 AND s.organization_id=$3 AND sm.contact_id=$1)`
+		guard += ` AND EXISTS (SELECT 1 FROM org_pool_allocations s JOIN org_pool_allocation_members sm ON sm.allocation_id=s.id WHERE s.pool_id=$2 AND s.organization_id=$3 AND sm.contact_id=$1)`
 		args = append(args, organizationID)
 	}
 	_, err := c.db.Exec(`UPDATE pool_contacts SET email='',status='archived',updated_at=NOW() WHERE id=$1 AND `+guard, args...)
@@ -856,11 +856,11 @@ func (c *Core) ClearPoolContactEmail(poolID int, contactID int64, organizationID
 
 // refreshPoolCampaignAudienceRoutes re-resolves the internal mailbox route of
 // every pool audience on a campaign. A draft can be created before its
-// organization's secondary list mailbox is configured; in that case the
-// relation keeps a NULL resolved mailbox. Re-reading the current segment
+// organization's pool allocation mailbox is configured; in that case the
+// relation keeps a NULL resolved mailbox. Re-reading the current allocation
 // configuration here makes an existing draft usable after the administrator
-// finishes the configuration, without changing the first-level/secondary
-// audience selection stored in pool_segment_id.
+// finishes the configuration, without changing the first-level/pool-allocation
+// audience selection stored in org_pool_allocation_id.
 func (c *Core) refreshPoolCampaignAudienceRoutes(campaignID int) error {
 	_, err := c.db.Exec(`
 		UPDATE campaign_customer_lists ccl
@@ -869,13 +869,13 @@ func (c *Core) refreshPoolCampaignAudienceRoutes(campaignID int) error {
 				WHEN COUNT(DISTINCT s.id) = 1 AND COUNT(DISTINCT rm.id) = 1 THEN MAX(rm.id)
 				ELSE NULL
 			END
-			FROM pool_segments s
+			FROM org_pool_allocations s
 			LEFT JOIN reply_mailboxes rm ON rm.id=s.reply_mailbox_id
 				AND rm.status='active' AND rm.verified_at IS NOT NULL
 			WHERE ccl.source_organization_id IS NOT NULL
 				AND s.pool_id=ccl.pool_id
 				AND s.organization_id=ccl.source_organization_id
-				AND (ccl.pool_segment_id IS NULL OR s.id=ccl.pool_segment_id)
+				AND (ccl.org_pool_allocation_id IS NULL OR s.id=ccl.org_pool_allocation_id)
 		)
 		WHERE ccl.campaign_id=$1 AND ccl.pool_id IS NOT NULL`, campaignID)
 	return err
@@ -883,7 +883,7 @@ func (c *Core) refreshPoolCampaignAudienceRoutes(campaignID int) error {
 
 // ValidatePoolCampaignAudience is called by preview/send paths. Drafts may
 // retain an unresolved pool audience, but sending is blocked until every pool
-// row resolves to an organization segment and an internal reply mailbox.
+// row resolves to an organization allocation and an internal reply mailbox.
 func (c *Core) ValidatePoolCampaignAudience(campaignID int) error {
 	if err := c.refreshPoolCampaignAudienceRoutes(campaignID); err != nil {
 		return err
@@ -893,7 +893,7 @@ func (c *Core) ValidatePoolCampaignAudience(campaignID int) error {
 		return err
 	}
 	if unresolved > 0 {
-		return echo.NewHTTPError(http.StatusBadRequest, "public-pool audience requires an organization segment and reply mailbox before previewing or sending")
+		return echo.NewHTTPError(http.StatusBadRequest, "public-pool audience requires an organization allocation and reply mailbox before previewing or sending")
 	}
 	return nil
 }
@@ -901,7 +901,7 @@ func (c *Core) ValidatePoolCampaignAudience(campaignID int) error {
 // poolRecipientMembershipSQL is the single definition of a deliverable pool
 // recipient: an active pool member whose organization allocation is still
 // active, which that organization has not excluded, and whose pool contact row
-// is still active. The first-level resolve, the secondary-list resolve and the
+// is still active. The first-level resolve, the pool-allocation resolve and the
 // campaign snapshot writer all embed exactly this fragment, so a new exclusion
 // source or contact status cannot be added to one audience path while another
 // silently keeps sending to the contact.
@@ -910,23 +910,23 @@ func (c *Core) ValidatePoolCampaignAudience(campaignID int) error {
 //
 //	$1 = first-level pool ID
 //	$2 = organization ID
-//	$3 = pool_segments ID restricting the read to one secondary list, or NULL to
-//	     accept every secondary list the organization owns in that pool (the
+//	$3 = org_pool_allocations ID restricting the read to one pool allocation, or NULL to
+//	     accept every pool allocation the organization owns in that pool (the
 //	     schema allows at most one per organization)
 //
 // An embedder that needs further parameters must number them from $4 upwards.
 const poolRecipientMembershipSQL = `
-	FROM pool_segments s
-	JOIN pool_segment_members sm ON sm.segment_id=s.id AND sm.status='active'
+	FROM org_pool_allocations s
+	JOIN org_pool_allocation_members sm ON sm.allocation_id=s.id AND sm.status='active'
 	JOIN pool_members pm ON pm.pool_id=s.pool_id AND pm.contact_id=sm.contact_id
 	JOIN pool_contacts pc ON pc.id=sm.contact_id
-	LEFT JOIN pool_segment_exclusions ex ON ex.pool_id=s.pool_id AND ex.organization_id=s.organization_id AND ex.contact_id=pc.id AND ex.restored_at IS NULL
+	LEFT JOIN org_pool_allocation_exclusions ex ON ex.pool_id=s.pool_id AND ex.organization_id=s.organization_id AND ex.contact_id=pc.id AND ex.restored_at IS NULL
 	WHERE s.pool_id=$1 AND s.organization_id=$2 AND ($3::BIGINT IS NULL OR s.id=$3::BIGINT) AND ex.contact_id IS NULL AND pc.status='active'`
 
 // poolRecipientSelectSQL reads the deliverable members of one pool audience. It
 // is the read half of the shared rule and is deduplicated by the pool contact's
 // stable internal ID, which is also the snapshot's primary key.
-const poolRecipientSelectSQL = `SELECT DISTINCT ON (pc.id) pc.id,pc.customer_code,pc.company_name,pc.email,pc.name,pc.status,s.id AS segment_id,s.organization_id,s.reply_mailbox_id` + poolRecipientMembershipSQL + ` ORDER BY pc.id,s.id`
+const poolRecipientSelectSQL = `SELECT DISTINCT ON (pc.id) pc.id,pc.customer_code,pc.company_name,pc.email,pc.name,pc.status,s.id AS allocation_id,s.organization_id,s.reply_mailbox_id` + poolRecipientMembershipSQL + ` ORDER BY pc.id,s.id`
 
 // poolSnapshotRefreshStatuses lists the snapshot statuses a refresh owns: a row
 // in one of these states has not been handed to delivery yet, so the refresh may
@@ -957,15 +957,15 @@ const poolSnapshotRefreshStatuses = `('pending','deferred')`
 // Embedder positions continue after the rule's parameters:
 //
 //	$4 = campaign ID
-//	$5 = audience reply mailbox, or NULL to keep the per-secondary-list mailbox
+//	$5 = audience reply mailbox, or NULL to keep the per-pool-allocation mailbox
 //	     of each resolved row
-const poolRecipientSnapshotUpsertSQL = `INSERT INTO campaign_pool_recipients AS cpr(campaign_id,pool_contact_id,pool_id,segment_id,organization_id,reply_mailbox_id,email_snapshot,name_snapshot)
+const poolRecipientSnapshotUpsertSQL = `INSERT INTO campaign_pool_recipients AS cpr(campaign_id,pool_contact_id,pool_id,allocation_id,organization_id,reply_mailbox_id,email_snapshot,name_snapshot)
 	SELECT $4,pc.id,$1,s.id,$2,COALESCE($5::INT,s.reply_mailbox_id),pc.email,pc.name` + poolRecipientMembershipSQL + `
 	ON CONFLICT(campaign_id,pool_contact_id) DO UPDATE SET
 		email_snapshot=EXCLUDED.email_snapshot,
 		name_snapshot=EXCLUDED.name_snapshot,
 		pool_id=EXCLUDED.pool_id,
-		segment_id=EXCLUDED.segment_id,
+		allocation_id=EXCLUDED.allocation_id,
 		organization_id=EXCLUDED.organization_id,
 		reply_mailbox_id=EXCLUDED.reply_mailbox_id,
 		updated_at=NOW()
@@ -980,20 +980,20 @@ const poolRecipientSnapshotUpsertSQL = `INSERT INTO campaign_pool_recipients AS 
 // the status predicate matches poolRecipientSnapshotUpsertSQL exactly.
 //
 // Parameters: $1 = campaign ID, $2 = pool ID, $3 = organization ID,
-// $4 = pool_segments ID or NULL for the whole organization scope,
+// $4 = org_pool_allocations ID or NULL for the whole organization scope,
 // $5 = the pool contact IDs that are still deliverable.
 const poolRecipientSnapshotPruneSQL = `DELETE FROM campaign_pool_recipients
-	WHERE campaign_id=$1 AND pool_id=$2 AND organization_id=$3 AND ($4::BIGINT IS NULL OR segment_id=$4::BIGINT)
+	WHERE campaign_id=$1 AND pool_id=$2 AND organization_id=$3 AND ($4::BIGINT IS NULL OR allocation_id=$4::BIGINT)
 		AND status IN ` + poolSnapshotRefreshStatuses + ` AND NOT (pool_contact_id=ANY($5::BIGINT[]))`
 
 // poolAudience is the delivery scope of one pool relation on a campaign: the
-// first-level pool, the target organization, the explicitly selected secondary
+// first-level pool, the target organization, the explicitly selected pool allocation
 // list (nil when the audience selected the first-level pool) and the reply
 // mailbox resolved for the audience.
 type poolAudience struct {
 	poolID         int
 	organizationID int64
-	segmentID      *int64
+	allocationID   *int64
 	mailboxID      *int64
 }
 
@@ -1006,15 +1006,15 @@ type poolAudience struct {
 func (c *Core) EnsurePoolCampaignRecipients(campaignID int) error {
 	var rows []struct {
 		PoolID         int           `db:"pool_id"`
-		SegmentID      sql.NullInt64 `db:"pool_segment_id"`
+		AllocationID   sql.NullInt64 `db:"org_pool_allocation_id"`
 		OrganizationID sql.NullInt64 `db:"source_organization_id"`
 		MailboxID      sql.NullInt64 `db:"resolved_reply_mailbox_id"`
 	}
 	// Audiences are refreshed in a stable order. A campaign may select the same
-	// first-level pool and its secondary list, or two pools that share a contact;
+	// first-level pool and its pool allocation, or two pools that share a contact;
 	// because the snapshot keeps one row per campaign and pool contact, a stable
 	// order keeps that row's audience label deterministic across ticks.
-	if err := c.db.Select(&rows, `SELECT pool_id,pool_segment_id,source_organization_id,resolved_reply_mailbox_id FROM campaign_customer_lists WHERE campaign_id=$1 AND pool_id IS NOT NULL ORDER BY pool_id,pool_segment_id NULLS FIRST`, campaignID); err != nil {
+	if err := c.db.Select(&rows, `SELECT pool_id,org_pool_allocation_id,source_organization_id,resolved_reply_mailbox_id FROM campaign_customer_lists WHERE campaign_id=$1 AND pool_id IS NOT NULL ORDER BY pool_id,org_pool_allocation_id NULLS FIRST`, campaignID); err != nil {
 		return err
 	}
 	for _, row := range rows {
@@ -1023,18 +1023,18 @@ func (c *Core) EnsurePoolCampaignRecipients(campaignID int) error {
 		}
 		mailboxID := row.MailboxID.Int64
 		audience := poolAudience{poolID: row.PoolID, organizationID: row.OrganizationID.Int64, mailboxID: &mailboxID}
-		if row.SegmentID.Valid {
-			segmentID := row.SegmentID.Int64
-			audience.segmentID = &segmentID
+		if row.AllocationID.Valid {
+			allocationID := row.AllocationID.Int64
+			audience.allocationID = &allocationID
 		} else {
-			// A first-level selection resolves to the single secondary list the
+			// A first-level selection resolves to the single pool allocation the
 			// organization owns for the pool. Without exactly one, the audience
 			// stays unresolved and its snapshot must not be rewritten.
-			var segmentCount int
-			if err := c.db.Get(&segmentCount, `SELECT COUNT(*) FROM pool_segments WHERE pool_id=$1 AND organization_id=$2`, row.PoolID, row.OrganizationID.Int64); err != nil {
+			var allocationCount int
+			if err := c.db.Get(&allocationCount, `SELECT COUNT(*) FROM org_pool_allocations WHERE pool_id=$1 AND organization_id=$2`, row.PoolID, row.OrganizationID.Int64); err != nil {
 				return err
 			}
-			if segmentCount != 1 {
+			if allocationCount != 1 {
 				continue
 			}
 		}
@@ -1050,7 +1050,7 @@ func (c *Core) EnsurePoolCampaignRecipients(campaignID int) error {
 // snapshot writer consume poolRecipientMembershipSQL, so the three paths cannot
 // produce different recipient sets.
 func (c *Core) refreshPoolCampaignRecipients(campaignID int, aud poolAudience) error {
-	recipients, err := c.resolvePoolRecipients(aud.poolID, aud.organizationID, aud.segmentID)
+	recipients, err := c.resolvePoolRecipients(aud.poolID, aud.organizationID, aud.allocationID)
 	if err != nil {
 		return err
 	}
@@ -1058,46 +1058,46 @@ func (c *Core) refreshPoolCampaignRecipients(campaignID int, aud poolAudience) e
 	for _, r := range recipients {
 		ids = append(ids, r.ID)
 	}
-	if _, err := c.db.Exec(poolRecipientSnapshotPruneSQL, campaignID, aud.poolID, aud.organizationID, aud.segmentID, ids); err != nil {
+	if _, err := c.db.Exec(poolRecipientSnapshotPruneSQL, campaignID, aud.poolID, aud.organizationID, aud.allocationID, ids); err != nil {
 		return err
 	}
 	if len(recipients) == 0 {
 		return nil
 	}
-	_, err = c.db.Exec(poolRecipientSnapshotUpsertSQL, aud.poolID, aud.organizationID, aud.segmentID, campaignID, aud.mailboxID)
+	_, err = c.db.Exec(poolRecipientSnapshotUpsertSQL, aud.poolID, aud.organizationID, aud.allocationID, campaignID, aud.mailboxID)
 	return err
 }
 
 // resolvePoolRecipients reads the deliverable members of one pool audience. A
-// nil segmentID accepts every secondary list the organization owns in the pool,
+// nil allocationID accepts every pool allocation the organization owns in the pool,
 // which is how a first-level audience selection is resolved.
-func (c *Core) resolvePoolRecipients(poolID int, organizationID int64, segmentID *int64) ([]PoolRecipient, error) {
+func (c *Core) resolvePoolRecipients(poolID int, organizationID int64, allocationID *int64) ([]PoolRecipient, error) {
 	if err := c.ensurePool(poolID); err != nil {
 		return nil, err
 	}
 	var out []PoolRecipient
-	err := c.db.Select(&out, poolRecipientSelectSQL, poolID, organizationID, segmentID)
+	err := c.db.Select(&out, poolRecipientSelectSQL, poolID, organizationID, allocationID)
 	return out, err
 }
 
 // ResolvePoolRecipients resolves a first-level pool audience for one
-// organization. It shares its membership rule with the secondary-list resolve
+// organization. It shares its membership rule with the pool-allocation resolve
 // and with the campaign snapshot writer.
 func (c *Core) ResolvePoolRecipients(poolID int, organizationID int64) ([]PoolRecipient, error) {
 	return c.resolvePoolRecipients(poolID, organizationID, nil)
 }
 
-// resolvePoolRecipientsForSegment resolves one explicitly selected secondary
+// resolvePoolRecipientsForAllocation resolves one explicitly selected pool allocation
 // list for one organization.
-func (c *Core) resolvePoolRecipientsForSegment(poolID int, organizationID, segmentID int64) ([]PoolRecipient, error) {
-	return c.resolvePoolRecipients(poolID, organizationID, &segmentID)
+func (c *Core) resolvePoolRecipientsForAllocation(poolID int, organizationID, allocationID int64) ([]PoolRecipient, error) {
+	return c.resolvePoolRecipients(poolID, organizationID, &allocationID)
 }
 
-// AttachPoolToCampaign records a pool/segment audience on a draft campaign and
+// AttachPoolToCampaign records a pool/allocation audience on a draft campaign and
 // refreshes that audience's recipient snapshot from the shared membership rule.
 // Saving a draft audience again is a refresh: a contact that was excluded since
 // the previous save loses its snapshot row instead of keeping a stale one.
-func (c *Core) AttachPoolToCampaign(campaignID, poolID int, segmentID *int64, organizationID int64) error {
+func (c *Core) AttachPoolToCampaign(campaignID, poolID int, allocationID *int64, organizationID int64) error {
 	var err error
 	if err := c.ensurePool(poolID); err != nil {
 		return err
@@ -1106,7 +1106,7 @@ func (c *Core) AttachPoolToCampaign(campaignID, poolID int, segmentID *int64, or
 		return echo.NewHTTPError(http.StatusBadRequest, "organization is required for pool audiences")
 	}
 	var permitted bool
-	if err := c.db.Get(&permitted, `SELECT EXISTS(SELECT 1 FROM pool_organization_permissions WHERE pool_id=$1 AND organization_id=$2) OR EXISTS(SELECT 1 FROM pool_segments WHERE pool_id=$1 AND organization_id=$2)`, poolID, organizationID); err != nil {
+	if err := c.db.Get(&permitted, `SELECT EXISTS(SELECT 1 FROM pool_organization_permissions WHERE pool_id=$1 AND organization_id=$2) OR EXISTS(SELECT 1 FROM org_pool_allocations WHERE pool_id=$1 AND organization_id=$2)`, poolID, organizationID); err != nil {
 		return err
 	}
 	if !permitted {
@@ -1117,27 +1117,27 @@ func (c *Core) AttachPoolToCampaign(campaignID, poolID int, segmentID *int64, or
 		return err
 	}
 	var mailbox *int64
-	// Selecting a first-level pool resolves to the single effective secondary
-	// segment for the target organization. If none (or more than one) exists,
+	// Selecting a first-level pool resolves to the single effective pool allocation
+	// allocation for the target organization. If none (or more than one) exists,
 	// retain an unresolved relation so drafts can be saved but preview/send will
 	// be blocked until an administrator fixes the assignment.
-	// Keep the audience selection semantics (pool vs explicit segment) separate
-	// from the resolved delivery segment used for recipients. This lets an
+	// Keep the audience selection semantics (pool vs explicit allocation) separate
+	// from the resolved delivery allocation used for recipients. This lets an
 	// activity remain editable with the original first-level pool ID even after
-	// a unique secondary segment is resolved.
-	selectedSegmentID := segmentID
+	// a unique pool allocation is resolved.
+	selectedAllocationID := allocationID
 	unresolvedFirstLevel := false
-	if segmentID == nil {
+	if allocationID == nil {
 		var candidates []struct {
 			ID        int64         `db:"id"`
 			MailboxID sql.NullInt64 `db:"reply_mailbox_id"`
 		}
-		if err := c.db.Select(&candidates, `SELECT id,reply_mailbox_id FROM pool_segments WHERE pool_id=$1 AND organization_id=$2 ORDER BY id`, poolID, organizationID); err != nil {
+		if err := c.db.Select(&candidates, `SELECT id,reply_mailbox_id FROM org_pool_allocations WHERE pool_id=$1 AND organization_id=$2 ORDER BY id`, poolID, organizationID); err != nil {
 			return err
 		}
 		if len(candidates) == 1 {
 			id := candidates[0].ID
-			segmentID = &id
+			allocationID = &id
 			if candidates[0].MailboxID.Valid {
 				mailboxID := candidates[0].MailboxID.Int64
 				mailbox = &mailboxID
@@ -1148,10 +1148,10 @@ func (c *Core) AttachPoolToCampaign(campaignID, poolID int, segmentID *int64, or
 			unresolvedFirstLevel = true
 		}
 	}
-	if segmentID != nil {
+	if allocationID != nil {
 		var m sql.NullInt64
-		if err := c.db.Get(&m, `SELECT reply_mailbox_id FROM pool_segments WHERE id=$1 AND pool_id=$2 AND organization_id=$3`, *segmentID, poolID, organizationID); err != nil {
-			return echo.NewHTTPError(http.StatusBadRequest, "invalid pool segment")
+		if err := c.db.Get(&m, `SELECT reply_mailbox_id FROM org_pool_allocations WHERE id=$1 AND pool_id=$2 AND organization_id=$3`, *allocationID, poolID, organizationID); err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, "invalid pool allocation")
 		}
 		if m.Valid && mailbox == nil {
 			mailboxID := m.Int64
@@ -1159,20 +1159,20 @@ func (c *Core) AttachPoolToCampaign(campaignID, poolID int, segmentID *int64, or
 		}
 	} else if !unresolvedFirstLevel {
 		// The audience selected the first-level pool and resolved to the single
-		// secondary list of the organization. It expands through the same
+		// pool allocation of the organization. It expands through the same
 		// snapshot refresh as every other path, with the reply mailbox of each
 		// resolved row.
 		if err := c.refreshPoolCampaignRecipients(campaignID, poolAudience{poolID: poolID, organizationID: organizationID}); err != nil {
 			return err
 		}
 	}
-	_, err = c.db.Exec(`INSERT INTO campaign_customer_lists(campaign_id,customer_list_id,customer_list_name,pool_id,pool_segment_id,source_organization_id,resolved_reply_mailbox_id)
-		VALUES($1,NULL,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`, campaignID, name, poolID, selectedSegmentID, organizationID, mailbox)
+	_, err = c.db.Exec(`INSERT INTO campaign_customer_lists(campaign_id,customer_list_id,customer_list_name,pool_id,org_pool_allocation_id,source_organization_id,resolved_reply_mailbox_id)
+		VALUES($1,NULL,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`, campaignID, name, poolID, selectedAllocationID, organizationID, mailbox)
 	if err != nil {
 		return err
 	}
-	if segmentID != nil {
-		if err := c.refreshPoolCampaignRecipients(campaignID, poolAudience{poolID: poolID, organizationID: organizationID, segmentID: segmentID, mailboxID: mailbox}); err != nil {
+	if allocationID != nil {
+		if err := c.refreshPoolCampaignRecipients(campaignID, poolAudience{poolID: poolID, organizationID: organizationID, allocationID: allocationID, mailboxID: mailbox}); err != nil {
 			return err
 		}
 	}

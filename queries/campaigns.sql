@@ -242,7 +242,7 @@ FROM resolve_campaign_recipient($1::UUID, $2::TEXT)
 LIMIT 1;
 
 -- name: get-public-pool-campaign-recipient
-SELECT cpr.campaign_id, cpr.pool_contact_id, cpr.organization_id, cpr.segment_id
+SELECT cpr.campaign_id, cpr.pool_contact_id, cpr.organization_id, cpr.allocation_id
 FROM campaigns c
 JOIN campaign_pool_recipients cpr ON cpr.campaign_id=c.id
 JOIN pool_contacts pc ON pc.id=cpr.pool_contact_id
@@ -328,8 +328,8 @@ SELECT COUNT(*) OVER () AS total, campaigns.*,
 -- the same order as the customer_list of campaigns it would've queried and attach the results.
 WITH customer_lists AS (
     SELECT cl.campaign_id, JSON_AGG(JSON_BUILD_OBJECT('id', cl.customer_list_id, 'name', cl.customer_list_name)) FILTER (WHERE cl.pool_id IS NULL) AS customer_lists,
-        JSON_AGG(JSON_BUILD_OBJECT('pool_id', cl.pool_id, 'segment_id', cl.pool_segment_id, 'segment_list_id', ps.list_id, 'segment_list_name', ps_list.name, 'organization_id', cl.source_organization_id, 'reply_mailbox_id', cl.resolved_reply_mailbox_id, 'reply_mailbox_email', COALESCE(r.email, ''), 'name', cl.customer_list_name)) FILTER (WHERE cl.pool_id IS NOT NULL) AS customer_pools FROM campaign_customer_lists cl
-    LEFT JOIN pool_segments ps ON ps.id = cl.pool_segment_id
+        JSON_AGG(JSON_BUILD_OBJECT('pool_id', cl.pool_id, 'allocation_id', cl.org_pool_allocation_id, 'allocation_list_id', ps.list_id, 'allocation_list_name', ps_list.name, 'organization_id', cl.source_organization_id, 'reply_mailbox_id', cl.resolved_reply_mailbox_id, 'reply_mailbox_email', COALESCE(r.email, ''), 'name', cl.customer_list_name)) FILTER (WHERE cl.pool_id IS NOT NULL) AS customer_pools FROM campaign_customer_lists cl
+    LEFT JOIN org_pool_allocations ps ON ps.id = cl.org_pool_allocation_id
     LEFT JOIN customer_lists ps_list ON ps_list.id = ps.list_id
     LEFT JOIN reply_mailboxes r ON r.id = cl.resolved_reply_mailbox_id
     WHERE cl.campaign_id = ANY($1) GROUP BY cl.campaign_id
@@ -397,9 +397,9 @@ COALESCE((
 ) AS customer_lists
 ,
 (
-		SELECT COALESCE(JSON_AGG(JSON_BUILD_OBJECT('pool_id', cl.pool_id, 'segment_id', cl.pool_segment_id, 'segment_list_id', ps.list_id, 'segment_list_name', ps_list.name, 'organization_id', cl.source_organization_id, 'reply_mailbox_id', cl.resolved_reply_mailbox_id, 'reply_mailbox_email', COALESCE(r.email, ''), 'name', cl.customer_list_name)), '[]')
+		SELECT COALESCE(JSON_AGG(JSON_BUILD_OBJECT('pool_id', cl.pool_id, 'allocation_id', cl.org_pool_allocation_id, 'allocation_list_id', ps.list_id, 'allocation_list_name', ps_list.name, 'organization_id', cl.source_organization_id, 'reply_mailbox_id', cl.resolved_reply_mailbox_id, 'reply_mailbox_email', COALESCE(r.email, ''), 'name', cl.customer_list_name)), '[]')
 		FROM campaign_customer_lists cl
-		LEFT JOIN pool_segments ps ON ps.id = cl.pool_segment_id
+		LEFT JOIN org_pool_allocations ps ON ps.id = cl.org_pool_allocation_id
 		LEFT JOIN customer_lists ps_list ON ps_list.id = ps.list_id
 		LEFT JOIN reply_mailboxes r ON r.id = cl.resolved_reply_mailbox_id
 		WHERE cl.campaign_id = campaigns.id AND cl.pool_id IS NOT NULL
@@ -1260,7 +1260,7 @@ WITH picked AS (
     FROM campaign_pool_recipients cpr
     JOIN campaigns c ON c.id = cpr.campaign_id
     JOIN pool_contacts pc ON pc.id = cpr.pool_contact_id
-    LEFT JOIN pool_segment_exclusions ex ON ex.pool_id=cpr.pool_id
+    LEFT JOIN org_pool_allocation_exclusions ex ON ex.pool_id=cpr.pool_id
         AND ex.organization_id=cpr.organization_id
         AND ex.contact_id=cpr.pool_contact_id
         AND ex.restored_at IS NULL
@@ -1278,13 +1278,13 @@ WITH picked AS (
     SET status='queued', updated_at=NOW()
     FROM picked
     WHERE cpr.campaign_id=$1 AND cpr.pool_contact_id=picked.pool_contact_id
-    RETURNING cpr.pool_contact_id, cpr.status AS recipient_status, cpr.reply_mailbox_id, cpr.pool_id, cpr.segment_id, cpr.email_snapshot, cpr.name_snapshot
+    RETURNING cpr.pool_contact_id, cpr.status AS recipient_status, cpr.reply_mailbox_id, cpr.pool_id, cpr.allocation_id, cpr.email_snapshot, cpr.name_snapshot
 )
 SELECT 0 AS id, pc.uuid, COALESCE(u.email_snapshot,pc.email) AS email, COALESCE(u.name_snapshot,pc.name) AS name, pc.attribs, 'enabled' AS status,
     pc.customer_code,
     pc.created_at, pc.updated_at,
     u.recipient_status, NULL::TIMESTAMPTZ AS sent_at,
-    u.pool_contact_id, u.pool_id, COALESCE(u.segment_id,0) AS pool_segment_id,
+    u.pool_contact_id, u.pool_id, COALESCE(u.allocation_id,0) AS org_pool_allocation_id,
     u.reply_mailbox_id AS pool_reply_mailbox_id,
     COALESCE(rm.email,'') AS pool_reply_mailbox_email
 FROM u JOIN pool_contacts pc ON pc.id=u.pool_contact_id

@@ -1,9 +1,19 @@
 -- name: get-reply-mailboxes
+-- In a personal workspace ($2 NULL) only the caller's own mailboxes are
+-- listed. In an organization workspace every mailbox belonging to the
+-- organization is listed so any member can select a shared customer reply
+-- mailbox in a campaign; the `manageable` flag tells callers which rows they
+-- actually own (and may edit/disable/test). Passwords are never selected.
 SELECT id, user_id, organization_id, email, name, username, imap_host, imap_port, imap_tls,
        folder, status, verified_at, is_default, ai_enabled, last_sync_at, last_sync_error,
-       forward_count, created_at, updated_at
+       forward_count, created_at, updated_at,
+       (user_id = $1) AS manageable
 FROM reply_mailboxes
-WHERE user_id = $1 AND organization_id IS NOT DISTINCT FROM $2
+-- The cast pins $2's type: a bare `$2 IS NULL` predicate gives PostgreSQL
+-- nothing to infer from and PREPARE fails with "could not determine data type
+-- of parameter $2".
+WHERE ($2::INT IS NULL AND user_id = $1 AND organization_id IS NULL)
+   OR organization_id = $2::INT
 ORDER BY is_default DESC, id;
 
 -- name: get-reply-mailbox

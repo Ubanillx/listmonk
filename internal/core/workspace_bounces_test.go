@@ -34,7 +34,7 @@ CREATE TEMP TABLE pool_contacts (id bigint,uuid uuid,email text,status text);
 CREATE TEMP TABLE campaigns (id int,name text,organization_id bigint,owner_user_id int);
 CREATE TEMP TABLE organizations (id bigint,status text);
 CREATE TEMP TABLE bounces (id int,type text,source text,meta jsonb NOT NULL DEFAULT '{}',created_at timestamptz DEFAULT NOW(),
- customer_id int,pool_contact_id bigint,source_pool_id int,source_segment_id bigint,source_organization_id bigint,campaign_id int);
+ customer_id int,pool_contact_id bigint,source_pool_id int,source_allocation_id bigint,source_organization_id bigint,campaign_id int);
 INSERT INTO organizations VALUES(10,'active'),(20,'active');
 INSERT INTO customers VALUES(1,'10000000-0000-0000-0000-000000000001','customer@example.invalid','blocklisted',10,1,NULL);
 INSERT INTO pool_contacts VALUES(2,'20000000-0000-0000-0000-000000000002','pool@example.invalid','active');

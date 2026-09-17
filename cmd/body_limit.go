@@ -52,9 +52,9 @@ var bodyLimitRules = []struct {
 	// Media library uploads.
 	{"/api/media", "32M"},
 
-	// Pool segment member imports (CSV/XLSX).
-	{"/api/pool-segments/", "32M"},
-	{"/api/pools/segments/", "32M"},
+	// Pool allocation member imports (CSV/XLSX).
+	{"/api/org-pool-allocations/", "32M"},
+	{"/api/pools/allocations/", "32M"},
 
 	// Bulk customer import: CSV, XLSX, or a ZIP archive of either.
 	{"/api/import/customers", "64M"},

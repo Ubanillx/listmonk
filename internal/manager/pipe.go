@@ -296,7 +296,7 @@ func (p *pipe) newMessage(s models.CampaignCustomer) (CampaignMessage, error) {
 	msg.pipe = p
 	msg.PoolContactID = s.PoolContactID
 	msg.PoolID = s.PoolID
-	msg.PoolSegmentID = s.PoolSegmentID
+	msg.OrgPoolAllocationID = s.OrgPoolAllocationID
 	msg.PoolReplyMailboxID = s.ReplyMailboxID
 	msg.PoolReplyMailboxEmail = s.PoolReplyMailboxEmail
 	p.wg.Add(1)

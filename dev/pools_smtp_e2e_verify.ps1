@@ -21,7 +21,7 @@ function DbScalar($sql) {
 # development database. Environment overrides remain available for a custom
 # fixture.
 $poolID = if ($env:POOL_QA_POOL_ID) { [int]$env:POOL_QA_POOL_ID } else { [int](DbScalar "SELECT id FROM customer_lists WHERE name='wsqa-pool-primary' AND type='pool'") }
-$segmentID = if ($env:POOL_QA_SEGMENT_ID) { [int]$env:POOL_QA_SEGMENT_ID } else { [int](DbScalar "SELECT ps.id FROM pool_segments ps JOIN customer_lists l ON l.id=ps.list_id WHERE l.name='wsqa-pool-segment' AND ps.pool_id=$poolID") }
+$allocationID = if ($env:POOL_QA_SEGMENT_ID) { [int]$env:POOL_QA_SEGMENT_ID } else { [int](DbScalar "SELECT ps.id FROM org_pool_allocations ps JOIN customer_lists l ON l.id=ps.list_id WHERE l.name='wsqa-org-pool-allocation' AND ps.pool_id=$poolID") }
 
 function LoginUser($username) {
   $jar = Join-Path $env:TEMP ("pool-smtp-e2e-{0}-{1}.jar" -f $username, $PID)
@@ -111,8 +111,8 @@ try {
   } while ((Get-Date) -lt $deadline)
   Check 'campaign sends the three deduplicated pool contacts' ($state -eq 'finished|3|3')
 
-  $recipientStats = DbScalar "SELECT count(*)::text || '|' || count(DISTINCT pool_contact_id)::text || '|' || count(*) FILTER (WHERE status='sent')::text || '|' || count(*) FILTER (WHERE reply_mailbox_id=(SELECT reply_mailbox_id FROM pool_segments WHERE id=$segmentID))::text FROM campaign_pool_recipients WHERE campaign_id=$campaignID"
-  Check 'send snapshot has one sent row per pool contact with segment reply mailbox' ($recipientStats -eq '3|3|3|3')
+  $recipientStats = DbScalar "SELECT count(*)::text || '|' || count(DISTINCT pool_contact_id)::text || '|' || count(*) FILTER (WHERE status='sent')::text || '|' || count(*) FILTER (WHERE reply_mailbox_id=(SELECT reply_mailbox_id FROM org_pool_allocations WHERE id=$allocationID))::text FROM campaign_pool_recipients WHERE campaign_id=$campaignID"
+  Check 'send snapshot has one sent row per pool contact with allocation reply mailbox' ($recipientStats -eq '3|3|3|3')
 
   $deadline = (Get-Date).AddSeconds(20)
   $messages = @()
@@ -125,7 +125,7 @@ try {
   $recipients = @($messages | ForEach-Object { $_.To | ForEach-Object { "$($_.Mailbox)@$($_.Domain)" } })
   Check 'MailHog recipient addresses are complete and unique' (($recipients | Sort-Object -Unique).Count -eq 3 -and @(@('alpha-pool@example.test', 'beta-pool@example.test', 'unique-pool@example.test') | Where-Object { $_ -notin $recipients }).Count -eq 0)
   $replyTos = @($messages | ForEach-Object { @($_.Content.Headers.'Reply-To')[0] })
-  Check 'every first-level pool message uses the secondary internal reply mailbox' (($replyTos | Where-Object { $_ -ne 'pool-replies@example.test' }).Count -eq 0)
+  Check 'every first-level pool message uses the pool-allocation internal reply mailbox' (($replyTos | Where-Object { $_ -ne 'pool-replies@example.test' }).Count -eq 0)
 } finally {
   if ($campaignID -gt 0) {
     $deleted = Api 'DELETE' "/api/campaigns/$campaignID" $manager 1 $null

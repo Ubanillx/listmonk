@@ -36,6 +36,10 @@ type ReplyMailbox struct {
 	LastSyncAt     *time.Time `db:"last_sync_at" json:"last_sync_at"`
 	LastSyncErr    string     `db:"last_sync_error" json:"last_sync_error"`
 	ForwardCount   int        `db:"forward_count" json:"forward_count"`
+	// Manageable is true only when the caller owns the mailbox. In an
+	// organization workspace the listing also returns mailboxes the caller may
+	// select for a campaign but cannot manage.
+	Manageable     bool       `db:"manageable" json:"manageable"`
 }
 
 // ReplyForwardRule describes server-side application forwarding that is

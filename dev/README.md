@@ -86,7 +86,7 @@ The development suite exposes these local endpoints:
 
 ### Public-pool verification
 
-To exercise the first-level pool, organization segment, masked contact DTO, and
+To exercise the first-level pool, organization allocation, masked contact DTO, and
 internal reply mailbox flow against the running stack, load the deterministic
 fixture and run the PowerShell checks:
 
@@ -116,7 +116,7 @@ the assertions, and the run aborts with guidance when either login fails.
 To exercise actual account-owned SMTP delivery, run the MailHog verifier after
 the same fixture. It requires the fixture manager to have no personal SMTP
 servers, temporarily creates a `mailhog`-only server, sends the three unique
-pool recipients concurrently, verifies the secondary-list `Reply-To` header,
+pool recipients concurrently, verifies the pool-allocation `Reply-To` header,
 then deletes both the campaign and temporary SMTP server.
 
 ```powershell

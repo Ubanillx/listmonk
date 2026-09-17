@@ -817,15 +817,15 @@ export default Vue.extend({
     hasInvalidPoolSelection() {
       const selected = this.form.customer_lists;
       const poolCount = selected.filter((list) => list.type === 'pool').length;
-      const segmentCount = selected.filter((list) => list.type === 'pool_segment').length;
-      const regularCount = selected.filter((list) => list.type !== 'pool' && list.type !== 'pool_segment').length;
-      return segmentCount > 0 || poolCount > 1 || (poolCount > 0 && (!this.isPlatformAdmin || regularCount > 0));
+      const allocationCount = selected.filter((list) => list.type === 'org_pool_allocation').length;
+      const regularCount = selected.filter((list) => list.type !== 'pool' && list.type !== 'org_pool_allocation').length;
+      return allocationCount > 0 || poolCount > 1 || (poolCount > 0 && (!this.isPlatformAdmin || regularCount > 0));
     },
 
     importListOptions() {
       const selected = this.form.customer_lists;
       const selectedPool = selected.some((list) => list.type === 'pool');
-      const selectedRegular = selected.some((list) => list.type !== 'pool' && list.type !== 'pool_segment');
+      const selectedRegular = selected.some((list) => list.type !== 'pool' && list.type !== 'org_pool_allocation');
       if (selectedPool && this.isPlatformAdmin) {
         return this.poolImportLists;
       }

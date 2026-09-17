@@ -171,9 +171,9 @@ func (c *Core) QueryWorkspaceLists(access models.WorkspaceAccess, search, typ, o
 		SELECT ls.*, COALESCE(ss.customer_statuses, '{}') AS customer_statuses,
 			CASE WHEN ls.type='pool' THEN (
 				SELECT COUNT(*) FROM pool_members pm WHERE pm.pool_id=ls.id
-			) WHEN ls.type='pool_segment' THEN (
-				SELECT COUNT(*) FROM pool_segment_members sm
-				JOIN pool_segments ps ON ps.id=sm.segment_id
+			) WHEN ls.type='org_pool_allocation' THEN (
+				SELECT COUNT(*) FROM org_pool_allocation_members sm
+				JOIN org_pool_allocations ps ON ps.id=sm.allocation_id
 				WHERE ps.list_id=ls.id AND sm.status='active'
 			) ELSE COALESCE(ss.customer_count, 0) END AS customer_count
 		FROM ls LEFT JOIN statuses ss ON ss.customer_list_id = ls.id
@@ -530,9 +530,9 @@ func (c *Core) GetWorkspaceList(access models.WorkspaceAccess, id int) (models.C
 			COALESCE(s.customer_statuses, '{}') AS customer_statuses,
 			CASE WHEN l.type='pool' THEN (
 				SELECT COUNT(*) FROM pool_members pm WHERE pm.pool_id=l.id
-			) WHEN l.type='pool_segment' THEN (
-				SELECT COUNT(*) FROM pool_segment_members sm
-				JOIN pool_segments ps ON ps.id=sm.segment_id
+			) WHEN l.type='org_pool_allocation' THEN (
+				SELECT COUNT(*) FROM org_pool_allocation_members sm
+				JOIN org_pool_allocations ps ON ps.id=sm.allocation_id
 				WHERE ps.list_id=l.id AND sm.status='active'
 			) ELSE COALESCE(s.customer_count, 0) END AS customer_count
 		FROM customer_lists l

@@ -182,7 +182,7 @@ type PublicPoolRecipient struct {
 	CampaignID     int      `db:"campaign_id"`
 	PoolContactID  int64    `db:"pool_contact_id"`
 	OrganizationID null.Int `db:"organization_id"`
-	SegmentID      null.Int `db:"segment_id"`
+	AllocationID   null.Int `db:"allocation_id"`
 }
 
 func (c *Core) GetPublicPoolCampaignRecipient(campUUID, contactUUID string) (PublicPoolRecipient, error) {
@@ -204,7 +204,7 @@ func (c *Core) UnsubscribePoolByCampaign(campUUID, contactUUID string, reason st
 		}
 		return err
 	}
-	_, err := c.db.Exec(`INSERT INTO pool_segment_exclusions(pool_id,organization_id,contact_id,segment_id,reason,source) SELECT cpr.pool_id,cpr.organization_id,cpr.pool_contact_id,cpr.segment_id,$3,'unsubscribe' FROM campaign_pool_recipients cpr WHERE cpr.campaign_id=$1 AND cpr.pool_contact_id=$2 ON CONFLICT(pool_id,organization_id,contact_id) DO UPDATE SET reason=EXCLUDED.reason,source='unsubscribe',removed_at=NOW(),restored_at=NULL`, r.CampaignID, r.PoolContactID, reason)
+	_, err := c.db.Exec(`INSERT INTO org_pool_allocation_exclusions(pool_id,organization_id,contact_id,allocation_id,reason,source) SELECT cpr.pool_id,cpr.organization_id,cpr.pool_contact_id,cpr.allocation_id,$3,'unsubscribe' FROM campaign_pool_recipients cpr WHERE cpr.campaign_id=$1 AND cpr.pool_contact_id=$2 ON CONFLICT(pool_id,organization_id,contact_id) DO UPDATE SET reason=EXCLUDED.reason,source='unsubscribe',removed_at=NOW(),restored_at=NULL`, r.CampaignID, r.PoolContactID, reason)
 	if err != nil {
 		return err
 	}

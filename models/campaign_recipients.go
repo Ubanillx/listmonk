@@ -11,7 +11,7 @@ type CampaignCustomer struct {
 	// campaign_pool_recipients table.
 	PoolContactID         int64    `db:"pool_contact_id" json:"-"`
 	PoolID                int      `db:"pool_id" json:"-"`
-	PoolSegmentID         int64    `db:"pool_segment_id" json:"-"`
+	OrgPoolAllocationID   int64    `db:"org_pool_allocation_id" json:"-"`
 	ReplyMailboxID        null.Int `db:"pool_reply_mailbox_id" json:"-"`
 	PoolReplyMailboxEmail string   `db:"pool_reply_mailbox_email" json:"-"`
 }

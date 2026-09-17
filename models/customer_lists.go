@@ -6,14 +6,14 @@ import (
 )
 
 const (
-	CustomerListTypePrivate     = "private"
-	CustomerListTypePublic      = "public"
-	CustomerListTypePool        = "pool"
-	CustomerListTypePoolSegment = "pool_segment"
-	CustomerListOptinSingle     = "single"
-	CustomerListOptinDouble     = "double"
-	CustomerListStatusActive    = "active"
-	CustomerListStatusArchived  = "archived"
+	CustomerListTypePrivate           = "private"
+	CustomerListTypePublic            = "public"
+	CustomerListTypePool              = "pool"
+	CustomerListTypeOrgPoolAllocation = "org_pool_allocation"
+	CustomerListOptinSingle           = "single"
+	CustomerListOptinDouble           = "double"
+	CustomerListStatusActive          = "active"
+	CustomerListStatusArchived        = "archived"
 )
 
 // CustomerList represents a mailing customer_list.
@@ -31,7 +31,7 @@ type CustomerList struct {
 	MaskEmails         bool           `db:"mask_emails" json:"mask_emails"`
 	PoolParentID       null.Int       `db:"pool_parent_id" json:"pool_parent_id,omitempty"`
 	PoolReplyMailboxID null.Int       `db:"pool_reply_mailbox_id" json:"pool_reply_mailbox_id,omitempty"`
-	// PoolDeliveryAllowed marks a first-level/secondary public-pool list that
+	// PoolDeliveryAllowed marks a first-level/pool-allocation public-pool list that
 	// the active organization may select for campaign delivery. It is a
 	// capability flag, not permission to inspect pool contacts.
 	PoolDeliveryAllowed bool         `db:"-" json:"pool_delivery_allowed,omitempty"`

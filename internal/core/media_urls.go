@@ -103,17 +103,17 @@ func rewriteMediaReferences(body []byte, copies map[int]int, sourceNames map[int
 		host := string(sub[1])
 		route := strings.ToLower(string(sub[2]))
 		// The numeric protected route has already been handled above.  Do not
-		// reinterpret its numeric segment as a filename-only route.
-		segment := string(sub[3])
+		// reinterpret its numeric allocation as a filename-only route.
+		allocation := string(sub[3])
 		if route == "/api/media/file/" {
-			if id, err := strconv.Atoi(segment); err == nil && id > 0 {
+			if id, err := strconv.Atoi(allocation); err == nil && id > 0 {
 				return match
 			}
 		}
 		if host != "" && !isLocalMediaRewriteHost(host) {
 			return match
 		}
-		filename := normalizeLegacyMediaFilename(segment)
+		filename := normalizeLegacyMediaFilename(allocation)
 		copyRow, ok := byFilename[filename]
 		if !ok {
 			return match

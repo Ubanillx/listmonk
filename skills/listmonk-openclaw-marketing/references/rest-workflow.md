@@ -258,7 +258,7 @@ the skill uses direct `POST /api/customers` calls instead. The direct path requi
 `customers:write` and preserves attributes; it still requires `customer_code`.
 
 This workflow supports ordinary `private` and `public` customer lists only. Lists with
-type `pool` or `pool_segment` belong to the public-pool allocation workflow and should be
+type `pool` or `org_pool_allocation` belong to the public-pool allocation workflow and should be
 handled through [the pool APIs](../../../../docs/docs/content/apis/pools.md), not this
 batch/direct import path.
 

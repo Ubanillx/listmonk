@@ -204,7 +204,7 @@ func (a *App) SubscriptionPage(c echo.Context) error {
 	// Get the customer from the legacy table or, for public-pool campaigns,
 	// from the pool contact table. Pool contacts intentionally do not become
 	// rows in customers; their unsubscribe token is still bound to the campaign
-	// snapshot and organization segment.
+	// snapshot and organization allocation.
 	s, err := a.core.GetCustomer(0, subUUID, "")
 	poolContact := false
 	if err != nil {

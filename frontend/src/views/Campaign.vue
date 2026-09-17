@@ -688,14 +688,14 @@ export default Vue.extend({
         const customerPools = Array.isArray(data.customerPools) ? data.customerPools : [];
         const poolAudienceLists = customerPools.reduce((lists, pool) => {
           const poolID = Number(pool.poolId || pool.pool_id);
-          const segmentListID = Number(pool.segmentListId || pool.segment_list_id);
-          const listID = segmentListID > 0 ? segmentListID : poolID;
+          const allocationListID = Number(pool.allocationListId || pool.allocation_list_id);
+          const listID = allocationListID > 0 ? allocationListID : poolID;
           if (listID > 0) {
             lists.push({
               id: listID,
-              name: pool.segmentListName || pool.segment_list_name
+              name: pool.allocationListName || pool.allocation_list_name
                 || pool.name || this.$t('campaigns.poolFallback', { id: poolID }),
-              type: segmentListID > 0 ? 'pool_segment' : 'pool',
+              type: allocationListID > 0 ? 'org_pool_allocation' : 'pool',
               poolDeliveryAllowed: true,
             });
           }
@@ -954,7 +954,7 @@ export default Vue.extend({
       // customer-list read/manage grants. The backend still enforces the
       // organization grant; this flag only keeps an authorized pool visible
       // in the campaign selector when contact details are unavailable.
-      if ((customerList.type === 'pool' || customerList.type === 'pool_segment')
+      if ((customerList.type === 'pool' || customerList.type === 'org_pool_allocation')
         && customerList.poolDeliveryAllowed) {
         return true;
       }
@@ -963,6 +963,7 @@ export default Vue.extend({
       }
       return this.$canManageResource(customerList) && this.$canList(customerList.id, 'customer_list:manage');
     },
+
   },
 
   computed: {

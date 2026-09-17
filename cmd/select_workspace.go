@@ -64,7 +64,7 @@ func (a *App) SelectWorkspacePage(c echo.Context) error {
 	}
 	orgs, err := a.core.GetUserOrganizations(user.ID)
 	if user.IsPlatformAdmin() {
-		// Platform administrators can administer public-pool segments in any
+		// Platform administrators can administer public-pool allocations in any
 		// active organization, so the post-login selector must expose the same
 		// organization set as the SPA workspace switcher.
 		orgs, err = a.core.GetOrganizations(false)

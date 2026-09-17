@@ -23,8 +23,8 @@ func TestBodyLimitForPath(t *testing.T) {
 		{"/api/media/file/12/logo.png", "32M"},
 		{"/api/templates", "16M"},
 		{"/api/campaigns/12/preview", "16M"},
-		{"/api/pool-segments/3/import-members", "32M"},
-		{"/api/pools/segments/3/import-members", "32M"},
+		{"/api/org-pool-allocations/3/import-members", "32M"},
+		{"/api/pools/allocations/3/import-members", "32M"},
 		{"/api/import/customers", "64M"},
 		// Everything else falls back to the default.
 		{"/api/customers", defaultBodyLimit},

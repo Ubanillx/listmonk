@@ -383,7 +383,7 @@ export default Vue.extend({
       if (customerList.type === 'pool') {
         return this.isPlatformAdmin;
       }
-      if (customerList.type === 'pool_segment') {
+      if (customerList.type === 'org_pool_allocation') {
         return false;
       }
       return this.$canManageResource(customerList) && this.$canList(customerList.id, 'customer_list:manage');
@@ -401,7 +401,7 @@ export default Vue.extend({
     },
 
     ownerLabel(resource) {
-      if (resource.type === 'pool_segment') {
+      if (resource.type === 'org_pool_allocation') {
         return resource.organizationName || resource.organization_name || '-';
       }
       return resource.ownerName || resource.ownerUsername || '-';
@@ -423,7 +423,7 @@ export default Vue.extend({
     },
 
     customerListCustomersRoute(customerList) {
-      if (customerList.type === 'pool' || customerList.type === 'pool_segment') {
+      if (customerList.type === 'pool' || customerList.type === 'org_pool_allocation') {
         return { name: 'poolContacts', params: { customerListID: customerList.id } };
       }
       return { name: 'customersCustomerList', params: { customerListID: customerList.id } };

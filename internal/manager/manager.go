@@ -252,7 +252,7 @@ type CampaignMessage struct {
 	Customer              models.Customer
 	PoolContactID         int64
 	PoolID                int
-	PoolSegmentID         int64
+	OrgPoolAllocationID   int64
 	PoolReplyMailboxID    null.Int
 	PoolReplyMailboxEmail string
 

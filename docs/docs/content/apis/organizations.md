@@ -829,7 +829,7 @@ For templates, campaigns, and media only `visibility = 'private'` rows move, so 
 global asset cannot change its publication contract
 (`internal/core/workspace_migration.go:210`). Customer lists are owner-private by
 design: the migration takes the caller's own personal rows, normalizes them to
-`private`, and excludes first-level pools and secondary lists, which are platform
+`private`, and excludes first-level pools and pool allocations, which are platform
 assets rather than personal resources (`internal/core/workspace_migration.go:95`,
 `internal/core/workspace.go:384`; see [Public pools](pools.md)).
 

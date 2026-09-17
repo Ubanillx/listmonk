@@ -81,7 +81,7 @@ func (a *App) GetList(c echo.Context) error {
 	// live in the platform administrator's workspace. Expose only list metadata
 	// here; pool contact endpoints enforce the separate masked-detail policy.
 	var poolType string
-	if err := a.db.Get(&poolType, `SELECT type::text FROM customer_lists WHERE id=$1`, id); err == nil && (poolType == models.CustomerListTypePool || poolType == models.CustomerListTypePoolSegment) {
+	if err := a.db.Get(&poolType, `SELECT type::text FROM customer_lists WHERE id=$1`, id); err == nil && (poolType == models.CustomerListTypePool || poolType == models.CustomerListTypeOrgPoolAllocation) {
 		if !access.PlatformAdmin {
 			if !access.IsOrganization() || access.OrganizationID <= 0 {
 				return echo.NewHTTPError(http.StatusForbidden, "public pool is outside the active workspace")
@@ -92,11 +92,11 @@ func (a *App) GetList(c echo.Context) error {
 					return err
 				}
 				if !allowed {
-					if err := a.db.Get(&allowed, `SELECT EXISTS(SELECT 1 FROM pool_segments WHERE pool_id=$1 AND organization_id=$2)`, id, access.OrganizationID); err != nil {
+					if err := a.db.Get(&allowed, `SELECT EXISTS(SELECT 1 FROM org_pool_allocations WHERE pool_id=$1 AND organization_id=$2)`, id, access.OrganizationID); err != nil {
 						return err
 					}
 				}
-			} else if err := a.db.Get(&allowed, `SELECT EXISTS(SELECT 1 FROM pool_segments s WHERE s.list_id=$1 AND s.organization_id=$2 AND s.pool_id IS NOT NULL)`, id, access.OrganizationID); err != nil {
+			} else if err := a.db.Get(&allowed, `SELECT EXISTS(SELECT 1 FROM org_pool_allocations s WHERE s.list_id=$1 AND s.organization_id=$2 AND s.pool_id IS NOT NULL)`, id, access.OrganizationID); err != nil {
 				return err
 			}
 			if !allowed {
@@ -140,14 +140,14 @@ func (a *App) CreateList(c echo.Context) error {
 	if err := c.Bind(&l); err != nil {
 		return err
 	}
-	// Secondary public-pool lists are created only by the first-level pool split
+	// Pool-allocation public-pool lists are created only by the first-level pool split
 	// transaction. They must never be created as standalone customer lists.
 	if l.Type == models.CustomerListTypePool {
 		if !auth.GetUser(c).IsPlatformAdmin() {
 			return echo.NewHTTPError(http.StatusForbidden, "only highest administrators may create a public pool")
 		}
-	} else if l.Type == models.CustomerListTypePoolSegment {
-		return echo.NewHTTPError(http.StatusForbidden, "secondary lists can only be created by splitting a first-level public pool")
+	} else if l.Type == models.CustomerListTypeOrgPoolAllocation {
+		return echo.NewHTTPError(http.StatusForbidden, "pool allocations can only be created by splitting a first-level public pool")
 	} else if err := requireLegacyPermission(auth.GetUser(c), auth.PermListManageAll); err != nil {
 		return err
 	}

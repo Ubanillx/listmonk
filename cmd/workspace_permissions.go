@@ -572,7 +572,7 @@ func (a *App) queryReadableWorkspaceLists(c echo.Context, access models.Workspac
 	// stored in the platform administrator's workspace. Add only minimal pool
 	// metadata for organizations that can deliver them; contact endpoints apply
 	// the separate masking/detail policy.
-	if typ == "" || typ == models.CustomerListTypePool || typ == models.CustomerListTypePoolSegment {
+	if typ == "" || typ == models.CustomerListTypePool || typ == models.CustomerListTypeOrgPoolAllocation {
 		poolLists, poolErr := a.core.QueryAuthorizedPoolLists(access)
 		if poolErr != nil {
 			return nil, 0, poolErr

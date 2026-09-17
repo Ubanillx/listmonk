@@ -29,7 +29,7 @@ import (
 //	go test ./cmd/ -run 'TestReplyForwardRule' -v
 const (
 	// replyForwardRuleTestManagerUser is the org manager seeded by
-	// seedPoolSegmentFixtures as a manager of poolSegmentTestHomeOrgID.
+	// seedOrgPoolAllocationFixtures as a manager of orgPoolAllocationTestHomeOrgID.
 	replyForwardRuleTestManagerUser = 2
 	replyForwardRuleTestMailboxID   = 7
 	replyForwardRuleTestRuleID      = 42
@@ -38,17 +38,17 @@ const (
 // seedReplyForwardRuleFixture seeds a retained mailbox and one active forwarding
 // rule with explicit ids, so the rule id and the mailbox id differ. It also makes
 // the organization creator (the preferred resume target) an enabled manager
-// member: seedPoolSegmentFixtures leaves users at the schema default ('disabled')
+// member: seedOrgPoolAllocationFixtures leaves users at the schema default ('disabled')
 // and deliberately gives the platform administrator no membership.
 func seedReplyForwardRuleFixture(t *testing.T, db *sqlx.DB, orgID int) {
 	t.Helper()
 
 	if _, err := db.Exec(`UPDATE users SET status = 'enabled' WHERE id = ANY($1::INT[])`,
-		pq.Array([]int{poolSegmentTestAdminUser, replyForwardRuleTestManagerUser})); err != nil {
+		pq.Array([]int{orgPoolAllocationTestAdminUser, replyForwardRuleTestManagerUser})); err != nil {
 		t.Fatalf("enabling the fixture users: %v", err)
 	}
 	if _, err := db.Exec(`INSERT INTO organization_members (organization_id, user_id, role)
-		VALUES ($1, $2, 'manager')`, orgID, poolSegmentTestAdminUser); err != nil {
+		VALUES ($1, $2, 'manager')`, orgID, orgPoolAllocationTestAdminUser); err != nil {
 		t.Fatalf("seeding the creator membership: %v", err)
 	}
 
@@ -70,7 +70,7 @@ func replyForwardRuleTestContext(t *testing.T, e *echo.Echo, method string, id i
 	path := "/api/organizations/reply-forwarding/" + strconv.Itoa(id)
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	req.Header.Set(workspaceHeader, strconv.Itoa(poolSegmentTestHomeOrgID))
+	req.Header.Set(workspaceHeader, strconv.Itoa(orgPoolAllocationTestHomeOrgID))
 
 	c := e.NewContext(req, httptest.NewRecorder())
 	c.SetPath("/api/organizations/reply-forwarding/:id")
@@ -106,9 +106,9 @@ func requireReplyForwardNotFound(t *testing.T, err error) {
 }
 
 func TestReplyForwardRuleIdSemantics(t *testing.T) {
-	app := newPoolSegmentTestApp(t)
-	seedPoolSegmentFixtures(t, app.db)
-	seedReplyForwardRuleFixture(t, app.db, poolSegmentTestHomeOrgID)
+	app := newOrgPoolAllocationTestApp(t)
+	seedOrgPoolAllocationFixtures(t, app.db)
+	seedReplyForwardRuleFixture(t, app.db, orgPoolAllocationTestHomeOrgID)
 
 	e := echo.New()
 
@@ -150,7 +150,7 @@ func TestReplyForwardRuleIdSemantics(t *testing.T) {
 
 	// A rule of another organization is out of scope for this workspace.
 	var otherOrgID int
-	if err := app.db.Get(&otherOrgID, `SELECT id FROM organizations WHERE id <> $1 ORDER BY id LIMIT 1`, poolSegmentTestHomeOrgID); err != nil {
+	if err := app.db.Get(&otherOrgID, `SELECT id FROM organizations WHERE id <> $1 ORDER BY id LIMIT 1`, orgPoolAllocationTestHomeOrgID); err != nil {
 		t.Fatalf("reading another organization: %v", err)
 	}
 	if _, err := app.db.Exec(`UPDATE reply_forward_rules SET organization_id = $1 WHERE id = $2`, otherOrgID, replyForwardRuleTestRuleID); err != nil {

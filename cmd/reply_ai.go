@@ -476,7 +476,7 @@ func (a *App) processReplyAIEvent(event models.ReplyAIEvent) error {
 	}
 	if poolContact.ID > 0 {
 		action.PoolContactID = poolContact.ID
-		action.SourceSegmentID = int64(poolRecipient.SegmentID.Int)
+		action.SourceAllocationID = int64(poolRecipient.AllocationID.Int)
 		action.SourceOrganizationID = int64(poolRecipient.OrganizationID.Int)
 		// Recover the parent pool ID from the immutable delivery snapshot.
 		_ = a.db.Get(&action.PoolID, `SELECT pool_id FROM campaign_pool_recipients WHERE campaign_id=$1 AND pool_contact_id=$2`, poolRecipient.CampaignID, poolRecipient.PoolContactID)

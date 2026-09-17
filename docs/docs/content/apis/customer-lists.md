@@ -2,7 +2,7 @@
 
 Customer lists are exposed under `/api/customer-lists`. In addition to private
 and public subscription lists, the API supports first-level public pools
-(`pool`) and organization segments (`pool_segment`). See [Public pools](pools.md)
+(`pool`) and organization allocations (`org_pool_allocation`). See [Public pools](pools.md)
 for masking, assignment, exclusions, merge, and internal reply mailbox rules.
 
 Authenticated responses are scoped by the active workspace selected through
@@ -13,7 +13,7 @@ public pools remain an explicit cross-workspace delivery/import exception.
 
 List responses include `organization_name` when a row belongs to an
 organization and `owner_username`/`owner_name` for the user owner. A
-`pool_segment` is displayed as belonging to its target organization; its
+`org_pool_allocation` is displayed as belonging to its target organization; its
 creator remains in the owner fields for audit and ownership checks. A
 first-level `pool` is platform-wide (`visibility: global`), while its
 organization delivery permissions are stored separately.
@@ -24,7 +24,7 @@ organization delivery permissions are stored separately.
 | GET | [/api/public/customer-lists](#get-apipubliccustomer-lists) | Retrieve public customer_lists. |
 | GET | [/api/customer-lists/{customer_list_id}](#get-apicustomer-listscustomer_list_id) | Retrieve a specific customer_list. |
 | GET | [/api/customer-lists/{customer_list_id}/pool-contacts](#get-apicustomer-listscustomer_list_idpool-contacts) | Retrieve contacts of a pool customer_list. |
-| GET | [/api/customer-lists/{customer_list_id}/pool-segments](#get-apicustomer-listscustomer_list_idpool-segments) | Retrieve organization segments of a pool customer_list. |
+| GET | [/api/customer-lists/{customer_list_id}/org-pool-allocations](#get-apicustomer-listscustomer_list_idorg-pool-allocations) | Retrieve organization allocations of a pool customer_list. |
 | POST | [/api/customer-lists](#post-apicustomer-lists) | Create a new customer_list. |
 | POST | [/api/customer-lists/{customer_list_id}/pool-contacts](#post-apicustomer-listscustomer_list_idpool-contacts) | Add a contact to a pool customer_list. |
 | PUT | [/api/customer-lists/{customer_list_id}](#put-apicustomer-listscustomer_list_id) | Update a customer_list. |
@@ -321,9 +321,9 @@ ______________________________________________________________________
 
 #### GET /api/customer-lists/{customer_list_id}/pool-contacts
 
-Retrieve the contacts of a `pool` or `pool_segment` customer_list. This is a compatibility alias of `GET /api/pools/:id/contacts` for first-level pools; for a secondary list, the response is limited to that segment. See [Public pools](pools.md) for masking and exclusion rules.
+Retrieve the contacts of a `pool` or `org_pool_allocation` customer_list. This is a compatibility alias of `GET /api/pools/:id/contacts` for first-level pools; for a pool allocation, the response is limited to that allocation. See [Public pools](pools.md) for masking and exclusion rules.
 
-Highest administrators receive complete contact records. Other callers receive only the contacts of their own organization's segment, with masked e-mail addresses.
+Highest administrators receive complete contact records. Other callers receive only the contacts of their own organization's allocation, with masked e-mail addresses.
 
 > **Note:** Requires the `customer_lists:read` API-key scope (`cmd/handlers.go:181`).
 
@@ -331,7 +331,7 @@ Highest administrators receive complete contact records. Other callers receive o
 
 | Name | Type | Required | Description |
 | :--- | :--- | :------- | :---------- |
-| customer_list_id | number | Yes | ID of a `pool` or `pool_segment` customer_list. |
+| customer_list_id | number | Yes | ID of a `pool` or `org_pool_allocation` customer_list. |
 | customer_code | string | | Case-insensitive substring filter on the imported customer code. |
 
 ##### Example Request
@@ -359,11 +359,11 @@ curl -u "api_user:token" -X GET 'http://localhost:9000/api/customer-lists/5/pool
 
 ______________________________________________________________________
 
-#### GET /api/customer-lists/{customer_list_id}/pool-segments
+#### GET /api/customer-lists/{customer_list_id}/org-pool-allocations
 
-Retrieve the organization segments bound to a `pool` customer_list. This is a compatibility alias of `GET /api/pools/:id/segments`; see [Public pools](pools.md).
+Retrieve the organization allocations bound to a `pool` customer_list. This is a compatibility alias of `GET /api/pools/:id/allocations`; see [Public pools](pools.md).
 
-Highest administrators receive every segment of the pool. Other callers receive only the segment of their own organization.
+Highest administrators receive every allocation of the pool. Other callers receive only the allocation of their own organization.
 
 > **Note:** Requires the `customer_lists:read` API-key scope (`cmd/handlers.go:182`).
 
@@ -376,7 +376,7 @@ Highest administrators receive every segment of the pool. Other callers receive 
 ##### Example Request
 
 ```shell
-curl -u "api_user:token" -X GET 'http://localhost:9000/api/customer-lists/5/pool-segments'
+curl -u "api_user:token" -X GET 'http://localhost:9000/api/customer-lists/5/org-pool-allocations'
 ```
 
 ##### Example Response
@@ -387,7 +387,7 @@ curl -u "api_user:token" -X GET 'http://localhost:9000/api/customer-lists/5/pool
         {
             "id": 1,
             "list_id": 6,
-            "list_name": "Sales segment",
+            "list_name": "Sales allocation",
             "pool_id": 5,
             "organization_id": 2,
             "organization_name": "Sales",

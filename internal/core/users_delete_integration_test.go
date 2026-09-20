@@ -107,6 +107,20 @@ func TestDeleteUsersCleansFormerOrganizationMembership(t *testing.T) {
 		t.Fatalf("create former membership: %v", err)
 	}
 
+	var personalFolderID, organizationFolderID int
+	if err := db.Get(&personalFolderID, `
+		INSERT INTO media_folders (name, owner_user_id, created_by_user_id)
+		VALUES ('Personal images', $1, $1)
+		RETURNING id`, formerMemberID); err != nil {
+		t.Fatalf("create personal media folder: %v", err)
+	}
+	if err := db.Get(&organizationFolderID, `
+		INSERT INTO media_folders (name, organization_id, owner_user_id, created_by_user_id)
+		VALUES ('Shared images', $1, $2, $2)
+		RETURNING id`, organizationID, formerMemberID); err != nil {
+		t.Fatalf("create organization media folder: %v", err)
+	}
+
 	deleteUsers, err := db.Preparex(`
 		WITH u AS (
 			SELECT COUNT(*) AS num FROM users
@@ -141,6 +155,21 @@ func TestDeleteUsersCleansFormerOrganizationMembership(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("former membership still exists")
+	}
+	if err := db.Get(&count, `SELECT COUNT(*) FROM media_folders WHERE id = $1`, personalFolderID); err != nil {
+		t.Fatalf("check personal media folder cleanup: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("personal media folder still exists")
+	}
+
+	var organizationFolderOwner int
+	if err := db.Get(&organizationFolderOwner, `
+		SELECT COALESCE(owner_user_id, 0) FROM media_folders WHERE id = $1`, organizationFolderID); err != nil {
+		t.Fatalf("check organization media folder: %v", err)
+	}
+	if organizationFolderOwner != 0 {
+		t.Fatalf("organization media folder owner = %d, want NULL", organizationFolderOwner)
 	}
 
 	var creatorID int

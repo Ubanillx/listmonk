@@ -46,7 +46,7 @@
 
 ## 媒体逻辑文件夹（v6.37.0）
 
-- `media_folders` 保存工作区目录树，`media.folder_id IS NULL` 为根目录；provider 文件名保持平铺，不执行物理搬移，因此 filesystem、S3 和历史媒体 URL 都兼容。
+- `media_folders` 保存工作区目录树，`media.folder_id IS NULL` 为根目录；provider 文件名保持平铺，不执行物理搬移，因此 filesystem、S3 和历史媒体 URL 都兼容。`DeleteUsers` 在删除账号前清理个人目录，组织目录保留并由用户外键的 `SET NULL` 清除创建者引用。
 - `cmd/media_folders.go` 注册目录查询、创建、改名、移动、空目录删除和媒体归属移动接口；目录操作使用 `media:manage`，媒体移动额外经过 `RequireManageResource` 的所有者边界。
 - `internal/core/media_folders.go` 负责名称校验、工作区过滤、目录计数、唯一名称、循环检测和带组织锁的事务写入；活动工作区中的平台管理员媒体/目录查询也按当前选择收敛，归档平台清理保留宽读取；`internal/migrations/v6.37.0.go` 与 `schema.sql` 保持安装/升级一致。
 - `frontend/src/views/Media.vue` 以面包屑和当前层级网格展示目录，支持目录嵌套、媒体拖入目录、本地文件拖入目录上传，以及改名和空目录删除。`frontend/src/api/index.js` 只发送 snake_case 写入字段。

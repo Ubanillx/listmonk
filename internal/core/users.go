@@ -433,6 +433,13 @@ func (c *Core) DeleteUsers(ids []int) error {
 	if _, err := tx.Exec(`LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE`); err != nil {
 		return c.userDeletionDBErr(err)
 	}
+	// Keep FK-backed account resources from being created after their cleanup
+	// and before the users row is deleted.
+	var lockedUserIDs []int
+	if err := tx.Select(&lockedUserIDs, `
+		SELECT id FROM users WHERE id = ANY($1) ORDER BY id FOR UPDATE`, pq.Array(ids)); err != nil {
+		return c.userDeletionDBErr(err)
+	}
 
 	var remainingSuperAdmins int
 	if err := tx.Get(&remainingSuperAdmins, `
@@ -489,6 +496,18 @@ func (c *Core) prepareUsersForDeletion(tx *sqlx.Tx, ids []int) error {
 		ORDER BY o.id
 		FOR UPDATE`, userIDs); err != nil {
 		return c.userDeletionDBErr(err)
+	}
+
+	// Personal media folders are account-scoped containers. They cannot be
+	// retained after the owner is deleted: the owner foreign key would be set
+	// to NULL and violate media_folders' requirement for either an organization
+	// or a personal owner. Deleting the folder rows leaves any media in the
+	// implicit root through folder_id's ON DELETE SET NULL behavior.
+	if err := exec(`
+		DELETE FROM media_folders
+		WHERE organization_id IS NULL AND owner_user_id = ANY($1)
+	`); err != nil {
+		return err
 	}
 
 	// Do this before clearing campaign ownership so no recipient remains queued

@@ -1,6 +1,8 @@
 # 工作状态
 
-快照日期：2026-09-17
+快照日期：2026-09-20
+
+- 用户删除与媒体个人目录约束修复（2026-09-20，用户报告删除用户时报 `media_folders_check`）：根因是个人目录的 `owner_user_id` 在用户删除时按 `ON DELETE SET NULL` 被清空，触发表约束。`internal/core/users.go` 现在在同一删除事务中先清理 `organization_id IS NULL` 的个人目录；组织目录保留并按既有外键规则清空创建者引用，目录内媒体回到根目录。集成回归覆盖个人目录删除、组织目录保留及其 owner 置空。来源：`internal/core/{users.go,users_delete_integration_test.go}`、`docs/{ARCHITECTURE.md,harness/{BUSINESS_LOGIC,TECH_ARCHITECTURE}.md}`。
 
 - 公海客户表 snake_case/camelCase 回归修复（2026-09-17，用户报告"这里为啥不显示分配的部门了"截图显示客户编码/分配部门/已创建/已更新全为 `-`）：**诊断**：`frontend/src/api/index.js` 的响应拦截器默认把响应键 camelCase（`customer_code`→`customerCode`、`allocation_department`→`allocationDepartment`、`created_at`→`createdAt`、`per_page`→`perPage`），而新版公海表格只读 snake_case（`props.row.customer_code` 等），因此数据里非空的编码/部门与始终存在的时间列全部取不到值；姓名/邮箱/状态/`excluded` 没有下划线所以正常——与截图完全吻合（旧版模板曾用 `customerCode || customer_code` 双形状读取，改造时遗漏）。**修复**：`frontend/src/views/Customers.vue` 新增 `poolRowValue(row, camelKey, snakeKey)` 双形状读取并应用在客户编码/分配部门/创建/更新四列，`loadPoolContacts` 的 `per_page` 改为 `resp.perPage || resp.per_page`（此前被 camelCase 掉导致分页大小回退默认值）；其余分配弹窗/`poolAllocationID` 已是双形状。`frontend/cypress/e2e/pools.cy.js` 将客户编码断言由"表头存在"加强为"单元格包含 DUP-001"，可捕获同类回归。**验证**：`yarn lint`、`yarn build` 通过，产物 `frontend/dist/static/Customers-*.js` 已含 `allocationDepartment` 读取；`docker restart dev-backend-1` 后 9173 返回 200。来源：`frontend/src/views/Customers.vue`、`frontend/cypress/e2e/pools.cy.js`、`frontend/src/api/index.js`。
 

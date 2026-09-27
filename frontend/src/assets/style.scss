@@ -1596,8 +1596,9 @@ section.customer_lists {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    border-bottom: 1px solid $grey-lighter;
-    padding: 0.45rem 0 0.7rem 9.5rem;
+    // The first top-level tab occupies the first column, so the nested
+    // controls start exactly beneath the public-pool tab.
+    padding: 0.5rem 0 0.5rem 8.55rem;
 
     a {
       display: inline-flex;
@@ -1620,6 +1621,12 @@ section.customer_lists {
         color: $primary;
         font-weight: 600;
       }
+    }
+  }
+
+  @media screen and (max-width: 768px) {
+    .pool-child-nav {
+      padding-left: 0.5rem;
     }
   }
 

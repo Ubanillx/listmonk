@@ -1592,13 +1592,12 @@ section.customer_lists {
     margin-bottom: 0;
   }
 
-  .pool-child-nav {
-    display: flex;
+  .pool-status-nav {
+    display: inline-flex;
     align-items: center;
     gap: 0.5rem;
-    // The first top-level tab occupies the first column, so the nested
-    // controls start exactly beneath the public-pool tab.
-    padding: 0.5rem 0 0.5rem 8.55rem;
+    margin: 0 10px;
+    vertical-align: middle;
 
     a {
       display: inline-flex;
@@ -1607,6 +1606,7 @@ section.customer_lists {
       border-radius: 4px;
       color: $grey;
       font-size: 0.85rem;
+      margin: 0;
       padding: 0.35rem 0.75rem;
       transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 
@@ -1624,9 +1624,15 @@ section.customer_lists {
     }
   }
 
+  .actions .pool-status-nav a {
+    display: inline-flex;
+    margin: 0;
+  }
+
   @media screen and (max-width: 768px) {
-    .pool-child-nav {
-      padding-left: 0.5rem;
+    .pool-status-nav {
+      display: flex;
+      margin: 0 0 0.5rem;
     }
   }
 

@@ -51,18 +51,6 @@
           </li>
         </ul>
       </div>
-      <div v-if="isPoolList" class="pool-child-nav">
-        <a href="#" :class="{ 'is-active': queryParams.poolStatus !== 'removed' }"
-          :aria-current="queryParams.poolStatus !== 'removed' ? 'page' : null"
-          data-cy="tab-pool-active" @click.prevent="setPoolStatus('active')">
-          {{ $t('pool.tabPoolContacts') }}
-        </a>
-        <a href="#" :class="{ 'is-active': queryParams.poolStatus === 'removed' }"
-          :aria-current="queryParams.poolStatus === 'removed' ? 'page' : null"
-          data-cy="tab-pool-exceptions" @click.prevent="setPoolStatus('removed')">
-          {{ $t('pool.tabPoolExceptions') }}
-        </a>
-      </div>
     </div>
     <section v-if="listState !== 'error'" class="customers-controls">
       <div class="columns">
@@ -127,6 +115,18 @@
               <b-icon icon="cloud-download-outline" size="is-small" />
               {{ $t('customers.export') }}
             </a>
+            <div v-if="isPoolList" class="pool-status-nav" role="group" :aria-label="$t('pool.tabPoolContacts')">
+              <a href="#" :class="{ 'is-active': queryParams.poolStatus !== 'removed' }"
+                :aria-current="queryParams.poolStatus !== 'removed' ? 'page' : null"
+                data-cy="tab-pool-active" @click.prevent="setPoolStatus('active')">
+                {{ $t('pool.tabPoolContacts') }}
+              </a>
+              <a href="#" :class="{ 'is-active': queryParams.poolStatus === 'removed' }"
+                :aria-current="queryParams.poolStatus === 'removed' ? 'page' : null"
+                data-cy="tab-pool-exceptions" @click.prevent="setPoolStatus('removed')">
+                {{ $t('pool.tabPoolExceptions') }}
+              </a>
+            </div>
             <a v-if="canDeletePoolContacts" class="a" href="#" @click.prevent="deletePoolContacts"
               data-cy="btn-delete-pool-contacts" :aria-disabled="poolBulk.checked.length === 0">
               <b-icon icon="trash-can-outline" size="is-small" /> {{ $t('pool.deleteSelected') }}

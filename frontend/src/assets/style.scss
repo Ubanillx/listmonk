@@ -1593,22 +1593,31 @@ section.customer_lists {
   }
 
   .pool-child-nav {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
     border-bottom: 1px solid $grey-lighter;
     padding: 0.45rem 0 0.7rem 9.5rem;
 
     a {
       display: inline-flex;
       align-items: center;
-      gap: 0.2rem;
+      border: 1px solid transparent;
+      border-radius: 4px;
       color: $grey;
       font-size: 0.85rem;
+      padding: 0.35rem 0.75rem;
+      transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 
-      &:hover,
-      &.is-active {
+      &:hover {
+        background-color: $white-ter;
         color: $primary;
       }
 
       &.is-active {
+        background-color: $white;
+        border-color: $primary;
+        color: $primary;
         font-weight: 600;
       }
     }

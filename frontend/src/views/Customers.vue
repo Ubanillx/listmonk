@@ -52,9 +52,14 @@
         </ul>
       </div>
       <div v-if="isPoolList" class="pool-child-nav">
+        <a href="#" :class="{ 'is-active': queryParams.poolStatus !== 'removed' }"
+          :aria-current="queryParams.poolStatus !== 'removed' ? 'page' : null"
+          data-cy="tab-pool-active" @click.prevent="setPoolStatus('active')">
+          {{ $t('pool.tabPoolContacts') }}
+        </a>
         <a href="#" :class="{ 'is-active': queryParams.poolStatus === 'removed' }"
+          :aria-current="queryParams.poolStatus === 'removed' ? 'page' : null"
           data-cy="tab-pool-exceptions" @click.prevent="setPoolStatus('removed')">
-          <b-icon icon="chevron-right" size="is-small" />
           {{ $t('pool.tabPoolExceptions') }}
         </a>
       </div>

@@ -1588,6 +1588,39 @@ section.customer_lists {
 
 /* Customers page */
 .customers {
+  .customer-area-tabs {
+    .pool-tab {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+
+      > a:first-child {
+        flex: 0 0 auto;
+      }
+
+      .pool-tab-child {
+        display: flex;
+        align-items: center;
+        gap: 0.2rem;
+        padding: 0.35rem 1rem 0.5rem 1.35rem;
+        border-top: 0;
+        border-left: 1px solid $grey-lighter;
+        border-right: 1px solid $grey-lighter;
+        color: $grey;
+        font-size: 0.85rem;
+
+        &:hover,
+        &.is-active {
+          color: $primary;
+        }
+
+        &.is-active {
+          font-weight: 600;
+        }
+      }
+    }
+  }
+
   .customers-controls .buttons {
     margin-top: 15px;
   }

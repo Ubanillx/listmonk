@@ -43,11 +43,14 @@
             {{ $t('menu.allCustomers') }}
           </router-link>
         </li>
-        <li :class="{ 'is-active': isPoolList && queryParams.poolStatus === 'active' }">
-          <a href="#" data-cy="tab-pool-contacts" @click.prevent="goToPoolTab">{{ $t('pool.tabPoolContacts') }}</a>
-        </li>
-        <li v-if="isPoolList" :class="{ 'is-active': queryParams.poolStatus === 'removed' }">
-          <a href="#" data-cy="tab-pool-exceptions" @click.prevent="setPoolStatus('removed')">
+        <li class="pool-tab" :class="{ 'is-active': isPoolList }">
+          <a href="#" data-cy="tab-pool-contacts" @click.prevent="goToPoolTab">
+            {{ $t('pool.tabPoolContacts') }}
+          </a>
+          <a v-if="isPoolList" href="#" class="pool-tab-child"
+            :class="{ 'is-active': queryParams.poolStatus === 'removed' }"
+            data-cy="tab-pool-exceptions" @click.prevent="setPoolStatus('removed')">
+            <b-icon icon="chevron-down" size="is-small" />
             {{ $t('pool.tabPoolExceptions') }}
           </a>
         </li>

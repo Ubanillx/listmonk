@@ -1589,34 +1589,27 @@ section.customer_lists {
 /* Customers page */
 .customers {
   .customer-area-tabs {
-    .pool-tab {
-      display: flex;
-      flex-direction: column;
-      align-items: stretch;
+    margin-bottom: 0;
+  }
 
-      > a:first-child {
-        flex: 0 0 auto;
+  .pool-child-nav {
+    border-bottom: 1px solid $grey-lighter;
+    padding: 0.45rem 0 0.7rem 9.5rem;
+
+    a {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.2rem;
+      color: $grey;
+      font-size: 0.85rem;
+
+      &:hover,
+      &.is-active {
+        color: $primary;
       }
 
-      .pool-tab-child {
-        display: flex;
-        align-items: center;
-        gap: 0.2rem;
-        padding: 0.35rem 1rem 0.5rem 1.35rem;
-        border-top: 0;
-        border-left: 1px solid $grey-lighter;
-        border-right: 1px solid $grey-lighter;
-        color: $grey;
-        font-size: 0.85rem;
-
-        &:hover,
-        &.is-active {
-          color: $primary;
-        }
-
-        &.is-active {
-          font-weight: 600;
-        }
+      &.is-active {
+        font-weight: 600;
       }
     }
   }

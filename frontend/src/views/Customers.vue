@@ -36,25 +36,28 @@
     <!-- One customer area with two data sources: ordinary customers and the
          contacts of a public-pool list. The tabs keep the two stores visually
          in the same place. -->
-    <div v-if="!$route.params.id" class="tabs is-boxed customer-area-tabs" data-cy="customer-area-tabs">
-      <ul>
-        <li :class="{ 'is-active': !isPoolList }">
-          <router-link :to="{ name: 'customers' }" data-cy="tab-all-customers">
-            {{ $t('menu.allCustomers') }}
-          </router-link>
-        </li>
-        <li class="pool-tab" :class="{ 'is-active': isPoolList }">
-          <a href="#" data-cy="tab-pool-contacts" @click.prevent="goToPoolTab">
-            {{ $t('pool.tabPoolContacts') }}
-          </a>
-          <a v-if="isPoolList" href="#" class="pool-tab-child"
-            :class="{ 'is-active': queryParams.poolStatus === 'removed' }"
-            data-cy="tab-pool-exceptions" @click.prevent="setPoolStatus('removed')">
-            <b-icon icon="chevron-down" size="is-small" />
-            {{ $t('pool.tabPoolExceptions') }}
-          </a>
-        </li>
-      </ul>
+    <div v-if="!$route.params.id" class="customer-area-navigation">
+      <div class="tabs is-boxed customer-area-tabs" data-cy="customer-area-tabs">
+        <ul>
+          <li :class="{ 'is-active': !isPoolList }">
+            <router-link :to="{ name: 'customers' }" data-cy="tab-all-customers">
+              {{ $t('menu.allCustomers') }}
+            </router-link>
+          </li>
+          <li :class="{ 'is-active': isPoolList }">
+            <a href="#" data-cy="tab-pool-contacts" @click.prevent="goToPoolTab">
+              {{ $t('pool.tabPoolContacts') }}
+            </a>
+          </li>
+        </ul>
+      </div>
+      <div v-if="isPoolList" class="pool-child-nav">
+        <a href="#" :class="{ 'is-active': queryParams.poolStatus === 'removed' }"
+          data-cy="tab-pool-exceptions" @click.prevent="setPoolStatus('removed')">
+          <b-icon icon="chevron-right" size="is-small" />
+          {{ $t('pool.tabPoolExceptions') }}
+        </a>
+      </div>
     </div>
     <section v-if="listState !== 'error'" class="customers-controls">
       <div class="columns">
@@ -611,7 +614,11 @@ export default Vue.extend({
     // Pool contacts live in a separate store: the pool tab reopens the last
     // pool list the user visited and falls back to the first accessible one.
     goToPoolTab() {
-      if (this.isPoolList) {
+      // Keep the current pool list when switching back from the removed view.
+      // `isPoolList` can be temporarily false while the list detail is being
+      // resolved after a route change, but the route still identifies the
+      // pool list and its status can be reset immediately.
+      if (this.$route.params.customerListID) {
         this.setPoolStatus('active');
         return;
       }
@@ -626,11 +633,12 @@ export default Vue.extend({
     },
 
     setPoolStatus(status) {
-      if (!this.isPoolList) {
+      if (!this.queryParams.customerListID && !this.$route.params.customerListID) {
         return;
       }
       const nextStatus = status === 'removed' ? 'removed' : 'active';
-      if (this.queryParams.poolStatus === nextStatus) {
+      const routeStatus = this.$route.query.pool_status === 'removed' ? 'removed' : 'active';
+      if (this.queryParams.poolStatus === nextStatus && routeStatus === nextStatus) {
         return;
       }
       // App.vue keys the router view by fullPath. Replacing the query remounts

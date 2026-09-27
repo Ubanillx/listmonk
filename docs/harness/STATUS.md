@@ -1,6 +1,8 @@
 # 工作状态
 
-快照日期：2026-09-20
+快照日期：2026-09-27
+
+- 一级公海「已移除客户」视图（2026-09-27，用户要求超级管理员在总公海也能直接看见已移除客户）：`QueryPoolContacts` 对一级公海汇总所有组织未恢复的成员移除和剔除记录，按联系人 ID 去重，以 `status=active|removed` 返回互斥分类；最高管理员可见移除组织、原因与可恢复的分配 ID，组织用户仍限定本组织，未分配客户保持正常。不带状态的旧接口仍返回全部客户。`Customers.vue` 在一级公海也显示「已移除客户」Tab，搜索、分页、排序与导出沿用分类，并从已移除客户行恢复分配。数据库集成用例覆盖手动移除、自动剔除、跨公海隔离、组织范围和恢复回流，实机 PASS；`go test ./...`、`yarn build`、`python scripts/check_docs.py` 通过；重启 `dev-backend-1` 后 9173 与新 Customers 静态资源均返回 200。来源：`internal/core/{pools.go,pools_recipients_test.go}`、`models/pools.go`、`frontend/src/views/Customers.vue`、`i18n/{zh-CN,zh-TW,en}.json`、`docs/{ARCHITECTURE.md,docs/content/apis/pools.md,harness/BUSINESS_LOGIC.md}`。
 
 - 用户删除与媒体个人目录约束修复（2026-09-20，用户报告删除用户时报 `media_folders_check`）：根因是个人目录的 `owner_user_id` 在用户删除时按 `ON DELETE SET NULL` 被清空，触发表约束。`internal/core/users.go` 现在在同一删除事务中先清理 `organization_id IS NULL` 的个人目录；组织目录保留并按既有外键规则清空创建者引用，目录内媒体回到根目录。集成回归覆盖个人目录删除、组织目录保留及其 owner 置空。来源：`internal/core/{users.go,users_delete_integration_test.go}`、`docs/{ARCHITECTURE.md,harness/{BUSINESS_LOGIC,TECH_ARCHITECTURE}.md}`。
 

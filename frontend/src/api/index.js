@@ -244,6 +244,7 @@ export const importPoolList = (data) => http.post('/api/pools/import', data);
 // The route accepts a first-level pool list or one of its allocation lists and
 // resolves the first-level pool server-side.
 export const clearPoolContactEmail = (listID, contactID) => http.delete(`/api/customer-lists/${listID}/pool-contacts/${contactID}/email`);
+export const deletePoolContact = (listID, contactID) => http.delete(`/api/customer-lists/${listID}/pool-contacts/${contactID}`);
 
 // Organizations and workspaces.
 export const getCurrentWorkspace = (config = {}) => http.get('/api/workspace', config);

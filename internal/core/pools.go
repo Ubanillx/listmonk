@@ -318,6 +318,39 @@ var poolContactSortFields = map[string]string{
 	"updated_at":            "updated_at",
 }
 
+// One row per excluded contact keeps first-level pool counts and pagination
+// stable. A removal may be recorded on the allocation member, in the exclusion
+// table, or both. Unassigned contacts have no row here and stay in the normal
+// pool view.
+const poolGlobalExceptionJoin = ` LEFT JOIN (
+	SELECT DISTINCT ON (exceptions.contact_id)
+		exceptions.contact_id, exceptions.allocation_id,
+		exceptions.organization_name, exceptions.reason
+	FROM (
+		SELECT sm.contact_id, ps.id AS allocation_id, COALESCE(o.name, '') AS organization_name,
+			COALESCE(NULLIF(sm.removed_reason, ''), ex.reason, '') AS reason,
+			COALESCE(sm.removed_at, sm.updated_at) AS changed_at,
+			0 AS priority
+		FROM org_pool_allocation_members sm
+		JOIN org_pool_allocations ps ON ps.id=sm.allocation_id AND ps.pool_id=$1
+		JOIN organizations o ON o.id=ps.organization_id
+		LEFT JOIN org_pool_allocation_exclusions ex ON ex.pool_id=ps.pool_id
+			AND ex.organization_id=ps.organization_id AND ex.contact_id=sm.contact_id AND ex.restored_at IS NULL
+		WHERE sm.status='removed'
+		UNION ALL
+		SELECT ex.contact_id, CASE WHEN sm.contact_id IS NOT NULL THEN ps.id END AS allocation_id,
+			COALESCE(o.name, '') AS organization_name, ex.reason, ex.removed_at AS changed_at,
+			1 AS priority
+		FROM org_pool_allocation_exclusions ex
+		JOIN organizations o ON o.id=ex.organization_id
+		LEFT JOIN org_pool_allocations ps ON ps.pool_id=ex.pool_id AND ps.organization_id=ex.organization_id
+		LEFT JOIN org_pool_allocation_members sm ON sm.allocation_id=ps.id AND sm.contact_id=ex.contact_id
+		WHERE ex.pool_id=$1 AND ex.restored_at IS NULL
+	) exceptions
+	ORDER BY exceptions.contact_id, exceptions.changed_at DESC,
+		exceptions.priority DESC, exceptions.allocation_id DESC NULLS LAST
+) pool_exception ON pool_exception.contact_id=pc.id`
+
 // AuthorizePoolListAccess applies the organization scope of a pool list to a
 // non-platform-admin caller: a first-level pool must be granted to the active
 // organization (directly or through one of its allocations), and an allocation
@@ -354,18 +387,41 @@ func (c *Core) AuthorizePoolListAccess(listID int, organizationID int64) error {
 // only to platform administrators; every other caller receives the masked DTO.
 // Search matches the customer code, name and e-mail; sorting is restricted to
 // the whitelisted columns.
-func (c *Core) QueryPoolContacts(poolID int, organizationID int, platformAdmin bool, search, orderBy, order string, offset, limit int) (any, int, error) {
+func (c *Core) QueryPoolContacts(poolID int, organizationID int, platformAdmin bool, poolStatus, search, orderBy, order string, offset, limit int) (any, int, error) {
 	scope, err := c.getPoolListScope(poolID)
 	if err != nil {
 		return nil, 0, err
 	}
+	poolStatus = strings.ToLower(strings.TrimSpace(poolStatus))
+	if poolStatus != "" && poolStatus != "active" && poolStatus != "removed" {
+		return nil, 0, echo.NewHTTPError(http.StatusBadRequest, "invalid pool contact status")
+	}
 	args := []any{scope.PoolID}
 	where := ""
 	join := ""
+	memberStatusPredicate := "psm.status IN ('active','removed')"
+	switch poolStatus {
+	case "active":
+		memberStatusPredicate = "psm.status='active' AND ex.contact_id IS NULL"
+	case "removed":
+		memberStatusPredicate = "(psm.status='removed' OR ex.contact_id IS NOT NULL)"
+	}
+	if platformAdmin && scope.AllocationID == nil {
+		join = poolGlobalExceptionJoin
+		switch poolStatus {
+		case "active":
+			where = ` AND pool_exception.contact_id IS NULL`
+		case "removed":
+			where = ` AND pool_exception.contact_id IS NOT NULL`
+		}
+	}
 	if scope.AllocationID != nil {
 		args = append(args, *scope.AllocationID)
 		join = ` JOIN org_pool_allocation_members psm ON psm.contact_id=pc.id AND psm.allocation_id=$2`
-		where = ` AND psm.status IN ('active','removed')`
+		where = ` AND ` + memberStatusPredicate
+		if platformAdmin {
+			join += ` JOIN org_pool_allocations ps ON ps.id=psm.allocation_id LEFT JOIN org_pool_allocation_exclusions ex ON ex.pool_id=pm.pool_id AND ex.organization_id=ps.organization_id AND ex.contact_id=pc.id AND ex.restored_at IS NULL`
+		}
 	}
 	if !platformAdmin {
 		if organizationID <= 0 {
@@ -381,7 +437,7 @@ func (c *Core) QueryPoolContacts(poolID int, organizationID int, platformAdmin b
 		} else {
 			args = append(args, organizationID)
 			join = ` JOIN org_pool_allocation_members psm ON psm.contact_id=pc.id JOIN org_pool_allocations ps ON ps.id=psm.allocation_id AND ps.pool_id=pm.pool_id LEFT JOIN org_pool_allocation_exclusions ex ON ex.pool_id=pm.pool_id AND ex.organization_id=ps.organization_id AND ex.contact_id=pc.id AND ex.restored_at IS NULL`
-			where = ` AND ps.organization_id=$2 AND (psm.status IN ('active','removed') OR ex.contact_id IS NOT NULL)`
+			where = ` AND ps.organization_id=$2 AND (` + memberStatusPredicate + `)`
 		}
 	}
 	if s := strings.TrimSpace(search); s != "" {
@@ -390,14 +446,25 @@ func (c *Core) QueryPoolContacts(poolID int, organizationID int, platformAdmin b
 		where += " AND (pc.customer_code ILIKE $" + placeholder + " OR pc.name ILIKE $" + placeholder + " OR pc.email ILIKE $" + placeholder + ")"
 	}
 
+	exclusionSelect := `FALSE AS excluded, '' AS exclusion_reason`
+	if platformAdmin && scope.AllocationID == nil {
+		exclusionSelect = `pool_exception.contact_id IS NOT NULL AS excluded,
+			COALESCE(pool_exception.reason, '') AS exclusion_reason,
+			pool_exception.allocation_id AS exception_allocation_id,
+			COALESCE(pool_exception.organization_name, '') AS exception_organization_name`
+	} else {
+		exclusionSelect = `(psm.status='removed' OR ex.contact_id IS NOT NULL) AS excluded, COALESCE(NULLIF(psm.removed_reason,''), ex.reason, '') AS exclusion_reason`
+	}
+
 	// The filtered rows are built as a subquery so the requested sort can be
 	// applied outside a DISTINCT ON selection, whose ORDER BY prefix is fixed.
-	inner := `SELECT pc.id, pc.uuid, pc.customer_code, pc.email, pc.name, pc.allocation_department, pc.status, pc.created_at, pc.updated_at
+	inner := `SELECT pc.id, pc.uuid, pc.customer_code, pc.email, pc.name, pc.allocation_department, pc.status, pc.created_at, pc.updated_at,
+			` + exclusionSelect + `
 		FROM pool_contacts pc JOIN pool_members pm ON pm.contact_id=pc.id` + join + `
 		WHERE pm.pool_id=$1` + where
 	if !platformAdmin {
 		inner = `SELECT DISTINCT ON (pc.id) pc.id, pc.uuid, pc.customer_code, pc.email, pc.name, pc.allocation_department, pc.status, pc.created_at, pc.updated_at,
-			(psm.status='removed' OR ex.contact_id IS NOT NULL) AS excluded, COALESCE(NULLIF(psm.removed_reason,''), ex.reason, '') AS exclusion_reason
+			` + exclusionSelect + `
 			FROM pool_contacts pc JOIN pool_members pm ON pm.contact_id=pc.id` + join + `
 			WHERE pm.pool_id=$1` + where + ` ORDER BY pc.id, psm.updated_at DESC`
 	}
@@ -462,7 +529,7 @@ func (c *Core) QueryPoolContacts(poolID int, organizationID int, platformAdmin b
 			ids = append(ids, rows[i].ID)
 		}
 		var exclusions []exclusionRow
-		if err := c.db.Select(&exclusions, `SELECT e.contact_id,e.organization_id,COALESCE(o.name,'') AS organization_name,e.reason,e.source FROM org_pool_allocation_exclusions e LEFT JOIN organizations o ON o.id=e.organization_id WHERE e.pool_id=$1 AND e.restored_at IS NULL AND e.contact_id = ANY($2) ORDER BY e.contact_id,e.organization_id`, poolID, pq.Array(ids)); err != nil {
+		if err := c.db.Select(&exclusions, `SELECT e.contact_id,e.organization_id,COALESCE(o.name,'') AS organization_name,e.reason,e.source FROM org_pool_allocation_exclusions e LEFT JOIN organizations o ON o.id=e.organization_id WHERE e.pool_id=$1 AND e.restored_at IS NULL AND e.contact_id = ANY($2) ORDER BY e.contact_id,e.organization_id`, scope.PoolID, pq.Array(ids)); err != nil {
 			return nil, 0, err
 		}
 		byContact := make(map[int64][]models.PoolExclusionSummary)
@@ -965,6 +1032,30 @@ func (c *Core) ClearPoolContactEmail(poolID int, contactID int64, organizationID
 	}
 	_, err := c.db.Exec(`UPDATE pool_contacts SET email='',status='archived',updated_at=NOW() WHERE id=$1 AND `+guard, args...)
 	return err
+}
+
+// DeletePoolContact permanently removes a contact from a first-level public
+// pool. The pool_members and allocation membership rows are removed by their
+// foreign-key cascades; recipient snapshots follow their configured foreign
+// key behavior (including SET NULL for legacy customer recipient rows).
+func (c *Core) DeletePoolContact(poolID int, contactID int64) error {
+	if err := c.ensurePool(poolID); err != nil {
+		return err
+	}
+	result, err := c.db.Exec(`
+		DELETE FROM pool_contacts
+		WHERE id=$1 AND EXISTS (
+			SELECT 1 FROM pool_members WHERE pool_id=$2 AND contact_id=$1
+		)`, contactID, poolID)
+	if err != nil {
+		return err
+	}
+	if affected, err := result.RowsAffected(); err != nil {
+		return err
+	} else if affected == 0 {
+		return echo.NewHTTPError(http.StatusNotFound, "pool contact not found")
+	}
+	return nil
 }
 
 // refreshPoolCampaignAudienceRoutes re-resolves the internal mailbox route of

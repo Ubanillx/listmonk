@@ -449,6 +449,135 @@ func (env *poolRecipientsTestEnv) countRows(query string, args ...any) int {
 	return n
 }
 
+func TestDeletePoolContactCascadesPoolMemberships(t *testing.T) {
+	env := newPoolRecipientsTestEnv(t)
+	poolID := env.seedPool("delete-pool")
+	organizationID := env.seedOrganization("delete-org")
+	allocationID := env.seedAllocation(poolID, organizationID)
+	contactID := env.seedContact("DELETE-001", "Delete me", "delete@example.com", "active")
+	env.joinPool(poolID, contactID)
+	env.allocate(allocationID, contactID, "removed")
+	env.exclude(poolID, organizationID, allocationID, contactID, false)
+
+	if err := env.core.DeletePoolContact(poolID, contactID); err != nil {
+		t.Fatalf("DeletePoolContact: %v", err)
+	}
+	for _, check := range []struct {
+		name  string
+		query string
+	}{
+		{name: "contact", query: `SELECT COUNT(*) FROM pool_contacts WHERE id=$1`},
+		{name: "pool membership", query: `SELECT COUNT(*) FROM pool_members WHERE contact_id=$1`},
+		{name: "allocation membership", query: `SELECT COUNT(*) FROM org_pool_allocation_members WHERE contact_id=$1`},
+		{name: "exclusion", query: `SELECT COUNT(*) FROM org_pool_allocation_exclusions WHERE contact_id=$1`},
+	} {
+		if got := env.countRows(check.query, contactID); got != 0 {
+			t.Errorf("%s rows after deletion = %d, want 0", check.name, got)
+		}
+	}
+}
+
+func TestQueryPoolContactsSeparatesGlobalExceptions(t *testing.T) {
+	env := newPoolRecipientsTestEnv(t)
+	env.exec(`ALTER TABLE pool_contacts ADD COLUMN allocation_department TEXT NOT NULL DEFAULT ''`)
+	orgA := env.seedOrganization("org-a")
+	orgB := env.seedOrganization("org-b")
+	poolID := env.seedPool("global-pool")
+	otherPoolID := env.seedPool("other-pool")
+	allocationA := env.seedAllocation(poolID, orgA)
+	allocationB := env.seedAllocation(poolID, orgB)
+	otherAllocation := env.seedAllocation(otherPoolID, orgB)
+	env.exec(`UPDATE customer_lists SET type='org_pool_allocation' WHERE id IN (SELECT list_id FROM org_pool_allocations)`)
+	allocationListID := int(env.id(`SELECT list_id FROM org_pool_allocations WHERE id=$1`, allocationB))
+
+	active := env.seedContact("ACTIVE", "Active", "active@example.invalid", "active")
+	removed := env.seedContact("REMOVED", "Removed", "removed@example.invalid", "active")
+	excluded := env.seedContact("EXCLUDED", "Excluded", "excluded@example.invalid", "active")
+	unassigned := env.seedContact("UNASSIGNED", "Unassigned", "unassigned@example.invalid", "active")
+	for _, id := range []int64{active, removed, excluded, unassigned} {
+		env.joinPool(poolID, id)
+	}
+	env.allocate(allocationA, active, "active")
+	env.allocate(allocationB, removed, "active")
+	if err := env.core.RemovePoolContact(allocationB, removed, 1, "moved to private"); err != nil {
+		t.Fatalf("remove allocation contact: %v", err)
+	}
+	env.allocate(allocationA, excluded, "active")
+	env.exclude(poolID, orgA, allocationA, excluded, false)
+	// An exception in another pool must not move this contact out of this pool's
+	// normal view, even when the same contact belongs to both first-level pools.
+	env.joinPool(otherPoolID, unassigned)
+	env.allocate(otherAllocation, unassigned, "active")
+	env.exclude(otherPoolID, orgB, otherAllocation, unassigned, false)
+
+	read := func(listID int, status string) ([]models.PoolContact, int) {
+		t.Helper()
+		result, total, err := env.core.QueryPoolContacts(listID, 0, true, status, "", "id", "asc", 0, 20)
+		if err != nil {
+			t.Fatalf("query pool %d status %q: %v", listID, status, err)
+		}
+		return result.([]models.PoolContact), total
+	}
+	ids := func(rows []models.PoolContact) []int64 {
+		out := make([]int64, 0, len(rows))
+		for _, row := range rows {
+			out = append(out, row.ID)
+		}
+		return out
+	}
+	activeRows, activeTotal := read(poolID, "active")
+	if activeTotal != 2 {
+		t.Errorf("global active total = %d, want 2", activeTotal)
+	}
+	assertSameIDs(t, "global active", ids(activeRows), []int64{active, unassigned})
+	removedRows, removedTotal := read(poolID, "removed")
+	if removedTotal != 2 {
+		t.Errorf("global exception total = %d, want 2", removedTotal)
+	}
+	assertSameIDs(t, "global exceptions", ids(removedRows), []int64{removed, excluded})
+	for _, row := range removedRows {
+		if !row.Excluded || row.ExceptionAllocationID == nil || row.ExceptionOrganizationName == "" || row.ExclusionReason == "" {
+			t.Errorf("global exception lacks organization, allocation or reason: %+v", row)
+		}
+		if row.ID == removed && (row.ExceptionOrganizationName != "org-b" || *row.ExceptionAllocationID != allocationB || row.ExclusionReason != "moved to private") {
+			t.Errorf("removed contact metadata = %+v", row)
+		}
+	}
+	allRows, allTotal := read(poolID, "")
+	if allTotal != 4 {
+		t.Errorf("unfiltered global total = %d, want 4", allTotal)
+	}
+	assertSameIDs(t, "unfiltered global", ids(allRows), []int64{active, removed, excluded, unassigned})
+	allocationRows, allocationTotal := read(allocationListID, "removed")
+	if allocationTotal != 1 {
+		t.Errorf("allocation exception total = %d, want 1", allocationTotal)
+	}
+	assertSameIDs(t, "allocation exceptions", ids(allocationRows), []int64{removed})
+
+	result, ownTotal, err := env.core.QueryPoolContacts(poolID, int(orgA), false, "removed", "", "id", "asc", 0, 20)
+	if err != nil {
+		t.Fatalf("query organization exception: %v", err)
+	}
+	ownRows := result.([]models.SafePoolContact)
+	if ownTotal != 1 || len(ownRows) != 1 || ownRows[0].ID != excluded || !ownRows[0].Excluded {
+		t.Errorf("organization exceptions = %+v, total %d; want only own excluded contact", ownRows, ownTotal)
+	}
+
+	if err := env.core.RestorePoolContact(allocationB, removed); err != nil {
+		t.Fatalf("restore allocation contact: %v", err)
+	}
+	activeRows, activeTotal = read(poolID, "active")
+	if activeTotal != 3 {
+		t.Errorf("global active total after restore = %d, want 3", activeTotal)
+	}
+	assertSameIDs(t, "global active after restore", ids(activeRows), []int64{active, removed, unassigned})
+	removedRows, removedTotal = read(poolID, "removed")
+	if removedTotal != 1 {
+		t.Errorf("global exception total after restore = %d, want 1", removedTotal)
+	}
+	assertSameIDs(t, "global exceptions after restore", ids(removedRows), []int64{excluded})
+}
+
 // TestValidatePoolCampaignAudienceRefreshesRoutes covers drafts that were
 // created before the organization manager configured the organization's unified
 // reply mailbox. Preview/send validation must use the current organization

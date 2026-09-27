@@ -226,8 +226,10 @@ var auditRoutes = map[string]auditRouteSpec{
 	"PUT /api/pools/allocations/members":                             {"org_pool_allocation.members_changed", "org_pool_allocation", ""},
 	"POST /api/customer-lists/:id/pool-contacts":                     {"pool_contact.created", "pool", "id"},
 	"DELETE /api/customer-lists/:id/pool-contacts/:contact_id/email": {"pool_contact.email_cleared", "pool_contact", "contact_id"},
+	"DELETE /api/customer-lists/:id/pool-contacts/:contact_id":       {"pool_contact.deleted", "pool_contact", "contact_id"},
 	"POST /api/pools/:id/contacts":                                   {"pool_contact.created", "pool", "id"},
 	"DELETE /api/pools/:id/contacts/:contact_id/email":               {"pool_contact.email_cleared", "pool_contact", "contact_id"},
+	"DELETE /api/pools/:id/contacts/:contact_id":                     {"pool_contact.deleted", "pool_contact", "contact_id"},
 
 	"POST /api/media":                 {"media.uploaded", "media", ""},
 	"POST /api/media/folders":         {"media_folder.created", "media_folder", ""},

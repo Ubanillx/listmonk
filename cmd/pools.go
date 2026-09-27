@@ -218,9 +218,10 @@ func (a *App) GetPoolContacts(c echo.Context) error {
 	if search == "" {
 		search = c.QueryParam("customer_code")
 	}
+	poolStatus := c.QueryParam("status")
 	pg := a.pg.NewFromURL(c.Request().URL.Query())
 	rows, total, err := a.core.QueryPoolContacts(id, access.OrganizationID, user.IsPlatformAdmin(),
-		search, c.QueryParam("order_by"), c.QueryParam("order"), pg.Offset, pg.Limit)
+		poolStatus, search, c.QueryParam("order_by"), c.QueryParam("order"), pg.Offset, pg.Limit)
 	if err != nil {
 		return err
 	}
@@ -256,6 +257,7 @@ func (a *App) ExportPoolContacts(c echo.Context) error {
 	if search == "" {
 		search = c.QueryParam("customer_code")
 	}
+	poolStatus := c.QueryParam("status")
 	orderBy, order := c.QueryParam("order_by"), c.QueryParam("order")
 
 	hdr := c.Response().Header()
@@ -275,7 +277,7 @@ func (a *App) ExportPoolContacts(c echo.Context) error {
 		batch = 1000
 	}
 	for offset := 0; ; offset += batch {
-		rows, _, err := a.core.QueryPoolContacts(id, access.OrganizationID, user.IsPlatformAdmin(), search, orderBy, order, offset, batch)
+		rows, _, err := a.core.QueryPoolContacts(id, access.OrganizationID, user.IsPlatformAdmin(), poolStatus, search, orderBy, order, offset, batch)
 		if err != nil {
 			return err
 		}
@@ -522,6 +524,29 @@ func (a *App) ClearPoolContactEmail(c echo.Context) error {
 	if err := a.core.ClearPoolContactEmail(poolID, contactID, int64(access.OrganizationID), user.IsPlatformAdmin()); err != nil {
 		return err
 	}
+	setAuditMetadata(c, map[string]any{"pool_id": poolID})
+	return c.JSON(http.StatusOK, okResp{true})
+}
+
+// DeletePoolContact permanently removes a contact from a first-level public
+// pool. This destructive action is intentionally restricted to platform
+// administrators and does not accept organization allocation list IDs.
+func (a *App) DeletePoolContact(c echo.Context) error {
+	if err := requirePoolAdministrator(c); err != nil {
+		return err
+	}
+	poolID, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid pool id")
+	}
+	contactID, err := strconv.ParseInt(c.Param("contact_id"), 10, 64)
+	if err != nil || contactID <= 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid contact id")
+	}
+	if err := a.core.DeletePoolContact(poolID, contactID); err != nil {
+		return err
+	}
+	setAuditObjectID(c, strconv.FormatInt(contactID, 10))
 	setAuditMetadata(c, map[string]any{"pool_id": poolID})
 	return c.JSON(http.StatusOK, okResp{true})
 }

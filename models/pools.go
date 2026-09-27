@@ -13,17 +13,21 @@ import (
 // by the source template. When a matching pool allocation exists, the import
 // path also creates the corresponding org-pool-allocation membership.
 type PoolContact struct {
-	ID                   int64                  `db:"id" json:"id"`
-	UUID                 string                 `db:"uuid" json:"uuid"`
-	CustomerCode         string                 `db:"customer_code" json:"customer_code"`
-	Email                string                 `db:"email" json:"email"`
-	Name                 string                 `db:"name" json:"name"`
-	AllocationDepartment string                 `db:"allocation_department" json:"allocation_department"`
-	Attribs              JSON                   `db:"attribs" json:"attribs"`
-	Status               string                 `db:"status" json:"status"`
-	CreatedAt            time.Time              `db:"created_at" json:"created_at"`
-	UpdatedAt            time.Time              `db:"updated_at" json:"updated_at"`
-	Exclusions           []PoolExclusionSummary `db:"-" json:"exclusions,omitempty"`
+	ID                        int64                  `db:"id" json:"id"`
+	UUID                      string                 `db:"uuid" json:"uuid"`
+	CustomerCode              string                 `db:"customer_code" json:"customer_code"`
+	Email                     string                 `db:"email" json:"email"`
+	Name                      string                 `db:"name" json:"name"`
+	AllocationDepartment      string                 `db:"allocation_department" json:"allocation_department"`
+	Attribs                   JSON                   `db:"attribs" json:"attribs"`
+	Status                    string                 `db:"status" json:"status"`
+	CreatedAt                 time.Time              `db:"created_at" json:"created_at"`
+	UpdatedAt                 time.Time              `db:"updated_at" json:"updated_at"`
+	Excluded                  bool                   `db:"excluded" json:"excluded,omitempty"`
+	ExclusionReason           string                 `db:"exclusion_reason" json:"exclusion_reason,omitempty"`
+	ExceptionAllocationID     *int64                 `db:"exception_allocation_id" json:"exception_allocation_id,omitempty"`
+	ExceptionOrganizationName string                 `db:"exception_organization_name" json:"exception_organization_name,omitempty"`
+	Exclusions                []PoolExclusionSummary `db:"-" json:"exclusions,omitempty"`
 }
 
 // PoolExclusionSummary is safe audit metadata for a highest administrator.
@@ -173,5 +177,7 @@ func (p PoolContact) Safe() SafePoolContact {
 		Status:               p.Status,
 		CreatedAt:            p.CreatedAt,
 		UpdatedAt:            p.UpdatedAt,
+		Excluded:             p.Excluded,
+		ExclusionReason:      p.ExclusionReason,
 	}
 }

@@ -43,8 +43,13 @@
             {{ $t('menu.allCustomers') }}
           </router-link>
         </li>
-        <li :class="{ 'is-active': isPoolList }">
+        <li :class="{ 'is-active': isPoolList && queryParams.poolStatus === 'active' }">
           <a href="#" data-cy="tab-pool-contacts" @click.prevent="goToPoolTab">{{ $t('pool.tabPoolContacts') }}</a>
+        </li>
+        <li v-if="isPoolList" :class="{ 'is-active': queryParams.poolStatus === 'removed' }">
+          <a href="#" data-cy="tab-pool-exceptions" @click.prevent="setPoolStatus('removed')">
+            {{ $t('pool.tabPoolExceptions') }}
+          </a>
         </li>
       </ul>
     </div>
@@ -111,6 +116,10 @@
               <b-icon icon="cloud-download-outline" size="is-small" />
               {{ $t('customers.export') }}
             </a>
+            <a v-if="canDeletePoolContacts" class="a" href="#" @click.prevent="deletePoolContacts"
+              data-cy="btn-delete-pool-contacts" :aria-disabled="poolBulk.checked.length === 0">
+              <b-icon icon="trash-can-outline" size="is-small" /> {{ $t('pool.deleteSelected') }}
+            </a>
             <template v-if="poolBulk.checked.length > 0">
               <a v-if="canManagePoolContacts && isFirstLevelPool" class="a" href="#" @click.prevent="showPoolAssignForm(null)"
                 data-cy="btn-assign-pool-contacts">
@@ -120,13 +129,13 @@
                 @click.prevent="showPoolRemovalForm(null)" data-cy="btn-remove-pool-contacts">
                 <b-icon icon="account-off-outline" size="is-small" /> {{ $t('pool.removeSelected') }}
               </a>
-              <a v-if="canManagePoolContacts && isAllocationList && hasRestorablePoolContacts" class="a" href="#"
+              <a v-if="canManagePoolContacts && hasRestorablePoolContacts" class="a" href="#"
                 @click.prevent="restorePoolContacts(null)" data-cy="btn-restore-pool-contacts">
                 <b-icon icon="account-check-outline" size="is-small" /> {{ $t('pool.restoreSelected') }}
               </a>
               <a v-if="canManagePoolContacts && hasEmailablePoolContacts" class="a" href="#"
                 @click.prevent="clearPoolContactsEmail" data-cy="btn-clear-pool-emails">
-                <b-icon icon="email-off-outline" size="is-small" /> {{ $t('pool.clearSelected') }}
+                <b-icon icon="email-off-outline" size="is-small" /> {{ $t('pool.archiveInvalidSelected') }}
               </a>
               <span class="a">{{ $t('globals.messages.numSelected', { num: poolBulk.checked.length }) }}</span>
             </template>
@@ -151,6 +160,15 @@
         <b-table-column v-slot="props" field="allocation_department" :label="$t('pool.tableDepartment')"
           header-class="cy-pool-department" sortable>
           {{ poolRowValue(props.row, 'allocationDepartment', 'allocation_department') || '-' }}
+        </b-table-column>
+
+        <b-table-column v-if="isFirstLevelPool && isPlatformAdmin && queryParams.poolStatus === 'removed'"
+          v-slot="props" :label="$t('pool.exceptionOrganization')">
+          {{ poolRowValue(props.row, 'exceptionOrganizationName', 'exception_organization_name') || '-' }}
+        </b-table-column>
+
+        <b-table-column v-if="queryParams.poolStatus === 'removed'" v-slot="props" :label="$t('pool.exceptionReason')">
+          {{ poolRowValue(props.row, 'exclusionReason', 'exclusion_reason') || '-' }}
         </b-table-column>
 
         <b-table-column v-slot="props" field="status" :label="$t('pool.tableStatus')" header-class="cy-pool-status" sortable>
@@ -180,7 +198,7 @@
                 <b-icon icon="account-off-outline" size="is-small" />
               </b-tooltip>
             </a>
-            <a v-if="canManagePoolContacts && isAllocationList && props.row.excluded" href="#"
+            <a v-if="canManagePoolContacts && props.row.excluded && poolContactRestoreAllocationID(props.row)" href="#"
               @click.prevent="restorePoolContacts(props.row)" data-cy="btn-restore-pool-contact"
               :aria-label="$t('pool.actionRestore')">
               <b-tooltip :label="$t('pool.actionRestore')" type="is-dark">
@@ -188,9 +206,15 @@
               </b-tooltip>
             </a>
             <a v-if="canManagePoolContacts && props.row.email" href="#" @click.prevent="clearPoolContactEmail(props.row)"
-              data-cy="btn-clear-pool-email" :aria-label="$t('pool.actionClearEmail')">
-              <b-tooltip :label="$t('pool.actionClearEmail')" type="is-dark">
+              data-cy="btn-archive-invalid-pool-contact" :aria-label="$t('pool.actionArchiveInvalid')">
+              <b-tooltip :label="$t('pool.actionArchiveInvalid')" type="is-dark">
                 <b-icon icon="email-off-outline" size="is-small" />
+              </b-tooltip>
+            </a>
+            <a v-if="canDeletePoolContacts" href="#" @click.prevent="deletePoolContact(props.row)"
+              data-cy="btn-delete-pool-contact" :aria-label="$t('pool.actionDelete')">
+              <b-tooltip :label="$t('pool.actionDelete')" type="is-dark">
+                <b-icon icon="trash-can-outline" size="is-small" />
               </b-tooltip>
             </a>
           </div>
@@ -472,6 +496,7 @@ export default Vue.extend({
         page: 1,
         orderBy: 'id',
         order: 'desc',
+        poolStatus: 'active',
         subStatus: null,
       },
     };
@@ -542,6 +567,9 @@ export default Vue.extend({
       if (this.pool.search) {
         qp.search = this.pool.search;
       }
+      if (this.isPoolList) {
+        qp.status = this.queryParams.poolStatus;
+      }
 
       return this.$api.getPoolContacts(id, qp).then((resp) => {
         // Tolerate the legacy bare-array response shape.
@@ -581,6 +609,7 @@ export default Vue.extend({
     // pool list the user visited and falls back to the first accessible one.
     goToPoolTab() {
       if (this.isPoolList) {
+        this.setPoolStatus('active');
         return;
       }
       const pools = this.accessiblePoolLists;
@@ -591,6 +620,21 @@ export default Vue.extend({
       const lastID = Number(window.localStorage.getItem('poolLastListID'));
       const target = pools.find((l) => l.id === lastID) || pools[0];
       this.$router.push({ name: 'customersCustomerList', params: { customerListID: target.id } });
+    },
+
+    setPoolStatus(status) {
+      if (!this.isPoolList) {
+        return;
+      }
+      const nextStatus = status === 'removed' ? 'removed' : 'active';
+      if (this.queryParams.poolStatus === nextStatus) {
+        return;
+      }
+      // App.vue keys the router view by fullPath. Replacing the query remounts
+      // this view and loads page one with the selected status exactly once.
+      this.$router.replace({
+        query: { ...this.$route.query, pool_status: nextStatus },
+      });
     },
 
     exportPoolContacts() {
@@ -608,6 +652,9 @@ export default Vue.extend({
         }
         if (this.pool.order) {
           q.append('order', this.pool.order);
+        }
+        if (this.isPoolList) {
+          q.append('status', this.queryParams.poolStatus);
         }
         document.location.href = `/api/customer-lists/${id}/pool-contacts/export?${q.toString()}`;
       });
@@ -642,13 +689,12 @@ export default Vue.extend({
     },
 
     restorePoolContacts(contact) {
-      const allocationID = this.poolAllocationID;
-      const targets = contact ? [contact] : this.poolBulk.checked.filter((c) => c.excluded);
-      if (!allocationID || targets.length === 0) {
+      const targets = contact ? [contact] : this.poolBulk.checked.filter((c) => c.excluded && this.poolContactRestoreAllocationID(c));
+      if (targets.length === 0) {
         return;
       }
       const calls = targets.map((c) => this.$api.restorePoolContact({
-        allocation_id: allocationID,
+        allocation_id: this.poolContactRestoreAllocationID(c),
         contact_id: c.id,
       }));
       Promise.all(calls).then(() => {
@@ -658,10 +704,10 @@ export default Vue.extend({
     },
 
     clearPoolContactEmail(contact) {
-      this.$utils.confirm(this.$t('pool.confirmClearEmail'), () => {
+      this.$utils.confirm(this.$t('pool.confirmArchiveInvalid'), () => {
         this.$api.clearPoolContactEmail(this.queryParams.customerListID, contact.id).then(() => {
           this.loadPoolContacts();
-          this.$utils.toast(this.$t('pool.toastEmailCleared'));
+          this.$utils.toast(this.$t('pool.toastInvalidArchived'));
         });
       });
     },
@@ -671,11 +717,34 @@ export default Vue.extend({
       if (targets.length === 0) {
         return;
       }
-      this.$utils.confirm(this.$t('pool.confirmClearEmail'), () => {
+      this.$utils.confirm(this.$t('pool.confirmArchiveInvalid'), () => {
         const calls = targets.map((c) => this.$api.clearPoolContactEmail(this.queryParams.customerListID, c.id));
         Promise.all(calls).then(() => {
           this.loadPoolContacts();
-          this.$utils.toast(this.$t('pool.toastEmailCleared'));
+          this.$utils.toast(this.$t('pool.toastInvalidArchived'));
+        });
+      });
+    },
+
+    deletePoolContact(contact) {
+      this.$utils.confirm(this.$t('pool.confirmDelete', { num: 1 }), () => {
+        this.$api.deletePoolContact(this.queryParams.customerListID, contact.id).then(() => {
+          this.loadPoolContacts();
+          this.$utils.toast(this.$t('pool.toastContactsDeleted', { num: 1 }));
+        });
+      });
+    },
+
+    deletePoolContacts() {
+      const targets = this.poolBulk.checked;
+      if (targets.length === 0) {
+        return;
+      }
+      this.$utils.confirm(this.$t('pool.confirmDelete', { num: targets.length }), () => {
+        const calls = targets.map((contact) => this.$api.deletePoolContact(this.queryParams.customerListID, contact.id));
+        Promise.all(calls).then(() => {
+          this.loadPoolContacts();
+          this.$utils.toast(this.$t('pool.toastContactsDeleted', { num: targets.length }));
         });
       });
     },
@@ -706,11 +775,24 @@ export default Vue.extend({
 
     poolContactStatus(contact) {
       if (contact.excluded) {
-        return this.$t('pool.statusRemoved');
+        return this.$t(this.isFirstLevelPool && this.isPlatformAdmin ? 'pool.statusRemovedGlobal' : 'pool.statusRemoved');
       }
       return contact.status === 'archived'
         ? this.$t('pool.statusArchived')
         : this.$t('pool.statusNormal');
+    },
+
+    poolContactRestoreAllocationID(contact) {
+      if (this.isAllocationList) {
+        return this.poolAllocationID;
+      }
+      if (this.isPlatformAdmin) {
+        return Number(this.poolRowValue(contact, 'exceptionAllocationId', 'exception_allocation_id')) || null;
+      }
+      const own = this.poolAllocations.find(
+        (allocation) => Number(allocation.organizationId || allocation.organization_id) === Number(this.workspace.organizationId),
+      );
+      return own ? Number(own.id) : null;
     },
 
     // The API client camel-cases response keys (`allocation_department` ->
@@ -1043,7 +1125,7 @@ export default Vue.extend({
   },
 
   computed: {
-    ...mapState(['customers', 'customer_lists', 'loading', 'workspace']),
+    ...mapState(['customers', 'customer_lists', 'loading', 'profile', 'workspace']),
 
     canManageCustomers() {
       return this.$canCreateWorkspaceResource('customers:manage');
@@ -1143,6 +1225,14 @@ export default Vue.extend({
       return this.$can('pools:manage');
     },
 
+    canDeletePoolContacts() {
+      return this.isPlatformAdmin && this.isFirstLevelPool;
+    },
+
+    isPlatformAdmin() {
+      return Number(this.profile && this.profile.userRole && this.profile.userRole.id) === 1;
+    },
+
     canExportPoolContacts() {
       return this.$can('pools:export');
     },
@@ -1152,7 +1242,7 @@ export default Vue.extend({
     },
 
     hasRestorablePoolContacts() {
-      return this.poolBulk.checked.some((contact) => contact.excluded);
+      return this.poolBulk.checked.some((contact) => contact.excluded && this.poolContactRestoreAllocationID(contact));
     },
 
     hasEmailablePoolContacts() {
@@ -1196,6 +1286,9 @@ export default Vue.extend({
     }
     if (this.$route.query.subscription_status) {
       this.queryParams.subStatus = this.$route.query.subscription_status;
+    }
+    if (this.$route.query.pool_status === 'removed') {
+      this.queryParams.poolStatus = 'removed';
     }
 
     if (this.$route.params.id) {

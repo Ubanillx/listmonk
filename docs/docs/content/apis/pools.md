@@ -13,11 +13,17 @@ the owner fields for audit purposes.
 
 Key endpoints:
 
-- `GET /api/pools/:id/contacts?search=...&page=1&per_page=20&order_by=created_at&order=desc` — page through first-level or pool-allocation contacts by imported code, name, or e-mail. The equivalent `GET /api/customer-lists/:id/pool-contacts` route also accepts a `org_pool_allocation` list ID; pool-allocation reads are limited to that allocation. The legacy `customer_code` filter remains as a fallback alias of `search`. Requires `pools:get`; non-platform-administrators must have the pool granted to the active organization.
+- `GET /api/pools/:id/contacts?search=...&status=active|removed&page=1&per_page=20&order_by=created_at&order=desc` — page through first-level or pool-allocation contacts by imported code, name, or e-mail. The equivalent `GET /api/customer-lists/:id/pool-contacts` route also accepts an `org_pool_allocation` list ID. `status=active` shows unremoved contacts; `status=removed` shows unresolved organization removals or exclusions. In a first-level pool, platform administrators see all organizations' exceptions once per contact, with `excluded`, `exclusion_reason`, `exception_organization_name`, and `exception_allocation_id` (when a membership can be restored). Non-platform-administrators see only their current organization's allocation and receive masked e-mail addresses. Unassigned contacts remain active. Allocation-list reads stay scoped to that allocation. Omitting `status` preserves the legacy all-contacts response. The legacy `customer_code` filter remains a fallback alias of `search`. Requires `pools:get`; non-platform-administrators must have the pool granted to the active organization.
 - `GET /api/pools/:id/contacts/export` (alias `GET /api/customer-lists/:id/pool-contacts/export`) — stream the same filtered rows as CSV with masked e-mails. Requires `pools:export`.
 - `POST /api/pools/:id/contacts` — single-contact compatibility route
   (requires `pools:manage`); the product import entry is the unified customer
   import endpoint below.
+- `DELETE /api/pools/:id/contacts/:contact_id` (alias
+  `DELETE /api/customer-lists/:id/pool-contacts/:contact_id`) — permanently
+  deletes one contact from a first-level pool. This destructive operation is
+  restricted to platform administrators; organization allocation list IDs are
+  rejected. Pool membership, allocation membership and pool campaign recipient
+  rows follow their foreign-key deletion rules.
 - `POST /api/pools/allocations` — split a first-level pool into a new organization allocation. The list, pool grant and binding are created atomically. The allocation carries no reply mailbox of its own: pool recipients reply to the organization's unified reply mailbox, configured once from **Organizations -> Manage organizations -> Organization reply mailboxes**.
 - `POST|DELETE|PUT /api/pools/allocations/members` — assign, logically remove, or restore a contact. Requires `pools:manage`; a non-platform-administrator is restricted to its own organization's allocation.
 - `POST /api/pools/allocations/:id/import-members` — legacy compatibility route;
@@ -72,7 +78,7 @@ email through list, detail, CSV, or API-key responses.
 
 Public-pool contact access is governed by three independent, role-configurable
 permissions: `pools:get` (browse/search), `pools:manage` (create, assign,
-remove, restore, clear e-mail) and `pools:export`. Platform administrators
+remove, restore, archive invalid contacts) and `pools:export`. Platform administrators
 bypass the grants; every other caller is additionally restricted to the pool
 lists and allocations granted to the active workspace organization.
 
@@ -118,8 +124,11 @@ dialog is used to select a target organization and create/bind its pool allocati
 The customer-count link for a first-level or pool allocation opens the customer
 area's public-pool tab (`Customers.vue`), which renders the contacts with the
 same toolbar, pagination, sorting and row actions as ordinary customers instead
-of a dedicated page. That view keeps the pool data model separate and applies
-the same masked DTO policy as the API.
+of a dedicated page. Allocation views split active members under **Public pool
+ customers** and logically removed members under **Removed customers** through the same
+server-side status filter, so each tab's count matches its rows. First-level
+pools have no organization-specific exception tab. That view keeps the pool data
+model separate and applies the same masked DTO policy as the API.
 Organization operators continue to work only inside their own organization
 workspace; they cannot select another target organization or manage a
 first-level pool. The server enforces the same boundary for direct API calls.

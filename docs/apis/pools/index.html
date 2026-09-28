@@ -1796,7 +1796,7 @@ the owner fields for audit purposes.</p>
 <li><code>POST /api/pools/import</code> — legacy ordinary-list-to-pool compatibility route;
   new product flows use the unified customer import endpoint.</li>
 <li><code>GET /api/pools/:id/management-target?organization_id=...</code> — highest-admin-only target context: the target organization's existing allocation state.</li>
-<li><code>POST /api/campaigns/:id/pools</code> — attach a pool or allocation audience to a campaign draft.</li>
+<li><code>POST /api/campaigns/:id/pools</code> — attach a first-level public-pool audience to a campaign draft. Organization allocation list IDs are rejected; the selected first-level pool is resolved to the applicable allocation when the campaign is sent.</li>
 </ul>
 <p>Preview and send operations reject unresolved pool audiences (missing the
 organization's pool allocation or its unified reply mailbox) and answer with

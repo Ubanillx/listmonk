@@ -44,7 +44,7 @@ Key endpoints:
 - `POST /api/pools/import` — legacy ordinary-list-to-pool compatibility route;
   new product flows use the unified customer import endpoint.
 - `GET /api/pools/:id/management-target?organization_id=...` — highest-admin-only target context: the target organization's existing allocation state.
-- `POST /api/campaigns/:id/pools` — attach a pool or allocation audience to a campaign draft.
+- `POST /api/campaigns/:id/pools` — attach a first-level public-pool audience to a campaign draft. Organization allocation list IDs are rejected; the selected first-level pool is resolved to the applicable allocation when the campaign is sent.
 
 Preview and send operations reject unresolved pool audiences (missing the
 organization's pool allocation or its unified reply mailbox) and answer with

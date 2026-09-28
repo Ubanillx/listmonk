@@ -1853,24 +1853,7 @@ func (a *App) splitCampaignAudienceIDs(access models.WorkspaceAccess, ids []int,
 			p := campaignPoolAudience{PoolID: row.ID}
 			pools = append(pools, p)
 		case models.CustomerListTypeOrgPoolAllocation:
-			if allOrganizations {
-				return nil, nil, echo.NewHTTPError(http.StatusBadRequest, "an all-organization public pool campaign selects first-level pools only, not explicit pool allocations")
-			}
-			if !row.PoolID.Valid {
-				return nil, nil, echo.NewHTTPError(http.StatusBadRequest, "public-pool allocation is not bound to a first-level pool")
-			}
-			var orgID int64
-			if err := a.db.Get(&orgID, `SELECT organization_id FROM org_pool_allocations WHERE list_id=$1 AND pool_id=$2`, row.ID, row.PoolID.Int); err != nil {
-				return nil, nil, err
-			}
-			if !access.PlatformAdmin && (!access.IsOrganization() || orgID != int64(access.OrganizationID)) {
-				return nil, nil, echo.NewHTTPError(http.StatusForbidden, "pool allocation is outside the active organization")
-			}
-			allocationID := int64(row.ID)
-			if err := a.db.Get(&allocationID, `SELECT id FROM org_pool_allocations WHERE list_id=$1 AND pool_id=$2`, row.ID, row.PoolID.Int); err != nil {
-				return nil, nil, err
-			}
-			pools = append(pools, campaignPoolAudience{PoolID: int(row.PoolID.Int), AllocationID: &allocationID})
+			return nil, nil, echo.NewHTTPError(http.StatusBadRequest, "campaign audiences must use a first-level public pool, not a pool allocation")
 		default:
 			regular = append(regular, row.ID)
 		}

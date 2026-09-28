@@ -1001,6 +1001,13 @@ export default Vue.extend({
     },
 
     canManageList(customerList) {
+      // Campaign audiences are always resolved from a first-level public pool.
+      // Organization allocation lists are operational partitions of a pool,
+      // not selectable campaign audiences; selecting the parent pool lets the
+      // server resolve the correct allocation for the active organization.
+      if (customerList.type === 'org_pool_allocation') {
+        return false;
+      }
       // Public pools expose a delivery capability independently from ordinary
       // customer-list read/manage grants. The backend still enforces the
       // organization grant; this flag only keeps an authorized pool visible

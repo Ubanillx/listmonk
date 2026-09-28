@@ -26,11 +26,11 @@ SELECT url FROM links WHERE uuid = $1;
 
 -- name: register-link-click
 -- A link UUID is global, but an individual click must belong to an actual
--- campaign recipient. Aggregate tracking omits the customer UUID and still
+-- campaign recipient. Aggregate tracking omits the recipient UUID and still
 -- records a campaign-level click. Existing campaigns are marked legacy by the
 -- migration so their historical links remain valid without a new relation.
 -- The binding rule, including the historical fallback, lives in
--- resolve_campaign_recipient (see schema.sql).
+-- resolve_campaign_tracking_recipient (see schema.sql).
 WITH link AS (
     SELECT id, url FROM links WHERE uuid = $1
 ),
@@ -39,11 +39,12 @@ campaign AS (
     FROM campaigns WHERE uuid = $2::UUID
 ),
 recipient AS (
-    SELECT * FROM resolve_campaign_recipient($2::UUID, $3::TEXT)
+    SELECT * FROM resolve_campaign_tracking_recipient($2::UUID, $3::TEXT)
 )
-INSERT INTO link_clicks (campaign_id, customer_id, link_id)
+INSERT INTO link_clicks (campaign_id, customer_id, pool_contact_id, link_id)
     SELECT c.id,
         CASE WHEN $3::TEXT = '' THEN NULL ELSE r.customer_id END,
+        CASE WHEN $3::TEXT = '' THEN NULL ELSE r.pool_contact_id END,
         l.id
     FROM campaign c
     CROSS JOIN link l
@@ -55,5 +56,5 @@ INSERT INTO link_clicks (campaign_id, customer_id, link_id)
             WHERE cl.campaign_id = c.id AND cl.link_id = l.id
         )
     )
-    AND ($3::TEXT = '' OR r.customer_id IS NOT NULL)
+    AND ($3::TEXT = '' OR r.customer_id IS NOT NULL OR r.pool_contact_id IS NOT NULL)
 RETURNING (SELECT url FROM link);

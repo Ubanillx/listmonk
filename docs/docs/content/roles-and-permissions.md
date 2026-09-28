@@ -54,7 +54,7 @@ A user role is a collection of user related permissions. User roles are attached
 |             | campaigns:test         | Send campaign test messages; campaign management, ownership, SMTP, and API scope checks still apply |
 |             | campaigns:schedule    | Schedule campaign delivery; campaign management, ownership, SMTP, and API scope checks still apply |
 |             | campaigns:control     | Pause, cancel, unschedule, or archive campaigns |
-|             | campaigns:recipients   | View individual recipient details; requires customer read access, tracking, and the campaign privacy boundary |
+|             | campaigns:recipients   | View individual recipient details; requires customer read access, tracking, and the campaign privacy boundary. Public-pool rows additionally require `pools:get` and follow organization scope and e-mail masking. |
 | bounces     | bounces:get             | Get email bounce records                                                                                                                                                                                                             |
 |             | bounces:manage          | View and process bounced email workflows; destructive actions use their dedicated permissions |
 |             | bounces:delete         | Delete bounce records, including cleanup from a customer detail page |

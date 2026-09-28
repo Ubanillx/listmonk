@@ -100,7 +100,7 @@ func (c *Core) GetWorkspaceCampaignAnalyticsLinks(access models.WorkspaceAccess,
 	scope, scopeArgs := workspaceReadPredicate(access, "scoped_campaign", 4)
 	countExpr := "COUNT(*)"
 	if unique {
-		countExpr = "COUNT(DISTINCT lc.customer_id)"
+		countExpr = "COUNT(DISTINCT lc.customer_id) + COUNT(DISTINCT lc.pool_contact_id)"
 	}
 	stmt := fmt.Sprintf(`
 		WITH %s
@@ -134,16 +134,19 @@ func (c *Core) GetWorkspaceCampaignReportSummary(access models.WorkspaceAccess, 
 	stmt := fmt.Sprintf(`
 		WITH %s,
 		sent AS (
-			SELECT COUNT(*) AS sent FROM campaign_recipients cr
-			JOIN scoped_campaigns sc ON sc.id = cr.campaign_id
-			WHERE cr.campaign_id = $1 AND cr.sent_at IS NOT NULL
-				AND cr.sent_at >= $2 AND cr.sent_at <= $3
+			SELECT COUNT(*) AS sent FROM (
+				SELECT campaign_id, sent_at FROM campaign_recipients
+				UNION ALL SELECT campaign_id, sent_at FROM campaign_pool_recipients
+			) cr JOIN scoped_campaigns sc ON sc.id = cr.campaign_id
+			WHERE cr.campaign_id = $1 AND cr.sent_at >= $2 AND cr.sent_at <= $3
 		), views AS (
-			SELECT COUNT(*) AS views_total, COUNT(DISTINCT customer_id) AS unique_viewers
+			SELECT COUNT(*) AS views_total,
+				COUNT(DISTINCT customer_id) + COUNT(DISTINCT pool_contact_id) AS unique_viewers
 			FROM campaign_views e JOIN scoped_campaigns sc ON sc.id = e.campaign_id
 			WHERE e.campaign_id = $1 AND e.created_at >= $2 AND e.created_at <= $3
 		), clicks AS (
-			SELECT COUNT(*) AS clicks_total, COUNT(DISTINCT customer_id) AS unique_clickers
+			SELECT COUNT(*) AS clicks_total,
+				COUNT(DISTINCT customer_id) + COUNT(DISTINCT pool_contact_id) AS unique_clickers
 			FROM link_clicks e JOIN scoped_campaigns sc ON sc.id = e.campaign_id
 			WHERE e.campaign_id = $1 AND e.created_at >= $2 AND e.created_at <= $3
 		), bnc AS (
@@ -194,16 +197,19 @@ func (c *Core) GetWorkspaceCampaignsReportSummary(access models.WorkspaceAccess,
 	stmt := fmt.Sprintf(`
 		WITH %s,
 		sent AS (
-			SELECT COUNT(*) AS sent FROM campaign_recipients cr
-			JOIN scoped_campaigns sc ON sc.id = cr.campaign_id
-			WHERE cr.campaign_id = ANY($1::INT[]) AND cr.sent_at IS NOT NULL
-				AND cr.sent_at >= $2 AND cr.sent_at <= $3
+			SELECT COUNT(*) AS sent FROM (
+				SELECT campaign_id, sent_at FROM campaign_recipients
+				UNION ALL SELECT campaign_id, sent_at FROM campaign_pool_recipients
+			) cr JOIN scoped_campaigns sc ON sc.id = cr.campaign_id
+			WHERE cr.campaign_id = ANY($1::INT[]) AND cr.sent_at >= $2 AND cr.sent_at <= $3
 		), views AS (
-			SELECT COUNT(*) AS views_total, COUNT(DISTINCT customer_id) AS unique_viewers
+			SELECT COUNT(*) AS views_total,
+				COUNT(DISTINCT customer_id) + COUNT(DISTINCT pool_contact_id) AS unique_viewers
 			FROM campaign_views e JOIN scoped_campaigns sc ON sc.id = e.campaign_id
 			WHERE e.campaign_id = ANY($1::INT[]) AND e.created_at >= $2 AND e.created_at <= $3
 		), clicks AS (
-			SELECT COUNT(*) AS clicks_total, COUNT(DISTINCT customer_id) AS unique_clickers
+			SELECT COUNT(*) AS clicks_total,
+				COUNT(DISTINCT customer_id) + COUNT(DISTINCT pool_contact_id) AS unique_clickers
 			FROM link_clicks e JOIN scoped_campaigns sc ON sc.id = e.campaign_id
 			WHERE e.campaign_id = ANY($1::INT[]) AND e.created_at >= $2 AND e.created_at <= $3
 		), bnc AS (
@@ -286,7 +292,7 @@ func (c *Core) GetWorkspaceCampaignReportLinks(access models.WorkspaceAccess, ca
 		return []models.CampaignReportLinkRow{}, nil
 	}
 	scope, scopeArgs := workspaceReadPredicate(access, "scoped_campaign", 4)
-	uniqueExpr := "COUNT(DISTINCT lc.customer_id)"
+	uniqueExpr := "COUNT(DISTINCT lc.customer_id) + COUNT(DISTINCT lc.pool_contact_id)"
 	if !individualTracking {
 		uniqueExpr = "0"
 	}
@@ -330,14 +336,17 @@ func (c *Core) GetWorkspaceCampaignsReportLinks(access models.WorkspaceAccess, c
 		return []models.CampaignsReportLinkRow{}, nil
 	}
 	scope, scopeArgs := workspaceReadPredicate(access, "scoped_campaign", 4)
-	uniqueExpr := "COUNT(DISTINCT lc.customer_id)"
+	uniqueExpr := "COUNT(DISTINCT lc.customer_id) + COUNT(DISTINCT lc.pool_contact_id)"
 	if !individualTracking {
 		uniqueExpr = "0"
 	}
 	stmt := fmt.Sprintf(`
 		WITH %s,
 		sent AS (
-			SELECT campaign_id, COUNT(*) AS sent FROM campaign_recipients
+			SELECT campaign_id, COUNT(*) AS sent FROM (
+				SELECT campaign_id, sent_at FROM campaign_recipients
+				UNION ALL SELECT campaign_id, sent_at FROM campaign_pool_recipients
+			) recipients
 			WHERE campaign_id = ANY($1::INT[]) AND sent_at IS NOT NULL
 				AND sent_at >= $2 AND sent_at <= $3 GROUP BY campaign_id
 		)
@@ -372,24 +381,28 @@ func (c *Core) GetWorkspaceCampaignsReportLinks(access models.WorkspaceAccess, c
 }
 
 // scopeReportRecipientQuery adds a statement-local campaign scope to the
-// existing report recipient SQL.  The original query has ten arguments; scope
-// placeholders therefore begin at $11 and cannot collide with filters,
+// existing report recipient SQL.  The original query has twelve arguments; scope
+// placeholders therefore begin at $13 and cannot collide with filters,
 // pagination, or the user-provided sort expression.
 func scopeReportRecipientQuery(base string, access models.WorkspaceAccess, multi bool) (string, []any) {
-	scope, args := workspaceManagedCampaignPredicate(access, "scoped_campaign", 11)
+	scope, args := workspaceManagedCampaignPredicate(access, "scoped_campaign", 13)
 	stmt := strings.Replace(base, "WITH view_stats AS (",
 		"WITH "+workspaceCampaignScopeCTE(scope)+", view_stats AS (", 1)
 	if multi {
 		stmt = strings.Replace(stmt, "WHERE cr.campaign_id = ANY($1)",
 			"WHERE cr.campaign_id = ANY($1) AND cr.campaign_id IN (SELECT id FROM scoped_campaigns)", 1)
+		stmt = strings.Replace(stmt, "WHERE cpr.campaign_id = ANY($1) AND $11::BOOLEAN",
+			"WHERE cpr.campaign_id = ANY($1) AND cpr.campaign_id IN (SELECT id FROM scoped_campaigns) AND $11::BOOLEAN", 1)
 	} else {
 		stmt = strings.Replace(stmt, "WHERE cr.campaign_id = $1",
 			"WHERE cr.campaign_id = $1 AND cr.campaign_id IN (SELECT id FROM scoped_campaigns)", 1)
+		stmt = strings.Replace(stmt, "WHERE cpr.campaign_id = $1 AND $11::BOOLEAN",
+			"WHERE cpr.campaign_id = $1 AND cpr.campaign_id IN (SELECT id FROM scoped_campaigns) AND $11::BOOLEAN", 1)
 	}
 	return stmt, args
 }
 
-func (c *Core) QueryWorkspaceCampaignReportRecipients(access models.WorkspaceAccess, campID int, fromDate, toDate string, filters models.CampaignReportRecipientFilters, offset, limit int) ([]models.CampaignReportRecipientRow, int, error) {
+func (c *Core) QueryWorkspaceCampaignReportRecipients(access models.WorkspaceAccess, campID int, fromDate, toDate string, filters models.CampaignReportRecipientFilters, offset, limit int, includePool bool) ([]models.CampaignReportRecipientRow, int, error) {
 	if err := validateWorkspaceAnalyticsDates(c, fromDate, toDate); err != nil {
 		return nil, 0, err
 	}
@@ -399,7 +412,11 @@ func (c *Core) QueryWorkspaceCampaignReportRecipients(access models.WorkspaceAcc
 	if search != "" {
 		search = "%" + search + "%"
 	}
-	args := []any{campID, fromDate, toDate, search, normalizeReportTriState(filters.Opened), normalizeReportTriState(filters.Clicked), normalizeReportTriState(filters.Bounced), filters.LinkID, offset, limit}
+	poolOrgID := int64(access.OrganizationID)
+	if access.PlatformAdmin {
+		poolOrgID = -1
+	}
+	args := []any{campID, fromDate, toDate, search, normalizeReportTriState(filters.Opened), normalizeReportTriState(filters.Clicked), normalizeReportTriState(filters.Bounced), filters.LinkID, offset, limit, includePool, poolOrgID}
 	args = append(args, scopeArgs...)
 	var out []models.CampaignReportRecipientRow
 	if err := c.db.Select(&out, stmt, args...); err != nil {
@@ -412,7 +429,7 @@ func (c *Core) QueryWorkspaceCampaignReportRecipients(access models.WorkspaceAcc
 	return out, total, nil
 }
 
-func (c *Core) QueryWorkspaceCampaignsReportRecipients(access models.WorkspaceAccess, campIDs []int, fromDate, toDate string, filters models.CampaignReportRecipientFilters, offset, limit int) ([]models.CampaignsReportRecipientRow, int, error) {
+func (c *Core) QueryWorkspaceCampaignsReportRecipients(access models.WorkspaceAccess, campIDs []int, fromDate, toDate string, filters models.CampaignReportRecipientFilters, offset, limit int, includePool bool) ([]models.CampaignsReportRecipientRow, int, error) {
 	if err := validateWorkspaceAnalyticsDates(c, fromDate, toDate); err != nil {
 		return nil, 0, err
 	}
@@ -425,7 +442,11 @@ func (c *Core) QueryWorkspaceCampaignsReportRecipients(access models.WorkspaceAc
 	if search != "" {
 		search = "%" + search + "%"
 	}
-	args := []any{pq.Array(campIDs), fromDate, toDate, search, normalizeReportTriState(filters.Opened), normalizeReportTriState(filters.Clicked), normalizeReportTriState(filters.Bounced), filters.LinkID, offset, limit}
+	poolOrgID := int64(access.OrganizationID)
+	if access.PlatformAdmin {
+		poolOrgID = -1
+	}
+	args := []any{pq.Array(campIDs), fromDate, toDate, search, normalizeReportTriState(filters.Opened), normalizeReportTriState(filters.Clicked), normalizeReportTriState(filters.Bounced), filters.LinkID, offset, limit, includePool, poolOrgID}
 	args = append(args, scopeArgs...)
 	var out []models.CampaignsReportRecipientRow
 	if err := c.db.Select(&out, stmt, args...); err != nil {

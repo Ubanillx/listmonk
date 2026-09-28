@@ -935,7 +935,7 @@ func (c *Core) QueryCampaignReportRecipients(campID int, fromDate, toDate string
 	bounced := normalizeReportTriState(filters.Bounced)
 
 	var out []models.CampaignReportRecipientRow
-	if err := c.db.Select(&out, stmt, campID, fromDate, toDate, search, opened, clicked, bounced, filters.LinkID, offset, limit); err != nil {
+	if err := c.db.Select(&out, stmt, campID, fromDate, toDate, search, opened, clicked, bounced, filters.LinkID, offset, limit, false, int64(0)); err != nil {
 		c.log.Printf("error fetching campaign report recipients: %v", err)
 		return nil, 0, echo.NewHTTPError(http.StatusInternalServerError,
 			c.i18n.Ts("globals.messages.errorFetching", "name", "{globals.terms.analytics}", "error", pqErrMsg(err)))
@@ -971,7 +971,7 @@ func (c *Core) QueryCampaignsReportRecipients(campIDs []int, fromDate, toDate st
 	bounced := normalizeReportTriState(filters.Bounced)
 
 	var out []models.CampaignsReportRecipientRow
-	if err := c.db.Select(&out, stmt, pq.Array(campIDs), fromDate, toDate, search, opened, clicked, bounced, filters.LinkID, offset, limit); err != nil {
+	if err := c.db.Select(&out, stmt, pq.Array(campIDs), fromDate, toDate, search, opened, clicked, bounced, filters.LinkID, offset, limit, false, int64(0)); err != nil {
 		c.log.Printf("error fetching campaigns report recipients: %v", err)
 		return nil, 0, echo.NewHTTPError(http.StatusInternalServerError,
 			c.i18n.Ts("globals.messages.errorFetching", "name", "{globals.terms.analytics}", "error", pqErrMsg(err)))

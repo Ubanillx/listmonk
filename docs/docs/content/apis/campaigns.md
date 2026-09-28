@@ -386,7 +386,7 @@ ______________________________________________________________________
 
 #### GET /api/campaigns/{campaign_id}/report/recipients
 
-Retrieve recipient-level analytics for a campaign. This endpoint requires individual tracking to be enabled.
+Retrieve recipient-level analytics for a campaign. This endpoint requires individual tracking to be enabled. Public-pool recipient rows include `pool_contact_id` and use `customer_id: 0`. They require `pools:get` in addition to the existing recipient and customer read permissions. Non-platform administrators only see public-pool rows assigned to their organization; their e-mail addresses are masked and their `uuid` field is empty.
 
 ##### Parameters
 

@@ -322,7 +322,7 @@ func (s *store) NextCustomers(campID, limit int) ([]models.CampaignCustomer, err
 }
 
 func (s *store) MarkPoolCampaignMessageSent(campID int, contactID int64) error {
-	_, err := s.db.Exec(`UPDATE campaign_pool_recipients SET status=$3::campaign_recipient_status, updated_at=NOW() WHERE campaign_id=$1 AND pool_contact_id=$2`, campID, contactID, models.CampaignRecipientStatusSent)
+	_, err := s.db.Exec(`UPDATE campaign_pool_recipients SET status=$3::campaign_recipient_status, sent_at=NOW(), updated_at=NOW() WHERE campaign_id=$1 AND pool_contact_id=$2`, campID, contactID, models.CampaignRecipientStatusSent)
 	if err != nil {
 		return err
 	}

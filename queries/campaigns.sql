@@ -586,10 +586,10 @@ WITH intval AS (
     SELECT CASE WHEN (EXTRACT (EPOCH FROM ($3::TIMESTAMP - $2::TIMESTAMP)) / 86400) >= 7 THEN 'day' ELSE 'hour' END
 ),
 uniqIDs AS (
-    SELECT DISTINCT ON(customer_id) customer_id, campaign_id, DATE_TRUNC((SELECT * FROM intval), created_at) AS "timestamp"
+    SELECT DISTINCT campaign_id, customer_id, pool_contact_id, DATE_TRUNC((SELECT * FROM intval), created_at) AS "timestamp"
     FROM %s
     WHERE campaign_id=ANY($1) AND created_at >= $2 AND created_at <= $3
-    ORDER BY customer_id, "timestamp"
+      AND (customer_id IS NOT NULL OR pool_contact_id IS NOT NULL)
 )
 SELECT COUNT(*) AS "count", campaign_id, "timestamp"
     FROM uniqIDs GROUP BY campaign_id, "timestamp" ORDER BY "timestamp" ASC;
@@ -617,8 +617,8 @@ SELECT campaign_id, COUNT(*) AS "count", DATE_TRUNC((SELECT * FROM intval), crea
 
 -- name: get-campaign-link-counts
 -- raw: true
--- %s = * or DISTINCT customer_id (prepared based on based on individual tracking=on/off). Prepared on boot.
-SELECT links.id AS link_id, COUNT(%s) AS "count", url
+-- %s = total or unique-recipient count (prepared based on individual tracking).
+SELECT links.id AS link_id, %s AS "count", url
     FROM link_clicks
     LEFT JOIN links ON (link_clicks.link_id = links.id)
     WHERE campaign_id=ANY($1) AND link_clicks.created_at >= $2 AND link_clicks.created_at <= $3
@@ -626,17 +626,15 @@ SELECT links.id AS link_id, COUNT(%s) AS "count", url
 
 -- name: get-campaign-report-summary
 WITH sent AS (
-    SELECT COUNT(*) AS sent
-    FROM campaign_recipients
-    WHERE campaign_id = $1
-      AND sent_at IS NOT NULL
-      AND sent_at >= $2
-      AND sent_at <= $3
+    SELECT (SELECT COUNT(*) FROM campaign_recipients WHERE campaign_id = $1
+        AND sent_at >= $2 AND sent_at <= $3)
+      + (SELECT COUNT(*) FROM campaign_pool_recipients WHERE campaign_id = $1
+        AND sent_at >= $2 AND sent_at <= $3) AS sent
 ),
 views AS (
     SELECT
         COUNT(*) AS views_total,
-        COUNT(DISTINCT customer_id) AS unique_viewers
+        COUNT(DISTINCT customer_id) + COUNT(DISTINCT pool_contact_id) AS unique_viewers
     FROM campaign_views
     WHERE campaign_id = $1
       AND created_at >= $2
@@ -645,7 +643,7 @@ views AS (
 clicks AS (
     SELECT
         COUNT(*) AS clicks_total,
-        COUNT(DISTINCT customer_id) AS unique_clickers
+        COUNT(DISTINCT customer_id) + COUNT(DISTINCT pool_contact_id) AS unique_clickers
     FROM link_clicks
     WHERE campaign_id = $1
       AND created_at >= $2
@@ -670,7 +668,9 @@ SELECT
 -- name: get-campaigns-report-summary
 WITH sent AS (
     SELECT campaign_id, COUNT(*) AS sent
-    FROM campaign_recipients
+    FROM (SELECT campaign_id, sent_at FROM campaign_recipients
+          UNION ALL
+          SELECT campaign_id, sent_at FROM campaign_pool_recipients) recipients
     WHERE campaign_id = ANY($1)
       AND sent_at IS NOT NULL
       AND sent_at >= $2
@@ -681,7 +681,7 @@ views AS (
     SELECT
         campaign_id,
         COUNT(*) AS views_total,
-        COUNT(DISTINCT customer_id) AS unique_viewers
+        COUNT(DISTINCT customer_id) + COUNT(DISTINCT pool_contact_id) AS unique_viewers
     FROM campaign_views
     WHERE campaign_id = ANY($1)
       AND created_at >= $2
@@ -692,7 +692,7 @@ clicks AS (
     SELECT
         campaign_id,
         COUNT(*) AS clicks_total,
-        COUNT(DISTINCT customer_id) AS unique_clickers
+        COUNT(DISTINCT customer_id) + COUNT(DISTINCT pool_contact_id) AS unique_clickers
     FROM link_clicks
     WHERE campaign_id = ANY($1)
       AND created_at >= $2
@@ -720,7 +720,7 @@ SELECT
     links.id AS link_id,
     links.url,
     COUNT(*) AS total_clicks,
-    COUNT(DISTINCT link_clicks.customer_id) AS unique_clickers
+    COUNT(DISTINCT link_clicks.customer_id) + COUNT(DISTINCT link_clicks.pool_contact_id) AS unique_clickers
 FROM link_clicks
 LEFT JOIN links ON (link_clicks.link_id = links.id)
 WHERE link_clicks.campaign_id = $1
@@ -733,7 +733,9 @@ LIMIT 50;
 -- name: get-campaigns-report-links
 WITH sent AS (
     SELECT campaign_id, COUNT(*) AS sent
-    FROM campaign_recipients
+    FROM (SELECT campaign_id, sent_at FROM campaign_recipients
+          UNION ALL
+          SELECT campaign_id, sent_at FROM campaign_pool_recipients) recipients
     WHERE campaign_id = ANY($1)
       AND sent_at IS NOT NULL
       AND sent_at >= $2
@@ -747,7 +749,7 @@ SELECT
     links.id AS link_id,
     links.url,
     COUNT(*) AS total_clicks,
-    COUNT(DISTINCT lc.customer_id) AS unique_clickers,
+    COUNT(DISTINCT lc.customer_id) + COUNT(DISTINCT lc.pool_contact_id) AS unique_clickers,
     COALESCE(s.sent, 0) AS sent
 FROM link_clicks lc
 JOIN campaigns c ON c.id = lc.campaign_id
@@ -835,7 +837,7 @@ filtered AS (
             COALESCE(bs.last_bounced_at, '-infinity'::TIMESTAMP WITH TIME ZONE),
             COALESCE(cr.sent_at, '-infinity'::TIMESTAMP WITH TIME ZONE)
         ) AS last_engaged_at,
-        COUNT(*) OVER() AS total
+        0::BIGINT AS pool_contact_id
     FROM campaign_recipients cr
     JOIN customers s ON s.id = cr.customer_id
     LEFT JOIN view_stats vs ON vs.customer_id = cr.customer_id
@@ -869,10 +871,82 @@ filtered AS (
                 AND lcf.created_at <= $3
                 AND lcf.link_id = $8
           )
-      )
+    )
+),
+pool_filtered AS (
+    SELECT
+        0::INT AS customer_id,
+        pc.uuid,
+        cpr.email_snapshot AS email,
+        cpr.name_snapshot AS name,
+        cpr.status AS recipient_status,
+        cpr.sent_at,
+        COALESCE(bs.bounce_count, 0) AS bounce_count,
+        COALESCE(vs.view_count, 0) AS view_count,
+        COALESCE(cs.click_count, 0) AS click_count,
+        vs.first_viewed_at,
+        vs.last_viewed_at,
+        cs.first_clicked_at,
+        cs.last_clicked_at,
+        lc.last_link_id,
+        lc.last_link_url,
+        GREATEST(
+            COALESCE(vs.last_viewed_at, '-infinity'::TIMESTAMPTZ),
+            COALESCE(cs.last_clicked_at, '-infinity'::TIMESTAMPTZ),
+            COALESCE(bs.last_bounced_at, '-infinity'::TIMESTAMPTZ),
+            COALESCE(cpr.sent_at, '-infinity'::TIMESTAMPTZ)
+        ) AS last_engaged_at,
+        cpr.pool_contact_id
+    FROM campaign_pool_recipients cpr
+    JOIN pool_contacts pc ON pc.id = cpr.pool_contact_id
+    LEFT JOIN LATERAL (
+        SELECT COUNT(*) AS view_count, MIN(created_at) AS first_viewed_at,
+            MAX(created_at) AS last_viewed_at
+        FROM campaign_views WHERE campaign_id = cpr.campaign_id
+            AND pool_contact_id = cpr.pool_contact_id AND created_at >= $2 AND created_at <= $3
+    ) vs ON TRUE
+    LEFT JOIN LATERAL (
+        SELECT COUNT(*) AS click_count, MIN(created_at) AS first_clicked_at,
+            MAX(created_at) AS last_clicked_at
+        FROM link_clicks WHERE campaign_id = cpr.campaign_id
+            AND pool_contact_id = cpr.pool_contact_id AND created_at >= $2 AND created_at <= $3
+    ) cs ON TRUE
+    LEFT JOIN LATERAL (
+        SELECT lc.link_id AS last_link_id, links.url AS last_link_url,
+            lc.created_at AS last_clicked_at
+        FROM link_clicks lc LEFT JOIN links ON links.id = lc.link_id
+        WHERE lc.campaign_id = cpr.campaign_id AND lc.pool_contact_id = cpr.pool_contact_id
+            AND lc.created_at >= $2 AND lc.created_at <= $3
+        ORDER BY lc.created_at DESC, lc.id DESC LIMIT 1
+    ) lc ON TRUE
+    LEFT JOIN LATERAL (
+        SELECT COUNT(*) AS bounce_count, MAX(created_at) AS last_bounced_at
+        FROM bounces WHERE campaign_id = cpr.campaign_id
+            AND pool_contact_id = cpr.pool_contact_id AND created_at >= $2 AND created_at <= $3
+    ) bs ON TRUE
+    WHERE cpr.campaign_id = $1 AND $11::BOOLEAN
+      AND ($12::BIGINT = -1 OR cpr.organization_id = $12::BIGINT)
+      AND ($4 = '' OR cpr.email_snapshot ILIKE $4 OR cpr.name_snapshot ILIKE $4)
+      AND ($5 = 'all' OR ($5 = 'yes' AND vs.view_count > 0)
+           OR ($5 = 'no' AND vs.view_count = 0))
+      AND ($6 = 'all' OR ($6 = 'yes' AND cs.click_count > 0)
+           OR ($6 = 'no' AND cs.click_count = 0))
+      AND ($7 = 'all' OR ($7 = 'yes' AND bs.bounce_count > 0)
+           OR ($7 = 'no' AND bs.bounce_count = 0))
+      AND ($8 = 0 OR EXISTS (
+          SELECT 1 FROM link_clicks lcf
+          WHERE lcf.campaign_id = cpr.campaign_id
+            AND lcf.pool_contact_id = cpr.pool_contact_id
+            AND lcf.created_at >= $2 AND lcf.created_at <= $3 AND lcf.link_id = $8
+      ))
+),
+all_filtered AS (
+    SELECT * FROM filtered
+    UNION ALL SELECT * FROM pool_filtered
 )
 SELECT
     customer_id,
+    pool_contact_id,
     uuid,
     email,
     name,
@@ -888,8 +962,8 @@ SELECT
     last_link_id,
     last_link_url,
     NULLIF(last_engaged_at, '-infinity'::TIMESTAMP WITH TIME ZONE) AS last_engaged_at,
-    total
-FROM filtered
+    COUNT(*) OVER() AS total
+FROM all_filtered
 ORDER BY %order%, email ASC
 OFFSET $9 LIMIT (CASE WHEN $10 < 1 THEN NULL ELSE $10 END);
 
@@ -975,7 +1049,7 @@ filtered AS (
             COALESCE(bs.last_bounced_at, '-infinity'::TIMESTAMP WITH TIME ZONE),
             COALESCE(cr.sent_at, '-infinity'::TIMESTAMP WITH TIME ZONE)
         ) AS last_engaged_at,
-        COUNT(*) OVER() AS total
+        0::BIGINT AS pool_contact_id
     FROM campaign_recipients cr
     JOIN campaigns c ON c.id = cr.campaign_id
     JOIN customers s ON s.id = cr.customer_id
@@ -1011,12 +1085,88 @@ filtered AS (
                 AND lcf.link_id = $8
           )
       )
+),
+pool_filtered AS (
+    SELECT
+        c.id AS campaign_id,
+        c.name AS campaign_name,
+        c.subject AS campaign_subject,
+        0::INT AS customer_id,
+        pc.uuid,
+        cpr.email_snapshot AS email,
+        cpr.name_snapshot AS name,
+        cpr.status AS recipient_status,
+        cpr.sent_at,
+        COALESCE(bs.bounce_count, 0) AS bounce_count,
+        COALESCE(vs.view_count, 0) AS view_count,
+        COALESCE(cs.click_count, 0) AS click_count,
+        vs.first_viewed_at,
+        vs.last_viewed_at,
+        cs.first_clicked_at,
+        cs.last_clicked_at,
+        lc.last_link_id,
+        lc.last_link_url,
+        GREATEST(
+            COALESCE(vs.last_viewed_at, '-infinity'::TIMESTAMPTZ),
+            COALESCE(cs.last_clicked_at, '-infinity'::TIMESTAMPTZ),
+            COALESCE(bs.last_bounced_at, '-infinity'::TIMESTAMPTZ),
+            COALESCE(cpr.sent_at, '-infinity'::TIMESTAMPTZ)
+        ) AS last_engaged_at,
+        cpr.pool_contact_id
+    FROM campaign_pool_recipients cpr
+    JOIN campaigns c ON c.id = cpr.campaign_id
+    JOIN pool_contacts pc ON pc.id = cpr.pool_contact_id
+    LEFT JOIN LATERAL (
+        SELECT COUNT(*) AS view_count, MIN(created_at) AS first_viewed_at,
+            MAX(created_at) AS last_viewed_at
+        FROM campaign_views WHERE campaign_id = cpr.campaign_id
+            AND pool_contact_id = cpr.pool_contact_id AND created_at >= $2 AND created_at <= $3
+    ) vs ON TRUE
+    LEFT JOIN LATERAL (
+        SELECT COUNT(*) AS click_count, MIN(created_at) AS first_clicked_at,
+            MAX(created_at) AS last_clicked_at
+        FROM link_clicks WHERE campaign_id = cpr.campaign_id
+            AND pool_contact_id = cpr.pool_contact_id AND created_at >= $2 AND created_at <= $3
+    ) cs ON TRUE
+    LEFT JOIN LATERAL (
+        SELECT lc.link_id AS last_link_id, links.url AS last_link_url,
+            lc.created_at AS last_clicked_at
+        FROM link_clicks lc LEFT JOIN links ON links.id = lc.link_id
+        WHERE lc.campaign_id = cpr.campaign_id AND lc.pool_contact_id = cpr.pool_contact_id
+            AND lc.created_at >= $2 AND lc.created_at <= $3
+        ORDER BY lc.created_at DESC, lc.id DESC LIMIT 1
+    ) lc ON TRUE
+    LEFT JOIN LATERAL (
+        SELECT COUNT(*) AS bounce_count, MAX(created_at) AS last_bounced_at
+        FROM bounces WHERE campaign_id = cpr.campaign_id
+            AND pool_contact_id = cpr.pool_contact_id AND created_at >= $2 AND created_at <= $3
+    ) bs ON TRUE
+    WHERE cpr.campaign_id = ANY($1) AND $11::BOOLEAN
+      AND ($12::BIGINT = -1 OR cpr.organization_id = $12::BIGINT)
+      AND ($4 = '' OR cpr.email_snapshot ILIKE $4 OR cpr.name_snapshot ILIKE $4)
+      AND ($5 = 'all' OR ($5 = 'yes' AND vs.view_count > 0)
+           OR ($5 = 'no' AND vs.view_count = 0))
+      AND ($6 = 'all' OR ($6 = 'yes' AND cs.click_count > 0)
+           OR ($6 = 'no' AND cs.click_count = 0))
+      AND ($7 = 'all' OR ($7 = 'yes' AND bs.bounce_count > 0)
+           OR ($7 = 'no' AND bs.bounce_count = 0))
+      AND ($8 = 0 OR EXISTS (
+          SELECT 1 FROM link_clicks lcf
+          WHERE lcf.campaign_id = cpr.campaign_id
+            AND lcf.pool_contact_id = cpr.pool_contact_id
+            AND lcf.created_at >= $2 AND lcf.created_at <= $3 AND lcf.link_id = $8
+      ))
+),
+all_filtered AS (
+    SELECT * FROM filtered
+    UNION ALL SELECT * FROM pool_filtered
 )
 SELECT
     campaign_id,
     campaign_name,
     campaign_subject,
     customer_id,
+    pool_contact_id,
     uuid,
     email,
     name,
@@ -1032,8 +1182,8 @@ SELECT
     last_link_id,
     last_link_url,
     NULLIF(last_engaged_at, '-infinity'::TIMESTAMP WITH TIME ZONE) AS last_engaged_at,
-    total
-FROM filtered
+    COUNT(*) OVER() AS total
+FROM all_filtered
 ORDER BY %order%, email ASC
 OFFSET $9 LIMIT (CASE WHEN $10 < 1 THEN NULL ELSE $10 END);
 
@@ -1480,22 +1630,23 @@ AND (
 -- relation belonging to this campaign. Without individual tracking, retain
 -- the aggregate campaign-level event with a NULL customer ID. The binding rule,
 -- including the fallback for campaigns that predate recipient snapshots, lives
--- in resolve_campaign_recipient (see schema.sql).
+-- in resolve_campaign_tracking_recipient (see schema.sql).
 WITH campaign AS (
     SELECT id FROM campaigns WHERE uuid = $1::UUID
 ),
 recipient AS (
-    SELECT * FROM resolve_campaign_recipient($1::UUID, $2::TEXT)
+    SELECT * FROM resolve_campaign_tracking_recipient($1::UUID, $2::TEXT)
 ),
 view AS (
     SELECT c.id AS campaign_id,
-        CASE WHEN $2::TEXT = '' THEN NULL ELSE r.customer_id END AS customer_id
+        CASE WHEN $2::TEXT = '' THEN NULL ELSE r.customer_id END AS customer_id,
+        CASE WHEN $2::TEXT = '' THEN NULL ELSE r.pool_contact_id END AS pool_contact_id
     FROM campaign c
     LEFT JOIN recipient r ON r.campaign_id = c.id
-    WHERE $2::TEXT = '' OR r.customer_id IS NOT NULL
+    WHERE $2::TEXT = '' OR r.customer_id IS NOT NULL OR r.pool_contact_id IS NOT NULL
 )
-INSERT INTO campaign_views (campaign_id, customer_id)
-    SELECT campaign_id, customer_id FROM view;
+INSERT INTO campaign_views (campaign_id, customer_id, pool_contact_id)
+    SELECT campaign_id, customer_id, pool_contact_id FROM view;
 
 -- name: get-campaign-pool-orgs
 -- Active organizations that own a pool allocation for one of the campaign's

@@ -274,10 +274,12 @@ envelope.
   unsubscribe page linked as `{{ UnsubscribeURL }}` in campaigns.
 - `POST /subscription/export/:subUUID` and `POST /subscription/wipe/:subUUID` —
   customer self-service data export and erasure, gated by the privacy settings.
-- `GET /link/:linkUUID/:campUUID/:subUUID` — link click tracking; records the
-  click (unless tracking is disabled globally) and answers with a redirect to
-  the underlying URL.
-- `GET /campaign/:campUUID/:subUUID/px.png` — the open-tracking pixel; it always
+- `GET /link/:linkUUID/:campUUID/:subUUID` — link click tracking; `subUUID` may
+  identify a regular customer or a public-pool recipient in that campaign. It
+  records the click (unless tracking is disabled globally) and redirects to the
+  underlying URL. An unrelated link or recipient is rejected.
+- `GET /campaign/:campUUID/:subUUID/px.png` — the open-tracking pixel; `subUUID`
+  may identify either recipient type in the campaign. It always
   returns the PNG, whether or not the view is recorded.
 - `GET /archive`, `GET /archive/:id`, `GET /archive/latest` and
   `GET /archive.xml` — the public archive pages and RSS feed, all registered

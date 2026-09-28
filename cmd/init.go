@@ -381,11 +381,11 @@ func readQueries(dir string, fs stuffbin.FileSystem) goyesql.Queries {
 func prepareQueries(qMap goyesql.Queries, db *sqlx.DB, ko *koanf.Koanf) *models.Queries {
 	var (
 		countQuery = "get-campaign-analytics-counts"
-		linkSel    = "*"
+		linkSel    = "COUNT(*)"
 	)
 	if ko.Bool("privacy.individual_tracking") {
 		countQuery = "get-campaign-analytics-unique-counts"
-		linkSel = "DISTINCT customer_id"
+		linkSel = "COUNT(DISTINCT customer_id) + COUNT(DISTINCT pool_contact_id)"
 	}
 
 	// These don't exist in the SQL file but are in the queries struct to be prepared.
@@ -450,7 +450,7 @@ func initUrlConfig(ko *koanf.Koanf) *UrlConfig {
 		// url.com/subscription/optin/{customer_uuid}
 		OptinURL: fmt.Sprintf("%s/subscription/optin/%%s?%%s", root),
 
-		// url.com/link/{campaign_uuid}/{customer_uuid}/{link_uuid}
+		// url.com/link/{link_uuid}/{campaign_uuid}/{recipient_uuid}
 		LinkTrackURL: fmt.Sprintf("%s/link/%%s/%%s/%%s", root),
 
 		// url.com/link/{campaign_uuid}/{customer_uuid}

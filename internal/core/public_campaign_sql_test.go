@@ -47,15 +47,24 @@ func TestPublicCampaignSQLGuards(t *testing.T) {
 	// same rule, otherwise the two deployment paths resolve bearers differently.
 	requireSameRuleDefinition(t, definition, loadMigrationRuleDefinition(t))
 
-	// Every public bearer path consumes the shared rule and does not keep a second
-	// copy of it.
+	// Archive rendering and unsubscribe keep the ordinary recipient rule.
 	for _, name := range []string{
 		"get-public-campaign-recipient",
-		"register-campaign-view",
-		"register-link-click",
 		"unsubscribe-by-campaign",
 	} {
 		requireQueryTerms(t, queries, name, "resolve_campaign_recipient(")
+		requireNoLocalCopyOfRecipientRule(t, queries, name)
+	}
+	// Tracking additionally accepts a pool recipient snapshot. It must still
+	// reuse the ordinary rule so older campaign bearers keep working.
+	tracking := readRepoFile(t, "schema.sql")
+	for _, term := range []string{"FUNCTION resolve_campaign_tracking_recipient(", "resolve_campaign_recipient(campaign_uuid, recipient_ref)", "campaign_pool_recipients cpr", "pc.uuid = NULLIF(recipient_ref, '')::UUID"} {
+		if !strings.Contains(tracking, term) {
+			t.Errorf("tracking recipient rule is missing %q", term)
+		}
+	}
+	for _, name := range []string{"register-campaign-view", "register-link-click"} {
+		requireQueryTerms(t, queries, name, "resolve_campaign_tracking_recipient(", "pool_contact_id")
 		requireNoLocalCopyOfRecipientRule(t, queries, name)
 	}
 

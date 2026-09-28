@@ -1370,6 +1370,8 @@ func (a *App) GetCampaignReportRecipients(c echo.Context) error {
 	}
 
 	pg := a.pg.NewFromURL(c.Request().URL.Query())
+	user := auth.GetUser(c)
+	includePool := requireLegacyPermission(user, auth.PermPoolsGet) == nil
 	out, total, err := a.core.QueryWorkspaceCampaignReportRecipients(access, id, from, to, models.CampaignReportRecipientFilters{
 		Search:  c.QueryParam("search"),
 		Opened:  c.QueryParam("opened"),
@@ -1378,9 +1380,17 @@ func (a *App) GetCampaignReportRecipients(c echo.Context) error {
 		LinkID:  linkID,
 		SortBy:  c.QueryParam("sort_by"),
 		Order:   c.QueryParam("order"),
-	}, pg.Offset, pg.Limit)
+	}, pg.Offset, pg.Limit, includePool)
 	if err != nil {
 		return err
+	}
+	if !user.IsPlatformAdmin() {
+		for i := range out {
+			if out[i].PoolContactID != 0 {
+				out[i].Email = maskEmail(out[i].Email)
+				out[i].UUID = ""
+			}
+		}
 	}
 
 	return c.JSON(http.StatusOK, okResp{models.PageResults{
@@ -1425,6 +1435,8 @@ func (a *App) GetCampaignsReportRecipients(c echo.Context) error {
 	}
 
 	pg := a.pg.NewFromURL(c.Request().URL.Query())
+	user := auth.GetUser(c)
+	includePool := requireLegacyPermission(user, auth.PermPoolsGet) == nil
 	out, total, err := a.core.QueryWorkspaceCampaignsReportRecipients(access, ids, from, to, models.CampaignReportRecipientFilters{
 		Search:  c.QueryParam("search"),
 		Opened:  c.QueryParam("opened"),
@@ -1433,9 +1445,17 @@ func (a *App) GetCampaignsReportRecipients(c echo.Context) error {
 		LinkID:  linkID,
 		SortBy:  c.QueryParam("sort_by"),
 		Order:   c.QueryParam("order"),
-	}, pg.Offset, pg.Limit)
+	}, pg.Offset, pg.Limit, includePool)
 	if err != nil {
 		return err
+	}
+	if !user.IsPlatformAdmin() {
+		for i := range out {
+			if out[i].PoolContactID != 0 {
+				out[i].Email = maskEmail(out[i].Email)
+				out[i].UUID = ""
+			}
+		}
 	}
 
 	return c.JSON(http.StatusOK, okResp{models.PageResults{

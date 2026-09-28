@@ -1065,11 +1065,40 @@ CREATE TABLE campaign_pool_recipients (
     sender_user_id INTEGER NULL,
     sender_from_snapshot TEXT NOT NULL DEFAULT '',
     sender_assigned_at TIMESTAMPTZ NULL,
+    sent_at TIMESTAMPTZ NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (campaign_id, pool_contact_id)
 );
 CREATE INDEX idx_campaign_pool_recipients_sender ON campaign_pool_recipients(sender_smtp_uuid) WHERE sender_smtp_uuid IS NOT NULL;
+
+ALTER TABLE campaign_views ADD COLUMN pool_contact_id BIGINT NULL REFERENCES pool_contacts(id) ON DELETE SET NULL;
+ALTER TABLE campaign_views ADD CONSTRAINT campaign_views_one_recipient CHECK (customer_id IS NULL OR pool_contact_id IS NULL);
+CREATE INDEX idx_views_pool_contact_id ON campaign_views(pool_contact_id);
+ALTER TABLE link_clicks ADD COLUMN pool_contact_id BIGINT NULL REFERENCES pool_contacts(id) ON DELETE SET NULL;
+ALTER TABLE link_clicks ADD CONSTRAINT link_clicks_one_recipient CHECK (customer_id IS NULL OR pool_contact_id IS NULL);
+CREATE INDEX idx_clicks_pool_contact_id ON link_clicks(pool_contact_id);
+
+-- A tracking bearer can identify either an ordinary recipient or a pool
+-- recipient. Keep the established ordinary/legacy rule in one place.
+DROP FUNCTION IF EXISTS resolve_campaign_tracking_recipient(UUID, TEXT);
+CREATE FUNCTION resolve_campaign_tracking_recipient(campaign_uuid UUID, recipient_ref TEXT)
+RETURNS TABLE (campaign_id INT, customer_id INT, pool_contact_id BIGINT)
+AS $$
+    WITH ordinary AS (
+        SELECT r.campaign_id, r.customer_id
+        FROM resolve_campaign_recipient(campaign_uuid, recipient_ref) r
+    )
+    SELECT r.campaign_id, r.customer_id, NULL::BIGINT FROM ordinary r
+    UNION ALL
+    SELECT cpr.campaign_id, NULL::INT, cpr.pool_contact_id
+    FROM campaigns c
+    JOIN campaign_pool_recipients cpr ON cpr.campaign_id = c.id
+    JOIN pool_contacts pc ON pc.id = cpr.pool_contact_id
+    WHERE c.uuid = campaign_uuid
+        AND pc.uuid = NULLIF(recipient_ref, '')::UUID
+        AND NOT EXISTS (SELECT 1 FROM ordinary);
+$$ LANGUAGE SQL STABLE;
 
 -- Fair organization rotation for platform-level ('all_organizations')
 -- public-pool campaigns. The order is generated once, when the campaign first

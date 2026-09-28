@@ -220,7 +220,8 @@
           :total="recipients.total || 0"
         >
           <b-table-column v-slot="props" field="email" :label="$t('customers.email')" sortable>
-            <router-link :to="{ name: 'customer', params: { id: props.row.customerId } }">
+            <span v-if="props.row.poolContactId">{{ props.row.email }}</span>
+            <router-link v-else :to="{ name: 'customer', params: { id: props.row.customerId } }">
               {{ props.row.email }}
             </router-link>
             <p class="is-size-7 has-text-grey">{{ props.row.name }}</p>

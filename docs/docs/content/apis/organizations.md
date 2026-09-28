@@ -19,14 +19,14 @@ personal API key surface: personal keys are restricted to the business prefixes 
 Two authorization levels appear throughout this page:
 
 - **Workspace endpoints** resolve the active organization and require an active
-  membership (or a platform administrator) — `cmd/organizations.go:156`.
+  membership (or a platform administrator) — `cmd/organizations.go:192`.
 - **Platform endpoints** additionally require the built-in Super Admin or a role
-  holding `organizations:platform_manage` (`cmd/organizations.go:311`,
+  holding `organizations:platform_manage` (`cmd/organizations.go:347`,
   `internal/auth/models.go:96`), and answer HTTP 403
   `platform organization management permission required` otherwise. An operator
   holding that permission may also use the organization-management paths
   (`members`, `resources/transfer`, `templates/*`, `reply-forwarding`, `invites`)
-  inside a selected organization without joining it — `cmd/organizations.go:194`.
+  inside a selected organization without joining it — `cmd/organizations.go:233`.
 
 | Method | Endpoint                                                                 | Description                                        |
 | :----- | :----------------------------------------------------------------------- | :------------------------------------------------- |
@@ -88,7 +88,7 @@ workspace is re-validated on every request: non-admin members must still be
 active members, a non-admin request for an archived organization answers HTTP 409
 `organization is archived`, and only a platform administrator may select an
 archived organization (for resource transfer or cleanup). Source:
-`cmd/organizations.go:78`, `cmd/organizations.go:156`,
+`cmd/organizations.go:114`, `cmd/organizations.go:192`,
 `cmd/workspace_permissions.go:16`.
 workspace, which requires the `workspaces:personal` capability (Super Admin is
 exempt) and otherwise answers HTTP 403
@@ -97,7 +97,7 @@ re-validated on every request: non-admin members must still be active members, a
 non-admin request for an archived organization answers HTTP 409
 `organization is archived`, and only a platform administrator may select an
 archived organization (for resource transfer or cleanup). Source:
-`cmd/organizations.go:78`, `cmd/organizations.go:156`,
+`cmd/organizations.go:114`, `cmd/organizations.go:192`,
 `cmd/workspace_permissions.go:16`.
 
 ##### Parameters
@@ -138,7 +138,7 @@ documentation set. One read-only exception applies to the personal workspace: th
 four list endpoints that back the personal-resource migration UI
 (`/api/customer-lists`, `/api/templates`, `/api/campaigns`, `/api/media`) are
 listed without the `workspaces:personal` capability, while every detail read,
-mutation and export still requires it (`cmd/organizations.go:111`,
+mutation and export still requires it (`cmd/organizations.go:154`,
 `cmd/workspace_permissions.go:43`).
 
 ______________________________________________________________________
@@ -150,9 +150,9 @@ ______________________________________________________________________
 List organizations for platform administration. Available organizations are
 returned by default; pass `include_archived=true` to include archived ones.
 Requires platform administrator or `organizations:platform_manage`
-(`cmd/handlers.go:319`, `cmd/organizations.go:328`). The rows carry an empty
+(`cmd/handlers.go:327`, `cmd/organizations.go:364`). The rows carry an empty
 `my_role` because the endpoint is not membership-scoped
-(`internal/core/organizations.go:57`).
+(`internal/core/organizations.go:59`).
 
 ##### Parameters
 
@@ -191,7 +191,7 @@ curl -u 'api_username:access_token' 'http://localhost:9000/api/organizations?inc
 
 List the caller's own active organizations, ordered by name, with `my_role` and
 `member_count`. Archived organizations are excluded, so the response is a
-workspace-switcher list (`cmd/organizations.go:319`,
+workspace-switcher list (`cmd/organizations.go:355`,
 `internal/core/organizations.go:37`). No extra permission is required beyond
 authentication.
 
@@ -227,7 +227,7 @@ List the members of the active organization workspace, including former members
 an organization manager, a platform administrator, or
 `organizations:platform_manage`; a personal workspace answers HTTP 400
 `select an organization workspace` and an archived organization answers HTTP 409
-(`cmd/organizations.go:262`, `cmd/organizations.go:486`).
+(`cmd/organizations.go:298`, `cmd/organizations.go:654`).
 
 ##### Example Request
 
@@ -262,7 +262,7 @@ Add an existing account to the active organization directly, without consuming a
 invitation. Requires organization manager access. Re-adding a former member
 restores the relationship and its previous resources stay pending for transfer, so
 use the transfer endpoint below afterwards
-(`cmd/organizations.go:498`, `internal/core/organizations.go:425`).
+(`cmd/organizations.go:666`, `internal/core/organizations.go:599`).
 
 ##### Parameters
 
@@ -305,7 +305,7 @@ HTTP 201 is returned on success. Demoting the last remaining manager answers HTT
 #### PUT /api/organizations/members/{user_id}
 
 Change the organization role of one member of the active organization
-(`cmd/organizations.go:526`, `internal/core/organizations.go:497`). Requires
+(`cmd/organizations.go:694`, `internal/core/organizations.go:671`). Requires
 organization manager access.
 
 ##### Parameters
@@ -343,7 +343,7 @@ that organization become pending-transfer rows, scheduled and deferred campaigns
 become drafts, running campaigns are paused, a pending import owned by that member
 is stopped, and their dedicated reply mailboxes are retained with a forwarding
 rule to the organization creator (or the first active manager)
-(`cmd/organizations.go:546`, `internal/core/organizations.go:538`,
+(`cmd/organizations.go:714`, `internal/core/organizations.go:712`,
 `cmd/reply_forward_rules.go:71`). Requires organization manager access.
 
 ##### Parameters
@@ -371,7 +371,7 @@ Removing the last manager answers HTTP 400 `an organization must retain at least
 one manager`. If no active manager with a work e-mail is left to receive the
 former member's replies, the membership is already removed when the request
 answers HTTP 409 `organization has no active manager with a work email for reply
-forwarding` (`cmd/organizations.go:560`, `cmd/reply_forward_rules.go:77`).
+forwarding` (`cmd/organizations.go:734`, `cmd/reply_forward_rules.go:77`).
 
 #### GET /api/organizations/{id}/members
 
@@ -379,7 +379,7 @@ Platform variant of the member listing that addresses any organization by ID
 instead of the workspace header, and is used to pick a transfer target for an
 archived organization that can no longer be selected as a workspace. Requires
 platform administrator or `organizations:platform_manage`; an unknown organization
-answers HTTP 404 (`cmd/handlers.go:308`, `cmd/organizations.go:650`). The response
+answers HTTP 404 (`cmd/handlers.go:312`, `cmd/organizations.go:866`). The response
 body has the same shape as `GET /api/organizations/members`.
 
 ##### Parameters
@@ -475,7 +475,7 @@ ______________________________________________________________________
 
 Submit a request to create a new organization. Any authenticated user may ask; a
 platform administrator reviews the request later
-(`cmd/organizations.go:348`, `internal/core/organizations.go:118`). The response is
+(`cmd/organizations.go:516`, `internal/core/organizations.go:290`). The response is
 the stored request with `status: pending`, returned with HTTP 201.
 
 ##### Parameters
@@ -518,7 +518,7 @@ curl -u 'api_username:access_token' -X POST 'http://localhost:9000/api/organizat
 
 Return every organization-creation request submitted by the caller, including
 reviewed and withdrawn history, newest first
-(`cmd/organizations.go:381`, `internal/core/organizations.go:162`). No permission
+(`cmd/organizations.go:549`, `internal/core/organizations.go:334`). No permission
 beyond authentication is required, and no other account's requests are visible.
 The response body has the same shape as `POST /api/organizations/requests`.
 
@@ -532,7 +532,7 @@ curl -u 'api_username:access_token' 'http://localhost:9000/api/organizations/req
 
 Withdraw the caller's own pending organization request. The row is kept as history
 with `status: withdrawn`, so it can no longer be reviewed
-(`cmd/organizations.go:389`, `internal/core/organizations.go:179`).
+(`cmd/organizations.go:557`, `internal/core/organizations.go:351`).
 
 ##### Parameters
 
@@ -570,14 +570,14 @@ A request belonging to another account answers HTTP 404
 HTTP 400 `only pending organization requests can be withdrawn`. The
 `requested_by_name` field is only populated by the two listing endpoints, which
 join the requesting user; the create, withdraw and review responses return the
-stored row directly and leave it empty (`internal/core/organizations.go:274`,
-`internal/core/organizations.go:289`, `internal/core/organizations.go:396`).
+stored row directly and leave it empty (`internal/core/organizations.go:315`,
+`internal/core/organizations.go:382`, `internal/core/organizations.go:436`).
 
 #### GET /api/organizations/requests
 
 List organization requests for platform review. By default only pending requests
 are returned; pass `include_resolved=true` for the full history, newest first
-(`cmd/handlers.go:321`, `cmd/organizations.go:368`). Requires platform
+(`cmd/handlers.go:329`, `cmd/organizations.go:536`). Requires platform
 administrator or `organizations:platform_manage`.
 
 ##### Parameters
@@ -601,8 +601,8 @@ Approve or reject an organization request. Approving creates the organization an
 inserts the requester as its first `manager` in the same transaction; rejecting
 records only the review. Requires platform administrator or
 `organizations:platform_manage`
-(`cmd/handlers.go:322`, `cmd/organizations.go:397`,
-`internal/core/organizations.go:215`).
+(`cmd/handlers.go:330`, `cmd/organizations.go:565`,
+`internal/core/organizations.go:387`).
 
 ##### Parameters
 
@@ -654,7 +654,7 @@ ______________________________________________________________________
 Join an organization with an invitation code. The code is consumed atomically, and
 an account that previously left the organization has its membership restored as a
 `member`. The response is the joined organization with `my_role: "member"`
-(`cmd/organizations.go:469`, `internal/core/organizations.go:358`). The
+(`cmd/organizations.go:637`, `internal/core/organizations.go:530`). The
 workspace-selection page posts to this endpoint with the invite-code form.
 
 ##### Parameters
@@ -691,14 +691,14 @@ curl -u 'api_username:access_token' -X POST 'http://localhost:9000/api/organizat
 Errors: HTTP 404 `invitation is invalid or revoked` (also when the organization is
 not active), HTTP 400 `invitation has expired`,
 `invitation has reached its usage limit`, or
-`user is already an organization member` (`internal/core/organizations.go:372`).
+`user is already an organization member` (`internal/core/organizations.go:545`).
 
 #### POST /api/organizations/leave
 
 Leave the organization selected by the workspace header. The caller's resources in
 that organization become pending-transfer rows and their campaigns are handled
 exactly like the manager-driven removal above
-(`cmd/organizations.go:574`). No permission beyond active membership is required.
+(`cmd/organizations.go:790`). No permission beyond active membership is required.
 
 There is no request body.
 
@@ -725,8 +725,8 @@ remaining manager cannot leave (HTTP 400
 #### GET /api/organizations/invites
 
 List the invitations of the active organization, newest first. Requires
-organization manager access (`cmd/organizations.go:882`,
-`internal/core/organizations.go:320`).
+organization manager access (`cmd/organizations.go:1098`,
+`internal/core/organizations.go:492`).
 
 The invitation hash is never serialized (`code_hash` has JSON tag `-`), and the
 plaintext `code` is only present in the creation response. Expiry and usage are
@@ -768,8 +768,8 @@ Create a reusable invitation for the active organization. The plaintext code is
 generated server-side (24 random bytes, base64url encoded), stored only as a
 SHA-256 hash, and returned once in the response as `code`; it cannot be retrieved
 again. Requires organization manager access
-(`cmd/organizations.go:894`, `cmd/organizations.go:967`,
-`internal/core/organizations.go:267`).
+(`cmd/organizations.go:1110`, `cmd/organizations.go:1183`,
+`internal/core/organizations.go:439`).
 
 ##### Parameters
 
@@ -814,8 +814,8 @@ HTTP 201 is returned on success.
 Revoke an invitation of the active organization by stamping `revoked_at`. Requires
 organization manager access; an invitation that is not active (or belongs to
 another organization) answers HTTP 404
-`active organization invitation not found` (`cmd/organizations.go:933`,
-`internal/core/organizations.go:332`).
+`active organization invitation not found` (`cmd/organizations.go:1149`,
+`internal/core/organizations.go:504`).
 
 ##### Parameters
 
@@ -851,7 +851,7 @@ organization workspace (HTTP 400 `select an organization destination`) and must 
 be archived (HTTP 409). Sources must be owned by the caller, and the legacy
 creation grant for the resource type is still required, so an organization
 boundary can never be widened by a global role
-(`cmd/organizations.go:696`, `cmd/organizations.go:832`).
+(`cmd/organizations.go:940`, `cmd/organizations.go:1050`).
 
 For templates, campaigns, and media only `visibility = 'private'` rows move, so a
 global asset cannot change its publication contract
@@ -899,14 +899,14 @@ curl -u 'api_username:access_token' -X POST 'http://localhost:9000/api/organizat
 
 The returned `ids` are the identifiers the resources have after the migration;
 migrated transactional templates are recompiled and cached
-(`cmd/organizations.go:854`).
+(`cmd/organizations.go:1071`).
 
 #### POST /api/organizations/resources/customer-lists/migrate
 
 Customer-list-specific variant of the previous endpoint, kept for API
 compatibility. It uses the same core migration and subscription-merge guarantees
 but checks `customer_lists:manage_all` explicitly
-(`cmd/organizations.go:700`, `internal/core/workspace_migration.go:73`).
+(`cmd/organizations.go:916`, `internal/core/workspace_migration.go:73`).
 
 ##### Parameters
 
@@ -947,7 +947,7 @@ organization to an active member of that organization. Customer conflicts are
 merged by scoped e-mail, preserving subscriptions and historical analytics, and
 customer lists are moved first so merged subscriptions point at the transferred
 lists. Requires organization manager (or platform) access
-(`cmd/organizations.go:602`, `internal/core/organizations.go:633`).
+(`cmd/organizations.go:818`, `internal/core/organizations.go:807`).
 
 ##### Parameters
 
@@ -975,7 +975,7 @@ curl -u 'api_username:access_token' -X POST 'http://localhost:9000/api/organizat
 A target that is not an active member answers HTTP 403
 `not an active organization member`, and an archived organization answers HTTP 409
 `archived organization resources must be transferred through the archive cleanup
-flow` (`internal/core/organizations.go:646`).
+flow` (`internal/core/organizations.go:821`).
 
 #### POST /api/organizations/{id}/resources/transfer
 
@@ -983,7 +983,7 @@ Platform cleanup counterpart that moves the complete pending resource set of an
 **archived** organization into the personal workspace of one of its active
 members. It is path-based because an archived organization cannot be selected as a
 workspace. Requires platform administrator or `organizations:platform_manage`
-(`cmd/organizations.go:627`, `internal/core/organizations.go:722`).
+(`cmd/organizations.go:843`, `internal/core/organizations.go:896`).
 
 ##### Parameters
 
@@ -1018,8 +1018,8 @@ Hand an organization-shared template to another active member of the active
 organization, as a complete ownership hand-off. Private media referenced by the
 template is cloned into the target's workspace so the new owner can edit and send
 it. Private and global templates deliberately do not use this path. Requires
-organization manager access (`cmd/organizations.go:664`,
-`internal/core/organizations.go:843`).
+organization manager access (`cmd/organizations.go:880`,
+`internal/core/organizations.go:1017`).
 
 ##### Parameters
 
@@ -1048,14 +1048,14 @@ curl -u 'api_username:access_token' -X POST 'http://localhost:9000/api/organizat
 HTTP 404 `organization-shared template not found` is returned when the template is
 not organization-shared in the active organization or is already pending transfer,
 and an archived organization answers HTTP 409
-(`internal/core/organizations.go:856`).
+(`internal/core/organizations.go:1031`).
 
 #### POST /api/organizations/templates/{id}/unpublish
 
 Remove the organization-wide visibility of a shared template; the template stays
 with its current owner as a private template. Global templates cannot be
 unpublished here. Requires organization manager access
-(`cmd/organizations.go:684`, `internal/core/organizations.go:992`).
+(`cmd/organizations.go:900`, `internal/core/organizations.go:1166`).
 
 ##### Parameters
 
@@ -1215,8 +1215,8 @@ organization import is stopped, retained reply mailboxes keep receiving customer
 replies through forwarding rules, and non-admin members can no longer select the
 organization as a workspace. Requires platform administrator or
 `organizations:platform_manage`
-(`cmd/handlers.go:323`, `cmd/organizations.go:416`,
-`internal/core/organizations.go:1028`).
+(`cmd/handlers.go:331`, `cmd/organizations.go:584`,
+`internal/core/organizations.go:1202`).
 
 ##### Parameters
 
@@ -1251,8 +1251,8 @@ and refuses an archived organization that still owns rows in `customer_lists`,
 `transfer or clean all organization resources before permanently deleting it`).
 Invitations and memberships are deleted with it, and the creation request remains
 as an audit record. Requires platform administrator or
-`organizations:platform_manage` (`cmd/handlers.go:324`,
-`cmd/organizations.go:457`, `internal/core/organizations.go:1116`).
+`organizations:platform_manage` (`cmd/handlers.go:332`,
+`cmd/organizations.go:625`, `internal/core/organizations.go:1290`).
 
 ##### Parameters
 

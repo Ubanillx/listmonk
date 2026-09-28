@@ -16,6 +16,16 @@ function DbScalar($sql) {
   return $value
 }
 
+# Fixture lookups must fail loudly and early: a missing row otherwise surfaces
+# as an unhelpful "cannot convert """ to Int32" from the [int] cast.
+function DbInt($label, $sql) {
+  $value = DbScalar $sql
+  if (-not $value) {
+    throw "fixture lookup '$label' returned no row; load dev/pools_e2e_seed.sql into the development database (query: $sql)"
+  }
+  return [int]$value
+}
+
 function LoginUser($username, $loginPassword = $password) {
   $jar = Join-Path $env:TEMP ("pool-e2e-{0}-{1}.jar" -f $username, $PID)
   Remove-Item $jar -ErrorAction SilentlyContinue
@@ -47,12 +57,12 @@ function Api($method, $path, $jar, $organizationID, $body) {
 
 # Fixture IDs are intentionally resolved by name. The fixture is idempotent,
 # and development databases do not promise any particular sequence values.
-$poolID = if ($env:POOL_QA_POOL_ID) { [int]$env:POOL_QA_POOL_ID } else { [int](DbScalar "SELECT id FROM customer_lists WHERE name='wsqa-pool-primary' AND type='pool'") }
-$allocationID = if ($env:POOL_QA_SEGMENT_ID) { [int]$env:POOL_QA_SEGMENT_ID } else { [int](DbScalar "SELECT ps.id FROM org_pool_allocations ps JOIN customer_lists l ON l.id=ps.list_id WHERE l.name='wsqa-org-pool-allocation' AND ps.pool_id=$poolID") }
+$poolID = if ($env:POOL_QA_POOL_ID) { [int]$env:POOL_QA_POOL_ID } else { DbInt 'first-level pool list' "SELECT id FROM customer_lists WHERE name='wsqa-pool-primary' AND type='pool'" }
+$allocationID = if ($env:POOL_QA_SEGMENT_ID) { [int]$env:POOL_QA_SEGMENT_ID } else { DbInt 'pool allocation' "SELECT ps.id FROM org_pool_allocations ps JOIN customer_lists l ON l.id=ps.list_id WHERE l.name='wsqa-org-pool-allocation' AND ps.pool_id=$poolID" }
 # Every pool audience of the organization replies through the organization's
 # single unified reply mailbox; the allocation has no mailbox of its own.
-$replyMailboxID = [int](DbScalar "SELECT reply_mailbox_id FROM organizations WHERE id=1")
-$removableContactID = [int](DbScalar "SELECT id FROM pool_contacts WHERE email='beta-pool@example.test'")
+$replyMailboxID = DbInt 'organization unified reply mailbox' "SELECT reply_mailbox_id FROM organizations WHERE id=1"
+$removableContactID = DbInt 'removable pool contact' "SELECT id FROM pool_contacts WHERE email='beta-pool@example.test'"
 
 # v6.45.0: public-pool contacts are governed by the configurable permissions
 # pools:get / pools:manage / pools:export. The fixture manager role does not
@@ -77,8 +87,17 @@ function RestoreManagerRole {
 }
 
 trap {
-  RestoreManagerRole
-  throw
+  # Traps cover the whole script scope, including statements that run before the
+  # helpers above are defined. Capture the original failure first, restore the
+  # manager role best-effort, and rethrow the captured record so the real cause
+  # (for example a missing session) is what the operator sees.
+  $failure = $_
+  try {
+    if (Get-Command RestoreManagerRole -ErrorAction SilentlyContinue) { RestoreManagerRole }
+  } catch {
+    Write-Warning "restoring the manager role failed: $($_.Exception.Message)"
+  }
+  throw $failure
 }
 
 GrantManagerPoolPermissions
@@ -114,10 +133,19 @@ Check 'pool export cannot expose customer email' (-not ($export.Raw.Contains('al
 $allocations = Api 'GET' "/api/pools/$poolID/allocations" $manager 1 $null
 $allocationRows = @($allocations.Json.data)
 Check 'organization can inspect its pool allocation' ($allocations.Status -eq 200 -and $allocationRows.Count -eq 1)
-Check 'pool allocations no longer expose a per-allocation reply mailbox' (-not $allocations.Raw.Contains('reply_mailbox'))
+# v6.43.0 removed the mailbox from the allocation itself; the effective address is
+# the organization's unified mailbox. The listing still reports it (read-side
+# resolution for the management UI), so the invariant is asserted on both sides:
+# the column must be gone, and the reported mailbox must be the organization's.
+Check 'org_pool_allocations no longer owns a reply mailbox column' ([int](DbScalar "SELECT count(*) FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='org_pool_allocations' AND column_name='reply_mailbox_id'") -eq 0)
+Check 'allocation listing resolves the organization unified reply mailbox' ($allocations.Raw.Contains("`"reply_mailbox_id`":$replyMailboxID") -and $allocations.Raw.Contains('pool-replies@example.test'))
 
 $otherRead = Api 'GET' "/api/pools/$poolID/contacts" $otherOrg 2 $null
-Check 'organization without pool grant receives no contacts' ($otherRead.Status -eq 200 -and @($otherRead.Json.data.results).Count -eq 0)
+# v6.45.0 turned the pool read into a permission plus a per-organization delivery
+# grant (`requirePoolPermission` + the allocation scope), so a workspace without
+# the grant is denied outright instead of receiving an empty list.
+Check 'organization without pool grant is denied the contact listing' ($otherRead.Status -eq 403)
+Check 'denied listing leaks no contact data' (-not ($otherRead.Raw.Contains('alpha-pool@example.test') -or $otherRead.Raw.Contains('DUP-001')))
 $otherWrite = Api 'POST' '/api/pools/allocations/members' $otherOrg 2 ([pscustomobject]@{ allocation_id = $allocationID; contact_id = $removableContactID })
 Check 'cross-organization allocation write is denied' ($otherWrite.Status -eq 403)
 
@@ -205,10 +233,13 @@ try {
   if ($blockedID -gt 0) {
     try {
       $blockedPreview = Api 'GET' "/api/campaigns/$blockedID/preview" $manager 1 $null
+      # Assertions run against the decoded message: the raw JSON body escapes ">"
+      # as \u003e, which would make an arrow-containing substring miss.
+      $blockedMessage = [string]$blockedPreview.Json.message
       Check 'preview is blocked when the organization unified reply mailbox is missing' ($blockedPreview.Status -eq 400)
-      Check 'blocked preview names the pool list, the allocation and the organization' ($blockedPreview.Raw.Contains('pool list') -and $blockedPreview.Raw.Contains('organization allocation') -and $blockedPreview.Raw.Contains('has not configured its unified reply mailbox'))
-      Check 'blocked preview explains the fix steps' ($blockedPreview.Raw.Contains('saves a verified mailbox in Manage organizations -> Organization reply mailboxes') -and $blockedPreview.Raw.Contains('then retry preview or send'))
-      Check 'blocked preview points at the organization reply mailbox setting' ($blockedPreview.Raw.Contains('Manage organizations -> Organization reply mailboxes'))
+      Check 'blocked preview names the pool list, the allocation and the organization' ($blockedMessage.Contains('pool list') -and $blockedMessage.Contains('organization allocation') -and $blockedMessage.Contains('has not configured its unified reply mailbox'))
+      Check 'blocked preview explains the fix steps' ($blockedMessage.Contains('saves a verified mailbox in Manage organizations -> Organization reply mailboxes') -and $blockedMessage.Contains('then retry preview or send'))
+      Check 'blocked preview points at the organization reply mailbox setting' ($blockedMessage.Contains('Manage organizations -> Organization reply mailboxes'))
       $mailboxSet = Api 'PUT' '/api/organizations/1/reply-mailbox' $manager 1 ([pscustomobject]@{ reply_mailbox_id = $replyMailboxID })
       Check 'organization unified reply mailbox is set through the organization endpoint' ($mailboxSet.Status -eq 200)
       $resumedPreview = Api 'GET' "/api/campaigns/$blockedID/preview" $manager 1 $null

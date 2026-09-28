@@ -79,8 +79,11 @@ INSERT INTO reply_mailboxes (user_id,organization_id,email,name,username,passwor
 SELECT 1,1,'pool-replies@example.test','Pool QA Replies','pool-qa','fixture-secret','active',NOW(),true,false
 WHERE NOT EXISTS (SELECT 1 FROM reply_mailboxes WHERE user_id=1 AND organization_id=1 AND email='pool-replies@example.test');
 
-UPDATE org_pool_allocations ps SET reply_mailbox_id=rm.id
-FROM customer_lists s, reply_mailboxes rm
-WHERE ps.list_id=s.id AND s.name='wsqa-org-pool-allocation' AND rm.email='pool-replies@example.test';
+-- v6.43.0 moved the reply mailbox from the pool allocation to the organization:
+-- every pool audience of an organization replies through that organization's
+-- single unified mailbox, so the allocation has no mailbox column any more.
+UPDATE organizations o SET reply_mailbox_id=rm.id
+FROM reply_mailboxes rm
+WHERE o.id=1 AND rm.email='pool-replies@example.test';
 
 COMMIT;

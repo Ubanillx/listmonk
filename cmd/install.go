@@ -293,6 +293,11 @@ func installCampaign(campTplID, archiveTplID int, q *models.Queries) {
 		nil,
 		nil,
 		models.ResourceVisibilityPrivate,
+		// The sample campaign is a normal organization-scoped campaign. The
+		// create-campaign statement names pool_scope explicitly (the column is
+		// NOT NULL DEFAULT 'organization'), so the install path has to pass it
+		// like every other caller or the fresh install aborts here.
+		models.CampaignPoolScopeOrganization,
 	); err != nil {
 		lo.Fatalf("error creating sample campaign: %v", err)
 	}

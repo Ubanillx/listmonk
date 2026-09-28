@@ -50,6 +50,23 @@ func TestDeleteUsersCleansFormerOrganizationMembership(t *testing.T) {
 		t.Fatalf("connect to test database: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
+
+	// This test resets the schema, so refuse to run against a database that
+	// already holds the application. Exporting the DSN to a development or live
+	// database would otherwise drop every table in it; the check keeps a
+	// mis-pointed environment variable from destroying data silently.
+	var appSchemaInstalled bool
+	if err := db.Get(&appSchemaInstalled, `
+		SELECT EXISTS (
+			SELECT 1 FROM information_schema.tables
+			WHERE table_schema = 'public' AND table_name IN ('users', 'campaigns', 'settings')
+		)`); err != nil {
+		t.Fatalf("inspecting the test database: %v", err)
+	}
+	if appSchemaInstalled {
+		t.Fatalf("LISTMONK_TEST_DATABASE_URL points at a database that already contains the application schema; refusing to reset it. Point this test at an empty database.")
+	}
+
 	if _, err := db.Exec(`DROP SCHEMA public CASCADE; CREATE SCHEMA public`); err != nil {
 		t.Fatalf("reset test schema: %v", err)
 	}

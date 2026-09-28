@@ -4789,14 +4789,14 @@ personal API key surface: personal keys are restricted to the business prefixes 
 <p>Two authorization levels appear throughout this page:</p>
 <ul>
 <li><strong>Workspace endpoints</strong> resolve the active organization and require an active
-  membership (or a platform administrator) — <code>cmd/organizations.go:156</code>.</li>
+  membership (or a platform administrator) — <code>cmd/organizations.go:192</code>.</li>
 <li><strong>Platform endpoints</strong> additionally require the built-in Super Admin or a role
-  holding <code>organizations:platform_manage</code> (<code>cmd/organizations.go:311</code>,
-  <code>internal/auth/models.go:96</code>), and answer HTTP 403
+  holding <code>organizations:platform_manage</code> (<code>cmd/organizations.go:347</code>,
+  <code>internal/auth/models.go:111</code>), and answer HTTP 403
   <code>platform organization management permission required</code> otherwise. An operator
   holding that permission may also use the organization-management paths
   (<code>members</code>, <code>resources/transfer</code>, <code>templates/*</code>, <code>reply-forwarding</code>, <code>invites</code>)
-  inside a selected organization without joining it — <code>cmd/organizations.go:194</code>.</li>
+  inside a selected organization without joining it — <code>cmd/organizations.go:233</code>.</li>
 </ul>
 <table>
 <thead>
@@ -4905,7 +4905,7 @@ workspace is re-validated on every request: non-admin members must still be
 active members, a non-admin request for an archived organization answers HTTP 409
 <code>organization is archived</code>, and only a platform administrator may select an
 archived organization (for resource transfer or cleanup). Source:
-<code>cmd/organizations.go:78</code>, <code>cmd/organizations.go:156</code>,
+<code>cmd/organizations.go:114</code>, <code>cmd/organizations.go:192</code>,
 <code>cmd/workspace_permissions.go:16</code>.
 workspace, which requires the <code>workspaces:personal</code> capability (Super Admin is
 exempt) and otherwise answers HTTP 403
@@ -4914,7 +4914,7 @@ re-validated on every request: non-admin members must still be active members, a
 non-admin request for an archived organization answers HTTP 409
 <code>organization is archived</code>, and only a platform administrator may select an
 archived organization (for resource transfer or cleanup). Source:
-<code>cmd/organizations.go:78</code>, <code>cmd/organizations.go:156</code>,
+<code>cmd/organizations.go:114</code>, <code>cmd/organizations.go:192</code>,
 <code>cmd/workspace_permissions.go:16</code>.</p>
 <h5 id="parameters">Parameters<a class="headerlink" href="#parameters" title="Permanent link">&para;</a></h5>
 <table>
@@ -4965,7 +4965,7 @@ documentation set. One read-only exception applies to the personal workspace: th
 four list endpoints that back the personal-resource migration UI
 (<code>/api/customer-lists</code>, <code>/api/templates</code>, <code>/api/campaigns</code>, <code>/api/media</code>) are
 listed without the <code>workspaces:personal</code> capability, while every detail read,
-mutation and export still requires it (<code>cmd/organizations.go:111</code>,
+mutation and export still requires it (<code>cmd/organizations.go:154</code>,
 <code>cmd/workspace_permissions.go:43</code>).</p>
 <hr />
 <h3 id="directory-and-membership">Directory and membership<a class="headerlink" href="#directory-and-membership" title="Permanent link">&para;</a></h3>
@@ -4973,9 +4973,9 @@ mutation and export still requires it (<code>cmd/organizations.go:111</code>,
 <p>List organizations for platform administration. Available organizations are
 returned by default; pass <code>include_archived=true</code> to include archived ones.
 Requires platform administrator or <code>organizations:platform_manage</code>
-(<code>cmd/handlers.go:319</code>, <code>cmd/organizations.go:328</code>). The rows carry an empty
+(<code>cmd/handlers.go:327</code>, <code>cmd/organizations.go:364</code>). The rows carry an empty
 <code>my_role</code> because the endpoint is not membership-scoped
-(<code>internal/core/organizations.go:57</code>).</p>
+(<code>internal/core/organizations.go:59</code>).</p>
 <h5 id="parameters_1">Parameters<a class="headerlink" href="#parameters_1" title="Permanent link">&para;</a></h5>
 <table>
 <thead>
@@ -5019,7 +5019,7 @@ Requires platform administrator or <code>organizations:platform_manage</code>
 <h4 id="get-apiorganizationsme">GET /api/organizations/me<a class="headerlink" href="#get-apiorganizationsme" title="Permanent link">&para;</a></h4>
 <p>List the caller's own active organizations, ordered by name, with <code>my_role</code> and
 <code>member_count</code>. Archived organizations are excluded, so the response is a
-workspace-switcher list (<code>cmd/organizations.go:319</code>,
+workspace-switcher list (<code>cmd/organizations.go:355</code>,
 <code>internal/core/organizations.go:37</code>). No extra permission is required beyond
 authentication.</p>
 <h5 id="example-request_2">Example Request<a class="headerlink" href="#example-request_2" title="Permanent link">&para;</a></h5>
@@ -5047,7 +5047,7 @@ authentication.</p>
 an organization manager, a platform administrator, or
 <code>organizations:platform_manage</code>; a personal workspace answers HTTP 400
 <code>select an organization workspace</code> and an archived organization answers HTTP 409
-(<code>cmd/organizations.go:262</code>, <code>cmd/organizations.go:486</code>).</p>
+(<code>cmd/organizations.go:298</code>, <code>cmd/organizations.go:654</code>).</p>
 <h5 id="example-request_3">Example Request<a class="headerlink" href="#example-request_3" title="Permanent link">&para;</a></h5>
 <div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span><span class="s1">'http://localhost:9000/api/organizations/members'</span><span class="w"> </span><span class="se">\</span>
 --header<span class="w"> </span><span class="s1">'X-Listmonk-Organization-ID: 7'</span>
@@ -5074,7 +5074,7 @@ an organization manager, a platform administrator, or
 invitation. Requires organization manager access. Re-adding a former member
 restores the relationship and its previous resources stay pending for transfer, so
 use the transfer endpoint below afterwards
-(<code>cmd/organizations.go:498</code>, <code>internal/core/organizations.go:425</code>).</p>
+(<code>cmd/organizations.go:666</code>, <code>internal/core/organizations.go:599</code>).</p>
 <h5 id="parameters_2">Parameters<a class="headerlink" href="#parameters_2" title="Permanent link">&para;</a></h5>
 <table>
 <thead>
@@ -5131,7 +5131,7 @@ use the transfer endpoint below afterwards
 400 <code>an organization must retain at least one manager</code>.</p>
 <h4 id="put-apiorganizationsmembersuser_id">PUT /api/organizations/members/{user_id}<a class="headerlink" href="#put-apiorganizationsmembersuser_id" title="Permanent link">&para;</a></h4>
 <p>Change the organization role of one member of the active organization
-(<code>cmd/organizations.go:526</code>, <code>internal/core/organizations.go:497</code>). Requires
+(<code>cmd/organizations.go:694</code>, <code>internal/core/organizations.go:671</code>). Requires
 organization manager access.</p>
 <h5 id="parameters_3">Parameters<a class="headerlink" href="#parameters_3" title="Permanent link">&para;</a></h5>
 <table>
@@ -5178,7 +5178,7 @@ that organization become pending-transfer rows, scheduled and deferred campaigns
 become drafts, running campaigns are paused, a pending import owned by that member
 is stopped, and their dedicated reply mailboxes are retained with a forwarding
 rule to the organization creator (or the first active manager)
-(<code>cmd/organizations.go:546</code>, <code>internal/core/organizations.go:538</code>,
+(<code>cmd/organizations.go:714</code>, <code>internal/core/organizations.go:712</code>,
 <code>cmd/reply_forward_rules.go:71</code>). Requires organization manager access.</p>
 <h5 id="parameters_4">Parameters<a class="headerlink" href="#parameters_4" title="Permanent link">&para;</a></h5>
 <table>
@@ -5212,13 +5212,13 @@ rule to the organization creator (or the first active manager)
 one manager</code>. If no active manager with a work e-mail is left to receive the
 former member's replies, the membership is already removed when the request
 answers HTTP 409 <code>organization has no active manager with a work email for reply
-forwarding</code> (<code>cmd/organizations.go:560</code>, <code>cmd/reply_forward_rules.go:77</code>).</p>
+forwarding</code> (<code>cmd/organizations.go:734</code>, <code>cmd/reply_forward_rules.go:77</code>).</p>
 <h4 id="get-apiorganizationsidmembers">GET /api/organizations/{id}/members<a class="headerlink" href="#get-apiorganizationsidmembers" title="Permanent link">&para;</a></h4>
 <p>Platform variant of the member listing that addresses any organization by ID
 instead of the workspace header, and is used to pick a transfer target for an
 archived organization that can no longer be selected as a workspace. Requires
 platform administrator or <code>organizations:platform_manage</code>; an unknown organization
-answers HTTP 404 (<code>cmd/handlers.go:308</code>, <code>cmd/organizations.go:650</code>). The response
+answers HTTP 404 (<code>cmd/handlers.go:312</code>, <code>cmd/organizations.go:866</code>). The response
 body has the same shape as <code>GET /api/organizations/members</code>.</p>
 <h5 id="parameters_5">Parameters<a class="headerlink" href="#parameters_5" title="Permanent link">&para;</a></h5>
 <table>
@@ -5303,7 +5303,7 @@ the management UI can show the configured address.</p>
 <h4 id="post-apiorganizationsrequests">POST /api/organizations/requests<a class="headerlink" href="#post-apiorganizationsrequests" title="Permanent link">&para;</a></h4>
 <p>Submit a request to create a new organization. Any authenticated user may ask; a
 platform administrator reviews the request later
-(<code>cmd/organizations.go:348</code>, <code>internal/core/organizations.go:118</code>). The response is
+(<code>cmd/organizations.go:516</code>, <code>internal/core/organizations.go:290</code>). The response is
 the stored request with <code>status: pending</code>, returned with HTTP 201.</p>
 <h5 id="parameters_6">Parameters<a class="headerlink" href="#parameters_6" title="Permanent link">&para;</a></h5>
 <table>
@@ -5356,7 +5356,7 @@ the stored request with <code>status: pending</code>, returned with HTTP 201.</p
 <h4 id="get-apiorganizationsrequestsmine">GET /api/organizations/requests/mine<a class="headerlink" href="#get-apiorganizationsrequestsmine" title="Permanent link">&para;</a></h4>
 <p>Return every organization-creation request submitted by the caller, including
 reviewed and withdrawn history, newest first
-(<code>cmd/organizations.go:381</code>, <code>internal/core/organizations.go:162</code>). No permission
+(<code>cmd/organizations.go:549</code>, <code>internal/core/organizations.go:334</code>). No permission
 beyond authentication is required, and no other account's requests are visible.
 The response body has the same shape as <code>POST /api/organizations/requests</code>.</p>
 <h5 id="example-request_9">Example Request<a class="headerlink" href="#example-request_9" title="Permanent link">&para;</a></h5>
@@ -5365,7 +5365,7 @@ The response body has the same shape as <code>POST /api/organizations/requests</
 <h4 id="delete-apiorganizationsrequestsid">DELETE /api/organizations/requests/{id}<a class="headerlink" href="#delete-apiorganizationsrequestsid" title="Permanent link">&para;</a></h4>
 <p>Withdraw the caller's own pending organization request. The row is kept as history
 with <code>status: withdrawn</code>, so it can no longer be reviewed
-(<code>cmd/organizations.go:389</code>, <code>internal/core/organizations.go:179</code>).</p>
+(<code>cmd/organizations.go:557</code>, <code>internal/core/organizations.go:351</code>).</p>
 <h5 id="parameters_7">Parameters<a class="headerlink" href="#parameters_7" title="Permanent link">&para;</a></h5>
 <table>
 <thead>
@@ -5409,12 +5409,12 @@ with <code>status: withdrawn</code>, so it can no longer be reviewed
 HTTP 400 <code>only pending organization requests can be withdrawn</code>. The
 <code>requested_by_name</code> field is only populated by the two listing endpoints, which
 join the requesting user; the create, withdraw and review responses return the
-stored row directly and leave it empty (<code>internal/core/organizations.go:274</code>,
-<code>internal/core/organizations.go:289</code>, <code>internal/core/organizations.go:396</code>).</p>
+stored row directly and leave it empty (<code>internal/core/organizations.go:315</code>,
+<code>internal/core/organizations.go:382</code>, <code>internal/core/organizations.go:436</code>).</p>
 <h4 id="get-apiorganizationsrequests">GET /api/organizations/requests<a class="headerlink" href="#get-apiorganizationsrequests" title="Permanent link">&para;</a></h4>
 <p>List organization requests for platform review. By default only pending requests
 are returned; pass <code>include_resolved=true</code> for the full history, newest first
-(<code>cmd/handlers.go:321</code>, <code>cmd/organizations.go:368</code>). Requires platform
+(<code>cmd/handlers.go:329</code>, <code>cmd/organizations.go:536</code>). Requires platform
 administrator or <code>organizations:platform_manage</code>.</p>
 <h5 id="parameters_8">Parameters<a class="headerlink" href="#parameters_8" title="Permanent link">&para;</a></h5>
 <table>
@@ -5445,8 +5445,8 @@ administrator or <code>organizations:platform_manage</code>.</p>
 inserts the requester as its first <code>manager</code> in the same transaction; rejecting
 records only the review. Requires platform administrator or
 <code>organizations:platform_manage</code>
-(<code>cmd/handlers.go:322</code>, <code>cmd/organizations.go:397</code>,
-<code>internal/core/organizations.go:215</code>).</p>
+(<code>cmd/handlers.go:330</code>, <code>cmd/organizations.go:565</code>,
+<code>internal/core/organizations.go:387</code>).</p>
 <h5 id="parameters_9">Parameters<a class="headerlink" href="#parameters_9" title="Permanent link">&para;</a></h5>
 <table>
 <thead>
@@ -5510,7 +5510,7 @@ stored row.</p>
 <p>Join an organization with an invitation code. The code is consumed atomically, and
 an account that previously left the organization has its membership restored as a
 <code>member</code>. The response is the joined organization with <code>my_role: "member"</code>
-(<code>cmd/organizations.go:469</code>, <code>internal/core/organizations.go:358</code>). The
+(<code>cmd/organizations.go:637</code>, <code>internal/core/organizations.go:530</code>). The
 workspace-selection page posts to this endpoint with the invite-code form.</p>
 <h5 id="parameters_10">Parameters<a class="headerlink" href="#parameters_10" title="Permanent link">&para;</a></h5>
 <table>
@@ -5553,12 +5553,12 @@ workspace-selection page posts to this endpoint with the invite-code form.</p>
 <p>Errors: HTTP 404 <code>invitation is invalid or revoked</code> (also when the organization is
 not active), HTTP 400 <code>invitation has expired</code>,
 <code>invitation has reached its usage limit</code>, or
-<code>user is already an organization member</code> (<code>internal/core/organizations.go:372</code>).</p>
+<code>user is already an organization member</code> (<code>internal/core/organizations.go:545</code>).</p>
 <h4 id="post-apiorganizationsleave">POST /api/organizations/leave<a class="headerlink" href="#post-apiorganizationsleave" title="Permanent link">&para;</a></h4>
 <p>Leave the organization selected by the workspace header. The caller's resources in
 that organization become pending-transfer rows and their campaigns are handled
 exactly like the manager-driven removal above
-(<code>cmd/organizations.go:574</code>). No permission beyond active membership is required.</p>
+(<code>cmd/organizations.go:790</code>). No permission beyond active membership is required.</p>
 <p>There is no request body.</p>
 <h5 id="example-request_14">Example Request<a class="headerlink" href="#example-request_14" title="Permanent link">&para;</a></h5>
 <div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s1">'http://localhost:9000/api/organizations/leave'</span><span class="w"> </span><span class="se">\</span>
@@ -5575,8 +5575,8 @@ remaining manager cannot leave (HTTP 400
 <code>an organization must retain at least one manager</code>).</p>
 <h4 id="get-apiorganizationsinvites">GET /api/organizations/invites<a class="headerlink" href="#get-apiorganizationsinvites" title="Permanent link">&para;</a></h4>
 <p>List the invitations of the active organization, newest first. Requires
-organization manager access (<code>cmd/organizations.go:882</code>,
-<code>internal/core/organizations.go:320</code>).</p>
+organization manager access (<code>cmd/organizations.go:1098</code>,
+<code>internal/core/organizations.go:492</code>).</p>
 <p>The invitation hash is never serialized (<code>code_hash</code> has JSON tag <code>-</code>), and the
 plaintext <code>code</code> is only present in the creation response. Expiry and usage are
 reported through <code>expires_at</code>, <code>max_uses</code> and <code>use_count</code>
@@ -5609,8 +5609,8 @@ reported through <code>expires_at</code>, <code>max_uses</code> and <code>use_co
 generated server-side (24 random bytes, base64url encoded), stored only as a
 SHA-256 hash, and returned once in the response as <code>code</code>; it cannot be retrieved
 again. Requires organization manager access
-(<code>cmd/organizations.go:894</code>, <code>cmd/organizations.go:967</code>,
-<code>internal/core/organizations.go:267</code>).</p>
+(<code>cmd/organizations.go:1110</code>, <code>cmd/organizations.go:1183</code>,
+<code>internal/core/organizations.go:439</code>).</p>
 <h5 id="parameters_11">Parameters<a class="headerlink" href="#parameters_11" title="Permanent link">&para;</a></h5>
 <table>
 <thead>
@@ -5669,8 +5669,8 @@ again. Requires organization manager access
 <p>Revoke an invitation of the active organization by stamping <code>revoked_at</code>. Requires
 organization manager access; an invitation that is not active (or belongs to
 another organization) answers HTTP 404
-<code>active organization invitation not found</code> (<code>cmd/organizations.go:933</code>,
-<code>internal/core/organizations.go:332</code>).</p>
+<code>active organization invitation not found</code> (<code>cmd/organizations.go:1149</code>,
+<code>internal/core/organizations.go:504</code>).</p>
 <h5 id="parameters_12">Parameters<a class="headerlink" href="#parameters_12" title="Permanent link">&para;</a></h5>
 <table>
 <thead>
@@ -5710,7 +5710,7 @@ organization workspace (HTTP 400 <code>select an organization destination</code>
 be archived (HTTP 409). Sources must be owned by the caller, and the legacy
 creation grant for the resource type is still required, so an organization
 boundary can never be widened by a global role
-(<code>cmd/organizations.go:696</code>, <code>cmd/organizations.go:832</code>).</p>
+(<code>cmd/organizations.go:940</code>, <code>cmd/organizations.go:1050</code>).</p>
 <p>For templates, campaigns, and media only <code>visibility = 'private'</code> rows move, so a
 global asset cannot change its publication contract
 (<code>internal/core/workspace_migration.go:210</code>). Customer lists are owner-private by
@@ -5776,12 +5776,12 @@ Requires the matching legacy grant: <code>templates:manage</code>, <code>campaig
 </code></pre></div>
 <p>The returned <code>ids</code> are the identifiers the resources have after the migration;
 migrated transactional templates are recompiled and cached
-(<code>cmd/organizations.go:854</code>).</p>
+(<code>cmd/organizations.go:1071</code>).</p>
 <h4 id="post-apiorganizationsresourcescustomer-listsmigrate">POST /api/organizations/resources/customer-lists/migrate<a class="headerlink" href="#post-apiorganizationsresourcescustomer-listsmigrate" title="Permanent link">&para;</a></h4>
 <p>Customer-list-specific variant of the previous endpoint, kept for API
 compatibility. It uses the same core migration and subscription-merge guarantees
 but checks <code>customer_lists:manage_all</code> explicitly
-(<code>cmd/organizations.go:700</code>, <code>internal/core/workspace_migration.go:73</code>).</p>
+(<code>cmd/organizations.go:916</code>, <code>internal/core/workspace_migration.go:73</code>).</p>
 <h5 id="parameters_14">Parameters<a class="headerlink" href="#parameters_14" title="Permanent link">&para;</a></h5>
 <table>
 <thead>
@@ -5835,7 +5835,7 @@ organization to an active member of that organization. Customer conflicts are
 merged by scoped e-mail, preserving subscriptions and historical analytics, and
 customer lists are moved first so merged subscriptions point at the transferred
 lists. Requires organization manager (or platform) access
-(<code>cmd/organizations.go:602</code>, <code>internal/core/organizations.go:633</code>).</p>
+(<code>cmd/organizations.go:818</code>, <code>internal/core/organizations.go:807</code>).</p>
 <h5 id="parameters_15">Parameters<a class="headerlink" href="#parameters_15" title="Permanent link">&para;</a></h5>
 <table>
 <thead>
@@ -5869,13 +5869,13 @@ lists. Requires organization manager (or platform) access
 <p>A target that is not an active member answers HTTP 403
 <code>not an active organization member</code>, and an archived organization answers HTTP 409
 <code>archived organization resources must be transferred through the archive cleanup
-flow</code> (<code>internal/core/organizations.go:646</code>).</p>
+flow</code> (<code>internal/core/organizations.go:821</code>).</p>
 <h4 id="post-apiorganizationsidresourcestransfer">POST /api/organizations/{id}/resources/transfer<a class="headerlink" href="#post-apiorganizationsidresourcestransfer" title="Permanent link">&para;</a></h4>
 <p>Platform cleanup counterpart that moves the complete pending resource set of an
 <strong>archived</strong> organization into the personal workspace of one of its active
 members. It is path-based because an archived organization cannot be selected as a
 workspace. Requires platform administrator or <code>organizations:platform_manage</code>
-(<code>cmd/organizations.go:627</code>, <code>internal/core/organizations.go:722</code>).</p>
+(<code>cmd/organizations.go:843</code>, <code>internal/core/organizations.go:896</code>).</p>
 <h5 id="parameters_16">Parameters<a class="headerlink" href="#parameters_16" title="Permanent link">&para;</a></h5>
 <table>
 <thead>
@@ -5919,8 +5919,8 @@ before transferring its resources</code>, and a non-member target answers HTTP 4
 organization, as a complete ownership hand-off. Private media referenced by the
 template is cloned into the target's workspace so the new owner can edit and send
 it. Private and global templates deliberately do not use this path. Requires
-organization manager access (<code>cmd/organizations.go:664</code>,
-<code>internal/core/organizations.go:843</code>).</p>
+organization manager access (<code>cmd/organizations.go:880</code>,
+<code>internal/core/organizations.go:1017</code>).</p>
 <h5 id="parameters_17">Parameters<a class="headerlink" href="#parameters_17" title="Permanent link">&para;</a></h5>
 <table>
 <thead>
@@ -5960,12 +5960,12 @@ organization manager access (<code>cmd/organizations.go:664</code>,
 <p>HTTP 404 <code>organization-shared template not found</code> is returned when the template is
 not organization-shared in the active organization or is already pending transfer,
 and an archived organization answers HTTP 409
-(<code>internal/core/organizations.go:856</code>).</p>
+(<code>internal/core/organizations.go:1031</code>).</p>
 <h4 id="post-apiorganizationstemplatesidunpublish">POST /api/organizations/templates/{id}/unpublish<a class="headerlink" href="#post-apiorganizationstemplatesidunpublish" title="Permanent link">&para;</a></h4>
 <p>Remove the organization-wide visibility of a shared template; the template stays
 with its current owner as a private template. Global templates cannot be
 unpublished here. Requires organization manager access
-(<code>cmd/organizations.go:684</code>, <code>internal/core/organizations.go:992</code>).</p>
+(<code>cmd/organizations.go:900</code>, <code>internal/core/organizations.go:1166</code>).</p>
 <h5 id="parameters_18">Parameters<a class="headerlink" href="#parameters_18" title="Permanent link">&para;</a></h5>
 <table>
 <thead>
@@ -6129,8 +6129,8 @@ organization import is stopped, retained reply mailboxes keep receiving customer
 replies through forwarding rules, and non-admin members can no longer select the
 organization as a workspace. Requires platform administrator or
 <code>organizations:platform_manage</code>
-(<code>cmd/handlers.go:323</code>, <code>cmd/organizations.go:416</code>,
-<code>internal/core/organizations.go:1028</code>).</p>
+(<code>cmd/handlers.go:331</code>, <code>cmd/organizations.go:584</code>,
+<code>internal/core/organizations.go:1202</code>).</p>
 <h5 id="parameters_21">Parameters<a class="headerlink" href="#parameters_21" title="Permanent link">&para;</a></h5>
 <table>
 <thead>
@@ -6169,8 +6169,8 @@ and refuses an archived organization that still owns rows in <code>customer_list
 <code>transfer or clean all organization resources before permanently deleting it</code>).
 Invitations and memberships are deleted with it, and the creation request remains
 as an audit record. Requires platform administrator or
-<code>organizations:platform_manage</code> (<code>cmd/handlers.go:324</code>,
-<code>cmd/organizations.go:457</code>, <code>internal/core/organizations.go:1116</code>).</p>
+<code>organizations:platform_manage</code> (<code>cmd/handlers.go:332</code>,
+<code>cmd/organizations.go:625</code>, <code>internal/core/organizations.go:1290</code>).</p>
 <h5 id="parameters_22">Parameters<a class="headerlink" href="#parameters_22" title="Permanent link">&para;</a></h5>
 <table>
 <thead>

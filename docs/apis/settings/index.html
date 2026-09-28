@@ -2368,7 +2368,7 @@
 </table>
 <hr />
 <h4 id="get-apisettings">GET /api/settings<a class="headerlink" href="#get-apisettings" title="Permanent link">&para;</a></h4>
-<p>Returns the complete settings object. Requires <code>settings:get</code> (<code>cmd/handlers.go:115</code>, <code>internal/auth/models.go:91</code>).</p>
+<p>Returns the complete settings object. Requires <code>settings:get</code> (<code>cmd/handlers.go:115</code>, <code>internal/auth/models.go:106</code>).</p>
 <p>Settings are stored as flat, dotted keys (<code>app.site_name</code>, <code>bounce.mailboxes</code>, <code>reply_ai</code>, ...). The response is a map of those keys, which are the same keys accepted by <code>PUT /api/settings/{key}</code> (<code>queries/misc.sql:7</code>, <code>models/settings.go:47</code>).</p>
 <p>Stored secrets are never returned in clear text. Each of them is replaced by a run of <code>•</code> characters, one per rune of the stored value, so the mask reveals the password length (<code>cmd/settings.go:30</code>, <code>cmd/settings.go:65</code>):</p>
 <table>
@@ -2468,7 +2468,7 @@
 </code></pre></div>
 <hr />
 <h4 id="put-apisettings">PUT /api/settings<a class="headerlink" href="#put-apisettings" title="Permanent link">&para;</a></h4>
-<p>Replaces the settings object. Requires <code>settings:manage</code> (<code>cmd/handlers.go:116</code>, <code>internal/auth/models.go:92</code>).</p>
+<p>Replaces the settings object. Requires <code>settings:manage</code> (<code>cmd/handlers.go:116</code>, <code>internal/auth/models.go:107</code>).</p>
 <div class="admonition warning">
 <p class="admonition-title">Warning</p>
 <p>The request body is a <strong>complete</strong> settings object. Omitted fields are bound as zero values, and every key present in the marshaled object is written back to the <code>settings</code> table, so always start from <code>GET /api/settings</code>, edit the result, and PUT that object back. Only <code>customer.custom_fields</code> is preserved from the stored settings and cannot be changed here (<code>cmd/settings.go:100</code>); manage it through <code>/api/custom-fields</code> instead.</p>

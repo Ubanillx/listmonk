@@ -3169,7 +3169,7 @@
 
 <h1 id="api-system">API / System<a class="headerlink" href="#api-system" title="Permanent link">&para;</a></h1>
 <p>Operational endpoints: server configuration and identity, dashboard data, custom field definitions, a live event stream, logs, and maintenance operations. Authentication, response envelopes and error codes are described in the <a href="../apis/">API introduction</a>.</p>
-<p>None of these endpoints is public. They all sit in the authenticated <code>/api</code> group (<code>cmd/handlers.go:93</code>), so <code>/api/health</code> is a <strong>protected</strong> endpoint too; the unauthenticated health probe is <code>GET /health</code> without the <code>/api</code> prefix (<code>cmd/handlers.go:419</code>). Personal API keys created under <code>Profile -&gt; API Keys</code> cannot call anything on this page and receive HTTP 403 (<code>cmd/api_keys.go:98</code>, <code>cmd/api_keys.go:107</code>).</p>
+<p>None of these endpoints is public. They all sit in the authenticated <code>/api</code> group (<code>cmd/handlers.go:93</code>), so <code>/api/health</code> is a <strong>protected</strong> endpoint too; the unauthenticated health probe is <code>GET /health</code> without the <code>/api</code> prefix (<code>cmd/handlers.go:430</code>). Personal API keys created under <code>Profile -&gt; API Keys</code> cannot call anything on this page and receive HTTP 403 (<code>cmd/api_keys.go:98</code>, <code>cmd/api_keys.go:107</code>).</p>
 <table>
 <thead>
 <tr>
@@ -3286,7 +3286,7 @@
 </table>
 <hr />
 <h4 id="get-apihealth">GET /api/health<a class="headerlink" href="#get-apihealth" title="Permanent link">&para;</a></h4>
-<p>Returns <code>{"data": true}</code> with HTTP 200 as soon as the HTTP server can answer (<code>cmd/handlers.go:448</code>). Requires authentication (<code>cmd/handlers.go:109</code>). Use the unauthenticated <code>GET /health</code> for load balancer and container probes.</p>
+<p>Returns <code>{"data": true}</code> with HTTP 200 as soon as the HTTP server can answer (<code>cmd/handlers.go:460</code>). Requires authentication (<code>cmd/handlers.go:109</code>). Use the unauthenticated <code>GET /health</code> for load balancer and container probes.</p>
 <h5 id="example-request">Example Request<a class="headerlink" href="#example-request" title="Permanent link">&para;</a></h5>
 <div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span><span class="s1">'http://localhost:9000/api/health'</span>
 </code></pre></div>
@@ -3471,11 +3471,11 @@
 <tbody>
 <tr>
 <td>version</td>
-<td>Version of the running binary (<code>cmd/init.go:949</code>)</td>
+<td>Version of the running binary (<code>cmd/init.go:963</code>)</td>
 </tr>
 <tr>
 <td>build</td>
-<td>Build string (<code>cmd/init.go:950</code>)</td>
+<td>Build string (<code>cmd/init.go:964</code>)</td>
 </tr>
 <tr>
 <td>go_version</td>
@@ -3695,7 +3695,7 @@
 </tr>
 <tr>
 <td>placeholder</td>
-<td>Template expression, for example <code>{{ .Customer.Attribs.&lt;key&gt; }}</code> (<code>cmd/custom_fields.go:49</code>)</td>
+<td>Template expression, for example <code>{{ .Customer.Attribs.&lt;key&gt; }}</code> (<code>cmd/custom_fields.go:54</code>)</td>
 </tr>
 <tr>
 <td>locked</td>
@@ -3883,7 +3883,7 @@ data: {"id":"...","type":"error","message":"...","data":null}
 </code></pre></div>
 <hr />
 <h4 id="delete-apimaintenancecustomerstype">DELETE /api/maintenance/customers/{type}<a class="headerlink" href="#delete-apimaintenancecustomerstype" title="Permanent link">&para;</a></h4>
-<p>Deletes customers in bulk. Requires <code>settings:maintain</code> (<code>cmd/handlers.go:265</code>, <code>internal/auth/models.go:93</code>).</p>
+<p>Deletes customers in bulk. Requires <code>settings:maintain</code> (<code>cmd/handlers.go:268</code>, <code>internal/auth/models.go:108</code>).</p>
 <h5 id="parameters_4">Parameters<a class="headerlink" href="#parameters_4" title="Permanent link">&para;</a></h5>
 <table>
 <thead>
@@ -3916,7 +3916,7 @@ data: {"id":"...","type":"error","message":"...","data":null}
 </code></pre></div>
 <hr />
 <h4 id="delete-apimaintenanceanalyticstype">DELETE /api/maintenance/analytics/{type}<a class="headerlink" href="#delete-apimaintenanceanalyticstype" title="Permanent link">&para;</a></h4>
-<p>Deletes campaign analytics. Requires <code>settings:maintain</code> (<code>cmd/handlers.go:266</code>).</p>
+<p>Deletes campaign analytics. Requires <code>settings:maintain</code> (<code>cmd/handlers.go:269</code>).</p>
 <h5 id="parameters_5">Parameters<a class="headerlink" href="#parameters_5" title="Permanent link">&para;</a></h5>
 <table>
 <thead>
@@ -3954,7 +3954,7 @@ data: {"id":"...","type":"error","message":"...","data":null}
 </code></pre></div>
 <hr />
 <h4 id="delete-apimaintenancesubscriptionsunconfirmed">DELETE /api/maintenance/subscriptions/unconfirmed<a class="headerlink" href="#delete-apimaintenancesubscriptionsunconfirmed" title="Permanent link">&para;</a></h4>
-<p>Deletes stale <code>unconfirmed</code> customer list memberships. Requires <code>settings:maintain</code> (<code>cmd/handlers.go:267</code>).</p>
+<p>Deletes stale <code>unconfirmed</code> customer list memberships. Requires <code>settings:maintain</code> (<code>cmd/handlers.go:270</code>).</p>
 <p>Only memberships of double opt-in customer lists whose membership row was created before the given date are deleted; the customers themselves are kept (<code>queries/customers.sql:385</code>). <code>data.count</code> reports the number of deleted memberships.</p>
 <h5 id="parameters_6">Parameters<a class="headerlink" href="#parameters_6" title="Permanent link">&para;</a></h5>
 <table>
@@ -3988,7 +3988,7 @@ data: {"id":"...","type":"error","message":"...","data":null}
 </code></pre></div>
 <hr />
 <h4 id="post-apilogout">POST /api/logout<a class="headerlink" href="#post-apilogout" title="Permanent link">&para;</a></h4>
-<p>Logs the caller out. Requires authentication (<code>cmd/handlers.go:333</code>). If the request carries a browser session cookie, the session is destroyed; BasicAuth and <code>Authorization</code> token requests have no cookie session and are simply acknowledged (<code>cmd/auth.go:213</code>). API tokens are not revoked by this endpoint.</p>
+<p>Logs the caller out. Requires authentication (<code>cmd/handlers.go:344</code>). If the request carries a browser session cookie, the session is destroyed; BasicAuth and <code>Authorization</code> token requests have no cookie session and are simply acknowledged (<code>cmd/auth.go:213</code>). API tokens are not revoked by this endpoint.</p>
 <h5 id="example-request_16">Example Request<a class="headerlink" href="#example-request_16" title="Permanent link">&para;</a></h5>
 <div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s1">'http://localhost:9000/api/logout'</span>
 </code></pre></div>

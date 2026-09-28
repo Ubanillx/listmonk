@@ -2,7 +2,7 @@
 
 Operational endpoints: server configuration and identity, dashboard data, custom field definitions, a live event stream, logs, and maintenance operations. Authentication, response envelopes and error codes are described in the [API introduction](apis.md).
 
-None of these endpoints is public. They all sit in the authenticated `/api` group (`cmd/handlers.go:93`), so `/api/health` is a **protected** endpoint too; the unauthenticated health probe is `GET /health` without the `/api` prefix (`cmd/handlers.go:419`). Personal API keys created under `Profile -> API Keys` cannot call anything on this page and receive HTTP 403 (`cmd/api_keys.go:98`, `cmd/api_keys.go:107`).
+None of these endpoints is public. They all sit in the authenticated `/api` group (`cmd/handlers.go:93`), so `/api/health` is a **protected** endpoint too; the unauthenticated health probe is `GET /health` without the `/api` prefix (`cmd/handlers.go:430`). Personal API keys created under `Profile -> API Keys` cannot call anything on this page and receive HTTP 403 (`cmd/api_keys.go:98`, `cmd/api_keys.go:107`).
 
 | Method | Endpoint                                                          | Permission          | Description                                              |
 |--------|-------------------------------------------------------------------|---------------------|----------------------------------------------------------|
@@ -28,7 +28,7 @@ ______________________________________________________________________
 
 #### GET /api/health
 
-Returns `{"data": true}` with HTTP 200 as soon as the HTTP server can answer (`cmd/handlers.go:448`). Requires authentication (`cmd/handlers.go:109`). Use the unauthenticated `GET /health` for load balancer and container probes.
+Returns `{"data": true}` with HTTP 200 as soon as the HTTP server can answer (`cmd/handlers.go:460`). Requires authentication (`cmd/handlers.go:109`). Use the unauthenticated `GET /health` for load balancer and container probes.
 
 ##### Example Request
 
@@ -157,8 +157,8 @@ Returns build, runtime, database and host information. Requires authentication (
 
 | Field                 | Description                                                                     |
 |-----------------------|---------------------------------------------------------------------------------|
-| version               | Version of the running binary (`cmd/init.go:949`)                                |
-| build                 | Build string (`cmd/init.go:950`)                                                 |
+| version               | Version of the running binary (`cmd/init.go:963`)                                |
+| build                 | Build string (`cmd/init.go:964`)                                                 |
 | go_version            | Go runtime version                                                               |
 | go_arch               | Build architecture                                                               |
 | database.version      | PostgreSQL `VERSION()` (`queries/misc.sql:139`)                                  |
@@ -302,7 +302,7 @@ The response starts with the two built-in identity fields `email` and `name`, ma
 | description | Optional help text                                                                                        |
 | active      | `false` for fields that were deactivated                                                                  |
 | system      | `true` for the built-in `email` and `name` fields                                                          |
-| placeholder | Template expression, for example `{{ .Customer.Attribs.<key> }}` (`cmd/custom_fields.go:49`)              |
+| placeholder | Template expression, for example `{{ .Customer.Attribs.<key> }}` (`cmd/custom_fields.go:54`)              |
 | locked      | `true` while a campaign is running; definitions cannot be changed then                                     |
 
 ##### Example Request
@@ -481,7 +481,7 @@ ______________________________________________________________________
 
 #### DELETE /api/maintenance/customers/{type}
 
-Deletes customers in bulk. Requires `settings:maintain` (`cmd/handlers.go:265`, `internal/auth/models.go:93`).
+Deletes customers in bulk. Requires `settings:maintain` (`cmd/handlers.go:268`, `internal/auth/models.go:108`).
 
 ##### Parameters
 
@@ -511,7 +511,7 @@ ______________________________________________________________________
 
 #### DELETE /api/maintenance/analytics/{type}
 
-Deletes campaign analytics. Requires `settings:maintain` (`cmd/handlers.go:266`).
+Deletes campaign analytics. Requires `settings:maintain` (`cmd/handlers.go:269`).
 
 ##### Parameters
 
@@ -541,7 +541,7 @@ ______________________________________________________________________
 
 #### DELETE /api/maintenance/subscriptions/unconfirmed
 
-Deletes stale `unconfirmed` customer list memberships. Requires `settings:maintain` (`cmd/handlers.go:267`).
+Deletes stale `unconfirmed` customer list memberships. Requires `settings:maintain` (`cmd/handlers.go:270`).
 
 Only memberships of double opt-in customer lists whose membership row was created before the given date are deleted; the customers themselves are kept (`queries/customers.sql:385`). `data.count` reports the number of deleted memberships.
 
@@ -572,7 +572,7 @@ ______________________________________________________________________
 
 #### POST /api/logout
 
-Logs the caller out. Requires authentication (`cmd/handlers.go:333`). If the request carries a browser session cookie, the session is destroyed; BasicAuth and `Authorization` token requests have no cookie session and are simply acknowledged (`cmd/auth.go:213`). API tokens are not revoked by this endpoint.
+Logs the caller out. Requires authentication (`cmd/handlers.go:344`). If the request carries a browser session cookie, the session is destroyed; BasicAuth and `Authorization` token requests have no cookie session and are simply acknowledged (`cmd/auth.go:213`). API tokens are not revoked by this endpoint.
 
 ##### Example Request
 

@@ -22,7 +22,7 @@ Two authorization levels appear throughout this page:
   membership (or a platform administrator) — `cmd/organizations.go:192`.
 - **Platform endpoints** additionally require the built-in Super Admin or a role
   holding `organizations:platform_manage` (`cmd/organizations.go:347`,
-  `internal/auth/models.go:96`), and answer HTTP 403
+  `internal/auth/models.go:111`), and answer HTTP 403
   `platform organization management permission required` otherwise. An operator
   holding that permission may also use the organization-management paths
   (`members`, `resources/transfer`, `templates/*`, `reply-forwarding`, `invites`)

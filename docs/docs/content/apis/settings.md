@@ -18,7 +18,7 @@ ______________________________________________________________________
 
 #### GET /api/settings
 
-Returns the complete settings object. Requires `settings:get` (`cmd/handlers.go:115`, `internal/auth/models.go:91`).
+Returns the complete settings object. Requires `settings:get` (`cmd/handlers.go:115`, `internal/auth/models.go:106`).
 
 Settings are stored as flat, dotted keys (`app.site_name`, `bounce.mailboxes`, `reply_ai`, ...). The response is a map of those keys, which are the same keys accepted by `PUT /api/settings/{key}` (`queries/misc.sql:7`, `models/settings.go:47`).
 
@@ -93,7 +93,7 @@ ______________________________________________________________________
 
 #### PUT /api/settings
 
-Replaces the settings object. Requires `settings:manage` (`cmd/handlers.go:116`, `internal/auth/models.go:92`).
+Replaces the settings object. Requires `settings:manage` (`cmd/handlers.go:116`, `internal/auth/models.go:107`).
 
 !!! warning
     The request body is a **complete** settings object. Omitted fields are bound as zero values, and every key present in the marshaled object is written back to the `settings` table, so always start from `GET /api/settings`, edit the result, and PUT that object back. Only `customer.custom_fields` is preserved from the stored settings and cannot be changed here (`cmd/settings.go:100`); manage it through `/api/custom-fields` instead.

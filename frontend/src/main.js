@@ -8,6 +8,7 @@ import router from './router';
 import store from './store';
 import * as api from './api';
 import Utils from './utils';
+import { installA11y } from './a11y';
 
 // Internationalisation.
 Vue.use(VueI18n);
@@ -39,18 +40,70 @@ function organizationManagerAccess() {
   return organizations.some((organization) => organization.myRole === 'manager');
 }
 
+// Route-level permission gate for the pages whose menu entry Navigation.vue
+// already hides. Returns null until the profile has been loaded so the first
+// transition is not denied before permissions arrive; initConfig() re-runs the
+// same check once the profile is known.
+function routePermissionAccess(route) {
+  const perm = route && route.meta && route.meta.permission;
+  if (!perm) {
+    return true;
+  }
+
+  const { profile } = store.state;
+  if (!profile || !profile.userRole) {
+    return null;
+  }
+
+  if (Number(profile.userRole.id) === 1) {
+    return true;
+  }
+
+  return (profile.userRole.permissions || []).includes(perm);
+}
+
+// The first transition can run before initConfig() has resolved the profile
+// request. Guards that need the profile wait on this promise instead of letting
+// the route through: a direct URL to a page without the permission used to
+// render a shell whose every request answered 403.
+let resolveProfileReady;
+const profileReady = new Promise((resolve) => { resolveProfileReady = resolve; });
 // Setup the router.
 router.beforeEach((to, from, next) => {
   if (to.matched.length === 0) {
     next('/404');
-  } else if (to.matched.some((route) => route.meta && route.meta.organizationManager)
-    && organizationManagerAccess() === false) {
-    // Keep the management screen out of direct URL access for members and
-    // users who do not belong to an organization.
-    next({ name: 'organizationMine' });
-  } else {
-    next();
+    return;
   }
+
+  const gated = to.matched.filter((route) => route.meta
+    && (route.meta.permission || route.meta.organizationManager));
+  const decide = () => {
+    if (gated.some((route) => route.meta.permission && routePermissionAccess(route) === false)) {
+      // Without the permission this page only produces 403s and a spinner that
+      // never resolves; send the user to the explanation instead.
+      next({ name: 'forbidden' });
+      return;
+    }
+    if (gated.some((route) => route.meta.organizationManager)
+      && organizationManagerAccess() === false) {
+      // Keep the management screen out of direct URL access for members and
+      // users who do not belong to an organization.
+      next({ name: 'organizationMine' });
+      return;
+    }
+
+    next();
+  };
+
+  // Wait for the profile when a gated route cannot be decided yet.
+  const undecided = gated.some((route) => routePermissionAccess(route) === null)
+    || (gated.some((route) => route.meta.organizationManager) && organizationManagerAccess() === null);
+  if (undecided) {
+    profileReady.then(decide);
+    return;
+  }
+
+  decide();
 });
 
 router.afterEach((to) => {
@@ -129,6 +182,15 @@ async function initConfig(app) {
   // it landed on the management URL, enforce the now-known membership after
   // initialization as well.
   if (router.currentRoute
+    && router.currentRoute.matched.some((route) => route.meta && route.meta.permission
+      && routePermissionAccess(route) === false)) {
+    await router.replace({ name: 'forbidden' });
+  }
+
+  // The first router transition happens before the async profile request. If
+  // it landed on the management URL, enforce the now-known membership after
+  // initialization as well.
+  if (router.currentRoute
     && router.currentRoute.matched.some((route) => route.meta && route.meta.organizationManager)
     && organizationManagerAccess() === false) {
     await router.replace({ name: 'organizationMine' });
@@ -161,6 +223,11 @@ async function initConfig(app) {
       return profile.userRole.permissions.includes(perm);
     });
   };
+
+  // Single predicate for the platform administrator role. The role id used to
+  // be repeated as a magic number in more than a dozen views, which made any
+  // change to the role model a silent, scattered edit.
+  Vue.prototype.$isPlatformAdmin = () => Number(profile.userRole && profile.userRole.id) === 1;
 
   Vue.prototype.$canList = (id, perm) => {
     if (Number(profile.userRole.id) === 1) {
@@ -311,6 +378,13 @@ async function initConfig(app) {
   const title = to.meta.title ? `${i18n.tc(to.meta.title, 0)} /` : '';
   document.title = `${title} ${cfg.site_name || ''}`.trim();
 
+  // Associate Buefy field labels and pagination controls with assistive
+  // technology before the first render (see a11y.js).
+  installA11y(Vue, i18n);
+
+  // Release the route guards above; the profile is known at this point.
+  resolveProfileReady();
+
   if (app) {
     app.$mount('#app');
   }
@@ -362,4 +436,4 @@ const v = new Vue({
   },
 });
 
-initConfig(v);
+initConfig(v).catch(() => resolveProfileReady());

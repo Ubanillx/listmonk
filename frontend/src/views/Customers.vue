@@ -63,8 +63,8 @@
                   icon="magnify" ref="query"
                   :disabled="isSearchAdvanced" :data-cy="isPoolList ? 'pool-search' : 'search'" />
                 <p class="controls">
-                  <b-button native-type="submit" type="is-primary" icon-left="magnify" :disabled="isSearchAdvanced"
-                    data-cy="btn-search" />
+                <b-button native-type="submit" type="is-primary" icon-left="magnify" :disabled="isSearchAdvanced"
+                  :aria-label="$t('globals.buttons.search')" data-cy="btn-search" />
                 </p>
               </b-field>
 
@@ -103,7 +103,7 @@
          customers. Buefy's b-table does not forward `data-cy` to the DOM, so
          the pool table is wrapped for tests. -->
     <div v-if="isPoolList" data-cy="pool-contacts-table">
-      <b-table :data="pool.results" :loading="poolLoading" :mobile-cards="false" hoverable
+      <b-table :data="pool.results" :loading="poolLoading" hoverable
         paginated backend-pagination pagination-position="both" @page-change="onPoolPageChange"
         :current-page="pool.page" :per-page="pool.perPage" :total="pool.total"
         :checked-rows.sync="poolBulk.checked" :checkable="canManagePoolContacts" backend-sorting
@@ -127,8 +127,11 @@
                 {{ $t('pool.tabPoolExceptions') }}
               </a>
             </div>
-            <a v-if="canDeletePoolContacts" class="a" href="#" @click.prevent="deletePoolContacts"
-              data-cy="btn-delete-pool-contacts" :aria-disabled="poolBulk.checked.length === 0">
+            <a v-if="canDeletePoolContacts" class="a" href="#" data-cy="btn-delete-pool-contacts"
+              :aria-disabled="poolBulk.checked.length === 0"
+              :data-disabled="poolBulk.checked.length === 0 ? '' : null"
+              @click.prevent="poolBulk.checked.length === 0
+                ? $utils.toast($t('globals.messages.noRowsSelected'), 'is-info') : deletePoolContacts()">
               <b-icon icon="trash-can-outline" size="is-small" /> {{ $t('pool.deleteSelected') }}
             </a>
             <template v-if="poolBulk.checked.length > 0">

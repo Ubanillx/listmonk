@@ -17,11 +17,10 @@
       <template #top-left>
         <div class="actions">
           <template v-if="bulk.checked.length > 0">
-            <a v-if="canDeleteBounces" class="a" href="#" @click.prevent="$utils.confirm(null, () => deleteBounces())" data-cy="btn-delete">
+            <a v-if="canDeleteBounces" class="a" href="#" @click.prevent="confirmDeleteBounces" data-cy="btn-delete">
               <b-icon icon="trash-can-outline" size="is-small" /> {{ $t('globals.buttons.delete') }}
             </a>
-            <a v-if="canBlocklistBounces" class="a" href="#" @click.prevent="$utils.confirm(null, () => blocklistCustomers())"
-              data-cy="btn-manage-blocklist">
+            <a v-if="canBlocklistBounces" class="a" href="#" @click.prevent="confirmBlocklist" data-cy="btn-manage-blocklist">
               <b-icon icon="account-off-outline" size="is-small" /> {{ $t('import.blocklist') }}
             </a>
             <span>
@@ -88,7 +87,7 @@
         <pre class="is-size-7">{{ props.row.meta }}</pre>
       </template>
 
-      <template #empty v-if="!loading.templates">
+      <template #empty v-if="!loading.bounces">
         <empty-placeholder />
       </template>
     </b-table>
@@ -182,6 +181,29 @@ export default Vue.extend({
         this.getBounces();
         this.$utils.toast(this.$t('globals.messages.deleted', { name: b.email }));
       });
+    },
+
+    // Deleting every bounce in the current query is irreversible, so the
+    // confirmation names the number of rows and reads as a danger action.
+    confirmDeleteBounces() {
+      this.$utils.confirm(
+        this.$tc('globals.messages.confirmDelete', this.numSelectedBounces, {
+          num: this.numSelectedBounces,
+          name: this.$tc('globals.terms.bounces', this.numSelectedBounces).toLowerCase(),
+        }),
+        () => this.deleteBounces(),
+        null,
+        { type: 'is-danger' },
+      );
+    },
+
+    confirmBlocklist() {
+      this.$utils.confirm(
+        this.$tc('customers.confirmBlocklist', this.numSelectedBounces, { num: this.numSelectedBounces }),
+        () => this.blocklistCustomers(),
+        null,
+        { type: 'is-danger' },
+      );
     },
 
     deleteBounces() {

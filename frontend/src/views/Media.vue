@@ -6,7 +6,7 @@
       <span class="has-text-grey-light"> / {{ serverConfig.media_provider }}</span>
     </h1>
 
-    <b-loading :active="isProcessing || loading.media" />
+    <b-loading :active="isProcessing || loading.media" :is-full-page="false" />
 
     <section class="wrap gallery mt-6">
       <div class="columns is-vcentered mb-4">
@@ -14,9 +14,11 @@
           <form @submit.prevent="onQueryMedia" class="search">
             <div>
               <b-field>
-                <b-input v-model="queryParams.query" name="query" expanded icon="magnify" ref="query" data-cy="query" />
+                <b-input v-model="queryParams.query" name="query" expanded icon="magnify" ref="query" data-cy="query"
+                  :aria-label="$t('globals.buttons.search')" />
                 <p class="controls">
-                  <b-button native-type="submit" type="is-primary" icon-left="magnify" data-cy="btn-query" />
+                    <b-button native-type="submit" type="is-primary" icon-left="magnify" data-cy="btn-query"
+                      :aria-label="$t('globals.buttons.search')" />
                 </p>
               </b-field>
             </div>
@@ -139,8 +141,8 @@
                 </div>
               </a>
               <div class="actions">
-                <a v-if="canManageMedia(item)" href="#" @click.prevent="$utils.confirm(null, () => onDeleteMedia(item.id))" data-cy="btn-delete"
-                  :aria-label="$t('globals.buttons.delete')" class="delete-btn">
+                <a v-if="canManageMedia(item)" href="#" data-cy="btn-delete" :aria-label="$t('globals.buttons.delete')" class="delete-btn"
+                  @click.prevent="$utils.confirm($tc('globals.messages.confirmDelete', 1, { num: 1, name: item.filename }), () => onDeleteMedia(item.id), null, { type: 'is-danger' })">
                   <b-icon icon="trash-can-outline" size="is-small" />
                 </a>
               </div>
@@ -159,7 +161,8 @@
 
       <!-- Empty State -->
       <div v-else-if="!loading.media">
-        <empty-placeholder :label="$t('media.folderEmpty')" />
+        <empty-placeholder
+          :label="queryParams.query ? $t('globals.messages.emptyState') : $t('media.folderEmpty')" />
       </div>
 
       <!-- Pagination -->

@@ -19,8 +19,8 @@
       </div>
     </header>
 
-    <b-table :data="users" :loading="loading.users" hoverable checkable :checked-rows.sync="checked"
-      default-sort="createdAt" backend-sorting @sort="onSort" @check-all="onTableCheck" @check="onTableCheck">
+    <b-table :data="filteredUsers" :loading="loading.users" hoverable checkable :checked-rows.sync="checked"
+      default-sort="createdAt" @check-all="onTableCheck" @check="onTableCheck">
       <template #top-left>
         <div class="columns">
           <div class="column is-6">
@@ -30,7 +30,8 @@
                   <b-input v-model="queryParams.query" name="query" expanded icon="magnify" ref="query"
                     data-cy="query" />
                   <p class="controls">
-                    <b-button native-type="submit" type="is-primary" icon-left="magnify" data-cy="btn-query" />
+                    <b-button native-type="submit" type="is-primary" icon-left="magnify" data-cy="btn-query"
+                      :aria-label="$t('globals.buttons.search')" />
                   </p>
                 </b-field>
               </div>
@@ -57,23 +58,31 @@
         </div>
       </b-table-column>
 
-      <b-table-column v-slot="props" field="status" :label="$tc('users.role')" header-class="cy-status" sortable
+      <b-table-column v-slot="props" field="userRole.name" :label="$tc('users.role')" header-class="cy-status" sortable
         :td-attrs="$utils.tdID">
-        <router-link :to="{ name: 'userRoles' }">
+        <router-link v-if="$can('roles:get')" :to="{ name: 'userRoles' }">
           <b-tag :class="Number(props.row.userRole.id) === 1 ? 'enabled' : 'primary'">
             <b-icon icon="account-outline" />
             {{ props.row.userRole.name }}
           </b-tag>
         </router-link>
-        <router-link :to="{ name: 'customerListRoles' }">
+        <b-tag v-else :class="Number(props.row.userRole.id) === 1 ? 'enabled' : 'primary'">
+          <b-icon icon="account-outline" />
+          {{ props.row.userRole.name }}
+        </b-tag>
+        <router-link v-if="$can('roles:get')" :to="{ name: 'customerListRoles' }">
           <b-tag v-if="props.row.customerListRole">
             <b-icon icon="newspaper-variant-outline" />
             {{ props.row.customerListRole.name }}
           </b-tag>
         </router-link>
+        <b-tag v-else-if="props.row.customerListRole">
+          <b-icon icon="newspaper-variant-outline" />
+          {{ props.row.customerListRole.name }}
+        </b-tag>
       </b-table-column>
 
-      <b-table-column v-slot="props" field="name" :label="$t('customers.email')" header-class="cy-name" sortable
+      <b-table-column v-slot="props" field="email" :label="$t('customers.email')" header-class="cy-name" sortable
         :td-attrs="$utils.tdID">
         <div>
           <a v-if="props.row.email" :href="`/users/${props.row.id}`" @click.prevent="showEditForm(props.row)"
@@ -86,17 +95,17 @@
         </div>
       </b-table-column>
 
-      <b-table-column v-slot="props" field="created_at" :label="$t('globals.fields.createdAt')"
+      <b-table-column v-slot="props" field="createdAt" :label="$t('globals.fields.createdAt')"
         header-class="cy-created_at" sortable>
         {{ $utils.niceDate(props.row.createdAt) }}
       </b-table-column>
 
-      <b-table-column v-slot="props" field="updated_at" :label="$t('globals.fields.updatedAt')"
+      <b-table-column v-slot="props" field="updatedAt" :label="$t('globals.fields.updatedAt')"
         header-class="cy-updated_at" sortable>
         {{ $utils.niceDate(props.row.updatedAt) }}
       </b-table-column>
 
-      <b-table-column v-slot="props" field="last_login" :label="$t('users.lastLogin')" header-class="cy-updated_at"
+      <b-table-column v-slot="props" field="loggedinAt" :label="$t('users.lastLogin')" header-class="cy-updated_at"
         sortable>
         {{ props.row.loggedinAt ? $utils.niceDate(props.row.loggedinAt, true) : '—' }}
       </b-table-column>
@@ -149,7 +158,8 @@
             <strong>{{ smtpStatusUser.username }}</strong>
             <span v-if="smtpStatusUser.email" class="has-text-grey"> {{ smtpStatusUser.email }}</span>
           </p>
-          <b-table :data="smtpStatus" :loading="smtpStatusLoading" :mobile-cards="false">
+          <div class="table-scroll">
+            <b-table :data="smtpStatus" :loading="smtpStatusLoading">
             <b-table-column v-slot="props" field="name" :label="$t('globals.fields.name')">
               {{ props.row.name || $t('settings.smtp.name') }}
             </b-table-column>
@@ -167,8 +177,9 @@
             <b-table-column v-slot="props" field="updatedAt" :label="$t('globals.fields.updatedAt')">
               {{ props.row.updatedAt ? $utils.niceDate(props.row.updatedAt, true) : '-' }}
             </b-table-column>
-            <template #empty><span class="has-text-grey">{{ $t('settings.personalSMTP.empty') }}</span></template>
-          </b-table>
+            <template #empty v-if="!smtpStatusLoading"><span class="has-text-grey">{{ $t('settings.personalSMTP.empty') }}</span></template>
+            </b-table>
+          </div>
           <p class="help mt-4">{{ $t('settings.personalSMTP.statusReadOnly') }}</p>
         </section>
         <footer class="modal-card-foot has-text-right">
@@ -209,8 +220,6 @@ export default Vue.extend({
       queryParams: {
         page: 1,
         query: '',
-        orderBy: 'id',
-        order: 'asc',
       },
     };
   },
@@ -226,12 +235,6 @@ export default Vue.extend({
       }).finally(() => {
         this.smtpStatusLoading = false;
       });
-    },
-
-    onSort(field, direction) {
-      this.queryParams.orderBy = field;
-      this.queryParams.order = direction;
-      this.getUsers();
     },
 
     onTableCheck(rows) {
@@ -272,11 +275,7 @@ export default Vue.extend({
     },
 
     getUsers() {
-      this.$api.queryUsers({
-        query: this.queryParams.query.replace(/[^\p{L}\p{N}\s]/gu, ' '),
-        order_by: this.queryParams.orderBy,
-        order: this.queryParams.order,
-      }).then((resp) => {
+      this.$api.queryUsers().then((resp) => {
         this.users = resp;
       });
     },
@@ -297,6 +296,15 @@ export default Vue.extend({
 
   computed: {
     ...mapState(['loading', 'settings', 'profile']),
+
+    filteredUsers() {
+      const query = String(this.queryParams.query || '').trim().toLowerCase();
+      if (!query) {
+        return this.users;
+      }
+      return this.users.filter((user) => ['username', 'name', 'email']
+        .some((key) => String(user[key] || '').toLowerCase().includes(query)));
+    },
 
     isPlatformAdmin() {
       return this.profile && this.profile.userRole && Number(this.profile.userRole.id) === 1;
@@ -322,3 +330,9 @@ export default Vue.extend({
   },
 });
 </script>
+
+<style scoped>
+.table-scroll {
+  overflow-x: auto;
+}
+</style>

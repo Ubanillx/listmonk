@@ -172,5 +172,27 @@ export default {
     }
     this.chart = new Chart(ctx, conf);
   },
+
+  watch: {
+    // The shell's refresh button re-fetches the dashboard data; the chart has
+    // to follow it instead of keeping whatever it drew on mount.
+    data() {
+      if (!this.chart) {
+        return;
+      }
+
+      this.chart.data = this.$props.data;
+      this.chart.update();
+    },
+  },
+
+  beforeDestroy() {
+    // Chart.js keeps its own listeners on the canvas, so drop the instance
+    // with the component instead of leaking it on every navigation.
+    if (this.chart) {
+      this.chart.destroy();
+      this.chart = null;
+    }
+  },
 };
 </script>

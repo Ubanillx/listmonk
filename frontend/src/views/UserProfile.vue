@@ -56,7 +56,8 @@
       </div>
 
       <b-field expanded>
-        <b-button type="is-primary" icon-left="content-save-outline" native-type="submit" data-cy="btn-save">
+        <b-button type="is-primary" icon-left="content-save-outline" native-type="submit" data-cy="btn-save"
+          :loading="loading.users" :disabled="loading.users">
           {{ $t('globals.buttons.save') }}
         </b-button>
       </b-field>
@@ -93,7 +94,7 @@
           <div v-if="totpQR" class="qr-section">
             <p class="has-text-grey">{{ $t('users.totpScanQR') }}</p><br />
 
-            <img :src="'data:image/png;base64,' + totpQR" alt="QR Code" />
+            <img :src="'data:image/png;base64,' + totpQR" :alt="$t('users.totpQRCode')" />
 
             <br /><br />
             <p>

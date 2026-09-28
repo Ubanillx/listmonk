@@ -178,20 +178,28 @@ export default Vue.extend({
   },
 
   methods: {
-    fetchData() {
+    async fetchData() {
       this.isCountsLoading = true;
       this.isChartsLoading = true;
 
-      this.$api.getDashboardCounts().then((data) => {
-        this.counts = data;
+      try {
+        this.counts = await this.$api.getDashboardCounts();
+      } catch (err) {
+        // The response interceptor already raised the error toast; the flag
+        // below still has to be cleared so the page stops "loading" forever.
+      } finally {
         this.isCountsLoading = false;
-      });
+      }
 
-      this.$api.getDashboardCharts().then((data) => {
-        this.isChartsLoading = false;
+      try {
+        const data = await this.$api.getDashboardCharts();
         this.campaignViews = this.makeChart(data.campaignViews);
         this.campaignClicks = this.makeChart(data.linkClicks);
-      });
+      } catch (err) {
+        // Same as above: keep the charts empty instead of spinning.
+      } finally {
+        this.isChartsLoading = false;
+      }
     },
 
     makeChart(data) {

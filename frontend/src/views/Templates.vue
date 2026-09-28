@@ -100,7 +100,8 @@
             <b-icon icon="check-circle-outline" size="is-small" />
           </span>
 
-          <a v-if="canManageTemplate(props.row) && !props.row.isDefault" href="#" @click.prevent="$utils.confirm(null, () => deleteTemplate(props.row))"
+          <a v-if="canManageTemplate(props.row) && !props.row.isDefault" href="#"
+            @click.prevent="$utils.confirm($tc('globals.messages.confirmDelete', 1, { num: 1, name: props.row.name }), () => deleteTemplate(props.row), null, { type: 'is-danger' })"
             data-cy="btn-delete" :aria-label="$t('globals.buttons.delete')">
             <b-tooltip :label="$t('globals.buttons.delete')" type="is-dark">
               <b-icon icon="trash-can-outline" size="is-small" />
@@ -166,7 +167,10 @@
           </b-field>
         </section>
         <footer class="modal-card-foot is-justify-content-space-between">
-          <b-button type="is-text" @click="unpublishOrganizationTemplate">{{ $t('templates.unpublish') }}</b-button>
+          <b-button type="is-text"
+            @click="$utils.confirm($t('templates.unpublish'), unpublishOrganizationTemplate, null, { type: 'is-danger' })">
+            {{ $t('templates.unpublish') }}
+          </b-button>
           <div>
             <b-button @click="isOrganizationTemplateActionsVisible = false">{{ $t('globals.buttons.close') }}</b-button>
             <b-button type="is-primary" :disabled="!organizationTemplateTargetUserID"
@@ -270,7 +274,7 @@ export default Vue.extend({
       const template = await this.$api.cloneTemplate(this.cloneTemplateItem.id, request);
       this.isCloneFormVisible = false;
       this.cloneTemplateItem = null;
-      this.$utils.toast(`'${template.name}' created`);
+      this.$utils.toast(this.$t('globals.messages.created', { name: template.name }));
       this.$api.getTemplates();
     },
 
@@ -330,7 +334,7 @@ export default Vue.extend({
     makeTemplateDefault(tpl) {
       this.$api.makeTemplateDefault(tpl.id).then(() => {
         this.$api.getTemplates();
-        this.$utils.toast(this.$t('globals.messages.created', { name: tpl.name }));
+        this.$utils.toast(this.$t('globals.messages.updated', { name: tpl.name }));
       });
     },
 

@@ -118,6 +118,7 @@
           <b-button
             type="is-primary"
             :loading="creatingIntegrationToken"
+            :disabled="creatingIntegrationToken"
             @click="createIntegrationToken()"
             data-cy="btn-retry-integration-token"
           >
@@ -135,10 +136,10 @@
       </section>
       <footer class="modal-card-foot has-text-right">
         <b-button @click="$parent.close()">
-          {{ $t('globals.buttons.close') }}
+          {{ $t('globals.buttons.cancel') }}
         </b-button>
         <b-button v-if="$can('users:manage') && !createdUserID" native-type="submit" type="is-primary"
-          :loading="loading.customer_lists" data-cy="btn-save">
+          :loading="loading.users" :disabled="loading.users" data-cy="btn-save">
           {{ $t('globals.buttons.save') }}
         </b-button>
       </footer>

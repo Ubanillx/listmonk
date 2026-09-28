@@ -602,6 +602,15 @@ export default Vue.extend({
     },
 
     isUnsaved() {
+      // A campaign that has never been saved has no server state to lose, so
+      // there is nothing to warn about. Its default template body differed from
+      // the empty server baseline, which made the page prompt on every leave
+      // (verified in the browser: the unload handler returned true on an empty
+      // new-campaign form).
+      if (!this.data.id) {
+        return false;
+      }
+
       return this.data.body !== this.form.content.body
         || this.data.contentType !== this.form.content.contentType;
     },
@@ -908,10 +917,24 @@ export default Vue.extend({
         return;
       }
 
+      let archiveMeta = {};
+      try {
+        archiveMeta = JSON.parse(this.form.archiveMetaStr);
+      } catch (err) {
+        // The generic save path validates this field too. Without the guard a
+        // broken JSON blob only failed in the browser console: the request was
+        // never sent and the page said nothing at all.
+        this.$utils.toast(
+          this.$t('globals.messages.invalidFields', { name: this.$t('campaigns.archiveMeta') }),
+          'is-danger',
+        );
+        return;
+      }
+
       const data = {
         archive: this.form.archive,
         archive_template_id: this.form.archiveTemplateId,
-        archive_meta: JSON.parse(this.form.archiveMetaStr),
+        archive_meta: archiveMeta,
         archive_slug: this.form.archiveSlug,
       };
 
@@ -1322,6 +1345,10 @@ export default Vue.extend({
 
   beforeDestroy() {
     this.$events.$off('campaign.update');
+
+    // The unload guard is assigned on mount; without clearing it here the
+    // destroyed component kept prompting on every later navigation.
+    window.onbeforeunload = null;
   },
 });
 </script>

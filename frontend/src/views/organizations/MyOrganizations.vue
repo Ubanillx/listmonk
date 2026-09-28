@@ -34,7 +34,8 @@
         </div>
         <b-tag type="is-light" rounded>{{ $t('organizations.countTag', { count: organizations.length }) }}</b-tag>
       </div>
-      <b-table :data="organizations" :mobile-cards="false" class="org-table">
+      <div class="table-scroll">
+        <b-table :data="organizations" class="org-table">
         <b-table-column v-slot="props" field="name" :label="$t('organizations.columnOrg')">
           <div class="org-name-cell">
             <span class="org-avatar"><b-icon icon="office-building-outline" size="is-small" /></span>
@@ -63,14 +64,15 @@
             </b-button>
           </div>
         </b-table-column>
-        <template #empty>
+        <template #empty v-if="!isLoading">
           <div class="org-empty">
             <b-icon icon="office-building-outline" size="is-medium" />
             <strong>{{ $t('organizations.emptyJoined') }}</strong>
             <span>{{ $t('organizations.emptyJoinedHelp') }}</span>
           </div>
         </template>
-      </b-table>
+        </b-table>
+      </div>
     </section>
 
     <details v-if="organizations.length && canPersonalWorkspace" class="migration-panel" data-cy="personal-migration">
@@ -282,6 +284,7 @@ import { mapState } from 'vuex';
 export default Vue.extend({
   data() {
     return {
+      isLoading: true,
       migrationOrganizationID: null,
       personalLists: [],
       personalCustomerListIDs: [],
@@ -348,13 +351,18 @@ export default Vue.extend({
 
   methods: {
     async refresh() {
-      const organizations = await this.$api.getMyOrganizations();
-      this.$store.commit('setOrganizations', organizations);
-      this.setMigrationTarget(organizations);
-      if (organizations.length && this.canPersonalWorkspace) {
-        await this.refreshPersonalResources();
-      } else {
-        this.clearPersonalResources();
+      this.isLoading = true;
+      try {
+        const organizations = await this.$api.getMyOrganizations();
+        this.$store.commit('setOrganizations', organizations);
+        this.setMigrationTarget(organizations);
+        if (organizations.length && this.canPersonalWorkspace) {
+          await this.refreshPersonalResources();
+        } else {
+          this.clearPersonalResources();
+        }
+      } finally {
+        this.isLoading = false;
       }
     },
 
@@ -634,12 +642,12 @@ export default Vue.extend({
     }
   }
 
+  .table-scroll {
+    overflow-x: auto;
+  }
+
   .org-table {
     margin: 0;
-
-    table {
-      min-width: 700px;
-    }
 
     thead th {
       background: #fafafa;

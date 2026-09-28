@@ -114,11 +114,12 @@
 
           <b-tab-item :label="`${$t('globals.terms.bounces')} (${bounces.length})`" class="bounces"
             :disabled="bounces.length === 0">
-            <a href="#" class="is-size-6 is-pulled-right" disabed="true" @click.prevent="deleteBounces"
-               v-if="isBounceVisible && canDeleteBounces">
-              <b-icon icon="trash-can-outline" />
-              {{ $t('globals.buttons.delete') }}
-            </a>
+            <div v-if="canDeleteBounces && bounces.length > 0" class="has-text-right mb-3">
+              <a href="#" class="is-size-6" @click.prevent="deleteBounces">
+                <b-icon icon="trash-can-outline" />
+                {{ $t('globals.buttons.delete') }}
+              </a>
+            </div>
 
             <b-table :data="bounces" hoverable default-sort="createdAt" class="bounces">
               <b-table-column field="campaign" :label="$tc('globals.terms.campaign', 1)" v-slot="props">
@@ -160,10 +161,10 @@
       </section>
       <footer class="modal-card-foot has-text-right">
         <b-button @click="$parent.close()">
-          {{ $t('globals.buttons.close') }}
+          {{ $t('globals.buttons.cancel') }}
         </b-button>
-        <b-button v-if="canEdit" native-type="submit" type="is-primary"
-          :loading="loading.customers">
+        <b-button v-if="canEdit" native-type="submit" type="is-primary" :loading="loading.customers"
+          :disabled="loading.customers">
           {{ $t('globals.buttons.save') }}
         </b-button>
       </footer>
@@ -204,7 +205,6 @@ export default Vue.extend({
         status: 'enabled',
         preconfirm: false,
       },
-      isBounceVisible: false,
       bounces: [],
       visibleMeta: {},
 
@@ -213,10 +213,6 @@ export default Vue.extend({
   },
 
   methods: {
-    toggleBounces() {
-      this.isBounceVisible = !this.isBounceVisible;
-    },
-
     toggleMeta(id) {
       let v = false;
       if (!this.visibleMeta[id]) {
@@ -225,15 +221,19 @@ export default Vue.extend({
       Vue.set(this.visibleMeta, id, v);
     },
 
-    deleteBounces(sub) {
+    deleteBounces() {
+      const num = this.bounces.length;
+      const name = this.$t('globals.terms.bounces');
       this.$utils.confirm(
-        null,
+        this.$tc('globals.messages.confirmDelete', num, { num, name }),
         () => {
           this.$api.deleteCustomerBounces(this.form.id).then(() => {
             this.getBounces();
-            this.$utils.toast(this.$t('globals.messages.deleted', { name: sub.name }));
+            this.$utils.toast(this.$t('globals.messages.deletedCount', { num, name }));
           });
         },
+        null,
+        { type: 'is-danger' },
       );
     },
 

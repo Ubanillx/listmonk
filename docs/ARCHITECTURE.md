@@ -62,6 +62,8 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 
 可见性为 `private`、`organization`、`global`。名单和订阅者始终是所有者私有的；媒体不能全局公开。组织成员可以读取组织共享资源，组织经理可审查同组织成员资源及待转移资源，但只能写自己的资源，不能使用他人的私有发送资源。客户列表查询及客户、导入、批量操作和活动的普通列表选择器都按当前工作区收敛；客户新建/编辑/普通导入还要求目标列表属于当前操作者，一级公海则走独立的跨工作区投放/导入授权。客户 CSV、单客户资料和审计日志均为直接 HTTP 导出，仍执行工作区、所有权和脱敏边界，不建立持久化导出任务。归档组织禁止普通写入及导出；仅平台管理员可执行受限的清理/转移流程。前端的 `$can*` 仅隐藏不允许的操作，Go 服务是唯一权威。
 
+管理端路由自 2026-09-27 起用 `meta.permission` 显式声明页面所需权限（`frontend/src/router/index.js`：`/settings*` 需要 `settings:get`/`settings:maintain`、`/settings/audit` 需要 `audit:get`、`/users*` 需要 `users:get`/`roles:get`），`frontend/src/main.js` 的全局守卫在 `profile` 就绪后统一判定（`profileReady` 承诺消除“首次导航早于 profile 请求”的竞态，管理员管理页沿用同一机制），未授权直达会进入 `/admin/403` 说明页而不是渲染只能产生 403 的空壳；该守卫与 `$can*` 一样只属于体验层，服务端依旧逐请求校验（见本条与 `docs/harness/UI_UX_AUDIT.md`）。
+
 平台可观测性出口与业务聚合数据的边界：`GET /api/logs` 与 `GET /api/events`（SSE 实时错误流）都是进程日志的出口，统一由 `settings:get` 控制，与 `/api/settings` 共用同一平台权限；管理端也只为持有该权限的账号建立 `EventSource`，无权限账号不会打开连接（否则浏览器会对 403 无限重试）。这两个接口不属于工作区数据面。相对地，仪表板的 `GET /api/dashboard/counts` 与 `GET /api/dashboard/charts` 不设角色权限门：任何登录用户在其当前工作区都可读取，但结果由工作区、所有权和可见性谓词收敛（只有平台管理员读取全局物化视图）。图表没有数据只表示该工作区内没有可统计的浏览/点击行（或数据落在 30 天窗口之外），不是权限拒绝。
 
 ### 角色动作细分权限（v6.38.0）

@@ -40,14 +40,16 @@
             </div>
           </form>
 
-          <b-table :data="activeMembers" :mobile-cards="false">
+          <div class="table-scroll">
+            <b-table :data="activeMembers">
             <b-table-column v-slot="props" field="username" :label="$t('organizations.account')">
               <strong>{{ props.row.username }}</strong>
               <span v-if="props.row.name" class="has-text-grey"> {{ props.row.name }}</span>
             </b-table-column>
             <b-table-column v-slot="props" field="email" :label="$t('customers.email')">{{ props.row.email }}</b-table-column>
             <b-table-column v-slot="props" field="role" :label="$t('organizations.role')">
-              <b-select :value="props.row.role" size="is-small" @input="changeMemberRole(props.row, $event)">
+              <b-select :key="`member-role-${props.row.userId}-${roleRevision}`" :value="props.row.role" size="is-small"
+                @input="confirmMemberRoleChange(props.row, $event)">
                 <option value="member">{{ $t('organizations.roleMember') }}</option>
                 <option value="manager">{{ $t('organizations.roleManager') }}</option>
               </b-select>
@@ -57,8 +59,9 @@
                 {{ $t('organizations.remove') }}
               </b-button>
             </b-table-column>
-            <template #empty><span class="has-text-grey">{{ $t('organizations.noMembers') }}</span></template>
-          </b-table>
+            <template #empty v-if="!isLoading"><span class="has-text-grey">{{ $t('organizations.noMembers') }}</span></template>
+            </b-table>
+          </div>
         </section>
       </b-tab-item>
 
@@ -87,7 +90,8 @@
             <copy-text :text="newInviteCode" />
           </b-notification>
 
-          <b-table :data="invites" :mobile-cards="false">
+          <div class="table-scroll">
+            <b-table :data="invites">
             <b-table-column v-slot="props" field="name" :label="$t('organizations.inviteName')">{{ props.row.name || $t('organizations.inviteCode') }}</b-table-column>
             <b-table-column v-slot="props" field="useCount" :label="$t('organizations.uses')">
               {{ props.row.useCount }}<span v-if="props.row.maxUses"> / {{ props.row.maxUses }}</span>
@@ -96,13 +100,15 @@
               {{ props.row.expiresAt ? $utils.niceDate(props.row.expiresAt, true) : $t('organizations.noExpiry') }}
             </b-table-column>
             <b-table-column v-slot="props" :label="$t('organizations.columnActions')" numeric>
-              <b-button v-if="!props.row.revokedAt" size="is-small" type="is-text" icon-left="cancel" @click="revokeInvite(props.row)">
+              <b-button v-if="!props.row.revokedAt" size="is-small" type="is-text" icon-left="cancel"
+                @click="$utils.confirm($t('organizations.confirmRevokeInvite'), () => revokeInvite(props.row), null, { type: 'is-danger' })">
                 {{ $t('organizations.revoke') }}
               </b-button>
               <span v-else class="has-text-grey">{{ $t('organizations.revoked') }}</span>
             </b-table-column>
-            <template #empty><span class="has-text-grey">{{ $t('organizations.noInvites') }}</span></template>
-          </b-table>
+            <template #empty v-if="!isLoading"><span class="has-text-grey">{{ $t('organizations.noInvites') }}</span></template>
+            </b-table>
+          </div>
         </section>
       </b-tab-item>
 
@@ -167,7 +173,8 @@
       <b-tab-item v-if="selectedOrganizationID" :label="$t('organizations.tabReplyForward')" icon="email-arrow-left-outline">
         <section class="wrap">
           <p class="has-text-grey mb-4">{{ $t('organizations.replyForwardHelp') }}</p>
-          <b-table :data="replyForwardRules" :mobile-cards="false">
+          <div class="table-scroll">
+            <b-table :data="replyForwardRules">
             <b-table-column v-slot="props" field="sourceEmail" :label="$t('organizations.replyForwardSource')">
               <strong>{{ props.row.sourceEmail || props.row.sourceName || '-' }}</strong>
             </b-table-column>
@@ -184,30 +191,34 @@
                 {{ props.row.status === 'active' ? $t('organizations.replyForwardToggle') : $t('organizations.replyForwardResume') }}
               </b-button>
             </b-table-column>
-            <template #empty><span class="has-text-grey">{{ $t('organizations.noReplyForwardRules') }}</span></template>
-          </b-table>
+            <template #empty v-if="!isLoading"><span class="has-text-grey">{{ $t('organizations.noReplyForwardRules') }}</span></template>
+            </b-table>
+          </div>
         </section>
       </b-tab-item>
 
       <b-tab-item v-if="canManageAllOrganizations" :label="$t('organizations.tabPlatform')" icon="shield-crown-outline">
         <section class="mb-6">
           <h2 class="title is-5">{{ $t('organizations.creationRequests') }}</h2>
-          <b-table :data="requests" :mobile-cards="false">
+          <div class="table-scroll">
+            <b-table :data="requests">
             <b-table-column v-slot="props" field="requestedName" :label="$t('organizations.columnOrg')">{{ props.row.requestedName }}</b-table-column>
             <b-table-column v-slot="props" field="requestedByName" :label="$t('organizations.requester')">{{ props.row.requestedByName }}</b-table-column>
             <b-table-column v-slot="props" field="description" :label="$t('organizations.description')">{{ props.row.description }}</b-table-column>
             <b-table-column v-slot="props" field="createdAt" :label="$t('organizations.requestTime')">{{ $utils.niceDate(props.row.createdAt, true) }}</b-table-column>
             <b-table-column v-slot="props" :label="$t('organizations.columnActions')" numeric>
-              <b-button size="is-small" type="is-primary" icon-left="check" @click="reviewRequest(props.row, true)">{{ $t('organizations.approve') }}</b-button>
-              <b-button size="is-small" type="is-text" icon-left="close" @click="reviewRequest(props.row, false)">{{ $t('organizations.reject') }}</b-button>
+              <b-button size="is-small" type="is-primary" icon-left="check" @click="confirmApproveRequest(props.row)">{{ $t('organizations.approve') }}</b-button>
+              <b-button size="is-small" type="is-text" icon-left="close" @click="confirmRejectRequest(props.row)">{{ $t('organizations.reject') }}</b-button>
             </b-table-column>
-            <template #empty><span class="has-text-grey">{{ $t('organizations.noRequests') }}</span></template>
-          </b-table>
+            <template #empty v-if="!isLoading"><span class="has-text-grey">{{ $t('organizations.noRequests') }}</span></template>
+            </b-table>
+          </div>
         </section>
 
         <section>
           <h2 class="title is-5">{{ $t('organizations.archiveSection') }}</h2>
-          <b-table :data="platformOrganizations" :mobile-cards="false">
+          <div class="table-scroll">
+            <b-table :data="platformOrganizations">
             <b-table-column v-slot="props" field="name" :label="$t('organizations.columnOrg')">
               <strong>{{ props.row.name }}</strong>
               <p v-if="props.row.description" class="has-text-grey is-size-7">{{ props.row.description }}</p>
@@ -239,7 +250,8 @@
                 {{ $t('organizations.deleteForever') }}
               </b-button>
             </b-table-column>
-          </b-table>
+            </b-table>
+          </div>
         </section>
       </b-tab-item>
     </b-tabs>
@@ -281,6 +293,8 @@ export default Vue.extend({
 
   data() {
     return {
+      isLoading: false,
+      roleRevision: 0,
       activeTab: 0,
       selectedOrganizationID: null,
       members: [],
@@ -377,18 +391,23 @@ export default Vue.extend({
 
   methods: {
     async refresh() {
-      const organizations = await this.$api.getMyOrganizations();
-      this.$store.commit('setOrganizations', organizations);
-      if (this.canManageAllOrganizations) {
-        const [requests, platformOrganizations] = await Promise.all([
-          this.$api.getOrganizationRequests(),
-          this.$api.getOrganizations(true),
-        ]);
-        this.requests = requests;
-        this.platformOrganizations = platformOrganizations;
+      this.isLoading = true;
+      try {
+        const organizations = await this.$api.getMyOrganizations();
+        this.$store.commit('setOrganizations', organizations);
+        if (this.canManageAllOrganizations) {
+          const [requests, platformOrganizations] = await Promise.all([
+            this.$api.getOrganizationRequests(),
+            this.$api.getOrganizations(true),
+          ]);
+          this.requests = requests;
+          this.platformOrganizations = platformOrganizations;
+        }
+        this.ensureSelectedOrganization();
+        await this.refreshSelectedOrganization();
+      } finally {
+        this.isLoading = false;
       }
-      this.ensureSelectedOrganization();
-      await this.refreshSelectedOrganization();
     },
 
     ensureSelectedOrganization() {
@@ -409,15 +428,20 @@ export default Vue.extend({
         this.unifiedReplyMailboxID = null;
         return;
       }
-      const [members, invites] = await Promise.all([
-        this.$api.getOrganizationMembers(this.selectedOrganizationID),
-        this.$api.getOrganizationInvites(this.selectedOrganizationID),
-      ]);
-      this.members = members;
-      this.invites = invites;
-      this.replyForwardRules = await this.$api.getReplyForwardRules(this.selectedOrganizationID);
-      this.transferTargetUserID = null;
-      await this.loadUnifiedReplyMailbox();
+      this.isLoading = true;
+      try {
+        const [members, invites] = await Promise.all([
+          this.$api.getOrganizationMembers(this.selectedOrganizationID),
+          this.$api.getOrganizationInvites(this.selectedOrganizationID),
+        ]);
+        this.members = members;
+        this.invites = invites;
+        this.replyForwardRules = await this.$api.getReplyForwardRules(this.selectedOrganizationID);
+        this.transferTargetUserID = null;
+        await this.loadUnifiedReplyMailbox();
+      } finally {
+        this.isLoading = false;
+      }
     },
 
     selectOrganization(organization) {
@@ -431,9 +455,33 @@ export default Vue.extend({
       await this.refreshSelectedOrganization();
     },
 
+    confirmMemberRoleChange(member, role) {
+      if (role === member.role) {
+        return;
+      }
+      const roleLabel = role === 'manager' ? this.$t('organizations.roleManager') : this.$t('organizations.roleMember');
+      this.$utils.confirm(
+        this.$t('organizations.confirmRoleChange', { name: member.username, role: roleLabel }),
+        () => this.changeMemberRole(member, role),
+        () => this.resetMemberRoleSelects(),
+        { type: 'is-danger' },
+      );
+    },
+
+    // Buefy's select keeps its own internal state and only re-syncs when the
+    // `value` prop changes, so a cancelled or failed change needs a rebuild to
+    // show the role the server still holds.
+    resetMemberRoleSelects() {
+      this.roleRevision += 1;
+    },
+
     async changeMemberRole(member, role) {
-      await this.$api.updateOrganizationMember(member.userId, { role }, this.selectedOrganizationID);
-      await this.refresh();
+      try {
+        await this.$api.updateOrganizationMember(member.userId, { role }, this.selectedOrganizationID);
+        await this.refresh();
+      } catch (error) {
+        this.resetMemberRoleSelects();
+      }
     },
 
     removeMember(member) {
@@ -502,8 +550,25 @@ export default Vue.extend({
       });
     },
 
-    async reviewRequest(request, approve) {
-      await this.$api.reviewOrganizationRequest(request.id, { approve, note: '' });
+    confirmApproveRequest(request) {
+      this.$utils.confirm(
+        `${this.$t('organizations.approve')} "${request.requestedName}"?`,
+        () => this.reviewRequest(request, true),
+        null,
+        { type: 'is-danger' },
+      );
+    },
+
+    confirmRejectRequest(request) {
+      this.$utils.prompt(
+        this.$t('organizations.rejectReason'),
+        { type: 'string', maxlength: 200 },
+        (note) => this.reviewRequest(request, false, note),
+      );
+    },
+
+    async reviewRequest(request, approve, note = '') {
+      await this.$api.reviewOrganizationRequest(request.id, { approve, note });
       await this.refresh();
     },
 
@@ -557,3 +622,9 @@ export default Vue.extend({
   },
 });
 </script>
+
+<style scoped>
+.table-scroll {
+  overflow-x: auto;
+}
+</style>

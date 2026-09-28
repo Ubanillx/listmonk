@@ -42,7 +42,8 @@
         </b-field>
 
         <b-field :label="$t('customer_lists.optin')" label-position="on-border" :message="$t('customer_lists.optinHelp')">
-          <b-select v-model="form.optin" name="optin" placeholder="Opt-in type" :disabled="!canSave" required expanded>
+          <b-select v-model="form.optin" name="optin" :placeholder="$t('customer_lists.optin')" :disabled="!canSave"
+            required expanded>
             <option value="single">
               {{ $t('customer_lists.optins.single') }}
             </option>
@@ -72,10 +73,10 @@
       </section>
       <footer class="modal-card-foot has-text-right">
         <b-button @click="$parent.close()">
-          {{ $t('globals.buttons.close') }}
+          {{ $t('globals.buttons.cancel') }}
         </b-button>
-        <b-button v-if="canSave" native-type="submit"
-          type="is-primary" :loading="loading.customer_lists" data-cy="btn-save">
+        <b-button v-if="canSave" native-type="submit" type="is-primary" :loading="loading.customer_lists"
+          :disabled="loading.customer_lists" data-cy="btn-save">
           {{ $t('globals.buttons.save') }}
         </b-button>
       </footer>

@@ -1,5 +1,6 @@
 <template>
-  <a href="#" class="copy-text" ref="text" @click.prevent="onClick">
+  <a href="#" class="copy-text" ref="text" @click.prevent="onClick"
+    :aria-label="hideText ? $t('globals.buttons.copy') : null" :title="$t('globals.buttons.copy')">
     <template v-if="!hideText">{{ $props.text }}</template>
     <b-icon icon="file-multiple-outline" size="is-small" />
   </a>

@@ -62,18 +62,23 @@
       @media-selected="onMediaSelect" />
 
     <!-- visual editor //-->
+    <!-- visual editor. The email builder has no read-only mode, so a viewer
+         without edit rights can still type here; the parent hides the save
+         controls, which makes the change unsaveable rather than silent. //-->
     <visual-editor v-if="self.contentType === 'visual'" :source="self.bodySource" @change="onVisualEditorChange"
       @media-selected="onMediaSelect" height="65vh" ref="visualEditor" />
 
     <!-- raw html editor //-->
-    <code-editor lang="html" v-if="self.contentType === 'html'" v-model="self.body" key="editor-html" />
+    <code-editor lang="html" v-if="self.contentType === 'html'" v-model="self.body" key="editor-html"
+      :disabled="disabled" />
 
     <!-- markdown editor //-->
-    <code-editor lang="markdown" v-if="self.contentType === 'markdown'" v-model="self.body" key="editor-markdown" />
+    <code-editor lang="markdown" v-if="self.contentType === 'markdown'" v-model="self.body" key="editor-markdown"
+      :disabled="disabled" />
 
     <!-- plain text //-->
     <b-input v-if="self.contentType === 'plain'" v-model="self.body" type="textarea" name="content" ref="plainEditor"
-      class="plain-editor" />
+      class="plain-editor" :disabled="disabled" />
 
     <!-- campaign preview //-->
     <campaign-preview v-if="isPreviewing" is-post @close="onTogglePreview" type="campaign" :id="id" :title="title"

@@ -145,12 +145,22 @@ export default class Utils {
   titleCase = (str) => str[0].toUpperCase() + str.substr(1).toLowerCase();
 
   // UI shortcuts.
-  confirm = (msg, onConfirm, onCancel) => {
+  // Show a confirmation dialog.
+  //
+  // `opts.type` (eg. 'is-danger') styles both the icon and the confirm button,
+  // `opts.confirmText` replaces the generic "OK" and `opts.focusOn`
+  // ('confirm' | 'cancel' | 'none') decides where focus lands. Irreversible
+  // actions must pass a message that names the object and, for bulk actions,
+  // the number of affected rows.
+  confirm = (msg, onConfirm, onCancel, opts) => {
+    const o = opts || {};
     Dialog.confirm({
       scroll: 'keep',
       message: !msg ? this.i18n.t('globals.messages.confirm') : this.escapeHTML(msg),
-      confirmText: this.i18n.t('globals.buttons.ok'),
+      type: o.type || undefined,
+      confirmText: o.confirmText || this.i18n.t('globals.buttons.ok'),
       cancelText: this.i18n.t('globals.buttons.cancel'),
+      focusOn: o.focusOn || (o.type ? 'cancel' : 'confirm'),
       onConfirm,
       onCancel,
     });

@@ -53,13 +53,11 @@
             <div class="is-size-7">{{ profile.name }}</div>
           </b-navbar-item>
 
-          <b-navbar-item href="#">
-            <router-link to="/user/profile">
-              <b-icon icon="account-outline" /> {{ $t('users.profile') }}
-            </router-link>
+          <b-navbar-item tag="router-link" to="/user/profile">
+            <b-icon icon="account-outline" /> {{ $t('users.profile') }}
           </b-navbar-item>
-          <b-navbar-item href="#">
-            <a href="#" @click.prevent="doLogout"><b-icon icon="logout-variant" /> {{ $t('users.logout') }}</a>
+          <b-navbar-item tag="a" href="#" @click.prevent="confirmLogout">
+            <b-icon icon="logout-variant" /> {{ $t('users.logout') }}
           </b-navbar-item>
         </b-navbar-dropdown>
       </template>
@@ -171,12 +169,20 @@ export default Vue.extend({
     },
 
     emitPageRefresh() {
+      // Views opt in through `meta.refreshable`. Without that hint the button
+      // used to do nothing at all on pages that have no data to reload, which
+      // reads as a broken control.
+      if (!this.$route.meta || !this.$route.meta.refreshable) {
+        this.$utils.toast(this.$t('globals.messages.nothingToRefresh'), 'is-info');
+        return;
+      }
+
       this.$root.$emit('page.refresh');
     },
 
     reloadApp() {
       this.$api.reloadApp().then(() => {
-        this.$utils.toast('Reloading app ...');
+        this.$utils.toast(this.$t('globals.messages.reloading'));
 
         // Poll until there's a 200 response, waiting for the app
         // to restart and come back up.
@@ -187,6 +193,10 @@ export default Vue.extend({
           });
         }, 500);
       });
+    },
+
+    confirmLogout() {
+      this.$utils.confirm(this.$t('users.logout'), () => this.doLogout(), null, { type: 'is-danger' });
     },
 
     doLogout() {

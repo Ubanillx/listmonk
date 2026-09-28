@@ -184,7 +184,7 @@ section {
     visibility: hidden;
   }
 
-  &:hover {
+  &:hover, &:focus, &:focus-visible {
     color: $primary;
     .icon {
       visibility: visible;
@@ -433,8 +433,23 @@ body.is-noscroll {
   }
 
   .actions a, .actions .a {
-    margin: 0 10px;
-    display: inline-block;
+    // Icon-only row actions need a hit area that is comfortable on touch
+    // screens; the icon itself stays small.
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    min-height: 24px;
+    margin: 0 8px;
+    vertical-align: middle;
+  }
+
+  // Cell links such as the copy-to-clipboard control are icon-sized by
+  // default; keep the text inline but give the link a tappable height.
+  td a, tbody td .copy-text {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
   }
   .actions a[data-disabled],
   .actions .icon[data-disabled] {
@@ -1464,33 +1479,34 @@ body.is-noscroll {
     font-size: 0.65rem;
     background: $white-ter;
     // border: 1px solid $white-ter;
-    padding: 3px 5px;
+    padding: 3px 5px !important;
     min-width: auto !important;
   }
 
   &:not(body) {
     background-color: #eee;
     font-size: 0.85em;
-    color: $grey;
+    color: $grey-darker;
   }
 
   &.private, &.scheduled, &.paused, &.tx, &.api {
     $color: #ed7b00;
-    color: $color;
+    // Darkened from the same hue: the light text on the tinted background only
+    // reached ~2.5:1 contrast, below the WCAG AA minimum for body text.
+    color: darken($color, 30%);
     background: lighten($color, 47);
   }
   &.public, &.running, &.list, &.campaign, &.user, &.primary {
-    $color: $primary;
-    color: lighten($color, 20%);
+    color: $primary;
     background: #e6f7ff;
   }
   &.finished, &.enabled, &.status-confirmed {
-    color: $green;
+    color: darken($green, 15%);
     background: #dcfce7;
   }
   &.blocklisted, &.cancelled, &.status-unsubscribed, &.campaign_visual {
     $color: $red;
-    color: $color;
+    color: darken($color, 25%);
     background: #fff1f0;
   }
 

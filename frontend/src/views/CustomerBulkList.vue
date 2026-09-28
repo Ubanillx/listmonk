@@ -8,6 +8,9 @@
       </header>
 
       <section expanded class="modal-card-body">
+        <p v-if="numCustomers > 0" class="has-text-grey mb-3" data-cy="bulk-affected-count">
+          {{ $t('customers.bulkAffectedCount', { num: numCustomers }) }}
+        </p>
         <b-field :label="$t('customers.action')">
           <div>
             <b-radio v-model="form.action" name="action" native-value="add" data-cy="check-customer_list-add">
@@ -34,7 +37,7 @@
 
       <footer class="modal-card-foot has-text-right">
         <b-button @click="$parent.close()">
-          {{ $t('globals.buttons.close') }}
+          {{ $t('globals.buttons.cancel') }}
         </b-button>
         <b-button native-type="submit" type="is-primary" :disabled="form.customer_lists.length === 0">
           {{ $t('globals.buttons.save') }}
@@ -72,8 +75,25 @@ export default Vue.extend({
 
   methods: {
     onSubmit() {
-      this.$emit('finished', this.form.action, this.form.preconfirm, this.form.customer_lists);
-      this.$parent.close();
+      const finish = () => {
+        this.$emit('finished', this.form.action, this.form.preconfirm, this.form.customer_lists);
+        this.$parent.close();
+      };
+
+      // Adding is reversible; removing customers from a list and marking them
+      // unsubscribed apply to every selected customer, so ask first and state
+      // how many rows are affected.
+      if (this.form.action === 'add') {
+        finish();
+        return;
+      }
+
+      this.$utils.confirm(
+        this.$tc('customers.bulkAffectedCount', this.numCustomers, { num: this.numCustomers }),
+        finish,
+        null,
+        { type: 'is-danger' },
+      );
     },
   },
 

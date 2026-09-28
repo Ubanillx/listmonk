@@ -24,13 +24,14 @@
       <template #top-left>
         <div class="columns">
           <div class="column is-6">
-            <form @submit.prevent="getCampaigns">
+            <form @submit.prevent="onSearch">
               <div>
                 <b-field>
                   <b-input v-model="queryParams.query" name="query" expanded
                     :placeholder="$t('campaigns.queryPlaceholder')" icon="magnify" ref="query" />
                   <p class="controls">
-                    <b-button native-type="submit" type="is-primary" icon-left="magnify" />
+                    <b-button native-type="submit" type="is-primary" icon-left="magnify"
+                      :aria-label="$t('globals.buttons.search')" />
                   </p>
                 </b-field>
               </div>
@@ -203,7 +204,7 @@
           <!-- start / pause / resume / scheduled -->
           <template v-if="canManageCampaign(props.row)">
             <a v-if="canStart(props.row)" href="#"
-              @click.prevent="$utils.confirm(null, () => changeCampaignStatus(props.row, 'running'))"
+              @click.prevent="$utils.confirm($t('campaigns.confirmStart'), () => changeCampaignStatus(props.row, 'running'))"
               data-cy="btn-start" :aria-label="$t('campaigns.start')">
               <b-tooltip :label="$t('campaigns.start')" type="is-dark">
                 <b-icon icon="rocket-launch-outline" size="is-small" />
@@ -211,7 +212,7 @@
             </a>
 
             <a v-if="canPause(props.row)" href="#"
-              @click.prevent="$utils.confirm(null, () => changeCampaignStatus(props.row, 'paused'))" data-cy="btn-pause"
+              @click.prevent="$utils.confirm($t('campaigns.confirmPause'), () => changeCampaignStatus(props.row, 'paused'))" data-cy="btn-pause"
               :aria-label="$t('campaigns.pause')">
               <b-tooltip :label="$t('campaigns.pause')" type="is-dark">
                 <b-icon icon="pause-circle-outline" size="is-small" />
@@ -219,7 +220,7 @@
             </a>
 
             <a v-if="canResume(props.row)" href="#"
-              @click.prevent="$utils.confirm(null, () => changeCampaignStatus(props.row, 'running'))"
+              @click.prevent="$utils.confirm($t('campaigns.confirmStart'), () => changeCampaignStatus(props.row, 'running'))"
               data-cy="btn-resume" :aria-label="$t('campaigns.send')">
               <b-tooltip :label="$t('campaigns.send')" type="is-dark">
                 <b-icon icon="rocket-launch-outline" size="is-small" />
@@ -241,7 +242,7 @@
             </a>
 
             <a v-if="canCancel(props.row)" href="#"
-              @click.prevent="$utils.confirm(null, () => changeCampaignStatus(props.row, 'cancelled'))"
+              @click.prevent="$utils.confirm($t('campaigns.confirmCancel'), () => changeCampaignStatus(props.row, 'cancelled'), null, { type: 'is-danger' })"
               data-cy="btn-cancel" :aria-label="$t('globals.buttons.cancel')">
               <b-tooltip :label="$t('globals.buttons.cancel')" type="is-dark">
                 <b-icon icon="cancel" size="is-small" />
@@ -401,9 +402,18 @@ export default Vue.extend({
       this.getCampaigns();
     },
 
+    // A new search or sort starts a new result set. Keeping the previous page
+    // number requested a page that may no longer exist and rendered an empty
+    // table that looked like "the search found nothing".
+    onSearch() {
+      this.queryParams.page = 1;
+      this.getCampaigns();
+    },
+
     onSort(field, direction) {
       this.queryParams.orderBy = field;
       this.queryParams.order = direction;
+      this.queryParams.page = 1;
       this.getCampaigns();
     },
 
@@ -550,13 +560,18 @@ export default Vue.extend({
           params.all = this.bulk.all;
         }
 
+        const numSelected = this.numSelectedCampaigns;
         this.$api.deleteCampaigns(params)
           .then(() => {
+            // Buefy only syncs its internal selection when the `checkedRows`
+            // prop changes, so reloading the data left the toolbar showing the
+            // previous count (and allowed a second delete of stale ids).
+            this.bulk = { checked: [], all: false };
             this.getCampaigns();
             this.$utils.toast(this.$tc(
               'globals.messages.deletedCount',
-              this.numSelectedCampaigns,
-              { num: this.numSelectedCampaigns, name },
+              numSelected,
+              { num: numSelected, name },
             ));
           });
       };
@@ -565,7 +580,7 @@ export default Vue.extend({
         'globals.messages.confirmDelete',
         this.numSelectedCampaigns,
         { num: this.numSelectedCampaigns, name: name.toLowerCase() },
-      ), fn);
+      ), fn, null, { type: 'is-danger' });
     },
   },
 

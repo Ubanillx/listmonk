@@ -92,7 +92,7 @@
               {{ $tc(`globals.terms.${props.row.group}`) }}
             </b-table-column>
 
-            <b-table-column v-slot="props" field="permissions" label="Permissions">
+            <b-table-column v-slot="props" field="permissions" :label="$t('users.perms')">
               <div v-for="p in props.row.permissions" :key="p" class="permission-row">
                 <b-checkbox v-model="form.permissions" :native-value="p" :disabled="disabled">
                   {{ permissionLabel(p) }}
@@ -117,9 +117,10 @@
 
       <footer class="modal-card-foot has-text-right">
         <b-button @click="$parent.close()">
-          {{ $t('globals.buttons.close') }}
+          {{ $t('globals.buttons.cancel') }}
         </b-button>
-        <b-button v-if="!disabled" native-type="submit" type="is-primary" :loading="loading.roles" data-cy="btn-save">
+        <b-button v-if="!disabled" native-type="submit" type="is-primary" :loading="isLoading" :disabled="isLoading"
+          data-cy="btn-save">
           {{ $t('globals.buttons.save') }}
         </b-button>
       </footer>
@@ -154,7 +155,6 @@ export default Vue.extend({
         name: null,
         permissions: {},
       },
-      hasToggle: false,
       disabled: false,
     };
   },
@@ -204,18 +204,32 @@ export default Vue.extend({
     },
 
     onToggleSelect() {
-      if (this.hasToggle) {
-        this.form.permissions = [];
-      } else {
-        this.form.permissions = this.serverConfig.permissions.reduce((acc, item) => {
-          item.permissions.forEach((p) => {
-            acc.push(p);
-          });
-          return acc;
-        }, []);
+      const selected = Array.isArray(this.form.permissions) ? this.form.permissions : [];
+      const all = this.serverConfig.permissions.reduce((acc, item) => {
+        item.permissions.forEach((p) => {
+          acc.push(p);
+        });
+        return acc;
+      }, []);
+
+      // Derive the action from the current selection instead of toggling a flag:
+      // clearing every permission is destructive, so confirm it first.
+      if (all.length > 0 && all.every((p) => selected.includes(p))) {
+        this.$utils.confirm(
+          this.$tc('globals.messages.confirmDelete', selected.length, {
+            num: selected.length,
+            name: this.$tc('users.perms', selected.length),
+          }),
+          () => {
+            this.form.permissions = [];
+          },
+          null,
+          { type: 'is-danger' },
+        );
+        return;
       }
 
-      this.hasToggle = !this.hasToggle;
+      this.form.permissions = all;
     },
 
     createRole() {
@@ -265,6 +279,11 @@ export default Vue.extend({
 
   computed: {
     ...mapState(['loading', 'serverConfig', 'customer_lists']),
+
+    // Mirrors the loading model used by the corresponding role API call.
+    isLoading() {
+      return this.type === 'user' ? this.loading.userRoles : this.loading.customerListRoles;
+    },
 
     // Return the customerList of unselected customer_lists.
     filteredLists() {

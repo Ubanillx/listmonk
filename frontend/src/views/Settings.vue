@@ -1,7 +1,13 @@
 <template>
   <form @submit.prevent="onSubmit">
     <section class="settings">
-      <b-loading :is-full-page="true" v-if="loading.settings || isLoading" active />
+      <b-loading :is-full-page="true" v-if="!loadError && (loading.settings || isLoading)" active />
+      <b-notification v-if="loadError" type="is-danger" :closable="false">
+        {{ $t('globals.messages.loadFailed') }}
+        <b-button class="is-small ml-3" type="is-primary" @click="getSettings">
+          {{ $t('globals.buttons.retry') }}
+        </b-button>
+      </b-notification>
       <header class="columns page-header">
         <div class="column is-half">
           <h1 class="title is-4">
@@ -102,6 +108,9 @@ export default Vue.extend({
       key: 0,
 
       isLoading: false,
+      // Set when the settings request fails, so the page can explain itself
+      // instead of showing a spinner that never resolves.
+      loadError: false,
 
       // formCopy is a stringified copy of the original settings against which
       // form is compared to detect changes.
@@ -223,12 +232,15 @@ export default Vue.extend({
 
     getSettings() {
       this.isLoading = true;
+      this.loadError = false;
       this.$api.getSettings().then((data) => {
         let d = {};
         try {
           // Create a deep-copy of the settings hierarchy.
           d = JSON.parse(JSON.stringify(data));
         } catch (err) {
+          this.loadError = true;
+          this.isLoading = false;
           return;
         }
 
@@ -254,6 +266,12 @@ export default Vue.extend({
         this.$nextTick(() => {
           this.isLoading = false;
         });
+      }).catch(() => {
+        // The response interceptor already raised the error toast; this keeps
+        // the page from sitting behind a spinner that never resolves when the
+        // account lacks `settings:get` or the request otherwise fails.
+        this.loadError = true;
+        this.isLoading = false;
       });
     },
 

@@ -37,7 +37,9 @@
             <td class="has-text-right">
               <b-button size="is-small" type="is-text" icon-left="pencil-outline" :title="$t('apiKeys.edit')" :disabled="!isActive(key)" @click="openEdit(key)" />
               <b-button size="is-small" type="is-text" icon-left="refresh" :title="$t('apiKeys.rotate')" :disabled="!isActive(key)" @click="openRotate(key)" />
-              <b-button size="is-small" type="is-text" icon-left="trash-can-outline" :title="$t('apiKeys.revoke')" :disabled="!isActive(key)" @click="revoke(key)" />
+              <b-button size="is-small" type="is-text" icon-left="trash-can-outline" :title="$t('apiKeys.revoke')"
+                :loading="revokingID === key.id" :disabled="!isActive(key) || revokingID === key.id"
+                @click="revoke(key)" />
             </td>
           </tr>
         </tbody>
@@ -68,7 +70,7 @@
         </section>
         <footer class="modal-card-foot">
           <b-button type="button" @click="showEditor = false">{{ $t('globals.buttons.cancel') }}</b-button>
-          <b-button type="is-primary" native-type="submit" :loading="saving">{{ $t('globals.buttons.save') }}</b-button>
+          <b-button type="is-primary" native-type="submit" :loading="saving" :disabled="saving">{{ $t('globals.buttons.save') }}</b-button>
         </footer>
       </form>
     </b-modal>
@@ -85,7 +87,7 @@
         </section>
         <footer class="modal-card-foot">
           <b-button type="button" @click="showRotation = false">{{ $t('globals.buttons.cancel') }}</b-button>
-          <b-button type="is-primary" native-type="submit" :loading="rotating">{{ $t('apiKeys.rotate') }}</b-button>
+          <b-button type="is-primary" native-type="submit" :loading="rotating" :disabled="rotating">{{ $t('apiKeys.rotate') }}</b-button>
         </footer>
       </form>
     </b-modal>
@@ -136,6 +138,7 @@ export default Vue.extend({
       showEditor: false,
       showRotation: false,
       rotatingKeyID: 0,
+      revokingID: 0,
       rotationExpiry: '',
       showToken: false,
       createdToken: '',
@@ -221,7 +224,19 @@ export default Vue.extend({
         return this.load();
       }).finally(() => { this.rotating = false; });
     },
-    revoke(key) { this.$utils.confirm(null, () => this.$api.deletePersonalAPIKey(key.id).then(() => this.load())); },
+    revoke(key) {
+      this.$utils.confirm(
+        this.$tc('globals.messages.confirmDelete', 1, { num: 1, name: key.name || this.$t('apiKeys.secretTitle') }),
+        () => {
+          this.revokingID = key.id;
+          this.$api.deletePersonalAPIKey(key.id).then(() => this.load()).finally(() => {
+            this.revokingID = 0;
+          });
+        },
+        null,
+        { type: 'is-danger' },
+      );
+    },
     closeSecret() { this.showToken = false; this.createdToken = ''; },
     workspaceName(key) {
       const id = Number(key.workspaceOrganizationId || key.workspace_organization_id) || 0;

@@ -6,7 +6,7 @@
     <b-menu-item :to="{ name: 'userProfile' }" tag="router-link" :active="activeItem.userProfile"
       data-cy="user-profile" icon="account-outline" :label="$t('users.profile')" />
 
-    <b-menu-item :expanded="activeGroup.customer_lists" :active="activeGroup.customer_lists" data-cy="customerLists"
+    <b-menu-item :expanded="activeGroup.customerLists" :active="activeGroup.customerLists" data-cy="customerLists"
       @update:active="(state) => toggleGroup('customerLists', state)" icon="format-list-bulleted-square"
       :label="$t('globals.terms.customer_lists')">
       <b-menu-item :to="{ name: 'customerLists' }" tag="router-link" :active="activeItem.customer_lists" data-cy="all-customer_lists"

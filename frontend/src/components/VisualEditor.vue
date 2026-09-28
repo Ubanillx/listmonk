@@ -1,7 +1,7 @@
 <template>
   <div class="visual-editor-wrapper">
     <iframe ref="visualEditor" id="visual-editor" class="visual-editor email-builder-container"
-      title="Visual email editor" />
+      :title="$t('campaigns.visualEditorTitle')" />
 
     <!-- image picker -->
     <b-modal scroll="keep" :aria-modal="true" :active.sync="isMediaVisible" :width="900">
@@ -80,8 +80,8 @@ export default {
       // On init, the `data: source` above sets the content in the editor, but doesn't trigger
       // onChange(), which is required to set the source+HTML state in the parent for preview to work.
       // Couldn't figure out if there was an on load/on init event etc. in email-builder, so brute force it
-      // with a timer.
-      let n = 10;
+      // with a timer. Retry for ~2s so a slow editor init doesn't silently drop an imported template.
+      let attempts = 0;
       const timer = window.setInterval(() => {
         const container = iframe.contentWindow.document.getElementById('visual-editor-container');
         if (container && container.hasChildNodes()) {
@@ -90,9 +90,12 @@ export default {
           return;
         }
 
-        n += 1;
-        if (n > 10) {
+        attempts += 1;
+        if (attempts > 20) {
           window.clearInterval(timer);
+          /* eslint-disable-next-line no-console */
+          console.warn('Visual editor container was not ready in time; the imported template was not rendered.');
+          this.$emit('load-failed');
         }
       }, 100);
     },

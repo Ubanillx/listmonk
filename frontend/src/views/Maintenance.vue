@@ -15,7 +15,7 @@
       </h4><br />
       <div class="columns">
         <div class="column is-4">
-          <b-field label="Data" :message="$t('maintenance.orphanHelp')">
+          <b-field :label="$t('maintenance.dataLabel')" :message="$t('maintenance.orphanHelp')">
             <b-select v-model="customerType" expanded>
               <option value="orphan">
                 {{ $t('dashboard.orphanSubs') }}
@@ -30,7 +30,8 @@
         <div class="column">
           <br />
           <b-field>
-            <b-button class="is-primary" :loading="loading.maintenance" @click="deleteCustomers" expanded>
+            <b-button class="is-primary" :loading="pendingAction === 'orphans'" :disabled="pendingAction !== ''"
+              @click="deleteCustomers" expanded>
               {{ $t('globals.buttons.delete') }}
             </b-button>
           </b-field>
@@ -44,7 +45,7 @@
       </h4><br />
       <div class="columns">
         <div class="column is-4">
-          <b-field label="Data">
+          <b-field :label="$t('maintenance.dataLabel')">
             <b-select v-model="subscriptionType" expanded>
               <option value="optin">
                 {{ $t('maintenance.maintenance.unconfirmedOptins') }}
@@ -62,7 +63,8 @@
         <div class="column">
           <br />
           <b-field>
-            <b-button class="is-primary" :loading="loading.maintenance" @click="deleteSubscriptions" expanded>
+            <b-button class="is-primary" :loading="pendingAction === 'unconfirmed'" :disabled="pendingAction !== ''"
+              @click="deleteSubscriptions" expanded>
               {{ $t('globals.buttons.delete') }}
             </b-button>
           </b-field>
@@ -76,7 +78,7 @@
       </h4><br />
       <div class="columns">
         <div class="column is-4">
-          <b-field label="Data">
+          <b-field :label="$t('maintenance.dataLabel')">
             <b-select v-model="analyticsType" expanded>
               <option selected value="all">
                 {{ $t('globals.terms.all') }}
@@ -100,7 +102,8 @@
         <div class="column">
           <br />
           <b-field>
-            <b-button expanded class="is-primary" :loading="loading.maintenance" @click="deleteAnalytics">
+            <b-button expanded class="is-primary" :loading="pendingAction === 'analytics'"
+              :disabled="pendingAction !== ''" @click="deleteAnalytics">
               {{ $t('globals.buttons.delete') }}
             </b-button>
           </b-field>
@@ -132,7 +135,8 @@
         <div class="column is-3" />
         <div class="column is-3">
           <br />
-          <b-button type="is-primary" native-type="submit" :loading="loading.settings" expanded>
+          <b-button type="is-primary" native-type="submit" :loading="loading.settings" :disabled="loading.settings"
+            expanded>
             {{ $t('globals.buttons.save') }}
           </b-button>
         </div>
@@ -155,6 +159,7 @@ export default Vue.extend({
   data() {
     return {
       isLoading: false,
+      pendingAction: '',
       customerType: 'orphan',
       analyticsType: 'all',
       subscriptionType: 'optin',
@@ -177,42 +182,78 @@ export default Vue.extend({
     },
 
     deleteCustomers() {
+      // Name the exact dataset and, for orphaned customers, what "orphan" means.
+      const target = this.customerType === 'orphan'
+        ? `${this.$t('dashboard.orphanSubs')} (${this.$t('maintenance.orphanHelp')})`
+        : this.$t('customers.status.blocklisted');
+      this.pendingAction = 'orphans';
+
       this.$utils.confirm(
-        null,
+        `${this.$tc('globals.terms.customers', 2)}: ${target}. ${this.$t('globals.messages.confirm')}`,
         () => {
           this.$api.deleteGCCustomers(this.customerType).then((data) => {
             this.$utils.toast(this.$t(
               'globals.messages.deletedCount',
               { name: this.$tc('globals.terms.customers', 2), num: data.count },
             ));
+          }).finally(() => {
+            this.pendingAction = '';
           });
         },
+        () => {
+          this.pendingAction = '';
+        },
+        { type: 'is-danger' },
       );
     },
 
     deleteSubscriptions() {
+      // Spell out the retention window that is about to be purged.
+      const days = dayjs().startOf('day').diff(dayjs(this.subscriptionDate).startOf('day'), 'day');
+      this.pendingAction = 'unconfirmed';
+
       this.$utils.confirm(
-        null,
+        this.$t('maintenance.unconfirmedSubs', { name: days }),
         () => {
           this.$api.deleteGCSubscriptions(this.subscriptionDate).then((data) => {
             this.$utils.toast(this.$t(
               'globals.messages.deletedCount',
               { name: this.$tc('globals.terms.subscriptions', 2), num: data.count },
             ));
+          }).finally(() => {
+            this.pendingAction = '';
           });
         },
+        () => {
+          this.pendingAction = '';
+        },
+        { type: 'is-danger' },
       );
     },
 
     deleteAnalytics() {
+      const types = {
+        all: this.$t('globals.terms.all'),
+        views: this.$t('dashboard.campaignViews'),
+        clicks: this.$t('dashboard.linkClicks'),
+      };
+      this.pendingAction = 'analytics';
+
       this.$utils.confirm(
-        null,
+        `${this.$t('globals.terms.analytics')} (${types[this.analyticsType]}): ${this.$t('maintenance.olderThan')} ${this.$utils.niceDate(this.analyticsDate)}. ${this.$t('globals.messages.confirm')}`,
         () => {
           this.$api.deleteGCCampaignAnalytics(this.analyticsType, this.analyticsDate)
             .then(() => {
               this.$utils.toast(this.$t('globals.messages.done'));
+            })
+            .finally(() => {
+              this.pendingAction = '';
             });
         },
+        () => {
+          this.pendingAction = '';
+        },
+        { type: 'is-danger' },
       );
     },
 

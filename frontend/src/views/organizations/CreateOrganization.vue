@@ -20,7 +20,8 @@
 
     <section>
       <h2 class="title is-5">{{ $t('organizations.myRequests') }}</h2>
-      <b-table :data="requests" :mobile-cards="false">
+      <div class="table-scroll">
+        <b-table :data="requests">
         <b-table-column v-slot="props" field="requestedName" :label="$t('organizations.columnOrg')">
           <strong>{{ props.row.requestedName }}</strong>
           <p v-if="props.row.description" class="has-text-grey is-size-7">{{ props.row.description }}</p>
@@ -44,8 +45,9 @@
             {{ $t('organizations.resubmit') }}
           </b-button>
         </b-table-column>
-        <template #empty><span class="has-text-grey">{{ $t('organizations.noCreateRequests') }}</span></template>
-      </b-table>
+        <template #empty v-if="!isLoading"><span class="has-text-grey">{{ $t('organizations.noCreateRequests') }}</span></template>
+        </b-table>
+      </div>
     </section>
   </section>
 </template>
@@ -56,6 +58,7 @@ import Vue from 'vue';
 export default Vue.extend({
   data() {
     return {
+      isLoading: true,
       requests: [],
       requestForm: { name: '', description: '' },
     };
@@ -63,7 +66,12 @@ export default Vue.extend({
 
   methods: {
     async refresh() {
-      this.requests = await this.$api.getMyOrganizationRequests();
+      this.isLoading = true;
+      try {
+        this.requests = await this.$api.getMyOrganizationRequests();
+      } finally {
+        this.isLoading = false;
+      }
     },
 
     async submitOrganizationRequest() {
@@ -128,3 +136,9 @@ export default Vue.extend({
   },
 });
 </script>
+
+<style scoped>
+.table-scroll {
+  overflow-x: auto;
+}
+</style>

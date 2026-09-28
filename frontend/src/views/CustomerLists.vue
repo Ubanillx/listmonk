@@ -32,11 +32,13 @@
       <template #top-left>
         <div class="columns">
           <div class="column is-6">
-            <form @submit.prevent="getLists">
+            <form @submit.prevent="onSearch">
               <b-field>
-                <b-input v-model="queryParams.query" name="query" expanded icon="magnify" ref="query" data-cy="query" />
+                <b-input v-model="queryParams.query" name="query" expanded icon="magnify" ref="query" data-cy="query"
+                  :aria-label="$t('globals.buttons.search')" />
                 <p class="controls">
-                  <b-button native-type="submit" type="is-primary" icon-left="magnify" data-cy="btn-query" />
+                  <b-button native-type="submit" type="is-primary" icon-left="magnify" data-cy="btn-query"
+                    :aria-label="$t('globals.buttons.search')" />
                 </p>
               </b-field>
             </form>
@@ -289,6 +291,13 @@ export default Vue.extend({
       return out;
     },
 
+    // A new search starts a new result set; keeping the old page number would
+    // request a page that may not exist and render an empty table.
+    onSearch() {
+      this.queryParams.page = 1;
+      this.getLists();
+    },
+
     getLists() {
       this.$api.queryLists({
         page: this.queryParams.page,
@@ -344,13 +353,18 @@ export default Vue.extend({
           params.all = this.bulk.all;
         }
 
+        const numSelected = this.numSelectedLists;
         this.$api.deleteLists(params)
           .then(() => {
+            // Reset the selection: Buefy only syncs its internal `checkedRows`
+            // when the prop changes, so reloading left the stale count in the
+            // toolbar and allowed a second delete of ids that no longer exist.
+            this.bulk = { checked: [], all: false };
             this.getLists();
             this.$utils.toast(this.$tc(
               'globals.messages.deletedCount',
-              this.numSelectedLists,
-              { num: this.numSelectedLists, name },
+              numSelected,
+              { num: numSelected, name },
             ));
           });
       };
@@ -359,7 +373,7 @@ export default Vue.extend({
         'globals.messages.confirmDelete',
         this.numSelectedLists,
         { num: this.numSelectedLists, name: name.toLowerCase() },
-      ), fn);
+      ), fn, null, { type: 'is-danger' });
     },
 
     createOptinCampaign(customerList) {
@@ -443,11 +457,11 @@ export default Vue.extend({
     // Organization managers can inspect member customer_lists but must never bulk
     // select them. Cross-page selection is therefore platform-admin only.
     canSelectAllLists() {
-      return this.profile.userRole && Number(this.profile.userRole.id) === 1;
+      return this.$isPlatformAdmin();
     },
 
     isPlatformAdmin() {
-      return Number(this.profile && this.profile.userRole && this.profile.userRole.id) === 1;
+      return this.$isPlatformAdmin();
     },
 
     // Organization admins split the primary pool inside their own

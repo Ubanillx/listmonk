@@ -93,9 +93,10 @@
         </section>
         <footer class="modal-card-foot has-text-right">
           <b-button @click="$parent.close()">
-            {{ $t('globals.buttons.close') }}
+            {{ $t('globals.buttons.cancel') }}
           </b-button>
-          <b-button v-if="canSave" native-type="submit" type="is-primary" :loading="loading.templates">
+          <b-button v-if="canSave" native-type="submit" type="is-primary" :loading="loading.templates"
+            :disabled="loading.templates">
             {{ $t('globals.buttons.save') }}
           </b-button>
         </footer>
@@ -226,7 +227,7 @@ export default Vue.extend({
       this.$api.updateTemplate(data).then((d) => {
         this.$emit('finished');
         this.$parent.close();
-        this.$utils.toast(`'${d.name}' updated`);
+        this.$utils.toast(this.$t('globals.messages.updated', { name: d.name }));
       });
     },
 

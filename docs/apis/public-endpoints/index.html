@@ -2252,10 +2252,12 @@ envelope.</p>
   unsubscribe page linked as <code>{{ UnsubscribeURL }}</code> in campaigns.</li>
 <li><code>POST /subscription/export/:subUUID</code> and <code>POST /subscription/wipe/:subUUID</code> —
   customer self-service data export and erasure, gated by the privacy settings.</li>
-<li><code>GET /link/:linkUUID/:campUUID/:subUUID</code> — link click tracking; records the
-  click (unless tracking is disabled globally) and answers with a redirect to
-  the underlying URL.</li>
-<li><code>GET /campaign/:campUUID/:subUUID/px.png</code> — the open-tracking pixel; it always
+<li><code>GET /link/:linkUUID/:campUUID/:subUUID</code> — link click tracking; <code>subUUID</code> may
+  identify a regular customer or a public-pool recipient in that campaign. It
+  records the click (unless tracking is disabled globally) and redirects to the
+  underlying URL. An unrelated link or recipient is rejected.</li>
+<li><code>GET /campaign/:campUUID/:subUUID/px.png</code> — the open-tracking pixel; <code>subUUID</code>
+  may identify either recipient type in the campaign. It always
   returns the PNG, whether or not the view is recorded.</li>
 <li><code>GET /archive</code>, <code>GET /archive/:id</code>, <code>GET /archive/latest</code> and
   <code>GET /archive.xml</code> — the public archive pages and RSS feed, all registered

@@ -3830,7 +3830,7 @@ This is a test e-mail campaign. Your second name is Doe and you are from Bengalu
 </code></pre></div>
 <hr />
 <h4 id="get-apicampaignscampaign_idreportrecipients">GET /api/campaigns/{campaign_id}/report/recipients<a class="headerlink" href="#get-apicampaignscampaign_idreportrecipients" title="Permanent link">&para;</a></h4>
-<p>Retrieve recipient-level analytics for a campaign. This endpoint requires individual tracking to be enabled.</p>
+<p>Retrieve recipient-level analytics for a campaign. This endpoint requires individual tracking to be enabled. Public-pool recipient rows include <code>pool_contact_id</code> and use <code>customer_id: 0</code>. They require <code>pools:get</code> in addition to the existing recipient and customer read permissions. Non-platform administrators only see public-pool rows assigned to their organization; their e-mail addresses are masked and their <code>uuid</code> field is empty.</p>
 <h5 id="parameters_6">Parameters<a class="headerlink" href="#parameters_6" title="Permanent link">&para;</a></h5>
 <table>
 <thead>

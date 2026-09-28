@@ -373,96 +373,113 @@ func (c *Core) CreateCampaignInWorkspace(access models.WorkspaceAccess, o models
 		return models.Campaign{}, echo.NewHTTPError(http.StatusInternalServerError,
 			c.i18n.Ts("globals.messages.errorUUID", "error", err.Error()))
 	}
-	o.NameFallback = models.NameFallback{}
 	var newID int
 	err = c.withWorkspaceCreation(access, func(tx *sqlx.Tx) error {
-		// A visual template is imported into the campaign body and is not kept
-		// as campaigns.template_id. Snapshot its media before the INSERT so a
-		// shared template's private author images become independent, owned
-		// binaries in the new campaign workspace. The helper also rewrites the
-		// body/CID URLs and returns the copied media IDs.
-		if o.ContentType == models.CampaignContentTypeVisual && o.TemplateID.Valid && o.TemplateID.Int > 0 {
-			snapshot, err := c.snapshotVisualCampaignMedia(tx, access, scope, int(o.TemplateID.Int), mediaIDs,
-				o.Body, o.BodySource, o.AltBody)
-			if err != nil {
-				return err
-			}
-			o.NameFallback = snapshot.NameFallback
-			o.Body = snapshot.Body
-			o.BodySource = snapshot.BodySource
-			o.AltBody = snapshot.AltBody
-			mediaIDs = snapshot.MediaIDs
-			// The prepared create query treats a visual template ID as an
-			// import source and would otherwise re-attach the original
-			// template_media rows. The source has already been snapshotted, so
-			// clear it before executing the normal INSERT.
-			o.TemplateID = null.Int{}
-		}
-		// Keep related-resource locks in the same order used by campaign
-		// updates (templates, media, customer_lists). This prevents a campaign create
-		// racing a template update from acquiring media and template locks in
-		// opposite orders.
-		if o.TemplateID.Valid {
-			if err := c.lockWorkspaceUsableResources(tx, access, resourceTemplates, []int{int(o.TemplateID.Int)}); err != nil {
-				return err
-			}
-		}
-		if o.ArchiveTemplateID.Valid {
-			if err := c.lockWorkspaceUsableResources(tx, access, resourceTemplates, []int{int(o.ArchiveTemplateID.Int)}); err != nil {
-				return err
-			}
-		}
-		if err := c.lockWorkspaceUsableResources(tx, access, resourceMedia, mediaIDs); err != nil {
+		id, err := c.createCampaignTx(tx, access, o, customerListIDs, mediaIDs, scope, uuidValue)
+		if err != nil {
 			return err
 		}
-		if err := c.lockWorkspaceMutationResources(tx, access, resourceLists, customerListIDs); err != nil {
-			return err
-		}
-		if err := tx.Stmtx(c.q.CreateCampaign).Get(&newID,
-			uuidValue,
-			o.Type,
-			o.Name,
-			o.Subject,
-			o.FromEmail,
-			o.Body,
-			o.AltBody,
-			o.ContentType,
-			o.DailySendLimit,
-			o.DailyResumeTime,
-			o.SendAt,
-			o.Headers,
-			o.Attribs,
-			pq.StringArray(normalizeTags(o.Tags)),
-			o.Messenger,
-			o.TemplateID,
-			pq.Array(customerListIDs),
-			o.Archive,
-			o.ArchiveSlug,
-			o.ArchiveTemplateID,
-			o.ArchiveMeta,
-			pq.Array(mediaIDs),
-			o.BodySource,
-			o.AutoTrackLinks,
-			scope.OrganizationID,
-			scope.OwnerUserID,
-			scope.OriginalOwnerUserID,
-			scope.Visibility,
-			o.PoolScope); err != nil {
-			if err == sql.ErrNoRows {
-				return echo.NewHTTPError(http.StatusBadRequest, c.i18n.T("campaigns.noSubs"))
-			}
-			return workspaceQueryError("creating campaign", err)
-		}
-		if o.ContentType == models.CampaignContentTypeVisual {
-			_, err := tx.Exec("UPDATE campaigns SET name_fallback = $2::jsonb WHERE id = $1", newID, o.NameFallback.ValueForDB())
-			return err
-		}
+		newID = id
 		return nil
 	})
 	if err != nil {
 		return models.Campaign{}, err
 	}
 	return c.GetWorkspaceCampaign(access, newID)
+}
+
+// createCampaignTx is the campaign-insert body shared by
+// CreateCampaignInWorkspace and CreateCampaignWithAudienceInWorkspace: the
+// visual-template media snapshot, the related-resource locks and the campaign
+// INSERT. It runs entirely on the caller's transaction, so a create's
+// reply-mailbox and pool-audience steps can join it and commit or roll back with
+// the campaign row itself.
+func (c *Core) createCampaignTx(tx *sqlx.Tx, access models.WorkspaceAccess, o models.Campaign, customerListIDs, mediaIDs []int, scope models.ResourceScope, uuidValue uuid.UUID) (int, error) {
+	o.NameFallback = models.NameFallback{}
+	var newID int
+	// A visual template is imported into the campaign body and is not kept
+	// as campaigns.template_id. Snapshot its media before the INSERT so a
+	// shared template's private author images become independent, owned
+	// binaries in the new campaign workspace. The helper also rewrites the
+	// body/CID URLs and returns the copied media IDs.
+	if o.ContentType == models.CampaignContentTypeVisual && o.TemplateID.Valid && o.TemplateID.Int > 0 {
+		snapshot, err := c.snapshotVisualCampaignMedia(tx, access, scope, int(o.TemplateID.Int), mediaIDs,
+			o.Body, o.BodySource, o.AltBody)
+		if err != nil {
+			return 0, err
+		}
+		o.NameFallback = snapshot.NameFallback
+		o.Body = snapshot.Body
+		o.BodySource = snapshot.BodySource
+		o.AltBody = snapshot.AltBody
+		mediaIDs = snapshot.MediaIDs
+		// The prepared create query treats a visual template ID as an
+		// import source and would otherwise re-attach the original
+		// template_media rows. The source has already been snapshotted, so
+		// clear it before executing the normal INSERT.
+		o.TemplateID = null.Int{}
+	}
+	// Keep related-resource locks in the same order used by campaign
+	// updates (templates, media, customer_lists). This prevents a campaign create
+	// racing a template update from acquiring media and template locks in
+	// opposite orders.
+	if o.TemplateID.Valid {
+		if err := c.lockWorkspaceUsableResources(tx, access, resourceTemplates, []int{int(o.TemplateID.Int)}); err != nil {
+			return 0, err
+		}
+	}
+	if o.ArchiveTemplateID.Valid {
+		if err := c.lockWorkspaceUsableResources(tx, access, resourceTemplates, []int{int(o.ArchiveTemplateID.Int)}); err != nil {
+			return 0, err
+		}
+	}
+	if err := c.lockWorkspaceUsableResources(tx, access, resourceMedia, mediaIDs); err != nil {
+		return 0, err
+	}
+	if err := c.lockWorkspaceMutationResources(tx, access, resourceLists, customerListIDs); err != nil {
+		return 0, err
+	}
+	if err := tx.Stmtx(c.q.CreateCampaign).Get(&newID,
+		uuidValue,
+		o.Type,
+		o.Name,
+		o.Subject,
+		o.FromEmail,
+		o.Body,
+		o.AltBody,
+		o.ContentType,
+		o.DailySendLimit,
+		o.DailyResumeTime,
+		o.SendAt,
+		o.Headers,
+		o.Attribs,
+		pq.StringArray(normalizeTags(o.Tags)),
+		o.Messenger,
+		o.TemplateID,
+		pq.Array(customerListIDs),
+		o.Archive,
+		o.ArchiveSlug,
+		o.ArchiveTemplateID,
+		o.ArchiveMeta,
+		pq.Array(mediaIDs),
+		o.BodySource,
+		o.AutoTrackLinks,
+		scope.OrganizationID,
+		scope.OwnerUserID,
+		scope.OriginalOwnerUserID,
+		scope.Visibility,
+		o.PoolScope); err != nil {
+		if err == sql.ErrNoRows {
+			return 0, echo.NewHTTPError(http.StatusBadRequest, c.i18n.T("campaigns.noSubs"))
+		}
+		return 0, workspaceQueryError("creating campaign", err)
+	}
+	if o.ContentType == models.CampaignContentTypeVisual {
+		if _, err := tx.Exec("UPDATE campaigns SET name_fallback = $2::jsonb WHERE id = $1", newID, o.NameFallback.ValueForDB()); err != nil {
+			return 0, err
+		}
+	}
+	return newID, nil
 }
 
 // UpdateCampaign updates a campaign.

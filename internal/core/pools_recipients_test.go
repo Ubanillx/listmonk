@@ -213,6 +213,16 @@ type poolRecipientsTestEnv struct {
 
 func newPoolRecipientsTestEnv(t *testing.T) *poolRecipientsTestEnv {
 	t.Helper()
+	return newPoolRecipientsTestEnvWithDDL(t, poolRecipientsTestDDL)
+}
+
+// newPoolRecipientsTestEnvWithDDL is the shared bootstrap behind every
+// throwaway-schema harness in this package. Callers that exercise more of the
+// production write paths (see campaign_audience_tx_db_test.go) append the
+// columns and companion tables those statements touch to the base DDL instead of
+// inventing a second database bootstrap.
+func newPoolRecipientsTestEnvWithDDL(t *testing.T, ddl string) *poolRecipientsTestEnv {
+	t.Helper()
 	dsn := os.Getenv(poolRecipientsTestDSNEnv)
 	if dsn == "" {
 		t.Skipf("%s is not set", poolRecipientsTestDSNEnv)
@@ -240,7 +250,7 @@ func newPoolRecipientsTestEnv(t *testing.T) *poolRecipientsTestEnv {
 	if _, err := db.Exec(`SET search_path TO ` + env.schema); err != nil {
 		t.Fatalf("set search path: %v", err)
 	}
-	if _, err := db.Exec(poolRecipientsTestDDL); err != nil {
+	if _, err := db.Exec(ddl); err != nil {
 		t.Fatalf("install test schema: %v", err)
 	}
 	if _, err := db.Exec(`INSERT INTO users(id) VALUES(1)`); err != nil {

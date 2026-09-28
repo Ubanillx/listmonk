@@ -51,19 +51,3 @@ func (a *App) validateCampaignReplyMailbox(access models.WorkspaceAccess, campai
 	}
 	return nil
 }
-
-func (a *App) persistCampaignReplyMailbox(campaignID, userID int, mailboxID null.Int) error {
-	// This helper intentionally accepts the null.Int shape without exposing it
-	// in the request layer. A NULL value clears an existing selection.
-	if campaignID < 1 || userID < 1 {
-		return nil
-	}
-	var id any
-	if mailboxID.Valid && mailboxID.Int > 0 {
-		id = mailboxID.Int
-	}
-	if _, err := a.db.Exec(`UPDATE campaigns SET reply_mailbox_id = $1, updated_at = NOW() WHERE id = $2 AND owner_user_id = $3`, id, campaignID, userID); err != nil {
-		return err
-	}
-	return nil
-}

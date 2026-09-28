@@ -18,125 +18,135 @@ import (
 // source of truth for campaign/customer_list/media relationship behavior.
 func (c *Core) UpdateCampaignInWorkspace(access models.WorkspaceAccess, id int, o models.Campaign, customerListIDs, mediaIDs []int, visibility string) (models.Campaign, error) {
 	err := c.withWorkspaceResourceMutation(access, resourceCampaigns, []int{id}, func(tx *sqlx.Tx) error {
-		// A campaign with a recipient snapshot has started (or has been
-		// processed previously) and its audience must remain immutable.  Perform
-		// this check while the campaign row is locked by
-		// withWorkspaceResourceMutation; the handler's read-time check alone
-		// would allow a concurrent scheduler/member update to change customer_lists
-		// between authorization and the write.
-		var hasRecipients bool
-		if err := tx.Get(&hasRecipients,
-			`SELECT EXISTS(SELECT 1 FROM campaign_recipients WHERE campaign_id = $1)`, id); err != nil {
-			return workspaceQueryError("checking campaign recipients", err)
-		}
-		if hasRecipients {
-			var currentCustomerListIDs []int
-			if err := tx.Select(&currentCustomerListIDs, `
-				SELECT COALESCE(customer_list_id, 0) AS id
-				FROM campaign_customer_lists
-				WHERE campaign_id = $1
-				ORDER BY customer_list_id NULLS FIRST`, id); err != nil {
-				return workspaceQueryError("fetching campaign customer_lists", err)
-			}
-			if !sameIntIDs(currentCustomerListIDs, customerListIDs) {
-				return echo.NewHTTPError(http.StatusBadRequest,
-					c.i18n.T("campaigns.cantUpdateListsAfterStart"))
-			}
-		}
-		if visibility != "" {
-			if err := validateResourceVisibility(resourceCampaigns, visibility); err != nil {
-				return err
-			}
-		}
-		// Visual templates are imported into the campaign body rather than
-		// retained as a template dependency. When the editor sends the source
-		// visual template ID, snapshot all selected template media into the
-		// campaign owner's workspace and rewrite body/CID references while the
-		// campaign row is locked. This is what lets a member use a shared
-		// template containing the author's private images without leaving a
-		// cross-owner media reference behind.
-		if o.ContentType == models.CampaignContentTypeVisual && o.TemplateID.Valid && o.TemplateID.Int > 0 {
-			var targetScope models.ResourceScope
-			if err := tx.Get(&targetScope, `
-				SELECT organization_id, owner_user_id, original_owner_user_id,
-					visibility, transfer_pending_at
-				FROM campaigns WHERE id = $1`, id); err != nil {
-				return workspaceQueryError("reading campaign workspace", err)
-			}
-			snapshot, err := c.snapshotVisualCampaignMedia(tx, access, targetScope,
-				int(o.TemplateID.Int), mediaIDs, o.Body, o.BodySource, o.AltBody)
-			if err != nil {
-				return err
-			}
-			if _, err := tx.Exec("UPDATE campaigns SET name_fallback = $2::jsonb WHERE id = $1", id, snapshot.NameFallback.ValueForDB()); err != nil {
-				return err
-			}
-			o.Body = snapshot.Body
-			o.BodySource = snapshot.BodySource
-			o.AltBody = snapshot.AltBody
-			mediaIDs = snapshot.MediaIDs
-			// update-campaign already clears template_id for visual content;
-			// clear the in-memory value as well so no later related-resource
-			// check can accidentally treat the imported source as a saved link.
-			o.TemplateID = null.Int{}
-		}
-		// Related resources are locked in a deterministic order. Campaign
-		// updates already hold the campaign row via the outer helper; taking
-		// template before media avoids the inverse order used by template
-		// updates and eliminates a common deadlock cycle.
-		if o.TemplateID.Valid {
-			if err := c.lockWorkspaceUsableResources(tx, access, resourceTemplates, []int{int(o.TemplateID.Int)}); err != nil {
-				return err
-			}
-		}
-		if o.ArchiveTemplateID.Valid {
-			if err := c.lockWorkspaceUsableResources(tx, access, resourceTemplates, []int{int(o.ArchiveTemplateID.Int)}); err != nil {
-				return err
-			}
-		}
-		if err := c.lockWorkspaceUsableResources(tx, access, resourceMedia, mediaIDs); err != nil {
-			return err
-		}
-		if err := c.lockWorkspaceMutationResources(tx, access, resourceLists, customerListIDs); err != nil {
-			return err
-		}
-		_, err := tx.Stmtx(c.q.UpdateCampaign).Exec(id,
-			o.Name,
-			o.Subject,
-			o.FromEmail,
-			o.Body,
-			o.AltBody,
-			o.ContentType,
-			o.DailySendLimit,
-			o.DailyResumeTime,
-			o.SendAt,
-			o.Headers,
-			o.Attribs,
-			pq.StringArray(normalizeTags(o.Tags)),
-			o.Messenger,
-			o.TemplateID,
-			pq.Array(customerListIDs),
-			o.Archive,
-			o.ArchiveSlug,
-			o.ArchiveTemplateID,
-			o.ArchiveMeta,
-			pq.Array(mediaIDs),
-			o.BodySource,
-			o.AutoTrackLinks)
-		if err != nil {
-			return workspaceQueryError("updating campaign", err)
-		}
-		if visibility != "" {
-			if _, err := tx.Exec("UPDATE campaigns SET visibility = $2, updated_at = NOW() WHERE id = $1", id, visibility); err != nil {
-				return workspaceQueryError("updating campaign visibility", err)
-			}
-		}
-		return nil
+		return c.updateCampaignTx(tx, access, id, o, customerListIDs, mediaIDs, visibility)
 	})
 	if err != nil {
 		return models.Campaign{}, err
 	}
 	return c.GetWorkspaceCampaign(access, id)
+}
+
+// updateCampaignTx is the campaign-update body shared by
+// UpdateCampaignInWorkspace and UpdateCampaignWithAudienceInWorkspace: the
+// recipient-immutability check, the visual-media snapshot, the related-resource
+// locks, the campaign row update and the visibility change. It runs entirely on
+// the caller's transaction, so a reply-mailbox or pool-audience step can join it
+// and commit or roll back with it.
+func (c *Core) updateCampaignTx(tx *sqlx.Tx, access models.WorkspaceAccess, id int, o models.Campaign, customerListIDs, mediaIDs []int, visibility string) error {
+	// A campaign with a recipient snapshot has started (or has been
+	// processed previously) and its audience must remain immutable.  Perform
+	// this check while the campaign row is locked by
+	// withWorkspaceResourceMutation; the handler's read-time check alone
+	// would allow a concurrent scheduler/member update to change customer_lists
+	// between authorization and the write.
+	var hasRecipients bool
+	if err := tx.Get(&hasRecipients,
+		`SELECT EXISTS(SELECT 1 FROM campaign_recipients WHERE campaign_id = $1)`, id); err != nil {
+		return workspaceQueryError("checking campaign recipients", err)
+	}
+	if hasRecipients {
+		var currentCustomerListIDs []int
+		if err := tx.Select(&currentCustomerListIDs, `
+				SELECT COALESCE(customer_list_id, 0) AS id
+				FROM campaign_customer_lists
+				WHERE campaign_id = $1
+				ORDER BY customer_list_id NULLS FIRST`, id); err != nil {
+			return workspaceQueryError("fetching campaign customer_lists", err)
+		}
+		if !sameIntIDs(currentCustomerListIDs, customerListIDs) {
+			return echo.NewHTTPError(http.StatusBadRequest,
+				c.i18n.T("campaigns.cantUpdateListsAfterStart"))
+		}
+	}
+	if visibility != "" {
+		if err := validateResourceVisibility(resourceCampaigns, visibility); err != nil {
+			return err
+		}
+	}
+	// Visual templates are imported into the campaign body rather than
+	// retained as a template dependency. When the editor sends the source
+	// visual template ID, snapshot all selected template media into the
+	// campaign owner's workspace and rewrite body/CID references while the
+	// campaign row is locked. This is what lets a member use a shared
+	// template containing the author's private images without leaving a
+	// cross-owner media reference behind.
+	if o.ContentType == models.CampaignContentTypeVisual && o.TemplateID.Valid && o.TemplateID.Int > 0 {
+		var targetScope models.ResourceScope
+		if err := tx.Get(&targetScope, `
+				SELECT organization_id, owner_user_id, original_owner_user_id,
+					visibility, transfer_pending_at
+				FROM campaigns WHERE id = $1`, id); err != nil {
+			return workspaceQueryError("reading campaign workspace", err)
+		}
+		snapshot, err := c.snapshotVisualCampaignMedia(tx, access, targetScope,
+			int(o.TemplateID.Int), mediaIDs, o.Body, o.BodySource, o.AltBody)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec("UPDATE campaigns SET name_fallback = $2::jsonb WHERE id = $1", id, snapshot.NameFallback.ValueForDB()); err != nil {
+			return err
+		}
+		o.Body = snapshot.Body
+		o.BodySource = snapshot.BodySource
+		o.AltBody = snapshot.AltBody
+		mediaIDs = snapshot.MediaIDs
+		// update-campaign already clears template_id for visual content;
+		// clear the in-memory value as well so no later related-resource
+		// check can accidentally treat the imported source as a saved link.
+		o.TemplateID = null.Int{}
+	}
+	// Related resources are locked in a deterministic order. Campaign
+	// updates already hold the campaign row via the outer helper; taking
+	// template before media avoids the inverse order used by template
+	// updates and eliminates a common deadlock cycle.
+	if o.TemplateID.Valid {
+		if err := c.lockWorkspaceUsableResources(tx, access, resourceTemplates, []int{int(o.TemplateID.Int)}); err != nil {
+			return err
+		}
+	}
+	if o.ArchiveTemplateID.Valid {
+		if err := c.lockWorkspaceUsableResources(tx, access, resourceTemplates, []int{int(o.ArchiveTemplateID.Int)}); err != nil {
+			return err
+		}
+	}
+	if err := c.lockWorkspaceUsableResources(tx, access, resourceMedia, mediaIDs); err != nil {
+		return err
+	}
+	if err := c.lockWorkspaceMutationResources(tx, access, resourceLists, customerListIDs); err != nil {
+		return err
+	}
+	_, err := tx.Stmtx(c.q.UpdateCampaign).Exec(id,
+		o.Name,
+		o.Subject,
+		o.FromEmail,
+		o.Body,
+		o.AltBody,
+		o.ContentType,
+		o.DailySendLimit,
+		o.DailyResumeTime,
+		o.SendAt,
+		o.Headers,
+		o.Attribs,
+		pq.StringArray(normalizeTags(o.Tags)),
+		o.Messenger,
+		o.TemplateID,
+		pq.Array(customerListIDs),
+		o.Archive,
+		o.ArchiveSlug,
+		o.ArchiveTemplateID,
+		o.ArchiveMeta,
+		pq.Array(mediaIDs),
+		o.BodySource,
+		o.AutoTrackLinks)
+	if err != nil {
+		return workspaceQueryError("updating campaign", err)
+	}
+	if visibility != "" {
+		if _, err := tx.Exec("UPDATE campaigns SET visibility = $2, updated_at = NOW() WHERE id = $1", id, visibility); err != nil {
+			return workspaceQueryError("updating campaign visibility", err)
+		}
+	}
+	return nil
 }
 
 // sameIntIDs compares relationship ID slices as sets.  API clients are free

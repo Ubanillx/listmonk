@@ -76,3 +76,11 @@
 - `internal/replyai/gateway.go`：`/models` 发现（根地址未带 `/v1` 时回退该挂载并返回 `suggested_base_url`）、模型清单解析与排序（对话模型优先、非对话模型标记）、四步模型测试（配置 → 网关 → 模型 → 分类往返）与原因码；`client.go` 抽出 `apiRoot`/`chatEndpointURL`/`resolveTimeout`/`chat`/`decodeDecision` 供探测与生产分类共用。
 - `frontend/src/views/settings/inbound-replies.vue`：三步式设置流（地址与密钥 → 获取模型列表 → 选择模型 → 测试模型），探测状态不进入设置表单，模型用 `b-autocomplete` 从网关清单选择并允许手填未列出的 ID；意图文案统一走 `settings.inboundReplies.intent.{unsubscribe,complaint,product_complaint,other}`，下拉与结果面板共用 `intentLabel()`。
 - 验证：`internal/replyai/gateway_test.go`、`cmd/reply_ai_settings_test.go`、`cmd/i18n_frontend_keys_test.go`（扫描前端 `$t()` 字面量与模板字符串前缀，防止缺失 key 直接渲染成原始字符串）、`dev/reply_ai_gateway_probe_verify.js`（27 项断言）、`frontend/cypress/e2e/reply-ai-settings.cy.js`（`REPLY_AI_E2E` 开关，`REPLY_AI_SESSION` 可复用已登录会话）。
+
+## 活动写入的单一事务边界（2026-09-28）
+
+- 活动的创建与更新由 `internal/core/campaign_audience_tx.go` 的 `CreateCampaignWithAudienceInWorkspace` / `UpdateCampaignWithAudienceInWorkspace` 承担：活动行与 `customer_lists`/`media`/`visibility` 关系、回件邮箱、公海受众关系以及公海投递快照在同一事务内提交或回滚（分别包在 `withWorkspaceCreation` 与 `withWorkspaceResourceMutation` 里）。`cmd/campaigns.go` 不再逐条执行 pool `DELETE`、不再逐个 `AttachPoolToCampaign`、也不再单独写回件邮箱；失败时活动行、名单与邮箱保持原样。
+- 受众分支仍由调用方决定，并以 `CampaignAudiencePlan{Audiences, RebuildAll, AllOrganizations}` 传入：`RebuildAll` 覆盖「未离开草稿」与「不再选择任何公海」两种全量重建，否则只剪除不再选择的公海，保留已入队/已发送的投递历史；Core 原样执行，不重新推导分支。
+- 池相关语句只有一份：`internal/core/pools_tx.go` 的 `*Tx` helper 持有 SQL，`internal/core/pools.go` 的单次调用 helper（含仍被 `cmd/pools.go` 使用的 `AttachPoolToCampaign`）改为开启自己的事务并委托，导出签名与成功路径行为不变。
+- 守护：`internal/core/campaign_audience_tx_guard_test.go` 静态断言事务闭包与 `*Tx` helper 内不得出现 `c.db`、且活动行/邮箱/受众三段在同一闭包内；`internal/core/campaign_audience_tx_db_test.go` 在真实 PostgreSQL 上断言公海 attach 失败时活动行、受众关系与快照整体回滚，并覆盖三种分支；`dev/pools_e2e_verify.ps1` 覆盖 HTTP 全链路（创建、追加重建、草稿受众替换、预览阻断与恢复）。
+

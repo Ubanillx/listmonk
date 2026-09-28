@@ -119,18 +119,14 @@ func (c *Core) GetPoolContactByUUID(rawUUID string) (models.PoolContact, error) 
 	return p, nil
 }
 
+// ensurePool validates a public pool. The SQL lives in ensurePoolTx so the
+// campaign create/update transaction can run the same check on its own
+// transaction; this single-call form keeps its own transaction for the many
+// read and write paths that call it.
 func (c *Core) ensurePool(poolID int) error {
-	var typ string
-	if err := c.db.Get(&typ, `SELECT type::text FROM customer_lists WHERE id=$1`, poolID); err != nil {
-		if err == sql.ErrNoRows {
-			return echo.NewHTTPError(http.StatusNotFound, "pool not found")
-		}
-		return err
-	}
-	if typ != models.CustomerListTypePool {
-		return echo.NewHTTPError(http.StatusBadRequest, "customer list is not a public pool")
-	}
-	return nil
+	return c.withPoolTx(func(tx *sqlx.Tx) error {
+		return c.ensurePoolTx(tx, poolID)
+	})
 }
 
 // QueryAuthorizedPoolLists returns the minimal list metadata that an
@@ -1642,18 +1638,9 @@ func (c *Core) EnsurePoolCampaignRecipients(campaignID int) error {
 // organization appears once, owned by the organization first in the
 // campaign's rotation order.
 func (c *Core) refreshAllOrgPoolCampaignRecipients(campaignID, poolID int) error {
-	var ids []int64
-	if err := c.db.Select(&ids, poolRecipientAllOrgSelectSQL, poolID, campaignID); err != nil {
-		return err
-	}
-	if _, err := c.db.Exec(poolRecipientAllOrgSnapshotPruneSQL, campaignID, poolID, pq.Int64Array(ids)); err != nil {
-		return err
-	}
-	if len(ids) == 0 {
-		return nil
-	}
-	_, err := c.db.Exec(poolRecipientAllOrgSnapshotUpsertSQL, poolID, campaignID)
-	return err
+	return c.withPoolTx(func(tx *sqlx.Tx) error {
+		return c.refreshAllOrgPoolCampaignRecipientsTx(tx, campaignID, poolID)
+	})
 }
 
 // refreshPoolCampaignRecipients makes the campaign snapshot of one pool audience
@@ -1661,34 +1648,25 @@ func (c *Core) refreshAllOrgPoolCampaignRecipients(campaignID, poolID int) error
 // snapshot writer consume poolRecipientMembershipSQL, so the three paths cannot
 // produce different recipient sets.
 func (c *Core) refreshPoolCampaignRecipients(campaignID int, aud poolAudience) error {
-	recipients, err := c.resolvePoolRecipients(aud.poolID, aud.organizationID, aud.allocationID)
-	if err != nil {
-		return err
-	}
-	ids := make(pq.Int64Array, 0, len(recipients))
-	for _, r := range recipients {
-		ids = append(ids, r.ID)
-	}
-	if _, err := c.db.Exec(poolRecipientSnapshotPruneSQL, campaignID, aud.poolID, aud.organizationID, aud.allocationID, ids); err != nil {
-		return err
-	}
-	if len(recipients) == 0 {
-		return nil
-	}
-	_, err = c.db.Exec(poolRecipientSnapshotUpsertSQL, aud.poolID, aud.organizationID, aud.allocationID, campaignID, aud.mailboxID)
-	return err
+	return c.withPoolTx(func(tx *sqlx.Tx) error {
+		return c.refreshPoolCampaignRecipientsTx(tx, campaignID, aud)
+	})
 }
 
 // resolvePoolRecipients reads the deliverable members of one pool audience. A
 // nil allocationID accepts every pool allocation the organization owns in the pool,
 // which is how a first-level audience selection is resolved.
 func (c *Core) resolvePoolRecipients(poolID int, organizationID int64, allocationID *int64) ([]PoolRecipient, error) {
-	if err := c.ensurePool(poolID); err != nil {
+	var out []PoolRecipient
+	err := c.withPoolTx(func(tx *sqlx.Tx) error {
+		var err error
+		out, err = c.resolvePoolRecipientsTx(tx, poolID, organizationID, allocationID)
+		return err
+	})
+	if err != nil {
 		return nil, err
 	}
-	var out []PoolRecipient
-	err := c.db.Select(&out, poolRecipientSelectSQL, poolID, organizationID, allocationID)
-	return out, err
+	return out, nil
 }
 
 // ResolvePoolRecipients resolves a first-level pool audience for one
@@ -1710,19 +1688,16 @@ func (c *Core) resolvePoolRecipientsForAllocation(poolID int, organizationID, al
 // or default mailbox, so an organization without a usable unified mailbox
 // leaves the audience unresolved.
 func (c *Core) organizationReplyMailboxID(organizationID int64) (*int64, error) {
-	var mailboxID int64
-	if err := c.db.Get(&mailboxID, `
-		SELECT o.reply_mailbox_id
-		FROM organizations o
-		JOIN reply_mailboxes rm ON rm.id=o.reply_mailbox_id
-			AND rm.status='active' AND rm.verified_at IS NOT NULL
-		WHERE o.id=$1`, organizationID); err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
+	var mailboxID *int64
+	err := c.withPoolTx(func(tx *sqlx.Tx) error {
+		var err error
+		mailboxID, err = c.organizationReplyMailboxIDTx(tx, organizationID)
+		return err
+	})
+	if err != nil {
 		return nil, err
 	}
-	return &mailboxID, nil
+	return mailboxID, nil
 }
 
 // AttachPoolToCampaign records a pool/allocation audience on a draft campaign and
@@ -1736,90 +1711,9 @@ func (c *Core) organizationReplyMailboxID(organizationID int64) (*int64, error) 
 // administrator can finish the organization configuration later; preview and
 // send stay blocked until then.
 func (c *Core) AttachPoolToCampaign(campaignID, poolID int, allocationID *int64, organizationID int64, allOrganizations bool) error {
-	var err error
-	if err := c.ensurePool(poolID); err != nil {
-		return err
-	}
-	if allOrganizations {
-		// Platform-level audience: permission to send to every organization
-		// is checked by the campaign API (campaigns:public_pool_send), not by
-		// a per-organization pool delivery grant. The relation carries no
-		// target organization, allocation or mailbox: recipients resolve per
-		// contact to every active organization's allocation and its unified
-		// reply mailbox. A previous rotation is discarded so the snapshot
-		// refresh recomputes membership for the newly selected pool.
-		var name string
-		if err := c.db.Get(&name, `SELECT name FROM customer_lists WHERE id=$1`, poolID); err != nil {
-			return err
-		}
-		if _, err = c.db.Exec(`DELETE FROM campaign_pool_org_orders WHERE campaign_id=$1`, campaignID); err != nil {
-			return err
-		}
-		if _, err = c.db.Exec(`INSERT INTO campaign_customer_lists(campaign_id,customer_list_id,customer_list_name,pool_id,org_pool_allocation_id,source_organization_id,resolved_reply_mailbox_id)
-			VALUES($1,NULL,$2,$3,NULL,NULL,NULL) ON CONFLICT DO NOTHING`, campaignID, name, poolID); err != nil {
-			return err
-		}
-		return c.refreshAllOrgPoolCampaignRecipients(campaignID, poolID)
-	}
-	if organizationID <= 0 {
-		return echo.NewHTTPError(http.StatusBadRequest, "organization is required for pool audiences")
-	}
-	var permitted bool
-	if err := c.db.Get(&permitted, `SELECT EXISTS(SELECT 1 FROM pool_organization_permissions WHERE pool_id=$1 AND organization_id=$2) OR EXISTS(SELECT 1 FROM org_pool_allocations WHERE pool_id=$1 AND organization_id=$2)`, poolID, organizationID); err != nil {
-		return err
-	}
-	if !permitted {
-		return echo.NewHTTPError(http.StatusForbidden, "pool delivery access has not been granted to organization")
-	}
-	var name string
-	if err := c.db.Get(&name, `SELECT name FROM customer_lists WHERE id=$1`, poolID); err != nil {
-		return err
-	}
-	mailbox, err := c.organizationReplyMailboxID(organizationID)
-	if err != nil {
-		return err
-	}
-	// Selecting a first-level pool resolves to the single effective pool allocation
-	// for the target organization. If none (or more than one) exists, retain an
-	// unresolved relation so drafts can be saved but preview/send will be blocked
-	// until an administrator fixes the assignment.
-	// Keep the audience selection semantics (pool vs explicit allocation) separate
-	// from the resolved delivery allocation used for recipients. This lets an
-	// activity remain editable with the original first-level pool ID even after
-	// a unique pool allocation is resolved.
-	selectedAllocationID := allocationID
-	if allocationID == nil {
-		var candidates []struct {
-			ID int64 `db:"id"`
-		}
-		if err := c.db.Select(&candidates, `SELECT id FROM org_pool_allocations WHERE pool_id=$1 AND organization_id=$2 ORDER BY id`, poolID, organizationID); err != nil {
-			return err
-		}
-		if len(candidates) == 1 {
-			id := candidates[0].ID
-			allocationID = &id
-		}
-	} else {
-		var exists bool
-		if err := c.db.Get(&exists, `SELECT EXISTS(SELECT 1 FROM org_pool_allocations WHERE id=$1 AND pool_id=$2 AND organization_id=$3)`, *allocationID, poolID, organizationID); err != nil {
-			return err
-		}
-		if !exists {
-			return echo.NewHTTPError(http.StatusBadRequest, "invalid pool allocation")
-		}
-	}
-	_, err = c.db.Exec(`INSERT INTO campaign_customer_lists(campaign_id,customer_list_id,customer_list_name,pool_id,org_pool_allocation_id,source_organization_id,resolved_reply_mailbox_id)
-		VALUES($1,NULL,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`, campaignID, name, poolID, selectedAllocationID, organizationID, mailbox)
-	if err != nil {
-		return err
-	}
-	if allocationID != nil {
-		// The snapshot of every row carries the resolved organization mailbox.
-		if err := c.refreshPoolCampaignRecipients(campaignID, poolAudience{poolID: poolID, organizationID: organizationID, allocationID: allocationID, mailboxID: mailbox}); err != nil {
-			return err
-		}
-	}
-	return nil
+	return c.withPoolTx(func(tx *sqlx.Tx) error {
+		return c.attachPoolToCampaignTx(tx, campaignID, poolID, allocationID, organizationID, allOrganizations)
+	})
 }
 
 // ImportListIntoPool imports an ordinary customer list into a first-class pool.

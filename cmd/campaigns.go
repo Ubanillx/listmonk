@@ -51,6 +51,16 @@ type campaignPoolAudience struct {
 	AllocationID *int64
 }
 
+// coreCampaignAudiences converts the request-level pool audiences into the
+// audience entries of a Core campaign write plan.
+func coreCampaignAudiences(poolAudiences []campaignPoolAudience) []core.CampaignAudience {
+	out := make([]core.CampaignAudience, 0, len(poolAudiences))
+	for _, audience := range poolAudiences {
+		out = append(out, core.CampaignAudience{PoolID: audience.PoolID, AllocationID: audience.AllocationID})
+	}
+	return out
+}
+
 type campaignCloneReq struct {
 	// Nil means the active workspace. Zero explicitly selects personal space.
 	TargetOrganizationID *int   `json:"target_organization_id"`
@@ -392,19 +402,19 @@ func (a *App) CreateCampaign(c echo.Context) error {
 		o.ArchiveTemplateID = o.TemplateID
 	}
 
-	out, err := a.core.CreateCampaignInWorkspace(access, o.Campaign, regularListIDs, o.MediaIDs, core.ApplyWorkspaceScope(access, visibility))
+	// The campaign INSERT, the reply-mailbox assignment and the selected pool
+	// audiences (with their recipient snapshots) are one Core transaction. A
+	// brand-new campaign owns no pool association yet, so the plan never
+	// rebuilds an audience: it only attaches what the request selected.
+	out, err := a.core.CreateCampaignWithAudienceInWorkspace(access, o.Campaign, regularListIDs, o.MediaIDs,
+		core.ApplyWorkspaceScope(access, visibility), core.CampaignAudiencePlan{
+			Audiences:        coreCampaignAudiences(poolAudiences),
+			AllOrganizations: allOrganizations,
+		})
 	if err != nil {
 		return err
 	}
-	if err := a.persistCampaignReplyMailbox(out.ID, access.UserID, o.ReplyMailboxID); err != nil {
-		return err
-	}
 	out.ReplyMailboxID = o.ReplyMailboxID
-	for _, audience := range poolAudiences {
-		if err := a.core.AttachPoolToCampaign(out.ID, audience.PoolID, audience.AllocationID, int64(access.OrganizationID), allOrganizations); err != nil {
-			return err
-		}
-	}
 	if len(poolAudiences) > 0 {
 		out, err = a.core.GetWorkspaceCampaign(access, out.ID)
 		if err != nil {
@@ -563,61 +573,29 @@ func (a *App) UpdateCampaign(c echo.Context) error {
 		}
 	}
 
-	out, err := a.core.UpdateCampaignInWorkspace(access, id, o.Campaign, regularListIDs, o.MediaIDs, visibility)
-	if err != nil {
-		return err
+	// The campaign row, its customer_list/media/visibility relations, the reply
+	// mailbox and the pool audience (including its recipient snapshots) are one
+	// Core transaction. The branch decision is made here and applied verbatim:
+	// a campaign that has not left draft, or that selects no pool at all,
+	// rebuilds its whole pool audience, while one that already has a recipient
+	// snapshot only drops the pools it no longer selects so queued/sent
+	// delivery history survives.
+	poolIDs := make([]int, 0, len(poolAudiences))
+	for _, audience := range poolAudiences {
+		poolIDs = append(poolIDs, audience.PoolID)
 	}
-	if err := a.persistCampaignReplyMailbox(id, access.UserID, o.ReplyMailboxID); err != nil {
+	out, err := a.core.UpdateCampaignWithAudienceInWorkspace(access, id, o.Campaign, regularListIDs, o.MediaIDs, visibility,
+		core.CampaignAudiencePlan{
+			Audiences:        coreCampaignAudiences(poolAudiences),
+			RebuildAll:       !hasRecipients || len(poolIDs) == 0,
+			AllOrganizations: allOrganizations,
+		})
+	if err != nil {
 		return err
 	}
 	out.ReplyMailboxID = o.ReplyMailboxID
 	if visibility != "" {
 		out.Visibility = visibility
-	}
-	// Pool audience rows are maintained separately from legacy customer-list
-	// rows. Remove pools omitted by the current draft, then attach the selected
-	// first-level/pool-allocation pools. Attach is idempotent and resolves a first-level
-	// pool to the target organization's pool allocation at send time.
-	poolIDs := make([]int, 0, len(poolAudiences))
-	for _, audience := range poolAudiences {
-		poolIDs = append(poolIDs, audience.PoolID)
-	}
-	if !hasRecipients {
-		// A draft has no immutable send snapshot yet. Rebuild all pool
-		// associations so removing a pool allocation (or replacing it with a
-		// different one under the same first-level pool) cannot leave stale
-		// audience metadata or recipients behind.
-		if _, err := a.db.Exec(`DELETE FROM campaign_pool_recipients WHERE campaign_id=$1`, id); err != nil {
-			return err
-		}
-		if _, err := a.db.Exec(`DELETE FROM campaign_customer_lists WHERE campaign_id=$1 AND pool_id IS NOT NULL`, id); err != nil {
-			return err
-		}
-		if _, err := a.db.Exec(`DELETE FROM campaign_pool_org_orders WHERE campaign_id=$1`, id); err != nil {
-			return err
-		}
-	} else if len(poolIDs) == 0 {
-		if _, err := a.db.Exec(`DELETE FROM campaign_pool_recipients WHERE campaign_id=$1`, id); err != nil {
-			return err
-		}
-		if _, err := a.db.Exec(`DELETE FROM campaign_customer_lists WHERE campaign_id=$1 AND pool_id IS NOT NULL`, id); err != nil {
-			return err
-		}
-		if _, err := a.db.Exec(`DELETE FROM campaign_pool_org_orders WHERE campaign_id=$1`, id); err != nil {
-			return err
-		}
-	} else if _, err := a.db.Exec(`DELETE FROM campaign_pool_recipients WHERE campaign_id=$1 AND pool_id <> ALL($2::INT[])`, id, pq.Array(poolIDs)); err != nil {
-		return err
-	}
-	if len(poolIDs) > 0 {
-		if _, err := a.db.Exec(`DELETE FROM campaign_customer_lists WHERE campaign_id=$1 AND pool_id IS NOT NULL AND pool_id <> ALL($2::INT[])`, id, pq.Array(poolIDs)); err != nil {
-			return err
-		}
-	}
-	for _, audience := range poolAudiences {
-		if err := a.core.AttachPoolToCampaign(id, audience.PoolID, audience.AllocationID, int64(access.OrganizationID), allOrganizations); err != nil {
-			return err
-		}
 	}
 	if len(poolAudiences) > 0 {
 		out, err = a.core.GetWorkspaceCampaign(access, id)
@@ -1115,10 +1093,10 @@ func (a *App) GetCampaignPoolSendStatus(c echo.Context) error {
 		return err
 	}
 	out := struct {
-		PoolScope     string            `json:"pool_scope"`
-		Ready         bool              `json:"ready"`
+		PoolScope     string              `json:"pool_scope"`
+		Ready         bool                `json:"ready"`
 		Organizations []poolSendStatusOrg `json:"organizations"`
-		Issues        []string          `json:"issues"`
+		Issues        []string            `json:"issues"`
 	}{
 		PoolScope:     camp.PoolScope,
 		Organizations: []poolSendStatusOrg{},

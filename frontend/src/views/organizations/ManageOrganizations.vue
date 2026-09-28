@@ -335,9 +335,8 @@ export default Vue.extend({
       return this.members.filter((member) => !member.removedAt);
     },
 
-    // The organization shown by the tabs. The unified reply mailbox endpoint is
-    // organization-manager only, so the section is read-only for everyone else,
-    // including platform administrators.
+    // The organization shown by the tabs. Platform organization operators may
+    // edit the selected organization's unified reply mailbox from this screen.
     selectedOrganization() {
       const id = Number(this.selectedOrganizationID) || 0;
       const lists = [...(this.manageableOrganizations || []), ...(this.organizations || [])];
@@ -350,13 +349,10 @@ export default Vue.extend({
     },
 
     canEditUnifiedReplyMailbox() {
-      // The endpoint is organization-manager only: platform administrators are
-      // rejected server-side even inside their own organization, so the section
-      // stays read-only for them.
-      if (Number(this.profile && this.profile.userRole && this.profile.userRole.id) === 1) {
-        return false;
-      }
       const id = Number(this.selectedOrganizationID) || 0;
+      if (this.canManageAllOrganizations) {
+        return true;
+      }
       return (this.organizations || []).some(
         (organization) => Number(organization.id) === id && organization.myRole === 'manager',
       );

@@ -276,6 +276,24 @@ func TestSetOrganizationReplyMailbox(t *testing.T) {
 			t.Fatalf("persisted reply_mailbox_id = %d, want NULL after clearing", *got)
 		}
 	})
+	t.Run("platform administrator can configure the selected organization", func(t *testing.T) {
+		c, rec := newOrganizationReplyMailboxContext(t, e, platformAdmin,
+			organizationReplyMailboxHomeOrgID, organizationReplyMailboxHomeOrgID, &homeMailbox)
+		if err := a.SetOrganizationReplyMailbox(c); err != nil {
+			t.Fatalf("platform administrator setting the unified reply mailbox = %v, want success", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("response status = %d, want %d (%s)", rec.Code, http.StatusOK, rec.Body.String())
+		}
+		c, _ = newOrganizationReplyMailboxContext(t, e, platformAdmin,
+			organizationReplyMailboxHomeOrgID, organizationReplyMailboxHomeOrgID, nil)
+		if err := a.SetOrganizationReplyMailbox(c); err != nil {
+			t.Fatalf("platform administrator clearing the unified reply mailbox = %v, want success", err)
+		}
+		if got := organizationReplyMailboxValue(t, db, organizationReplyMailboxHomeOrgID); got != nil {
+			t.Fatalf("persisted reply_mailbox_id = %d, want NULL after clearing", *got)
+		}
+	})
 	t.Run("rejections do not mutate the organization", func(t *testing.T) {
 		cases := []struct {
 			name        string
@@ -294,15 +312,6 @@ func TestSetOrganizationReplyMailbox(t *testing.T) {
 				mailbox:     &otherMailbox,
 				wantStatus:  http.StatusForbidden,
 				wantMessage: "reply mailbox must belong to the organization",
-			},
-			{
-				name:        "a platform administrator",
-				user:        platformAdmin,
-				workspace:   organizationReplyMailboxHomeOrgID,
-				pathOrg:     organizationReplyMailboxHomeOrgID,
-				mailbox:     &homeMailbox,
-				wantStatus:  http.StatusForbidden,
-				wantMessage: "reply mailbox must be configured in the organization workspace",
 			},
 			{
 				name:        "an ordinary organization member",

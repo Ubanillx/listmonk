@@ -250,6 +250,7 @@ func isOrganizationManagementPath(path string) bool {
 		"/api/organizations/templates/:id/unpublish",
 		"/api/organizations/reply-forwarding",
 		"/api/organizations/reply-forwarding/:id",
+		"/api/organizations/:id/reply-mailbox",
 		"/api/organizations/invites",
 		"/api/organizations/invites/:id":
 		return true
@@ -752,12 +753,11 @@ type organizationReplyMailboxInput struct {
 }
 
 // SetOrganizationReplyMailbox points every pool audience of an organization at
-// the organization's one unified reply mailbox. The setting is deliberately
-// workspace-scoped: the caller must be an active manager of the organization
-// named in the path, and a platform administrator may not configure it on an
-// organization's behalf. The core setter re-verifies that the mailbox belongs
-// to the organization; pool allocations no longer carry a reply mailbox of
-// their own.
+// the organization's one unified reply mailbox. The setting is workspace-scoped:
+// an active organization manager or a platform organization operator selected
+// on the management screen may configure the organization named in the path.
+// The core setter re-verifies that the mailbox belongs to the organization;
+// pool allocations no longer carry a reply mailbox of their own.
 func (a *App) SetOrganizationReplyMailbox(c echo.Context) error {
 	access, err := a.workspaceAccess(c)
 	if err != nil {
@@ -770,10 +770,11 @@ func (a *App) SetOrganizationReplyMailbox(c echo.Context) error {
 	if !access.IsOrganization() || int64(access.OrganizationID) != organizationID {
 		return echo.NewHTTPError(http.StatusForbidden, "organization scope mismatch")
 	}
-	if auth.GetUser(c).IsPlatformAdmin() {
-		return echo.NewHTTPError(http.StatusForbidden, "reply mailbox must be configured in the organization workspace")
-	}
-	if !access.IsOrganizationManager() {
+	// A platform organization operator may configure the organization selected on
+	// the management screen; the workspace access above already restricted the
+	// request to the organization named in the path.
+	user := auth.GetUser(c)
+	if !access.IsOrganizationManager() && !user.HasPerm(auth.PermOrganizationsPlatformManage) {
 		return echo.NewHTTPError(http.StatusForbidden, "organization manager permission required")
 	}
 	var req organizationReplyMailboxInput

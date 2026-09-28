@@ -265,6 +265,7 @@ func TestOrganizationManagementPathsAreExplicitlyWhitelisted(t *testing.T) {
 		"/api/organizations/templates/:id/unpublish",
 		"/api/organizations/reply-forwarding",
 		"/api/organizations/reply-forwarding/:id",
+		"/api/organizations/:id/reply-mailbox",
 		"/api/organizations/invites",
 		"/api/organizations/invites/:id",
 	} {

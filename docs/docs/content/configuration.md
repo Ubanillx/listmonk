@@ -103,11 +103,11 @@ installation may hold values that differ from the defaults below.
 | `enable_public_archive_rss_content` | bool | `true` | no | Include the full campaign body in the archive RSS feed. When `false`, the feed only carries titles and links. |
 | `send_optin_confirmation` | bool | `true` | no | Send opt-in confirmation e-mails for double opt-in subscriptions. |
 | `check_updates` | bool | `true` | no | Check for new releases once a day and show a notification in the admin UI. Set to `false` on air-gapped installations. |
-| `concurrency` | int | `10` | no | Number of campaign workers, that is, messages processed simultaneously. |
-| `message_rate` | int | `10` | no | Maximum messages per second, per worker. |
+| `concurrency` | int | `10` | no | Number of delivery workers and maximum concurrent SMTP attempts in total, including direct system mail. Excess sends queue. |
+| `message_rate` | int | `10` | no | Aggregate SMTP messages per second across all workers, campaigns, transactional mail and system notifications. Excess messages wait for capacity. |
 | `batch_size` | int | `1000` | no | Number of customers fetched from the database in a single cycle (~5s) when a campaign is running. Higher values reduce database round trips and use more memory. |
 | `max_send_errors` | int | `1000` | no | Number of send errors after which a campaign is paused. |
-| `message_sliding_window` | bool | `false` | no | Enable the per-account sliding window send rate. |
+| `message_sliding_window` | bool | `false` | no | Enable a platform-wide SMTP sliding window cap. |
 | `message_sliding_window_duration` | duration string | `1h` | no | Sliding window length, eg: `30m`, `1h`. Only used when `message_sliding_window` is enabled. |
 | `message_sliding_window_rate` | int | `10000` | no | Maximum number of messages allowed per sliding window. Only used when `message_sliding_window` is enabled. |
 | `cache_slow_queries` | bool | `false` | no | Cache aggregate statistics in materialized views instead of computing them on every request. See [Slow query caching](maintenance/performance.md). |
@@ -136,6 +136,7 @@ installation may hold values that differ from the defaults below.
 | --- | --- | --- | --- | --- |
 | `individual_tracking` | bool | `false` | no | Count unique (per-customer) campaign views and link clicks instead of raw totals. |
 | `disable_tracking` | bool | `false` | no | Disable campaign view and link tracking entirely. |
+| `geoip_database` | string | `""` | no | Local path to a GeoLite2/GeoIP2 City `.mmdb` file. When set, new campaign opens record approximate country, region, city and coordinates; the source IP is not stored in `campaign_views`. Restart after changing the path or database file. |
 | `unsubscribe_header` | bool | `true` | no | Add the `List-Unsubscribe` header to campaign e-mails, including RFC 8058 one-click unsubscribe headers on opt-in confirmation e-mails. |
 | `allow_blocklist` | bool | `true` | no | Allow customers to blocklist themselves from the public subscription pages. |
 | `allow_export` | bool | `true` | no | Allow customers to export their own data from the public subscription pages. |
@@ -145,6 +146,12 @@ installation may hold values that differ from the defaults below.
 | `record_optin_ip` | bool | `false` | no | Record the IP address of the customer when they confirm an opt-in. |
 | `domain_blocklist` | string[] | `[]` | no | Domains rejected during customer import. |
 | `domain_allowlist` | string[] | `[]` | no | When not empty, only these domains are accepted during customer import. |
+
+The GeoIP database is supplied by the operator and is not bundled with listmonk. Existing open events cannot be located retroactively. Mail providers and proxies may fetch tracking pixels on behalf of recipients, so the mapped location may differ from the recipient's actual location. When `disable_tracking` is enabled, no new open locations are recorded.
+
+The analytics world map remains visible when GeoIP is not configured or the selected period has no located opens. The map shows a neutral base and the relevant status message; heat and its color scale appear only when location data is available.
+
+Select a country in the analytics map to zoom into its city locations and view city open counts. Click a city name in the list to focus the map; **Reset view** restores the country overview and **World map** returns to all countries. Refreshing the report preserves the selected country in the report URL. Cities with the same name in different regions are listed separately. Opens without a city name are shown as **City unavailable** and are not included in the identified city count. These are approximate GeoIP City locations, not street or GPS locations.
 
 ### `[security]`
 
@@ -247,16 +254,22 @@ Keys of each `[[bounce.mailboxes]]` entry:
 | `starttls` | bool | `false` | no | Use STARTTLS instead of implicit TLS. |
 | `folder` | string | `""` | no | Mailbox folder to scan. Reserved for IMAP mailboxes. |
 
-### `[smtp]`
+### `smtp` and `smtp_delivery`
 
-An array of platform SMTP servers used for system e-mails (password resets,
-notifications, opt-in confirmations). Campaign and transactional mail is sent
-through the personal SMTP servers configured per account in the admin UI.
+`smtp` contains exactly one platform SMTP server for system e-mails (password
+resets, notifications, opt-in confirmations). Campaign and transactional mail
+uses account-owned SMTP servers; campaigns can also select organization marketing pools.
+`smtp_delivery` is the shared transport configuration for the system server
+and every account-owned server. Existing installations move the former primary
+server's transport options into `smtp_delivery` during v6.49.0 upgrade. These
+options apply separately to every SMTP. TLS mode and certificate verification
+belong to each server, and are preserved from the effective global values during
+v6.53.0 upgrade.
 
 | Key | Type | Default | Required | Description |
 | --- | --- | --- | --- | --- |
-| `enabled` | bool | `true` for the first entry in the sample | no | Enable this SMTP server. Disabled servers are ignored. |
-| `is_primary` | bool | `true` for the first entry in the sample | no | Use this server as the sender of system e-mails. At least one enabled server must be marked primary, otherwise startup fails. |
+| `enabled` | bool | `true` | no | The single system SMTP must be enabled. |
+| `is_primary` | bool | `true` | no | The system SMTP is always primary. |
 | `name` | string | `""` | no | Name of the server, used in logs and as messenger name. |
 | `uuid` | string | `""` | no | UUID of the server. Metadata used by the admin UI. |
 | `from_email` | string | `listmonk <noreply@listmonk.yoursite.com>` | no | `From` address used by this server. |
@@ -267,15 +280,43 @@ through the personal SMTP servers configured per account in the admin UI.
 | `username` | string | `""` | no | SMTP user. |
 | `password` | string | `""` | no | SMTP password. |
 | `hello_hostname` | string | `""` | no | Hostname sent in the SMTP `HELO`/`EHLO` command. |
-| `max_conns` | int | `10` | no | Maximum number of concurrent connections in the pool. |
-| `idle_timeout` | duration string | `15s` | no | How long an idle connection is kept before it is closed. |
-| `wait_timeout` | duration string | `5s` | no | How long to wait for a free connection before failing. |
-| `max_msg_retries` | int | `2` | no | Number of silent retries of a message that fails to send. |
-| `tls_type` | string | `TLS` | no | TLS mode: `TLS` for implicit TLS, `STARTTLS` for STARTTLS. Any other value, including `none`, disables TLS. |
-| `tls_skip_verify` | bool | `false` | no | Skip TLS certificate verification. |
-| `email_headers` | table | empty | no | Additional SMTP headers added to e-mails sent through this server. |
+| `max_conns` | int | `10` | no | Shared maximum number of concurrent connections per SMTP server (`smtp_delivery`). |
+| `idle_timeout` | duration string | `15s` | no | Shared idle connection timeout (`smtp_delivery`). |
+| `wait_timeout` | duration string | `5s` | no | Shared wait timeout for a free connection (`smtp_delivery`). |
+| `max_msg_retries` | int | `2` | no | Shared transient-send retry count (`smtp_delivery`). |
+| `send_delay_min` | int | `0` | no | Minimum random wait in milliseconds before each SMTP message (`smtp_delivery`). |
+| `send_delay_max` | int | `0` | no | Maximum random wait in milliseconds, at least the minimum and at most `3600000` (`smtp_delivery`). |
+| `tls_type` | string | `TLS` | no | Per-server TLS mode: `TLS`, `STARTTLS`, or `none`. |
+| `tls_skip_verify` | bool | `false` | no | Per-server TLS certificate verification setting. |
+| `email_headers` | table | empty | no | Shared additional e-mail headers (`smtp_delivery`). |
 
 The same settings are edited as `Settings` -> `SMTP`.
+
+For a variable sending cadence, set the random delay to a range such as `2000`–`5000` milliseconds.
+Before every message, including the first, the sender waits a uniformly sampled
+duration in the range. When enabled, messages using the same SMTP UUID wait and
+send in sequence, including messages from account and organization pools. Different
+SMTP senders may send in parallel. The delay is additional to existing campaign
+rate limits, and each SMTP sender uses at most one connection at a time while pacing
+is enabled. The SMTP pool's internal network retries belong to the same attempt
+and do not sample a new delay. Both values set to `0` disable pacing; equal values
+use a fixed delay. Old duration strings such as `2s` are accepted for compatibility
+and upgraded to integer milliseconds without changing their duration.
+
+The setting applies to system notifications, campaigns and transactional messages
+after restart. SMTP connection tests bypass pacing. Pausing/cancelling a campaign
+or shutting down the manager cancels pending waits without sending or consuming
+SMTP daily quota. Coordination is within one application process; multiple
+application instances do not share the delay queue.
+
+Each campaign additionally has an aggregate `smtp_rate_limit` in messages per
+minute, defaulting to 20 for personal SMTP and 100 for organization SMTP. The
+campaign's chosen rate applies across its senders using evenly spaced starts.
+Platform rate and sliding window caps remain hard ceilings across all SMTP.
+Messages queue until both campaign and platform capacity are available;
+increasing worker concurrency does not increase the platform rate. These limits
+are shared within one application process and reset on restart. Use one campaign
+sender process when enforcing a platform-wide aggregate cap.
 
 ### `[[messengers]]`
 
@@ -446,3 +487,7 @@ Some server hosts block outgoing SMTP ports (25, 465). You may have to contact y
 ### Batch size
 
 The batch size parameter is useful when working with very large customer_lists with millions of customers for maximising throughput. It is the number of customers that are fetched from the database sequentially in a single cycle (~5 seconds) when a campaign is running. Increasing the batch size uses more memory, but reduces the round trip to the database.
+
+### Organization marketing senders
+
+Each active organization can maintain multiple named SMTP sending pools in **Manage organization**, independently of member SMTP and system notification SMTP. Managers configure sender addresses, credentials, daily quotas and enabled status inside each pool. Campaigns select **Personal SMTP rotation** or **Organization SMTP rotation**, then choose an organization pool and display only that pool's enabled senders with today's usage. The organization source is available in organization workspaces; global public-pool campaigns resolve it per target organization. All SMTP pools use the global delivery settings above, including random delays. Removing or disabling a sender takes effect on subsequent messages; unavailable pools do not fall back to a different source.

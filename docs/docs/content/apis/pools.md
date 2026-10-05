@@ -1,5 +1,12 @@
 # Public pools
 
+## Customer reply routing (v6.55.0)
+
+Contact APIs, the aggregate pool view, first-level and allocation contact tables, and CSV exports include `reply_to`. It is an internal routing address and is not masked; recipient `email` remains masked for non-platform administrators. `order_by=reply_to` is supported. Single-contact creation accepts optional `reply_to` with the same email validation as import.
+
+Campaign `pool_reply_priority` defaults to `contact_first`; `organization_first` reverses the two sources. The first available address is used for each customer. An organization mailbox must be verified and active; customer addresses do not require mailbox registration for sending. A recipient without either address blocks preview/send. For reply synchronization, configure the matching organization mailbox before sending; only an active verified mailbox in that target organization is linked to the snapshot.
+
+
 Public customer pools are first-class `customer_list` types (`pool` and
 `org_pool_allocation`). Contact records retain the imported customer code (which may
 repeat), name, allocation department and real email server-side; all
@@ -13,8 +20,11 @@ the owner fields for audit purposes.
 
 Key endpoints:
 
+- `GET /api/pools/contacts?search=...&status=active|removed&pool_id=6&allocation_department=...&page=1&per_page=20&order_by=pool_name&order=asc` — page through all first-level public-pool memberships visible in the active workspace. Each row includes `pool_id` and `pool_name`; a contact in two pools appears twice so its source list stays clear. Search, status, exact source-pool ID, exact trimmed allocation department, sorting, count and pagination apply across the combined result. Omit `allocation_department` for all departments; send it as an empty value to select contacts without one. Platform administrators see every pool; organization users see only their own allocation memberships with masked e-mails. Requires `pools:get`.
+- `GET /api/pools/contacts/filters` — return the distinct visible `pool_id`, `pool_name`, `allocation_department` combinations for the aggregate view's dropdowns, independent of the current result page. An empty department denotes unassigned. Requires `pools:get` and obeys the same organization boundary.
+- `GET /api/pools/contacts/export` — export the same combined result as CSV, including source pool ID and name. Accepts the same search, status, pool ID and department filters. Repeat `contact=<pool_id>:<contact_id>` to export only selected memberships within that authorized, filtered result (maximum 1000 selections). Malformed selections return 400. Requires `pools:export`; organization e-mails remain masked.
 - `GET /api/pools/:id/contacts?search=...&status=active|removed&page=1&per_page=20&order_by=created_at&order=desc` — page through first-level or pool-allocation contacts by imported code, name, or e-mail. The equivalent `GET /api/customer-lists/:id/pool-contacts` route also accepts an `org_pool_allocation` list ID. `status=active` shows unremoved contacts; `status=removed` shows unresolved organization removals or exclusions. In a first-level pool, platform administrators see all organizations' exceptions once per contact, with `excluded`, `exclusion_reason`, `exception_organization_name`, and `exception_allocation_id` (when a membership can be restored). Non-platform-administrators see only their current organization's allocation and receive masked e-mail addresses. Unassigned contacts remain active. Allocation-list reads stay scoped to that allocation. Omitting `status` preserves the legacy all-contacts response. The legacy `customer_code` filter remains a fallback alias of `search`. Requires `pools:get`; non-platform-administrators must have the pool granted to the active organization.
-- `GET /api/pools/:id/contacts/export` (alias `GET /api/customer-lists/:id/pool-contacts/export`) — stream the same filtered rows as CSV with masked e-mails. Requires `pools:export`.
+- `GET /api/pools/:id/contacts/export` (alias `GET /api/customer-lists/:id/pool-contacts/export`) — stream the same filtered rows as CSV with masked e-mails. Repeat `contact=0:<contact_id>` to narrow the authorized result to selected contacts. Selection validation matches the aggregate export. Requires `pools:export`.
 - `POST /api/pools/:id/contacts` — single-contact compatibility route
   (requires `pools:manage`); the product import entry is the unified customer
   import endpoint below.
@@ -24,7 +34,7 @@ Key endpoints:
   restricted to platform administrators; organization allocation list IDs are
   rejected. Pool membership, allocation membership and pool campaign recipient
   rows follow their foreign-key deletion rules.
-- `POST /api/pools/allocations` — split a first-level pool into a new organization allocation. The list, pool grant and binding are created atomically. The allocation carries no reply mailbox of its own: pool recipients reply to the organization's unified reply mailbox, configured once from **Organizations -> Manage organizations -> Organization reply mailboxes**.
+- `POST /api/pools/allocations` — split a first-level pool into a new organization allocation. The list, pool grant and binding are created atomically. The allocation carries no reply mailbox of its own: pool recipients resolve imported customer reply addresses and the organization's verified fallback in campaign priority order; the organization fallback is configured once from **Organizations -> Manage organizations -> Organization reply mailboxes**.
 - `POST|DELETE|PUT /api/pools/allocations/members` — assign, logically remove, or restore a contact. Requires `pools:manage`; a non-platform-administrator is restricted to its own organization's allocation.
 - `POST /api/pools/allocations/:id/import-members` — legacy compatibility route;
   it is not the management UI's import path. Requires `pools:manage` and the
@@ -33,7 +43,7 @@ Key endpoints:
   `customer_list_ids` contains exactly one first-level `pool`, the first CSV
   sheet or XLSX worksheet must map `customer_code`, `name`, `email` and
   `allocation_department`. Chinese template headers `客户编号`/`客户编码`,
-  `姓名`, `邮箱`, `分配部门` are recognized; other columns are ignored.
+  `姓名`, `邮箱`, `分配部门` are recognized; optional `回信邮箱`/`reply_to` is supported and other columns are ignored.
   Only the highest administrator may use this branch. `分配部门` must match an
   active `organizations.name`; unknown or archived departments are rejected
   row-by-row and are not written. A valid value is stored on the pool contact
@@ -41,13 +51,26 @@ Key endpoints:
   creates the corresponding pool-allocation membership. Creating the pool allocation
   list later backfills existing matching contacts; it never creates an
   organization.
+  The admin import page displays organizations and their binding states in a
+  searchable left column, with the selected organization's allocation or create
+  form on the right. Allocation names are prefilled and editable; switching
+  organizations retains each draft, and creating refreshes both columns.
+  Selecting a target does not switch the active workspace. Organization managers
+  see only their own workspace organization. On narrow screens the columns stack.
+- The unified import also accepts `mode=blocklist` with the same four required columns and optional reply email. Matching email addresses within the selected pool are marked
+  `blocklisted`; new contacts are created in that state. The contact state
+  suppresses delivery across its organization allocations and any other pools
+  sharing the same record. Distinct contact records in other pools are not
+  changed. Normal imports retain existing blocking and propagate it to new
+  identities with that email within the selected pool. Import results include
+  a distinct `blocklisted` contact count; pool contact pages display the state.
 - `POST /api/pools/import` — legacy ordinary-list-to-pool compatibility route;
   new product flows use the unified customer import endpoint.
 - `GET /api/pools/:id/management-target?organization_id=...` — highest-admin-only target context: the target organization's existing allocation state.
 - `POST /api/campaigns/:id/pools` — attach a first-level public-pool audience to a campaign draft. Organization allocation list IDs are rejected; the selected first-level pool is resolved to the applicable allocation when the campaign is sent.
 
 Preview and send operations reject unresolved pool audiences (missing the
-organization's pool allocation or its unified reply mailbox) and answer with
+organization's pool allocation, or an eligible customer has neither a reply email nor a usable organization fallback) and answer with
 HTTP `400`. The message keeps the leading sentence
 `public-pool audience requires an organization allocation and reply mailbox before previewing or sending`,
 then names every unresolved audience as the whole chain the operator has to
@@ -65,10 +88,10 @@ organizations -> Organization reply mailboxes` as the organization's unified
 reply mailbox, and `then retry preview or send.` The steps are single-line and
 never localized differently per reason.
 
-The rejection never falls back to a personal or system mailbox: an unresolved
-pool audience is a configuration gap in the target organization, and the
-organization's manager fixes it by setting the organization's unified reply
-mailbox. Pool exclusions are organization scoped and do not physically delete
+An unresolved audience can be fixed by supplying the missing customer reply
+addresses or configuring a verified organization fallback. Personal or system
+mailboxes are not implicit public-pool routes. Pool exclusions are organization
+scoped and do not physically delete
 the first-level pool contact.
 
 Pool contacts are not part of the legacy customer export surface, and they never
@@ -83,7 +106,7 @@ bypass the grants; every other caller is additionally restricted to the pool
 lists and allocations granted to the active workspace organization.
 
 Campaign responses include `customer_pools[].reply_mailbox_email` so operators
-can see the effective internal reply route (一级公海 -> 公海分配 -> 组织统一回件邮箱).
+can see the organization fallback. Per-customer addresses and the campaign priority determine the actual Reply-To; delivery uses the immutable recipient snapshot.
 When the selected audience is an explicit pool allocation,
 `customer_pools[].allocation_list_id` and `customer_pools[].allocation_list_name` identify the
 selector-compatible `org_pool_allocation` list; `allocation_id` remains the internal
@@ -101,8 +124,7 @@ not an organization-membership action: the administrator does not need to join
 the organization and remains in the current workspace. The dialog then offers
 one **Create and bind** action. It creates the pool allocation, grants delivery
 access and binds it to the open pool in one transaction. The reply route for the
-organization's pool recipients is the organization's single **unified reply
-mailbox**, configured once by the organization's manager in
+organization's pool recipients follows customer/organization priority. Its **organization fallback** is configured once by the organization's manager in
 **Organizations -> Manage organizations -> Organization reply mailboxes**
 (`PUT /api/organizations/:id/reply-mailbox`). A pool allocation carries no reply
 mailbox of its own, the campaign field **customer reply mailbox** does not feed
@@ -116,7 +138,7 @@ same split for their own organization: the request must carry that organization'
 organization members cannot create lists.
 
 Each first-level pool can have one bound pool allocation per organization. The
-dialog does not import contact files. Import the four-column pool template from
+dialog does not import contact files. Import the pool template (four required columns and optional reply email) from
 the unified **Customer import** page; rows whose `分配部门` matches an existing
 pool-allocation organization are allocated during import. If the pool allocation
 is created afterwards, the create-and-bind transaction backfills those rows. The

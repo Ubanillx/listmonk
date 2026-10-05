@@ -1,5 +1,11 @@
 # Concepts
 
+## Organization selection
+
+The workspace switcher lists every active organization a platform administrator can enter. Other users see their active memberships. The joined-organizations page and personal-resource migration targets list actual memberships, even for administrators. Page refreshes preserve this distinction.
+
+Workspace information is validated before forms are shown. A temporary loading failure provides a retry button and preserves the selected workspace; a failed later organization refresh keeps the last complete list and provides a retry entry in the workspace switcher. Revoked access is still checked by the server.
+
 ## Organization
 
 An organization is a tenant inside listmonk. Users are admitted to it through organization membership, which carries a per-membership role of `member` or `manager` and is separate from system user roles and customer_list roles: membership decides which organization workspaces a user may enter and how far their access reaches inside them, but it grants no feature permission on its own. Organization managers may inspect resources owned by members of their organization, but they cannot modify them or send with them. Organization requests, lifecycle, members and invitations are controlled by platform administrators holding `organizations:platform_manage`.
@@ -14,7 +20,7 @@ The active workspace is resolved from the `X-Listmonk-Organization-ID` request h
 
 ## Resource visibility
 
-Shareable resources, namely templates, campaigns and media, carry a visibility that controls who may read them beyond their owner: `private` (the owner and platform administrators, plus the read-only oversight of organization managers in their active organization), `organization` (additionally readable by every member of the resource's organization) and `global` (readable from every workspace). Only templates and campaigns can be `global`: media can never be global, and ordinary customer_lists and customers always stay private to their owner, with a first-level [public pool](#public-pool) being the single `global` customer_list type.
+Shareable resources, namely ordinary customer lists, templates, campaigns and media, carry a visibility that controls who may read them beyond their owner: `private` (the owner and platform administrators, plus the read-only oversight of organization managers in their active organization), `organization` (additionally readable by every member of the resource's organization) and `global` (readable from every workspace). An organization-shared ordinary list exposes list metadata and counts, while customer records and list mutations retain their owner and permission boundaries. Only templates and campaigns can be `global`: media and ordinary customer lists can never be global, and customers always stay private to their owner. A first-level [public pool](#public-pool) is the single `global` customer list type.
 
 Visibility is a publication scope only. It never moves a resource between workspaces or changes its owner, and being able to read a resource never implies the right to use it in a message, to copy it, to send with it, to export it or to modify it; those are checked separately. [Learn more](roles-and-permissions.md)
 
@@ -24,7 +30,7 @@ A customer is a recipient identified by an e-mail address and name. Customers re
 
 ### Attributes
 
-Attributes are arbitrary properties attached to a customer in addition to their e-mail and name. They are represented as a JSON map. It is not necessary for all customers to have the same attributes. Customers can be [queried and segmented](querying-and-segmentation.md) into customer_lists based on their attributes, and the attributes can be inserted into the e-mails sent to them. For example:
+Attributes are arbitrary properties attached to a customer in addition to their e-mail and name. They are represented as a JSON map. It is not necessary for all customers to have the same attributes. Customers can be [searched and organized](querying-and-segmentation.md) into customer_lists by customer code, name, e-mail and list membership, and attributes can be inserted into the e-mails sent to them. For example:
 
 ```json
 {
@@ -52,7 +58,7 @@ A customer can be added to one or more customer_lists, and each such relationshi
 
 ### Segmentation
 
-Segmentation is the process of filtering a large list of customers into a smaller group based on arbitrary conditions, primarily based on their attributes. For instance, if an e-mail needs to be sent customers who live in a particular city, given their city is described in their attributes, it's possible to quickly filter them out into a new customer list and e-mail them. [Learn more](querying-and-segmentation.md).
+Segmentation is the process of organizing customers into smaller groups, such as customer lists. The customers page supports customer code, name and e-mail search plus list and membership filters. [Learn more](querying-and-segmentation.md).
 
 ## CustomerList
 
@@ -66,7 +72,7 @@ A customer_list role is a per-customer_list grant of `get` (view) or `manage` (u
 
 A public pool is a first-class customer_list type (`pool` or `org_pool_allocation`), and is not a `public` list that accepts anonymous subscriptions. A first-level `pool` is a platform-wide `global` resource whose contacts are stored as pool contacts instead of ordinary customers, while each organization's delivery permission for it is stored separately; an authorized pool is the explicit cross-workspace exception to the delivery and import boundaries. Contact records keep the imported customer code (which may repeat), name, allocation department and real e-mail address server-side, and every response to a user other than a platform administrator returns a masked e-mail; pool contacts are not part of the ordinary customer export surface. An internal reply mailbox is a company address and is never masked.
 
-Importing pool contacts and managing a first-level pool are platform-administrator actions, and so is creating and binding a allocation for any organization: the administrator selects a target organization in the pool management window without joining it. An organization's own manager may also create and bind that organization's allocation from the organization workspace, and configures its internal reply mailbox there. A `org_pool_allocation` belongs to that organization's scope, exposes its `organization_name`, keeps the creating user in the owner fields for audit and holds the organization's reply mailbox, and each pool can have at most one bound allocation per organization. For an organization, unsubscribes, bounces and manual removals are recorded as organization-scoped exclusions that never alter the first-level master data or another organization's assignment. [Learn more](apis/pools.md)
+Importing pool contacts and managing a first-level pool are platform-administrator actions. The administrator can open **Customers → Import → Public-pool customer import**, select or create a first-level pool, then select each target organization and view or create its bound allocation on the same page. Creating a list returns to the import form with that list selected. An organization's own manager may also create and bind that organization's allocation from the organization workspace and configure its unified reply mailbox there. An `org_pool_allocation` belongs to that organization's scope, exposes its `organization_name`, keeps the creating user in the owner fields for audit, and each pool can have at most one bound allocation per organization. For an organization, unsubscribes, bounces and manual removals are recorded as organization-scoped exclusions that never alter the first-level master data or another organization's assignment. [Learn more](apis/pools.md)
 
 ## Campaign
 

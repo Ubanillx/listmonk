@@ -22,20 +22,20 @@ Returns the complete settings object. Requires `settings:get` (`cmd/handlers.go:
 
 Settings are stored as flat, dotted keys (`app.site_name`, `bounce.mailboxes`, `reply_ai`, ...). The response is a map of those keys, which are the same keys accepted by `PUT /api/settings/{key}` (`queries/misc.sql:7`, `models/settings.go:47`).
 
-Stored secrets are never returned in clear text. Each of them is replaced by a run of `•` characters, one per rune of the stored value, so the mask reveals the password length (`cmd/settings.go:30`, `cmd/settings.go:65`):
+Stored secrets are never returned in clear text. Each of them is replaced by a run of `•` characters, one per rune of the stored value, so the mask reveals the password length (`cmd/settings.go`, `cmd/settings.go`):
 
 | Key                                  | Masked at          |
 |--------------------------------------|--------------------|
-| `smtp[].password`                    | `cmd/settings.go:66` |
-| `bounce.mailboxes[].password`        | `cmd/settings.go:69` |
-| `messengers[].password`              | `cmd/settings.go:72` |
-| `upload.s3.aws_secret_access_key`    | `cmd/settings.go:76` |
-| `bounce.sendgrid_key`                | `cmd/settings.go:77` |
-| `bounce.postmark.password`           | `cmd/settings.go:78` |
-| `bounce.forwardemail.key`            | `cmd/settings.go:79` |
-| `reply_ai.api_key`                   | `cmd/settings.go:80` |
-| `security.captcha.hcaptcha.secret`   | `cmd/settings.go:81` |
-| `security.oidc.client_secret`        | `cmd/settings.go:82` |
+| `smtp[].password`                    | `cmd/settings.go` |
+| `bounce.mailboxes[].password`        | `cmd/settings.go` |
+| `messengers[].password`              | `cmd/settings.go` |
+| `upload.s3.aws_secret_access_key`    | `cmd/settings.go` |
+| `bounce.sendgrid_key`                | `cmd/settings.go` |
+| `bounce.postmark.password`           | `cmd/settings.go` |
+| `bounce.forwardemail.key`            | `cmd/settings.go` |
+| `reply_ai.api_key`                   | `cmd/settings.go` |
+| `security.captcha.hcaptcha.secret`   | `cmd/settings.go` |
+| `security.oidc.client_secret`        | `cmd/settings.go` |
 
 ##### Example Request
 
@@ -66,6 +66,15 @@ The response contains every key modelled by the server. A few orphan keys exist 
         "tls_type": "TLS"
       }
     ],
+    "smtp_delivery": {
+      "max_conns": 10,
+      "max_msg_retries": 2,
+      "idle_timeout": "15s",
+      "wait_timeout": "5s",
+      "send_delay_min": 0,
+      "send_delay_max": 0,
+      "email_headers": []
+    },
     "bounce.mailboxes": [
       {
         "enabled": false,
@@ -96,11 +105,19 @@ ______________________________________________________________________
 Replaces the settings object. Requires `settings:manage` (`cmd/handlers.go:116`, `internal/auth/models.go:107`).
 
 !!! warning
-    The request body is a **complete** settings object. Omitted fields are bound as zero values, and every key present in the marshaled object is written back to the `settings` table, so always start from `GET /api/settings`, edit the result, and PUT that object back. Only `customer.custom_fields` is preserved from the stored settings and cannot be changed here (`cmd/settings.go:100`); manage it through `/api/custom-fields` instead.
+    The request body is a **complete** settings object. Omitted fields are bound as zero values, and every key present in the marshaled object is written back to the `settings` table, so always start from `GET /api/settings`, edit the result, and PUT that object back. Only `customer.custom_fields` is preserved from the stored settings and cannot be changed here (`cmd/settings.go`); manage it through `/api/custom-fields` instead.
 
-The scalar secret fields keep their stored value when they are empty (`""`) in the request: `upload.s3.aws_secret_access_key`, `bounce.sendgrid_key`, `bounce.postmark.password`, `bounce.forwardemail.key`, `security.captcha.hcaptcha.secret` and `security.oidc.client_secret` (`cmd/settings.go:280`). The passwords inside arrays, `smtp[].password`, `bounce.mailboxes[].password` and `messengers[].password`, are kept only when the item carries the original `uuid` seen in the `GET` response; an item without a `uuid` is treated as a new entry, is assigned a fresh `uuid` and is stored with an empty password instead (`cmd/settings.go:146`, `cmd/settings.go:172`, `cmd/settings.go:216`, `cmd/settings.go:258`). `reply_ai.api_key` may be empty or fully masked to reuse the stored key (`cmd/settings.go:228`).
+The scalar secret fields keep their stored value when they are empty (`""`) in the request: `upload.s3.aws_secret_access_key`, `bounce.sendgrid_key`, `bounce.postmark.password`, `bounce.forwardemail.key`, `security.captcha.hcaptcha.secret` and `security.oidc.client_secret` (`cmd/settings.go`). The passwords inside arrays, `smtp[].password`, `bounce.mailboxes[].password` and `messengers[].password`, are kept only when the item carries the original `uuid` seen in the `GET` response; an item without a `uuid` is treated as a new entry, is assigned a fresh `uuid` and is stored with an empty password instead (`cmd/settings.go`, `cmd/settings.go`, `cmd/settings.go`, `cmd/settings.go`). `reply_ai.api_key` may be empty or fully masked to reuse the stored key (`cmd/settings.go`).
 
-The object is validated before it is saved; invalid values return HTTP 400 with a localized message. Examples: at least one SMTP server has to be enabled, exactly one of them has to be primary, messenger and SMTP names have to be unique, a bounce mailbox cannot enable SSL/TLS and STARTTLS at the same time, CORS origins have to be `http(s)` URLs or `*`, and `app.cache_slow_queries_interval` is only validated as a cron expression when `app.cache_slow_queries` is `true` (`cmd/settings.go:109`, `cmd/settings.go:193`, `cmd/settings.go:328`, `cmd/settings.go:349`).
+The object is validated before it is saved; invalid values return HTTP 400. `smtp` must contain exactly one enabled system server. The `smtp_delivery` options apply to system mail and all account SMTP servers after restart, including existing accounts. Other examples: messenger and SMTP names must be unique, a bounce mailbox cannot enable SSL/TLS and STARTTLS together, CORS origins must be `http(s)` URLs or `*`, and `app.cache_slow_queries_interval` is validated as cron when slow-query caching is enabled (see `UpdateSettings` in `cmd/settings.go`).
+
+`smtp_delivery.send_delay_min` and `send_delay_max` are integer milliseconds, for example
+`2000` and `5000`. They must satisfy `0 <= minimum <= maximum <= 3600000`; both `0`
+disable random pacing. Legacy duration strings are accepted and normalized to
+milliseconds without changing the duration. TLS belongs to each `smtp[]` or
+personal/organization SMTP row and is excluded from `smtp_delivery`. Invalid ranges
+are rejected by both the full settings update and `/api/settings/smtp_delivery`.
+See [SMTP configuration](../configuration.md#smtp-and-smtp_delivery) for delivery semantics.
 
 A successful save triggers an automatic restart of the app. If a campaign is running, the restart is deferred instead:
 
@@ -112,7 +129,7 @@ A successful save triggers an automatic restart of the app. If a campaign is run
 {"data": {"needs_restart": true}}
 ```
 
-(`cmd/settings.go:388`)
+(`cmd/settings.go`)
 
 ##### Example Request
 
@@ -143,9 +160,9 @@ Updates one settings key. Requires `settings:manage` (`cmd/handlers.go:117`).
 |------|--------|----------|----------------------------------------------------------|
 | key  | String | Yes      | Settings key exactly as returned by `GET /api/settings`  |
 
-The request body is the JSON value of that key itself, not an object that wraps it (`cmd/settings.go:374`). The key `customer.custom_fields` is rejected with HTTP 403 and has to be changed through `/api/custom-fields` (`cmd/settings.go:370`).
+The request body is the JSON value of that key itself, not an object that wraps it (`cmd/settings.go`). The key `customer.custom_fields` is rejected with HTTP 403 and has to be changed through `/api/custom-fields` (`cmd/settings.go`).
 
-The response is the same restart notification as `PUT /api/settings` (`cmd/settings.go:385`).
+The response is the same restart notification as `PUT /api/settings` (`cmd/settings.go`).
 
 ##### Example Request
 
@@ -169,7 +186,7 @@ ______________________________________________________________________
 
 Sends a test e-mail through the submitted SMTP settings without saving them. Requires `settings:manage` (`cmd/handlers.go:118`).
 
-The body is one SMTP server object as it appears in `smtp[]` of `GET /api/settings`, plus the recipient address in the top-level `email` field (`cmd/settings.go:433`, `cmd/settings.go:439`). The test uses a temporary pool with a single connection and a 2-second idle/wait timeout (`cmd/settings.go:444`). A missing `email`, an unparsable body, or a server that cannot be initialized returns HTTP 400; a delivery failure returns HTTP 500 with the SMTP error (`cmd/settings.go:441`, `cmd/settings.go:450`, `cmd/settings.go:466`).
+The body is one SMTP server object as it appears in `smtp[]` of `GET /api/settings`, plus the recipient address in the top-level `email` field (`cmd/settings.go`, `cmd/settings.go`). The test uses a temporary pool with a single connection and a 2-second idle/wait timeout (`cmd/settings.go`). A missing `email`, an unparsable body, or a server that cannot be initialized returns HTTP 400; a delivery failure returns HTTP 500 with the SMTP error (`cmd/settings.go`, `cmd/settings.go`, `cmd/settings.go`).
 
 ##### Parameters
 
@@ -197,7 +214,7 @@ curl -u 'api_username:access_token' -X POST 'http://localhost:9000/api/settings/
 
 ##### Example Response
 
-`data` contains the buffered server log lines (`cmd/settings.go:470`):
+`data` contains the buffered server log lines (`cmd/settings.go`):
 
 ```json
 {

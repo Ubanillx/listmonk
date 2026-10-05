@@ -41,9 +41,9 @@ listmonk 改进版是一个快速、功能完整的自托管邮件通讯和营�
 
 ## 近期新增功能
 
-### 公海客户统一视图
+### 私域客户与公海客户
 
-客户页面现在同时提供“所有客户”和“公海客户”视图。公海联系人支持服务端分页、搜索、排序、行选择、批量分配/移除/恢复、CSV 导出和行内维护；邮箱在非授权场景下自动脱敏。新增 `pools:get`、`pools:manage`、`pools:export` 三项权限，组织用户只能操作所属组织的公海分配。
+管理端将普通客户统一称为“私域客户”。左侧一级“客户”菜单依次显示“公海客户”、“公海客户列表”、“私域客户”、“私域客户列表”、“导入”、“退信”，表单入口排在其后。`/admin/pool-lists` 只展示一级公海与组织公海分配，并承载一级公海创建和公海分配管理；`/admin/customer-lists` 只展示普通私域客户列表，不能创建公海。公海客户入口进入 `/admin/pool` 汇总页，展示所有可访问公海的客户。公海联系人支持服务端分页、搜索、排序、行选择、批量分配/移除/恢复、CSV 导出和行内维护；邮箱在非授权场景下自动脱敏。新增 `pools:get`、`pools:manage`、`pools:export` 三项权限，组织用户只能操作所属组织的公海分配。
 
 ### 平台级公海营销和 SMTP 轮询
 
@@ -148,14 +148,15 @@ make dist
 
 ## 本地开发
 
-开发环境使用 `dev/` 下的 Docker Compose 套件：
+默认开发环境使用 Docker 中间件、主机 Go 和主机 Node.js。在三个 PowerShell 终端依次运行：
 
-```shell
-make init-dev-docker
-make dev-docker
+```powershell
+pwsh -File .\dev\start-middleware.ps1
+pwsh -File .\dev\start-backend.ps1
+pwsh -File .\dev\start-frontend.ps1
 ```
 
-管理端地址为 <http://localhost:9173>，Vite 前端开发服务器地址为 <http://localhost:8181>。常用命令：
+后两个终端会持续运行并显示热更新日志，按 Ctrl+C 可停止对应进程。管理端地址为 <http://localhost:8181/admin/>，Go API 地址为 <http://localhost:9173>。PostgreSQL 使用 `localhost:5437`，MailHog 使用 <http://localhost:8265>。需要全 Docker 回归环境时，仍可运行 `make init-dev-docker` 与 `make dev-docker`。常用命令：
 
 | 命令 | 用途 |
 | --- | --- |
@@ -163,6 +164,9 @@ make dev-docker
 | `make build-frontend` | 构建管理端和邮件编辑器。 |
 | `make dist` | 构建并将前后端资源打包进二进制文件。 |
 | `make test` | 运行 Go 测试：`go test ./...`。 |
+| `make dev-middleware` | 在 Docker 中启动 PostgreSQL、MailHog 和 Adminer。 |
+| `make run-backend-local` | 用 Air 在主机运行 Go 并热更新。 |
+| `make run-frontend-local` | 用 Node.js/Vite 在主机运行前端并热更新。 |
 | `cd frontend && yarn lint` | 检查 Vue/JavaScript 代码。 |
 | `cd frontend && yarn cypress run` | 运行浏览器端到端测试。 |
 

@@ -174,7 +174,7 @@ the campaign.
 - If source campaign lookup is by name, require an exact name match before reusing it.
 - If recipient analytics fail with a privacy or tracking error, fall back to summary, timeseries, and link analytics.
 - Query today's overview with `/api/campaigns?per_page=all` and filter campaign timestamps client-side; pass `from`/`to` as date strings (`YYYY-MM-DD` or RFC 3339) only to report endpoints.
-- Do not use customer SQL query APIs unless the caller explicitly needs them and the service account is trusted for `customers:sql_query`.
+- Use the supported customer `search` and list filters. The advanced SQL query API has been removed.
 - If `openpyxl` is missing and Excel mode is requested, fail fast with an installation hint.
 - If bulk import fails with `403`, report that the key is missing `customers:import` or the user's import permission.
 - If campaign create/update fails with `403`, check `campaigns:write`; if start or scheduling fails, check `campaigns:send`, the user's send/schedule action permission, ownership, and the preconfigured SMTP/reply mailbox.

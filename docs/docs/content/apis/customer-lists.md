@@ -8,7 +8,14 @@ for masking, assignment, exclusions, merge, and internal reply mailbox rules.
 Authenticated responses are scoped by the active workspace selected through
 `X-Listmonk-Organization-ID`. In an organization workspace, ordinary lists
 from the personal workspace or another organization are not returned; in the
-personal workspace, only the caller's personal lists are returned. Authorized
+personal workspace, only the caller's personal lists are returned. A list with
+`visibility: organization` is readable as metadata by members of its own
+organization; customer records and writes keep their separate owner and
+permission checks. API requests that omit visibility default to `private`;
+ordinary lists cannot be `global`. The admin create form defaults to
+`organization` in an organization workspace and `private` in a personal
+workspace. Editing a list retains its saved visibility.
+Authorized
 public pools remain an explicit cross-workspace delivery/import exception.
 
 List responses include `organization_name` when a row belongs to an
@@ -48,6 +55,7 @@ Retrieve customer_lists.
 | query    | string   |          | String for customer_list name search.                                                                       |
 | status   | string   |          | Status to filter customer_lists. Options: active, archived. Defaults to showing all customer_lists if not specified. |
 | minimal  | boolean  |          | If true, returns customer_lists without customer counts (faster). Defaults to false.                      |
+| type_group | string | | `pool` returns `pool` and `org_pool_allocation`; `private` returns ordinary `private` and `public` lists. Filtering occurs before pagination. |
 | tag      | []string |          | Tags to filter customer_lists. Repeat in the query for multiple values.                                     |
 | order_by | string   |          | Sort field. Options: name, status, created_at, updated_at.                                         |
 | order    | string   |          | Sorting order. Options: ASC, DESC.                                                                 |
@@ -182,6 +190,7 @@ Create a new customer_list.
 | type        | string     | Yes      | Type of customer_list. Options: private, public.                            |
 | optin       | string     | Yes      | Opt-in type. Options: single, double.                              |
 | status      | string     | No       | Status of the customer_list. Options: active, archived. Defaults to active. |
+| visibility  | string     | No       | `private` (default) or `organization` in an organization workspace. Controls list metadata visibility, not customer access or sending rights. |
 | tags        | string\[\] |          | Associated tags for a customer_list.                                        |
 | description | string     | No       | Description of the new customer_list.                                       |
 
@@ -217,6 +226,8 @@ ______________________________________________________________________
 
 Update a customer_list.
 
+The `type` can change between `private` and `public`. A `pool` or `org_pool_allocation` list must keep its type; pool allocations are created only through the dedicated pool allocation workflow. Attempts to convert an ordinary list into a pool list, or the reverse, return HTTP 400.
+
 ##### Parameters
 
 | Name        | Type       | Required | Description                                    |
@@ -226,6 +237,7 @@ Update a customer_list.
 | type        | string     |          | Type of customer_list. Options: private, public.        |
 | optin       | string     |          | Opt-in type. Options: single, double.          |
 | status      | string     |          | Status of the customer_list. Options: active, archived. |
+| visibility  | string     |          | `private` or `organization` for ordinary lists; organization sharing requires an organization workspace and exposes metadata only. |
 | tags        | string\[\] |          | Associated tags for the customer_list.                  |
 | description | string     |          | Description of the customer_list.                       |
 
@@ -297,6 +309,9 @@ Delete multiple customer_lists by IDs or by a search query.
 | :---- | :--------- | :---------------------------- | :----------------------------------------------------------------- |
 | id    | number\[\] | Yes (if `query` not provided) | One or more customer_list IDs to delete.                                    |
 | query | string     | Yes (if `id` not provided)    | Search query to filter customer_lists for deletion (same as the GET query). |
+| all | boolean | Yes (when deleting the entire filtered result) | Delete all manageable lists matching the query and optional `type_group`. |
+| type_group | string | | With query or `all`, restrict deletion to `pool` or `private` lists; omitted keeps the previous behavior. |
+| status | string | | With query or `all`, restrict deletion to `active` or `archived` lists; omitted includes both. |
 
 ##### Example Request (by IDs)
 

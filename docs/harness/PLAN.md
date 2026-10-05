@@ -166,7 +166,7 @@
 已完成（同一日期）：
 
 - [x] 未文档化的 API 路由族。新增 6 个 API 页面覆盖此前无文档的全部 16 个 `/api/*` 前缀：`apis/organizations.md`（`/api/organizations/*` 28 条 + `/api/workspace`）、`apis/system.md`（health/config/lang/about/dashboard/custom-fields/events/logs/admin reload/maintenance/logout）、`apis/roles.md`、`apis/settings.md`、`apis/audit-events.md`、`apis/public-endpoints.md`（`/api/public/*`、`/api/media/file/*`、`/api/org-pool-allocations/*` 别名）；均已挂入 `mkdocs.yml` 的 API 分组。
-- [x] `apis/customers.md` 端点表补上 `GET /api/customers/:id/activity`、`GET /api/customers/export`、`PUT /api/customers/query/customer-lists` 三个已实现端点。
+- [x] `apis/customers.md` 端点表补上 `GET /api/customers/:id/activity`、`GET /api/customers/export` 等端点；原 `/api/customers/query/customer-lists` 已于 2026-09-29 下线，由 `/api/customers/bulk/customer-lists` 承接普通筛选批量操作。
 - [x] `configuration.md` 新增 `## Configuration file reference`：逐段列出 `[app]`、`[db]`、`[privacy]`、`[security]`（含 oidc/captcha）、`[appearance]`、`[upload]`、`[bounce]`、`[smtp]`、`[[messengers]]`、`[reply_ai]`、`[maintenance.db]` 的键、类型、默认值与必填性。
 - [x] 文档 CI 触发面：新增 `.github/workflows/docs-sanity.yml`（PR 的 opened/synchronize/reopened，paths `docs/**` 与 `scripts/check_docs.py`），执行 `scripts/check_docs.py` 与 `mkdocs build --strict`，补上 `build-sanity` 只在 PR 打开时校验的空档。
 

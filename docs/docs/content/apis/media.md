@@ -18,7 +18,7 @@ ______________________________________________________________________
 #### GET /api/media/folders
 
 Get the media folders visible in the active workspace. The response includes
-the folder's parent, media count and child-folder count. A missing `parent_id`
+the folder's parent, `visibility`, `manageable`, `writable`, media count and visible child-folder count. A missing `parent_id`
 means the folder is at the root of the workspace.
 
 ##### Example Response
@@ -29,6 +29,9 @@ means the folder is at the root of the workspace.
     {
       "id": 4,
       "name": "Product images",
+      "visibility": "organization",
+      "manageable": true,
+      "writable": true,
       "parent_id": null,
       "media_count": 3,
       "child_count": 1
@@ -49,22 +52,33 @@ case, within the same parent. Requires `media:manage`.
 ```json
 {
   "name": "Product images",
-  "parent_id": 0
+  "parent_id": 0,
+  "visibility": "organization"
 }
 ```
 
 Use `null` or `0` for `parent_id` to create a root folder.
 
+`visibility` accepts `private` (Personal), `organization` (Organization), or
+`global` (Everyone, signed-in users across workspaces). Omission preserves the
+workspace default: private in personal space and organization in organization
+space. Personal spaces cannot use `organization`. Every parent must be readable;
+uploads and child creation remain confined to the selected owning workspace.
+Folder media uses the folder audience, including ancestor restrictions. Archived
+organizations cannot expose shared folders.
+
 ______________________________________________________________________
 
 #### PUT /api/media/folders/{folder_id}
 
-Rename a media folder. Only the name is changed; provider objects and media
-URLs remain unchanged. Requires `media:manage`.
+Edit a folder's name and optional visibility. Omitted visibility is preserved.
+Provider objects and URL text remain unchanged. Requires `media:manage` and
+folder ownership, or a platform admin in the selected owning workspace.
 
 ```json
 {
-  "name": "Campaign images"
+  "name": "Campaign images",
+  "visibility": "private"
 }
 ```
 
@@ -73,7 +87,9 @@ ______________________________________________________________________
 #### PUT /api/media/folders/{folder_id}/move
 
 Move a folder to another folder or to the workspace root. Moving a folder into
-itself or one of its descendants is rejected. Requires `media:manage`.
+itself or one of its descendants is rejected. Requires `media:manage` and source
+folder ownership (or a platform admin); the destination must be readable and in
+the same workspace.
 
 ```json
 {
@@ -88,7 +104,8 @@ ______________________________________________________________________
 #### DELETE /api/media/folders/{folder_id}
 
 Delete an empty media folder. Folders containing media or child folders return
-HTTP 409; deletion is never recursive. Requires `media:manage`.
+HTTP 409; deletion is never recursive. Requires `media:manage` and folder ownership
+(or a platform admin in the owning workspace).
 
 ______________________________________________________________________
 
@@ -97,8 +114,9 @@ ______________________________________________________________________
 Get uploaded media files. `folder_id=0` returns only root media,
 `folder_id={id}` returns media in that folder, and omitting `folder_id` keeps
 the legacy behavior of returning all media visible in the active workspace.
-For an active platform-admin session, the listing is also constrained to the
-selected workspace so folder drag-and-drop cannot cross workspace boundaries.
+Everyone folders and their media are visible across workspaces; other folders
+and root media remain constrained to the selected workspace. Writes cannot cross
+workspace boundaries, including drag-and-drop.
 
 ##### Example Request
 
@@ -134,6 +152,11 @@ ______________________________________________________________________
 #### GET /api/media/{media_id}
 
 Retrieve a specific media.
+
+Media inside a folder requires access to that folder and every ancestor; the
+same rule protects media file URLs. Root media retains the existing resource
+policy and published template/campaign associations. Folder permission changes
+do not retroactively modify media snapshots already copied into other resources.
 
 ##### Parameters
 

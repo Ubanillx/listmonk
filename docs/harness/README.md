@@ -13,6 +13,7 @@
 | [TECH_ARCHITECTURE.md](TECH_ARCHITECTURE.md) | 技术架构入口和模块边界。 |
 | [BUSINESS_LOGIC.md](BUSINESS_LOGIC.md) | 核心业务流程和不变量。 |
 | [UI_UX_AUDIT.md](UI_UX_AUDIT.md) | 管理端 UI/UX 审计发现、实测数据与收敛建议。 |
+| [UI_DESIGN_SYSTEM.md](UI_DESIGN_SYSTEM.md) | 管理端视觉令牌、布局、组件和响应式规范。 |
 
 ## 维护规则
 

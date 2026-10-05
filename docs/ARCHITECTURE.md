@@ -1,5 +1,12 @@
 # Listmonk 工程架构与运行指南
 
+## 公海客户回信地址与活动优先级（v6.55.0）
+
+统一导入支持可选 `reply_to`/“回信邮箱”，必须是单个邮箱地址；四列旧模板仍可导入。相同客户身份再次导入更新地址而不创建重复客户，空值清除。组织配置仍由原权限维护，联系人导入仍限最高管理员。此地址只控制邮件 Reply-To，不自动创建邮箱、不保存凭据，也不授予 POP3 收信访问；若需要收集和分类回信，发送前须配置对应组织回信邮箱。
+
+迁移 `internal/migrations/v6.55.0.go` 保留历史路由地址，重复运行不覆盖已有来源；`schema.sql`、安装示例、创建/更新/克隆及前端请求同步支持优先级。来源：`models/{pools,campaigns}.go`、`internal/core/{pools,pool_reply_routes,pools_tx}.go`、`queries/campaigns.sql`、`cmd/{pools,campaigns,manager_store,install}.go`、`internal/manager/manager.go`、`frontend/src/views/{Import,Customers,PoolContactForm,Campaign}.vue`。
+
+
 本文档描述当前仓库的实现边界、运行方式和安全约束，是贡献者理解代码的工程入口。用户使用说明位于 `docs/docs/content/`；当实现、命令、部署方式或权限规则变化时，必须在同一变更中同步更新本文及受影响的用户文档。
 
 ## 系统全景
@@ -21,6 +28,14 @@ Vue 2 管理端 ──────── REST `/api/*` ───────► 
 
 生产构建把 Go 二进制、`frontend/dist`、SQL、静态文件和语言包用 `stuffbin` 打包为单一 `listmonk` 可执行文件。开发模式则让 Go 服务从磁盘读取 `frontend/dist`，并可由 Vite 独立提供前端热更新。
 
+本仓库的默认本地开发拓扑是“Docker 中间件 + 主机应用”：开发 Make 目标从
+`dev/docker-compose.yml` 只启动 PostgreSQL、MailHog 和 Adminer；Go 使用
+`dev/config.local.toml` 连接宿主机发布的 PostgreSQL 端口，由 Air 监听
+Go/SQL/TOML 文件并重启进程；Node.js 运行
+Vite，前端开发服务器把 API、登录、工作区选择、找回密码和 OIDC 请求代理到本机 Go 服务；
+这些服务端渲染页面必须继续走 Go，不能被 Vite 的 SPA fallback 接管。需要隔离环境时，
+`make dev-docker` 仍可同时运行 Compose 中的 backend 和 front 服务。
+
 ## 目录与职责
 
 | 路径 | 职责 |
@@ -29,7 +44,7 @@ Vue 2 管理端 ──────── REST `/api/*` ───────► 
 | `internal/core/` | 领域操作、工作区查询、资源授权及带锁的事务写入。 |
 | `internal/manager/`、`internal/messenger/`、`internal/bounce/`、`internal/replyai/`、`internal/subimporter/` | 邮件调度/投递、退信、AI 回信分类、批量导入等后台能力。 |
 | `models/`、`queries/`、`schema.sql`、`internal/migrations/` | Go 数据模型、具名 SQL、初始结构和版本迁移。 |
-| `frontend/` | Vue 2 管理端；`src/views/` 为页面，`src/components/` 为共享组件，`cypress/` 为端到端测试。 |
+| `frontend/` | Vue 2 管理端；`src/views/` 为页面，`src/components/` 为共享组件，`src/assets/styles/` 为设计令牌与分层样式，`cypress/` 为端到端测试。设计约束见 `docs/harness/UI_DESIGN_SYSTEM.md`。 |
 | `frontend/email-builder/` | 独立的 React 18 + TypeScript 邮件编辑器。 |
 | `static/`、`i18n/` | 公开页面、邮件模板、媒体静态资产和语言包。 |
 | `dev/`、`deploy/`、`.github/`、`Jenkinsfile` | 本地容器、离线部署包、GitHub Actions 与 Jenkins 流水线。 |
@@ -60,15 +75,21 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 4. **资源边界**：每行带有 `organization_id`、`owner_user_id`、原始所有者、可见性和转移状态。`internal/core/workspace.go` 分别判断 `read`、`use`、`copy`、`manage` 和敏感数据访问，不能以“可读”推导出“可发送、导出或修改”。
 5. **事务重验**：写入在事务内按稳定顺序锁定组织与资源，重验组织状态、成员资格、所有权和待转移状态，消除“检查后状态变化”的越权窗口。
 
-可见性为 `private`、`organization`、`global`。名单和订阅者始终是所有者私有的；媒体不能全局公开。组织成员可以读取组织共享资源，组织经理可审查同组织成员资源及待转移资源，但只能写自己的资源，不能使用他人的私有发送资源。客户列表查询及客户、导入、批量操作和活动的普通列表选择器都按当前工作区收敛；客户新建/编辑/普通导入还要求目标列表属于当前操作者，一级公海则走独立的跨工作区投放/导入授权。客户 CSV、单客户资料和审计日志均为直接 HTTP 导出，仍执行工作区、所有权和脱敏边界，不建立持久化导出任务。归档组织禁止普通写入及导出；仅平台管理员可执行受限的清理/转移流程。前端的 `$can*` 仅隐藏不允许的操作，Go 服务是唯一权威。
+可见性为 `private`、`organization`、`global`。普通客户列表可在组织工作区内以 `organization` 共享列表元数据（包括名称和统计），个人工作区只允许 `private`；客户记录始终是所有者私有，普通列表不能全局共享，媒体不能全局公开。组织成员可以读取组织共享列表，组织经理可审查同组织成员资源及待转移资源，但只能写自己的资源，不能使用他人的私有发送资源。共享列表的可读性不赋予客户明细、导入、批量修改或活动发送权限：这些操作仍按列表权限、当前工作区和客户/列表所有者重新校验，一级公海走独立的跨工作区投放/导入授权。客户 CSV、单客户资料和审计日志均为直接 HTTP 导出，仍执行工作区、所有权和脱敏边界，不建立持久化导出任务。归档组织禁止普通写入及导出；仅平台管理员可执行受限的清理/转移流程。前端的 `$can*` 仅隐藏不允许的操作，Go 服务是唯一权威。
 
 管理端路由自 2026-09-27 起用 `meta.permission` 显式声明页面所需权限（`frontend/src/router/index.js`：`/settings*` 需要 `settings:get`/`settings:maintain`、`/settings/audit` 需要 `audit:get`、`/users*` 需要 `users:get`/`roles:get`），`frontend/src/main.js` 的全局守卫在 `profile` 就绪后统一判定（`profileReady` 承诺消除“首次导航早于 profile 请求”的竞态，管理员管理页沿用同一机制），未授权直达会进入 `/admin/403` 说明页而不是渲染只能产生 403 的空壳；该守卫与 `$can*` 一样只属于体验层，服务端依旧逐请求校验（见本条与 `docs/harness/UI_UX_AUDIT.md`）。
 
-平台可观测性出口与业务聚合数据的边界：`GET /api/logs` 与 `GET /api/events`（SSE 实时错误流）都是进程日志的出口，统一由 `settings:get` 控制，与 `/api/settings` 共用同一平台权限；管理端也只为持有该权限的账号建立 `EventSource`，无权限账号不会打开连接（否则浏览器会对 403 无限重试）。这两个接口不属于工作区数据面。相对地，仪表板的 `GET /api/dashboard/counts` 与 `GET /api/dashboard/charts` 不设角色权限门：任何登录用户在其当前工作区都可读取，但结果由工作区、所有权和可见性谓词收敛（只有平台管理员读取全局物化视图）。图表没有数据只表示该工作区内没有可统计的浏览/点击行（或数据落在 30 天窗口之外），不是权限拒绝。
+组织目录由 `frontend/src/api/index.js` 的 `refreshOrganizationDirectory` 统一刷新：Vuex 的 `organizations` 是可进入的活跃组织（最高管理员取全部活跃组织，普通用户取自己的成员组织），`organizationMemberships` 仅是实际加入的组织。顶部工作区切换和公海组织选择读取前者，已加入组织/迁移目标及组织经理判断读取后者；页面不能用成员接口结果覆盖可进入组织。并发刷新共用一个请求承诺，两份列表成功后原子提交；失败保留上一份完整快照并显示重试入口，成功空列表正常替换旧值。完整目录不保存到浏览器，只持久化选中的组织 ID；后端持续校验权限。启动时先挂载加载/重试外壳，等待 profile、目录和工作区都校验后才挂载业务视图，避免新建表单从半初始化状态选错默认值。工作区请求仅在明确的 403/404 下回退，网络或 5xx 错误保留选择并允许重试；登录失效仍回到登录页。
+
+平台可观测性出口与业务聚合数据的边界：`GET /api/logs` 与 `GET /api/events`（SSE 实时错误流）都是进程日志的出口，统一由 `settings:get` 控制，与 `/api/settings` 共用同一平台权限；管理端也只为持有该权限的账号建立 `EventSource`，无权限账号不会打开连接（否则浏览器会对 403 无限重试）。这两个接口不属于工作区数据面。相对地，仪表板的 `GET /api/dashboard/counts` 与 `GET /api/dashboard/charts` 不设角色权限门：任何登录用户在其当前工作区都可读取，但结果由工作区、所有权和可见性谓词收敛（只有平台管理员读取全局物化视图）。统计响应明确分为 `private_customers`（兼容别名 `customers`）、`pool_customers` 与 `pool_lists`；公海客户按一级公海成员行统计，公海列表按启用的一级公海列表统计，组织空间只计本组织可见列表和分配，个人空间两项公海统计均为零。图表没有数据只表示该工作区内没有可统计的浏览/点击行（或数据落在 30 天窗口之外），不是权限拒绝。
+
+仪表板公海列表卡片提供 `pool_lists.bound`/`unbound`/`allocations`/`organizations` 四项明细。总数保持启用的一级公海列表口径；有启用分配列表且所属组织启用才算绑定，已绑定与未绑定之和等于总数。分配数仅计绑定当前可见一级公海的启用分配，组织数去重；普通组织工作区仅计本组织的绑定，不能推断同一公海在其它组织的使用情况，普通个人工作区全为零。授权但未建立有效分配的公海计未绑定。实现：`internal/core/dashboard.go` 的 `getWorkspacePoolListDashboardCounts`；契约与归档/跨组织边界：`internal/core/dashboard_counts_db_test.go`，UI：`frontend/src/views/Dashboard.vue`。
 
 ### 角色动作细分权限（v6.38.0）
 
 用户角色中的权限是全局功能门，不替代工作区、资源所有者、组织成员或 API Key scope 校验。业务动作按以下独立权限管理：`customers:delete`、`customers:blocklist`、`customers:membership_manage`、`customers:export`、`customers:sensitive_read`；`pools:get`、`pools:manage`、`pools:export`（2026-09-17 起，v6.45.0 回填最高管理员，见“一级公海与组织公海分配”一节）；`campaigns:send`、`campaigns:test`、`campaigns:schedule`、`campaigns:control`、`campaigns:recipients`；`bounces:delete`、`bounces:blocklist`；`users:tokens`；以及 `organizations:platform_manage`。`tx:send` 仍使用原权限 ID，但在角色界面归入事务消息组。
+
+私域客户高级 SQL 查询已下线：`GET /api/customers` 和导出仅接受参数化的普通 `search`（匹配客户编码、姓名、邮箱）、列表和订阅状态过滤；传旧 `query` 参数返回 400。原 `/api/customers/query/*` 路由撤销，普通“选择全部结果”操作改走 `/api/customers/bulk/*`，仍执行工作区、资源管理和对应的删除、拉黑或列表成员权限校验。`customers:sql_query` 不再出现在权限清单或授权判断中；角色编辑会过滤历史保存的失效权限。服务端入口在 `cmd/customers.go`，导出实现位于 `internal/core/workspace_customer_export.go`。
 
 `v6.36.0` 和 `v6.38.0` 通过幂等迁移为既有非 Super Admin 角色补齐细分权限，避免升级后改变原有业务能力。之后管理员可以从角色中去掉某个独立动作；创建新角色时这些高风险动作默认不勾选。平台管理员、用户/角色/设置/组织管理权限保持现有的宽平台控制，不为管理员场景继续拆分；业务细分权限不能跨越资源边界，也不能把“有某个动作”解释为获得其它动作。
 
@@ -78,9 +99,11 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 
 ### 媒体逻辑文件夹（v6.37.0）
 
-媒体文件夹是工作区内的数据库逻辑容器，不改变 filesystem 或 S3 provider 中的对象名。这样历史邮件正文中的媒体 URL、缩略图和跨 provider 行为不受影响。`media.folder_id` 指向 `media_folders`；`NULL` 表示根目录，`parent_id` 只形成同一工作区的树。个人文件夹按 `owner_user_id` 隔离，组织文件夹按 `organization_id` 对组织成员可见。
+媒体文件夹是工作区内的数据库逻辑容器，不改变 filesystem 或 S3 provider 中的对象名。这样历史邮件正文中的媒体 URL、缩略图和跨 provider 行为不受影响。`media.folder_id` 指向 `media_folders`；`NULL` 表示根目录，`parent_id` 只形成同一工作区的树。v6.51.0 增加独立 `visibility`：`private`（个人）只对当前工作区的创建者可见，`organization`（组织）对当前组织成员可见，`global`（全体）对所有登录用户跨工作区可见；平台管理员可在所选工作区审查个人目录。个人工作区不能选择组织权限。迁移将既有个人目录回填为 `private`、组织目录回填为 `organization`，重复执行保留显式权限。
 
-`GET /api/media/folders` 返回当前工作区可见的目录及文件/子目录计数；创建、改名、移动和删除目录沿用 `media:manage`，删除只允许空目录，移动会拒绝自身或子孙目录。`PUT /api/media/:id/folder` 将媒体移入目录或根目录，但仍执行媒体资源原所有者的 `manage` 边界，组织经理不能借文件夹权限修改他人媒体。上传与 `GET /api/media` 支持 `folder_id`，旧请求不带该参数时继续返回工作区内全部媒体。活动工作区中的平台管理员媒体页和目录页同样按当前选中的工作区收敛，避免跨工作区资源被误拖入目录；归档工作区仍保留平台清理读取能力，但不开放普通写入。
+`internal/core/media_folder_permissions.go` 与 `media_folders.go` 对每个目录递归检查全部祖先的可见性及组织活动状态，目录内媒体的库查询、明细、保护 URL 和发送关联使用目录权限；根目录媒体保留原资源策略，不能直接设为全局。媒体 API 返回目录对应的有效 `visibility`，但不改变媒体所有权。目录改名、权限编辑、移动和删除只允许创建者或所选工作区的平台管理员，并继续要求 `media:manage`；目录上传和嵌套创建可由本工作区的可读目录成员执行，全体共享不会赋予其它工作区写入权。发送关联在锁定媒体行后以 `FOR SHARE` 锁定祖先目录并重验权限，权限修改和移动使用 `FOR UPDATE`。模板/活动的历史派生保护 URL 仅对根目录媒体生效，目录内媒体不能借关联绕过目录权限。
+
+`GET /api/media/folders` 返回当前工作区可见目录与全体共享目录及文件/可见子目录计数，另含 `manageable`（是否可维护目录）和 `writable`（是否可上传/新建子目录）；创建、改名、移动和删除目录沿用 `media:manage`，删除只允许空目录，移动会拒绝自身或子孙目录。`PUT /api/media/:id/folder` 将媒体移入目录或根目录，但仍执行媒体资源原所有者的 `manage` 边界，组织经理不能借文件夹权限修改他人媒体。上传与 `GET /api/media` 支持 `folder_id`，旧请求不带该参数时返回全部可读媒体（包含全体目录），媒体和目录写入仍严格限定源/目标工作区一致；归档工作区保留平台清理读取能力，但不开放普通写入。
 
 目录写入在 `internal/core/media_folders.go` 与工作区事务中重验活动组织、成员资格、所有权和目录边界；归档工作区禁止普通目录/媒体写入。用户物理删除在同一事务中清理其个人目录，目录中的媒体通过外键回到根目录；组织目录保留，仅将已删除创建者引用置空。初始结构和 `v6.37.0` 幂等迁移同步创建目录表、媒体外键、根目录级大小写不敏感唯一约束和索引。管理端 `Media.vue` 提供面包屑、嵌套目录、新建/改名/空目录删除，以及媒体/目录和本地文件拖放上传。
 
@@ -118,33 +141,64 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 - 一级公海是独立的客户池类型，不等同于允许匿名订阅的 `public` 列表。公海联系人保存导入的客户编码（允许重复）、公司名称和真实邮箱；编码不承担唯一键职责。
 - 一级公海列表本身固定为平台级 `global` 资源，组织投放权限单独保存在授权表；组织公海分配的业务归属由 `organization_id`/`organization_name` 表示，创建人字段仅用于审计和所有权校验。
 - 公海导入统一使用 `POST /api/import/customers`：`customer_list_ids` 必须只包含一个一级 `pool` 列表，首个 CSV/XLSX 工作表必须能映射 `customer_code`、`name`、`email`、`allocation_department` 四列；兼容模板中的 `客户编号`/`客户编码`、`姓名`、`邮箱`、`分配部门`，其他列（例如注册名称、品牌、客户等级、`分表1`）只作为模板信息忽略。`分配部门` 必须匹配一个启用中的 `organizations.name`；不存在或已归档的部门按行拒绝，不创建组织、不写入公海。若该组织已绑定该一级公海的公海分配，导入会自动写入该公海分配；若公海分配后创建，创建事务会回填已有的同部门联系人。
+- 管理端 `/admin/customers/import` 用私域/公海两个页签明确区分导入路径；公海页签只对最高管理员显示并只允许选择一个一级公海列表，选中后在同页复用 `PoolManager.vue` 为组织查看或创建绑定的公海分配。绑定界面为左侧可搜索组织及已绑定/未绑定状态、右侧当前组织的分配详情或创建表单；自动选择当前组织（个人工作区选择首个组织），分配名称按组织预填，切换组织保留各自名称草稿，创建后刷新左右状态。绑定加载失败时只提供重试，不展示创建表单。组织经理只显示当前工作区组织，平台管理员仍可跨组织创建，选择不会切换工作区。两种页签都可直接打开客户列表创建弹窗；保存后回到导入表单并自动选中新列表。带 `customer_list_id` 的导入深链在列表加载后自动切到对应页签，服务端权限和导入接口规则保持权威。
+- 公海统一导入支持 `subscribe` 与 `blocklist` 两种模式，均使用四个必填列和可选回信邮箱列的模板及启用组织校验；黑名单按所选一级公海中的邮箱匹配（忽略大小写），匹配联系人及新联系人保存 `pool_contacts.status='blocklisted'`。v6.54.0 扩展状态约束且保留旧数据。联系人状态影响其所有组织分配和共享同一联系人记录的其他池，其他池独立记录不受影响。普通导入保留黑名单，并将所选池同邮箱的新身份记录标黑；组织移除/恢复不解除该状态。既有收件人解析、快照与投递领取均要求联系人 active，自动排除黑名单。导入结果与审计保存模式及去重后的黑名单联系人数量；页面显示黑名单状态。
 - 一级公海的公海文件导入与联系人维护能力由权限控制：文件导入（统一导入与旧成员导入入口）与 `POST /api/pools/import` 仍限最高管理员，公海联系人的浏览/管理/导出由 `pools:get`/`pools:manage`/`pools:export` 三个可配置权限控制（见下条权限说明）；公海分配的创建与绑定为双路径——最高管理员可为任意活跃组织执行，目标组织自身的组织经理可在该组织工作区内为自己组织执行同一拆分。普通用户仍可按既有投放授权使用公海受众，但没有相应权限时不能查看或管理联系人。公海管理窗口只保留“目标组织选择 + 已有公海分配查看/创建并绑定”，不再承载客户文件导入、联系人查询、批量分配或单条维护。
 - 公海分配仅保存一级公海联系人到组织的分配关系（不再保存回件邮箱），不复制联系人主数据。组织在公海分配手动移除联系人时，一级公海保留该联系人并显示该组织的逻辑剔除标记；该组织后续选择一级公海投放时也必须过滤该标记，其他组织不受影响。
 - 公海和公海分配的客户计数及查看入口使用 `pool_members`/`org_pool_allocation_members` 专用查询；管理端不会把 `pool_contacts` 伪装成普通 `customers`，也不会让普通客户批量操作或导出路径接触公海数据。一级列表对组织用户只返回本组织已分配的安全 DTO，最高管理员可查看一级/二级完整记录；组织公海分配显示本组织的逻辑移除状态和原因，一级公海总表汇总各组织的移除记录，并向最高管理员展示对应组织、原因和可恢复的分配 ID。
-- 公海联系人不再有独立页面（2026-09-17 用户反馈“独立页面体验割裂”；同日按要求统一为普通客户表形态）：`frontend/src/views/PoolContacts.vue` 已删除，一级公海与公海分配的联系人改为在“客户”视图（`frontend/src/views/Customers.vue`）里随所选列表就地渲染——页头下新增「所有客户 / 公海客户」两个 tab，公海 tab 直接跳到上次访问过的可访问公海列表（`localStorage.poolLastListID`，无记录时取第一个可访问公海），旧路径 `/customers/pool-lists/:customerListID`（路由名 `poolContacts`）保留为重定向到 `/customers/customer-lists/:customerListID`；客户列表的“客户数”入口（`CustomerLists.vue` 的 `customerListCustomersRoute`）与公海导入结果的“查看公海联系人”都指向同一路径。公海表格与普通客户使用同一 `b-table` 形态：复选框、`page`/`per_page`/`total` 服务端分页、`order_by`/`order` 服务端排序、工具栏导出与批量操作、行内操作与新建；列为「客户编码/姓名/邮箱/分配部门/状态/创建时间/更新时间」（`company_name` 字段已随 v6.45.0 迁移删除）。搜索按客户编码、姓名、邮箱模糊匹配。数据模型不变：`pool_contacts` 仍是独立存储，普通客户批量操作与导出路径不接触公海数据，公海导出走独立 CSV 端点；“归档无效联系人”仅清除邮箱并将联系人标记为 archived，真正删除一级公海联系人由平台管理员通过 `DELETE /api/pools/:id/contacts/:contact_id`（及客户列表别名）执行，分配列表 ID 被拒绝。
-- 一级公海和组织公海分配的客户视图都把成员分成「公海客户」与「已移除客户」两个 tab，分别按 `status=active` 和 `status=removed` 请求；一级公海的已移除客户按联系人 ID 汇总所有组织未恢复的移除/剔除记录，未分配客户仍属正常，组织用户的一级公海视图只在本组织范围内分类。移除成员不会混入正常客户列表，已移除客户 tab 保留恢复分配入口；不带 `status` 的旧 API 请求仍返回全部联系人。
+- 公海联系人复用 `frontend/src/views/Customers.vue`，旧的 `PoolContacts.vue` 已删除。`/admin/pool` 展示所有可见一级公海的联系人并显示所属列表；`/admin/pool-lists/:id/contacts` 展示单个公海或组织公海分配的联系人。两种视图复用客户表格布局、服务端分页与排序、搜索、状态筛选和独立 CSV 导出；汇总页支持按来源公海执行已授权的跨公海批量操作，单列表按权限提供管理操作。数据仍保存在独立的 `pool_contacts` 中，普通客户批量操作与导出不接触公海数据。“归档无效联系人”只清除邮箱并标记 archived；一级公海联系人的永久删除仅允许平台管理员经 `DELETE /api/pools/:id/contacts/:contact_id` 执行，分配列表 ID 被拒绝。
+- 当前管理端导航以“客户”为一级折叠菜单，二级顺序为“公海客户”、“公海客户列表”、“私域客户”、“私域客户列表”、“导入”、“退信”，表单保留在其后。`/admin/pool-lists` 仅展示一级 `pool` 与 `org_pool_allocation`，一级公海创建及公海分配管理入口均在此页；`/admin/customer-lists` 仅展示普通 `private`/`public` 列表，创建表单不提供 `pool` 类型。前端用 `GET /api/customer-lists?type_group=pool|private` 分组；`cmd/customer_list_filters.go` 统一解析分组，`queryReadableWorkspaceLists` 对跨工作区追加的已授权公海应用同一组搜索、类型、状态、订阅方式及标签条件，并在权限过滤后统一排序、分页，保证总数与列表一致。查询式批量删除复用该可见结果，再与可管理 ID 取交集；前端同时传递 `type_group` 与 `status`，防止跨页面或跨归档状态删除。不带参数的既有 API 行为不变。公海汇总页 `/admin/pool` 与公海单列表页 `/admin/pool-lists/:id/contacts` 都高亮“公海客户”；私域客户和私域列表使用各自路由。旧 `/admin/pool/:id` 重定向至汇总页，旧 `/admin/customers/pool-lists/:id` 重定向至公海单列表页。
+- 列表类型是资源边界：`private` 与 `public` 可互相转换；一级 `pool` 和 `org_pool_allocation` 必须保留创建时的类型。`internal/core/workspace_resource_writes.go` 在持有列表行锁的更新事务内核验旧类型和请求类型，禁止通用 `PUT /api/customer-lists/:id` 将普通列表转成公海或公海分配，也禁止反向转换；公海分配只能走专用拆分事务。
+- 一级公海和组织公海分配的客户视图使用下拉筛选「正常客户」与「已移除客户」，分别按 `status=active` 和 `status=removed` 请求；一级公海的已移除客户按联系人 ID 汇总所有组织未恢复的移除/剔除记录，未分配客户仍属正常，组织用户的一级公海视图只在本组织范围内分类。移除成员不会混入正常客户列表，已移除客户保留恢复分配入口；不带 `status` 的旧 API 请求仍返回全部联系人。
 - 历史二级成员导入 API 仍保留兼容路由，但不再是管理端主入口，且其写操作与联系人维护都由服务端限制为最高管理员；统一客户导入接口是新增公海数据的唯一产品入口。组织统一回件邮箱由组织经理在组织工作区设置，或由具备 `organizations:platform_manage` 的平台组织操作员在管理组织页面选定目标组织后设置（`PUT /api/organizations/:id/reply-mailbox`）。
 - 每个“一级公海 × 组织”至多绑定一个公海分配，使一级公海投放能唯一解析该组织的收件人来源。公海分配的创建与绑定由 `cmd/pools.go` 的 `CreateOrgPoolAllocation` 承担：平台管理员可在任意活跃组织上执行（请求显式指向目标组织，无需加入该组织）；非平台管理员必须是该组织的经理且请求的 `organization_id` 等于其当前工作区组织，否则 403，普通成员一律 403。该 handler 把 `platformAdmin` 标志传给 `internal/core/pools.go` 的 `CreateOrgPoolAllocation`，由 `withWorkspaceCreation`（`internal/core/workspace_mutations.go`）在事务内锁定目标组织、要求其处于活跃状态，并在非平台管理员路径上复核调用者的活跃成员资格；其它公海写操作（联系人维护、导入、清理无效联系人等）按 `pools:manage` 与工作区边界限制，一级公海联系人永久删除则单独限制为平台管理员。创建公海分配不涉及回件邮箱：回件路由取组织级设置（下条）。
 - 公海联系人权限（v6.45.0 起可配置）：浏览、管理、导出分别由独立角色权限 `pools:get`、`pools:manage`、`pools:export` 控制（`permissions.json` + `internal/auth/models.go`），三者互不隐含——需要管理或导出的角色通常也要授予浏览。平台管理员（role id 1）始终旁路权限检查；非平台管理员除权限外还必须落在数据边界内：只能读取已授权给当前组织的公海或本组织的公海分配，管理/清理无效联系人/分配/移除/恢复只能作用于本组织的公海分配（`cmd/pools.go` 的 `requirePoolPermission` 与 `requirePoolAllocationScope`，读取侧由 `core.AuthorizePoolListAccess` 复核），越界返回 403。一级公海联系人的永久删除是独立的超级管理员动作，不由 `pools:manage` 扩大给普通角色。v6.45.0 迁移把三项权限回填给最高管理员角色，其余角色由管理员在角色界面手动勾选；新建角色的默认值包含 `pools:get`，`pools:manage`/`pools:export` 默认关闭并标记高风险。单条新增（`POST /api/customer-lists/:id/pool-contacts`，兼容别名 `POST /api/pools/:id/contacts`）对非平台管理员强制把 `allocation_department` 固定为本组织名称，避免写入他人分配；`POST /api/pools/import`（普通列表导入一级公海）与 `POST /api/import/customers` 的公海分支保持最高管理员守卫不变。
 - 组织经理的公海分配自助边界（2026-09-16 决策：维持"联系人维护仅最高管理员"；2026-09-17 修订回件邮箱归属；2026-09-17 起联系人写操作改为可配置权限）：组织经理可以为自己所在的活跃组织创建并绑定公海分配（见上条），并可通过 `PUT /api/organizations/:id/reply-mailbox` 设置本组织的统一回件邮箱——该端点由 `cmd/organizations.go` 的 `SetOrganizationReplyMailbox` 实现，只放行本组织的组织经理，并明确拒绝平台管理员代配；分配级的 `PUT /api/org-pool-allocations/:id/reply-mailbox`（及其 `/api/pools/allocations/...` 别名）与 `org_pool_allocations.reply_mailbox_id` 已删除。**公海联系人的写操作现由 `pools:manage` 控制**：单条新增、文件批量导入成员（`POST /api/org-pool-allocations/:id/import-members`）、逻辑移除与恢复（`DELETE`/`PUT /api/org-pool-allocations/members` 及其 `/api/pools/allocations/members` 别名）、清除联系人邮箱（`DELETE /api/customer-lists/:id/pool-contacts/:contact_id/email`）都要求该权限，非平台管理员进一步被限制在本组织的公海分配内（分配/移除/恢复通过 `requirePoolAllocationScope` 校验 allocation 的组织归属）。没有该权限的组织用户对这些端点一律 403，但仍可读取本组织的公海分配和经 `SafePoolContact` 脱敏后的联系人（姓名可见、邮箱脱敏）。`dev/pools_e2e_verify.ps1` 的历史断言（"组织经理的分配/移除/恢复均 403"）对应"未授予 `pools:manage` 的组织角色"，授予权限后的组织边界由 `requirePoolAllocationScope` 在每次写操作上按 allocation 归属复核。
+- 公海客户导航固定进入 `/admin/pool` 汇总页；`GET /api/pools/contacts` 与导出接口在服务端按一级公海成员关系跨列表搜索、状态、来源 `pool_id` 和精确分配部门过滤，再统一排序和分页，每行返回来源 `pool_id`/`pool_name`。`GET /api/pools/contacts/filters` 按同一组织边界返回可选公海/部门组合，不依赖当前页数据。同一联系人属于两个公海时显示两行，不合并来源；平台管理员可看全部公海，组织用户只看本组织分配内的成员且邮箱继续脱敏。点击“所属公海列表”进入 `/admin/pool-lists/:id/contacts` 单列表管理页，并保持“公海客户”导航高亮；公海客户列表计数和导入结果也指向该路由。旧 `/admin/pool/:id` 入口重定向汇总页，旧 `/admin/customers/pool-lists/:id` 和指向公海列表的通用客户列表路由重定向至单列表管理页。
 - 最高管理员在一级公海管理窗口通过独立目标组织选择器查看该组织的现有公海分配；创建请求显式指向目标组织，不切换当前工作区，也不创建组织成员关系。普通组织用户没有跨组织目标选择能力，公海分配不能通过通用客户列表表单创建，也不存在二级合并一级流程。公海分配弹窗不再提供任何回件邮箱配置，组织统一回件邮箱的设置入口对组织经理开放，也对在管理组织页面选定目标组织的 `organizations:platform_manage` 平台组织操作员开放。
-- 活动只允许选择一级公海作为受众，不允许直接选择组织公海分配；服务端按当前活动范围解析对应组织的公海分配收件人，并按该组织的统一回件邮箱（`organizations.reply_mailbox_id`）解析回件路由，在发送快照中记录一级/公海分配来源、组织和最终邮箱来源。回件邮箱一律取目标组织的统一回件邮箱；活动级“客户回信邮箱”只在受众不含公海时使用。回件邮箱是公司内部地址，可在管理端明文展示，不纳入客户邮箱脱敏。
-- 公海受众在预览/发送被阻断时，错误信息必须可自查：`ValidatePoolCampaignAudience`（`internal/core/pools.go`）先按当前配置刷新路由，再逐条列出未解析受众的完整解析链 `pool list "<公海列表>" -> organization allocation "<组织公海分配>" (organization "<组织>")` 与首个失败条件（无目标组织 / 该组织未绑定公海分配 / 组织未配置统一回件邮箱 / 该邮箱未验证或已停用），并以 `Fix: ` 给出可照做步骤（先在“客户列表 → 公海管理”绑定该组织的公海分配（如需要），再由该组织经理在“管理组织 → 组织回信邮箱”保存一个已验证邮箱作为组织统一回件邮箱，最后重试预览/发送）；活动编辑页对未解析受众只读展示同一结论，不提供任何回信配置操作。该诊断只报告，不改变解析规则：公海收件人的 Reply-To 始终取投递快照中按目标组织统一回件邮箱解析出的地址（`internal/manager/manager.go` 仅对公海收件人使用 `campaign_pool_recipients.reply_mailbox_id`），活动级邮箱选择在受众含公海时被隐藏并强制为空。
+- 活动只允许选择一级公海作为受众，服务端按活动范围解析组织公海分配。v6.55.0 新增 `pool_contacts.reply_to` 与 `campaigns.pool_reply_priority`：默认 `contact_first`（客户回信邮箱 → 组织统一回信邮箱），可选 `organization_first`（组织 → 客户），逐客户使用第一个可用地址；组织地址必须 active 且已验证。公海受众不使用活动级或个人回信邮箱。回信地址是内部路由地址，在公海、分配和 CSV 中展示；客户收件地址继续脱敏。
+- 公海受众在预览/发送被阻断时，错误信息必须可自查：`ValidatePoolCampaignAudience`（`internal/core/pools.go`）先按当前配置刷新路由，再逐条列出未解析受众的完整解析链 `pool list "<公海列表>" -> organization allocation "<组织公海分配>" (organization "<组织>")` 与首个失败条件（无目标组织 / 该组织未绑定公海分配 / 组织未配置统一回件邮箱 / 该邮箱未验证或已停用），并以 `Fix: ` 给出可照做步骤（先在“客户列表 → 公海管理”绑定该组织的公海分配（如需要），再由该组织经理在“管理组织 → 组织回信邮箱”保存一个已验证邮箱作为组织统一回件邮箱，最后重试预览/发送）；活动编辑页对未解析受众只读展示同一结论，不提供任何回信配置操作。该诊断只报告，不改变解析规则：公海收件人的 Reply-To 始终取投递快照中按活动优先级解析的客户回信邮箱或组织回退地址（`internal/manager/manager.go` 仅对公海收件人使用 `campaign_pool_recipients.reply_mailbox_id`），活动级邮箱选择在受众含公海时被隐藏并强制为空。
 - 公海投递快照使用 `campaign_pool_recipients` 与联系人内部 ID 去重；公海退订、退信和回复 AI 事件写入 `org_pool_allocation_exclusions` 的组织维度逻辑状态，并在 `bounces`/`reply_ai_events` 保留来源池、公海分配和组织字段，禁止改变一级主数据或其他组织分配。收件人判定（活跃公海联系人 × 有效二级分配 × 本组织未剔除）只在 `internal/core/pools.go` 的 `poolRecipientMembershipSQL` 定义一次，一级解析、二级解析与快照写入共用同一片段，因此三条路径不可能给出不同收件人集合。快照刷新采用 `DO UPDATE` 并清理本组织范围内、已不再可投递且尚未交给投递的 `pending`/`deferred` 行；已 `queued`/`sent`/`cancelled` 的行属于投递历史，不重写也不删除，退队路径另按 `org_pool_allocation_exclusions` 重查剔除。
 - 邮件打开像素与点击链接的公开 URL 可以携带普通客户或公海联系人的 UUID；`resolve_campaign_tracking_recipient` 必须先验证活动收件人快照，点击还要验证链接属于活动。`campaign_views`/`link_clicks` 用互斥的 `customer_id`、`pool_contact_id` 保存事件，匿名聚合模式继续写两者均为空的事件。公海成功投递写 `campaign_pool_recipients.sent_at`，迁移 v6.46.0 将旧 `sent` 行的 `updated_at` 作为近似历史时间回填。活动和工作区报表的发送分母、唯一打开与点击人数均纳入公海；收件人明细还要求 `campaigns:recipients`、普通客户查看权限及公海行的 `pools:get`，非平台管理员只能看到本组织公海行，邮箱必须脱敏且不得返回公海 UUID。
+- 打开像素在启用跟踪时由 `cmd/geoip.go` 使用本地 GeoIP2 City 数据库对请求 IP 做一次近似定位，`campaign_views` 只保存国家代码、国家、地区、城市和近似经纬度，不保存原始 IP；数据库未配置或查无结果时地理字段为空。迁移 v6.47.0 为旧库增加这些字段，历史事件无法补定位。`GET /api/campaigns/:id/report/geo` 与 `/api/campaigns/report/geo` 在工作区可读活动范围内按日期汇总，`located_opens` 为有坐标的打开数，`unknown_opens` 为其余打开数。管理端以本地全球边界数据及 ECharts 绘制城市热力图；邮件服务商或代理代取像素时，位置可能指向代理而非收件人。
+- `CampaignGeoHeatmap.vue` 的世界底图与定位数据独立显示：加载、没有定位点、未配置 GeoIP 或请求失败时仍保留地图和相应状态提示；只有有效定位点才显示热力色标。刷新为空或失败会清除旧热力点，跨活动统计与单活动报告共用这一组件。
+- 地理报告支持全球/国家切换、城市标记及明细、点击城市聚焦和重置视图。`frontend/src/utils/campaignGeo.js` 将 ISO 国家码与本地世界边界对应，按国家、地区、城市聚合次数；同名异地城市不合并，没有城市名明确显示未知。国家图聚焦主要陆地及当前定位点，跨日期变更线的坐标展开到同一范围；没有独立边界的国家/地区使用世界底图上的坐标范围。跨活动报告刷新时以 `country` URL 参数保留选择，条件未变也重新请求报告。筛选仅消费当前报告已授权的聚合，不发起外部地图请求、不扩展 API 或数据权限。缺少定位的历史打开不能补出城市，城市坐标仍是 GeoIP 近似值。
 - 客户回复、退订和投诉只能对实际投递来源组织的二级分配执行逻辑剔除，保留一级主数据和历史快照；最高管理员可跨组织审计，组织用户只能看本组织安全字段。
+
+### 独立组织营销 SMTP 与活动发件来源
+
+管理端入口 `frontend/index.html` 的 favicon、custom.css 和 custom.js 使用 `/admin/` 绝对路径，避免嵌套组织页刷新时将回退 HTML 当脚本加载。组织营销配置位于 `frontend/src/views/organizations/ManageOrganizations.vue` 的独立 SMTP 标签，复用带组织 owner 参数的 `PersonalSMTPSettings.vue`。
+
+自 v6.50.0 起，“管理组织”可配置一个或多个组织自有营销 SMTP，与个人 SMTP、系统通知 SMTP 独立。`user_smtp_servers` 复用连接字段与额度存储，但 `user_id` / `organization_id` 必须且只能存在一个；组织行不附着任何成员账号。迁移保留所有个人行、UUID、密码与使用量，旧活动的 `campaigns.smtp_source` 默认 `personal`。
+
+自 v6.52.0 起，组织 SMTP 再按组织划分为多个发件池（`organization_smtp_pools`）。每个组织可创建、重命名和删除空池；SMTP 行通过 `smtp_pool_id` 严格归属一个同组织池，旧组织 SMTP 和组织来源活动迁移到“默认发件池”。活动保存 `campaigns.smtp_pool_id`，组织轮询只读取该池；删除有 SMTP 或活动引用的池会被拒绝。
+
+- `cmd/organization_smtp.go` 的 `/api/organizations/smtp` GET/PUT、`/:id` DELETE、`/test` POST 由组织经理或平台组织管理权限授权，归档组织不可编辑。内部将正账号 ID / 负组织 ID 作为可信 owner key 复用经过校验的保存、删除、连接测试与使用量查询；数据库以独占 owner CHECK 和各 owner 名称唯一索引约束隔离。批量保存同时锁住 owner 行与 SMTP 行，防止空池并发覆盖；密码空值或掩码保留旧值，客户端不能改变 UUID 或归属。
+- 活动保存 `smtp_source=personal|organization`，个人工作区不可选择组织来源（全组织公海范围除外）。个人来源轮询活动所有者的启用 SMTP，组织来源轮询活动所属组织选定发件池的独立 SMTP。组织缓存以负池 ID 与账号缓存分开，共用发送读写锁；配置变更关闭并失效对应池及所有公海单发件池，后续消息重新解析。没有可用池时暂停/回草稿，额度用尽时延迟；不回退到其他来源或系统 SMTP。移出已归档组织到个人工作区的活动重置个人来源；克隆至组织保留来源、克隆至个人重置个人来源。
+- `GET /api/campaigns/smtp-overview?source=...`（新建）与 `GET /api/campaigns/:id/smtp-overview?source=...`（已有活动）返回启用的发件邮箱、名称、今日使用量、每日额度，绝不查询/返回 host、用户名、密码或连接设置。普通组织成员可按活动权限读取；已有活动使用活动 owner/组织，而不是查看者的 SMTP。新建全组织公海预览还传 `pool_scope=all_organizations` 和逗号分隔的 `customer_list_ids`，服务端验证专用发送权限及受众可用范围。
+- 全组织公海活动选组织来源时，准备检查、分配器、剩余容量和概览都取目标组织的自有 SMTP；选个人来源保留历史的“目标组织有效成员的个人 SMTP”语义。组织发件快照的 `sender_user_id` 为空，`sender_smtp_uuid`/from 快照仍保留。系统通知与事务邮件路由保持原有所有权；两种营销来源都应用 `smtp_delivery` 的单 SMTP 性能、随机延迟及邮件头，TLS 取各 SMTP 自身配置。
 
 ### 平台级公海营销（全量组织受众 + 组织 SMTP 池轮询，已实施）
 
+平台设置自 v6.49.0 起只保留一个用于系统通知的 SMTP；营销活动使用账号或组织发件池，事务邮件仍使用账号 SMTP。`settings.smtp_delivery` 统一定义每个 SMTP 的连接数、重试、超时、随机延迟和邮件头：`cmd/manager_store.go` 每次解析时应用它，系统通知 SMTP 保存时同步这些字段。TLS 协议和证书校验属于各 SMTP 的连接配置。v6.53.0 将旧全局 TLS 的实际生效值复制到各 SMTP，转换延迟单位，并回填活动频率；后续迁移重跑不覆盖单 SMTP TLS 或活动频率修改。设置保存后需重启，运行中的活动按既有规则延迟重启。
+
+统一投递配置的 `send_delay_min` / `send_delay_max` 是整数毫秒，满足 `0 ≤ 下限 ≤ 上限 ≤ 3600000`；两者为 0 时关闭，兼容读取旧 `2s` 等时长字符串并按原时长转换。每封 SMTP 邮件（包括首封）发送前按整数毫秒均匀抽样。`internal/messenger/email/send_delay.go` 在进程内按 SMTP UUID 共享可取消的发送门与连接容量，避免同一 SMTP 被多个缓存池重复放大并发；开启随机延迟时同 SMTP 依次等待并投递，不同 SMTP 可并行。网络重试属于同一发送尝试，不重新抽样。暂停/取消或关闭可中断等待，释放 SMTP 每日额度预占；连接测试跳过随机延迟。
+
+投递限速分三层：`campaigns.smtp_rate_limit` 先约束单活动所有 SMTP 的合计发送频率（封/分钟），个人来源默认 20、组织来源默认 100，用户可设 1–1000000；以活动 UUID 共享平滑间隔，全组织公海也共用该活动额度。平台 `app.message_rate` 是所有 SMTP 合计的每秒硬上限，滑动窗口同样为平台总量；`app.concurrency` 同时控制工作线程数和所有 SMTP 的实际投递总并发。超限等待、不丢弃，线程数不乘大发送频率。`internal/messenger/email/delivery_limiter.go` 在实际 SMTP Send 前统一取得活动、平台频率及并发许可，完成或失败时释放并发许可并唤醒队列；`internal/manager/manager.go` 给系统通知、个人/组织缓存池、公海单发件池及临时连接测试挂同一 limiter，因此直接发送的系统通知也受平台限制。单 SMTP 连接、重试、超时和随机延迟仍独立生效。所有限速与发送门为进程内状态，重启重置，多个活动工作进程之间不共享；需要平台合计上限时采用一个活动发送进程。
+
 - 营销活动勾选一级公海时，默认仍是单组织范围（`campaigns.pool_scope = 'organization'`，按当前工作区组织的公海分配解析）。持有专用权限 `campaigns:public_pool_send` 的账号可以把活动创建为 `all_organizations`：受众是该一级公海下**所有活跃组织**的公海分配并集，只接受一级公海列表（显式公海分配列表与普通客户列表都会被拒绝），权限常量在 `internal/auth/models.go`、清单在 `permissions.json`（`campaigns` 组），前端以 `$can('campaigns:public_pool_send')` 控制入口。
-- 收件人解析在 `internal/core/pools.go` 新增的全组织规则里运行：`poolRecipientAllOrgMembershipSQL` 复用与单组织规则完全相同的成员判定（活跃分配成员、活跃公海成员、联系人 active、无有效剔除），并额外要求目标组织的统一回件邮箱 active 且已验证；`poolRecipientAllOrgSelectSQL`/`poolRecipientAllOrgSnapshotUpsertSQL` 用 `DISTINCT ON (pc.id)` 把同一联系人去重到活动持久化组织顺序中的第一个组织，写入 `campaign_pool_recipients` 的目标组织、分配与回件邮箱。刷新只改写 `pending`/`deferred` 行，`queued`/`sent`/`cancelled` 是投递历史（组织、回件邮箱、发件人都不会被重排或配置变更改写）。
+- 收件人解析在 `internal/core/pools.go` 的全组织规则中保持活跃成员、联系人和剔除边界，并按持久化组织顺序去重。单组织和全组织快照共用 `poolReplySnapshotRouteSQL`：写入实际 `reply_to_snapshot`、`reply_to_source`，仅当实际地址匹配目标组织已验证且启用的邮箱时记录该 `reply_mailbox_id`，外部地址不得归到回退或其他组织邮箱。`pending`/`deferred` 允许刷新，`queued`/`sent`/`cancelled` 路由保持投递历史；发送队列与分配器只读取地址快照。
 - 组织顺序持久化在 `campaign_pool_org_orders`：活动首次被调度（`cmd/manager_store.go` 的分配器）时按活跃分配组织随机打散写入，不因暂停/重启/次日续发而重排；不再持有该公海分配的组织其顺序行会被清理。`campaigns.pool_next_org_index` 保存轮转位置，分配器每领取一封就推进一次，因此并发批次、多 worker 与恢复后的活动继续轮转。
 - 发件侧不再使用活动所有者的个人 SMTP：分配器在同一个数据库事务里按“组织轮转 → 组织内稳定顺序（user_id, smtp id）”领取收件人，并用组织级持久化游标 `org_pool_smtp_cursors.next_smtp_uuid`（`FOR UPDATE` 行锁）选择发件 SMTP，同时把 `sender_smtp_uuid`/`sender_user_id`/`sender_from_snapshot`/`sender_assigned_at` 写入投递快照。组织池成员动态过滤（组织 active、`organization_members.removed_at IS NULL`、用户 enabled、SMTP enabled），因此成员离组、账号停用、SMTP 停用立即生效。已分配且仍可用（在池中且有剩余额度）的发件人会被复用，使失败重试不跨账号。
 - 发送链路按已分配的 SMTP UUID 解析：`manager.Config.PoolSMTP`（`cmd/init.go` 注入，`cmd/manager_store.go` 的 `GetPoolSMTPServerByUUID` 在每次缓存未命中时重新校验账户状态）返回**单服务器** `email.Emailer`，`resolveMessenger` 优先于 owner 路径按 UUID 解析，缓存与失效复用 `personalSMTPSendMut`/`personalSMTPMut` 锁；SMTP 配置变更（`WithPersonalSMTPUpdate`）、成员移除、账号启停都会失效组织池缓存。发送失败仍按既有语义把收件人置回 `pending` 并保留发件人分配；`ErrPoolSMTPUnavailable`（组织结构性缺少可用 SMTP）暂停活动，`ErrSMTPQuotaExceeded` 按既有 `daily_resume_time` 延迟。
 - 额度语义保持不变并叠加：活动 `daily_send_limit` 仍是硬上限，每个 SMTP 行的 `daily_limit` 在所有公海活动之间共享；`get-campaign-pool-smtp-remaining` 只提供批量大小的建议值，最终上限由 `smtpQuotaTracker.ReserveServer` 在发送时原子预占。
-- 校验与状态：`ValidatePoolCampaignAudience` 对 `all_organizations` 活动逐组织校验（活跃、统一回件邮箱可用、至少一个可用 SMTP 账号），任一条不满足即阻止预览/发送并列出组织与缺失项；`GET /api/campaigns/:id/pool-send-status` 返回同样结论的只读视图（组织名、回件邮箱地址、SMTP 数量，绝不返回凭据），前端据此决定 Start/Schedule 是否可用。
+- 校验与状态：`ValidatePoolCampaignAudience` 与全组织发送状态逐组织检查活跃分配、完整回信路由以及 SMTP。客户都有导入地址时可以不配置组织邮箱；无客户地址的有效收件人必须有组织回退，否则阻止预览/发送；空分配保留组织邮箱配置检查。`GetCampaignPoolSendStatus` 复用相同路由就绪规则，不返回凭据。
 - 与发送快照相关的既有投影同步放宽：`campaign_send_counts`、`has-campaign-recipients`、`queue-campaign-pool-customers` 对 `all_organizations` 活动不再要求池行所属组织等于活动组织，因此未发送计数、完成判定与调度器读取的收件人集合在两条部署路径下一致。
 - 迁移 `internal/migrations/v6.44.0.go`（`cmd/upgrade.go` 注册）幂等新增 `campaigns.pool_scope`/`pool_next_org_index`、`campaign_pool_recipients` 的四个发件快照列、`campaign_pool_org_orders`、`org_pool_smtp_cursors`，并以新谓词重建 `campaign_send_counts`；对全新 `schema.sql` 库为 no-op。
+
+公海客户汇总页与单公海列表共用 `frontend/src/views/Customers.vue` 的勾选和批量操作：跨公海分配按来源公海分别选择目标分配，组织移除/恢复按当前组织的公海分配解析，归档请求携带各行来源公海 ID；永久删除仅对平台管理员开放，并按联系人 ID 去重（同一联系人可以属于多个公海）。公海 CSV 的重复 `contact` 参数只缩小已授权查询结果，汇总导出按 `(pool_id, contact_id)` 匹配，单列表导出使用 `0:<contact_id>`；省略参数保持全量筛选导出，非平台管理员仍返回脱敏 DTO。私域与公海的工具栏、弹窗和确认文案使用语言键。
+
+营销活动配置页 `frontend/src/views/Campaign.vue` 按基本信息、收件客户、发件与回信、发送安排分组，桌面双栏、窄屏顺序堆叠。详细规则和标签/发送渠道/邮件头使用可展开区域，测试发送只在活动保存后出现。公海回信优先级的界面名称为“列表回信邮箱 → 组织回信邮箱”及其反向顺序；列表来源仍逐条读取导入记录的 `reply_to`，`contact_first` / `organization_first` 和后端路由契约保持兼容。条件回信控件使用独立组件 key，防止受众切换时沿用旧邮箱值。
 
 ## AI 入站回信处理
 
@@ -173,11 +227,14 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 | `make build` | 编译后端为 `./listmonk`。 |
 | `make build-frontend` | 构建 Vue 管理端与邮件编辑器。 |
 | `make dist` | 构建前后端并将运行资源嵌入单一二进制。 |
-| `make run` / `make run-frontend` | 分别运行后端和端口 8080 的 Vite 前端。 |
+| `make run` / `make run-frontend` | 通用的 Go 后端与端口 8080 Vite 前端入口。 |
 | `make test` | 运行全部 Go 单元测试（`go test ./...`）。 |
 | `cd frontend && yarn lint` | 执行 Vue/JavaScript ESLint。 |
-| `cd frontend && yarn cypress run` | 运行端到端测试；它会重置并启动本地服务，只能在隔离环境使用。 |
-| `make init-dev-docker`、`make dev-docker` | 初始化并启动开发 Compose 套件；后端（提供管理端）映射到 `http://localhost:9173`，Vite 前端开发服务器映射到 `http://localhost:8181`。 |
+| `node dev/run-cypress.js --spec cypress/e2e/customer-lists.cy.js` | 在独立的 `listmonk-cypress` Compose 项目运行端到端测试；临时 PostgreSQL 与开发数据库隔离，重置任务只接受 9273 测试服务。 |
+| `make init-dev-local`、`make dev-middleware` | 启动 Docker 中的 PostgreSQL、MailHog、Adminer，并用 `dev/config.local.toml` 初始化本机开发库。 |
+| `make run-backend-local`、`make run-frontend-local` | 分别用 Air 在主机热更新 Go（`http://localhost:9173`）和用 Vite 在主机热更新 Vue（`http://localhost:8181/admin/`）。 |
+| `dev/start-middleware.ps1`、`dev/start-backend.ps1`、`dev/start-frontend.ps1` | Windows 下分别启动 Docker 中间件、本机 Go/Air 与本机 Node.js/Vite；后两者在各自终端持续运行。 |
+| `make init-dev-docker`、`make dev-docker` | 运行兼容的全 Docker 开发套件；默认本机热更新流程不调用这些目标。 |
 | `make rm-dev-docker` | 删除开发容器及其数据库卷，数据不可恢复。 |
 
 Go 测试放在实现附近的 `*_test.go`；修改工作区、权限、导入、发送或迁移行为时，必须补充对应的边界测试。前端可见行为变化应更新 `frontend/cypress/e2e/` 测试。

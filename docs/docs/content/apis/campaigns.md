@@ -1,5 +1,19 @@
 # API / Campaigns
 
+## Public-pool reply email priority
+
+Create and update accept `pool_reply_priority`; responses and clones retain it. Allowed values:
+
+| Value | Resolution order |
+| --- | --- |
+| `contact_first` (default) | Imported customer `reply_to` → verified active organization mailbox |
+| `organization_first` | Verified active organization mailbox → imported customer `reply_to` |
+
+The first available address is used separately for each customer. Invalid priority values return 400. An omitted field on update keeps the saved order. This applies to organization and all-organization public-pool campaigns; ordinary private-customer campaigns retain their selected campaign mailbox. Actual send snapshots save the selected address/source and do not rewrite queued or delivered history.
+
+The admin form calls the imported source **List reply mailbox** and compares it with **Organization reply mailbox**. The list source is still each imported row's `reply_to`; the API values above remain the same. Configuration is grouped into Basics, Recipients, Sender & replies, and Delivery. Tags, messenger and custom headers are under More settings; test sending becomes available after saving the campaign.
+
+
 | Method | Endpoint                                                                    | Description                               |
 | :----- | :-------------------------------------------------------------------------- | :---------------------------------------- |
 | GET    | [/api/campaigns](#get-apicampaigns)                                         | Retrieve all campaigns.                   |
@@ -8,6 +22,8 @@
 | GET    | [/api/campaigns/running/stats](#get-apicampaignsrunningstats)               | Retrieve stats of specified campaigns.    |
 | GET    | [/api/campaigns/analytics/{type}](#get-apicampaignsanalyticstype)           | Retrieve view counts for a  campaign.     |
 | GET    | [/api/campaigns/{campaign_id}/report/summary](#get-apicampaignscampaign_idreportsummary) | Retrieve summary analytics for a campaign. |
+| GET    | [/api/campaigns/report/geo](#get-apicampaignsreportgeo) | Retrieve approximate open locations for multiple campaigns. |
+| GET    | [/api/campaigns/{campaign_id}/report/geo](#get-apicampaignscampaign_idreportgeo) | Retrieve approximate open locations for a campaign. |
 | GET    | [/api/campaigns/{campaign_id}/report/timeseries](#get-apicampaignscampaign_idreporttimeseries) | Retrieve time series analytics for a campaign. |
 | GET    | [/api/campaigns/{campaign_id}/report/links](#get-apicampaignscampaign_idreportlinks) | Retrieve link analytics for a campaign.   |
 | GET    | [/api/campaigns/{campaign_id}/report/recipients](#get-apicampaignscampaign_idreportrecipients) | Retrieve recipient-level analytics for a campaign. |
@@ -87,6 +103,95 @@ Retrieve all campaigns.
         "per_page": 20,
         "page": 1
     }
+}
+```
+
+______________________________________________________________________
+
+#### GET /api/campaigns/report/geo
+
+Retrieve approximate country, region, city and coordinate aggregates for opens across multiple campaigns. Repeat the `id` parameter to select specific campaigns. When no `id` is supplied, the endpoint includes all campaigns available to the authenticated user; clients may send `all=true` to make that intent explicit. The local GeoIP City database must be configured for new opens to be located; source IP addresses are not returned or stored.
+
+##### Parameters
+
+| Name | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| id | number[] | No | Campaign IDs to include. Repeat the parameter for multiple campaigns. |
+| all | boolean | No | Explicitly request all campaigns available to the authenticated user when no `id` is supplied. |
+| from | string | Yes | Start value of date range. |
+| to | string | Yes | End value of date range. |
+
+##### Example Request
+
+```shell
+curl -u "api_user:token" -X GET 'http://localhost:9000/api/campaigns/report/geo?id=1&id=2&from=2024-08-04&to=2024-08-12'
+```
+
+Use `all=true` instead of campaign IDs to aggregate all accessible campaigns:
+
+```shell
+curl -u "api_user:token" -X GET 'http://localhost:9000/api/campaigns/report/geo?all=true&from=2024-08-04&to=2024-08-12'
+```
+
+##### Example Response
+
+The response has the same shape as the single-campaign endpoint, with locations aggregated across the selected campaigns.
+
+```json
+{
+  "data": {
+    "enabled": true,
+    "total_opens": 1240,
+    "located_opens": 1168,
+    "unknown_opens": 72,
+    "locations": [
+      {
+        "country_code": "US",
+        "country": "United States",
+        "region": "California",
+        "city": "San Francisco",
+        "latitude": 37.7749,
+        "longitude": -122.4194,
+        "count": 51
+      }
+    ]
+  }
+}
+```
+
+______________________________________________________________________
+
+#### GET /api/campaigns/{campaign_id}/report/geo
+
+Retrieve approximate country, region, city and coordinate aggregates for campaign opens. The local GeoIP City database must be configured for new opens to be located; source IP addresses are not returned or stored. Use the same `from` and `to` date parameters as the summary endpoint.
+
+##### Example Request
+
+```shell
+curl -u "api_user:token" -X GET 'http://localhost:9000/api/campaigns/1/report/geo?from=2024-08-04&to=2024-08-12'
+```
+
+##### Example Response
+
+```json
+{
+  "data": {
+    "enabled": true,
+    "total_opens": 640,
+    "located_opens": 598,
+    "unknown_opens": 42,
+    "locations": [
+      {
+        "country_code": "US",
+        "country": "United States",
+        "region": "California",
+        "city": "San Francisco",
+        "latitude": 37.7749,
+        "longitude": -122.4194,
+        "count": 24
+      }
+    ]
+  }
 }
 ```
 
@@ -470,7 +575,7 @@ Create a new campaign.
 | tags         | string\[\] |          | Tags to mark campaign.                                                                                                 |
 | headers      | JSON       |          | Key-value pairs to send as SMTP headers. Example: \[{"x-custom-header": "value"}\].                                    |
 | attribs      | JSON       |          | Optional JSON object attributes that can be used in the campaign message template. Example `{"location": "Somewhere"}` |
-| pool_scope   | string     |          | Public-pool audience scope: `organization` (default) resolves the campaign workspace's pool allocation; `all_organizations` makes the campaign cover every active organization's pool allocation of the selected first-level pool and requires the caller to hold `campaigns:public_pool_send`. Campaign audiences always use first-level public pool lists; explicit pool-allocation list IDs are rejected. An `all_organizations` campaign also rejects regular customer lists, persists a random fair organization rotation, and sends each recipient through the target organization's member SMTP pool with the organization's unified reply mailbox as Reply-To. It is immutable after creation. |
+| pool_scope   | string     |          | Public-pool audience scope: `organization` (default) resolves the campaign workspace's pool allocation; `all_organizations` makes the campaign cover every active organization's pool allocation of the selected first-level pool and requires the caller to hold `campaigns:public_pool_send`. Campaign audiences always use first-level public pool lists; explicit pool-allocation list IDs are rejected. An `all_organizations` campaign also rejects regular customer lists, persists a random fair organization rotation, and sends each recipient through the target organization's member SMTP pool with per-customer Reply-To resolved in the configured customer/organization priority order. It is immutable after creation. |
 
 ##### Example request
 
@@ -543,7 +648,7 @@ ______________________________________________________________________
 
 #### GET /api/campaigns/{campaign_id}/pool-send-status
 
-Readiness of a platform-level public-pool campaign (`pool_scope = all_organizations`). The response names each target organization with its unified reply mailbox readiness and its number of eligible member SMTP accounts, plus one issue string per unready organization. It never returns SMTP credentials.
+Readiness of a platform-level public-pool campaign (`pool_scope = all_organizations`). The response names each target organization with its reply-route readiness (customer addresses or a verified organization fallback) and its number of eligible member SMTP accounts, plus one issue string per unready organization. It never returns SMTP credentials.
 
 Legacy campaigns (`pool_scope = organization`) resolve their sender through the campaign owner's personal SMTP pool and always report `ready: true` here.
 
@@ -739,3 +844,27 @@ curl -u "api_user:token" -X DELETE 'http://localhost:9000/api/campaigns?query=te
     "data": true
 }
 ```
+
+## SMTP sender source and overview
+
+The new campaign form defaults to organization visibility and organization SMTP
+rotation in an organization workspace (100 messages/minute), or private visibility
+and personal SMTP in a personal workspace (20 messages/minute). Link tracking is
+enabled by default in the form. Editing an existing campaign uses its saved values.
+The daily resume time uses a 24-hour time picker with hour and minute selection
+(native time selection on mobile). It is saved as `HH:mm` in server local time,
+without converting it to a date or a UTC timestamp.
+
+Create, update and test requests accept `smtp_rate_limit`, an integer from 1 to
+1000000 specifying the campaign's total SMTP messages per minute across all its
+senders. Omitted/zero values on creation default to 20 for `personal` and 100 for
+`organization`; updates retain the existing value when omitted. Tests may override
+the saved rate. The activity's chosen rate sets its own pacing first; platform
+aggregate rate and sliding window ceilings still apply. Excess messages wait.
+Responses and clones preserve the rate. TLS is configured separately on each SMTP.
+
+Campaign creation, updates and test requests accept `smtp_source`: `personal` (default, including old campaigns) or `organization`. Personal campaigns rotate the owner's enabled SMTP servers; organization campaigns may instead rotate the selected `smtp_pool_id` from the organization's independent marketing pools. Configure pools and their senders in **Manage organization → Organization marketing SMTP**. System notification SMTP is never a fallback. The selected SMTP determines the From address. Exhausted daily quotas are skipped; transport settings and random delays come from global SMTP delivery settings.
+
+`organization` requires an organization campaign, except for `pool_scope=all_organizations`, which resolves each recipient's target organization. For that scope, the organization source uses independent organization servers, while the personal source retains the existing target-member pool behavior. Campaign send and test permissions and owner checks remain required.
+
+`GET /api/campaigns/smtp-overview?source=organization&smtp_pool_id={id}` previews a new campaign's enabled senders in the selected pool. `GET /api/campaigns/{id}/smtp-overview?source=organization` previews the saved campaign's selected pool; `source=personal` previews its owner's pool. Responses contain only `id`, `name`, `from_email`, `daily_limit`, `sent_today`, and optional organization identity. Credentials and connection settings are excluded. An unavailable pool returns an empty array. New all-organization previews additionally accept `pool_scope=all_organizations` and comma-separated `customer_list_ids`; the dedicated public-pool send permission and audience checks apply.

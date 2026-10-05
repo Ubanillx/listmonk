@@ -23,12 +23,12 @@ authentication and request conventions.
 | PUT    | [/api/customers/{customer_id}](#put-apicustomerscustomer_id)                    | Update a specific customer.                  |
 | PUT    | [/api/customers/{customer_id}/blocklist](#put-apicustomerscustomer_idblocklist) | Blocklist a specific customer.               |
 | PUT    | [/api/customers/blocklist](#put-apicustomersblocklist)                              | Blocklist one or many customers.             |
-| PUT    | [/api/customers/query/blocklist](#put-apicustomersqueryblocklist)                   | Blocklist customers based on SQL expression. |
-| PUT    | [/api/customers/query/customer-lists](#put-apicustomersquerycustomer-lists)               | Modify memberships based on SQL expression.      |
+| PUT    | [/api/customers/bulk/blocklist](#put-apicustomersbulkblocklist)                   | Blocklist customers matched by ordinary filters. |
+| PUT    | [/api/customers/bulk/customer-lists](#put-apicustomersbulkcustomer-lists)               | Modify memberships for filtered customers.      |
 | DELETE | [/api/customers/{customer_id}](#delete-apicustomerscustomer_id)                 | Delete a specific customer.                  |
 | DELETE | [/api/customers/{customer_id}/bounces](#delete-apicustomerscustomer_idbounces)  | Delete a specific customer's bounce records. |
 | DELETE | [/api/customers](#delete-apicustomers)                                              | Delete one or more customers.                |
-| POST   | [/api/customers/query/delete](#post-apicustomersquerydelete)                        | Delete customers based on SQL expression.    |
+| POST   | [/api/customers/bulk/delete](#post-apicustomersbulkdelete)                        | Delete customers matched by ordinary filters.    |
 
 ______________________________________________________________________
 
@@ -40,7 +40,7 @@ Retrieve all customers.
 
 | Name                | Type   | Required | Description                                                           |
 | :------------------ | :----- | :------- | :-------------------------------------------------------------------- |
-| query               | string |          | Customer search by SQL expression.                                  |
+| search              | string |          | Match customer code, name or e-mail address.                         |
 | customer_list_id             | int[]  |          | ID of customer_lists to filter by. Repeat in the query for multiple values.    |
 | subscription_status | string |          | Subscription status to filter by if there are one or more `customer_list_id`s. |
 | order_by            | string |          | Result sorting field. Options: name, status, created_at, updated_at.  |
@@ -62,7 +62,7 @@ curl -u 'api_username:access_token' 'http://localhost:9000/api/customers?custome
 curl -u 'api_username:access_token' -X GET 'http://localhost:9000/api/customers' \
     --url-query 'page=1' \
     --url-query 'per_page=100' \
-    --url-query "query=customers.name LIKE 'Test%' AND customers.attribs->>'city' = 'Bengaluru'"
+    --url-query 'search=Test'
 ```
 
 ##### Example Response
@@ -312,8 +312,7 @@ Export customers as a gzipped CSV stream (`Content-Type: text/csv`, attachment `
 | id                  | int[]  |          | IDs of specific customers to export. Repeat in the query for multiple values. |
 | customer_list_id    | int[]  |          | ID of customer_lists to filter by. Repeat in the query for multiple values. |
 | subscription_status | string |          | Subscription status to filter by.                                     |
-| search              | string |          | Customer search string.                                               |
-| query               | string |          | Customer search by SQL expression.                                    |
+| search              | string |          | Match customer code, name or e-mail address.                          |
 
 Without `id`, all customers the caller manages in the active workspace are exported.
 
@@ -330,7 +329,7 @@ uuid,email,name,customer_code,attributes,status,created_at,updated_at
 ea06b2e7-4b08-4697-bcfc-2a5c6dde8f1c,john@example.com,John Doe,CUST-001,"{""city"":""Bengaluru""}",enabled,2024-07-29 11:01:31.478677 +0530 IST,2024-07-29 11:01:31.478677 +0530 IST
 ```
 
-> **Note:** Requires the `customers:export` grant (not required for organization managers) as well as `customers:get_all` or `customers:get`; the `query` parameter additionally requires `customers:sql_query`. When the export is scoped to customer lists with e-mail masking enabled and the caller cannot manage those lists, e-mail addresses are masked. When the request targets individual customers through `id`, every id is additionally checked with `requireExportableWorkspaceCustomer` → `RequireManageResource` (`cmd/customers.go:319`, `cmd/workspace_permissions.go:415`), so a caller with read-only rights receives HTTP 403 when passing `id`.
+> **Note:** Requires the `customers:export` grant (not required for organization managers) as well as `customers:get_all` or `customers:get`. When the export is scoped to customer lists with e-mail masking enabled and the caller cannot manage those lists, e-mail addresses are masked. When the request targets individual customers through `id`, every id is additionally checked with `requireExportableWorkspaceCustomer` → `RequireManageResource`, so a caller with read-only rights receives HTTP 403 when passing `id`. The retired `query` SQL parameter returns HTTP 400.
 
 ______________________________________________________________________
 
@@ -626,25 +625,25 @@ curl -u 'api_username:access_token' -X PUT 'http://localhost:9000/api/customers/
 
 ______________________________________________________________________
 
-#### PUT /api/customers/query/blocklist
+#### PUT /api/customers/bulk/blocklist
 
-Blocklist customers based on SQL expression.
-
-> Refer to the [querying and segmentation](../querying-and-segmentation.md#querying-and-segmenting-customers) section for more information on how to query customers with SQL expressions.
+Blocklist managed customers matching a customer code, name or e-mail search and optional list filters. Requires `customers:blocklist` and a writable workspace.
 
 ##### Parameters
 
-| Name     | Type     | Required | Description                                  |
-| :------- | :------- | :------- | :------------------------------------------- |
-| query    | string   | Yes      | SQL expression to filter customers with.   |
-| customer_list_ids | []number | No       | Optional customer_list IDs to limit the filtering to. |
+| Name | Type | Required | Description |
+| :--- | :--- | :------- | :---------- |
+| search | string | Unless `all=true` | Customer code, name or e-mail search. |
+| customer_list_ids | number[] | No | Limit to these customer lists. |
+| subscription_status | string | No | Limit membership status when filtering by list. |
+| all | boolean | No | Explicitly select all managed customers in the supplied list scope. |
 
 ##### Example Request
 
 ```shell
-curl -u 'api_username:access_token' -X POST 'http://localhost:9000/api/customers/query/blocklist' \
+curl -u 'api_username:access_token' -X PUT 'http://localhost:9000/api/customers/bulk/blocklist' \
 -H 'Content-Type: application/json' \
---data-raw '{"query":"customers.name LIKE \'John Doe\' AND customers.attribs->>'\''city'\'' = '\''Bengaluru'\''"}'
+--data-raw '{"search":"john"}'
 ```
 
 ##### Example Response
@@ -657,9 +656,9 @@ curl -u 'api_username:access_token' -X POST 'http://localhost:9000/api/customers
 
 ______________________________________________________________________
 
-#### PUT /api/customers/query/customer-lists
+#### PUT /api/customers/bulk/customer-lists
 
-Modify the customer_list memberships of customers matched by a search or SQL expression. This is the bulk query form of [PUT /api/customers/customer-lists](#put-apicustomerscustomer-lists).
+Modify memberships of managed customers matched by ordinary filters. This is the filtered form of [PUT /api/customers/customer-lists](#put-apicustomerscustomer-lists).
 
 ##### Parameters
 
@@ -668,17 +667,16 @@ Modify the customer_list memberships of customers matched by a search or SQL exp
 | target_customer_list_ids | number[]   | Yes                | Array of customer_list IDs to be modified.                        |
 | action                   | string     | Yes                | Action to be applied: `add`, `remove`, or `unsubscribe`.          |
 | status                   | string     | Required for `add` | Subscription status: `confirmed`, `unconfirmed`, or `unsubscribed`. |
-| query                    | string     |          | SQL expression to filter customers with. When omitted, all customers the caller manages in the active workspace are matched. |
-| search                   | string     |          | Customer search string. |
+| search                   | string     |          | Match customer code, name or e-mail. When omitted, all managed customers in the active scope are matched. |
 | customer_list_ids        | number[]   |          | Optional customer_list IDs to limit the filtering to. |
 | subscription_status      | string     |          | Subscription status to filter by. |
 
 ##### Example Request
 
 ```shell
-curl -u 'api_username:access_token' -X PUT 'http://localhost:9000/api/customers/query/customer-lists' \
+curl -u 'api_username:access_token' -X PUT 'http://localhost:9000/api/customers/bulk/customer-lists' \
 -H 'Content-Type: application/json' \
---data-raw '{"query":"customers.name LIKE '\''John Doe'\''","action":"add","target_customer_list_ids":[4],"status":"confirmed"}'
+--data-raw '{"search":"John Doe","action":"add","target_customer_list_ids":[4],"status":"confirmed"}'
 ```
 
 ##### Example Response
@@ -689,7 +687,7 @@ curl -u 'api_username:access_token' -X PUT 'http://localhost:9000/api/customers/
 }
 ```
 
-> **Note:** Requires the `customers:membership_manage` grant and a writable workspace; only customers the caller owns or manages are affected. Using the `query` parameter additionally requires the `customers:sql_query` grant.
+> **Note:** Requires the `customers:membership_manage` grant and a writable workspace; only customers the caller owns or manages are affected. The retired SQL `query` field returns HTTP 400.
 
 ______________________________________________________________________
 
@@ -771,25 +769,26 @@ curl -u 'api_username:access_token' -X DELETE 'http://localhost:9000/api/custome
 
 ______________________________________________________________________
 
-#### POST /api/customers/query/delete
+#### POST /api/customers/bulk/delete
 
-Delete customers based on SQL expression.
+Delete managed customers matched by a customer code, name or e-mail search and optional list filters. Requires `customers:delete` and a writable workspace.
 
 ##### Parameters
 
 | Name     | Type     | Required | Description                                                        |
 | :------- | :------- | :------- | :----------------------------------------------------------------- |
-| query    | string   | No       | SQL expression to filter customers with.                         |
-| customer_list_ids | []number | No       | Optional customer_list IDs to limit the filtering to.                       |
-| all      | bool     | No       | When set to `true`, ignores any query and deletes all customers. |
+| search | string | Unless `all=true` | Match customer code, name or e-mail. |
+| customer_list_ids | number[] | No | Limit to these customer lists. |
+| subscription_status | string | No | Limit membership status when filtering by list. |
+| all | boolean | No | Explicitly select all managed customers in the supplied list scope. |
 
 
 ##### Example Request
 
 ```shell
-curl -u 'api_username:access_token' -X POST 'http://localhost:9000/api/customers/query/delete' \
+curl -u 'api_username:access_token' -X POST 'http://localhost:9000/api/customers/bulk/delete' \
 -H 'Content-Type: application/json' \
---data-raw '{"query":"customers.name LIKE \'John Doe\' AND customers.attribs->>'\''city'\'' = '\''Bengaluru'\''"}'
+--data-raw '{"search":"John Doe"}'
 ```
 
 ##### Example Response

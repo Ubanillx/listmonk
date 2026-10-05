@@ -7,15 +7,26 @@ also limited to the selected personal or organization workspace and the
 resource's owner, visibility, and transfer state. A global role or a
 customer_list-specific grant never exposes a resource in another workspace.
 
-- CustomerLists and customers remain private to their owner. Organization managers
-  may inspect member-owned records in their active organization, but cannot
-  modify them or send with them. Customer and single-customer exports are direct
+- Ordinary customer lists default to private and may expose their metadata and
+  counts to members of the selected organization when set to organization-shared.
+  Customer records remain private to their owner. Organization managers may
+  inspect member-owned records in their active organization, but cannot modify
+  them or send with them. A shared list does not grant customer access, imports,
+  mutations, or sending rights. Customer and single-customer exports are direct
   downloads; `customers:export` and the same workspace, ownership, and masking
   rules apply.
 - Templates and campaigns can be private, organization-visible, or global.
   Members can read organization-visible resources in their active organization;
   global resources remain readable across workspaces. Sending, direct exports, and
   mutations apply stricter owner and workspace checks.
+- Media folders offer Personal, Organization, and Everyone permissions. Personal
+  folders are visible to their creator in the owning workspace (platform admins
+  can inspect them); Organization folders to members of the selected organization;
+  Everyone folders to signed-in users across workspaces. Every ancestor must also
+  be readable. Folder media inherits this audience for browsing and use, while
+  ownership and writes remain within the original workspace. Only the creator or
+  a platform admin in that workspace can edit folder permissions; `media:manage`
+  is still required. Personal workspaces cannot choose Organization.
 - Organization membership has separate `member` and `manager` roles. It does
   not grant system user-role or customer_list-role permissions. Archived organizations
   reject normal writes.
@@ -40,7 +51,6 @@ A user role is a collection of user related permissions. User roles are attached
 |             | customers:import      | Import customers from external files                                                                                                                                                                                               |
 |             | customers:export      | Export customer and blocklist data; ownership, workspace, and masking rules still apply |
 |             | customers:sensitive_read | View unmasked customer e-mail and attributes where the current customer list would otherwise mask them; this does not bypass workspace or ownership boundaries. Pool contacts are always masked except for platform administrators, so this permission does not unmask them |
-|             | customers:sql_query   | Run raw SQL queries on customer data.<br /><span style="color: #de4a45;">**WARNING:**</span><span style="font-size: 0.875em; line-height: 1.3; color:#888;">This permission allows execution of arbitrary SQL expressions and SQL functions. While it is readonly on the table data, it allows querying of all customer_lists and customers directly from the database superceding individual customer_list and customer permissions. Raw SQL expressions make it possible to obtain Postgres database configuration and potentially interact with other Postgres system features. Give this permission ONLY to trusted users. [Learn more](#customerssql_query). |
 | pools       | pools:get             | Browse and search public-pool contacts. Non-platform-administrators only see pools granted to the active organization, with masked e-mail addresses. |
 |             | pools:manage          | Create, assign, remove, restore, and clear the e-mail of public-pool contacts. Non-platform-administrators may only act on their own organization's pool allocation. |
 |             | pools:export          | Export public-pool contacts. Non-platform-administrators only export pools granted to the active organization, with masked e-mail addresses. |
@@ -151,23 +161,5 @@ Two per-resource protections control what a viewer sees of a customer record:
 Regular users can create personal API keys from `Profile -> API Keys`. Each key is restricted to one personal or organization workspace, must expire within 24 months, and can be narrowed with business API scopes. The key never changes the user's role, customer_list role, organization membership, or resource ownership.
 
 A user account can also be of type API. API users are administrator-managed internal service accounts. Unlike regular user accounts that have custom passwords or OIDC for authentication, API users get an automatically generated secret token and can retain the legacy API-token behavior.
-
-## `customers:sql_query`
-
-This permission allowers users to write and execute arbitrary SQL queries on the database. Although it is executed as a read-only transaction disallowing changing of data in the database tables, it allows querying of all customer_lists, customers and other data directly from the database superceding individual customer_list and customer permissions.
-
-Raw SQL expressions also make it possible to obtain Postgres database configuration and potentially interact with other Postgres system features. Give this permission ONLY to trusted users.
-
-If this permission is being assigned to many users, it is highly recommended that you create a custom Postgres role disallowing any privileged operations. For example:
-
-```sql
-CREATE ROLE listmonk_app WITH
-    LOGIN
-    PASSWORD '...'
-    NOSUPERUSER
-    NOCREATEDB
-    NOCREATEROLE
-    NOREPLICATION;
-```
 
 - “我参与的组织”页面的“迁移个人资源”默认折叠，点击标题展开或收起。仅最高管理员或具有 `workspaces:personal` 权限的人员显示；其他人员不显示迁移板块和待迁移资源统计，也不请求个人资源列表。

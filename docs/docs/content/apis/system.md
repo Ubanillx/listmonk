@@ -242,15 +242,24 @@ Returns the dashboard totals for the active workspace. Requires authentication o
 
 | Field                                   | Description                                                                 |
 |-----------------------------------------|-----------------------------------------------------------------------------|
-| customers.total                         | Total customers                                                              |
-| customers.blocklisted                   | Blocklisted customers                                                        |
-| customers.orphans                       | Customers without any customer list membership                               |
+| private_customers.total                  | Private customers visible in the selected workspace                          |
+| private_customers.blocklisted            | Blocklisted private customers                                                 |
+| private_customers.orphans                | Private customers without any customer list membership                       |
+| pool_customers.total                     | Public-pool membership rows visible in the selected workspace                |
+| pool_customers.active                    | Membership rows not removed from the relevant organization                   |
+| pool_customers.removed                   | Membership rows removed from the relevant organization                       |
+| pool_lists.total                          | Active first-level public-pool lists visible in the selected workspace         |
+| pool_lists.bound                          | Visible first-level pools with at least one active organization binding       |
+| pool_lists.unbound                        | Visible first-level pools without an active organization binding             |
+| pool_lists.allocations                    | Active allocation lists bound to those pools in active organizations          |
+| pool_lists.organizations                  | Distinct active organizations with those bindings                            |
+| customers                                | Compatibility alias of `private_customers`                                    |
 | customerLists / customer_lists          | Customer list totals: `total`, `public`, `private`, `optin_single`, `optin_double` |
 | campaigns.total                         | Total campaigns                                                              |
 | campaigns.by_status                     | Map of campaign status to count                                              |
 | messages                                | Sum of `sent` over all visible campaigns                                      |
 
-The customer list object is keyed `customerLists` for platform administrators, who read the global materialized view (`schema.sql:867`), and `customer_lists` for workspace-scoped responses (`internal/core/dashboard.go:124`).
+The customer list object is keyed `customerLists` for platform administrators, who read the global materialized view, and `customer_lists` for workspace-scoped responses. `pool_lists.total` counts only active first-level public-pool lists; allocation lists are reported separately in `pool_lists.allocations`. `bound + unbound = total`. Bindings require an active allocation list, an active source pool and an active organization; allocations without a source pool do not count. Platform administrators see all such bindings; ordinary organization workspaces count only their own bindings, even for pools shared by multiple organizations. An authorized pool without an active binding counts as unbound in that organization. Ordinary personal workspaces return zero for every public-pool list field. The public-pool customer counts use the same pool-membership row unit as the `/api/pool-contacts` aggregate: one contact in two pools counts twice. Platform administrators see all pool rows, organization workspaces see their allocated rows, and personal workspaces see zero.
 
 ##### Example Request
 
@@ -267,6 +276,23 @@ curl -u 'api_username:access_token' 'http://localhost:9000/api/dashboard/counts'
       "total": 0,
       "blocklisted": 0,
       "orphans": 0
+    },
+    "private_customers": {
+      "total": 0,
+      "blocklisted": 0,
+      "orphans": 0
+    },
+    "pool_customers": {
+      "total": 0,
+      "active": 0,
+      "removed": 0
+    },
+    "pool_lists": {
+      "total": 0,
+      "bound": 0,
+      "unbound": 0,
+      "allocations": 0,
+      "organizations": 0
     },
     "customer_lists": {
       "total": 0,
@@ -587,3 +613,18 @@ curl -u 'api_username:access_token' -X POST 'http://localhost:9000/api/logout'
   "data": true
 }
 ```
+
+## Organization marketing SMTP
+
+In an active organization workspace, organization managers and platform organization operators can manage independent marketing senders:
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| GET | `/api/organizations/smtp` | List configuration with passwords masked. |
+| PUT | `/api/organizations/smtp` | Replace configuration with `{ "smtp": [...] }`. |
+| DELETE | `/api/organizations/smtp/{id}` | Delete one server owned by this organization. |
+| POST | `/api/organizations/smtp/test` | Test supplied configuration; `id` reuses a saved password, `email` specifies the recipient. |
+
+Select the organization with `X-Listmonk-Organization-ID`. Add `?pool_id={id}` to the SMTP endpoints to address a specific organization sending pool; omitting it uses the first (legacy/default) pool. SMTP rows support `id`, `name`, `enabled`, `from_email`, `daily_limit`, `host`, `hello_hostname`, `port`, `auth_protocol`, `username`, `password`. IDs and UUIDs cannot be reassigned across organizations or accounts. Empty/masked passwords preserve existing credentials. TLS, retries, connection limits, timeouts, headers and random delay are controlled globally in SMTP delivery settings. Connection tests bypass pacing and quotas. Changes invalidate the selected pool for subsequent deliveries; removing the last enabled server pauses its running campaigns and returns scheduled/deferred campaigns to draft. Personal SMTP and system notifications remain independent. Ordinary members use the campaign SMTP overview endpoint without access to credentials.
+
+Organization managers can create and manage pools with `GET/POST /api/organizations/smtp-pools`, `PUT/DELETE /api/organizations/smtp-pools/{id}`. A pool has a unique organization-local `name`; deletion is rejected while it still contains SMTP rows or is referenced by a campaign. `GET /api/campaigns/smtp-pools` and `GET /api/campaigns/{id}/smtp-pools` return the pool names and sender counts available to the campaign editor. Campaign requests use `smtp_pool_id` when `smtp_source=organization`; the ID must belong to the campaign organization.

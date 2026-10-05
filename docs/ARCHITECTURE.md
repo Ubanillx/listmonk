@@ -230,6 +230,17 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 
 ## 构建、测试与开发
 
+### OpenClaw 营销技能
+
+`skills/listmonk-openclaw-marketing/` 是外部自动化工具集，不进入产品前后端构建。
+`SKILL.md` 提供任务路由与工作流，`references/api-reference.md` 按实际
+`cmd/handlers.go`、`cmd/api_keys.go` 和处理器维护参数、scope、返回结构与工作区边界；
+`references/rest-workflow.md` 维护 CLI 参数和操作示例。个人 Key 可读跨活动报表，
+但仍不能使用 dashboard、邮箱配置、pools 或 org-pool-allocations 路径。
+Python 草稿创建支持显式 SMTP 来源/组织池/频率与回信邮箱，内容蓝本不继承这些发送配置；
+报表支持单活动、多个 ID 或工作区授权集合、可选 geo 及指定收件人页。
+测试运行 `python -m pytest skills/listmonk-openclaw-marketing/tests -q`；不需要真实 Key 或发送邮件。
+
 在 Bash 兼容终端运行以下命令：
 
 | 命令 | 用途 |

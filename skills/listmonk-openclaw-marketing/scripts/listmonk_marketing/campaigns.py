@@ -11,6 +11,7 @@ INHERITED_CAMPAIGN_FIELDS = (
     "subject",
     "type",
     "body",
+    "body_source",
     "altbody",
     "content_type",
     "template_id",
@@ -22,6 +23,7 @@ INHERITED_CAMPAIGN_FIELDS = (
     "attribs",
     "headers",
     "auto_track_links",
+    "name_fallback",
     "archive",
     "archive_template_id",
     "archive_meta",
@@ -75,6 +77,11 @@ def build_campaign_payload(
     messenger: str | None = None,
     from_email: str | None = None,
     reply_mailbox_id: int | None = None,
+    smtp_source: str | None = None,
+    smtp_pool_id: int | None = None,
+    smtp_rate_limit: int | None = None,
+    visibility: str | None = None,
+    auto_track_links: bool | None = None,
     daily_send_limit: int | None = None,
     daily_resume_time: str | None = None,
     send_at: str | None = None,
@@ -100,6 +107,20 @@ def build_campaign_payload(
         payload["from_email"] = from_email
     if reply_mailbox_id is not None:
         payload["reply_mailbox_id"] = reply_mailbox_id
+    if smtp_source is not None:
+        payload["smtp_source"] = smtp_source
+    if smtp_pool_id is not None:
+        if smtp_source != "organization" or smtp_pool_id < 1:
+            raise ValueError("--smtp-pool-id requires --smtp-source organization and a positive pool ID")
+        payload["smtp_pool_id"] = smtp_pool_id
+    if smtp_rate_limit is not None:
+        if not 1 <= smtp_rate_limit <= 1000000:
+            raise ValueError("--smtp-rate-limit must be between 1 and 1000000")
+        payload["smtp_rate_limit"] = smtp_rate_limit
+    if visibility is not None:
+        payload["visibility"] = visibility
+    if auto_track_links is not None:
+        payload["auto_track_links"] = auto_track_links
     if daily_send_limit is not None:
         payload["daily_send_limit"] = daily_send_limit
     if daily_resume_time is not None:

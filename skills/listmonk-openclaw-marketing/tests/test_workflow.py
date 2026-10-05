@@ -11,13 +11,14 @@ SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-from run_marketing_flow import run_workflow
+from run_marketing_flow import parse_args, run_workflow
 
 
 class WorkflowClient:
     def __init__(self) -> None:
         self.clone_template_called = False
         self.status_calls: list[tuple[int, str]] = []
+        self.created_payload: dict[str, object] = {}
 
     def validate_token(self) -> list[dict[str, object]]:
         return []
@@ -62,6 +63,7 @@ class WorkflowClient:
         return [{"id": 2, "name": "复制用模板"}]
 
     def create_campaign(self, payload: dict[str, object]) -> dict[str, object]:
+        self.created_payload = payload
         return {
             "id": 41,
             "status": "draft",
@@ -82,6 +84,34 @@ class WorkflowTests(unittest.TestCase):
         handle.close()
         self.addCleanup(lambda: Path(handle.name).unlink(missing_ok=True))
         return handle.name
+
+    def test_workflow_runs_from_real_cli_arguments_with_delivery_settings(self) -> None:
+        source = self.make_json_file([{"email": "flow@example.com", "customer_code": "FLOW001", "attribs": {"city": "Shanghai"}}])
+        client = WorkflowClient()
+        args = parse_args([
+            "--base-url", "https://listmonk.example", "--bearer-token", "test-token",
+            "--customer_list-name", "Launch", "--customers-file", source,
+            "--source-template-id", "5", "--new-template-name", "Launch template",
+            "--campaign-name", "Launch", "--subject", "Hello", "--daily-send-limit", "300",
+            "--reply-mailbox-id", "7", "--smtp-source", "organization", "--smtp-pool-id", "5",
+            "--smtp-rate-limit", "100", "--visibility", "organization", "--auto-track-links",
+        ])
+        result = run_workflow(args, client=client)
+        self.assertEqual(result["status"], "draft")
+        self.assertEqual(client.status_calls, [])
+        self.assertEqual(client.created_payload["reply_mailbox_id"], 7)
+        self.assertEqual(client.created_payload["smtp_source"], "organization")
+        self.assertEqual(client.created_payload["smtp_pool_id"], 5)
+        self.assertEqual(client.created_payload["smtp_rate_limit"], 100)
+        self.assertTrue(client.created_payload["auto_track_links"])
+
+    def test_workflow_cli_defaults_include_optional_reply_mailbox(self) -> None:
+        args = parse_args([
+            "--base-url", "https://listmonk.example", "--bearer-token", "test-token",
+            "--customer_list-id", "12", "--customers-file", "customers.json",
+            "--source-campaign-id", "31", "--campaign-name", "Launch",
+        ])
+        self.assertIsNone(args.reply_mailbox_id)
 
     def test_run_workflow_aggregates_subsystems(self) -> None:
         source = self.make_json_file([{"email": "flow@example.com", "name": "Flow", "customer_code": "FLOW001"}])

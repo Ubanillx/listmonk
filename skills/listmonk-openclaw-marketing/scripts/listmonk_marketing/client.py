@@ -224,12 +224,38 @@ class ListmonkClient:
             params={"from": from_date, "to": to_date},
         )
 
+    def get_report_geo(self, campaign_id: int, from_date: str, to_date: str) -> dict[str, Any]:
+        return self.request("GET", f"/api/campaigns/{campaign_id}/report/geo", params={"from": from_date, "to": to_date})
+
+    def get_campaigns_report(
+        self,
+        report: str,
+        from_date: str,
+        to_date: str,
+        *,
+        campaign_ids: list[int] | None = None,
+        all_campaigns: bool = False,
+        page: int = 1,
+        per_page: int = 100,
+    ) -> Any:
+        if report not in {"summary", "timeseries", "links", "geo", "recipients"}:
+            raise ValueError("Unsupported campaign report")
+        params: dict[str, Any] = {"from": from_date, "to": to_date}
+        if campaign_ids:
+            params["id"] = campaign_ids
+        if all_campaigns:
+            params["all"] = "true"
+        if report == "recipients":
+            params.update({"page": page, "per_page": per_page})
+        return self.request("GET", f"/api/campaigns/report/{report}", params=params)
+
     def get_report_recipients(
         self,
         campaign_id: int,
         from_date: str,
         to_date: str,
         per_page: int,
+        page: int = 1,
     ) -> dict[str, Any]:
-        params = {"from": from_date, "to": to_date, "page": 1, "per_page": per_page}
+        params = {"from": from_date, "to": to_date, "page": page, "per_page": per_page}
         return self.request("GET", f"/api/campaigns/{campaign_id}/report/recipients", params=params)

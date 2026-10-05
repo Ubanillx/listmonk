@@ -128,9 +128,18 @@ def add_campaign_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--content-type", choices=["richtext", "html", "markdown", "plain", "visual"])
     parser.add_argument("--messenger", help="Messenger name, defaults to email unless inherited")
     parser.add_argument("--from-email", help="Optional campaign from_email, or inherit from a source campaign")
-    parser.add_argument("--reply-mailbox-id", type=int, help="Optional owner-configured reply mailbox ID")
+    add_campaign_delivery_arguments(parser)
     parser.add_argument("--daily-send-limit", type=int, help="Daily send limit, or inherit from a source campaign")
     parser.add_argument("--daily-resume-time", help="Daily resume time in HH:MM local server time, or inherit")
     parser.add_argument("--send-at", default="", help="Optional RFC3339 send time for scheduling")
     parser.add_argument("--tag", action="append", default=None, help="Campaign tag; pass multiple times for multiple tags")
     parser.add_argument("--attribs-file", help="Path to a JSON object for campaign attribs")
+
+
+def add_campaign_delivery_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--reply-mailbox-id", type=int, help="Optional preconfigured reply mailbox usable by the campaign owner")
+    parser.add_argument("--smtp-source", choices=["personal", "organization"], help="Sender source; API defaults to personal")
+    parser.add_argument("--smtp-pool-id", type=int, help="Organization SMTP pool ID in the bound workspace")
+    parser.add_argument("--smtp-rate-limit", type=int, help="Total campaign SMTP messages per minute, 1 to 1000000")
+    parser.add_argument("--visibility", choices=["private", "organization", "global"], help="Campaign visibility; organization requires an organization workspace")
+    parser.add_argument("--auto-track-links", action=argparse.BooleanOptionalAction, default=None, help="Enable or disable automatic link tracking")

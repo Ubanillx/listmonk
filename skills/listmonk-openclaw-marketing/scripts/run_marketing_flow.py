@@ -13,6 +13,7 @@ from listmonk_marketing.campaigns import (
 )
 from listmonk_marketing.cli import (
     add_auth_arguments,
+    add_campaign_delivery_arguments,
     add_list_create_arguments,
     add_list_target_arguments,
     add_source_campaign_arguments,
@@ -43,6 +44,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--content-type", choices=["richtext", "html", "markdown", "plain", "visual"])
     parser.add_argument("--messenger", help="Messenger name, defaults to email unless inherited")
     parser.add_argument("--from-email", help="Optional campaign from_email, or inherit from a source campaign")
+    add_campaign_delivery_arguments(parser)
     parser.add_argument("--daily-send-limit", type=int, help="Daily send limit, or inherit from a source campaign")
     parser.add_argument("--daily-resume-time", help="Daily resume time in HH:MM local server time, or inherit")
     parser.add_argument("--send-at", default="", help="Optional RFC3339 send time for scheduling")
@@ -143,6 +145,11 @@ def run_workflow(args: argparse.Namespace, *, client: ListmonkClient | None = No
             messenger=args.messenger,
             from_email=args.from_email,
             reply_mailbox_id=args.reply_mailbox_id,
+            smtp_source=getattr(args, "smtp_source", None),
+            smtp_pool_id=getattr(args, "smtp_pool_id", None),
+            smtp_rate_limit=getattr(args, "smtp_rate_limit", None),
+            visibility=getattr(args, "visibility", None),
+            auto_track_links=getattr(args, "auto_track_links", None),
             daily_send_limit=args.daily_send_limit,
             daily_resume_time=args.daily_resume_time,
             send_at=args.send_at,

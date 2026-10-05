@@ -1678,6 +1678,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#devcontainer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Devcontainer
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#keeping-the-running-dev-suite-in-sync" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1814,6 +1825,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#devcontainer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Devcontainer
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#keeping-the-running-dev-suite-in-sync" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1867,77 +1889,86 @@
 <p>The app has two distinct components, the Go backend and the VueJS frontend. In the dev environment, both are run independently.</p>
 <h3 id="pre-requisites">Pre-requisites<a class="headerlink" href="#pre-requisites" title="Permanent link">&para;</a></h3>
 <ul>
-<li><code>go</code></li>
-<li><code>nodejs</code> (if you are working on the frontend) and <code>yarn</code></li>
-<li>PostgreSQL database. If it is not installed locally, use the repository development suite: run <code>make init-dev-docker</code> and then <code>make dev-docker</code>.</li>
-<li>Docker Desktop for the containerized development suite.</li>
+<li>Go 1.26+</li>
+<li>Node.js 20+ and Yarn 1.x</li>
+<li>GNU Make</li>
+<li>Docker Desktop (for PostgreSQL, MailHog, and Adminer)</li>
 </ul>
 <h3 id="first-time-setup">First time setup<a class="headerlink" href="#first-time-setup" title="Permanent link">&para;</a></h3>
 <p><code>git clone https://github.com/knadh/listmonk.git</code>. The project uses go.mod, so it's best to clone it outside the Go src path.</p>
 <ol>
-<li>Copy <code>config.toml.sample</code> as <code>config.toml</code> (or run <code>./listmonk --new-config</code>) and set your database credentials. Only <code>[app]</code> and <code>[db]</code> live in that file; the remaining settings are stored in the database and edited in the admin <code>Settings</code> dashboard — see <a href="../configuration/">Configuration</a>.</li>
-<li><code>make dist</code> to build the listmonk binary. Once the binary is built, run <code>./listmonk --install</code> to run the DB setup. For subsequent dev runs, use <code>make run</code>.</li>
+<li>Copy <code>config.toml.sample</code> as <code>config.toml</code> (or run <code>./listmonk --new-config</code>) for a normal installation. For local development use the checked-in <code>dev/config.local.toml</code>, which connects to the published Docker PostgreSQL port at <code>127.0.0.1:5437</code>.</li>
+<li>On Windows, start Docker middleware with <code>pwsh -File .\dev\start-middleware.ps1</code>. The backend script below runs the idempotent database install and upgrade with the host Go toolchain.</li>
+<li>The Go live-reload runner is invoked as <code>go run github.com/air-verse/air@v1.67.4</code>. To install the binary instead, run <code>make install-dev-tools</code> and add <code>$(go env GOPATH)/bin</code> to <code>PATH</code>.</li>
 </ol>
 <blockquote>
 <p><a href="https://github.com/mailhog/MailHog">mailhog</a> is an excellent standalone mock SMTP server (with a UI) for testing and dev.</p>
 </blockquote>
 <h3 id="running-the-dev-environment">Running the dev environment<a class="headerlink" href="#running-the-dev-environment" title="Permanent link">&para;</a></h3>
-<p>You can run your dev environment locally or inside containers.</p>
-<p>The local Vite server is available at <code>http://localhost:8080</code>; the containerized frontend is available at <code>http://localhost:8181</code>.</p>
-<ol>
-<li>
-<p>Locally</p>
-<ul>
-<li>Run <code>make run</code> to start the listmonk dev server on <code>:9000</code>.</li>
-<li>Run <code>make run-frontend</code> to start the Vue frontend in dev mode using yarn on <code>:8080</code>. All <code>/api/*</code> calls are proxied to the app running on <code>:9000</code>. Refer to the <a href="https://github.com/knadh/listmonk/blob/master/frontend/README.md">frontend README</a> for an overview on how the frontend is structured.</li>
-</ul>
-</li>
-<li>
-<p>Inside containers (Using Makefile)</p>
-<ul>
-<li>Run <code>make init-dev-docker</code> to setup container for db.</li>
-<li>Run <code>make dev-docker</code> to setup docker container suite.</li>
-<li>Run <code>make rm-dev-docker</code> to clean up docker container suite.</li>
-</ul>
-<p>The Makefile uses POSIX utilities. On Windows, install Git for Windows and
-GNU Make with <code>winget install --id ezwinports.make --exact --source winget</code>.
-Restart the shell and ensure <code>C:\Program Files\Git\usr\bin</code> comes before
-the GNU Make directory in <code>PATH</code>; then verify with <code>make --version</code> and
-<code>make -n dev-docker</code>. The backend performs an idempotent database install
-and applies pending upgrades on startup.</p>
-<p>PowerShell users can run the equivalent detached startup directly:</p>
-<div class="highlight"><pre><span></span><code><span class="n">docker</span> <span class="n">compose</span> <span class="o">-f</span> <span class="n">dev</span><span class="p">/</span><span class="n">docker-compose</span><span class="p">.</span><span class="n">yml</span> <span class="n">up</span> <span class="p">-</span><span class="n">-build</span> <span class="n">-d</span>
-<span class="n">docker</span> <span class="n">compose</span> <span class="o">-f</span> <span class="n">dev</span><span class="p">/</span><span class="n">docker-compose</span><span class="p">.</span><span class="n">yml</span> <span class="nb">ps</span>
+<p>The recommended workflow runs middleware in Docker and both application
+processes on the host. Open three PowerShell terminals in this order:</p>
+<div class="highlight"><pre><span></span><code><span class="c"># Terminal 1: start PostgreSQL, MailHog, and Adminer; command returns when ready.</span>
+<span class="n">pwsh</span> <span class="o">-File</span> <span class="p">.\</span><span class="n">dev</span><span class="p">\</span><span class="nb">start-middleware</span><span class="p">.</span><span class="n">ps1</span>
+
+<span class="c"># Terminal 2: install/upgrade the database, then run Go with Air hot reload.</span>
+<span class="n">pwsh</span> <span class="o">-File</span> <span class="p">.\</span><span class="n">dev</span><span class="p">\</span><span class="nb">start-backend</span><span class="p">.</span><span class="n">ps1</span>
+
+<span class="c"># Terminal 3: run the Vue admin UI with Vite hot reload.</span>
+<span class="n">pwsh</span> <span class="o">-File</span> <span class="p">.\</span><span class="n">dev</span><span class="p">\</span><span class="nb">start-frontend</span><span class="p">.</span><span class="n">ps1</span>
 </code></pre></div>
-<p>The containerized endpoints are <code>http://localhost:8181</code> (Vite dev server for
-the admin UI), <code>http://localhost:9173</code> (backend, which also serves the built
-admin UI), <code>http://localhost:8171</code> (Adminer), <code>http://localhost:8265</code>
-(MailHog), and PostgreSQL on <code>localhost:5437</code>.</p>
-<p>To stop the suite without deleting its database volume, use
-<code>docker compose -f dev/docker-compose.yml down</code>. The <code>make rm-dev-docker</code>
-target removes the containers and database volume.</p>
-</li>
-<li>
-<p>Inside containers (Using devcontainer)</p>
-<ul>
-<li>Open repo in vscode, open command palette, and select "Dev Containers: Rebuild and Reopen in Container".</li>
-</ul>
-</li>
-</ol>
-<p>It will set up db, and start frontend/backend for you.</p>
+<p>The backend and frontend terminals remain active; press Ctrl+C to stop either
+process. From Bash, the corresponding commands are <code>make dev-middleware</code>,
+<code>make run-backend-local</code>, and <code>make run-frontend-local</code>. The Make backend target
+also starts middleware and therefore is convenient when separation is not needed.</p>
+<p>The admin UI is available at <code>http://localhost:8181/admin/</code>. Vite proxies API,
+authentication, and workspace-selection requests to the Go server at
+<code>http://localhost:9173</code>. Adminer is
+at <code>http://localhost:8171</code>, MailHog is at <code>http://localhost:8265</code>, and
+PostgreSQL is at <code>localhost:5437</code> (MailHog SMTP is <code>localhost:6125</code>).</p>
+<p>The admin <strong>Customers</strong> menu orders public pool customers, public pool lists,
+private customers, private customer lists, import, and bounces as second-level
+entries; Forms follows them. <code>/admin/pool-lists</code> contains pool creation and
+allocation management, while <code>/admin/customer-lists</code> contains ordinary lists.
+The public pool customer entry opens <code>/admin/pool</code>, which shows customers
+across all accessible pools.</p>
+<p>On Windows, install Git for Windows and GNU Make with
+<code>winget install --id ezwinports.make --exact --source winget</code>; keep
+<code>C:\Program Files\Git\usr\bin</code> before the GNU Make directory in <code>PATH</code>.</p>
+<p><code>dev/.air.toml</code> watches Go, SQL, and TOML files. A backend restart runs the
+idempotent install and pending upgrades. Changes under
+<code>frontend/email-builder/</code> require <code>make build-email-builder</code> because that
+editor is consumed as a built bundle. <code>make build-frontend</code> is only needed when
+inspecting the packaged admin UI served directly by Go at <code>:9173</code>.</p>
+<p>To stop middleware while preserving its volume, run
+<code>docker compose -f dev/docker-compose.yml down</code>. <code>make rm-dev-docker</code> also
+removes the database volume.</p>
+<p>The previous all-in-Docker workflow remains available for isolated regression
+runs:</p>
+<div class="highlight"><pre><span></span><code>make<span class="w"> </span>init-dev-docker
+make<span class="w"> </span>dev-docker
+</code></pre></div>
+<h3 id="devcontainer">Devcontainer<a class="headerlink" href="#devcontainer" title="Permanent link">&para;</a></h3>
+<p>Open the repository in VS Code, then choose <strong>Dev Containers: Rebuild and
+Reopen in Container</strong>. The devcontainer uses the Compose file directly and
+starts the all-in-Docker services for that isolated workflow.</p>
+<p>It forwards <code>9173</code> for Go and <code>8181</code> for Vite.</p>
 <h3 id="keeping-the-running-dev-suite-in-sync">Keeping the running dev suite in sync<a class="headerlink" href="#keeping-the-running-dev-suite-in-sync" title="Permanent link">&para;</a></h3>
-<p>The containerized suite mounts your working tree, so a local change needs an
-explicit restart instead of a rebuild. <code>dev/README.md</code> documents the steps per
-component: restart <code>dev-backend-1</code> after backend, query, or schema changes (it
-recompiles and applies pending migrations), and run <code>make build-frontend</code> before
-expecting frontend changes on the backend-served admin UI at <code>:9173</code> — the Vite
-server on <code>:8181</code> reloads on its own.</p>
+<p>The host-based workflow watches source files: Air restarts Go after changes to
+Go, SQL, or TOML files, and Vite reloads Vue/JavaScript modules. A backend
+script startup runs the idempotent install and pending upgrades; stop and rerun
+the backend script after adding a migration. Changes under
+<code>frontend/email-builder/</code> still require <code>make build-email-builder</code> because the
+editor is consumed as a built bundle. <code>make build-frontend</code> is only needed when
+inspecting the packaged admin UI served directly by Go at <code>:9173</code>.</p>
 <h3 id="tests-lint-and-the-email-editor">Tests, lint, and the email editor<a class="headerlink" href="#tests-lint-and-the-email-editor" title="Permanent link">&para;</a></h3>
 <ul>
 <li><code>make test</code> runs the Go test suite (<code>go test ./...</code>).</li>
 <li><code>cd frontend &amp;&amp; yarn lint</code> runs ESLint for the Vue admin UI.</li>
-<li><code>cd frontend &amp;&amp; yarn cypress run</code> runs the end-to-end specs. It resets and
-  starts its own services, so run it in an isolated environment.</li>
+<li>From the repository root, <code>node dev/run-cypress.js --spec cypress/e2e/customer-lists.cy.js</code>
+  runs the customer-list browser regression in a disposable Docker Compose
+  stack. Omit <code>--spec</code> for the whole suite. The runner builds the frontend,
+  starts the test backend at <code>127.0.0.1:9273</code>, and removes its temporary database
+  afterward. Direct <code>yarn cypress run</code> cannot reset the shared development DB.</li>
 <li><code>make build-email-builder</code> builds <code>frontend/email-builder/</code>, the React +
   TypeScript visual email editor, and copies its bundle into the admin UI.</li>
 </ul>

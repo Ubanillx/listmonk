@@ -1678,10 +1678,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#sql-injection-via-customer-query" class="md-nav__link">
+  <a href="#customer-search" class="md-nav__link">
     <span class="md-ellipsis">
       
-        SQL injection via customer query
+        Customer search
       
     </span>
   </a>
@@ -1773,10 +1773,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#sql-injection-via-customer-query" class="md-nav__link">
+  <a href="#customer-search" class="md-nav__link">
     <span class="md-ellipsis">
       
-        SQL injection via customer query
+        Customer search
       
     </span>
   </a>
@@ -1838,9 +1838,11 @@
 <p>If you spot a security vulnerability in listmonk, please report it via GitHub <a href="https://github.com/knadh/listmonk/security/advisories">security advisories</a>.</p>
 <h3 id="what-not-to-report">What not to report<a class="headerlink" href="#what-not-to-report" title="Permanent link">&para;</a></h3>
 <p>The below listed scenarios are either not security vulnerabilities or are of acceptable risk. They keep getting reported unfortunately. Please refrain from doing so.</p>
-<h3 id="sql-injection-via-customer-query">SQL injection via customer query<a class="headerlink" href="#sql-injection-via-customer-query" title="Permanent link">&para;</a></h3>
-<p>The customers UI (and APIs) support issuing of arbitrary SQL expressions via a <code>query</code> parameter. While listmonk ensures that the queries are executed as readonly and has basic checks for target tables to prevent accidental side-effects, it is not really possible to prevent arbitrary Turing-complete SQL expressions from calling various Postgres functions. Postgres itself does not offer an easy way to allow/disallow specific functions.</p>
-<p>That's why this feature is behind a special permission <code>customers:sql_query</code> and its risks are <a href="__https://listmonk.app/docs/roles-and-permissions/#user-roles__">clearly documented</a>. In a multi-user scenario, it is up to an admin to allow this permission to trusted users.</p>
+<h3 id="customer-search">Customer search<a class="headerlink" href="#customer-search" title="Permanent link">&para;</a></h3>
+<p>Customer search accepts name and e-mail text through the <code>search</code> parameter.
+The retired SQL <code>query</code> parameter is rejected, and the former advanced-query
+API routes are unavailable. Please report any way to execute a caller-supplied
+SQL expression through these customer endpoints.</p>
 <h3 id="stored-xss-via-svg">Stored XSS via SVG<a class="headerlink" href="#stored-xss-via-svg" title="Permanent link">&para;</a></h3>
 <p>In addition to images, listmonk allows uploading of arbitrary file types, .html, .js, .svg, .* and does not transform or modify the files. That means, it is possible to have <code>&lt;script&gt;</code>s and other arbitrary content inside HTML and SVG files. It is not possible for listmonk to have special checks or transformations for various file types, and many environments legitimately want SVGs and other filetypes to be uploaded.</p>
 <p>In a multi-user scenario, it is possible for an admin to decide what file types to allow (Admin -&gt; Settings -&gt; Media). In an environment where SVG (or any other type) is considered risky, they can simply be disallowed from being uploaded.</p>

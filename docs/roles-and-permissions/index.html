@@ -803,17 +803,6 @@
   
 </li>
       
-        <li class="md-nav__item">
-  <a href="#customerssql_query" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        customers:sql_query
-      
-    </span>
-  </a>
-  
-</li>
-      
     </ul>
   
 </nav>
@@ -1851,17 +1840,6 @@
   
 </li>
       
-        <li class="md-nav__item">
-  <a href="#customerssql_query" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        customers:sql_query
-      
-    </span>
-  </a>
-  
-</li>
-      
     </ul>
   
 </nav>
@@ -1888,15 +1866,26 @@ also limited to the selected personal or organization workspace and the
 resource's owner, visibility, and transfer state. A global role or a
 customer_list-specific grant never exposes a resource in another workspace.</p>
 <ul>
-<li>CustomerLists and customers remain private to their owner. Organization managers
-  may inspect member-owned records in their active organization, but cannot
-  modify them or send with them. Customer and single-customer exports are direct
+<li>Ordinary customer lists default to private and may expose their metadata and
+  counts to members of the selected organization when set to organization-shared.
+  Customer records remain private to their owner. Organization managers may
+  inspect member-owned records in their active organization, but cannot modify
+  them or send with them. A shared list does not grant customer access, imports,
+  mutations, or sending rights. Customer and single-customer exports are direct
   downloads; <code>customers:export</code> and the same workspace, ownership, and masking
   rules apply.</li>
 <li>Templates and campaigns can be private, organization-visible, or global.
   Members can read organization-visible resources in their active organization;
   global resources remain readable across workspaces. Sending, direct exports, and
   mutations apply stricter owner and workspace checks.</li>
+<li>Media folders offer Personal, Organization, and Everyone permissions. Personal
+  folders are visible to their creator in the owning workspace (platform admins
+  can inspect them); Organization folders to members of the selected organization;
+  Everyone folders to signed-in users across workspaces. Every ancestor must also
+  be readable. Folder media inherits this audience for browsing and use, while
+  ownership and writes remain within the original workspace. Only the creator or
+  a platform admin in that workspace can edit folder permissions; <code>media:manage</code>
+  is still required. Personal workspaces cannot choose Organization.</li>
 <li>Organization membership has separate <code>member</code> and <code>manager</code> roles. It does
   not grant system user-role or customer_list-role permissions. Archived organizations
   reject normal writes.</li>
@@ -1968,11 +1957,6 @@ does not replace API authorization.</p>
 <td></td>
 <td>customers:sensitive_read</td>
 <td>View unmasked customer e-mail and attributes where the current customer list would otherwise mask them; this does not bypass workspace or ownership boundaries. Pool contacts are always masked except for platform administrators, so this permission does not unmask them</td>
-</tr>
-<tr>
-<td></td>
-<td>customers:sql_query</td>
-<td>Run raw SQL queries on customer data.<br /><span style="color: #de4a45;"><strong>WARNING:</strong></span><span style="font-size: 0.875em; line-height: 1.3; color:#888;">This permission allows execution of arbitrary SQL expressions and SQL functions. While it is readonly on the table data, it allows querying of all customer_lists and customers directly from the database superceding individual customer_list and customer permissions. Raw SQL expressions make it possible to obtain Postgres database configuration and potentially interact with other Postgres system features. Give this permission ONLY to trusted users. <a href="#customerssql_query">Learn more</a>.</td>
 </tr>
 <tr>
 <td>pools</td>
@@ -2212,18 +2196,6 @@ workspace regardless of role permissions.</p>
 <h2 id="api-users">API users<a class="headerlink" href="#api-users" title="Permanent link">&para;</a></h2>
 <p>Regular users can create personal API keys from <code>Profile -&gt; API Keys</code>. Each key is restricted to one personal or organization workspace, must expire within 24 months, and can be narrowed with business API scopes. The key never changes the user's role, customer_list role, organization membership, or resource ownership.</p>
 <p>A user account can also be of type API. API users are administrator-managed internal service accounts. Unlike regular user accounts that have custom passwords or OIDC for authentication, API users get an automatically generated secret token and can retain the legacy API-token behavior.</p>
-<h2 id="customerssql_query"><code>customers:sql_query</code><a class="headerlink" href="#customerssql_query" title="Permanent link">&para;</a></h2>
-<p>This permission allowers users to write and execute arbitrary SQL queries on the database. Although it is executed as a read-only transaction disallowing changing of data in the database tables, it allows querying of all customer_lists, customers and other data directly from the database superceding individual customer_list and customer permissions.</p>
-<p>Raw SQL expressions also make it possible to obtain Postgres database configuration and potentially interact with other Postgres system features. Give this permission ONLY to trusted users.</p>
-<p>If this permission is being assigned to many users, it is highly recommended that you create a custom Postgres role disallowing any privileged operations. For example:</p>
-<div class="highlight"><pre><span></span><code><span class="k">CREATE</span><span class="w"> </span><span class="k">ROLE</span><span class="w"> </span><span class="n">listmonk_app</span><span class="w"> </span><span class="k">WITH</span>
-<span class="w">    </span><span class="n">LOGIN</span>
-<span class="w">    </span><span class="n">PASSWORD</span><span class="w"> </span><span class="s1">'...'</span>
-<span class="w">    </span><span class="n">NOSUPERUSER</span>
-<span class="w">    </span><span class="k">NOCREATEDB</span>
-<span class="w">    </span><span class="n">NOCREATEROLE</span>
-<span class="w">    </span><span class="n">NOREPLICATION</span><span class="p">;</span>
-</code></pre></div>
 <ul>
 <li>“我参与的组织”页面的“迁移个人资源”默认折叠，点击标题展开或收起。仅最高管理员或具有 <code>workspaces:personal</code> 权限的人员显示；其他人员不显示迁移板块和待迁移资源统计，也不请求个人资源列表。</li>
 </ul>

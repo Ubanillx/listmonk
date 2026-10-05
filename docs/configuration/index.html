@@ -570,10 +570,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#smtp" class="md-nav__link">
+  <a href="#smtp-and-smtp_delivery" class="md-nav__link">
     <span class="md-ellipsis">
       
-        [smtp]
+        smtp and smtp_delivery
       
     </span>
   </a>
@@ -741,7 +741,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#smtp_1" class="md-nav__link">
+  <a href="#smtp" class="md-nav__link">
     <span class="md-ellipsis">
       
         SMTP
@@ -796,6 +796,17 @@
     <span class="md-ellipsis">
       
         Batch size
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#organization-marketing-senders" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Organization marketing senders
       
     </span>
   </a>
@@ -2331,10 +2342,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#smtp" class="md-nav__link">
+  <a href="#smtp-and-smtp_delivery" class="md-nav__link">
     <span class="md-ellipsis">
       
-        [smtp]
+        smtp and smtp_delivery
       
     </span>
   </a>
@@ -2502,7 +2513,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#smtp_1" class="md-nav__link">
+  <a href="#smtp" class="md-nav__link">
     <span class="md-ellipsis">
       
         SMTP
@@ -2557,6 +2568,17 @@
     <span class="md-ellipsis">
       
         Batch size
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#organization-marketing-senders" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Organization marketing senders
       
     </span>
   </a>
@@ -2858,14 +2880,14 @@ per instance with environment variables such as <code>LISTMONK_app__batch_size</
 <td>int</td>
 <td><code>10</code></td>
 <td>no</td>
-<td>Number of campaign workers, that is, messages processed simultaneously.</td>
+<td>Number of delivery workers and maximum concurrent SMTP attempts in total, including direct system mail. Excess sends queue.</td>
 </tr>
 <tr>
 <td><code>message_rate</code></td>
 <td>int</td>
 <td><code>10</code></td>
 <td>no</td>
-<td>Maximum messages per second, per worker.</td>
+<td>Aggregate SMTP messages per second across all workers, campaigns, transactional mail and system notifications. Excess messages wait for capacity.</td>
 </tr>
 <tr>
 <td><code>batch_size</code></td>
@@ -2886,7 +2908,7 @@ per instance with environment variables such as <code>LISTMONK_app__batch_size</
 <td>bool</td>
 <td><code>false</code></td>
 <td>no</td>
-<td>Enable the per-account sliding window send rate.</td>
+<td>Enable a platform-wide SMTP sliding window cap.</td>
 </tr>
 <tr>
 <td><code>message_sliding_window_duration</code></td>
@@ -3043,6 +3065,13 @@ per instance with environment variables such as <code>LISTMONK_app__batch_size</
 <td>Disable campaign view and link tracking entirely.</td>
 </tr>
 <tr>
+<td><code>geoip_database</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>no</td>
+<td>Local path to a GeoLite2/GeoIP2 City <code>.mmdb</code> file. When set, new campaign opens record approximate country, region, city and coordinates; the source IP is not stored in <code>campaign_views</code>. Restart after changing the path or database file.</td>
+</tr>
+<tr>
 <td><code>unsubscribe_header</code></td>
 <td>bool</td>
 <td><code>true</code></td>
@@ -3107,6 +3136,9 @@ per instance with environment variables such as <code>LISTMONK_app__batch_size</
 </tr>
 </tbody>
 </table>
+<p>The GeoIP database is supplied by the operator and is not bundled with listmonk. Existing open events cannot be located retroactively. Mail providers and proxies may fetch tracking pixels on behalf of recipients, so the mapped location may differ from the recipient's actual location. When <code>disable_tracking</code> is enabled, no new open locations are recorded.</p>
+<p>The analytics world map remains visible when GeoIP is not configured or the selected period has no located opens. The map shows a neutral base and the relevant status message; heat and its color scale appear only when location data is available.</p>
+<p>Select a country in the analytics map to zoom into its city locations and view city open counts. Click a city name in the list to focus the map; <strong>Reset view</strong> restores the country overview and <strong>World map</strong> returns to all countries. Refreshing the report preserves the selected country in the report URL. Cities with the same name in different regions are listed separately. Opens without a city name are shown as <strong>City unavailable</strong> and are not included in the identified city count. These are approximate GeoIP City locations, not street or GPS locations.</p>
 <h3 id="security"><code>[security]</code><a class="headerlink" href="#security" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
@@ -3598,10 +3630,16 @@ is not read by the server at startup.</p>
 </tr>
 </tbody>
 </table>
-<h3 id="smtp"><code>[smtp]</code><a class="headerlink" href="#smtp" title="Permanent link">&para;</a></h3>
-<p>An array of platform SMTP servers used for system e-mails (password resets,
-notifications, opt-in confirmations). Campaign and transactional mail is sent
-through the personal SMTP servers configured per account in the admin UI.</p>
+<h3 id="smtp-and-smtp_delivery"><code>smtp</code> and <code>smtp_delivery</code><a class="headerlink" href="#smtp-and-smtp_delivery" title="Permanent link">&para;</a></h3>
+<p><code>smtp</code> contains exactly one platform SMTP server for system e-mails (password
+resets, notifications, opt-in confirmations). Campaign and transactional mail
+uses account-owned SMTP servers; campaigns can also select organization marketing pools.
+<code>smtp_delivery</code> is the shared transport configuration for the system server
+and every account-owned server. Existing installations move the former primary
+server's transport options into <code>smtp_delivery</code> during v6.49.0 upgrade. These
+options apply separately to every SMTP. TLS mode and certificate verification
+belong to each server, and are preserved from the effective global values during
+v6.53.0 upgrade.</p>
 <table>
 <thead>
 <tr>
@@ -3616,16 +3654,16 @@ through the personal SMTP servers configured per account in the admin UI.</p>
 <tr>
 <td><code>enabled</code></td>
 <td>bool</td>
-<td><code>true</code> for the first entry in the sample</td>
+<td><code>true</code></td>
 <td>no</td>
-<td>Enable this SMTP server. Disabled servers are ignored.</td>
+<td>The single system SMTP must be enabled.</td>
 </tr>
 <tr>
 <td><code>is_primary</code></td>
 <td>bool</td>
-<td><code>true</code> for the first entry in the sample</td>
+<td><code>true</code></td>
 <td>no</td>
-<td>Use this server as the sender of system e-mails. At least one enabled server must be marked primary, otherwise startup fails.</td>
+<td>The system SMTP is always primary.</td>
 </tr>
 <tr>
 <td><code>name</code></td>
@@ -3702,53 +3740,90 @@ through the personal SMTP servers configured per account in the admin UI.</p>
 <td>int</td>
 <td><code>10</code></td>
 <td>no</td>
-<td>Maximum number of concurrent connections in the pool.</td>
+<td>Shared maximum number of concurrent connections per SMTP server (<code>smtp_delivery</code>).</td>
 </tr>
 <tr>
 <td><code>idle_timeout</code></td>
 <td>duration string</td>
 <td><code>15s</code></td>
 <td>no</td>
-<td>How long an idle connection is kept before it is closed.</td>
+<td>Shared idle connection timeout (<code>smtp_delivery</code>).</td>
 </tr>
 <tr>
 <td><code>wait_timeout</code></td>
 <td>duration string</td>
 <td><code>5s</code></td>
 <td>no</td>
-<td>How long to wait for a free connection before failing.</td>
+<td>Shared wait timeout for a free connection (<code>smtp_delivery</code>).</td>
 </tr>
 <tr>
 <td><code>max_msg_retries</code></td>
 <td>int</td>
 <td><code>2</code></td>
 <td>no</td>
-<td>Number of silent retries of a message that fails to send.</td>
+<td>Shared transient-send retry count (<code>smtp_delivery</code>).</td>
+</tr>
+<tr>
+<td><code>send_delay_min</code></td>
+<td>int</td>
+<td><code>0</code></td>
+<td>no</td>
+<td>Minimum random wait in milliseconds before each SMTP message (<code>smtp_delivery</code>).</td>
+</tr>
+<tr>
+<td><code>send_delay_max</code></td>
+<td>int</td>
+<td><code>0</code></td>
+<td>no</td>
+<td>Maximum random wait in milliseconds, at least the minimum and at most <code>3600000</code> (<code>smtp_delivery</code>).</td>
 </tr>
 <tr>
 <td><code>tls_type</code></td>
 <td>string</td>
 <td><code>TLS</code></td>
 <td>no</td>
-<td>TLS mode: <code>TLS</code> for implicit TLS, <code>STARTTLS</code> for STARTTLS. Any other value, including <code>none</code>, disables TLS.</td>
+<td>Per-server TLS mode: <code>TLS</code>, <code>STARTTLS</code>, or <code>none</code>.</td>
 </tr>
 <tr>
 <td><code>tls_skip_verify</code></td>
 <td>bool</td>
 <td><code>false</code></td>
 <td>no</td>
-<td>Skip TLS certificate verification.</td>
+<td>Per-server TLS certificate verification setting.</td>
 </tr>
 <tr>
 <td><code>email_headers</code></td>
 <td>table</td>
 <td>empty</td>
 <td>no</td>
-<td>Additional SMTP headers added to e-mails sent through this server.</td>
+<td>Shared additional e-mail headers (<code>smtp_delivery</code>).</td>
 </tr>
 </tbody>
 </table>
 <p>The same settings are edited as <code>Settings</code> -&gt; <code>SMTP</code>.</p>
+<p>For a variable sending cadence, set the random delay to a range such as <code>2000</code>–<code>5000</code> milliseconds.
+Before every message, including the first, the sender waits a uniformly sampled
+duration in the range. When enabled, messages using the same SMTP UUID wait and
+send in sequence, including messages from account and organization pools. Different
+SMTP senders may send in parallel. The delay is additional to existing campaign
+rate limits, and each SMTP sender uses at most one connection at a time while pacing
+is enabled. The SMTP pool's internal network retries belong to the same attempt
+and do not sample a new delay. Both values set to <code>0</code> disable pacing; equal values
+use a fixed delay. Old duration strings such as <code>2s</code> are accepted for compatibility
+and upgraded to integer milliseconds without changing their duration.</p>
+<p>The setting applies to system notifications, campaigns and transactional messages
+after restart. SMTP connection tests bypass pacing. Pausing/cancelling a campaign
+or shutting down the manager cancels pending waits without sending or consuming
+SMTP daily quota. Coordination is within one application process; multiple
+application instances do not share the delay queue.</p>
+<p>Each campaign additionally has an aggregate <code>smtp_rate_limit</code> in messages per
+minute, defaulting to 20 for personal SMTP and 100 for organization SMTP. The
+campaign's chosen rate applies across its senders using evenly spaced starts.
+Platform rate and sliding window caps remain hard ceilings across all SMTP.
+Messages queue until both campaign and platform capacity are available;
+increasing worker concurrency does not increase the platform rate. These limits
+are shared within one application process and reset on restart. Use one campaign
+sender process when enforcing a platform-wide aggregate cap.</p>
 <h3 id="messengers"><code>[[messengers]]</code><a class="headerlink" href="#messengers" title="Permanent link">&para;</a></h3>
 <p>HTTP postback messengers that receive campaign e-mails as JSON POST requests. In
 the admin UI they are edited as <code>Settings</code> -&gt; <code>Messengers</code>.</p>
@@ -4024,7 +4099,7 @@ Container info: <code>sudo docker inspect listmonk_listmonk</code></p>
     - TZ=Etc/UTC
 </code></pre></div>
 with any Timezone listed <a href="https://en.wikipedia.org/wiki/CustomerList_of_tz_database_time_zones">here</a>. Then run <code>sudo docker-compose stop ; sudo docker-compose up</code> after making changes.</p>
-<h2 id="smtp_1">SMTP<a class="headerlink" href="#smtp_1" title="Permanent link">&para;</a></h2>
+<h2 id="smtp">SMTP<a class="headerlink" href="#smtp" title="Permanent link">&para;</a></h2>
 <h3 id="retries">Retries<a class="headerlink" href="#retries" title="Permanent link">&para;</a></h3>
 <p>The <code>Settings -&gt; SMTP -&gt; Retries</code> denotes the number of times a message that fails at the moment of sending is retried silently using different connections from the SMTP pool. The messages that fail even after retries are the ones that are logged as errors and ignored.</p>
 <h2 id="smtp-ports">SMTP ports<a class="headerlink" href="#smtp-ports" title="Permanent link">&para;</a></h2>
@@ -4032,6 +4107,8 @@ with any Timezone listed <a href="https://en.wikipedia.org/wiki/CustomerList_of_
 <h2 id="performance">Performance<a class="headerlink" href="#performance" title="Permanent link">&para;</a></h2>
 <h3 id="batch-size">Batch size<a class="headerlink" href="#batch-size" title="Permanent link">&para;</a></h3>
 <p>The batch size parameter is useful when working with very large customer_lists with millions of customers for maximising throughput. It is the number of customers that are fetched from the database sequentially in a single cycle (~5 seconds) when a campaign is running. Increasing the batch size uses more memory, but reduces the round trip to the database.</p>
+<h3 id="organization-marketing-senders">Organization marketing senders<a class="headerlink" href="#organization-marketing-senders" title="Permanent link">&para;</a></h3>
+<p>Each active organization can maintain multiple named SMTP sending pools in <strong>Manage organization</strong>, independently of member SMTP and system notification SMTP. Managers configure sender addresses, credentials, daily quotas and enabled status inside each pool. Campaigns select <strong>Personal SMTP rotation</strong> or <strong>Organization SMTP rotation</strong>, then choose an organization pool and display only that pool's enabled senders with today's usage. The organization source is available in organization workspaces; global public-pool campaigns resolve it per target organization. All SMTP pools use the global delivery settings above, including random delays. Removing or disabling a sender takes effect on subsequent messages; unavailable pools do not fall back to a different source.</p>
 
 
 

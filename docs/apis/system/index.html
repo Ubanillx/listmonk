@@ -2090,6 +2090,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#organization-marketing-smtp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Organization marketing SMTP
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3150,6 +3161,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#organization-marketing-smtp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Organization marketing SMTP
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3593,16 +3615,52 @@
 </thead>
 <tbody>
 <tr>
-<td>customers.total</td>
-<td>Total customers</td>
+<td>private_customers.total</td>
+<td>Private customers visible in the selected workspace</td>
 </tr>
 <tr>
-<td>customers.blocklisted</td>
-<td>Blocklisted customers</td>
+<td>private_customers.blocklisted</td>
+<td>Blocklisted private customers</td>
 </tr>
 <tr>
-<td>customers.orphans</td>
-<td>Customers without any customer list membership</td>
+<td>private_customers.orphans</td>
+<td>Private customers without any customer list membership</td>
+</tr>
+<tr>
+<td>pool_customers.total</td>
+<td>Public-pool membership rows visible in the selected workspace</td>
+</tr>
+<tr>
+<td>pool_customers.active</td>
+<td>Membership rows not removed from the relevant organization</td>
+</tr>
+<tr>
+<td>pool_customers.removed</td>
+<td>Membership rows removed from the relevant organization</td>
+</tr>
+<tr>
+<td>pool_lists.total</td>
+<td>Active first-level public-pool lists visible in the selected workspace</td>
+</tr>
+<tr>
+<td>pool_lists.bound</td>
+<td>Visible first-level pools with at least one active organization binding</td>
+</tr>
+<tr>
+<td>pool_lists.unbound</td>
+<td>Visible first-level pools without an active organization binding</td>
+</tr>
+<tr>
+<td>pool_lists.allocations</td>
+<td>Active allocation lists bound to those pools in active organizations</td>
+</tr>
+<tr>
+<td>pool_lists.organizations</td>
+<td>Distinct active organizations with those bindings</td>
+</tr>
+<tr>
+<td>customers</td>
+<td>Compatibility alias of <code>private_customers</code></td>
 </tr>
 <tr>
 <td>customerLists / customer_lists</td>
@@ -3622,7 +3680,7 @@
 </tr>
 </tbody>
 </table>
-<p>The customer list object is keyed <code>customerLists</code> for platform administrators, who read the global materialized view (<code>schema.sql:867</code>), and <code>customer_lists</code> for workspace-scoped responses (<code>internal/core/dashboard.go:124</code>).</p>
+<p>The customer list object is keyed <code>customerLists</code> for platform administrators, who read the global materialized view, and <code>customer_lists</code> for workspace-scoped responses. <code>pool_lists.total</code> counts only active first-level public-pool lists; allocation lists are reported separately in <code>pool_lists.allocations</code>. <code>bound + unbound = total</code>. Bindings require an active allocation list, an active source pool and an active organization; allocations without a source pool do not count. Platform administrators see all such bindings; ordinary organization workspaces count only their own bindings, even for pools shared by multiple organizations. An authorized pool without an active binding counts as unbound in that organization. Ordinary personal workspaces return zero for every public-pool list field. The public-pool customer counts use the same pool-membership row unit as the <code>/api/pool-contacts</code> aggregate: one contact in two pools counts twice. Platform administrators see all pool rows, organization workspaces see their allocated rows, and personal workspaces see zero.</p>
 <h5 id="example-request_5">Example Request<a class="headerlink" href="#example-request_5" title="Permanent link">&para;</a></h5>
 <div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span><span class="s1">'http://localhost:9000/api/dashboard/counts'</span>
 </code></pre></div>
@@ -3633,6 +3691,23 @@
 <span class="w">      </span><span class="nt">"total"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"blocklisted"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"orphans"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">"private_customers"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"total"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"blocklisted"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"orphans"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">"pool_customers"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"total"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"active"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"removed"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">"pool_lists"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"total"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"bound"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"unbound"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"allocations"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"organizations"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
 <span class="w">    </span><span class="p">},</span>
 <span class="w">    </span><span class="nt">"customer_lists"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">      </span><span class="nt">"total"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
@@ -3997,6 +4072,41 @@ data: {"id":"...","type":"error","message":"...","data":null}
 <span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
 <span class="p">}</span>
 </code></pre></div>
+<h2 id="organization-marketing-smtp">Organization marketing SMTP<a class="headerlink" href="#organization-marketing-smtp" title="Permanent link">&para;</a></h2>
+<p>In an active organization workspace, organization managers and platform organization operators can manage independent marketing senders:</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Endpoint</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/api/organizations/smtp</code></td>
+<td>List configuration with passwords masked.</td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/api/organizations/smtp</code></td>
+<td>Replace configuration with <code>{ "smtp": [...] }</code>.</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/api/organizations/smtp/{id}</code></td>
+<td>Delete one server owned by this organization.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/organizations/smtp/test</code></td>
+<td>Test supplied configuration; <code>id</code> reuses a saved password, <code>email</code> specifies the recipient.</td>
+</tr>
+</tbody>
+</table>
+<p>Select the organization with <code>X-Listmonk-Organization-ID</code>. Add <code>?pool_id={id}</code> to the SMTP endpoints to address a specific organization sending pool; omitting it uses the first (legacy/default) pool. SMTP rows support <code>id</code>, <code>name</code>, <code>enabled</code>, <code>from_email</code>, <code>daily_limit</code>, <code>host</code>, <code>hello_hostname</code>, <code>port</code>, <code>auth_protocol</code>, <code>username</code>, <code>password</code>. IDs and UUIDs cannot be reassigned across organizations or accounts. Empty/masked passwords preserve existing credentials. TLS, retries, connection limits, timeouts, headers and random delay are controlled globally in SMTP delivery settings. Connection tests bypass pacing and quotas. Changes invalidate the selected pool for subsequent deliveries; removing the last enabled server pauses its running campaigns and returns scheduled/deferred campaigns to draft. Personal SMTP and system notifications remain independent. Ordinary members use the campaign SMTP overview endpoint without access to credentials.</p>
+<p>Organization managers can create and manage pools with <code>GET/POST /api/organizations/smtp-pools</code>, <code>PUT/DELETE /api/organizations/smtp-pools/{id}</code>. A pool has a unique organization-local <code>name</code>; deletion is rejected while it still contains SMTP rows or is referenced by a campaign. <code>GET /api/campaigns/smtp-pools</code> and <code>GET /api/campaigns/{id}/smtp-pools</code> return the pool names and sender counts available to the campaign editor. Campaign requests use <code>smtp_pool_id</code> when <code>smtp_source=organization</code>; the ID must belong to the campaign organization.</p>
 
 
 

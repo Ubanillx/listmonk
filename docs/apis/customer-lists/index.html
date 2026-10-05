@@ -2917,7 +2917,14 @@ for masking, assignment, exclusions, merge, and internal reply mailbox rules.</p
 <p>Authenticated responses are scoped by the active workspace selected through
 <code>X-Listmonk-Organization-ID</code>. In an organization workspace, ordinary lists
 from the personal workspace or another organization are not returned; in the
-personal workspace, only the caller's personal lists are returned. Authorized
+personal workspace, only the caller's personal lists are returned. A list with
+<code>visibility: organization</code> is readable as metadata by members of its own
+organization; customer records and writes keep their separate owner and
+permission checks. API requests that omit visibility default to <code>private</code>;
+ordinary lists cannot be <code>global</code>. The admin create form defaults to
+<code>organization</code> in an organization workspace and <code>private</code> in a personal
+workspace. Editing a list retains its saved visibility.
+Authorized
 public pools remain an explicit cross-workspace delivery/import exception.</p>
 <p>List responses include <code>organization_name</code> when a row belongs to an
 organization and <code>owner_username</code>/<code>owner_name</code> for the user owner. A
@@ -3030,6 +3037,12 @@ organization delivery permissions are stored separately.</p>
 <td style="text-align: left;">boolean</td>
 <td style="text-align: left;"></td>
 <td style="text-align: left;">If true, returns customer_lists without customer counts (faster). Defaults to false.</td>
+</tr>
+<tr>
+<td style="text-align: left;">type_group</td>
+<td style="text-align: left;">string</td>
+<td style="text-align: left;"></td>
+<td style="text-align: left;"><code>pool</code> returns <code>pool</code> and <code>org_pool_allocation</code>; <code>private</code> returns ordinary <code>private</code> and <code>public</code> lists. Filtering occurs before pagination.</td>
 </tr>
 <tr>
 <td style="text-align: left;">tag</td>
@@ -3207,6 +3220,12 @@ curl<span class="w"> </span>-u<span class="w"> </span><span class="s2">"api_user
 <td style="text-align: left;">Status of the customer_list. Options: active, archived. Defaults to active.</td>
 </tr>
 <tr>
+<td style="text-align: left;">visibility</td>
+<td style="text-align: left;">string</td>
+<td style="text-align: left;">No</td>
+<td style="text-align: left;"><code>private</code> (default) or <code>organization</code> in an organization workspace. Controls list metadata visibility, not customer access or sending rights.</td>
+</tr>
+<tr>
 <td style="text-align: left;">tags</td>
 <td style="text-align: left;">string[]</td>
 <td style="text-align: left;"></td>
@@ -3243,6 +3262,7 @@ curl<span class="w"> </span>-u<span class="w"> </span><span class="s2">"api_user
 <hr />
 <h4 id="put-apicustomer-listscustomer_list_id">PUT /api/customer-lists/{customer_list_id}<a class="headerlink" href="#put-apicustomer-listscustomer_list_id" title="Permanent link">&para;</a></h4>
 <p>Update a customer_list.</p>
+<p>The <code>type</code> can change between <code>private</code> and <code>public</code>. A <code>pool</code> or <code>org_pool_allocation</code> list must keep its type; pool allocations are created only through the dedicated pool allocation workflow. Attempts to convert an ordinary list into a pool list, or the reverse, return HTTP 400.</p>
 <h5 id="parameters_3">Parameters<a class="headerlink" href="#parameters_3" title="Permanent link">&para;</a></h5>
 <table>
 <thead>
@@ -3283,6 +3303,12 @@ curl<span class="w"> </span>-u<span class="w"> </span><span class="s2">"api_user
 <td style="text-align: left;">string</td>
 <td style="text-align: left;"></td>
 <td style="text-align: left;">Status of the customer_list. Options: active, archived.</td>
+</tr>
+<tr>
+<td style="text-align: left;">visibility</td>
+<td style="text-align: left;">string</td>
+<td style="text-align: left;"></td>
+<td style="text-align: left;"><code>private</code> or <code>organization</code> for ordinary lists; organization sharing requires an organization workspace and exposes metadata only.</td>
 </tr>
 <tr>
 <td style="text-align: left;">tags</td>
@@ -3378,6 +3404,24 @@ curl<span class="w"> </span>-u<span class="w"> </span><span class="s2">"api_user
 <td style="text-align: left;">string</td>
 <td style="text-align: left;">Yes (if <code>id</code> not provided)</td>
 <td style="text-align: left;">Search query to filter customer_lists for deletion (same as the GET query).</td>
+</tr>
+<tr>
+<td style="text-align: left;">all</td>
+<td style="text-align: left;">boolean</td>
+<td style="text-align: left;">Yes (when deleting the entire filtered result)</td>
+<td style="text-align: left;">Delete all manageable lists matching the query and optional <code>type_group</code>.</td>
+</tr>
+<tr>
+<td style="text-align: left;">type_group</td>
+<td style="text-align: left;">string</td>
+<td style="text-align: left;"></td>
+<td style="text-align: left;">With query or <code>all</code>, restrict deletion to <code>pool</code> or <code>private</code> lists; omitted keeps the previous behavior.</td>
+</tr>
+<tr>
+<td style="text-align: left;">status</td>
+<td style="text-align: left;">string</td>
+<td style="text-align: left;"></td>
+<td style="text-align: left;">With query or <code>all</code>, restrict deletion to <code>active</code> or <code>archived</code> lists; omitted includes both.</td>
 </tr>
 </tbody>
 </table>

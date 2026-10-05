@@ -2370,7 +2370,7 @@
 <h4 id="get-apisettings">GET /api/settings<a class="headerlink" href="#get-apisettings" title="Permanent link">&para;</a></h4>
 <p>Returns the complete settings object. Requires <code>settings:get</code> (<code>cmd/handlers.go:115</code>, <code>internal/auth/models.go:106</code>).</p>
 <p>Settings are stored as flat, dotted keys (<code>app.site_name</code>, <code>bounce.mailboxes</code>, <code>reply_ai</code>, ...). The response is a map of those keys, which are the same keys accepted by <code>PUT /api/settings/{key}</code> (<code>queries/misc.sql:7</code>, <code>models/settings.go:47</code>).</p>
-<p>Stored secrets are never returned in clear text. Each of them is replaced by a run of <code>•</code> characters, one per rune of the stored value, so the mask reveals the password length (<code>cmd/settings.go:30</code>, <code>cmd/settings.go:65</code>):</p>
+<p>Stored secrets are never returned in clear text. Each of them is replaced by a run of <code>•</code> characters, one per rune of the stored value, so the mask reveals the password length (<code>cmd/settings.go</code>, <code>cmd/settings.go</code>):</p>
 <table>
 <thead>
 <tr>
@@ -2381,43 +2381,43 @@
 <tbody>
 <tr>
 <td><code>smtp[].password</code></td>
-<td><code>cmd/settings.go:66</code></td>
+<td><code>cmd/settings.go</code></td>
 </tr>
 <tr>
 <td><code>bounce.mailboxes[].password</code></td>
-<td><code>cmd/settings.go:69</code></td>
+<td><code>cmd/settings.go</code></td>
 </tr>
 <tr>
 <td><code>messengers[].password</code></td>
-<td><code>cmd/settings.go:72</code></td>
+<td><code>cmd/settings.go</code></td>
 </tr>
 <tr>
 <td><code>upload.s3.aws_secret_access_key</code></td>
-<td><code>cmd/settings.go:76</code></td>
+<td><code>cmd/settings.go</code></td>
 </tr>
 <tr>
 <td><code>bounce.sendgrid_key</code></td>
-<td><code>cmd/settings.go:77</code></td>
+<td><code>cmd/settings.go</code></td>
 </tr>
 <tr>
 <td><code>bounce.postmark.password</code></td>
-<td><code>cmd/settings.go:78</code></td>
+<td><code>cmd/settings.go</code></td>
 </tr>
 <tr>
 <td><code>bounce.forwardemail.key</code></td>
-<td><code>cmd/settings.go:79</code></td>
+<td><code>cmd/settings.go</code></td>
 </tr>
 <tr>
 <td><code>reply_ai.api_key</code></td>
-<td><code>cmd/settings.go:80</code></td>
+<td><code>cmd/settings.go</code></td>
 </tr>
 <tr>
 <td><code>security.captcha.hcaptcha.secret</code></td>
-<td><code>cmd/settings.go:81</code></td>
+<td><code>cmd/settings.go</code></td>
 </tr>
 <tr>
 <td><code>security.oidc.client_secret</code></td>
-<td><code>cmd/settings.go:82</code></td>
+<td><code>cmd/settings.go</code></td>
 </tr>
 </tbody>
 </table>
@@ -2444,6 +2444,15 @@
 <span class="w">        </span><span class="nt">"tls_type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"TLS"</span>
 <span class="w">      </span><span class="p">}</span>
 <span class="w">    </span><span class="p">],</span>
+<span class="w">    </span><span class="nt">"smtp_delivery"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"max_conns"</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"max_msg_retries"</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"idle_timeout"</span><span class="p">:</span><span class="w"> </span><span class="s2">"15s"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"wait_timeout"</span><span class="p">:</span><span class="w"> </span><span class="s2">"5s"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"send_delay_min"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"send_delay_max"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"email_headers"</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span>
+<span class="w">    </span><span class="p">},</span>
 <span class="w">    </span><span class="nt">"bounce.mailboxes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">      </span><span class="p">{</span>
 <span class="w">        </span><span class="nt">"enabled"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
@@ -2471,16 +2480,23 @@
 <p>Replaces the settings object. Requires <code>settings:manage</code> (<code>cmd/handlers.go:116</code>, <code>internal/auth/models.go:107</code>).</p>
 <div class="admonition warning">
 <p class="admonition-title">Warning</p>
-<p>The request body is a <strong>complete</strong> settings object. Omitted fields are bound as zero values, and every key present in the marshaled object is written back to the <code>settings</code> table, so always start from <code>GET /api/settings</code>, edit the result, and PUT that object back. Only <code>customer.custom_fields</code> is preserved from the stored settings and cannot be changed here (<code>cmd/settings.go:100</code>); manage it through <code>/api/custom-fields</code> instead.</p>
+<p>The request body is a <strong>complete</strong> settings object. Omitted fields are bound as zero values, and every key present in the marshaled object is written back to the <code>settings</code> table, so always start from <code>GET /api/settings</code>, edit the result, and PUT that object back. Only <code>customer.custom_fields</code> is preserved from the stored settings and cannot be changed here (<code>cmd/settings.go</code>); manage it through <code>/api/custom-fields</code> instead.</p>
 </div>
-<p>The scalar secret fields keep their stored value when they are empty (<code>""</code>) in the request: <code>upload.s3.aws_secret_access_key</code>, <code>bounce.sendgrid_key</code>, <code>bounce.postmark.password</code>, <code>bounce.forwardemail.key</code>, <code>security.captcha.hcaptcha.secret</code> and <code>security.oidc.client_secret</code> (<code>cmd/settings.go:280</code>). The passwords inside arrays, <code>smtp[].password</code>, <code>bounce.mailboxes[].password</code> and <code>messengers[].password</code>, are kept only when the item carries the original <code>uuid</code> seen in the <code>GET</code> response; an item without a <code>uuid</code> is treated as a new entry, is assigned a fresh <code>uuid</code> and is stored with an empty password instead (<code>cmd/settings.go:146</code>, <code>cmd/settings.go:172</code>, <code>cmd/settings.go:216</code>, <code>cmd/settings.go:258</code>). <code>reply_ai.api_key</code> may be empty or fully masked to reuse the stored key (<code>cmd/settings.go:228</code>).</p>
-<p>The object is validated before it is saved; invalid values return HTTP 400 with a localized message. Examples: at least one SMTP server has to be enabled, exactly one of them has to be primary, messenger and SMTP names have to be unique, a bounce mailbox cannot enable SSL/TLS and STARTTLS at the same time, CORS origins have to be <code>http(s)</code> URLs or <code>*</code>, and <code>app.cache_slow_queries_interval</code> is only validated as a cron expression when <code>app.cache_slow_queries</code> is <code>true</code> (<code>cmd/settings.go:109</code>, <code>cmd/settings.go:193</code>, <code>cmd/settings.go:328</code>, <code>cmd/settings.go:349</code>).</p>
+<p>The scalar secret fields keep their stored value when they are empty (<code>""</code>) in the request: <code>upload.s3.aws_secret_access_key</code>, <code>bounce.sendgrid_key</code>, <code>bounce.postmark.password</code>, <code>bounce.forwardemail.key</code>, <code>security.captcha.hcaptcha.secret</code> and <code>security.oidc.client_secret</code> (<code>cmd/settings.go</code>). The passwords inside arrays, <code>smtp[].password</code>, <code>bounce.mailboxes[].password</code> and <code>messengers[].password</code>, are kept only when the item carries the original <code>uuid</code> seen in the <code>GET</code> response; an item without a <code>uuid</code> is treated as a new entry, is assigned a fresh <code>uuid</code> and is stored with an empty password instead (<code>cmd/settings.go</code>, <code>cmd/settings.go</code>, <code>cmd/settings.go</code>, <code>cmd/settings.go</code>). <code>reply_ai.api_key</code> may be empty or fully masked to reuse the stored key (<code>cmd/settings.go</code>).</p>
+<p>The object is validated before it is saved; invalid values return HTTP 400. <code>smtp</code> must contain exactly one enabled system server. The <code>smtp_delivery</code> options apply to system mail and all account SMTP servers after restart, including existing accounts. Other examples: messenger and SMTP names must be unique, a bounce mailbox cannot enable SSL/TLS and STARTTLS together, CORS origins must be <code>http(s)</code> URLs or <code>*</code>, and <code>app.cache_slow_queries_interval</code> is validated as cron when slow-query caching is enabled (see <code>UpdateSettings</code> in <code>cmd/settings.go</code>).</p>
+<p><code>smtp_delivery.send_delay_min</code> and <code>send_delay_max</code> are integer milliseconds, for example
+<code>2000</code> and <code>5000</code>. They must satisfy <code>0 &lt;= minimum &lt;= maximum &lt;= 3600000</code>; both <code>0</code>
+disable random pacing. Legacy duration strings are accepted and normalized to
+milliseconds without changing the duration. TLS belongs to each <code>smtp[]</code> or
+personal/organization SMTP row and is excluded from <code>smtp_delivery</code>. Invalid ranges
+are rejected by both the full settings update and <code>/api/settings/smtp_delivery</code>.
+See <a href="../../configuration/#smtp-and-smtp_delivery">SMTP configuration</a> for delivery semantics.</p>
 <p>A successful save triggers an automatic restart of the app. If a campaign is running, the restart is deferred instead:</p>
 <div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">}</span>
 </code></pre></div>
 <div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"needs_restart"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">}}</span>
 </code></pre></div>
-<p>(<code>cmd/settings.go:388</code>)</p>
+<p>(<code>cmd/settings.go</code>)</p>
 <h5 id="example-request_1">Example Request<a class="headerlink" href="#example-request_1" title="Permanent link">&para;</a></h5>
 <div class="highlight"><pre><span></span><code><span class="c1"># settings.json is the object returned by GET /api/settings with the intended changes.</span>
 curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span>-X<span class="w"> </span>PUT<span class="w"> </span><span class="s1">'http://localhost:9000/api/settings'</span><span class="w"> </span><span class="se">\</span>
@@ -2514,8 +2530,8 @@ curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_user
 </tr>
 </tbody>
 </table>
-<p>The request body is the JSON value of that key itself, not an object that wraps it (<code>cmd/settings.go:374</code>). The key <code>customer.custom_fields</code> is rejected with HTTP 403 and has to be changed through <code>/api/custom-fields</code> (<code>cmd/settings.go:370</code>).</p>
-<p>The response is the same restart notification as <code>PUT /api/settings</code> (<code>cmd/settings.go:385</code>).</p>
+<p>The request body is the JSON value of that key itself, not an object that wraps it (<code>cmd/settings.go</code>). The key <code>customer.custom_fields</code> is rejected with HTTP 403 and has to be changed through <code>/api/custom-fields</code> (<code>cmd/settings.go</code>).</p>
+<p>The response is the same restart notification as <code>PUT /api/settings</code> (<code>cmd/settings.go</code>).</p>
 <h5 id="example-request_2">Example Request<a class="headerlink" href="#example-request_2" title="Permanent link">&para;</a></h5>
 <div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span>-X<span class="w"> </span>PUT<span class="w"> </span><span class="s1">'http://localhost:9000/api/settings/maintenance.db'</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>-H<span class="w"> </span><span class="s1">'Content-Type: application/json'</span><span class="w"> </span><span class="se">\</span>
@@ -2529,7 +2545,7 @@ curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_user
 <hr />
 <h4 id="post-apisettingssmtptest">POST /api/settings/smtp/test<a class="headerlink" href="#post-apisettingssmtptest" title="Permanent link">&para;</a></h4>
 <p>Sends a test e-mail through the submitted SMTP settings without saving them. Requires <code>settings:manage</code> (<code>cmd/handlers.go:118</code>).</p>
-<p>The body is one SMTP server object as it appears in <code>smtp[]</code> of <code>GET /api/settings</code>, plus the recipient address in the top-level <code>email</code> field (<code>cmd/settings.go:433</code>, <code>cmd/settings.go:439</code>). The test uses a temporary pool with a single connection and a 2-second idle/wait timeout (<code>cmd/settings.go:444</code>). A missing <code>email</code>, an unparsable body, or a server that cannot be initialized returns HTTP 400; a delivery failure returns HTTP 500 with the SMTP error (<code>cmd/settings.go:441</code>, <code>cmd/settings.go:450</code>, <code>cmd/settings.go:466</code>).</p>
+<p>The body is one SMTP server object as it appears in <code>smtp[]</code> of <code>GET /api/settings</code>, plus the recipient address in the top-level <code>email</code> field (<code>cmd/settings.go</code>, <code>cmd/settings.go</code>). The test uses a temporary pool with a single connection and a 2-second idle/wait timeout (<code>cmd/settings.go</code>). A missing <code>email</code>, an unparsable body, or a server that cannot be initialized returns HTTP 400; a delivery failure returns HTTP 500 with the SMTP error (<code>cmd/settings.go</code>, <code>cmd/settings.go</code>, <code>cmd/settings.go</code>).</p>
 <h5 id="parameters_1">Parameters<a class="headerlink" href="#parameters_1" title="Permanent link">&para;</a></h5>
 <table>
 <thead>
@@ -2570,7 +2586,7 @@ curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_user
 <span class="s1">  }'</span>
 </code></pre></div>
 <h5 id="example-response_3">Example Response<a class="headerlink" href="#example-response_3" title="Permanent link">&para;</a></h5>
-<p><code>data</code> contains the buffered server log lines (<code>cmd/settings.go:470</code>):</p>
+<p><code>data</code> contains the buffered server log lines (<code>cmd/settings.go</code>):</p>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
 <span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">    </span><span class="s2">"..."</span>

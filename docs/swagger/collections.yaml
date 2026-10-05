@@ -282,8 +282,8 @@ paths:
                 enum: ["all"]
                 description: Return all results without pagination
         - in: query
-          name: query
-          description: query customers with an SQL expression.
+          name: search
+          description: Match customer code, name or e-mail address.
           required: false
           schema:
             type: string
@@ -676,18 +676,15 @@ paths:
                   data:
                     type: boolean
 
-  "/customers/query/delete":
+  "/customers/bulk/delete":
     post:
-      description: bulk deletes based on an arbitrary SQL expression.
-      operationId: deleteCustomerByQuery
+      description: Delete managed customers matched by ordinary filters.
+      operationId: deleteCustomersByFilter
       tags:
         - Customers
       requestBody:
-        description: Arbitrary SQL expression.
+        description: Search and list filters.
         content:
-          text/plain:
-            schema:
-              type: string
           application/json:
             schema:
               $ref: "#/components/schemas/CustomerQueryRequest"
@@ -703,18 +700,15 @@ paths:
                   data:
                     type: boolean
 
-  "/customers/query/blocklist":
+  "/customers/bulk/blocklist":
     put:
-      description: bulk blocklists customers based on an arbitrary SQL expression.
-      operationId: blocklistCustomersQuery
+      description: Blocklist managed customers matched by ordinary filters.
+      operationId: blocklistCustomersByFilter
       tags:
         - Customers
       requestBody:
-        description: Arbitrary SQL expression.
+        description: Search and list filters.
         content:
-          text/plain:
-            schema:
-              type: string
           application/json:
             schema:
               $ref: "#/components/schemas/CustomerQueryRequest"
@@ -730,18 +724,15 @@ paths:
                   data:
                     type: boolean
 
-  "/customers/query/customer-lists":
+  "/customers/bulk/customer-lists":
     put:
-      description: bulk adds/removes/unsubscribes customers from one or more customer_lists based on an arbitrary SQL expression.
-      operationId: manageCustomerListMembershipsByQuery
+      description: Change memberships for managed customers matched by ordinary filters.
+      operationId: manageCustomerListMembershipsByFilter
       tags:
         - Customers
       requestBody:
-        description: Arbitrary SQL expression.
+        description: Search and list filters.
         content:
-          text/plain:
-            schema:
-              type: string
           application/json:
             schema:
               $ref: "#/components/schemas/CustomerQueryRequest"
@@ -3440,10 +3431,6 @@ components:
               type: string
             settings.updateAvailable:
               type: string
-            customers.advancedQuery:
-              type: string
-            customers.advancedQueryHelp:
-              type: string
             customers.attribs:
               type: string
             customers.attribsHelp:
@@ -4032,8 +4019,16 @@ components:
     CustomerQueryRequest:
       type: object
       properties:
-        query:
+        search:
           type: string
+        customer_list_ids:
+          type: array
+          items:
+            type: integer
+        subscription_status:
+          type: string
+        all:
+          type: boolean
         ids:
           type: array
           description: The ids of the customers to be modified.
@@ -4044,7 +4039,7 @@ components:
           enum: [add, remove, unsubscribe]
           description: Whether to add, remove, or unsubscribe the users.
         target_customer_list_ids:
-          type: integer
+          type: array
           description: The ids of the customer_lists to be modified.
           items:
             type: integer

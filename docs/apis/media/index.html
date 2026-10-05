@@ -2374,7 +2374,7 @@
 <hr />
 <h4 id="get-apimediafolders">GET /api/media/folders<a class="headerlink" href="#get-apimediafolders" title="Permanent link">&para;</a></h4>
 <p>Get the media folders visible in the active workspace. The response includes
-the folder's parent, media count and child-folder count. A missing <code>parent_id</code>
+the folder's parent, <code>visibility</code>, <code>manageable</code>, <code>writable</code>, media count and visible child-folder count. A missing <code>parent_id</code>
 means the folder is at the root of the workspace.</p>
 <h5 id="example-response">Example Response<a class="headerlink" href="#example-response" title="Permanent link">&para;</a></h5>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
@@ -2382,6 +2382,9 @@ means the folder is at the root of the workspace.</p>
 <span class="w">    </span><span class="p">{</span>
 <span class="w">      </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Product images"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"visibility"</span><span class="p">:</span><span class="w"> </span><span class="s2">"organization"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"manageable"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"writable"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"parent_id"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"media_count"</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"child_count"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span>
@@ -2396,22 +2399,34 @@ case, within the same parent. Requires <code>media:manage</code>.</p>
 <h5 id="request-body">Request Body<a class="headerlink" href="#request-body" title="Permanent link">&para;</a></h5>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
 <span class="w">  </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Product images"</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">"parent_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">  </span><span class="nt">"parent_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"visibility"</span><span class="p">:</span><span class="w"> </span><span class="s2">"organization"</span>
 <span class="p">}</span>
 </code></pre></div>
 <p>Use <code>null</code> or <code>0</code> for <code>parent_id</code> to create a root folder.</p>
+<p><code>visibility</code> accepts <code>private</code> (Personal), <code>organization</code> (Organization), or
+<code>global</code> (Everyone, signed-in users across workspaces). Omission preserves the
+workspace default: private in personal space and organization in organization
+space. Personal spaces cannot use <code>organization</code>. Every parent must be readable;
+uploads and child creation remain confined to the selected owning workspace.
+Folder media uses the folder audience, including ancestor restrictions. Archived
+organizations cannot expose shared folders.</p>
 <hr />
 <h4 id="put-apimediafoldersfolder_id">PUT /api/media/folders/{folder_id}<a class="headerlink" href="#put-apimediafoldersfolder_id" title="Permanent link">&para;</a></h4>
-<p>Rename a media folder. Only the name is changed; provider objects and media
-URLs remain unchanged. Requires <code>media:manage</code>.</p>
+<p>Edit a folder's name and optional visibility. Omitted visibility is preserved.
+Provider objects and URL text remain unchanged. Requires <code>media:manage</code> and
+folder ownership, or a platform admin in the selected owning workspace.</p>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
-<span class="w">  </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Campaign images"</span>
+<span class="w">  </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Campaign images"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"visibility"</span><span class="p">:</span><span class="w"> </span><span class="s2">"private"</span>
 <span class="p">}</span>
 </code></pre></div>
 <hr />
 <h4 id="put-apimediafoldersfolder_idmove">PUT /api/media/folders/{folder_id}/move<a class="headerlink" href="#put-apimediafoldersfolder_idmove" title="Permanent link">&para;</a></h4>
 <p>Move a folder to another folder or to the workspace root. Moving a folder into
-itself or one of its descendants is rejected. Requires <code>media:manage</code>.</p>
+itself or one of its descendants is rejected. Requires <code>media:manage</code> and source
+folder ownership (or a platform admin); the destination must be readable and in
+the same workspace.</p>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
 <span class="w">  </span><span class="nt">"parent_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">9</span>
 <span class="p">}</span>
@@ -2420,14 +2435,16 @@ itself or one of its descendants is rejected. Requires <code>media:manage</code>
 <hr />
 <h4 id="delete-apimediafoldersfolder_id">DELETE /api/media/folders/{folder_id}<a class="headerlink" href="#delete-apimediafoldersfolder_id" title="Permanent link">&para;</a></h4>
 <p>Delete an empty media folder. Folders containing media or child folders return
-HTTP 409; deletion is never recursive. Requires <code>media:manage</code>.</p>
+HTTP 409; deletion is never recursive. Requires <code>media:manage</code> and folder ownership
+(or a platform admin in the owning workspace).</p>
 <hr />
 <h4 id="get-apimedia">GET /api/media<a class="headerlink" href="#get-apimedia" title="Permanent link">&para;</a></h4>
 <p>Get uploaded media files. <code>folder_id=0</code> returns only root media,
 <code>folder_id={id}</code> returns media in that folder, and omitting <code>folder_id</code> keeps
 the legacy behavior of returning all media visible in the active workspace.
-For an active platform-admin session, the listing is also constrained to the
-selected workspace so folder drag-and-drop cannot cross workspace boundaries.</p>
+Everyone folders and their media are visible across workspaces; other folders
+and root media remain constrained to the selected workspace. Writes cannot cross
+workspace boundaries, including drag-and-drop.</p>
 <h5 id="example-request">Example Request<a class="headerlink" href="#example-request" title="Permanent link">&para;</a></h5>
 <div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s2">"api_user:token"</span><span class="w"> </span>-X<span class="w"> </span>GET<span class="w"> </span><span class="s1">'http://localhost:9000/api/media'</span><span class="w"> </span><span class="se">\</span>
 --header<span class="w"> </span><span class="s1">'Content-Type: multipart/form-data; boundary=--------------------------093715978792575906250298'</span>
@@ -2452,6 +2469,10 @@ selected workspace so folder drag-and-drop cannot cross workspace boundaries.</p
 <hr />
 <h4 id="get-apimediamedia_id">GET /api/media/{media_id}<a class="headerlink" href="#get-apimediamedia_id" title="Permanent link">&para;</a></h4>
 <p>Retrieve a specific media.</p>
+<p>Media inside a folder requires access to that folder and every ancestor; the
+same rule protects media file URLs. Root media retains the existing resource
+policy and published template/campaign associations. Folder permission changes
+do not retroactively modify media snapshots already copied into other resources.</p>
 <h5 id="parameters">Parameters<a class="headerlink" href="#parameters" title="Permanent link">&para;</a></h5>
 <table>
 <thead>

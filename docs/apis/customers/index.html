@@ -1614,15 +1614,15 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#put-apicustomersqueryblocklist" class="md-nav__link">
+  <a href="#put-apicustomersbulkblocklist" class="md-nav__link">
     <span class="md-ellipsis">
       
-        PUT /api/customers/query/blocklist
+        PUT /api/customers/bulk/blocklist
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="PUT /api/customers/query/blocklist">
+    <nav class="md-nav" aria-label="PUT /api/customers/bulk/blocklist">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1664,15 +1664,15 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#put-apicustomersquerycustomer-lists" class="md-nav__link">
+  <a href="#put-apicustomersbulkcustomer-lists" class="md-nav__link">
     <span class="md-ellipsis">
       
-        PUT /api/customers/query/customer-lists
+        PUT /api/customers/bulk/customer-lists
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="PUT /api/customers/query/customer-lists">
+    <nav class="md-nav" aria-label="PUT /api/customers/bulk/customer-lists">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1864,15 +1864,15 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#post-apicustomersquerydelete" class="md-nav__link">
+  <a href="#post-apicustomersbulkdelete" class="md-nav__link">
     <span class="md-ellipsis">
       
-        POST /api/customers/query/delete
+        POST /api/customers/bulk/delete
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="POST /api/customers/query/delete">
+    <nav class="md-nav" aria-label="POST /api/customers/bulk/delete">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3337,15 +3337,15 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#put-apicustomersqueryblocklist" class="md-nav__link">
+  <a href="#put-apicustomersbulkblocklist" class="md-nav__link">
     <span class="md-ellipsis">
       
-        PUT /api/customers/query/blocklist
+        PUT /api/customers/bulk/blocklist
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="PUT /api/customers/query/blocklist">
+    <nav class="md-nav" aria-label="PUT /api/customers/bulk/blocklist">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3387,15 +3387,15 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#put-apicustomersquerycustomer-lists" class="md-nav__link">
+  <a href="#put-apicustomersbulkcustomer-lists" class="md-nav__link">
     <span class="md-ellipsis">
       
-        PUT /api/customers/query/customer-lists
+        PUT /api/customers/bulk/customer-lists
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="PUT /api/customers/query/customer-lists">
+    <nav class="md-nav" aria-label="PUT /api/customers/bulk/customer-lists">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3587,15 +3587,15 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#post-apicustomersquerydelete" class="md-nav__link">
+  <a href="#post-apicustomersbulkdelete" class="md-nav__link">
     <span class="md-ellipsis">
       
-        POST /api/customers/query/delete
+        POST /api/customers/bulk/delete
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="POST /api/customers/query/delete">
+    <nav class="md-nav" aria-label="POST /api/customers/bulk/delete">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3740,13 +3740,13 @@ authentication and request conventions.</p>
 </tr>
 <tr>
 <td>PUT</td>
-<td><a href="#put-apicustomersqueryblocklist">/api/customers/query/blocklist</a></td>
-<td>Blocklist customers based on SQL expression.</td>
+<td><a href="#put-apicustomersbulkblocklist">/api/customers/bulk/blocklist</a></td>
+<td>Blocklist customers matched by ordinary filters.</td>
 </tr>
 <tr>
 <td>PUT</td>
-<td><a href="#put-apicustomersquerycustomer-lists">/api/customers/query/customer-lists</a></td>
-<td>Modify memberships based on SQL expression.</td>
+<td><a href="#put-apicustomersbulkcustomer-lists">/api/customers/bulk/customer-lists</a></td>
+<td>Modify memberships for filtered customers.</td>
 </tr>
 <tr>
 <td>DELETE</td>
@@ -3765,8 +3765,8 @@ authentication and request conventions.</p>
 </tr>
 <tr>
 <td>POST</td>
-<td><a href="#post-apicustomersquerydelete">/api/customers/query/delete</a></td>
-<td>Delete customers based on SQL expression.</td>
+<td><a href="#post-apicustomersbulkdelete">/api/customers/bulk/delete</a></td>
+<td>Delete customers matched by ordinary filters.</td>
 </tr>
 </tbody>
 </table>
@@ -3785,10 +3785,10 @@ authentication and request conventions.</p>
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;">query</td>
+<td style="text-align: left;">search</td>
 <td style="text-align: left;">string</td>
 <td style="text-align: left;"></td>
-<td style="text-align: left;">Customer search by SQL expression.</td>
+<td style="text-align: left;">Match customer code, name or e-mail address.</td>
 </tr>
 <tr>
 <td style="text-align: left;">customer_list_id</td>
@@ -3836,7 +3836,7 @@ authentication and request conventions.</p>
 <div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span>-X<span class="w"> </span>GET<span class="w"> </span><span class="s1">'http://localhost:9000/api/customers'</span><span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>--url-query<span class="w"> </span><span class="s1">'page=1'</span><span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>--url-query<span class="w"> </span><span class="s1">'per_page=100'</span><span class="w"> </span><span class="se">\</span>
-<span class="w">    </span>--url-query<span class="w"> </span><span class="s2">"query=customers.name LIKE 'Test%' AND customers.attribs-&gt;&gt;'city' = 'Bengaluru'"</span>
+<span class="w">    </span>--url-query<span class="w"> </span><span class="s1">'search=Test'</span>
 </code></pre></div>
 <h5 id="example-response">Example Response<a class="headerlink" href="#example-response" title="Permanent link">&para;</a></h5>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
@@ -4121,13 +4121,7 @@ authentication and request conventions.</p>
 <td style="text-align: left;">search</td>
 <td style="text-align: left;">string</td>
 <td style="text-align: left;"></td>
-<td style="text-align: left;">Customer search string.</td>
-</tr>
-<tr>
-<td style="text-align: left;">query</td>
-<td style="text-align: left;">string</td>
-<td style="text-align: left;"></td>
-<td style="text-align: left;">Customer search by SQL expression.</td>
+<td style="text-align: left;">Match customer code, name or e-mail address.</td>
 </tr>
 </tbody>
 </table>
@@ -4140,7 +4134,7 @@ authentication and request conventions.</p>
 ea06b2e7-4b08-4697-bcfc-2a5c6dde8f1c,john@example.com,John Doe,CUST-001,"{""city"":""Bengaluru""}",enabled,2024-07-29 11:01:31.478677 +0530 IST,2024-07-29 11:01:31.478677 +0530 IST
 </code></pre></div>
 <blockquote>
-<p><strong>Note:</strong> Requires the <code>customers:export</code> grant (not required for organization managers) as well as <code>customers:get_all</code> or <code>customers:get</code>; the <code>query</code> parameter additionally requires <code>customers:sql_query</code>. When the export is scoped to customer lists with e-mail masking enabled and the caller cannot manage those lists, e-mail addresses are masked. When the request targets individual customers through <code>id</code>, every id is additionally checked with <code>requireExportableWorkspaceCustomer</code> → <code>RequireManageResource</code> (<code>cmd/customers.go:319</code>, <code>cmd/workspace_permissions.go:415</code>), so a caller with read-only rights receives HTTP 403 when passing <code>id</code>.</p>
+<p><strong>Note:</strong> Requires the <code>customers:export</code> grant (not required for organization managers) as well as <code>customers:get_all</code> or <code>customers:get</code>. When the export is scoped to customer lists with e-mail masking enabled and the caller cannot manage those lists, e-mail addresses are masked. When the request targets individual customers through <code>id</code>, every id is additionally checked with <code>requireExportableWorkspaceCustomer</code> → <code>RequireManageResource</code>, so a caller with read-only rights receives HTTP 403 when passing <code>id</code>. The retired <code>query</code> SQL parameter returns HTTP 400.</p>
 </blockquote>
 <hr />
 <h4 id="get-apicustomerscustomer_idbounces">GET /api/customers/{customer_id}/bounces<a class="headerlink" href="#get-apicustomerscustomer_idbounces" title="Permanent link">&para;</a></h4>
@@ -4514,11 +4508,8 @@ ea06b2e7-4b08-4697-bcfc-2a5c6dde8f1c,john@example.com,John Doe,CUST-001,"{""city
 <span class="p">}</span>
 </code></pre></div>
 <hr />
-<h4 id="put-apicustomersqueryblocklist">PUT /api/customers/query/blocklist<a class="headerlink" href="#put-apicustomersqueryblocklist" title="Permanent link">&para;</a></h4>
-<p>Blocklist customers based on SQL expression.</p>
-<blockquote>
-<p>Refer to the <a href="../../querying-and-segmentation/#querying-and-segmenting-customers">querying and segmentation</a> section for more information on how to query customers with SQL expressions.</p>
-</blockquote>
+<h4 id="put-apicustomersbulkblocklist">PUT /api/customers/bulk/blocklist<a class="headerlink" href="#put-apicustomersbulkblocklist" title="Permanent link">&para;</a></h4>
+<p>Blocklist managed customers matching a customer code, name or e-mail search and optional list filters. Requires <code>customers:blocklist</code> and a writable workspace.</p>
 <h5 id="parameters_10">Parameters<a class="headerlink" href="#parameters_10" title="Permanent link">&para;</a></h5>
 <table>
 <thead>
@@ -4531,23 +4522,35 @@ ea06b2e7-4b08-4697-bcfc-2a5c6dde8f1c,john@example.com,John Doe,CUST-001,"{""city
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;">query</td>
+<td style="text-align: left;">search</td>
 <td style="text-align: left;">string</td>
-<td style="text-align: left;">Yes</td>
-<td style="text-align: left;">SQL expression to filter customers with.</td>
+<td style="text-align: left;">Unless <code>all=true</code></td>
+<td style="text-align: left;">Customer code, name or e-mail search.</td>
 </tr>
 <tr>
 <td style="text-align: left;">customer_list_ids</td>
-<td style="text-align: left;">[]number</td>
+<td style="text-align: left;">number[]</td>
 <td style="text-align: left;">No</td>
-<td style="text-align: left;">Optional customer_list IDs to limit the filtering to.</td>
+<td style="text-align: left;">Limit to these customer lists.</td>
+</tr>
+<tr>
+<td style="text-align: left;">subscription_status</td>
+<td style="text-align: left;">string</td>
+<td style="text-align: left;">No</td>
+<td style="text-align: left;">Limit membership status when filtering by list.</td>
+</tr>
+<tr>
+<td style="text-align: left;">all</td>
+<td style="text-align: left;">boolean</td>
+<td style="text-align: left;">No</td>
+<td style="text-align: left;">Explicitly select all managed customers in the supplied list scope.</td>
 </tr>
 </tbody>
 </table>
 <h5 id="example-request_12">Example Request<a class="headerlink" href="#example-request_12" title="Permanent link">&para;</a></h5>
-<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s1">'http://localhost:9000/api/customers/query/blocklist'</span><span class="w"> </span><span class="se">\</span>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span>-X<span class="w"> </span>PUT<span class="w"> </span><span class="s1">'http://localhost:9000/api/customers/bulk/blocklist'</span><span class="w"> </span><span class="se">\</span>
 -H<span class="w"> </span><span class="s1">'Content-Type: application/json'</span><span class="w"> </span><span class="se">\</span>
---data-raw<span class="w"> </span><span class="s1">'{"query":"customers.name LIKE \'</span>John<span class="w"> </span>Doe<span class="se">\'</span><span class="w"> </span>AND<span class="w"> </span>customers.attribs-&gt;&gt;<span class="s1">'\''city'</span><span class="se">\'</span><span class="s1">' = '</span><span class="se">\'</span><span class="s1">'Bengaluru'</span><span class="se">\'</span><span class="s1">'"}'</span>
+--data-raw<span class="w"> </span><span class="s1">'{"search":"john"}'</span>
 </code></pre></div>
 <h5 id="example-response_13">Example Response<a class="headerlink" href="#example-response_13" title="Permanent link">&para;</a></h5>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
@@ -4555,8 +4558,8 @@ ea06b2e7-4b08-4697-bcfc-2a5c6dde8f1c,john@example.com,John Doe,CUST-001,"{""city
 <span class="p">}</span>
 </code></pre></div>
 <hr />
-<h4 id="put-apicustomersquerycustomer-lists">PUT /api/customers/query/customer-lists<a class="headerlink" href="#put-apicustomersquerycustomer-lists" title="Permanent link">&para;</a></h4>
-<p>Modify the customer_list memberships of customers matched by a search or SQL expression. This is the bulk query form of <a href="#put-apicustomerscustomer-lists">PUT /api/customers/customer-lists</a>.</p>
+<h4 id="put-apicustomersbulkcustomer-lists">PUT /api/customers/bulk/customer-lists<a class="headerlink" href="#put-apicustomersbulkcustomer-lists" title="Permanent link">&para;</a></h4>
+<p>Modify memberships of managed customers matched by ordinary filters. This is the filtered form of <a href="#put-apicustomerscustomer-lists">PUT /api/customers/customer-lists</a>.</p>
 <h5 id="parameters_11">Parameters<a class="headerlink" href="#parameters_11" title="Permanent link">&para;</a></h5>
 <table>
 <thead>
@@ -4587,16 +4590,10 @@ ea06b2e7-4b08-4697-bcfc-2a5c6dde8f1c,john@example.com,John Doe,CUST-001,"{""city
 <td style="text-align: left;">Subscription status: <code>confirmed</code>, <code>unconfirmed</code>, or <code>unsubscribed</code>.</td>
 </tr>
 <tr>
-<td style="text-align: left;">query</td>
-<td style="text-align: left;">string</td>
-<td style="text-align: left;"></td>
-<td style="text-align: left;">SQL expression to filter customers with. When omitted, all customers the caller manages in the active workspace are matched.</td>
-</tr>
-<tr>
 <td style="text-align: left;">search</td>
 <td style="text-align: left;">string</td>
 <td style="text-align: left;"></td>
-<td style="text-align: left;">Customer search string.</td>
+<td style="text-align: left;">Match customer code, name or e-mail. When omitted, all managed customers in the active scope are matched.</td>
 </tr>
 <tr>
 <td style="text-align: left;">customer_list_ids</td>
@@ -4613,9 +4610,9 @@ ea06b2e7-4b08-4697-bcfc-2a5c6dde8f1c,john@example.com,John Doe,CUST-001,"{""city
 </tbody>
 </table>
 <h5 id="example-request_13">Example Request<a class="headerlink" href="#example-request_13" title="Permanent link">&para;</a></h5>
-<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span>-X<span class="w"> </span>PUT<span class="w"> </span><span class="s1">'http://localhost:9000/api/customers/query/customer-lists'</span><span class="w"> </span><span class="se">\</span>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span>-X<span class="w"> </span>PUT<span class="w"> </span><span class="s1">'http://localhost:9000/api/customers/bulk/customer-lists'</span><span class="w"> </span><span class="se">\</span>
 -H<span class="w"> </span><span class="s1">'Content-Type: application/json'</span><span class="w"> </span><span class="se">\</span>
---data-raw<span class="w"> </span><span class="s1">'{"query":"customers.name LIKE '</span><span class="se">\'</span><span class="s1">'John Doe'</span><span class="se">\'</span><span class="s1">'","action":"add","target_customer_list_ids":[4],"status":"confirmed"}'</span>
+--data-raw<span class="w"> </span><span class="s1">'{"search":"John Doe","action":"add","target_customer_list_ids":[4],"status":"confirmed"}'</span>
 </code></pre></div>
 <h5 id="example-response_14">Example Response<a class="headerlink" href="#example-response_14" title="Permanent link">&para;</a></h5>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
@@ -4623,7 +4620,7 @@ ea06b2e7-4b08-4697-bcfc-2a5c6dde8f1c,john@example.com,John Doe,CUST-001,"{""city
 <span class="p">}</span>
 </code></pre></div>
 <blockquote>
-<p><strong>Note:</strong> Requires the <code>customers:membership_manage</code> grant and a writable workspace; only customers the caller owns or manages are affected. Using the <code>query</code> parameter additionally requires the <code>customers:sql_query</code> grant.</p>
+<p><strong>Note:</strong> Requires the <code>customers:membership_manage</code> grant and a writable workspace; only customers the caller owns or manages are affected. The retired SQL <code>query</code> field returns HTTP 400.</p>
 </blockquote>
 <hr />
 <h4 id="delete-apicustomerscustomer_id">DELETE /api/customers/{customer_id}<a class="headerlink" href="#delete-apicustomerscustomer_id" title="Permanent link">&para;</a></h4>
@@ -4716,8 +4713,8 @@ ea06b2e7-4b08-4697-bcfc-2a5c6dde8f1c,john@example.com,John Doe,CUST-001,"{""city
 <span class="p">}</span>
 </code></pre></div>
 <hr />
-<h4 id="post-apicustomersquerydelete">POST /api/customers/query/delete<a class="headerlink" href="#post-apicustomersquerydelete" title="Permanent link">&para;</a></h4>
-<p>Delete customers based on SQL expression.</p>
+<h4 id="post-apicustomersbulkdelete">POST /api/customers/bulk/delete<a class="headerlink" href="#post-apicustomersbulkdelete" title="Permanent link">&para;</a></h4>
+<p>Delete managed customers matched by a customer code, name or e-mail search and optional list filters. Requires <code>customers:delete</code> and a writable workspace.</p>
 <h5 id="parameters_15">Parameters<a class="headerlink" href="#parameters_15" title="Permanent link">&para;</a></h5>
 <table>
 <thead>
@@ -4730,29 +4727,35 @@ ea06b2e7-4b08-4697-bcfc-2a5c6dde8f1c,john@example.com,John Doe,CUST-001,"{""city
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;">query</td>
+<td style="text-align: left;">search</td>
 <td style="text-align: left;">string</td>
-<td style="text-align: left;">No</td>
-<td style="text-align: left;">SQL expression to filter customers with.</td>
+<td style="text-align: left;">Unless <code>all=true</code></td>
+<td style="text-align: left;">Match customer code, name or e-mail.</td>
 </tr>
 <tr>
 <td style="text-align: left;">customer_list_ids</td>
-<td style="text-align: left;">[]number</td>
+<td style="text-align: left;">number[]</td>
 <td style="text-align: left;">No</td>
-<td style="text-align: left;">Optional customer_list IDs to limit the filtering to.</td>
+<td style="text-align: left;">Limit to these customer lists.</td>
+</tr>
+<tr>
+<td style="text-align: left;">subscription_status</td>
+<td style="text-align: left;">string</td>
+<td style="text-align: left;">No</td>
+<td style="text-align: left;">Limit membership status when filtering by list.</td>
 </tr>
 <tr>
 <td style="text-align: left;">all</td>
-<td style="text-align: left;">bool</td>
+<td style="text-align: left;">boolean</td>
 <td style="text-align: left;">No</td>
-<td style="text-align: left;">When set to <code>true</code>, ignores any query and deletes all customers.</td>
+<td style="text-align: left;">Explicitly select all managed customers in the supplied list scope.</td>
 </tr>
 </tbody>
 </table>
 <h5 id="example-request_17">Example Request<a class="headerlink" href="#example-request_17" title="Permanent link">&para;</a></h5>
-<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s1">'http://localhost:9000/api/customers/query/delete'</span><span class="w"> </span><span class="se">\</span>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s1">'http://localhost:9000/api/customers/bulk/delete'</span><span class="w"> </span><span class="se">\</span>
 -H<span class="w"> </span><span class="s1">'Content-Type: application/json'</span><span class="w"> </span><span class="se">\</span>
---data-raw<span class="w"> </span><span class="s1">'{"query":"customers.name LIKE \'</span>John<span class="w"> </span>Doe<span class="se">\'</span><span class="w"> </span>AND<span class="w"> </span>customers.attribs-&gt;&gt;<span class="s1">'\''city'</span><span class="se">\'</span><span class="s1">' = '</span><span class="se">\'</span><span class="s1">'Bengaluru'</span><span class="se">\'</span><span class="s1">'"}'</span>
+--data-raw<span class="w"> </span><span class="s1">'{"search":"John Doe"}'</span>
 </code></pre></div>
 <h5 id="example-response_18">Example Response<a class="headerlink" href="#example-response_18" title="Permanent link">&para;</a></h5>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>

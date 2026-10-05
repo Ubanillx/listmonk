@@ -1065,6 +1065,18 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#optional-public-pool-reply-email" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optional public-pool reply email
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Optional public-pool reply email">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
   <a href="#get-apiimportcustomers" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1102,8 +1114,8 @@
     </nav>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#get-apiimportcustomerslogs" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1141,8 +1153,8 @@
     </nav>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#post-apiimportcustomers" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1169,8 +1181,8 @@
     </nav>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#params-json-string" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1208,8 +1220,8 @@
     </nav>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#delete-apiimportcustomers" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1251,6 +1263,11 @@
       
     </span>
   </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
         
@@ -1910,6 +1927,18 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#optional-public-pool-reply-email" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optional public-pool reply email
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Optional public-pool reply email">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
   <a href="#get-apiimportcustomers" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1947,8 +1976,8 @@
     </nav>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#get-apiimportcustomerslogs" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1986,8 +2015,8 @@
     </nav>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#post-apiimportcustomers" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2014,8 +2043,8 @@
     </nav>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#params-json-string" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2053,8 +2082,8 @@
     </nav>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#delete-apiimportcustomers" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2103,6 +2132,11 @@
     </nav>
   
 </li>
+        
+      </ul>
+    </nav>
+  
+</li>
       
     </ul>
   
@@ -2122,6 +2156,9 @@
 
 
 <h1 id="api-import">API / Import<a class="headerlink" href="#api-import" title="Permanent link">&para;</a></h1>
+<h2 id="optional-public-pool-reply-email">Optional public-pool reply email<a class="headerlink" href="#optional-public-pool-reply-email" title="Permanent link">&para;</a></h2>
+<p>Map <code>params.field_map.reply_to</code> to a column name or spreadsheet letter. Values must be a single bare email address; blank or absent values are accepted. Invalid values produce <code>invalid_reply_to</code> row issues. Reimporting the same customer code/email/name/department updates this routing field, including clearing it with a blank value, without creating another contact. It does not clear blocklisting or organization exclusions.</p>
+<p>The default campaign order is customer reply email → verified active organization mailbox. Campaigns can reverse it using <code>pool_reply_priority=organization_first</code>. Imported addresses set Reply-To only; configure a corresponding organization mailbox separately to collect replies.</p>
 <table>
 <thead>
 <tr>
@@ -2185,20 +2222,38 @@
 <p>Send a CSV / XLSX (optionally ZIP compressed CSV) file to import customers. Use a multipart form POST. The selected list type determines the import branch.</p>
 <p>CSV files use commas. Supported fields are email, name, and customer_code.
 Subscription imports require customer_code. Only these supported fields are imported.</p>
+<p>The admin private-customer import form always overwrites existing customer
+information and subscription status. It defaults to confirmed subscriptions.
+The status selector is shown only when at least one selected private-customer
+list uses double opt-in, including a mix of single and double opt-in lists.
+Removing all double opt-in lists resets the hidden status to confirmed.
+Blocklist imports use unsubscribed status. These form defaults do not change
+the defaults or optional overwrite parameters for direct API requests.</p>
 <p>When <code>customer_list_ids</code> contains exactly one first-level public-pool list
 (<code>type=pool</code>), the same endpoint uses the public-pool branch instead. The first
 CSV sheet or XLSX worksheet must provide customer code, name, email, and
 allocation department. The Chinese headers in the supplied workbook—<code>客户编号</code>
 (<code>客户编码</code> is also accepted), <code>姓名</code>, <code>邮箱</code>, and <code>分配部门</code>—are recognized;
-extra template columns are ignored. The allocation department must match an
+An optional <code>reply_to</code> column (aliases <code>回信邮箱</code>, <code>回件邮箱</code>, <code>回复邮箱</code>, <code>reply-to</code>, <code>reply_email</code>) supplies the customer-specific Reply-To address; other extra columns are ignored. The allocation department must match an
 active organization name in the system; an unknown or archived department is
 reported as an invalid row and is not written to the pool. A valid department
 is saved on the pool contact. If the matching organization already has a
 pool allocation for the selected pool, the import also creates the contact's
 pool-allocation membership. Creating that pool allocation later backfills
 existing matching contacts; it does not create an organization.
-This branch is synchronous, does not support blocklist, overwrite, or ZIP
+This branch is synchronous, does not support overwrite flags or ZIP
 uploads, and is restricted to the highest administrator.</p>
+<p>Public-pool imports accept <code>mode=subscribe</code> or <code>mode=blocklist</code>, using the same
+required four columns, optional reply email, and department validation. Blocklist mode creates new
+contacts as <code>blocklisted</code> and marks every matching email in the selected pool
+as blocklisted (case-insensitive, even if the identity fields differ). The
+response includes <code>blocklisted</code>, the number of distinct affected contacts.
+Contact status applies across all organization allocations and any pools
+sharing that contact record. Separate contacts in other pools are unchanged.
+Blocked contacts are excluded by recipient resolution and delivery checks;
+normal imports preserve blocking, including new identities with an email
+already blocked in the selected pool. Organization removal/restoration does
+not clear contact-level blocking.</p>
 <h5 id="parameters">Parameters<a class="headerlink" href="#parameters" title="Permanent link">&para;</a></h5>
 <table>
 <thead>

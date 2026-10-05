@@ -406,6 +406,8 @@
       
         
       
+        
+      
     
     
     
@@ -776,6 +778,34 @@
     
   
     User roles and permissions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../business-permissions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Business permissions
   
 
     
@@ -1819,9 +1849,9 @@
 <li>Create or reuse a customer_list with the <a href="../apis/customer-lists/">customer_list APIs</a>.</li>
 <li>Add or import customers with the <a href="../apis/customers/">customer APIs</a> or <a href="../apis/import/">import APIs</a>.</li>
 <li>Clone a base marketing template with the <a href="../apis/templates/">template APIs</a>.</li>
-<li>Create a campaign with <code>daily_send_limit</code> and <code>daily_resume_time</code> set.</li>
-<li>Start the campaign with <code>PUT /api/campaigns/{id}/status</code>.</li>
-<li>Fetch delivery and engagement analytics with the campaign report endpoints.</li>
+<li>Create a draft with <code>customer_list_ids</code>, <code>daily_send_limit</code>, and <code>daily_resume_time</code>. Select <code>smtp_source=personal|organization</code>, an organization <code>smtp_pool_id</code> when applicable, and the campaign-wide <code>smtp_rate_limit</code>.</li>
+<li>Check the draft, preview, and SMTP overview. Start with <code>PUT /api/campaigns/{id}/status</code> and <code>status=running</code>, or save a future <code>send_at</code> and explicitly set <code>status=scheduled</code> when scheduling is requested.</li>
+<li>Fetch delivery and engagement analytics with single-campaign or cross-campaign <a href="../apis/campaigns/">report APIs</a>, optionally including approximate open locations.</li>
 </ol>
 <p>For OpenClaw, create a personal API key in <code>Profile -&gt; API Keys</code> for the user who owns the target workspace and SMTP account. Bind the key to the intended personal or organization workspace, select its scopes, and set its expiry month. A personal key cannot switch workspaces. Legacy API-user Bearer tokens remain appropriate for administrator-managed internal service accounts.</p>
 <p>The recommended minimum permissions for a marketing automation service account are:</p>
@@ -1832,7 +1862,10 @@
 <li><code>campaigns:read</code>, <code>campaigns:write</code>, and <code>campaigns:analytics</code></li>
 <li><code>campaigns:send</code> when OpenClaw may start or schedule a campaign</li>
 </ul>
-<p>Add <code>customers:read</code> and <code>campaigns:recipients</code> only when recipient-level data is required. Add media scopes only when the automation uploads or reads media.</p>
+<p>Add <code>customers:read</code> when reading or reusing existing customers, and <code>campaigns:recipients</code> when recipient-level reports are needed. Add media scopes only when the automation uploads or reads media. Scopes do not replace user roles: sending, scheduling, testing, control, analytics, sensitive customer data, and mailbox use retain their separate business permissions.</p>
+<p>Personal keys cannot configure SMTP or reply mailboxes, call <code>/api/dashboard/*</code>, or access <code>/api/pools/*</code> and <code>/api/org-pool-allocations/*</code>. Use preconfigured senders and authorized first-level public-pool audiences; the ordinary list/import CLI handles private customers only.</p>
+<p>For today's delivery and engagement, call <code>/api/campaigns/report/summary</code> (and <code>timeseries</code>, <code>links</code>, <code>geo</code>, or <code>recipients</code>) with explicit timezone-aware <code>from</code>/<code>to</code> values. Repeat <code>id</code> for selected campaigns or omit IDs for the authorized workspace report set. Do not filter by campaign creation time: older campaigns can produce events today. Date-only endpoints are midnight boundaries, not whole-day expansions.</p>
+<p>The repository bundles <code>skills/listmonk-openclaw-marketing/SKILL.md</code>, a maintained API reference, workflow examples, and Python scripts. The report CLI supports a single campaign, multiple campaign IDs, or the authorized workspace, optional geographic aggregates, and explicit recipient pagination.</p>
 <h2 id="interacting-directly-with-the-db">Interacting directly with the DB<a class="headerlink" href="#interacting-directly-with-the-db" title="Permanent link">&para;</a></h2>
 <p>listmonk uses tables with simple schemas to represent customers (<code>customers</code>), customer_lists (<code>customer_lists</code>), and subscriptions (<code>customer_list_memberships</code>). It is easy to add, update, and delete customer information directly with the database tables for advanced usecases. See the <a href="https://github.com/knadh/listmonk/blob/master/schema.sql">table schemas</a> for more information.</p>
 

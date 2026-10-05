@@ -12,7 +12,7 @@
         <link rel="prev" href="../external-integration/">
       
       
-        <link rel="next" href="../oidc/">
+        <link rel="next" href="../business-permissions/">
       
       
         
@@ -74,7 +74,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#workspaces-and-resource-boundaries" class="md-skip">
+        <a href="#business-permission-groups" class="md-skip">
           Skip to content
         </a>
       
@@ -385,6 +385,8 @@
   
     
     
+      
+        
       
         
       
@@ -738,6 +740,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#business-permission-groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Business permission groups
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#workspaces-and-resource-boundaries" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -807,6 +820,34 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../business-permissions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Business permissions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -1775,6 +1816,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#business-permission-groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Business permission groups
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#workspaces-and-resource-boundaries" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1860,6 +1912,13 @@
   <h1>User roles and permissions</h1>
 
 <p>listmonk supports (&gt;= v4.0.0) creating systems users with granular permissions to various features, including customer_list-specific permissions. Users can login with a username and password, or via an OIDC (OpenID Connect) handshake if an auth provider is connected. Various permissions can be grouped into "user roles", which can be assigned to users. CustomerList-specific permissions can be grouped into "customer_list roles".</p>
+<h2 id="business-permission-groups">Business permission groups<a class="headerlink" href="#business-permission-groups" title="Permanent link">&para;</a></h2>
+<p>Since v6.56.0, the role form presents 20 business permissions across private
+customers/lists, public pools/lists, campaigns, templates/media, and sending/reply
+mailboxes. See <a href="../business-permissions/">业务权限说明</a> for the display names,
+stable permission IDs, dependencies, and migration behavior. No preset roles are
+introduced. Existing partially granted groups remain partial when saved;
+only explicitly selecting a group grants all of its underlying permissions.</p>
 <h2 id="workspaces-and-resource-boundaries">Workspaces and resource boundaries<a class="headerlink" href="#workspaces-and-resource-boundaries" title="Permanent link">&para;</a></h2>
 <p>Roles are necessary but not sufficient for access. Every authenticated request is
 also limited to the selected personal or organization workspace and the
@@ -1885,7 +1944,7 @@ customer_list-specific grant never exposes a resource in another workspace.</p>
   be readable. Folder media inherits this audience for browsing and use, while
   ownership and writes remain within the original workspace. Only the creator or
   a platform admin in that workspace can edit folder permissions; <code>media:manage</code>
-  is still required. Personal workspaces cannot choose Organization.</li>
+  and <code>assets:share</code> are required when sharing changes. Personal workspaces cannot choose Organization.</li>
 <li>Organization membership has separate <code>member</code> and <code>manager</code> roles. It does
   not grant system user-role or customer_list-role permissions. Archived organizations
   reject normal writes.</li>
@@ -1911,7 +1970,12 @@ does not replace API authorization.</p>
 <tr>
 <td></td>
 <td>customer_lists:manage_all</td>
-<td>Create, update, and delete all owner-managed customer_lists in the active workspace</td>
+<td>Create and update owner-managed customer lists in the active workspace</td>
+</tr>
+<tr>
+<td></td>
+<td>customer_lists:delete</td>
+<td>Delete private customer lists; list maintenance and ownership checks also apply</td>
 </tr>
 <tr>
 <td>customers</td>
@@ -1956,7 +2020,7 @@ does not replace API authorization.</p>
 <tr>
 <td></td>
 <td>customers:sensitive_read</td>
-<td>View unmasked customer e-mail and attributes where the current customer list would otherwise mask them; this does not bypass workspace or ownership boundaries. Pool contacts are always masked except for platform administrators, so this permission does not unmask them</td>
+<td>View private customer email, UUID, and attributes within the authorized resource scope. Required even for owners and organization managers. Does not unmask public-pool contacts</td>
 </tr>
 <tr>
 <td>pools</td>
@@ -1966,7 +2030,17 @@ does not replace API authorization.</p>
 <tr>
 <td></td>
 <td>pools:manage</td>
-<td>Create, assign, remove, restore, and clear the e-mail of public-pool contacts. Non-platform-administrators may only act on their own organization's pool allocation.</td>
+<td>Create allocations for already-authorized pools and assign, remove, or restore allocation members in the active organization. Other organizations additionally require delivery administration</td>
+</tr>
+<tr>
+<td></td>
+<td>pools:master_manage</td>
+<td>Create/edit/delete first-level pools, import/create/delete pool contacts, and archive invalid emails. Delegated maintainers still receive masked DTOs</td>
+</tr>
+<tr>
+<td></td>
+<td>pools:delivery_manage</td>
+<td>Grant/revoke organization pool delivery authorization and select another target organization; does not grant contact plaintext or allocation maintenance</td>
 </tr>
 <tr>
 <td></td>
@@ -2072,6 +2146,21 @@ does not replace API authorization.</p>
 <td></td>
 <td>templates:manage</td>
 <td>Create, update, and delete templates</td>
+</tr>
+<tr>
+<td>assets</td>
+<td>assets:share</td>
+<td>Set or remove template/media sharing, including shared folder placement. Maintenance and ownership checks still apply</td>
+</tr>
+<tr>
+<td>mailboxes</td>
+<td>mailboxes:use</td>
+<td>Select available sending/reply mailboxes and use them for authorized campaign or transactional sending</td>
+</tr>
+<tr>
+<td></td>
+<td>mailboxes:manage</td>
+<td>Configure/test/enable/disable/delete sending and reply mailboxes, SMTP pools, and reply forwarding rules within the existing ownership/organization boundary</td>
 </tr>
 <tr>
 <td>users</td>
@@ -2182,8 +2271,7 @@ workspace regardless of role permissions.</p>
   <code>customer_code</code> header); rows without a value are skipped. The customer code
   is included in customer listings and in CSV exports.</li>
 <li><strong>Masked e-mails.</strong> Each customer_list has a "mask e-mails" (<code>mask_emails</code>) setting. When
-  enabled, viewers who lack sensitive-data access to a customer (customer_list owners,
-  customer-list managers, and platform administrators are always exempt) see masked
+  enabled, viewers without <code>customers:sensitive_read</code> see masked
   e-mail addresses such as <code>liuxxx@gmail.com</code> instead of the full address in
   customer listings, detail views, API responses, and CSV exports scoped to
   that customer_list. The local part keeps its first 3 characters; the remainder is
@@ -2191,7 +2279,12 @@ workspace regardless of role permissions.</p>
   fewer are fully replaced). Viewers with no sensitive-data access and no
   masking-enabled customer_list context continue to receive the pre-existing redaction
   (empty e-mail). Masking affects display only — searching and segmentation
-  still match against the full address.</li>
+  still match against the full address. Owners and list/organization managers
+  also require the sensitive permission; platform administrators retain their
+  functional permission exemption. UUID and attributes are hidden in reads,
+  write responses, exports, and recipient/bounce reports without the required
+  sensitive grant. Saving an edit with email or attributes omitted preserves
+  the stored values.</li>
 </ul>
 <h2 id="api-users">API users<a class="headerlink" href="#api-users" title="Permanent link">&para;</a></h2>
 <p>Regular users can create personal API keys from <code>Profile -&gt; API Keys</code>. Each key is restricted to one personal or organization workspace, must expire within 24 months, and can be narrowed with business API scopes. The key never changes the user's role, customer_list role, organization membership, or resource ownership.</p>

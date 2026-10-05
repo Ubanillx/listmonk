@@ -1,0 +1,64 @@
+/* Shared design values. Bulma's utility variables are loaded by style.scss. */
+$body-family: "Inter", "Helvetica Neue", sans-serif;
+$body-size: 14px;
+$background: #fcfcfd;
+$body-background-color: #fcfcfd;
+$primary: #155eef;
+$green: #16855b;
+$turquoise: $green;
+$red: #d92d20;
+$link: $primary;
+$input-placeholder-color: #98a2b3;
+$grey-lightest: #eaecf0;
+$control-radius: 6px;
+$control-radius-small: 4px;
+$control-height: 40px;
+$sidebar-width: 248px;
+$navbar-height: 4rem;
+$menu-item-active-background-color: #eef4ff;
+$menu-item-active-color: $primary;
+$sidebar-box-shadow: none;
+$modal-background-background-color: rgba(16, 24, 40, 0.42);
+
+$colors: map-merge($colors, (
+  "turquoise": ($green, $green-invert),
+  "green": ($green, $green-invert),
+  "success": ($green, $green-invert),
+  "danger": ($red, $green-invert),
+));
+
+:root {
+  --lm-neutral-0: #ffffff;
+  --lm-neutral-50: #f8fafc;
+  --lm-neutral-100: #fcfcfd;
+  --lm-neutral-200: #eaecf0;
+  --lm-neutral-300: #d0d5dd;
+  --lm-neutral-500: #667085;
+  --lm-neutral-700: #344054;
+  --lm-neutral-900: #101828;
+  --lm-color-canvas: var(--lm-neutral-100);
+  --lm-color-surface: var(--lm-neutral-0);
+  --lm-color-surface-subtle: var(--lm-neutral-50);
+  --lm-color-border: var(--lm-neutral-200);
+  --lm-color-border-strong: var(--lm-neutral-300);
+  --lm-color-text: var(--lm-neutral-900);
+  --lm-color-text-muted: var(--lm-neutral-500);
+  --lm-color-primary: #155eef;
+  --lm-color-primary-soft: #eef4ff;
+  --lm-color-success: #16855b;
+  --lm-color-warning: #b54708;
+  --lm-color-danger: #d92d20;
+  --lm-radius-sm: 4px;
+  --lm-radius-md: 6px;
+  --lm-field-max-width: 560px;
+  --lm-space-1: 4px;
+  --lm-space-2: 8px;
+  --lm-space-3: 12px;
+  --lm-space-4: 16px;
+  --lm-space-6: 24px;
+  --lm-space-8: 32px;
+  --lm-space-12: 48px;
+  --lm-shadow-sm: 0 1px 3px rgba(16, 24, 40, 0.10), 0 1px 2px rgba(16, 24, 40, 0.06);
+  --lm-shadow-md: 0 8px 24px rgba(16, 24, 40, 0.08), 0 2px 8px rgba(16, 24, 40, 0.04);
+  --lm-focus-ring: 0 0 0 3px rgba(21, 94, 239, 0.18);
+}

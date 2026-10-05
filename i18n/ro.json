@@ -579,8 +579,6 @@
     "settings.title": "Setări",
     "settings.updateAvailable": "Este disponibilă o nouă actualizare {version}.",
     "customers.activity": "Activitate",
-    "customers.advancedQuery": "Avansat",
-    "customers.advancedQueryHelp": "Expresie SQL parțială pentru a interoga atributele abonatului",
     "customers.attribsHelp": "Atributele sunt definite ca o hartă JSON, de exemplu:",
     "customers.blocklistedHelp": "Abonații din lista neagră nu vor primi niciodată e-mailuri.",
     "customers.confirmBlocklist": "CustomerLista de blocări {num} abonaților?",

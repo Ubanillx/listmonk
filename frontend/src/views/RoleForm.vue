@@ -174,7 +174,7 @@ export default Vue.extend({
 
     isHighRiskPermission(permission) {
       return [
-        'customers:sql_query', 'customers:delete', 'customers:blocklist', 'customers:membership_manage',
+        'customers:delete', 'customers:blocklist', 'customers:membership_manage',
         'customers:export', 'customers:sensitive_read', 'campaigns:send', 'campaigns:test',
         'campaigns:schedule', 'campaigns:control', 'campaigns:recipients', 'bounces:delete',
         'bounces:blocklist', 'users:tokens', 'pools:manage', 'pools:export',
@@ -300,6 +300,10 @@ export default Vue.extend({
   mounted() {
     if (this.isEditing) {
       this.form = { ...this.form, ...this.$props.data };
+      if (this.$props.type === 'user') {
+        const available = new Set((this.serverConfig.permissions || []).flatMap((group) => group.permissions));
+        this.form.permissions = this.form.permissions.filter((permission) => available.has(permission));
+      }
 
       // It's the superadmin role. Disable the form.
       if (this.$props.data.id === 1 || !this.$can('roles:manage')) {
@@ -308,7 +312,6 @@ export default Vue.extend({
     } else {
       const skip = ['admin', 'users'];
       const defaultDisabled = [
-        'customers:sql_query',
         'customers:delete',
         'customers:blocklist',
         'customers:membership_manage',

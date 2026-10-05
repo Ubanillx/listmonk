@@ -1,0 +1,46 @@
+.tag {
+  border-radius: 999px !important;
+  padding: 2px 10px !important;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.4;
+
+  &.is-small {
+    padding: 2px 8px !important;
+    font-size: 0.6875rem;
+  }
+
+  &.private,
+  &.scheduled,
+  &.paused,
+  &.tx,
+  &.api {
+    color: #92400e;
+    background: #fffaeb;
+  }
+
+  &.public,
+  &.running,
+  &.list,
+  &.campaign,
+  &.user,
+  &.primary {
+    color: #1849a9;
+    background: #eff8ff;
+  }
+
+  &.finished,
+  &.enabled,
+  &.status-confirmed {
+    color: #067647;
+    background: #ecfdf3;
+  }
+
+  &.blocklisted,
+  &.cancelled,
+  &.status-unsubscribed,
+  &.campaign_visual {
+    color: #b42318;
+    background: #fef3f2;
+  }
+}

@@ -1,13 +1,13 @@
 <template>
   <section class="users">
     <header class="columns page-header">
-      <div class="column is-10">
+      <div class="column is-8">
         <h1 class="title is-4">
           {{ $t('globals.terms.users') }}
           <span v-if="!isNaN(users.length)">({{ users.length }})</span>
         </h1>
       </div>
-      <div class="column has-text-right">
+      <div class="column is-4 has-text-right">
         <div v-if="$can('users:manage')" class="buttons is-justify-content-flex-end">
           <b-button icon-left="file-upload-outline" type="is-light" @click="showBulkImport" data-cy="btn-user-bulk-import">
             {{ $t('users.bulkImport') }}

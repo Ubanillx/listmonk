@@ -579,8 +579,6 @@
     "settings.title": "Cài đặt",
     "settings.updateAvailable": "Đã có bản cập nhật mới {version}.",
     "customers.activity": "Hoạt động",
-    "customers.advancedQuery": "Trình độ cao",
-    "customers.advancedQueryHelp": "Biểu thức SQL một phần để truy vấn thuộc tính người đăng ký",
     "customers.attribsHelp": "Các thuộc tính được định nghĩa như một bản đồ JSON, ví dụ:",
     "customers.blocklistedHelp": "Những người đăng ký bị chặn sẽ không bao giờ nhận được bất kỳ e-mail nào.",
     "customers.confirmBlocklist": "Danh sách chặn {num} người đăng ký?",

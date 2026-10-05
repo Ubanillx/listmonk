@@ -579,8 +579,6 @@
     "settings.title": "설정",
     "settings.updateAvailable": "새 업데이트 {version}이(가) 있습니다.",
     "customers.activity": "활동",
-    "customers.advancedQuery": "고급",
-    "customers.advancedQueryHelp": "구독자 속성을 쿼리할 부분 SQL 표현식",
     "customers.attribsHelp": "속성은 JSON 맵으로 정의됩니다. 예:",
     "customers.blocklistedHelp": "차단된 구독자는 이메일을 절대 받지 않습니다.",
     "customers.confirmBlocklist": "{num}명의 구독자를 차단 목록에 추가하시겠습니까?",

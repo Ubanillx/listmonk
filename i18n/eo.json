@@ -579,8 +579,6 @@
     "settings.title": "Configuració",
     "settings.updateAvailable": "Hi ha disponible una nova actualització {versió}.",
     "customers.activity": "Aktiveco",
-    "customers.advancedQuery": "Avançat",
-    "customers.advancedQueryHelp": "Expressió SQL parcial per consultar els atributs del subscriptor",
     "customers.attribsHelp": "Els atributs es defineixen com un mapa JSON, per exemple:",
     "customers.blocklistedHelp": "Els subscriptors bloquejats no rebran mai cap correu electrònic.",
     "customers.confirmBlocklist": "Afegir a la llista de bloqueig {nombre} subscriptors?",

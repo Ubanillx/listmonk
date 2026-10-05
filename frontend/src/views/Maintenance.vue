@@ -56,7 +56,7 @@
         <div class="column is-4">
           <b-field :label="$t('maintenance.olderThan')">
             <b-datepicker v-model="subscriptionDate" required expanded icon="calendar-clock"
-              :date-formatter="formatDateTime" />
+              :date-formatter="formatDateTime" :date-parser="$utils.parseDateTime" />
           </b-field>
         </div>
         <div class="column is-1" />
@@ -95,7 +95,7 @@
         <div class="column is-4">
           <b-field :label="$t('maintenance.olderThan')">
             <b-datepicker v-model="analyticsDate" required expanded icon="calendar-clock"
-              :date-formatter="formatDateTime" />
+              :date-formatter="formatDateTime" :date-parser="$utils.parseDateTime" />
           </b-field>
         </div>
         <div class="column is-1" />
@@ -178,7 +178,7 @@ export default Vue.extend({
 
   methods: {
     formatDateTime(s) {
-      return dayjs(s).format('YYYY-MM-DD');
+      return this.$utils.niceDate(s);
     },
 
     deleteCustomers() {

@@ -579,8 +579,6 @@
     "settings.title": "Gosodiadau",
     "settings.updateAvailable": "Mae diweddariad {version} newydd ar gael.",
     "customers.activity": "Gweithgaredd",
-    "customers.advancedQuery": "Uwch",
-    "customers.advancedQueryHelp": "Mynegiad SQL rhannol i wneud ymholiad ynghylch priodoleddau tanysgrifiwr",
     "customers.attribsHelp": "Mae priodoleddau'n cael eu diffinio fel map JSON",
     "customers.blocklistedHelp": "Ni fydd tanysgrifwyr ar y rhestr rwystro byth yn derbyn unrhyw e-byst.",
     "customers.confirmBlocklist": "Rhoi {num} tanysgrifiwr ar y rhestr rwystro?",

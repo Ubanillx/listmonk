@@ -579,8 +579,6 @@
     "settings.title": "Beállítások",
     "settings.updateAvailable": "Új verzió érhető el! ({version})",
     "customers.activity": "Tevékenység",
-    "customers.advancedQuery": "Adatbázis lekérdezés",
-    "customers.advancedQueryHelp": "Részleges SQL kifejezés a tagok lekérdezéséhez",
     "customers.attribsHelp": "Tetszőleges adat hozzáadása (JSON formátumban). Például:",
     "customers.blocklistedHelp": "A tiltólistán szereplő tagok soha nem kapnak e-mailt.",
     "customers.confirmBlocklist": "{num} tag tiltása?",

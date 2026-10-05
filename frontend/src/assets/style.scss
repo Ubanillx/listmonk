@@ -1,53 +1,9 @@
 /* Import Bulma to set variables */
 @import "../node_modules/bulma/sass/utilities/_all";
 
-/* import inter-regular */
-@font-face {
-  font-family: 'Inter';
-  font-style: normal;
-  font-weight: 400;
-  src: local(''),
-       url('assets/fonts/Inter-Regular.woff2') format('woff2'),
-}
-
-/* import inter-600 */
-@font-face {
-  font-family: 'Inter';
-  font-style: normal;
-  font-weight: 600;
-  src: local(''),
-       url('assets/fonts/Inter-Bold.woff2') format('woff2'),
-}
-
-$body-family: "Inter", "Helvetica Neue", sans-serif;
-$body-size: 15px;
-$background: $white-bis;
-$body-background-color: $white-bis;
-$primary: #0055d4;
-$green: #36995b;
-$turquoise: $green;
-$red: #FF5722;
-
-$link: $primary;
-$input-placeholder-color: $grey-light;
-$grey-lightest: #eaeaea;
-
-$colors: map-merge($colors, (
-    "turquoise": ($green, $green-invert),
-    "green": ($green, $green-invert),
-    "success": ($green, $green-invert),
-    "danger": ($red, $green-invert),
-));
-
-$sidebar-box-shadow: none;
-$sidebar-width: 240px;
-$menu-item-active-background-color: $white-bis;
-$menu-item-active-color: $primary;
-
+@import "styles/variables";
 
 /* Buefy */
-$modal-background-background-color: rgba(0, 0, 0, .30);
-
 .line-chart {
   min-height: 300px;
 }
@@ -1437,7 +1393,7 @@ body.is-noscroll {
   }
 
   &.is-floating-label label.label {
-    background-color: $white;
+    background-color: transparent;
     font-size: 0.875rem;
   }
 
@@ -1585,14 +1541,83 @@ section.customer_lists {
     .tag {
       min-width: 65px;
     }
+
+    .fields.stats {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+
+      .status-item {
+        display: inline-flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        width: 100%;
+        max-width: 150px;
+        padding: 3px 7px;
+        border-radius: 4px;
+        color: $grey-dark;
+        background: $white-ter;
+        font-size: 0.75rem;
+        letter-spacing: 0;
+        line-height: 1.25;
+        transition: background-color 0.15s ease, color 0.15s ease;
+
+        &:hover {
+          color: $primary;
+          background: #e6f7ff;
+        }
+
+        strong {
+          font-weight: $weight-semibold;
+          color: inherit;
+        }
+
+        &.confirmed {
+          color: darken($green, 15%);
+          background: #f0fdf4;
+        }
+
+        &.unconfirmed {
+          color: #ad6800;
+          background: #fffbe6;
+        }
+
+        &.unsubscribed, &.blocklisted {
+          color: darken($red, 15%);
+          background: #fff1f0;
+        }
+      }
+    }
   }
 
-  .view {
-    display: block;
-    color: $grey-light;
+  .customer-count {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    color: $text;
+    font-size: 0.75rem;
+    letter-spacing: 0;
+
+    strong {
+      color: $primary;
+      font-weight: $weight-semibold;
+      line-height: 1.2;
+    }
+
+    .customer-count-action {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      color: $grey-light;
+      white-space: nowrap;
+    }
 
     &:hover {
-      color: $primary;
+      .customer-count-action {
+        color: $primary;
+      }
     }
   }
 }
@@ -1604,60 +1629,63 @@ section.customer_lists {
 
 /* Customers page */
 .customers {
+  .customers-controls .field.has-addons {
+    max-width: var(--lm-field-max-width);
+  }
+
+  .pool-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+
+    > .a {
+      margin-right: 8px;
+    }
+
+    .pool-status-filter {
+      margin: 0;
+      max-width: 220px;
+    }
+
+    .pool-facet-filter {
+      min-width: 180px;
+    }
+  }
+
   .customer-area-tabs {
     margin-bottom: 0;
   }
 
-  .pool-status-nav {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
+  .pool-status-filter {
+    display: inline-block;
+    min-width: 152px;
     margin: 0 10px;
     vertical-align: middle;
 
-    a {
-      display: inline-flex;
-      align-items: center;
-      border: 1px solid transparent;
-      border-radius: 4px;
-      color: $grey;
-      font-size: 0.85rem;
-      margin: 0;
-      padding: 0.35rem 0.75rem;
-      transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-
-      &:hover {
-        background-color: $white-ter;
-        color: $primary;
-      }
-
-      &.is-active {
-        background-color: $white;
-        border-color: $primary;
-        color: $primary;
-        font-weight: 600;
-      }
+    select {
+      min-height: 36px;
+      padding-top: 6px;
+      padding-bottom: 6px;
     }
   }
 
-  .actions .pool-status-nav a {
-    display: inline-flex;
-    margin: 0;
-  }
-
   @media screen and (max-width: 768px) {
-    .pool-status-nav {
-      display: flex;
-      margin: 0 0 0.5rem;
+    .pool-toolbar .pool-status-filter {
+      display: block;
+      width: 100%;
+      max-width: none;
+      margin: 0;
+
+      .select,
+      select {
+        width: 100%;
+      }
     }
   }
 
   .customers-controls .buttons {
     margin-top: 15px;
-  }
-
-  .toggle-advanced {
-    margin-top: 10px;
   }
 
   .blocklisted {
@@ -2329,3 +2357,17 @@ th.role-toggle-select a {
     width: auto;
   }
 }
+
+/*
+ * Modern design system overrides live in modules so new pages can adopt them
+ * without adding another long global section to this legacy stylesheet.
+ */
+@import "styles/base";
+@import "styles/layout";
+@import "styles/components/surfaces";
+@import "styles/components/tables";
+@import "styles/components/badges";
+@import "styles/components/pool-bindings";
+@import "styles/views/dashboard";
+@import "styles/views/media";
+@import "styles/views/campaign";

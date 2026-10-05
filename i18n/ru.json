@@ -579,8 +579,6 @@
     "settings.title": "Настройки",
     "settings.updateAvailable": "Доступно новое обновление {version}.",
     "customers.activity": "Активность",
-    "customers.advancedQuery": "Расширенный",
-    "customers.advancedQueryHelp": "Частичное SQL-выражение для запроса атрибутов подписчиков",
     "customers.attribsHelp": "Атрибуты определяются как JSON-карта, например:",
     "customers.blocklistedHelp": "Подписчики, добавленные в чёрный список, никогда не будут получать письма.",
     "customers.confirmBlocklist": "Добавить в чёрный список {num} подписчика(ов)?",

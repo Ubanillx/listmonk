@@ -53,21 +53,39 @@ export default class Utils {
 
   getDate = (d) => dayjs(d);
 
-  // Parses an ISO timestamp to a simpler form.
+  // Format dates consistently for the active language. The Chinese display
+  // follows the local year-month-day order and never includes a weekday.
   niceDate = (stamp, showTime) => {
     if (!stamp) {
       return '';
     }
 
     const d = dayjs(stamp);
-    const day = this.i18n.t(`globals.days.${d.day() + 1}`);
+    if (this.i18n.locale.startsWith('zh')) {
+      return d.format(showTime ? 'YYYY年MM月DD日 HH:mm' : 'YYYY年MM月DD日');
+    }
+
     const month = this.i18n.t(`globals.months.${d.month() + 1}`);
-    let out = d.format(`[${day},] DD [${month}] YYYY`);
+    let out = d.format(`DD [${month}] YYYY`);
     if (showTime) {
       out += d.format(', HH:mm');
     }
 
     return out;
+  };
+
+  parseDateTime = (value) => {
+    const chinese = /^(\d{4})年(\d{1,2})月(\d{1,2})日(?:\s+(\d{1,2}):(\d{2}))?$/.exec(value);
+    if (chinese) {
+      return new Date(
+        Number(chinese[1]),
+        Number(chinese[2]) - 1,
+        Number(chinese[3]),
+        Number(chinese[4] || 0),
+        Number(chinese[5] || 0),
+      );
+    }
+    return new Date(value);
   };
 
   duration = (start, end) => {

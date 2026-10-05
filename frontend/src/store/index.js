@@ -35,7 +35,13 @@ export default new Vuex.Store({
     // authority: main.js validates the stored ID against active memberships on
     // startup before resource requests are made.
     workspace: initialWorkspace(),
+    // Accessible workspaces and actual memberships have different meanings
+    // for platform admins. Only the directory loader updates this snapshot.
     organizations: [],
+    organizationMemberships: [],
+    organizationDirectoryReady: false,
+    organizationDirectoryLoading: false,
+    organizationDirectoryError: false,
   },
 
   mutations: {
@@ -80,8 +86,22 @@ export default new Vuex.Store({
       document.cookie = `${workspaceCookieKey}=${organizationId}; Path=/; SameSite=Lax`;
     },
 
-    setOrganizations(state, organizations) {
-      state.organizations = Array.isArray(organizations) ? organizations : [];
+    setOrganizationDirectory(state, { organizations, memberships }) {
+      state.organizations = organizations;
+      state.organizationMemberships = memberships;
+      state.organizationDirectoryReady = true;
+      state.organizationDirectoryError = false;
+    },
+
+    setOrganizationDirectoryLoading(state, loading) {
+      state.organizationDirectoryLoading = loading;
+      if (loading) state.organizationDirectoryError = false;
+    },
+
+    setOrganizationDirectoryError(state) {
+      // A failed refresh is not a successful empty list. Keep the last
+      // complete snapshot until the server provides another one.
+      state.organizationDirectoryError = true;
     },
 
     resetWorkspaceModels(state) {
@@ -107,6 +127,7 @@ export default new Vuex.Store({
     [models.logs]: (state) => state[models.logs],
     workspace: (state) => state.workspace,
     organizations: (state) => state.organizations,
+    organizationMemberships: (state) => state.organizationMemberships,
   },
 
   modules: {

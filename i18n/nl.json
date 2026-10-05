@@ -579,8 +579,6 @@
     "settings.title": "Instellingen",
     "settings.updateAvailable": "Een nieuwe update {version} is beschikbaar.",
     "customers.activity": "Activiteit",
-    "customers.advancedQuery": "Geavanceerd",
-    "customers.advancedQueryHelp": "Gedeeltelijke SQL uitdrukking om abonnees attributen op te vragen",
     "customers.attribsHelp": "Attributen worden gedefinieerd in een JSON map, bijvoorbeeld:",
     "customers.blocklistedHelp": "Geblokkeerde abonnees zullen nooit e-mails ontvangen.",
     "customers.confirmBlocklist": "{num} abonnee(s) blokkeren?",

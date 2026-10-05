@@ -579,8 +579,6 @@
     "settings.title": "Configurações",
     "settings.updateAvailable": "Atualização: a nova versão {version} já está disponível.",
     "customers.activity": "Atividade",
-    "customers.advancedQuery": "Avançado",
-    "customers.advancedQueryHelp": "Expressão de SQL parcial para consultar atributos dos inscritos",
     "customers.attribsHelp": "Atributos são definidos como um mapa JSON, por exemplo:",
     "customers.blocklistedHelp": "Inscritos bloqueados nunca receberão quaisquer e-mails.",
     "customers.confirmBlocklist": "Bloquear {num} inscrito(s)?",

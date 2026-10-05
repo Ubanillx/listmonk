@@ -301,7 +301,8 @@ export default Vue.extend({
   },
 
   computed: {
-    ...mapState(['workspace', 'organizations', 'profile']),
+    ...mapState(['workspace', 'profile']),
+    ...mapState({ organizations: (state) => state.organizationMemberships }),
 
     canPersonalWorkspace() {
       const role = this.profile.userRole || {};
@@ -353,14 +354,16 @@ export default Vue.extend({
     async refresh() {
       this.isLoading = true;
       try {
-        const organizations = await this.$api.getMyOrganizations();
-        this.$store.commit('setOrganizations', organizations);
+        const { memberships: organizations } = await this.$api.refreshOrganizationDirectory();
         this.setMigrationTarget(organizations);
         if (organizations.length && this.canPersonalWorkspace) {
           await this.refreshPersonalResources();
         } else {
           this.clearPersonalResources();
         }
+      } catch (err) {
+        // Directory failures have a shared retry control in the switcher.
+        if (!this.$store.state.organizationDirectoryError) throw err;
       } finally {
         this.isLoading = false;
       }

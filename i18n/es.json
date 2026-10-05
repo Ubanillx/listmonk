@@ -579,8 +579,6 @@
     "settings.title": "Configuraciones",
     "settings.updateAvailable": "Una actualización a la {version} está disponible.",
     "customers.activity": "Actividad",
-    "customers.advancedQuery": "Avanzado",
-    "customers.advancedQueryHelp": "Expresión SQL parcial para consultar los atributos de un suscriptor",
     "customers.attribsHelp": "Los atributos son definidos como un objeto JSON llave/valor, por ejemplo:",
     "customers.blocklistedHelp": "Las suscripciones en la lista de bloqueos (blocklisted) nunca recibirán correos.",
     "customers.confirmBlocklist": "¿Bloquear {num} suscripcion(es)?",

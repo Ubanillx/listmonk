@@ -1,0 +1,139 @@
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('assets/fonts/Inter-Regular.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('assets/fonts/Inter-Bold.woff2') format('woff2');
+}
+
+html,
+body {
+  height: 100%;
+}
+
+::selection {
+  color: #fff;
+  background: $primary;
+}
+
+*:focus-visible {
+  outline: 0;
+  box-shadow: var(--lm-focus-ring);
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  color: var(--lm-color-text);
+  background: var(--lm-color-canvas);
+  text-rendering: optimizeLegibility;
+}
+
+.title,
+.subtitle {
+  color: var(--lm-color-text);
+  letter-spacing: 0;
+}
+
+.title.is-4 {
+  font-size: 1.5rem;
+  line-height: 1.25;
+  font-weight: 600;
+}
+
+.title.is-5 {
+  font-size: 1.125rem;
+  line-height: 1.35;
+  font-weight: 600;
+}
+
+.help,
+.has-text-grey {
+  color: var(--lm-color-text-muted) !important;
+}
+
+.has-text-grey-dark {
+  color: var(--lm-neutral-700) !important;
+}
+
+.label {
+  color: var(--lm-color-text);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.input,
+.textarea,
+.select select,
+.taginput .taginput-container {
+  border-color: var(--lm-color-border-strong);
+  border-radius: var(--lm-radius-md);
+  box-shadow: none;
+  color: var(--lm-color-text);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+
+  &:focus {
+    border-color: $primary;
+    box-shadow: var(--lm-focus-ring);
+  }
+}
+
+.main .field .input,
+.main .field .select select {
+  max-width: var(--lm-field-max-width);
+}
+
+.field.is-floating-label {
+  > .label {
+    max-width: calc(min(100%, var(--lm-field-max-width)) - 2em);
+  }
+
+  &.has-numberinput-compact > .label {
+    max-width: calc(min(100%, var(--lm-field-max-width)) - 5.25em);
+  }
+
+  .input:focus,
+  .textarea:focus,
+  .select select:focus {
+    border-color: $primary;
+    box-shadow: var(--lm-focus-ring);
+  }
+}
+
+.button {
+  min-height: $control-height;
+  border-radius: var(--lm-radius-md);
+  font-weight: 600;
+  transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+
+  &:active:not([disabled]) {
+    transform: translateY(1px);
+  }
+
+  &.is-small {
+    min-height: 32px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button,
+  .input,
+  .textarea,
+  .select select {
+    transition-duration: 0.01ms;
+  }
+}

@@ -35,8 +35,7 @@ export default Vue.extend({
 
   methods: {
     async refreshOrganizations() {
-      const organizations = await this.$api.getMyOrganizations();
-      this.$store.commit('setOrganizations', organizations);
+      await this.$api.refreshOrganizationDirectory().catch(() => {});
     },
 
     async joinOrganization() {

@@ -579,8 +579,6 @@
     "settings.title": "Innstillinger",
     "settings.updateAvailable": "En ny oppdatering {version} er tilgjengelig.",
     "customers.activity": "Aktivitet",
-    "customers.advancedQuery": "Avansert",
-    "customers.advancedQueryHelp": "Delvis SQL-uttrykk for å søke i abonnentattributter",
     "customers.attribsHelp": "Attributter er definert som en JSON-mappe, for eksempel:",
     "customers.blocklistedHelp": "Blokkerte abonnenter vil aldri motta e-poster.",
     "customers.confirmBlocklist": "Blokker {num} abonnent(er)?",

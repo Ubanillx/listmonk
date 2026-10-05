@@ -579,8 +579,6 @@
     "settings.title": "Nastavitve",
     "settings.updateAvailable": "Nova posodobitev {version} je na voljo.",
     "customers.activity": "Dejavnost",
-    "customers.advancedQuery": "Napredno",
-    "customers.advancedQueryHelp": "Delni izraz SQL za poizvedovanje atributov naročnika",
     "customers.attribsHelp": "Atributi so definirani kot zemljevid JSON, na primer:",
     "customers.blocklistedHelp": "Naročniki na seznamu blokiranih ne bodo nikoli prejeli e-pošte.",
     "customers.confirmBlocklist": "Blokiraj {num} naročnikov?",

@@ -579,8 +579,6 @@
     "settings.title": "Asetukset",
     "settings.updateAvailable": "Uusi päivitys {version} on saatavilla.",
     "customers.activity": "Aktiviteetti",
-    "customers.advancedQuery": "Edistynyt",
-    "customers.advancedQueryHelp": "Osa SQL-lauseketta tilaajien ominaisuuksien kyselyä varten",
     "customers.attribsHelp": "Ominaisuudet on määritelty JSON-listana, esimerkiksi:",
     "customers.blocklistedHelp": "Estetyt tilaajat eivät koskaan saa sähköposteja.",
     "customers.confirmBlocklist": "Estä {num} tilaaja(a)?",

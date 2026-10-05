@@ -579,8 +579,6 @@
     "settings.title": "Настройки",
     "settings.updateAvailable": "Налична е нова актуализация {version}.",
     "customers.activity": "Активност",
-    "customers.advancedQuery": "Разширено",
-    "customers.advancedQueryHelp": "Частичен SQL израз за заявка за атрибути на абонати",
     "customers.attribsHelp": "Атрибутите се дефинират като JSON карта, например:",
     "customers.blocklistedHelp": "Абонатите в черния списък никога няма да получават имейли.",
     "customers.confirmBlocklist": "Черен списък {num} абонат(и)?",

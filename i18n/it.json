@@ -579,8 +579,6 @@
     "settings.title": "Impostazioni",
     "settings.updateAvailable": "È disponibile una nuova versione {version}.",
     "customers.activity": "Attività",
-    "customers.advancedQuery": "Avanzate",
-    "customers.advancedQueryHelp": "Espressione SQL parziale per interrogare gli attributi del sottoscrittore",
     "customers.attribsHelp": "Gli attributi sono definiti come un JSON, ad esempio:",
     "customers.blocklistedHelp": "Gli abbonati bloccati non riceveranno mai email.",
     "customers.confirmBlocklist": "CustomerLista di blocco {num} iscritto(i)?",

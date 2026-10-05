@@ -579,8 +579,6 @@
     "settings.title": "Paramètres",
     "settings.updateAvailable": "Une nouvelle version ({version}) est disponible.",
     "customers.activity": "Activité",
-    "customers.advancedQuery": "Requête avancée",
-    "customers.advancedQueryHelp": "Expression SQL partielle pour interroger les attributs de l'abonné·e",
     "customers.attribsHelp": "Les attributs sont définis comme une map JSON, par exemple :",
     "customers.blocklistedHelp": "Les abonné·es bloqué·es ne recevront jamais d'e-mails.",
     "customers.confirmBlocklist": "Bloquer {num} abonné·e(s) ?",

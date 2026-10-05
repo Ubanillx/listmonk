@@ -34,9 +34,9 @@ function organizationManagerAccess() {
     return true;
   }
 
-  const organizations = Array.isArray(store.state.organizations)
-    ? store.state.organizations
-    : [];
+  if (!store.state.organizationDirectoryReady) return null;
+
+  const organizations = store.state.organizationMemberships;
   return organizations.some((organization) => organization.myRole === 'manager');
 }
 
@@ -115,18 +115,22 @@ router.afterEach((to) => {
 
 async function initConfig(app) {
   // Load logged in user profile, server side config, and the language file before mounting the app.
-  const [profile, cfg, myOrganizations] = await Promise.all([
+  const [profile, cfg] = await Promise.all([
     api.getUserProfile(),
     api.getServerConfig(),
-    api.getMyOrganizations(),
   ]);
 
-  // Platform administrators administer pools across organizations. Their
-  // workspace switcher must therefore include every active organization, not
-  // merely the organizations returned by the member-only endpoint.
-  const organizations = Number(profile.userRole && profile.userRole.id) === 1
-    ? await api.getOrganizations()
-    : myOrganizations;
+  // Load language before resolving workspaces so startup failures can show a
+  // localized retry instead of leaving a blank page or a permanent spinner.
+  const lang = await api.getLang(cfg.lang);
+  i18n.locale = cfg.lang;
+  i18n.setLocaleMessage(i18n.locale, lang);
+
+  Vue.prototype.$utils = new Utils(i18n);
+  Vue.prototype.$api = api;
+  Vue.prototype.$events = app;
+
+  const { organizations } = await api.refreshOrganizationDirectory(profile);
 
   // No accessible workspace — hand off to the server-rendered selection page,
   // which shows the "contact your administrator" blocker state.
@@ -135,7 +139,6 @@ async function initConfig(app) {
     window.location.href = `/admin/select-workspace?next=${encodeURIComponent(currentPath)}`;
   };
 
-  store.commit('setOrganizations', organizations);
   const storedOrganizationID = Number(store.state.workspace.organizationId) || 0;
   const savedOrganization = organizations.find((organization) => organization.id === storedOrganizationID) || null;
 
@@ -154,6 +157,10 @@ async function initConfig(app) {
     try {
       workspace = await api.getCurrentWorkspace({ disableToast: true });
     } catch (err) {
+      // Connectivity failures do not revoke access. Keep the saved selection
+      // intact and let initialization be retried in the same workspace.
+      const status = err && err.response && err.response.status;
+      if (status !== 403 && status !== 404) throw err;
       // A manager can remove a member, or the personal-space capability may
       // have been revoked while the earlier localStorage snapshot was still
       // valid.  Fall back to the first available space; if none exists the
@@ -195,14 +202,6 @@ async function initConfig(app) {
     && organizationManagerAccess() === false) {
     await router.replace({ name: 'organizationMine' });
   }
-
-  const lang = await api.getLang(cfg.lang);
-  i18n.locale = cfg.lang;
-  i18n.setLocaleMessage(i18n.locale, lang);
-
-  Vue.prototype.$utils = new Utils(i18n);
-  Vue.prototype.$api = api;
-  Vue.prototype.$events = app;
 
   // $can('permission:name') is used in the UI to check whether the logged in user
   // has a certain permission to toggle visibility of UI objects and UI functionality.
@@ -384,11 +383,9 @@ async function initConfig(app) {
 
   // Release the route guards above; the profile is known at this point.
   resolveProfileReady();
-
-  if (app) {
-    app.$mount('#app');
-  }
 }
+
+let configRequest = null;
 
 const v = new Vue({
   router,
@@ -398,11 +395,29 @@ const v = new Vue({
 
   data: {
     isLoaded: false,
+    initializationError: false,
   },
 
   methods: {
     loadConfig() {
-      initConfig();
+      if (!configRequest) {
+        configRequest = initConfig(this).finally(() => { configRequest = null; });
+      }
+      return configRequest;
+    },
+
+    initialize() {
+      this.initializationError = false;
+      return this.loadConfig().then(() => {
+        this.isLoaded = true;
+      }).catch((err) => {
+        const status = err && err.response && err.response.status;
+        if (status === 401 || status === 403) {
+          window.location.href = '/admin/login';
+          return;
+        }
+        this.initializationError = true;
+      });
     },
 
     // awaitRestart handles app restart polling after settings changes.
@@ -419,21 +434,24 @@ const v = new Vue({
 
         Vue.prototype.$utils.toast(i18n.t('settings.messengers.messageSaved'));
 
-        // Poll until backend is back up.
-        const pollId = setInterval(() => {
-          api.getHealth().then(() => {
-            clearInterval(pollId);
-            this.loadConfig();
+        // The save responds before the backend shuts down. Wait for that
+        // transition, then retry the full configuration load: an early health
+        // response alone can still come from the old process.
+        const poll = () => {
+          api.getHealth().then(() => this.loadConfig()).then(() => {
             resolve({ needsRestart: false });
+          }).catch(() => {
+            setTimeout(poll, 1000);
           });
-        }, 1000);
+        };
+        setTimeout(poll, 1500);
       });
     },
   },
 
-  mounted() {
-    v.isLoaded = true;
-  },
 });
 
-initConfig(v).catch(() => resolveProfileReady());
+// Mount only the loading/error shell until profile, directory and workspace
+// are validated. Route components cannot initialize from partial state.
+v.$mount('#app');
+v.initialize();

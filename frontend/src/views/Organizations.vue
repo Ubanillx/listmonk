@@ -515,11 +515,10 @@ export default Vue.extend({
     async refresh() {
       this.isLoading = true;
       try {
-        const [organizations, workspace] = await Promise.all([
-          this.isPlatformAdmin ? this.$api.getOrganizations() : this.$api.getMyOrganizations(),
+        const [, workspace] = await Promise.all([
+          this.$api.refreshOrganizationDirectory(),
           this.$api.getCurrentWorkspace(),
         ]);
-        this.$store.commit('setOrganizations', organizations);
         this.$store.commit('setWorkspace', workspace);
         if (this.isManager) {
           const [members, invites] = await Promise.all([

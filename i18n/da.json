@@ -579,8 +579,6 @@
     "settings.title": "Indstillinger",
     "settings.updateAvailable": "En ny opdatering {version} er tilgængelig.",
     "customers.activity": "Aktivitet",
-    "customers.advancedQuery": "Avanceret",
-    "customers.advancedQueryHelp": "Delvist SQL-udtryk til forespørgsel på abonnentattributter",
     "customers.attribsHelp": "Attributter defineres som et JSON-kort, f.eks.:",
     "customers.blocklistedHelp": "Blokerede abonnenter vil aldrig modtage nogen e-mails.",
     "customers.confirmBlocklist": "Bloker {num} abonnent(er)?",

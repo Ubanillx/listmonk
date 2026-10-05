@@ -579,8 +579,6 @@
     "settings.title": "Ρυθμίσεις",
     "settings.updateAvailable": "Μια νέα ενημέρωση {version} είναι διαθέσιμη.",
     "customers.activity": "Δραστηριότητα",
-    "customers.advancedQuery": "Για προχωρημένους",
-    "customers.advancedQueryHelp": "Μερική έκφραση SQL για την αναζήτηση χαρακτηριστικών συνδρομητών",
     "customers.attribsHelp": "Τα χαρακτηριστικά ορίζονται ως JSON map, για παράδειγμα:",
     "customers.blocklistedHelp": "Οι αποκλεισμένοι συνδρομητές δεν θα λάβουν ποτέ κανένα μήνυμα ηλεκτρονικού ταχυδρομείου.",
     "customers.confirmBlocklist": "Να αποκλειστούν {αριθμός} συνδρομητές;",

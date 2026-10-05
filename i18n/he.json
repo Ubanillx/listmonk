@@ -579,8 +579,6 @@
     "settings.title": "הגדרות",
     "settings.updateAvailable": "עדכון חדש {version} זמין.",
     "customers.activity": "פעילות",
-    "customers.advancedQuery": "מתקדם",
-    "customers.advancedQueryHelp": "הביטוי הדו־לשוני הוא להשתמש בביטוי SQL חלקיאָני לחיפוש אחריות במאפיינים בעלי חיפוש מתקדם.",
     "customers.attribsHelp": "האטריביוטים מוגדרים כמפתח JSON, לדוגמה:",
     "customers.blocklistedHelp": "מנויים מהות מעוניינים באימייל שום גבול?",
     "customers.confirmBlocklist": "שמירה ל- {num} מנויים ברשימה השחורה?",

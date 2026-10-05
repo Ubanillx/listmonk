@@ -579,8 +579,6 @@
     "settings.title": "Ustawienia",
     "settings.updateAvailable": "Nowa wersja {version} jest dostępna.",
     "customers.activity": "Aktywność",
-    "customers.advancedQuery": "Zaawansowane",
-    "customers.advancedQueryHelp": "Częściowe zapytania SQL w celu pobrania atrybutów subskrybentów",
     "customers.attribsHelp": "Atrybuty są definiowane jako mapa w JSON, np:",
     "customers.blocklistedHelp": "Zablokowani subskrybenci nigdy nie dostaną żadnego emaila.",
     "customers.confirmBlocklist": "Czy zablokować {num} subskrybentów?",

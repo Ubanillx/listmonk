@@ -579,8 +579,6 @@
     "settings.title": "Inställningar",
     "settings.updateAvailable": "En ny uppdatering {version} finns tillgänglig.",
     "customers.activity": "Aktivitet",
-    "customers.advancedQuery": "Avancerad",
-    "customers.advancedQueryHelp": "Del SQL-uttryck för att fråga prenumerantattribut",
     "customers.attribsHelp": "Attribut definieras som en JSON-map, till exempel:",
     "customers.blocklistedHelp": "Blocklistade prenumeranter kommer aldrig att få några e-postmeddelanden.",
     "customers.confirmBlocklist": "Blocka {num} prenumerant(er)?",

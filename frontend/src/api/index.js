@@ -7,7 +7,9 @@ import Utils from '../utils';
 
 const http = axios.create({
   baseURL: import.meta.env.VUE_APP_ROOT_URL || '/',
-  withCredentials: false,
+  // Keep browser sessions when the API base URL is overridden for local
+  // development or a reverse-proxy setup.
+  withCredentials: true,
   responseType: 'json',
 
   // Override the default serializer to switch params from becoming []id=a&[]id=b ...
@@ -92,6 +94,24 @@ http.interceptors.response.use((resp) => {
   // Clear the loading state for a model.
   if ('loading' in err.config) {
     store.commit('setLoading', { model: err.config.loading, status: false });
+  }
+
+  const status = err.response && err.response.status;
+  const responseMessage = err.response && err.response.data && err.response.data.message;
+  const invalidSession = (status === 401 || status === 403)
+    && typeof responseMessage === 'string'
+    && responseMessage.toLowerCase().includes('invalid session');
+
+  // A stale cookie is an authentication transition, not an application
+  // error. Route back to the server-rendered login page so the user can
+  // establish a fresh session instead of being left on a blank SPA shell.
+  if (invalidSession && typeof window !== 'undefined' && !window.location.pathname.endsWith('/login')) {
+    const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    window.location.assign(`/admin/login?next=${encodeURIComponent(next)}`);
+  }
+
+  if (invalidSession) {
+    return Promise.reject(err);
   }
 
   let msg = '';
@@ -218,6 +238,8 @@ export const deleteLists = (params) => http.delete(
 // masking for non-highest administrators; reply mailbox fields are internal
 // addresses and are intentionally not transformed here.
 export const getPoolContacts = (id, params) => http.get(`/api/customer-lists/${id}/pool-contacts`, { params });
+export const getAllPoolContacts = (params) => http.get('/api/pools/contacts', { params });
+export const getAllPoolContactFilters = () => http.get('/api/pools/contacts/filters');
 export const getOrgPoolAllocations = (id) => http.get(`/api/customer-lists/${id}/org-pool-allocations`);
 export const getPoolManagementTarget = (id, organizationID) => http.get(`/api/pools/${id}/management-target`, {
   params: { organization_id: organizationID },
@@ -249,7 +271,7 @@ export const deletePoolContact = (listID, contactID) => http.delete(`/api/custom
 // Organizations and workspaces.
 export const getCurrentWorkspace = (config = {}) => http.get('/api/workspace', config);
 
-export const getMyOrganizations = () => http.get('/api/organizations/me');
+export const getMyOrganizations = (config = {}) => http.get('/api/organizations/me', config);
 
 export const createOrganizationRequest = (data) => http.post('/api/organizations/requests', data);
 
@@ -266,6 +288,27 @@ const organizationWorkspaceConfig = (organizationID) => {
   const id = Number(organizationID);
   return Number.isInteger(id) && id >= 0 ? { workspaceOrganizationId: id } : {};
 };
+
+const organizationSMTPConfig = (id, poolId) => ({
+  ...organizationWorkspaceConfig(id),
+  ...(poolId ? { params: { pool_id: poolId } } : {}),
+});
+export const getOrganizationSMTP = (id, poolId) => http.get('/api/organizations/smtp', organizationSMTPConfig(id, poolId));
+export const updateOrganizationSMTP = (data, id, poolId) => http.put('/api/organizations/smtp', data, organizationSMTPConfig(id, poolId));
+export const deleteOrganizationSMTP = (smtpID, id, poolId) => http.delete(`/api/organizations/smtp/${smtpID}`, organizationSMTPConfig(id, poolId));
+export const testOrganizationSMTP = (data, id, poolId) => http.post('/api/organizations/smtp/test', data, organizationSMTPConfig(id, poolId));
+export const getOrganizationSMTPPools = (id) => http.get('/api/organizations/smtp-pools', organizationWorkspaceConfig(id));
+export const createOrganizationSMTPPool = (data, id) => http.post('/api/organizations/smtp-pools', data, organizationWorkspaceConfig(id));
+export const updateOrganizationSMTPPool = (poolId, data, id) => http.put(`/api/organizations/smtp-pools/${poolId}`, data, organizationWorkspaceConfig(id));
+export const deleteOrganizationSMTPPool = (poolId, id) => http.delete(`/api/organizations/smtp-pools/${poolId}`, organizationWorkspaceConfig(id));
+export const getCampaignSMTPOverview = (source, id, params = {}) => http.get(
+  id ? `/api/campaigns/${id}/smtp-overview` : '/api/campaigns/smtp-overview',
+  { params: { source, ...params } },
+);
+export const getCampaignSMTPPools = (id, params = {}) => http.get(
+  id ? `/api/campaigns/${id}/smtp-pools` : '/api/campaigns/smtp-pools',
+  { params },
+);
 
 export const leaveOrganization = (organizationID) => http.post(
   '/api/organizations/leave',
@@ -355,9 +398,42 @@ export const getOrganizationRequests = () => http.get('/api/organizations/reques
 
 export const reviewOrganizationRequest = (id, data) => http.put(`/api/organizations/requests/${id}`, data);
 
-export const getOrganizations = (includeArchived = false) => http.get('/api/organizations', {
+export const getOrganizations = (includeArchived = false, config = {}) => http.get('/api/organizations', {
+  ...config,
   params: { include_archived: includeArchived },
 });
+
+let organizationDirectoryRequest = null;
+
+// One shared refresh prevents page-specific membership responses from
+// overwriting the administrator's accessible workspaces. Concurrent callers
+// share the same request, and both lists are published together on success.
+export function refreshOrganizationDirectory(profile = store.state.profile) {
+  if (organizationDirectoryRequest) return organizationDirectoryRequest;
+
+  const isPlatformAdmin = Number(profile && profile.userRole && profile.userRole.id) === 1;
+  store.commit('setOrganizationDirectoryLoading', true);
+  organizationDirectoryRequest = Promise.all([
+    getMyOrganizations({ disableToast: true }),
+    isPlatformAdmin ? getOrganizations(false, { disableToast: true }) : Promise.resolve(null),
+  ]).then(([memberRows, workspaceRows]) => {
+    const memberships = memberRows || [];
+    const organizations = isPlatformAdmin ? (workspaceRows || []) : memberships;
+    if (!Array.isArray(memberships) || !Array.isArray(organizations)) {
+      throw new Error('Invalid organization directory response');
+    }
+    const directory = { organizations, memberships };
+    store.commit('setOrganizationDirectory', directory);
+    return directory;
+  }).catch((err) => {
+    store.commit('setOrganizationDirectoryError');
+    throw err;
+  }).finally(() => {
+    organizationDirectoryRequest = null;
+    store.commit('setOrganizationDirectoryLoading', false);
+  });
+  return organizationDirectoryRequest;
+}
 
 export const createOrganization = (data) => http.post('/api/organizations', data);
 
@@ -448,8 +524,8 @@ export const addCustomersToLists = (data) => http.put(
   { loading: models.customers },
 );
 
-export const addCustomersToListsByQuery = (data) => http.put(
-  '/api/customers/query/customer-lists',
+export const addCustomersToListsByFilter = (data) => http.put(
+  '/api/customers/bulk/customer-lists',
   data,
 
   { loading: models.customers },
@@ -461,8 +537,8 @@ export const blocklistCustomers = (data) => http.put(
   { loading: models.customers },
 );
 
-export const blocklistCustomersByQuery = (data) => http.put(
-  '/api/customers/query/blocklist',
+export const blocklistCustomersByFilter = (data) => http.put(
+  '/api/customers/bulk/blocklist',
   data,
   { loading: models.customers },
 );
@@ -472,8 +548,8 @@ export const deleteCustomers = (params) => http.delete(
   { params, loading: models.customers },
 );
 
-export const deleteCustomersByQuery = (data) => http.post(
-  '/api/customers/query/delete',
+export const deleteCustomersByFilter = (data) => http.post(
+  '/api/customers/bulk/delete',
   data,
   { loading: models.customers },
 );
@@ -550,6 +626,16 @@ export const getCampaignReportSummary = async (id, params) => http.get(
 
 export const getCampaignsReportSummary = async (params) => http.get(
   '/api/campaigns/report/summary',
+  { params, loading: models.campaigns },
+);
+
+export const getCampaignReportGeo = async (id, params) => http.get(
+  `/api/campaigns/${id}/report/geo`,
+  { params, loading: models.campaigns },
+);
+
+export const getCampaignsReportGeo = async (params) => http.get(
+  '/api/campaigns/report/geo',
   { params, loading: models.campaigns },
 );
 

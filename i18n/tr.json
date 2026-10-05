@@ -579,8 +579,6 @@
     "settings.title": "Ayarlar",
     "settings.updateAvailable": "Yeni bir güncel sürüm {version} mevcuttur.",
     "customers.activity": "Aktivite",
-    "customers.advancedQuery": "İleri düzey",
-    "customers.advancedQueryHelp": "Üye attributes verisini görüntülemek için SQL verisi",
     "customers.attribsHelp": "Nitelikler verisi JSON map olarak tanımlı, örnek olarak:",
     "customers.blocklistedHelp": "Erişime engelli üyeler hiçbir zaman e-posta alamayacak.",
     "customers.confirmBlocklist": "Erişime engelli {num} üye(leri)?",

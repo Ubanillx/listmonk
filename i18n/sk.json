@@ -579,8 +579,6 @@
     "settings.title": "Nastavenia",
     "settings.updateAvailable": "Nová aktualizácia {version} je k dispozícii.",
     "customers.activity": "Aktivita",
-    "customers.advancedQuery": "Rozšírené",
-    "customers.advancedQueryHelp": "Časť výrazu SQL k dotazu na atribúty odberateľov",
     "customers.attribsHelp": "Atribúty sú definované ako mapa JSON, napr.:",
     "customers.blocklistedHelp": "Odberateľlia na zozname blokovaných nikdy nedostanú žiadne emaily.",
     "customers.confirmBlocklist": "Blokovať {num} odberateľov?",

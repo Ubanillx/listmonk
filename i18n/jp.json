@@ -579,8 +579,6 @@
     "settings.title": "設定",
     "settings.updateAvailable": "新しい {version} の更新が可能です。",
     "customers.activity": "アクティビティ",
-    "customers.advancedQuery": "アドバンスド",
-    "customers.advancedQueryHelp": "加入者属性を問い合わせる部分的なSQL式",
     "customers.attribsHelp": "属性はJSONマップとして定義されます。例えば:",
     "customers.blocklistedHelp": "ブロックリストされた加入者は二度とメールを受け取りません。",
     "customers.confirmBlocklist": "加入者を {num}ブロックリストしますか ?",

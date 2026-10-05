@@ -13,7 +13,7 @@
         <navigation v-if="isMobile" :is-mobile="isMobile" :active-item="activeItem" :active-group="activeGroup"
           @toggleGroup="toggleGroup" @doLogout="doLogout" />
 
-        <b-navbar-dropdown class="workspace" tag="div" right>
+        <b-navbar-dropdown class="workspace" tag="div" right data-cy="workspace-switcher">
           <template #label>
             <b-icon :icon="workspaceIcon" size="is-small" />
             <span class="workspace-label">{{ workspaceLabel }}</span>
@@ -23,9 +23,15 @@
             <span>{{ $t('organizations.personalSpace') }}</span>
           </b-navbar-item>
           <b-navbar-item v-for="organization in organizations" :key="organization.id" tag="a" href="#"
+            :data-cy="`workspace-organization-${organization.id}`"
             @click.prevent="switchWorkspace(organization)">
             <b-icon icon="office-building-outline" />
             <span>{{ organization.name }}</span>
+          </b-navbar-item>
+          <b-navbar-item v-if="organizationDirectoryError" tag="a" href="#" data-cy="workspace-directory-retry"
+            @click.prevent="retryOrganizationDirectory">
+            <b-icon icon="refresh" />
+            <span>{{ $t('organizations.directoryRetry') }}</span>
           </b-navbar-item>
           <b-navbar-item tag="router-link" to="/organizations/mine">
             <b-icon icon="account-group-outline" />
@@ -92,7 +98,7 @@
             <div v-if="serverConfig.update.update.is_new" class="notification is-success">
               {{ $t('settings.updateAvailable', {
                 version: `${serverConfig.update.update.release_version}
-              (${$utils.getDate(serverConfig.update.update.release_date).format('DD MMM YY')})`,
+              (${$utils.niceDate(serverConfig.update.update.release_date)})`,
               }) }}
               <a :href="serverConfig.update.update.url" target="_blank" rel="noopener noreferer">View</a>
             </div>
@@ -122,7 +128,15 @@
       </div>
     </div>
 
-    <b-loading v-if="!$root.isLoaded" active />
+    <section v-if="!$root.isLoaded && $root.initializationError" class="workspace-bootstrap-error box"
+      role="alert" data-cy="workspace-initialization-error">
+      <h1 class="title is-4">{{ $te('organizations.initializationFailed') ? $t('organizations.initializationFailed') : 'Unable to load workspace' }}</h1>
+      <p>{{ $te('organizations.initializationRetryHelp') ? $t('organizations.initializationRetryHelp') : 'Please check your connection and retry.' }}</p>
+      <b-button type="is-primary" data-cy="workspace-initialization-retry" @click="$root.initialize()">
+        {{ $te('globals.buttons.retry') ? $t('globals.buttons.retry') : 'Retry' }}
+      </b-button>
+    </section>
+    <b-loading v-if="!$root.isLoaded && !$root.initializationError" active />
   </div>
 </template>
 
@@ -149,21 +163,35 @@ export default Vue.extend({
   },
 
   watch: {
-    $route(to) {
-      // Set the current route name to true for active+expanded keys in the
-      // menu to pick up.
-      this.activeItem = { [to.name]: true };
-      if (to.meta.group) {
-        this.activeGroup = { [to.meta.group]: true };
-      } else {
-        // Reset activeGroup to collapse menu items on navigating
-        // to non group items from sidebar
-        this.activeGroup = {};
-      }
+    '$root.isLoaded': {
+      immediate: true,
+      handler(ready) {
+        if (ready) this.loadAppData();
+      },
+    },
+    $route: {
+      immediate: true,
+      handler(to) {
+        // Keep the matching menu entry selected, including on a direct URL load.
+        this.activeItem = { [to.name]: true };
+        this.activeGroup = to.meta.group ? { [to.meta.group]: true } : {};
+      },
     },
   },
 
   methods: {
+    loadAppData() {
+      this.$api.getLists({ minimal: true, per_page: 'all', status: 'active' });
+      // The log stream follows the same settings:get boundary as the logs page.
+      if (this.$can('settings:get')) this.listenEvents();
+    },
+
+    retryOrganizationDirectory() {
+      // Failed refreshes remain visible in the switcher, without clearing the
+      // last valid list or resetting the active workspace.
+      return this.$api.refreshOrganizationDirectory().catch(() => {});
+    },
+
     toggleGroup(group, state) {
       this.activeGroup = state ? { [group]: true } : {};
     },
@@ -240,7 +268,7 @@ export default Vue.extend({
   },
 
   computed: {
-    ...mapState(['serverConfig', 'profile', 'workspace', 'organizations']),
+    ...mapState(['serverConfig', 'profile', 'workspace', 'organizations', 'organizationDirectoryError']),
 
     // The personal workspace is only available to platform administrators and
     // roles carrying the workspaces:personal capability. The server enforces
@@ -283,20 +311,9 @@ export default Vue.extend({
   },
 
   mounted() {
-    // CustomerLists is required across different views. On app load, fetch the customer_lists
-    // and have them in the store.
-    this.$api.getLists({ minimal: true, per_page: 'all', status: 'active' });
-
     window.addEventListener('resize', () => {
       this.windowWidth = window.innerWidth;
     });
-
-    // The event stream mirrors the server log, so it follows the same
-    // settings:get boundary as the logs page. Opening it without the
-    // permission only produces an endless stream of 403 responses.
-    if (this.$can('settings:get')) {
-      this.listenEvents();
-    }
   },
 });
 </script>

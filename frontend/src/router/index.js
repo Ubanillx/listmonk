@@ -24,21 +24,33 @@ const routes = [
     component: () => import('../views/Dashboard.vue'),
   },
   {
+    path: '/pool-lists',
+    name: 'poolLists',
+    meta: { title: 'menu.poolLists', group: 'customers', refreshable: true },
+    component: () => import('../views/CustomerLists.vue'),
+  },
+  {
+    path: '/pool-lists/:id',
+    name: 'poolList',
+    meta: { title: 'menu.poolLists', group: 'customers', refreshable: true },
+    component: () => import('../views/CustomerLists.vue'),
+  },
+  {
     path: '/customer-lists',
     name: 'customerLists',
-    meta: { title: 'globals.terms.customer_lists', group: 'customerLists', refreshable: true },
+    meta: { title: 'globals.terms.customer_lists', group: 'customers', refreshable: true },
     component: () => import('../views/CustomerLists.vue'),
   },
   {
     path: '/customer-lists/forms',
     name: 'forms',
-    meta: { title: 'forms.title', group: 'customerLists' },
+    meta: { title: 'forms.title', group: 'customers' },
     component: () => import('../views/Forms.vue'),
   },
   {
     path: '/customer-lists/:id',
     name: 'customerList',
-    meta: { title: 'globals.terms.customer_lists', group: 'customerLists', refreshable: true },
+    meta: { title: 'globals.terms.customer_lists', group: 'customers', refreshable: true },
     component: () => import('../views/CustomerLists.vue'),
   },
   {
@@ -50,7 +62,7 @@ const routes = [
   {
     path: '/customers/import',
     name: 'import',
-    meta: { title: 'import.title', group: 'customers' },
+    meta: { title: 'import.pageTitle', group: 'customers' },
     component: () => import('../views/Import.vue'),
   },
   {
@@ -66,11 +78,31 @@ const routes = [
     component: () => import('../views/Customers.vue'),
   },
   {
-    // Pool contacts are rendered inside the customers view now; keep this
-    // path working for existing links and bookmarks.
+    path: '/pool-lists/:customerListID/contacts',
+    name: 'poolListContacts',
+    meta: {
+      title: 'pool.tabPoolContacts', group: 'customers', permission: 'pools:get', refreshable: true,
+    },
+    component: () => import('../views/Customers.vue'),
+  },
+  {
+    // Keep the old path working for existing links and bookmarks while the
+    // public-pool view has its own route under the customer menu.
     path: '/customers/pool-lists/:customerListID',
+    name: 'legacyPoolContacts',
+    redirect: (to) => ({ name: 'poolListContacts', params: { customerListID: to.params.customerListID }, query: to.query }),
+  },
+  {
+    path: '/pool/:customerListID',
+    redirect: (to) => ({ name: 'poolContacts', query: to.query }),
+  },
+  {
+    path: '/pool',
     name: 'poolContacts',
-    redirect: (to) => ({ name: 'customersCustomerList', params: { customerListID: to.params.customerListID } }),
+    meta: {
+      title: 'pool.tabPoolContacts', group: 'customers', permission: 'pools:get', refreshable: true,
+    },
+    component: () => import('../views/Customers.vue'),
   },
   {
     path: '/customers/:id',

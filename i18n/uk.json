@@ -579,8 +579,6 @@
     "settings.title": "Налаштування",
     "settings.updateAvailable": "Доступне оновлення {version}.",
     "customers.activity": "Активність",
-    "customers.advancedQuery": "Складніший запит",
-    "customers.advancedQueryHelp": "Частковий SQL-вираз для пошуку властивостей підписни_ць",
     "customers.attribsHelp": "Формат властивостей — JSON-об'єкт, наприклад:",
     "customers.blocklistedHelp": "Заблоковані підписни_ці не отримуватимуть жодних листів.",
     "customers.confirmBlocklist": "Заблокувати {num} підписни_ць?",

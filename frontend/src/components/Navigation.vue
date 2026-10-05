@@ -4,27 +4,28 @@
       icon="view-dashboard-variant-outline" :label="$t('menu.dashboard')" /><!-- dashboard -->
 
     <b-menu-item :to="{ name: 'userProfile' }" tag="router-link" :active="activeItem.userProfile"
-      data-cy="user-profile" icon="account-outline" :label="$t('users.profile')" />
-
-    <b-menu-item :expanded="activeGroup.customerLists" :active="activeGroup.customerLists" data-cy="customerLists"
-      @update:active="(state) => toggleGroup('customerLists', state)" icon="format-list-bulleted-square"
-      :label="$t('globals.terms.customer_lists')">
-      <b-menu-item :to="{ name: 'customerLists' }" tag="router-link" :active="activeItem.customer_lists" data-cy="all-customer_lists"
-        icon="format-list-bulleted-square" :label="$t('menu.allLists')" />
-      <b-menu-item :to="{ name: 'forms' }" tag="router-link" :active="activeItem.forms" class="forms"
-        icon="newspaper-variant-outline" :label="$t('menu.forms')" />
-    </b-menu-item><!-- customer_lists -->
+      data-cy="user-profile" icon="account-outline" :label="$t('menu.profile')" />
 
     <b-menu-item :expanded="activeGroup.customers" :active="activeGroup.customers"
       data-cy="customers" @update:active="(state) => toggleGroup('customers', state)" icon="account-multiple-outline"
-      :label="$t('globals.terms.customers')">
+      :label="$t('menu.customers')">
+      <b-menu-item v-if="$can('pools:get')" :to="{ name: 'poolContacts' }" tag="router-link"
+        :active="activeItem.poolContacts || activeItem.poolListContacts" data-cy="pool-customers" icon="account-switch-outline"
+        :label="$t('pool.tabPoolContacts')" />
+      <b-menu-item :to="{ name: 'poolLists' }" tag="router-link"
+        :active="activeItem.poolLists || activeItem.poolList" data-cy="pool-lists"
+        icon="format-list-bulleted-square" :label="$t('menu.poolLists')" />
       <b-menu-item :to="{ name: 'customers' }" tag="router-link"
-        :active="activeItem.customers" data-cy="all-customers" icon="account-multiple-outline"
+        :active="activeItem.customers || activeItem.customer || activeItem.customersCustomerList" data-cy="all-customers" icon="account-multiple-outline"
         :label="$t('menu.allCustomers')" />
+      <b-menu-item :to="{ name: 'customerLists' }" tag="router-link" :active="activeItem.customerLists || activeItem.customerList" data-cy="all-customer_lists"
+        icon="format-list-bulleted-square" :label="$t('menu.allLists')" />
       <b-menu-item v-if="$canCreateWorkspaceResource('customers:import')" :to="{ name: 'import' }" tag="router-link"
         :active="activeItem.import" data-cy="import" icon="file-upload-outline" :label="$t('menu.import')" />
       <b-menu-item v-if="canViewBounces" :to="{ name: 'bounces' }" tag="router-link" :active="activeItem.bounces"
         data-cy="bounces" icon="email-alert-outline" :label="$t('globals.terms.bounces')" />
+      <b-menu-item :to="{ name: 'forms' }" tag="router-link" :active="activeItem.forms" class="forms"
+        icon="newspaper-variant-outline" :label="$t('menu.forms')" />
     </b-menu-item><!-- customers -->
 
     <b-menu-item :expanded="activeGroup.campaigns" :active="activeGroup.campaigns"
@@ -110,7 +111,7 @@ export default {
   },
 
   computed: {
-    ...mapState(['workspace', 'organizations', 'profile']),
+    ...mapState(['workspace', 'organizationMemberships', 'profile']),
 
     canViewBounces() {
       return !this.workspace.archived;
@@ -120,7 +121,7 @@ export default {
       const isPlatformAdmin = this.profile
         && this.profile.userRole
         && Number(this.profile.userRole.id) === 1;
-      const organizations = Array.isArray(this.organizations) ? this.organizations : [];
+      const organizations = this.organizationMemberships;
       return isPlatformAdmin
         || this.$can('organizations:platform_manage')
         || organizations.some((organization) => organization.myRole === 'manager');

@@ -1,7 +1,7 @@
 {{ define "admin-login" }}
 {{ template "header" .}}
 
-<section class="login">
+<section class="login login-page">
 	<h2>{{ .L.T "users.login"}}</h2>
 	{{ if .Data.PasswordEnabled }}
 	<form method="post" action="/admin/login" class="form">

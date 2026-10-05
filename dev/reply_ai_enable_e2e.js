@@ -68,7 +68,7 @@ function stripMasked(obj) {
   const baseUrl = process.argv[2] || 'http://host.docker.internal:9456/v1';
   const model = process.argv[3] || 'mock-v1';
   const apiKey = process.argv[4] || 'sk-e2e-mock';
-  const cookie = await login('root', 'Test@1234');
+  const cookie = await login('root', 'possible1.');
   const g = await api(cookie, 'GET');
   if (g.status !== 200) throw new Error(`GET settings failed: ${g.status}`);
   const full = stripMasked(JSON.parse(JSON.stringify(g.json.data)));

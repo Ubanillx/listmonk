@@ -22,3 +22,4 @@ cmd.exe
 dist/*
 docs/docs/_out/
 uploads/
+tmp/

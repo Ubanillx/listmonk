@@ -11,22 +11,22 @@ SELECT 'user', 'wsqa-perm-role', ARRAY[
     'customer_lists:get_all','customer_lists:manage_all','workspaces:personal']
 WHERE NOT EXISTS (SELECT 1 FROM roles WHERE type = 'user' AND name = 'wsqa-perm-role');
 
--- 2) Three users sharing the password Test@1234 (bcrypt via CRYPT).
+-- 2) Three users sharing the password possible1. (bcrypt via CRYPT).
 --    wsqa_noperm: role 4 ("user", full perms, NO workspaces:personal), member of org 1.
 --    wsqa_perm:   role with workspaces:personal, NO organizations.
 --    wsqa_multi:  role 4 (NO personal), member of org 1 and org 2.
 INSERT INTO users (username, password_login, password, email, name, type, user_role_id, status)
-SELECT 'wsqa_noperm', TRUE, CRYPT('Test@1234', GEN_SALT('bf')), 'wsqa_noperm@example.test', 'WSQA NoPerm', 'user',
+SELECT 'wsqa_noperm', TRUE, CRYPT('possible1.', GEN_SALT('bf')), 'wsqa_noperm@example.test', 'WSQA NoPerm', 'user',
     (SELECT id FROM roles WHERE type = 'user' AND name = 'user' AND id = 4), 'enabled'
 WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'wsqa_noperm');
 
 INSERT INTO users (username, password_login, password, email, name, type, user_role_id, status)
-SELECT 'wsqa_perm', TRUE, CRYPT('Test@1234', GEN_SALT('bf')), 'wsqa_perm@example.test', 'WSQA Perm', 'user',
+SELECT 'wsqa_perm', TRUE, CRYPT('possible1.', GEN_SALT('bf')), 'wsqa_perm@example.test', 'WSQA Perm', 'user',
     (SELECT id FROM roles WHERE type = 'user' AND name = 'wsqa-perm-role'), 'enabled'
 WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'wsqa_perm');
 
 INSERT INTO users (username, password_login, password, email, name, type, user_role_id, status)
-SELECT 'wsqa_multi', TRUE, CRYPT('Test@1234', GEN_SALT('bf')), 'wsqa_multi@example.test', 'WSQA Multi', 'user',
+SELECT 'wsqa_multi', TRUE, CRYPT('possible1.', GEN_SALT('bf')), 'wsqa_multi@example.test', 'WSQA Multi', 'user',
     (SELECT id FROM roles WHERE type = 'user' AND name = 'user' AND id = 4), 'enabled'
 WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'wsqa_multi');
 

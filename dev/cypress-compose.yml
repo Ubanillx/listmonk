@@ -1,0 +1,35 @@
+services:
+  db:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: listmonk_cypress
+      POSTGRES_PASSWORD: listmonk_cypress
+      POSTGRES_DB: listmonk_cypress
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U listmonk_cypress -d listmonk_cypress"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  backend:
+    build:
+      context: ../
+      dockerfile: dev/app.Dockerfile
+    command: ["sh", "dev/run-backend.sh"]
+    ports:
+      - "127.0.0.1:9273:9173"
+    environment:
+      LISTMONK_DB__HOST: db
+      LISTMONK_DB__USER: listmonk_cypress
+      LISTMONK_DB__PASSWORD: listmonk_cypress
+      LISTMONK_DB__DATABASE: listmonk_cypress
+      LISTMONK_ADMIN_USER: ${CYPRESS_TEST_ADMIN_USER-admin}
+      LISTMONK_ADMIN_PASSWORD: listmonk-test
+      CYPRESS_INSTALL_BINARY: "0"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ../:/app

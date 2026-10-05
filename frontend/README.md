@@ -2,7 +2,17 @@
 
 It's best if the `listmonk/frontend` directory is opened in an IDE as a separate project where the frontend directory is the root of the project.
 
-For local development setup, refer to `../dev/README.md` (the local Compose development suite) and `../AGENTS.md` (repository conventions).
+For local development setup, refer to `../dev/README.md` (Docker middleware
+plus host Go/Vite hot reload) and `../AGENTS.md` (repository conventions).
+
+The admin UI design rules are in `../docs/harness/UI_DESIGN_SYSTEM.md`. New
+shared visual rules belong in `src/assets/styles/` (variables, base, layout,
+components, and views); `src/assets/style.scss` remains the entry point for
+Bulma/Buefy and legacy page styles.
+
+For browser regressions, run `node dev/run-cypress.js --spec cypress/e2e/customer-lists.cy.js`
+from the repository root. This uses a temporary test database and backend;
+`yarn cypress run` alone does not enable database resets.
 
 ## Globals
 In `main.js`, Buefy and vue-i18n are attached globally. In addition:

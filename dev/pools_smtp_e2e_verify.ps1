@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 $base = if ($env:LISTMONK_QA_BASE_URL) { $env:LISTMONK_QA_BASE_URL } else { 'http://localhost:9173' }
 $mailhog = if ($env:POOL_QA_MAILHOG_URL) { $env:POOL_QA_MAILHOG_URL } else { 'http://localhost:8265' }
-$password = if ($env:POOL_QA_PASSWORD) { $env:POOL_QA_PASSWORD } else { 'Test@1234' }
+$password = if ($env:POOL_QA_PASSWORD) { $env:POOL_QA_PASSWORD } else { 'possible1.' }
 $dbContainer = if ($env:POOL_QA_DB_CONTAINER) { $env:POOL_QA_DB_CONTAINER } else { 'dev-db-1' }
 $dbUser = if ($env:POOL_QA_DB_USER) { $env:POOL_QA_DB_USER } else { 'lmkdev_M7q2Xr8N' }
 $dbName = if ($env:POOL_QA_DB_NAME) { $env:POOL_QA_DB_NAME } else { 'lmkdev_M7q2Xr8N' }

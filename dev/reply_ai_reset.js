@@ -25,7 +25,7 @@ async function login(username, password) {
 }
 
 (async () => {
-  const cookie = await login('root', 'Test@1234');
+  const cookie = await login('root', 'possible1.');
   const value = JSON.stringify({
     enabled: false,
     base_url: '',

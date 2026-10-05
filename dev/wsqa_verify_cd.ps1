@@ -15,7 +15,7 @@ function LoginUser($username, $jar) {
   curl.exe -s -c $jar "$base/admin/login" | Out-Null
   $html = [string](curl.exe -s -b $jar -c $jar "$base/admin/login")
   $nonce = [regex]::Match($html, 'name="nonce" value="([^"]+)"').Groups[1].Value
-  curl.exe -s -o NUL -b $jar -c $jar -X POST -d "username=$username&password=Test@1234&nonce=$nonce&next=/admin" "$base/admin/login" | Out-Null
+  curl.exe -s -o NUL -b $jar -c $jar -X POST -d "username=$username&password=possible1.&nonce=$nonce&next=/admin" "$base/admin/login" | Out-Null
 }
 
 # ---------- C: wsqa_perm — has personal capability, no orgs ----------

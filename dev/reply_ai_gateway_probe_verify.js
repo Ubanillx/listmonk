@@ -104,7 +104,7 @@ function step(result, name) {
 }
 
 (async () => {
-  const cookie = await login('root', 'Test@1234');
+  const cookie = await login('root', 'possible1.');
 
   // --- Model discovery ------------------------------------------------------
   const list = await post(cookie, '/api/settings/reply-ai/models', {

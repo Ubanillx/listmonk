@@ -14,14 +14,14 @@
 # backend of the dev docker suite (make dev-docker) to be running.
 #
 #   $env:LISTMONK_QA_BASE_URL = 'http://localhost:9173'   # optional
-#   $env:REPLY_MAILBOX_QA_PASSWORD = 'Test@1234'          # optional
+#   $env:REPLY_MAILBOX_QA_PASSWORD = 'possible1.'          # optional
 #   pwsh -File dev/reply_mailbox_campaign_verify.ps1
 #
 # Every assertion aborts the script on failure, so a clean run is the evidence.
 
 $ErrorActionPreference = 'Stop'
 $base = if ($env:LISTMONK_QA_BASE_URL) { $env:LISTMONK_QA_BASE_URL } else { 'http://localhost:9173' }
-$password = if ($env:REPLY_MAILBOX_QA_PASSWORD) { $env:REPLY_MAILBOX_QA_PASSWORD } else { 'Test@1234' }
+$password = if ($env:REPLY_MAILBOX_QA_PASSWORD) { $env:REPLY_MAILBOX_QA_PASSWORD } else { 'possible1.' }
 $memberUsername = if ($env:REPLY_MAILBOX_QA_MEMBER) { $env:REPLY_MAILBOX_QA_MEMBER } else { 'wsqa_noperm' }
 $organizationID = if ($env:REPLY_MAILBOX_QA_ORGANIZATION_ID) { [int]$env:REPLY_MAILBOX_QA_ORGANIZATION_ID } else { 1 }
 $dbContainer = if ($env:POOL_QA_DB_CONTAINER) { $env:POOL_QA_DB_CONTAINER } else { 'dev-db-1' }

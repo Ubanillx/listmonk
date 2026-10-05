@@ -2,16 +2,11 @@ import 'cypress-file-upload';
 import 'cypress-wait-until';
 
 Cypress.Commands.add('resetDB', () => {
-  // Although cypress clearly states that a webserver should not be run
-  // from within it, listmonk is killed, the DB reset, and run again
-  // in the background. If the DB is reset without restartin listmonk,
-  // the live Postgres connections in the app throw errors because the
-  // schema changes midway.
-  cy.exec(Cypress.env('serverInitCmd'));
+  cy.task('resetDatabase', { blank: false }, { timeout: 240000 });
 });
 
 Cypress.Commands.add('resetDBBlank', () => {
-  cy.exec(Cypress.env('serverInitBlankCmd'));
+  cy.task('resetDatabase', { blank: true }, { timeout: 240000 });
 });
 
 // Takes a th class selector of a Buefy table, clicks it sorting the table,
@@ -59,7 +54,7 @@ Cypress.Commands.add('waitForBackend', () => {
   // Keep trying until backend responds successfully
   cy.waitUntil(
     () => cy.request({
-      url: '/api/health',
+      url: '/admin/login',
       failOnStatusCode: false,
     }).then((res) =>
       // Re-enable exception handling once backend is healthy

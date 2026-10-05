@@ -88,7 +88,7 @@ function check(label, cond) {
 }
 
 (async () => {
-  const cookie = await login('root', 'Test@1234');
+  const cookie = await login('root', 'possible1.');
   const g1 = await api(cookie, '/api/settings');
   check('login + GET settings 200', g1.status === 200);
   check('reply_ai present', !!g1.json.data && 'reply_ai' in g1.json.data);

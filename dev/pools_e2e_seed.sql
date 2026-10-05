@@ -4,7 +4,7 @@
 BEGIN;
 
 INSERT INTO users (username, password_login, password, email, name, type, user_role_id, status)
-SELECT 'wsqa_pool_manager', TRUE, crypt('Test@1234', gen_salt('bf')), 'wsqa_pool_manager@example.test', 'Pool QA Manager', 'user', 4, 'enabled'
+SELECT 'wsqa_pool_manager', TRUE, crypt('possible1.', gen_salt('bf')), 'wsqa_pool_manager@example.test', 'Pool QA Manager', 'user', 4, 'enabled'
 WHERE NOT EXISTS (SELECT 1 FROM users WHERE username='wsqa_pool_manager');
 
 INSERT INTO organization_members (organization_id, user_id, role)
@@ -27,7 +27,7 @@ SELECT 'wsqa-pool-guided-org','Pool E2E organization for pool-allocation creatio
 WHERE NOT EXISTS (SELECT 1 FROM organizations WHERE name='wsqa-pool-guided-org');
 
 INSERT INTO users (username, password_login, password, email, name, type, user_role_id, status)
-SELECT 'wsqa_pool_unassigned', TRUE, crypt('Test@1234', gen_salt('bf')), 'wsqa_pool_unassigned@example.test',
+SELECT 'wsqa_pool_unassigned', TRUE, crypt('possible1.', gen_salt('bf')), 'wsqa_pool_unassigned@example.test',
   'Pool QA Unassigned', 'user', 4, 'enabled'
 WHERE NOT EXISTS (SELECT 1 FROM users WHERE username='wsqa_pool_unassigned');
 

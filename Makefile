@@ -10,6 +10,7 @@ BUILDSTR := ${VERSION} (\#${LAST_COMMIT} $(BUILDDATE))
 YARN ?= yarn
 GOPATH ?= $(HOME)/go
 STUFFBIN ?= $(GOPATH)/bin/stuffbin
+AIR_VERSION ?= v1.67.4
 FRONTEND_YARN_MODULES = frontend/node_modules
 FRONTEND_DIST = frontend/dist
 FRONTEND_EMAIL_BUILDER_DIST_FINAL = frontend/public/static/email-builder
@@ -20,7 +21,7 @@ FRONTEND_DEPS = \
 	frontend/package.json \
 	frontend/vite.config.js \
 	frontend/.eslintrc.js \
-	$(shell find frontend/fontello frontend/public frontend/src -type f)
+	$(shell git ls-files -co --exclude-standard -- frontend/fontello frontend/public frontend/src)
 
 FRONTEND_EMAIL_BUILDER = frontend/email-builder
 FRONTEND_EMAIL_BUILDER_YARN_MODULES = $(FRONTEND_EMAIL_BUILDER)/node_modules
@@ -30,7 +31,7 @@ FRONTEND_EMAIL_BUILDER_DEPS = \
 	$(FRONTEND_EMAIL_BUILDER)/package.json \
 	$(FRONTEND_EMAIL_BUILDER)/tsconfig.json \
 	$(FRONTEND_EMAIL_BUILDER)/vite.config.ts \
-	$(shell find $(FRONTEND_EMAIL_BUILDER)/src -type f)
+	$(shell git ls-files -co --exclude-standard -- $(FRONTEND_EMAIL_BUILDER)/src)
 
 BIN := listmonk
 STATIC := config.toml.sample \
@@ -40,8 +41,8 @@ STATIC := config.toml.sample \
 	frontend/dist:/admin \
 	i18n:/i18n
 
-SQL := $(shell find . -type f -name "*.sql") $(shell find queries -type f -name "*.sql")
-SRC := $(shell find . -type f -name "*.go")
+SQL := $(shell git ls-files -co --exclude-standard -- "*.sql")
+SRC := $(shell git ls-files -co --exclude-standard -- "*.go")
 
 .PHONY: build
 build: $(BIN)
@@ -92,6 +93,37 @@ build-email-builder: $(FRONTEND_EMAIL_BUILDER_DIST_FINAL)
 .PHONY: run-frontend
 run-frontend: $(FRONTEND_YARN_MODULES) $(FRONTEND_EMAIL_BUILDER_DIST_FINAL)
 	export VUE_APP_VERSION="${VERSION}" && cd frontend && $(YARN) dev --host 0.0.0.0 --port 8080
+
+# Install the pinned Go live-reload tool used by run-backend-local.
+.PHONY: install-dev-tools
+install-dev-tools:
+	go install github.com/air-verse/air@$(AIR_VERSION)
+
+# Start only the middleware needed by the host-based development workflow.
+.PHONY: dev-middleware
+dev-middleware:
+	docker compose -f dev/docker-compose.yml up -d --wait db mailhog adminer
+
+# Initialize or upgrade the database used by the host-based development workflow.
+.PHONY: init-dev-local
+init-dev-local: dev-middleware
+	CGO_ENABLED=0 go run ./cmd --install --idempotent --yes --config dev/config.local.toml
+	CGO_ENABLED=0 go run ./cmd --upgrade --yes --config dev/config.local.toml
+
+# Prepare the middleware and print the two host processes to run in separate shells.
+.PHONY: dev-local
+dev-local: init-dev-local
+	@echo "Middleware is ready. Run 'make run-backend-local' and 'make run-frontend-local' in separate shells."
+
+# Run the Go backend with Air. The initial install/upgrade is idempotent.
+.PHONY: run-backend-local
+run-backend-local: init-dev-local
+	go run github.com/air-verse/air@$(AIR_VERSION) -c dev/.air.toml
+
+# Run the Vue/Vite development server on the host with API proxying to Go.
+.PHONY: run-frontend-local
+run-frontend-local: $(FRONTEND_YARN_MODULES) $(FRONTEND_EMAIL_BUILDER_DIST_FINAL)
+	export LISTMONK_API_URL=http://127.0.0.1:9173 LISTMONK_FRONTEND_PORT=8181 VUE_APP_VERSION=dev && cd frontend && $(YARN) dev --host 127.0.0.1 --port 8181 --strictPort
 
 # Run Go tests.
 .PHONY: test

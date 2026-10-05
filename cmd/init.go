@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Masterminds/sprig/v3"
@@ -97,6 +98,7 @@ type Config struct {
 	Privacy                       struct {
 		IndividualTracking bool            `koanf:"individual_tracking"`
 		DisableTracking    bool            `koanf:"disable_tracking"`
+		GeoIPDatabase      string          `koanf:"geoip_database"`
 		AllowPreferences   bool            `koanf:"allow_preferences"`
 		AllowBlocklist     bool            `koanf:"allow_blocklist"`
 		AllowExport        bool            `koanf:"allow_export"`
@@ -613,6 +615,28 @@ func initCampaignManager(msgrs []manager.Messenger, q *models.Queries, u *UrlCon
 			msgr.SetQuotaTracker(userSMTPQuota)
 			return msgr, nil
 		},
+		OrganizationSMTP: func(orgID, poolID int) (*email.Emailer, error) {
+			var active bool
+			if err := store.db.Get(&active, `SELECT EXISTS(SELECT 1 FROM organizations o JOIN organization_smtp_pools p ON p.organization_id=o.id WHERE o.id=$1 AND p.id=$2 AND o.status='active')`, orgID, poolID); err != nil {
+				return nil, err
+			}
+			if !active {
+				return nil, manager.ErrPersonalSMTPUnavailable
+			}
+			servers, err := store.GetUserSMTPServers(-poolID)
+			if err != nil {
+				return nil, err
+			}
+			if len(servers) == 0 {
+				return nil, manager.ErrPersonalSMTPUnavailable
+			}
+			msgr, err := email.New(email.MessengerName, servers...)
+			if err != nil {
+				return nil, err
+			}
+			msgr.SetQuotaTracker(userSMTPQuota)
+			return msgr, nil
+		},
 		// PoolSMTP resolves one assigned SMTP account for platform-level
 		// public-pool recipients. It revalidates the row at every cache miss,
 		// so a disabled account, a removed member or a disabled SMTP row
@@ -716,53 +740,46 @@ func initImporter(q *models.Queries, db *sqlx.DB, core *core.Core, i *i18n.I18n,
 // registered as selectable messengers.
 func initSMTPMessengers() smtpMessengers {
 	var (
-		servers = []email.Server{}
 		out     = []manager.Messenger{}
 		primary *email.Emailer
 		tracker = newSMTPQuotaTracker(queries)
 	)
 
-	// Load the config for multiple SMTP servers.
+	// A legacy settings row may still contain extra servers. Only the primary
+	// system notification server is routable or initialized.
 	for _, item := range ko.Slices("smtp") {
-		if !item.Bool("enabled") {
+		if !item.Bool("enabled") || !item.Bool("is_primary") {
 			continue
 		}
 
-		// Read the SMTP config.
-		var s email.Server
-		if err := item.UnmarshalWithConf("", &s, koanf.UnmarshalConf{Tag: "json"}); err != nil {
+		// Flatten the persisted header array for the SMTP messenger, as for
+		// account-owned SMTP, and apply the same platform delivery options.
+		var config models.SMTPServer
+		if err := item.UnmarshalWithConf("", &config, koanf.UnmarshalConf{Tag: "json"}); err != nil {
 			lo.Fatalf("error reading SMTP config: %v", err)
 		}
-
-		servers = append(servers, s)
-		lo.Printf("initialized email (SMTP) messenger: %s@%s", item.String("username"), item.String("host"))
-		lo.Printf("smtp messenger quota: name=%s uuid=%s daily_limit=%d", s.Name, s.UUID, s.DailyLimit)
-
-		if s.IsPrimary {
-			msgr, err := email.New(s.Name, s)
-			if err != nil {
-				lo.Fatalf("error initializing primary e-mail messenger: %v", err)
-			}
-			msgr.SetQuotaTracker(tracker)
-			primary = msgr
+		s, err := mapSMTPServerWithDelivery(models.PersonalSMTPServer{SMTPServer: config}, resolveSMTPPlatformDefaults())
+		if err != nil {
+			lo.Fatalf("error reading SMTP delivery config: %v", err)
 		}
 
+		msgr, err := email.New(email.MessengerName, s)
+		if err != nil {
+			lo.Fatalf("error initializing system e-mail messenger: %v", err)
+		}
+		msgr.SetQuotaTracker(tracker)
+		primary = msgr
+		lo.Printf("initialized system email (SMTP) messenger: %s@%s", item.String("username"), item.String("host"))
+		break
 	}
-
-	// Initialize the 'email' messenger with all SMTP servers.
-	msgr, err := email.New(email.MessengerName, servers...)
-	if err != nil {
-		lo.Fatalf("error initializing e-mail messenger: %v", err)
-	}
-	msgr.SetQuotaTracker(tracker)
 	if primary == nil {
-		lo.Fatal("no primary SMTP configured")
+		lo.Fatal("no system notification SMTP configured")
 	}
 
 	// Expose only the logical platform "email" messenger.  The individual
 	// server names remain configuration metadata for backwards compatibility,
 	// but are deliberately not routable by campaign/transaction APIs.
-	out = append(out, msgr)
+	out = append(out, primary)
 	return smtpMessengers{messengers: out, primary: primary}
 }
 
@@ -869,6 +886,13 @@ func initNotifs(fs stuffbin.FileSystem, i *i18n.I18n, em *email.Emailer, u *UrlC
 	}, tpls, em, lo)
 }
 
+// backgroundApp holds the App for background hooks that are wired before main()
+// constructs it. The bounce worker is started earlier (it only needs the audit
+// sink once it has bounces to report), so initHTTPServer publishes the App here
+// and the hooks resolve it late. Access is atomic because the bounce writer
+// consumes it from its own goroutine.
+var backgroundApp atomic.Pointer[App]
+
 // initBounceManager initializes the bounce manager that scans mailboxes and listens to webhooks
 // for incoming bounce events.
 func initBounceManager(cb func(models.Bounce) error, stmt *sqlx.Stmt, lo *log.Logger, ko *koanf.Koanf) *bounce.Manager {
@@ -894,6 +918,10 @@ func initBounceManager(cb func(models.Bounce) error, stmt *sqlx.Stmt, lo *log.Lo
 			ko.String("bounce.forwardemail.key"),
 		},
 		RecordBounceCB: cb,
+		// Persisted bounces are reported as one aggregate per workspace per
+		// flush window instead of one audit row per bounce. The per-message
+		// facts stay in the bounces table.
+		RecordBounceBatchCB: recordBounceBatchAudit,
 	}
 
 	// For now, only one mailbox is supported.
@@ -920,6 +948,53 @@ func initBounceManager(cb func(models.Bounce) error, stmt *sqlx.Stmt, lo *log.Lo
 	}
 
 	return b
+}
+
+// recordBounceBatchAudit records one workspace's aggregated bounce summary as a
+// single audit event. It is the sink behind bounce.Opt.RecordBounceBatchCB, so
+// a bulk bounce run produces one row per workspace per flush window while the
+// bounces table keeps the per-message facts.
+//
+// Metadata is deliberately limited to counts and classifications that are
+// already part of the bounce record: no recipient address, message body, header
+// or provider payload is copied into the audit table.
+func recordBounceBatchAudit(batch bounce.BounceBatch) error {
+	// The bounce worker is wired before main() constructs the App, so the App
+	// that owns a.recordAuditEvent is resolved late. Reporting an error here
+	// makes the writer log the batch instead of losing it silently; the bounce
+	// itself is already persisted at this point.
+	app := backgroundApp.Load()
+	if app == nil {
+		return errors.New("bounce batch audit sink is not initialized")
+	}
+
+	metadata := map[string]any{"count": batch.Count}
+	if len(batch.Types) > 0 {
+		metadata["types"] = batch.Types
+	}
+	if len(batch.Sources) > 0 {
+		metadata["sources"] = batch.Sources
+	}
+	if !batch.FirstSeen.IsZero() {
+		metadata["first_seen"] = batch.FirstSeen.UTC().Format(time.RFC3339)
+	}
+	if !batch.LastSeen.IsZero() {
+		metadata["last_seen"] = batch.LastSeen.UTC().Format(time.RFC3339)
+	}
+
+	// A bounce whose workspace could not be resolved is aggregated under the
+	// personal workspace (id 0) by the writer.
+	organizationID := batch.OrganizationID
+	app.recordAuditEvent(auditlog.Event{
+		OrganizationID: &organizationID,
+		ActorType:      "system",
+		Action:         "bounce.recorded",
+		ObjectType:     "bounce_batch",
+		Result:         "success",
+		Metadata:       metadata,
+	})
+
+	return nil
 }
 
 // initAbout initializes the app's /about API endpoint with the app and system info.
@@ -979,6 +1054,11 @@ func initAbout(q *models.Queries, db *sqlx.DB) about {
 
 // initHTTPServer sets up and runs the app's main HTTP server and blocks forever.
 func initHTTPServer(cfg *Config, urlCfg *UrlConfig, i *i18n.I18n, fs stuffbin.FileSystem, app *App) *echo.Echo {
+	// Background workers that were started before the App existed (the bounce
+	// writer) resolve it here to record audit events through
+	// a.recordAuditEvent.
+	backgroundApp.Store(app)
+
 	// Initialize the HTTP server.
 	var srv = echo.New()
 	srv.HideBanner = true

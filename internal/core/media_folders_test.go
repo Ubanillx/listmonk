@@ -92,7 +92,7 @@ func TestWorkspaceMediaReadPredicateScopesActivePlatformAdmin(t *testing.T) {
 		Workspace: models.Workspace{OrganizationID: 7, PlatformAdmin: true},
 		UserID:    10,
 	}
-	organizationPredicate, organizationArgs := workspaceMediaReadPredicate(organizationAdmin, "m", 3)
+	organizationPredicate, organizationArgs := workspaceRootMediaReadPredicate(organizationAdmin, "m", 3)
 	if len(organizationArgs) != 1 || organizationArgs[0] != 7 {
 		t.Fatalf("organization predicate args = %#v, want [7]", organizationArgs)
 	}
@@ -105,7 +105,7 @@ func TestWorkspaceMediaReadPredicateScopesActivePlatformAdmin(t *testing.T) {
 		Workspace: models.Workspace{Personal: true, PlatformAdmin: true},
 		UserID:    10,
 	}
-	personalPredicate, personalArgs := workspaceMediaReadPredicate(personalAdmin, "m", 2)
+	personalPredicate, personalArgs := workspaceRootMediaReadPredicate(personalAdmin, "m", 2)
 	if len(personalArgs) != 1 || personalArgs[0] != 10 {
 		t.Fatalf("personal predicate args = %#v, want [10]", personalArgs)
 	}
@@ -118,7 +118,7 @@ func TestWorkspaceMediaReadPredicateScopesActivePlatformAdmin(t *testing.T) {
 		Workspace: models.Workspace{OrganizationID: 7, PlatformAdmin: true, Archived: true},
 		UserID:    10,
 	}
-	archivedPredicate, archivedArgs := workspaceMediaReadPredicate(archivedAdmin, "m", 1)
+	archivedPredicate, archivedArgs := workspaceRootMediaReadPredicate(archivedAdmin, "m", 1)
 	if archivedPredicate != "TRUE" || len(archivedArgs) != 0 {
 		t.Fatalf("archived admin predicate = %q %#v, want broad cleanup visibility", archivedPredicate, archivedArgs)
 	}

@@ -62,7 +62,6 @@ const (
 	PermCustomersImport           = "customers:import"
 	PermCustomersExport           = "customers:export"
 	PermCustomersSensitiveRead    = "customers:sensitive_read"
-	PermCustomersSqlQuery         = "customers:sql_query"
 	PermTxSend                    = "tx:send"
 	PermCampaignsGet              = "campaigns:get"
 	PermCampaignsGetAll           = "campaigns:get_all"

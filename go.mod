@@ -28,6 +28,7 @@ require (
 	github.com/knadh/stuffbin v1.3.0
 	github.com/labstack/echo/v4 v4.13.4
 	github.com/lib/pq v1.10.9
+	github.com/oschwald/geoip2-golang v1.13.0
 	github.com/paulbellamy/ratecounter v0.2.0
 	github.com/pquerna/otp v1.5.0
 	github.com/rhnvrm/simples3 v0.9.1
@@ -59,6 +60,7 @@ require (
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
+	github.com/oschwald/maxminddb-golang v1.13.0 // indirect
 	github.com/pelletier/go-toml v1.9.5 // indirect
 	github.com/richardlehane/mscfb v1.0.4 // indirect
 	github.com/richardlehane/msoleps v1.0.4 // indirect

@@ -8,6 +8,7 @@ import (
 	"net/textproto"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/knadh/listmonk/models"
 	"github.com/knadh/smtppool/v2"
@@ -39,6 +40,9 @@ var ErrSMTPQuotaExceeded = errors.New("smtp daily quota exhausted")
 // failure and retrying against stale credentials.
 var ErrSMTPUnavailable = errors.New("smtp unavailable")
 
+// ErrSendCancelled marks an intentional shutdown or campaign stop during pacing.
+var ErrSendCancelled = errors.New("SMTP send cancelled")
+
 type QuotaTracker interface {
 	HasServerQuota(uuid string, limit int) (bool, error)
 	ReserveServer(uuid string, limit int) (bool, error)
@@ -48,6 +52,8 @@ type QuotaTracker interface {
 
 // Server represents an SMTP server's credentials.
 type Server struct {
+	SendDelayMin time.Duration `json:"-"`
+	SendDelayMax time.Duration `json:"-"`
 	// Name is a unique identifier for the server.
 	Name          string            `json:"name"`
 	UUID          string            `json:"uuid"`
@@ -66,7 +72,11 @@ type Server struct {
 	//lint:ignore SA5008 ,squash is needed by koanf/mapstructure config unmarshal.
 	smtppool.Opt `json:",squash"`
 
-	pool *smtppool.Pool
+	pool          *smtppool.Pool
+	gate          *sendGate
+	gateKey       string
+	connections   *sendGate
+	connectionKey string
 }
 
 // Emailer is the SMTP e-mail messenger.
@@ -76,6 +86,8 @@ type Emailer struct {
 	next    atomic.Uint64
 	closed  atomic.Bool
 	tracker QuotaTracker
+	limiter *DeliveryLimiter
+	done    chan struct{}
 }
 
 // New returns an SMTP e-mail Messenger backend with the given SMTP servers.
@@ -85,10 +97,20 @@ func New(name string, servers ...Server) (*Emailer, error) {
 	e := &Emailer{
 		servers: make([]*Server, 0, len(servers)),
 		name:    name,
+		done:    make(chan struct{}),
 	}
+	initialized := false
+	defer func() {
+		if !initialized {
+			e.Close()
+		}
+	}()
 
 	for _, srv := range servers {
 		s := srv
+		if s.SendDelayMin < 0 || s.SendDelayMax < s.SendDelayMin || s.SendDelayMax > time.Hour {
+			return nil, fmt.Errorf("invalid SMTP send delay range")
+		}
 
 		var auth smtp.Auth
 		switch s.AuthProtocol {
@@ -129,9 +151,23 @@ func New(name string, servers ...Server) (*Emailer, error) {
 		}
 
 		s.pool = pool
+		s.connectionKey = s.UUID
+		if s.connectionKey == "" {
+			s.connectionKey = fmt.Sprintf("%s:%d:%s", s.Host, s.Port, s.Username)
+		}
+		s.connectionKey += ":connections"
+		s.connections = acquireSendGateWithCapacity(s.connectionKey, max(1, s.MaxConns))
+		if s.SendDelayMax > 0 {
+			s.gateKey = s.UUID
+			if s.gateKey == "" {
+				s.gateKey = fmt.Sprintf("%s:%d:%s", s.Host, s.Port, s.Username)
+			}
+			s.gate = acquireSendGate(s.gateKey)
+		}
 		e.servers = append(e.servers, &s)
 	}
 
+	initialized = true
 	return e, nil
 }
 
@@ -143,6 +179,9 @@ func (e *Emailer) Name() string {
 func (e *Emailer) SetQuotaTracker(t QuotaTracker) {
 	e.tracker = t
 }
+
+// SetDeliveryLimiter attaches shared limits before this Emailer is published.
+func (e *Emailer) SetDeliveryLimiter(l *DeliveryLimiter) { e.limiter = l }
 
 // DefaultFromEmail returns the sender configured on the first SMTP server.
 func (e *Emailer) DefaultFromEmail() string {
@@ -239,6 +278,23 @@ func (e *Emailer) Push(m models.Message) (err error) {
 		em.Text = relatedAttachmentsTextBody(m.AltBody, files)
 	}
 
+	if err = srv.connections.wait(0, 0, e.done, m.SendCancel, m.CampaignCancel); err != nil {
+		return err
+	}
+	defer srv.connections.release()
+	if srv.gate != nil {
+		if err = srv.gate.wait(srv.SendDelayMin, srv.SendDelayMax, e.done, m.SendCancel, m.CampaignCancel); err != nil {
+			return err
+		}
+		defer srv.gate.release()
+	}
+	if e.closed.Load() {
+		return ErrSMTPUnavailable
+	}
+	if err = e.limiter.Wait(m, e.done); err != nil {
+		return err
+	}
+	defer e.limiter.Release()
 	err = srv.pool.Send(em)
 	if errors.Is(err, smtppool.ErrPoolClosed) {
 		return fmt.Errorf("%w: %v", ErrSMTPUnavailable, err)
@@ -296,8 +352,15 @@ func (e *Emailer) Close() error {
 	if !e.closed.CompareAndSwap(false, true) {
 		return nil
 	}
+	if e.done != nil {
+		close(e.done)
+	}
 	for _, s := range e.servers {
 		s.pool.Close()
+		releaseSendGate(s.connectionKey)
+		if s.gate != nil {
+			releaseSendGate(s.gateKey)
+		}
 	}
 	return nil
 }

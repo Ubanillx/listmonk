@@ -34,7 +34,7 @@ SELECT s.*,
 FROM user_smtp_servers s
 LEFT JOIN user_smtp_daily_usage u
   ON u.smtp_uuid = s.uuid AND u.usage_date = $2::DATE
-WHERE s.user_id = $1
+WHERE (s.user_id = $1 OR s.smtp_pool_id = -$1)
 ORDER BY s.id;
 
 -- name: get-enabled-user-smtp-servers
@@ -47,7 +47,7 @@ SELECT s.*,
 FROM user_smtp_servers s
 LEFT JOIN user_smtp_daily_usage u
   ON u.smtp_uuid = s.uuid AND u.usage_date = $2::DATE
-WHERE s.user_id = $1 AND s.enabled = TRUE
+WHERE (s.user_id = $1 OR s.smtp_pool_id = -$1) AND s.enabled = TRUE
 ORDER BY s.id;
 
 -- name: get-user-smtp-server
@@ -57,16 +57,16 @@ SELECT s.*,
 FROM user_smtp_servers s
 LEFT JOIN user_smtp_daily_usage u
   ON u.smtp_uuid = s.uuid AND u.usage_date = $3::DATE
-WHERE s.id = $1 AND s.user_id = $2;
+WHERE s.id = $1 AND (s.user_id = $2 OR s.smtp_pool_id = -$2);
 
 -- name: create-user-smtp-server
 INSERT INTO user_smtp_servers (
-    uuid, user_id, name, enabled, from_email, daily_limit, host,
+    uuid, user_id, organization_id, smtp_pool_id, name, enabled, from_email, daily_limit, host,
     hello_hostname, port, auth_protocol, username, password, email_headers,
     max_conns, max_msg_retries, idle_timeout, wait_timeout, tls_type,
     tls_skip_verify
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+    $1, CASE WHEN $2::INT > 0 THEN $2 ELSE NULL END, CASE WHEN $2::INT < 0 THEN (SELECT organization_id FROM organization_smtp_pools WHERE id=-$2) ELSE NULL END, CASE WHEN $2::INT < 0 THEN -$2 ELSE NULL END, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
     $14, $15, $16, $17, $18, $19
 )
 RETURNING id;
@@ -91,10 +91,10 @@ UPDATE user_smtp_servers SET
     tls_type=$18,
     tls_skip_verify=$19,
     updated_at=NOW()
-WHERE id=$1 AND user_id=$2;
+WHERE id=$1 AND (user_id=$2 OR smtp_pool_id=-$2);
 
 -- name: delete-user-smtp-server
-DELETE FROM user_smtp_servers WHERE id=$1 AND user_id=$2;
+DELETE FROM user_smtp_servers WHERE id=$1 AND (user_id=$2 OR smtp_pool_id=-$2);
 
 -- name: has-user-running-campaigns
 -- The SMTP editor needs to warn when a configuration change affects any
@@ -103,7 +103,7 @@ DELETE FROM user_smtp_servers WHERE id=$1 AND user_id=$2;
 -- them to drafts and changing a pool changes their next delivery path.
 SELECT EXISTS (
     SELECT 1 FROM campaigns
-    WHERE owner_user_id = $1
+    WHERE ((owner_user_id = $1 AND smtp_source = 'personal') OR (smtp_pool_id = -$1 AND smtp_source = 'organization'))
       AND status = ANY('{running,scheduled,deferred}'::campaign_status[])
 );
 
@@ -134,7 +134,7 @@ END AS remaining
 FROM user_smtp_servers s
 LEFT JOIN user_smtp_daily_usage u
   ON u.smtp_uuid = s.uuid AND u.usage_date = $2::DATE
-WHERE s.user_id = $1 AND s.enabled = TRUE;
+WHERE (s.user_id = $1 OR s.smtp_pool_id = -$1) AND s.enabled = TRUE;
 
 -- name: get-db-info
 SELECT JSON_BUILD_OBJECT('version', (SELECT VERSION()),

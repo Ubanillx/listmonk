@@ -25,6 +25,35 @@ type CampaignReportSeries struct {
 	Bounces []CampaignAnalyticsCount `json:"bounces"`
 }
 
+// CampaignOpenLocation is the approximate location of an open pixel request.
+// Raw IP addresses are never stored with campaign views.
+type CampaignOpenLocation struct {
+	CountryCode string
+	Country     string
+	Region      string
+	City        string
+	Latitude    *float64
+	Longitude   *float64
+}
+
+type CampaignGeoLocation struct {
+	CountryCode string   `db:"country_code" json:"country_code"`
+	Country     string   `db:"country" json:"country"`
+	Region      string   `db:"region" json:"region"`
+	City        string   `db:"city" json:"city"`
+	Latitude    *float64 `db:"latitude" json:"latitude"`
+	Longitude   *float64 `db:"longitude" json:"longitude"`
+	Count       int      `db:"count" json:"count"`
+}
+
+type CampaignGeoReport struct {
+	Enabled      bool                  `json:"enabled"`
+	TotalOpens   int                   `json:"total_opens"`
+	LocatedOpens int                   `json:"located_opens"`
+	UnknownOpens int                   `json:"unknown_opens"`
+	Locations    []CampaignGeoLocation `json:"locations"`
+}
+
 type CampaignReportLinkRow struct {
 	LinkID          int      `db:"link_id" json:"link_id"`
 	URL             string   `db:"url" json:"url"`

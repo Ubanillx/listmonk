@@ -208,6 +208,7 @@ type Manager struct {
 	i18n               *i18n.I18n
 	messengers         map[string]Messenger
 	personalSMTP       func(int) (*email.Emailer, error)
+	organizationSMTP   func(int, int) (*email.Emailer, error)
 	personalMessengers map[int]*email.Emailer
 	personalSMTPMut    sync.Mutex
 	// personalSMTPSendMut coordinates account-owned sends with cache
@@ -222,8 +223,8 @@ type Manager struct {
 	// every pool delivery the same way they do with owner deliveries.
 	poolSMTP           func(string) (*email.Emailer, error)
 	poolSMTPMessengers map[string]*email.Emailer
-	fnNotify            func(subject string, data any) error
-	log                 *log.Logger
+	fnNotify           func(subject string, data any) error
+	log                *log.Logger
 
 	// Campaigns that are currently running.
 	pipes    map[int]*pipe
@@ -253,8 +254,7 @@ type Manager struct {
 	// Sliding window keeps track of the total number of messages sent in a period
 	// and on reaching the specified limit, waits until the window is over before
 	// sending further messages.
-	slidingCount int
-	slidingStart time.Time
+	deliveryLimiter *email.DeliveryLimiter
 
 	tplFuncs template.FuncMap
 }
@@ -325,6 +325,8 @@ type Config struct {
 	// PersonalSMTP resolves the enabled SMTP pool for an account. A nil
 	// resolver means account-owned campaign/transactional sends are disabled.
 	PersonalSMTP func(int) (*email.Emailer, error)
+	// OrganizationSMTP resolves independent organization-owned marketing servers.
+	OrganizationSMTP func(int, int) (*email.Emailer, error)
 
 	// PoolSMTP resolves one specific SMTP account by UUID for
 	// platform-level public-pool recipients, so a recipient's assigned
@@ -361,6 +363,7 @@ func New(cfg Config, store Store, i *i18n.I18n, l *log.Logger) *Manager {
 		log:                l,
 		messengers:         make(map[string]Messenger),
 		personalSMTP:       cfg.PersonalSMTP,
+		organizationSMTP:   cfg.OrganizationSMTP,
 		personalMessengers: make(map[int]*email.Emailer),
 		poolSMTP:           cfg.PoolSMTP,
 		poolSMTPMessengers: make(map[string]*email.Emailer),
@@ -371,8 +374,13 @@ func New(cfg Config, store Store, i *i18n.I18n, l *log.Logger) *Manager {
 		campMsgQ:           make(chan CampaignMessage, cfg.Concurrency*cfg.MessageRate*2),
 		msgQ:               make(chan models.Message, cfg.Concurrency*cfg.MessageRate*2),
 		done:               make(chan struct{}),
-		slidingStart:       time.Now(),
 	}
+	windowLimit := 0
+	if cfg.SlidingWindow {
+		windowLimit = cfg.SlidingWindowRate
+	}
+	m.deliveryLimiter = email.NewDeliveryLimiter(cfg.MessageRate, windowLimit, cfg.SlidingWindowDuration, m.done)
+	m.deliveryLimiter.SetConcurrency(cfg.Concurrency)
 	m.tplFuncs = m.makeGnericFuncMap()
 
 	return m
@@ -391,9 +399,18 @@ func (m *Manager) AddMessenger(msg Messenger) error {
 	if _, ok := m.messengers[id]; ok {
 		return fmt.Errorf("messenger '%s' is already loaded", id)
 	}
+	if smtp, ok := msg.(*email.Emailer); ok {
+		m.ConfigureSMTP(smtp)
+	}
 	m.messengers[id] = msg
 
 	return nil
+}
+
+// ConfigureSMTP applies platform limits to temporary SMTP connection tests too.
+// Call this before publishing or using the sender.
+func (m *Manager) ConfigureSMTP(smtp *email.Emailer) {
+	smtp.SetDeliveryLimiter(m.deliveryLimiter)
 }
 
 // PushMessage pushes an arbitrary non-campaign Message to be sent out by the workers.
@@ -514,6 +531,7 @@ func (m *Manager) resolvePoolSMTPMessenger(uuid string) (Messenger, error) {
 	if msgr == nil {
 		return nil, fmt.Errorf("%w: pool SMTP %s is not available", ErrPersonalSMTPUnavailable, uuid)
 	}
+	msgr.SetDeliveryLimiter(m.deliveryLimiter)
 	m.poolSMTPMessengers[uuid] = msgr
 	return msgr, nil
 }
@@ -560,6 +578,31 @@ func (m *Manager) resolveMessenger(msg models.Message) (Messenger, error) {
 		if msg.PoolSenderSMTPUUID != "" {
 			return m.resolvePoolSMTPMessenger(msg.PoolSenderSMTPUUID)
 		}
+		if msg.Campaign != nil && msg.Campaign.SMTPSource == "organization" {
+			orgID := msg.Campaign.OrganizationID.Int
+			poolID := msg.Campaign.SMTPPoolID.Int
+			if orgID < 1 || poolID < 1 || m.organizationSMTP == nil {
+				return nil, fmt.Errorf("%w: organization SMTP unavailable", ErrPersonalSMTPUnavailable)
+			}
+			m.personalSMTPMut.Lock()
+			defer m.personalSMTPMut.Unlock()
+			if m.closed.Load() {
+				return nil, ErrManagerClosed
+			}
+			if msgr, ok := m.personalMessengers[-poolID]; ok {
+				return msgr, nil
+			}
+			msgr, err := m.organizationSMTP(orgID, poolID)
+			if err != nil {
+				return nil, fmt.Errorf("%w: organization SMTP: %v", ErrPersonalSMTPUnavailable, err)
+			}
+			if msgr == nil {
+				return nil, fmt.Errorf("%w: organization SMTP unavailable", ErrPersonalSMTPUnavailable)
+			}
+			msgr.SetDeliveryLimiter(m.deliveryLimiter)
+			m.personalMessengers[-poolID] = msgr
+			return msgr, nil
+		}
 		if msg.OwnerUserID < 1 {
 			return nil, fmt.Errorf("%w: campaign has no account owner", ErrPersonalSMTPUnavailable)
 		}
@@ -588,6 +631,7 @@ func (m *Manager) resolveMessenger(msg models.Message) (Messenger, error) {
 		if msgr == nil {
 			return nil, fmt.Errorf("%w: no personal SMTP configured for user %d", ErrPersonalSMTPUnavailable, msg.OwnerUserID)
 		}
+		msgr.SetDeliveryLimiter(m.deliveryLimiter)
 		m.personalMessengers[msg.OwnerUserID] = msgr
 		return msgr, nil
 	}
@@ -603,6 +647,7 @@ func (m *Manager) resolveMessenger(msg models.Message) (Messenger, error) {
 // an in-flight delivery, close the old pool, and prevent subsequent sends from
 // borrowing it.
 func (m *Manager) pushMessage(msg models.Message) error {
+	msg.SendCancel = m.done
 	if m.closed.Load() {
 		return ErrManagerClosed
 	}
@@ -618,7 +663,11 @@ func (m *Manager) pushMessage(msg models.Message) error {
 	if err != nil {
 		return m.normalizePersonalSMTPError(msg, err)
 	}
-	return m.normalizePersonalSMTPError(msg, msgr.Push(msg))
+	err = msgr.Push(msg)
+	if errors.Is(err, email.ErrSendCancelled) && m.closed.Load() {
+		return ErrManagerClosed
+	}
+	return m.normalizePersonalSMTPError(msg, err)
 }
 
 // normalizePersonalSMTPError maps errors from the account-owned SMTP pool to
@@ -686,7 +735,7 @@ func (m *Manager) WithPersonalSMTPUpdate(userID int, fn func() error) error {
 		delete(m.poolSMTPMessengers, uuid)
 	}
 
-	if userID > 0 {
+	if userID != 0 {
 		if msgr, ok := m.personalMessengers[userID]; ok {
 			_ = msgr.Close()
 			delete(m.personalMessengers, userID)
@@ -987,8 +1036,6 @@ func (m *Manager) scanCampaigns(tick time.Duration) {
 // worker is a blocking function that perpetually listents to events (message) on different
 // queues and processes them.
 func (m *Manager) worker() {
-	// Counter to keep track of the message / sec rate limit.
-	numMsg := 0
 	for {
 		// Prefer shutdown over already-buffered work. The process is about to
 		// reload, so accepting another message could race pool invalidation.
@@ -1020,13 +1067,6 @@ func (m *Manager) worker() {
 				msg.pipe.wg.Done()
 				continue
 			}
-
-			// Pause on hitting the message rate.
-			if numMsg >= m.cfg.MessageRate {
-				time.Sleep(time.Second)
-				numMsg = 0
-			}
-			numMsg++
 
 			// Outgoing message.
 			body := msg.body
@@ -1067,12 +1107,12 @@ func (m *Manager) worker() {
 					}
 				}
 			}
-			// Reply-To is controlled by the selected, verified customer-reply
-			// mailbox. Apply it after custom headers so a campaign cannot spoof or
-			// overwrite the account-owned destination.
+			// Public-pool Reply-To comes from the per-recipient routing snapshot.
+			// Apply it after custom headers so they cannot override the chosen order.
 			replyTo := msg.Campaign.ReplyMailboxEmail
-			if msg.PoolContactID > 0 && msg.PoolReplyMailboxEmail != "" {
+			if msg.PoolContactID > 0 {
 				replyTo = msg.PoolReplyMailboxEmail
+				h.Del("Reply-To")
 			}
 			if replyTo != "" {
 				h.Set("Reply-To", replyTo)
@@ -1097,6 +1137,10 @@ func (m *Manager) worker() {
 			// SMTP campaigns deliberately resolve through pushMessage so the
 			// invalidation read/write lock covers the complete delivery.
 			out.OwnerUserID = msg.Campaign.OwnerUserID.Int
+			out.SendCancel = m.done
+			if msg.pipe != nil {
+				out.CampaignCancel = msg.pipe.done
+			}
 			// A platform-level public-pool recipient carries its assigned SMTP
 			// account; resolution goes through the organization pool path.
 			out.PoolSenderSMTPUUID = msg.PoolSenderSMTPUUID
@@ -1106,13 +1150,13 @@ func (m *Manager) worker() {
 			} else {
 				err = m.pushMessage(out)
 			}
-			if err != nil {
+			if err != nil && !errors.Is(err, email.ErrSendCancelled) && !errors.Is(err, ErrManagerClosed) {
 				m.log.Printf("error sending message in campaign %s: customer %d: %v", msg.Campaign.Name, msg.Customer.ID, err)
 			}
 
 			// Increment the send rate or the error counter if there was an error.
 			if msg.pipe != nil {
-				if errors.Is(err, ErrManagerClosed) {
+				if errors.Is(err, ErrManagerClosed) || errors.Is(err, email.ErrSendCancelled) {
 					// Shutdown is an intentional cancellation, not a delivery
 					// failure. Stop the pipe and leave its recipients retryable.
 					msg.pipe.Stop(stopReasonPause, false)

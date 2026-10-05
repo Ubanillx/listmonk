@@ -12,8 +12,9 @@ import (
 )
 
 type mediaFolderRequest struct {
-	Name     string `json:"name"`
-	ParentID int    `json:"parent_id"`
+	Name       string `json:"name"`
+	ParentID   int    `json:"parent_id"`
+	Visibility string `json:"visibility"`
 }
 
 type mediaFolderMoveRequest struct {
@@ -146,12 +147,12 @@ func (a *App) CreateMediaFolder(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return err
 	}
-	folder, err := a.core.CreateMediaFolderInWorkspace(access, req.Name, req.ParentID)
+	folder, err := a.core.CreateMediaFolderInWorkspace(access, req.Name, req.ParentID, req.Visibility)
 	if err != nil {
 		return err
 	}
 	setAuditObjectID(c, strconv.Itoa(folder.ID))
-	setAuditObjectDetails(c, map[string]any{"name": folder.Name})
+	setAuditObjectDetails(c, map[string]any{"name": folder.Name, "visibility": folder.Visibility})
 	setAuditMetadata(c, map[string]any{"parent_folder_id": req.ParentID})
 	return c.JSON(http.StatusOK, okResp{folder})
 }
@@ -171,11 +172,11 @@ func (a *App) RenameMediaFolder(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return err
 	}
-	folder, err := a.core.RenameMediaFolderInWorkspace(access, getID(c), req.Name)
+	folder, err := a.core.RenameMediaFolderInWorkspace(access, getID(c), req.Name, req.Visibility)
 	if err != nil {
 		return err
 	}
-	setAuditObjectDetails(c, map[string]any{"name": folder.Name})
+	setAuditObjectDetails(c, map[string]any{"name": folder.Name, "visibility": folder.Visibility})
 	return c.JSON(http.StatusOK, okResp{folder})
 }
 

@@ -93,3 +93,28 @@ func TestParsePoolContactImportRowsRequiresTemplateFields(t *testing.T) {
 		t.Fatal("expected missing allocation department error")
 	}
 }
+
+func TestPoolImportReplyToOptionalAndMapped(t *testing.T) {
+	for _, tc := range []struct {
+		header   []string
+		values   []string
+		fieldMap map[string]string
+		want     string
+	}{
+		{[]string{"客户编号", "姓名", "邮箱", "分配部门"}, []string{"A", "One", "one@example.com", "Sales"}, nil, ""},
+		{[]string{"客户编号", "姓名", "邮箱", "分配部门", "回信邮箱"}, []string{"A", "One", "one@example.com", "Sales", " replies@example.com "}, nil, "replies@example.com"},
+		{[]string{"客户编号", "姓名", "邮箱", "分配部门", "route"}, []string{"A", "One", "one@example.com", "Sales", "replies@example.com"}, map[string]string{"reply_to": "E"}, "replies@example.com"},
+	} {
+		read := false
+		rows, err := parsePoolContactImportRows(tc.header, func() ([]string, error) {
+			if read {
+				return nil, io.EOF
+			}
+			read = true
+			return tc.values, nil
+		}, tc.fieldMap)
+		if err != nil || len(rows) != 1 || rows[0].ReplyTo != tc.want {
+			t.Fatalf("reply_to import: %+v, %v; want %q", rows, err, tc.want)
+		}
+	}
+}

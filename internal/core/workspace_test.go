@@ -44,6 +44,44 @@ func TestWorkspaceCustomerListReadPredicateScopesPlatformAdmin(t *testing.T) {
 	}
 }
 
+func TestWorkspaceCustomerListReadPredicateIncludesOrganizationSharing(t *testing.T) {
+	member := models.WorkspaceAccess{
+		Workspace: models.Workspace{OrganizationID: 7},
+		UserID:    10,
+	}
+	predicate, args := workspaceCustomerListReadPredicate(member, "l", 3)
+	if len(args) != 2 || args[0] != 7 || args[1] != 10 {
+		t.Fatalf("organization member args = %#v, want [7 10]", args)
+	}
+	for _, condition := range []string{
+		"l.owner_user_id = $4",
+		"l.organization_id = $3 AND l.visibility = 'organization'",
+		"l.transfer_pending_at IS NULL",
+	} {
+		if !strings.Contains(predicate, condition) {
+			t.Fatalf("organization member predicate = %q, missing %q", predicate, condition)
+		}
+	}
+
+	personal := models.WorkspaceAccess{Workspace: models.Workspace{Personal: true}, UserID: 10}
+	predicate, _ = workspaceCustomerListReadPredicate(personal, "l", 1)
+	if strings.Contains(predicate, "l.visibility = 'organization'") {
+		t.Fatalf("personal customer list predicate includes organization sharing: %q", predicate)
+	}
+}
+
+func TestCustomerListVisibilityAllowsOrganizationButNotGlobal(t *testing.T) {
+	if err := validateResourceVisibility(resourceLists, models.ResourceVisibilityOrganization); err != nil {
+		t.Fatalf("organization customer list visibility: %v", err)
+	}
+	if err := validateResourceVisibility(resourceLists, models.ResourceVisibilityGlobal); err == nil {
+		t.Fatal("global customer list visibility must be rejected")
+	}
+	if err := validateResourceVisibility(resourceCustomers, models.ResourceVisibilityOrganization); err == nil {
+		t.Fatal("customer records must stay owner-private")
+	}
+}
+
 func workspaceTestScope(orgID, ownerID int, visibility string, pending bool) models.ResourceScope {
 	scope := models.ResourceScope{Visibility: visibility}
 	if orgID > 0 {

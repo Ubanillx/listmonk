@@ -33,6 +33,21 @@ func permissionTestUser(perms ...string) auth.User {
 	return auth.User{PermissionsMap: permissions}
 }
 
+func TestCustomerListOrganizationVisibilityRequiresOrganizationWorkspace(t *testing.T) {
+	organization := models.WorkspaceAccess{Workspace: models.Workspace{OrganizationID: 7}, UserID: 10}
+	visibility, err := normalizeResourceVisibility(organization, resourceLists, models.ResourceVisibilityOrganization)
+	if err != nil || visibility != models.ResourceVisibilityOrganization {
+		t.Fatalf("organization list visibility = %q, %v", visibility, err)
+	}
+	personal := models.WorkspaceAccess{Workspace: models.Workspace{Personal: true}, UserID: 10}
+	if _, err := normalizeResourceVisibility(personal, resourceLists, models.ResourceVisibilityOrganization); err == nil {
+		t.Fatal("personal workspace must reject organization visibility")
+	}
+	if _, err := normalizeResourceVisibility(organization, resourceLists, models.ResourceVisibilityGlobal); err == nil {
+		t.Fatal("ordinary customer lists must not be global")
+	}
+}
+
 func TestCustomerListInActiveWorkspace(t *testing.T) {
 	organizationAdmin := models.WorkspaceAccess{
 		Workspace: models.Workspace{OrganizationID: 7, PlatformAdmin: true},

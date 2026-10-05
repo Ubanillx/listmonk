@@ -678,7 +678,7 @@ func (a *App) RegisterCampaignView(c echo.Context) error {
 	// Exclude dummy hits from template previews.
 	campUUID := c.Param("campUUID")
 	if campUUID != dummyUUID && subUUID != dummyUUID {
-		if err := a.core.RegisterCampaignView(campUUID, subUUID); err != nil {
+		if err := a.core.RegisterCampaignView(campUUID, subUUID, lookupCampaignOpenLocation(a.geoIP, c.RealIP())); err != nil {
 			a.log.Printf("error registering campaign view: %s", err)
 		}
 	}

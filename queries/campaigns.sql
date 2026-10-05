@@ -63,7 +63,7 @@ camp AS (
     INSERT INTO campaigns (uuid, type, name, subject, from_email, body, altbody,
         content_type, daily_send_limit, daily_resume_time, send_at, headers, attribs, tags, messenger, template_id, to_send,
         max_customer_id, archive, archive_slug, archive_template_id, archive_meta, body_source, auto_track_links,
-        organization_id, owner_user_id, original_owner_user_id, visibility, name_fallback, pool_scope)
+        organization_id, owner_user_id, original_owner_user_id, visibility, name_fallback, pool_scope, smtp_source, smtp_pool_id, smtp_rate_limit, pool_reply_priority)
         SELECT $1, $2, $3, $4, $5,
             -- body
             COALESCE(NULLIF($6, ''), (SELECT body FROM tpl), ''),
@@ -83,7 +83,7 @@ camp AS (
             COALESCE($23, (SELECT body_source FROM tpl)),
             $24,
             $25, $26, $27, $28, COALESCE((SELECT name_fallback FROM tpl), '{}'::jsonb),
-            $29::TEXT
+            $29::TEXT, COALESCE(NULLIF($30::TEXT, ''), 'personal'), $31, $32, COALESCE(NULLIF($33::TEXT, ''), 'contact_first')
         WHERE (SELECT valid FROM valid_lists)
         RETURNING id
 ),
@@ -1197,6 +1197,8 @@ SELECT campaigns.id AS campaign_id,
     campaigns.status,
     campaigns.messenger,
     campaigns.owner_user_id,
+    campaigns.organization_id,
+    campaigns.smtp_source, campaigns.smtp_pool_id,
     campaigns.pool_scope,
     campaigns.pool_next_org_index,
     CASE
@@ -1432,7 +1434,7 @@ WITH picked AS (
     SET status='queued', updated_at=NOW()
     FROM picked
     WHERE cpr.campaign_id=$1 AND cpr.pool_contact_id=picked.pool_contact_id
-    RETURNING cpr.pool_contact_id, cpr.status AS recipient_status, cpr.reply_mailbox_id, cpr.pool_id, cpr.allocation_id, cpr.email_snapshot, cpr.name_snapshot
+    RETURNING cpr.pool_contact_id, cpr.status AS recipient_status, cpr.reply_mailbox_id, cpr.pool_id, cpr.allocation_id, cpr.email_snapshot, cpr.name_snapshot, cpr.reply_to_snapshot
 )
 SELECT 0 AS id, pc.uuid, COALESCE(u.email_snapshot,pc.email) AS email, COALESCE(u.name_snapshot,pc.name) AS name, pc.attribs, 'enabled' AS status,
     pc.customer_code,
@@ -1440,7 +1442,7 @@ SELECT 0 AS id, pc.uuid, COALESCE(u.email_snapshot,pc.email) AS email, COALESCE(
     u.recipient_status, NULL::TIMESTAMPTZ AS sent_at,
     u.pool_contact_id, u.pool_id, COALESCE(u.allocation_id,0) AS org_pool_allocation_id,
     u.reply_mailbox_id AS pool_reply_mailbox_id,
-    COALESCE(rm.email,'') AS pool_reply_mailbox_email,
+    u.reply_to_snapshot AS pool_reply_mailbox_email,
     0::BIGINT AS pool_organization_id,
     ''::TEXT AS pool_sender_smtp_uuid,
     0 AS pool_sender_user_id,
@@ -1534,6 +1536,10 @@ WITH camp AS (
         archive_meta=$20,
         body_source=$22,
         auto_track_links=$23,
+        smtp_source=COALESCE(NULLIF($24::TEXT, ''), 'personal'),
+        smtp_pool_id=$25,
+        smtp_rate_limit=$26,
+        pool_reply_priority=COALESCE(NULLIF($27::TEXT, ''), 'contact_first'),
         updated_at=NOW()
     WHERE id = $1 RETURNING id
 ),
@@ -1640,13 +1646,17 @@ recipient AS (
 view AS (
     SELECT c.id AS campaign_id,
         CASE WHEN $2::TEXT = '' THEN NULL ELSE r.customer_id END AS customer_id,
-        CASE WHEN $2::TEXT = '' THEN NULL ELSE r.pool_contact_id END AS pool_contact_id
+        CASE WHEN $2::TEXT = '' THEN NULL ELSE r.pool_contact_id END AS pool_contact_id,
+        $3::TEXT AS country_code, $4::TEXT AS country, $5::TEXT AS region,
+        $6::TEXT AS city, $7::DOUBLE PRECISION AS latitude, $8::DOUBLE PRECISION AS longitude
     FROM campaign c
     LEFT JOIN recipient r ON r.campaign_id = c.id
     WHERE $2::TEXT = '' OR r.customer_id IS NOT NULL OR r.pool_contact_id IS NOT NULL
 )
-INSERT INTO campaign_views (campaign_id, customer_id, pool_contact_id)
-    SELECT campaign_id, customer_id, pool_contact_id FROM view;
+INSERT INTO campaign_views (campaign_id, customer_id, pool_contact_id,
+    country_code, country, region, city, latitude, longitude)
+    SELECT campaign_id, customer_id, pool_contact_id,
+        country_code, country, region, city, latitude, longitude FROM view;
 
 -- name: get-campaign-pool-orgs
 -- Active organizations that own a pool allocation for one of the campaign's
@@ -1697,23 +1707,36 @@ UPDATE campaigns SET pool_next_org_index = $2, updated_at = NOW() WHERE id = $1;
 
 -- name: get-campaign-pool-org-status
 -- Per-organization readiness of a platform-level public-pool campaign:
--- whether the organization is active, owns a usable (active + verified)
--- unified reply mailbox and has at least one enabled SMTP row belonging to an
--- enabled active member.
+-- whether the organization is active, every eligible contact has a reply
+-- address or verified organization fallback, and the selected SMTP source
+-- has at least one enabled sender.
 SELECT s.organization_id,
     o.name AS organization_name,
     o.status AS organization_status,
     o.reply_mailbox_id,
     COALESCE(rm.email, '') AS reply_mailbox_email,
-    (rm.id IS NOT NULL AND rm.status = 'active' AND rm.verified_at IS NOT NULL) AS mailbox_ready,
-    (
-        SELECT COUNT(*)
-        FROM user_smtp_servers s2
-        JOIN organization_members om2 ON om2.organization_id = s.organization_id
-            AND om2.user_id = s2.user_id AND om2.removed_at IS NULL
-        JOIN users u2 ON u2.id = s2.user_id AND u2.status = 'enabled'
-        WHERE s2.enabled = TRUE
-    ) AS smtp_count
+    ((rm.id IS NOT NULL AND rm.status = 'active' AND rm.verified_at IS NOT NULL) OR NOT (NOT EXISTS (
+	SELECT 1 FROM org_pool_allocation_members am
+	JOIN pool_members pm ON pm.contact_id=am.contact_id AND pm.pool_id=s.pool_id
+	JOIN pool_contacts pc ON pc.id=am.contact_id
+	LEFT JOIN org_pool_allocation_exclusions ex ON ex.pool_id=s.pool_id
+		AND ex.organization_id=s.organization_id AND ex.contact_id=pc.id AND ex.restored_at IS NULL
+	WHERE am.allocation_id=s.id AND am.status='active' AND pc.status='active'
+		AND ex.contact_id IS NULL) OR EXISTS (
+	SELECT 1 FROM org_pool_allocation_members am
+	JOIN pool_members pm ON pm.contact_id=am.contact_id AND pm.pool_id=s.pool_id
+	JOIN pool_contacts pc ON pc.id=am.contact_id
+	LEFT JOIN org_pool_allocation_exclusions ex ON ex.pool_id=s.pool_id
+		AND ex.organization_id=s.organization_id AND ex.contact_id=pc.id AND ex.restored_at IS NULL
+	WHERE am.allocation_id=s.id AND am.status='active' AND pc.status='active'
+		AND ex.contact_id IS NULL AND BTRIM(pc.reply_to)=''))) AS mailbox_ready,
+    (SELECT COUNT(*) FROM user_smtp_servers s2 WHERE s2.enabled AND (
+        ((SELECT smtp_source FROM campaigns WHERE id=$1)='organization' AND ((SELECT smtp_pool_id FROM campaigns WHERE id=$1) IS NULL AND s2.organization_id=s.organization_id OR s2.smtp_pool_id=(SELECT smtp_pool_id FROM campaigns WHERE id=$1)))
+        OR ((SELECT smtp_source FROM campaigns WHERE id=$1)<>'organization' AND EXISTS (
+            SELECT 1 FROM organization_members om2 JOIN users u2 ON u2.id=om2.user_id AND u2.status='enabled'
+            WHERE om2.organization_id=s.organization_id AND om2.user_id=s2.user_id AND om2.removed_at IS NULL
+        ))
+    )) AS smtp_count
 FROM org_pool_allocations s
 JOIN organizations o ON o.id = s.organization_id
 LEFT JOIN reply_mailboxes rm ON rm.id = o.reply_mailbox_id
@@ -1726,38 +1749,31 @@ WHERE s.pool_id = (
 ORDER BY s.organization_id;
 
 -- name: get-org-pool-smtp-servers
--- The flattened, dynamically filtered SMTP pool of one organization: every
--- enabled SMTP row of every enabled active member, ordered deterministically
--- by (user id, SMTP id) so the round-robin cursor has a stable list to point
--- into. sent_today backs the advisory quota pre-check; the authoritative
--- reservation happens at push time through the shared quota tracker.
-SELECT s.uuid, s.user_id, s.from_email, s.daily_limit,
-    COALESCE(u.sent_count, 0) AS sent_today
+SELECT s.uuid, COALESCE(s.user_id,0) AS user_id, s.from_email, s.daily_limit,
+    COALESCE(u.sent_count,0) AS sent_today
 FROM user_smtp_servers s
-JOIN organization_members om ON om.organization_id = $1 AND om.user_id = s.user_id AND om.removed_at IS NULL
-JOIN users usr ON usr.id = s.user_id AND usr.status = 'enabled'
-JOIN organizations o ON o.id = $1 AND o.status = 'active'
-LEFT JOIN user_smtp_daily_usage u ON u.smtp_uuid = s.uuid AND u.usage_date = $2::DATE
-WHERE s.enabled = TRUE
-ORDER BY s.user_id, s.id;
+JOIN organizations o ON o.id=$1 AND o.status='active'
+LEFT JOIN user_smtp_daily_usage u ON u.smtp_uuid=s.uuid AND u.usage_date=$2::DATE
+WHERE s.enabled AND (
+    ($3::TEXT='organization' AND (($4::BIGINT IS NULL AND s.organization_id=$1) OR s.smtp_pool_id=$4))
+    OR ($3::TEXT<>'organization' AND EXISTS (
+        SELECT 1 FROM organization_members om JOIN users usr ON usr.id=om.user_id AND usr.status='enabled'
+        WHERE om.organization_id=$1 AND om.user_id=s.user_id AND om.removed_at IS NULL
+    ))
+)
+ORDER BY s.user_id NULLS FIRST, s.id;
 
 -- name: get-enabled-user-smtp-server-by-uuid
--- Delivery-time revalidation of one assigned SMTP row: it must still be
--- enabled, owned by an enabled user who is still an active member of an
--- active organization. Used by the organization pool sender resolver so a
--- disabled account or removed member cannot keep sending after their rows
--- were filtered out of the pool.
-SELECT s.*,
-    FALSE AS is_primary,
-    COALESCE(u.sent_count, 0) AS sent_today
+SELECT s.*, FALSE AS is_primary, COALESCE(u.sent_count,0) AS sent_today
 FROM user_smtp_servers s
-JOIN users usr ON usr.id = s.user_id AND usr.status = 'enabled'
-JOIN organization_members om ON om.user_id = s.user_id AND om.removed_at IS NULL
-JOIN organizations o ON o.id = om.organization_id AND o.status = 'active'
-LEFT JOIN user_smtp_daily_usage u ON u.smtp_uuid = s.uuid AND u.usage_date = $2::DATE
-WHERE s.uuid = $1::UUID AND s.enabled = TRUE
-ORDER BY om.organization_id
-LIMIT 1;
+LEFT JOIN user_smtp_daily_usage u ON u.smtp_uuid=s.uuid AND u.usage_date=$2::DATE
+WHERE s.uuid=$1::UUID AND s.enabled AND (
+    EXISTS (SELECT 1 FROM organizations o WHERE o.id=s.organization_id AND o.status='active')
+    OR EXISTS (SELECT 1 FROM users usr
+        JOIN organization_members om ON om.user_id=usr.id AND om.removed_at IS NULL
+        JOIN organizations o ON o.id=om.organization_id AND o.status='active'
+        WHERE usr.id=s.user_id AND usr.status='enabled')
+);
 
 -- name: upsert-org-pool-smtp-cursor
 INSERT INTO org_pool_smtp_cursors(organization_id, next_smtp_uuid, updated_at)
@@ -1783,7 +1799,7 @@ SELECT cpr.pool_contact_id,
     cpr.reply_mailbox_id,
     cpr.pool_id,
     COALESCE(cpr.allocation_id, 0) AS allocation_id,
-    COALESCE(rm.email, '') AS pool_reply_mailbox_email,
+    cpr.reply_to_snapshot AS pool_reply_mailbox_email,
     cpr.organization_id AS pool_organization_id
 FROM campaign_pool_recipients cpr
 JOIN pool_contacts pc ON pc.id = cpr.pool_contact_id
@@ -1835,8 +1851,11 @@ SELECT CASE
     ELSE COALESCE(SUM(GREATEST(s.daily_limit - COALESCE(u.sent_count, 0), 0)), 0)
 END AS remaining
 FROM orgs o
-JOIN user_smtp_servers s ON s.enabled = TRUE
-JOIN organization_members om ON om.organization_id = o.organization_id
-    AND om.user_id = s.user_id AND om.removed_at IS NULL
-JOIN users usr ON usr.id = s.user_id AND usr.status = 'enabled'
+JOIN user_smtp_servers s ON s.enabled AND (
+    ((SELECT smtp_source FROM campaigns WHERE id=$1)='organization' AND ((SELECT smtp_pool_id FROM campaigns WHERE id=$1) IS NULL AND s.organization_id=o.organization_id OR s.smtp_pool_id=(SELECT smtp_pool_id FROM campaigns WHERE id=$1)))
+    OR ((SELECT smtp_source FROM campaigns WHERE id=$1)<>'organization' AND EXISTS (
+        SELECT 1 FROM organization_members om JOIN users usr ON usr.id=om.user_id AND usr.status='enabled'
+        WHERE om.organization_id=o.organization_id AND om.user_id=s.user_id AND om.removed_at IS NULL
+    ))
+)
 LEFT JOIN user_smtp_daily_usage u ON u.smtp_uuid = s.uuid AND u.usage_date = $2::DATE;

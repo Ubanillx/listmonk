@@ -31,6 +31,7 @@ import (
 	"github.com/knadh/listmonk/models"
 	"github.com/knadh/paginator"
 	"github.com/knadh/stuffbin"
+	"github.com/oschwald/geoip2-golang"
 )
 
 // App contains the "global" shared components, controllers and fields.
@@ -50,6 +51,7 @@ type App struct {
 	media      media.Store
 	bounce     *bounce.Manager
 	replyAI    *replyai.Client
+	geoIP      *geoip2.Reader
 	captcha    *captcha.Captcha
 	i18n       *i18n.I18n
 	pg         *paginator.Paginator
@@ -232,6 +234,10 @@ func main() {
 		// the global setting and an individual mailbox are both enabled.
 		replyAI = initReplyAIClassifier(ko)
 
+		// A local GeoLite2/GeoIP2 City database is optional. An invalid configured
+		// database fails startup so location collection cannot silently stop.
+		geoIP = initGeoIP(cfg.Privacy.GeoIPDatabase)
+
 		// Initialize all messengers, SMTP and postback.
 		smtpMsgrs = initSMTPMessengers()
 		msgrs     = append(smtpMsgrs.messengers, initPostbackMessengers(ko)...)
@@ -324,6 +330,7 @@ func main() {
 		media:      media,
 		bounce:     bounce,
 		replyAI:    replyAI,
+		geoIP:      geoIP,
 		captcha:    initCaptcha(),
 		i18n:       i18n,
 		log:        lo,
@@ -381,6 +388,9 @@ func main() {
 
 		// Close the DB pool.
 		db.Close()
+		if app.geoIP != nil {
+			app.geoIP.Close()
+		}
 
 		// Close the messenger pool.
 		for _, m := range app.messengers {

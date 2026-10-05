@@ -34,6 +34,9 @@ type campaignSendState struct {
 	Status          string    `db:"status"`
 	Messenger       string    `db:"messenger"`
 	OwnerUserID     null.Int  `db:"owner_user_id"`
+	OrganizationID  null.Int  `db:"organization_id"`
+	SMTPSource      string    `db:"smtp_source"`
+	SMTPPoolID      null.Int  `db:"smtp_pool_id"`
 	DailySendLimit  int       `db:"daily_send_limit"`
 	DailyResumeTime string    `db:"daily_resume_time"`
 	NextResumeAt    null.Time `db:"next_resume_at"`
@@ -93,15 +96,25 @@ func (s *store) GetUserSMTPServers(userID int) ([]email.Server, error) {
 // mapSMTPServer converts one persisted SMTP row into the messenger server
 // options used by email.Emailer.
 func mapSMTPServer(row models.PersonalSMTPServer) (email.Server, error) {
-	idle, err := time.ParseDuration(row.IdleTimeout)
+	return mapSMTPServerWithDelivery(row, resolveSMTPPlatformDefaults())
+}
+
+func mapSMTPServerWithDelivery(row models.PersonalSMTPServer, delivery models.SMTPDeliverySettings) (email.Server, error) {
+	delayMin, delayMax, err := delivery.SendDelayRange()
+	if err != nil {
+		return email.Server{}, err
+	}
+	idle, err := time.ParseDuration(delivery.IdleTimeout)
 	if err != nil {
 		return email.Server{}, fmt.Errorf("invalid SMTP idle timeout: %w", err)
 	}
-	wait, err := time.ParseDuration(row.WaitTimeout)
+	wait, err := time.ParseDuration(delivery.WaitTimeout)
 	if err != nil {
 		return email.Server{}, fmt.Errorf("invalid SMTP wait timeout: %w", err)
 	}
 	return email.Server{
+		SendDelayMin:  delayMin,
+		SendDelayMax:  delayMax,
 		Name:          row.Name,
 		UUID:          row.UUID,
 		FromEmail:     row.FromEmail,
@@ -111,13 +124,13 @@ func mapSMTPServer(row models.PersonalSMTPServer) (email.Server, error) {
 		AuthProtocol:  row.AuthProtocol,
 		TLSType:       row.TLSType,
 		TLSSkipVerify: row.TLSSkipVerify,
-		EmailHeaders:  headersToMap(row.EmailHeaders),
+		EmailHeaders:  headersToMap(delivery.EmailHeaders),
 		Opt: smtppool.Opt{
 			Host:              row.Host,
 			Port:              row.Port,
 			HelloHostname:     row.HelloHostname,
-			MaxConns:          row.MaxConns,
-			MaxMessageRetries: row.MaxMsgRetries,
+			MaxConns:          delivery.MaxConns,
+			MaxMessageRetries: delivery.MaxMsgRetries,
 			IdleTimeout:       idle,
 			PoolWaitTimeout:   wait,
 		},
@@ -260,6 +273,12 @@ func (s *store) NextCustomers(campID, limit int) ([]models.CampaignCustomer, err
 			// capacity is advisory; the authoritative reservation happens at
 			// send time through the shared quota tracker.
 			if err := s.queries.GetCampaignPoolSMTPRemaining.Get(&smtpRemaining, campID, currentLocalDate()); err != nil {
+				return nil, err
+			}
+		} else if st.SMTPSource == "organization" && st.OrganizationID.Valid {
+			var err error
+			smtpRemaining, err = s.userSMTPRemaining(-st.SMTPPoolID.Int)
+			if err != nil {
 				return nil, err
 			}
 		} else if st.OwnerUserID.Valid && st.OwnerUserID.Int > 0 {
@@ -509,7 +528,7 @@ func (s *store) nextPoolCustomers(campID int, st campaignSendState, limit int) (
 			return rows, nil
 		}
 		var rows []poolOrgSMTPServer
-		if err := s.queries.GetOrgPoolSMTPServers.Select(&rows, orgID, currentLocalDate()); err != nil {
+		if err := s.queries.GetOrgPoolSMTPServers.Select(&rows, orgID, currentLocalDate(), st.SMTPSource, st.SMTPPoolID); err != nil {
 			return nil, err
 		}
 		orgServers[orgID] = rows
@@ -546,7 +565,7 @@ func (s *store) nextPoolCustomers(campID int, st campaignSendState, limit int) (
 				COALESCE(cpr.name_snapshot, pc.name) AS name,
 				pc.attribs, pc.uuid, pc.customer_code, pc.created_at, pc.updated_at,
 				cpr.reply_mailbox_id, COALESCE(cpr.allocation_id, 0) AS allocation_id,
-				COALESCE(rm.email, '') AS pool_reply_mailbox_email,
+				cpr.reply_to_snapshot AS pool_reply_mailbox_email,
 				cpr.organization_id AS pool_organization_id
 			FROM campaign_pool_recipients cpr
 			JOIN pool_contacts pc ON pc.id = cpr.pool_contact_id
@@ -601,7 +620,7 @@ func (s *store) nextPoolCustomers(campID int, st campaignSendState, limit int) (
 
 		res, err := tx.Exec(`UPDATE campaign_pool_recipients
 			SET status = 'queued', updated_at = NOW(),
-				sender_smtp_uuid = $3::UUID, sender_user_id = $4,
+				sender_smtp_uuid = $3::UUID, sender_user_id = NULLIF($4::INT,0),
 				sender_from_snapshot = $5, sender_assigned_at = NOW()
 			WHERE campaign_id = $1 AND pool_contact_id = $2
 				AND status = ANY('{pending,deferred}'::campaign_recipient_status[])`,

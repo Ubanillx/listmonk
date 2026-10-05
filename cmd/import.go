@@ -109,6 +109,7 @@ func (a *App) ImportCustomers(c echo.Context) error {
 		allowed := map[string]bool{"email": true, "name": true, "customer_code": true}
 		if isPoolImport {
 			allowed["allocation_department"] = true
+			allowed["reply_to"] = true
 		}
 		for key := range opt.FieldMap {
 			if !allowed[strings.ToLower(strings.TrimSpace(key))] {
@@ -123,8 +124,8 @@ func (a *App) ImportCustomers(c echo.Context) error {
 		if !auth.GetUser(c).IsPlatformAdmin() {
 			return echo.NewHTTPError(http.StatusForbidden, "only highest administrators may import public-pool contacts")
 		}
-		if opt.Mode != subimporter.ModeSubscribe {
-			return echo.NewHTTPError(http.StatusBadRequest, "public-pool import only supports subscribe mode")
+		if opt.Mode != subimporter.ModeSubscribe && opt.Mode != subimporter.ModeBlocklist {
+			return echo.NewHTTPError(http.StatusBadRequest, "invalid public-pool import mode")
 		}
 		if opt.Overwrite || opt.OverwriteUserInfo || opt.OverwriteSubStatus {
 			return echo.NewHTTPError(http.StatusBadRequest, "overwrite options are not supported for public-pool import")
@@ -251,7 +252,7 @@ func (a *App) ImportCustomers(c echo.Context) error {
 	// the pre-check does (403 for another workspace's import, 400 for one that
 	// is already running) instead of a generic "error starting import".
 	opt.Filename = file.Filename
-	sess, err := a.importer.NewSession(opt)
+	sess, err := a.admitImportSession(opt)
 	if err != nil {
 		if errors.Is(err, subimporter.ErrIsImporting) {
 			if err := a.requireImportAccess(access); err != nil {
@@ -299,6 +300,61 @@ func (a *App) ImportCustomers(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{a.importer.GetStats()})
 }
 
+// admitImportSession creates the importer session for opt and arms exactly one
+// terminal-audit watcher for it (see cmd/import_audit.go). It is the only place
+// an import session is created, which is what keeps the terminal event of a
+// session and the admission of the next one ordered:
+//
+// The importer publishes one status for the whole process, so admitting this
+// session replaces the status the previous session ended with. A previous
+// session that already reached its terminal state and was not observed yet is
+// therefore claimed (its terminal status is captured) while the tracker lock is
+// held, and the new session is published and armed before that lock is released.
+// A watcher of the previous session can then no longer mistake the new session's
+// status for its own, even when both imports have the same owner, workspace and
+// file name.
+//
+// The claimed status is recorded outside the lock: the audit insert is best
+// effort and must not gate the admission of an import.
+func (a *App) admitImportSession(opt subimporter.SessionOpt) (*subimporter.Session, error) {
+	var (
+		stale       *importAuditSession
+		staleStatus subimporter.Status
+	)
+
+	importAuditSessions.mu.Lock()
+	if session, status, ok := importAuditSessions.claimLocked(a.importer, ""); ok {
+		stale, staleStatus = &session, status
+	}
+
+	sess, err := a.importer.NewSession(opt)
+	if err != nil {
+		importAuditSessions.mu.Unlock()
+		a.recordStaleImportAudit(stale, staleStatus)
+		return nil, err
+	}
+
+	session := newImportAuditSession(opt, a.importer.Done())
+	importAuditSessions.armLocked(session)
+	importAuditSessions.mu.Unlock()
+
+	// One watcher per admitted session. It waits for this session's own
+	// completion signal and exits as soon as the session ends.
+	go watchImportAuditSession(importAuditSessions, a.importer, session, a.recordAuditEvent)
+
+	a.recordStaleImportAudit(stale, staleStatus)
+	return sess, nil
+}
+
+// recordStaleImportAudit writes the terminal event claimed for a previous
+// session at admission time, when there was one.
+func (a *App) recordStaleImportAudit(session *importAuditSession, status subimporter.Status) {
+	if session == nil {
+		return
+	}
+	a.recordImportTerminalAudit(*session, status)
+}
+
 // importPoolCustomers is the public-pool branch of the unified customer
 // import endpoint. It is intentionally synchronous: one uploaded workbook is
 // parsed and committed as one transaction, and the response contains only
@@ -326,20 +382,22 @@ func (a *App) importPoolCustomers(c echo.Context, poolID int, opt subimporter.Se
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
-	result, err := a.core.ImportPoolContacts(poolID, auth.GetUser(c).ID, rows)
+	result, err := a.core.ImportPoolContacts(poolID, auth.GetUser(c).ID, rows, opt.Mode == subimporter.ModeBlocklist)
 	if err != nil {
 		return err
 	}
 	setAuditObjectID(c, strconv.Itoa(poolID))
 	setAuditMetadata(c, map[string]any{
-		"target":     result.Target,
-		"total":      result.Total,
-		"valid":      result.Valid,
-		"created":    result.Created,
-		"existing":   result.Existing,
-		"conflicts":  result.Conflicts,
-		"invalid":    result.Invalid,
-		"duplicates": result.Duplicates,
+		"mode":        opt.Mode,
+		"target":      result.Target,
+		"total":       result.Total,
+		"valid":       result.Valid,
+		"created":     result.Created,
+		"existing":    result.Existing,
+		"conflicts":   result.Conflicts,
+		"invalid":     result.Invalid,
+		"duplicates":  result.Duplicates,
+		"blocklisted": result.Blocklisted,
 	})
 	return c.JSON(http.StatusOK, okResp{result})
 }

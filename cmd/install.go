@@ -298,6 +298,7 @@ func installCampaign(campTplID, archiveTplID int, q *models.Queries) {
 		// NOT NULL DEFAULT 'organization'), so the install path has to pass it
 		// like every other caller or the fresh install aborts here.
 		models.CampaignPoolScopeOrganization,
+		"personal", nil, models.DefaultPersonalSMTPRateLimit, "contact_first",
 	); err != nil {
 		lo.Fatalf("error creating sample campaign: %v", err)
 	}

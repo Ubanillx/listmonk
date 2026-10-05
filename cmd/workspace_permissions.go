@@ -563,8 +563,8 @@ func (a *App) requireCampaignAnalytics(c echo.Context, access models.WorkspaceAc
 // queryReadableWorkspaceLists filters legacy customer_list grants before pagination.
 // Workspace predicates run in Core first, so customer_list-role IDs can only narrow a
 // caller's active workspace and can never grant access across an organization.
-func (a *App) queryReadableWorkspaceLists(c echo.Context, access models.WorkspaceAccess, search, typ, optin, status string, tags []string, orderBy, order string, offset, limit int) ([]models.CustomerList, int, error) {
-	all, _, err := a.core.QueryWorkspaceLists(access, search, typ, optin, status, tags, orderBy, order, 0, 0)
+func (a *App) queryReadableWorkspaceLists(c echo.Context, access models.WorkspaceAccess, query customerListQuery) ([]models.CustomerList, int, error) {
+	all, _, err := a.core.QueryWorkspaceLists(access, query.search, query.typ, query.optin, query.status, query.tags, query.orderBy, query.order, 0, 0)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -572,7 +572,8 @@ func (a *App) queryReadableWorkspaceLists(c echo.Context, access models.Workspac
 	// stored in the platform administrator's workspace. Add only minimal pool
 	// metadata for organizations that can deliver them; contact endpoints apply
 	// the separate masking/detail policy.
-	if typ == "" || typ == models.CustomerListTypePool || typ == models.CustomerListTypeOrgPoolAllocation {
+	if query.group != customerListGroupPrivate &&
+		(query.typ == "" || query.typ == models.CustomerListTypePool || query.typ == models.CustomerListTypeOrgPoolAllocation) {
 		poolLists, poolErr := a.core.QueryAuthorizedPoolLists(access)
 		if poolErr != nil {
 			return nil, 0, poolErr
@@ -582,7 +583,7 @@ func (a *App) queryReadableWorkspaceLists(c echo.Context, access models.Workspac
 			known[l.ID] = struct{}{}
 		}
 		for _, l := range poolLists {
-			if _, ok := known[l.ID]; !ok && (typ == "" || l.Type == typ) {
+			if _, ok := known[l.ID]; !ok && query.matchesAddedPool(l) {
 				all = append(all, l)
 				known[l.ID] = struct{}{}
 			}
@@ -599,7 +600,7 @@ func (a *App) queryReadableWorkspaceLists(c echo.Context, access models.Workspac
 				return nil, 0, err
 			}
 			for _, l := range platformPools {
-				if _, ok := known[l.ID]; !ok && (typ == "" || l.Type == typ) {
+				if _, ok := known[l.ID]; !ok && query.matchesAddedPool(l) {
 					all = append(all, l)
 					known[l.ID] = struct{}{}
 				}
@@ -615,6 +616,9 @@ func (a *App) queryReadableWorkspaceLists(c echo.Context, access models.Workspac
 	}
 	filtered := make([]models.CustomerList, 0, len(all))
 	for _, customer_list := range all {
+		if !query.group.matches(customer_list) {
+			continue
+		}
 		if customer_list.PoolDeliveryAllowed {
 			filtered = append(filtered, customer_list)
 			continue
@@ -628,18 +632,19 @@ func (a *App) queryReadableWorkspaceLists(c echo.Context, access models.Workspac
 		}
 	}
 
+	sortCustomerLists(filtered, query.orderBy, query.order)
 	total := len(filtered)
-	if offset < 0 {
-		offset = 0
+	if query.offset < 0 {
+		query.offset = 0
 	}
-	if offset >= total {
+	if query.offset >= total {
 		return []models.CustomerList{}, total, nil
 	}
 	end := total
-	if limit > 0 && offset+limit < end {
-		end = offset + limit
+	if query.limit > 0 && query.offset+query.limit < end {
+		end = query.offset + query.limit
 	}
-	return filtered[offset:end], total, nil
+	return filtered[query.offset:end], total, nil
 }
 
 // queryReadableWorkspaceCampaigns filters after the fixed workspace query but

@@ -2,6 +2,7 @@ package core
 
 import (
 	"database/sql"
+	"fmt"
 	"net/http"
 	"sort"
 
@@ -137,7 +138,7 @@ func (c *Core) updateCampaignTx(tx *sqlx.Tx, access models.WorkspaceAccess, id i
 		o.ArchiveMeta,
 		pq.Array(mediaIDs),
 		o.BodySource,
-		o.AutoTrackLinks)
+		o.AutoTrackLinks, o.SMTPSource, o.SMTPPoolID, o.SMTPRateLimit, o.PoolReplyPriority)
 	if err != nil {
 		return workspaceQueryError("updating campaign", err)
 	}
@@ -288,6 +289,13 @@ func (c *Core) DeleteCampaignsInWorkspace(access models.WorkspaceAccess, ids []i
 
 func (c *Core) UpdateListInWorkspace(access models.WorkspaceAccess, id int, l models.CustomerList, visibility string) (models.CustomerList, error) {
 	err := c.withWorkspaceResourceMutation(access, resourceLists, []int{id}, func(tx *sqlx.Tx) error {
+		var currentType string
+		if err := tx.Get(&currentType, `SELECT type::text FROM customer_lists WHERE id = $1`, id); err != nil {
+			return workspaceQueryError("reading customer_list type", err)
+		}
+		if !canUpdateCustomerListType(currentType, l.Type) {
+			return echo.NewHTTPError(http.StatusBadRequest, "public pool list type cannot be changed")
+		}
 		if l.Type == models.CustomerListTypePool {
 			visibility = models.ResourceVisibilityGlobal
 		}
@@ -314,6 +322,18 @@ func (c *Core) UpdateListInWorkspace(access models.WorkspaceAccess, id int, l mo
 		return c.GetList(id, "")
 	}
 	return c.GetWorkspaceList(access, id)
+}
+
+// Pool and allocation types are assigned by their dedicated creation flows.
+// Ordinary private/public lists retain their existing type-switching behavior.
+func canUpdateCustomerListType(current, requested string) bool {
+	if current == requested {
+		return true
+	}
+	isOrdinary := func(typ string) bool {
+		return typ == models.CustomerListTypePrivate || typ == models.CustomerListTypePublic
+	}
+	return isOrdinary(current) && isOrdinary(requested)
 }
 
 func (c *Core) DeleteListsInWorkspace(access models.WorkspaceAccess, ids []int) error {
@@ -365,6 +385,37 @@ func (c *Core) lockWorkspaceUsableResources(tx *sqlx.Tx, access models.Workspace
 				AND usable_organization.status = 'active'
 		))`
 	args := []any{pq.Array(ids)}
+	if resource == resourceMedia {
+		var mediaLocks []int
+		if err := tx.Select(&mediaLocks, `SELECT id FROM media WHERE id = ANY($1::INT[]) ORDER BY id FOR UPDATE`, pq.Array(ids)); err != nil {
+			return workspaceQueryError("locking media rows", err)
+		}
+		if err := c.lockMediaFolderAccess(tx, access, ids); err != nil {
+			return err
+		}
+		// Folder media uses the folder audience. Root media retains the stricter
+		// send policy (a manager cannot send using another owner's private file).
+		root, rootArgs := workspaceReadPredicate(access, "m", 2)
+		if !access.PlatformAdmin && access.IsOrganizationManager() {
+			root = `(m.organization_id = $2 AND (m.owner_user_id = $3 OR m.visibility IN ('organization', 'global')))
+				OR m.visibility = 'global'`
+			rootArgs = []any{access.OrganizationID, access.UserID}
+		}
+		folder, folderArgs := mediaFolderReadPredicate(access, "permission_folder", 2+len(rootArgs))
+		args = append(args, rootArgs...)
+		args = append(args, folderArgs...)
+		where = fmt.Sprintf(`m.id = ANY($1::INT[]) AND m.transfer_pending_at IS NULL AND %s AND
+			((m.folder_id IS NULL AND (%s)) OR EXISTS (SELECT 1 FROM media_folders permission_folder
+			WHERE permission_folder.id = m.folder_id AND (%s)))`, activeOrganizationPredicate("m"), root, folder)
+		var locked []int
+		if err := tx.Select(&locked, "SELECT m.id FROM media m WHERE "+where+" ORDER BY m.id FOR UPDATE", args...); err != nil {
+			return workspaceQueryError("locking usable media", err)
+		}
+		if len(locked) != len(ids) {
+			return workspaceMutationError()
+		}
+		return nil
+	}
 	if !access.PlatformAdmin {
 		if access.IsOrganization() {
 			where += " AND ((organization_id = $2 AND (owner_user_id = $3 OR visibility = 'organization')) OR visibility = 'global')"

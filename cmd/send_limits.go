@@ -10,6 +10,8 @@ const dailyResumeLayout = schedule.DailyResumeLayout
 
 const defaultCampaignDailySendLimit = 300
 
+const maxCampaignSMTPRateLimit = 1000000
+
 func currentLocalDate() string {
 	return schedule.CurrentLocalDate()
 }
@@ -47,4 +49,18 @@ func normalizedCampaignDailySendLimit(dailyLimit int) int {
 		return defaultCampaignDailySendLimit
 	}
 	return dailyLimit
+}
+
+func defaultCampaignSMTPRateLimit(source string) int {
+	if source == "organization" {
+		return models.DefaultOrganizationSMTPRateLimit
+	}
+	return models.DefaultPersonalSMTPRateLimit
+}
+
+func normalizedCampaignSMTPRateLimit(limit int, source string) int {
+	if limit < 1 {
+		return defaultCampaignSMTPRateLimit(source)
+	}
+	return limit
 }

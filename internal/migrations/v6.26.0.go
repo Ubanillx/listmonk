@@ -40,6 +40,9 @@ func V6_26_0(db *sqlx.DB, fs stuffbin.FileSystem, ko *koanf.Koanf, lo *log.Logge
 						'optin_single', (SELECT COUNT(*) FROM customer_lists WHERE optin='single'),
 						'optin_double', (SELECT COUNT(*) FROM customer_lists WHERE optin='double')
 					),
+					'poolLists', JSON_BUILD_OBJECT(
+						'total', (SELECT COUNT(*) FROM customer_lists WHERE type='pool' AND status='active')
+					),
 					'campaigns', JSON_BUILD_OBJECT(
 						'total', (SELECT COUNT(*) FROM campaigns),
 						'by_status', (

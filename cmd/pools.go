@@ -28,6 +28,7 @@ var poolContactImportAliases = map[string][]string{
 	"customer_code":         {"customer_code", "customer code", "customercode", "客户编码", "客户编号"},
 	"name":                  {"name", "fullname", "full name", "联系人", "姓名"},
 	"email":                 {"email", "e-mail", "mail", "邮箱", "邮件地址"},
+	"reply_to":              {"reply_to", "reply to", "reply-to", "reply_email", "回信邮箱", "回件邮箱", "回复邮箱"},
 	"allocation_department": {"allocation_department", "allocation department", "department", "部门", "分配部门", "分配部门名称"},
 }
 
@@ -93,6 +94,10 @@ func resolvePoolContactImportColumns(header []string, fieldMap map[string]string
 			}
 		}
 		if _, ok := columns[key]; !ok {
+			if key == "reply_to" {
+				columns[key] = -1
+				continue
+			}
 			return nil, fmt.Errorf("公海导入首行必须包含客户编号、姓名、邮箱、分配部门列")
 		}
 	}
@@ -101,7 +106,7 @@ func resolvePoolContactImportColumns(header []string, fieldMap map[string]string
 
 // parsePoolContactImportFile parses the first sheet/CSV of the unified public
 // pool import. The source workbook may contain the full business template;
-// only the four mapped fields are returned to the domain layer.
+// only the mapped business fields are returned to the domain layer.
 func parsePoolContactImportFile(file *multipart.FileHeader, fieldMap map[string]string) ([]models.PoolContactImportRow, error) {
 	name := strings.ToLower(file.Filename)
 	src, err := file.Open()
@@ -186,6 +191,7 @@ func parsePoolContactImportRows(header []string, next func() ([]string, error), 
 				CustomerCode:         valueAt(values, "customer_code"),
 				Name:                 valueAt(values, "name"),
 				Email:                valueAt(values, "email"),
+				ReplyTo:              valueAt(values, "reply_to"),
 				AllocationDepartment: valueAt(values, "allocation_department"),
 			})
 			if len(rows) > 100000 {
@@ -235,6 +241,146 @@ func (a *App) GetPoolContacts(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{out})
 }
 
+// GetAllPoolContacts is the public-pool landing view. The core query enforces
+// organization scope and paginates across pool memberships.
+func (a *App) GetAllPoolContacts(c echo.Context) error {
+	access, err := a.requirePoolPermission(c, auth.PermPoolsGet)
+	if err != nil {
+		return err
+	}
+	user := auth.GetUser(c)
+	search := c.QueryParam("search")
+	if search == "" {
+		search = c.QueryParam("customer_code")
+	}
+	poolID, department, err := allPoolContactFilterParams(c)
+	if err != nil {
+		return err
+	}
+	pg := a.pg.NewFromURL(c.Request().URL.Query())
+	rows, total, err := a.core.QueryAllPoolContacts(access.OrganizationID, user.IsPlatformAdmin(),
+		c.QueryParam("status"), search, poolID, department, c.QueryParam("order_by"), c.QueryParam("order"), pg.Offset, pg.Limit)
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, okResp{models.PageResults{
+		Results: rows,
+		Search:  search,
+		Total:   total,
+		Page:    pg.Page,
+		PerPage: pg.PerPage,
+	}})
+}
+
+// GetAllPoolContactFilters returns the visible pool/department combinations
+// used by the aggregate page's dropdown filters.
+func (a *App) GetAllPoolContactFilters(c echo.Context) error {
+	access, err := a.requirePoolPermission(c, auth.PermPoolsGet)
+	if err != nil {
+		return err
+	}
+	options, err := a.core.QueryAllPoolContactFilterOptions(access.OrganizationID, auth.GetUser(c).IsPlatformAdmin())
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, okResp{options})
+}
+
+func allPoolContactFilterParams(c echo.Context) (int64, *string, error) {
+	params := c.Request().URL.Query()
+	var poolID int64
+	if values, ok := params["pool_id"]; ok {
+		if len(values) == 0 {
+			return 0, nil, echo.NewHTTPError(http.StatusBadRequest, "invalid pool id")
+		}
+		id, err := strconv.ParseInt(strings.TrimSpace(values[0]), 10, 64)
+		if err != nil || id <= 0 {
+			return 0, nil, echo.NewHTTPError(http.StatusBadRequest, "invalid pool id")
+		}
+		poolID = id
+	}
+	var department *string
+	if values, ok := params["allocation_department"]; ok {
+		value := ""
+		if len(values) > 0 {
+			value = strings.TrimSpace(values[0])
+		}
+		department = &value
+	}
+	return poolID, department, nil
+}
+
+// ExportAllPoolContacts streams the same organization-scoped aggregate rows.
+func (a *App) ExportAllPoolContacts(c echo.Context) error {
+	access, err := a.requirePoolPermission(c, auth.PermPoolsExport)
+	if err != nil {
+		return err
+	}
+	user := auth.GetUser(c)
+	poolID, department, err := allPoolContactFilterParams(c)
+	if err != nil {
+		return err
+	}
+	selected, err := parsePoolExportSelection(c.Request().URL.Query(), true)
+	if err != nil {
+		return err
+	}
+	hdr := c.Response().Header()
+	hdr.Set(echo.HeaderContentType, "text/csv")
+	hdr.Set(echo.HeaderContentDisposition, "attachment; filename=pool-contacts.csv")
+	hdr.Set("Cache-Control", "no-cache")
+	wr := csv.NewWriter(c.Response())
+	if err := wr.Write([]string{"pool_id", "pool_name", "customer_code", "name", "email", "reply_to", "allocation_department", "status", "created_at", "updated_at"}); err != nil {
+		return err
+	}
+	batch := a.cfg.DBBatchSize
+	if batch <= 0 {
+		batch = 1000
+	}
+	for offset := 0; ; offset += batch {
+		rows, _, err := a.core.QueryAllPoolContacts(access.OrganizationID, user.IsPlatformAdmin(),
+			c.QueryParam("status"), c.QueryParam("search"), poolID, department,
+			c.QueryParam("order_by"), c.QueryParam("order"), offset, batch)
+		if err != nil {
+			return err
+		}
+		count := 0
+		write := func(poolID int64, poolName, code, name, email, replyTo, department, status, createdAt, updatedAt string) error {
+			return wr.Write([]string{strconv.FormatInt(poolID, 10), poolName, code, name, email, replyTo, department, status, createdAt, updatedAt})
+		}
+		switch page := rows.(type) {
+		case []models.PoolContact:
+			count = len(page)
+			for _, row := range page {
+				if !poolExportIncludes(selected, row.PoolID, row.ID) {
+					continue
+				}
+				if err := write(row.PoolID, row.PoolName, row.CustomerCode, row.Name, row.Email, row.ReplyTo, row.AllocationDepartment, row.Status, row.CreatedAt.String(), row.UpdatedAt.String()); err != nil {
+					return err
+				}
+			}
+		case []models.SafePoolContact:
+			count = len(page)
+			for _, row := range page {
+				if !poolExportIncludes(selected, row.PoolID, row.ID) {
+					continue
+				}
+				if err := write(row.PoolID, row.PoolName, row.CustomerCode, row.Name, row.Email, row.ReplyTo, row.AllocationDepartment, row.Status, row.CreatedAt.String(), row.UpdatedAt.String()); err != nil {
+					return err
+				}
+			}
+		}
+		wr.Flush()
+		if err := wr.Error(); err != nil {
+			return err
+		}
+		if count < batch {
+			break
+		}
+	}
+	return nil
+}
+
 // ExportPoolContacts streams the filtered pool contacts as CSV. Non-platform
 // administrators only reach pools granted to their workspace organization and
 // always receive masked e-mail addresses.
@@ -259,6 +405,10 @@ func (a *App) ExportPoolContacts(c echo.Context) error {
 	}
 	poolStatus := c.QueryParam("status")
 	orderBy, order := c.QueryParam("order_by"), c.QueryParam("order")
+	selected, err := parsePoolExportSelection(c.Request().URL.Query(), false)
+	if err != nil {
+		return err
+	}
 
 	hdr := c.Response().Header()
 	hdr.Set(echo.HeaderContentType, echo.MIMEOctetStream)
@@ -268,7 +418,7 @@ func (a *App) ExportPoolContacts(c echo.Context) error {
 	hdr.Set("Cache-Control", "no-cache")
 
 	wr := csv.NewWriter(c.Response())
-	if err := wr.Write([]string{"customer_code", "name", "email", "allocation_department", "status", "created_at", "updated_at"}); err != nil {
+	if err := wr.Write([]string{"customer_code", "name", "email", "reply_to", "allocation_department", "status", "created_at", "updated_at"}); err != nil {
 		return err
 	}
 
@@ -286,7 +436,10 @@ func (a *App) ExportPoolContacts(c echo.Context) error {
 		case []models.PoolContact:
 			count = len(page)
 			for _, r := range page {
-				if err := wr.Write([]string{r.CustomerCode, r.Name, r.Email, r.AllocationDepartment, r.Status, r.CreatedAt.String(), r.UpdatedAt.String()}); err != nil {
+				if !poolExportIncludes(selected, 0, r.ID) {
+					continue
+				}
+				if err := wr.Write([]string{r.CustomerCode, r.Name, r.Email, r.ReplyTo, r.AllocationDepartment, r.Status, r.CreatedAt.String(), r.UpdatedAt.String()}); err != nil {
 					a.log.Printf("error streaming pool contact export: %v", err)
 					wr.Flush()
 					return nil
@@ -295,7 +448,10 @@ func (a *App) ExportPoolContacts(c echo.Context) error {
 		case []models.SafePoolContact:
 			count = len(page)
 			for _, r := range page {
-				if err := wr.Write([]string{r.CustomerCode, r.Name, r.Email, r.AllocationDepartment, r.Status, r.CreatedAt.String(), r.UpdatedAt.String()}); err != nil {
+				if !poolExportIncludes(selected, 0, r.ID) {
+					continue
+				}
+				if err := wr.Write([]string{r.CustomerCode, r.Name, r.Email, r.ReplyTo, r.AllocationDepartment, r.Status, r.CreatedAt.String(), r.UpdatedAt.String()}); err != nil {
 					a.log.Printf("error streaming pool contact export: %v", err)
 					wr.Flush()
 					return nil

@@ -160,9 +160,9 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 
 		// Customer operations based on arbitrary SQL queries.
 		// These aren't very REST-like.
-		g.POST("/api/customers/query/delete", a.DeleteCustomersByQuery)
-		g.PUT("/api/customers/query/blocklist", a.BlocklistCustomersByQuery)
-		g.PUT("/api/customers/query/customer-lists", a.ManageCustomerListMembershipsByQuery)
+		g.POST("/api/customers/bulk/delete", a.DeleteCustomersByFilter)
+		g.PUT("/api/customers/bulk/blocklist", a.BlocklistCustomersByFilter)
+		g.PUT("/api/customers/bulk/customer-lists", a.ManageCustomerListMembershipsByFilter)
 		g.GET("/api/customers/export",
 			middleware.GzipWithConfig(middleware.GzipConfig{Level: 9})(a.ExportCustomers))
 
@@ -191,6 +191,9 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.PUT("/api/org-pool-allocations/members", apiKeyScope(a.RestorePoolContact, apiKeyScopeListsWrite))
 		// Explicit pool aliases keep the public-pool API independent from legacy
 		// customer-list endpoints while retaining backwards-compatible routing.
+		g.GET("/api/pools/contacts", apiKeyScope(a.GetAllPoolContacts, apiKeyScopeListsRead))
+		g.GET("/api/pools/contacts/filters", apiKeyScope(a.GetAllPoolContactFilters, apiKeyScopeListsRead))
+		g.GET("/api/pools/contacts/export", apiKeyScope(a.ExportAllPoolContacts, apiKeyScopeListsRead))
 		g.GET("/api/pools/:id/contacts", apiKeyScope(hasID(a.GetPoolContacts), apiKeyScopeListsRead))
 		g.GET("/api/pools/:id/contacts/export", apiKeyScope(hasID(a.ExportPoolContacts), apiKeyScopeListsRead))
 		g.GET("/api/pools/:id/allocations", apiKeyScope(hasID(a.GetOrgPoolAllocations), apiKeyScopeListsRead))
@@ -214,12 +217,14 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.GET("/api/campaigns", apiKeyScope(a.GetCampaigns, apiKeyScopeCampaignsRead))
 		g.GET("/api/campaigns/running/stats", apiKeyScope(a.GetRunningCampaignStats, apiKeyScopeCampaignsRead))
 		g.GET("/api/campaigns/report/summary", apiKeyScope(a.GetCampaignsReportSummary, apiKeyScopeCampaignsAnalytics))
+		g.GET("/api/campaigns/report/geo", apiKeyScope(a.GetCampaignsReportGeo, apiKeyScopeCampaignsAnalytics))
 		g.GET("/api/campaigns/report/timeseries", apiKeyScope(a.GetCampaignsReportSeries, apiKeyScopeCampaignsAnalytics))
 		g.GET("/api/campaigns/report/links", apiKeyScope(a.GetCampaignsReportLinks, apiKeyScopeCampaignsAnalytics))
 		g.GET("/api/campaigns/report/recipients", apiKeyScope(a.GetCampaignsReportRecipients, apiKeyScopeCampaignsRecipients))
 		g.GET("/api/campaigns/:id", apiKeyScope(hasID(a.GetCampaign), apiKeyScopeCampaignsRead))
 		g.GET("/api/campaigns/analytics/:type", apiKeyScope(a.GetCampaignViewAnalytics, apiKeyScopeCampaignsAnalytics))
 		g.GET("/api/campaigns/:id/report/summary", apiKeyScope(hasID(a.GetCampaignReportSummary), apiKeyScopeCampaignsAnalytics))
+		g.GET("/api/campaigns/:id/report/geo", apiKeyScope(hasID(a.GetCampaignReportGeo), apiKeyScopeCampaignsAnalytics))
 		g.GET("/api/campaigns/:id/report/timeseries", apiKeyScope(hasID(a.GetCampaignReportSeries), apiKeyScopeCampaignsAnalytics))
 		g.GET("/api/campaigns/:id/report/links", apiKeyScope(hasID(a.GetCampaignReportLinks), apiKeyScopeCampaignsAnalytics))
 		g.GET("/api/campaigns/:id/report/recipients", apiKeyScope(hasID(a.GetCampaignReportRecipients), apiKeyScopeCampaignsRecipients))
@@ -235,6 +240,10 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.PUT("/api/campaigns/:id/status", apiKeyScope(hasID(a.UpdateCampaignStatus), apiKeyScopeCampaignsWrite))
 		g.PUT("/api/campaigns/:id/archive", apiKeyScope(hasID(a.UpdateCampaignArchive), apiKeyScopeCampaignsWrite))
 		g.POST("/api/campaigns/:id/pools", apiKeyScope(hasID(a.AttachCampaignPool), apiKeyScopeCampaignsWrite))
+		g.GET("/api/campaigns/smtp-pools", apiKeyScope(a.GetCampaignSMTPPools, apiKeyScopeCampaignsRead))
+		g.GET("/api/campaigns/:id/smtp-pools", apiKeyScope(hasID(a.GetCampaignSMTPPools), apiKeyScopeCampaignsRead))
+		g.GET("/api/campaigns/smtp-overview", apiKeyScope(a.GetCampaignSMTPOverview, apiKeyScopeCampaignsRead))
+		g.GET("/api/campaigns/:id/smtp-overview", apiKeyScope(hasID(a.GetCampaignSMTPOverview), apiKeyScopeCampaignsRead))
 		g.GET("/api/campaigns/:id/pool-send-status", apiKeyScope(hasID(a.GetCampaignPoolSendStatus), apiKeyScopeCampaignsRead))
 		g.DELETE("/api/campaigns", apiKeyScope(a.DeleteCampaigns, apiKeyScopeCampaignsWrite))
 		g.DELETE("/api/campaigns/:id", apiKeyScope(hasID(a.DeleteCampaign), apiKeyScopeCampaignsWrite))
@@ -304,6 +313,14 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.POST("/api/organizations/leave", a.LeaveOrganization)
 		g.POST("/api/organizations/resources/migrate", a.MigratePersonalResourcesToOrganization)
 		g.POST("/api/organizations/resources/customer-lists/migrate", a.MigratePersonalListsToOrganization)
+		g.GET("/api/organizations/smtp-pools", a.GetOrganizationSMTPPools)
+		g.POST("/api/organizations/smtp-pools", a.SaveOrganizationSMTPPool)
+		g.PUT("/api/organizations/smtp-pools/:id", hasID(a.SaveOrganizationSMTPPool))
+		g.DELETE("/api/organizations/smtp-pools/:id", hasID(a.DeleteOrganizationSMTPPool))
+		g.GET("/api/organizations/smtp", a.GetOrganizationSMTP)
+		g.PUT("/api/organizations/smtp", a.UpdateOrganizationSMTP)
+		g.DELETE("/api/organizations/smtp/:id", hasID(a.DeleteOrganizationSMTP))
+		g.POST("/api/organizations/smtp/test", a.TestOrganizationSMTP)
 		g.GET("/api/organizations/members", a.GetOrganizationMembers)
 		g.POST("/api/organizations/members", a.AddOrganizationMember)
 		g.PUT("/api/organizations/members/:user_id", a.UpdateOrganizationMember)

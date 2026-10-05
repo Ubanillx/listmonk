@@ -117,7 +117,8 @@ type ResourceScope struct {
 	// OrganizationArchived is loaded for single-resource authorization checks.
 	// It is intentionally omitted from API responses; customer_list queries enforce the
 	// same condition directly in SQL.
-	OrganizationArchived bool `db:"organization_archived" json:"-"`
+	OrganizationArchived bool     `db:"organization_archived" json:"-"`
+	MediaFolderID        null.Int `db:"media_folder_id" json:"-"`
 
 	OwnerUsername string `db:"owner_username" json:"owner_username"`
 	OwnerName     string `db:"owner_name" json:"owner_name"`

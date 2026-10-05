@@ -22,3 +22,8 @@ max_lifetime = "300s"
 
 # Optional space separated Postgres DSN params. eg: "application_name=listmonk gssencmode=disable"
 params = ""
+
+[privacy]
+# Optional path to a local GeoLite2-City.mmdb or GeoIP2-City.mmdb file.
+# New campaign opens are located approximately when tracking is enabled.
+geoip_database = ""

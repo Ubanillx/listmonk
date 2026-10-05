@@ -105,7 +105,7 @@ func rejectUnsupportedPersonalAPIKey(next echo.HandlerFunc) echo.HandlerFunc {
 }
 
 func isPersonalAPIKeyBusinessPath(path string) bool {
-	if strings.HasPrefix(path, "/api/customers/query/") || path == "/api/customers/export" {
+	if strings.HasPrefix(path, "/api/customers/bulk/") || path == "/api/customers/export" {
 		return false
 	}
 	for _, prefix := range []string{

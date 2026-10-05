@@ -48,6 +48,8 @@ CREATE TABLE user_smtp_servers (
     enabled     BOOLEAN NOT NULL DEFAULT TRUE,
     from_email  TEXT NOT NULL DEFAULT '',
     daily_limit INT NOT NULL DEFAULT 0,
+    organization_id BIGINT,
+    smtp_pool_id BIGINT,
     host        TEXT NOT NULL DEFAULT '',
     port        INT NOT NULL DEFAULT 465
 );
@@ -100,9 +102,10 @@ CREATE TABLE pool_contacts (
     uuid          UUID NOT NULL DEFAULT gen_random_uuid(),
     customer_code TEXT NOT NULL DEFAULT '',
     email         TEXT NOT NULL,
+    reply_to      TEXT NOT NULL DEFAULT '',
     name          TEXT NOT NULL DEFAULT '',
     attribs       JSONB NOT NULL DEFAULT '{}',
-    status        TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','archived')),
+    status        TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','archived','blocklisted')),
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -160,6 +163,9 @@ CREATE TABLE pool_organization_permissions (
 CREATE TABLE campaigns (
     id              SERIAL PRIMARY KEY,
     organization_id BIGINT,
+    smtp_source     TEXT NOT NULL DEFAULT 'personal',
+    smtp_pool_id    BIGINT,
+    pool_reply_priority TEXT NOT NULL DEFAULT 'contact_first',
     pool_scope      TEXT NOT NULL DEFAULT 'organization'
 );
 
@@ -192,6 +198,8 @@ CREATE TABLE campaign_pool_recipients (
     status           campaign_recipient_status NOT NULL DEFAULT 'pending',
     email_snapshot   TEXT NOT NULL,
     name_snapshot    TEXT NOT NULL DEFAULT '',
+    reply_to_snapshot TEXT NOT NULL DEFAULT '',
+    reply_to_source TEXT NOT NULL DEFAULT '',
     sender_smtp_uuid UUID,
     sender_user_id   INTEGER,
     sender_from_snapshot TEXT NOT NULL DEFAULT '',
@@ -586,6 +594,109 @@ func TestQueryPoolContactsSeparatesGlobalExceptions(t *testing.T) {
 		t.Errorf("global exception total after restore = %d, want 1", removedTotal)
 	}
 	assertSameIDs(t, "global exceptions after restore", ids(removedRows), []int64{excluded})
+}
+
+func TestQueryAllPoolContactsAggregatesPoolsAndMasksOrganizationRows(t *testing.T) {
+	env := newPoolRecipientsTestEnv(t)
+	env.exec(`ALTER TABLE pool_contacts ADD COLUMN allocation_department TEXT NOT NULL DEFAULT ''`)
+	orgA := env.seedOrganization("org-a")
+	orgB := env.seedOrganization("org-b")
+	poolA := env.seedPool("pool-a")
+	poolB := env.seedPool("pool-b")
+	allocationA := env.seedAllocation(poolA, orgA)
+	allocationB := env.seedAllocation(poolB, orgA)
+	allocationOther := env.seedAllocation(poolB, orgB)
+	shared := env.seedContact("SHARED", "Shared", "shared@example.test", "active")
+	onlyB := env.seedContact("ONLY-B", "Only B", "other@example.test", "active")
+	env.exec(`UPDATE pool_contacts SET allocation_department='dept-b' WHERE id=$1`, onlyB)
+	env.joinPool(poolA, shared)
+	env.joinPool(poolB, shared)
+	env.joinPool(poolB, onlyB)
+	env.allocate(allocationA, shared, "active")
+	env.allocate(allocationB, shared, "removed")
+	env.allocate(allocationOther, onlyB, "active")
+
+	result, total, err := env.core.QueryAllPoolContacts(0, true, "", "", 0, nil, "pool_name", "asc", 0, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := result.([]models.PoolContact)
+	if total != 3 || len(rows) != 3 {
+		t.Fatalf("aggregate total=%d rows=%d, want 3", total, len(rows))
+	}
+	if rows[0].PoolID != int64(poolA) || rows[0].PoolName != "pool-a" || rows[0].Excluded {
+		t.Errorf("first row = %+v, want active pool-a membership", rows[0])
+	}
+	if rows[2].PoolID != int64(poolB) || !rows[2].Excluded || rows[2].ExceptionAllocationID == nil {
+		t.Errorf("last row = %+v, want removed pool-b membership", rows[2])
+	}
+
+	result, total, err = env.core.QueryAllPoolContacts(0, true, "active", "SHARED", 0, nil, "id", "desc", 0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows = result.([]models.PoolContact)
+	if total != 1 || len(rows) != 1 || rows[0].PoolID != int64(poolA) {
+		t.Errorf("active search = %+v total=%d, want shared in pool-a only", rows, total)
+	}
+
+	result, total, err = env.core.QueryAllPoolContacts(int(orgA), false, "removed", "", 0, nil, "id", "desc", 0, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	masked := result.([]models.SafePoolContact)
+	if total != 1 || len(masked) != 1 || masked[0].PoolID != int64(poolB) || masked[0].Email == "shared@example.test" {
+		t.Errorf("organization A rows = %+v total=%d, want one masked pool-b membership", masked, total)
+	}
+	result, total, err = env.core.QueryAllPoolContacts(int(orgB), false, "active", "", 0, nil, "id", "desc", 0, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	masked = result.([]models.SafePoolContact)
+	if total != 1 || len(masked) != 1 || masked[0].ID != onlyB || masked[0].PoolID != int64(poolB) {
+		t.Errorf("organization B rows = %+v total=%d, want own pool-b contact only", masked, total)
+	}
+
+	blankDepartment := ""
+	result, total, err = env.core.QueryAllPoolContacts(0, true, "removed", "", int64(poolB), &blankDepartment, "id", "desc", 0, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows = result.([]models.PoolContact)
+	if total != 1 || len(rows) != 1 || rows[0].ID != shared {
+		t.Errorf("removed pool-b with blank department = %+v total=%d, want shared", rows, total)
+	}
+	departmentB := "dept-b"
+	result, total, err = env.core.QueryAllPoolContacts(0, true, "active", "", int64(poolB), &departmentB, "id", "desc", 0, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows = result.([]models.PoolContact)
+	if total != 1 || len(rows) != 1 || rows[0].ID != onlyB {
+		t.Errorf("active pool-b with dept-b = %+v total=%d, want only-b", rows, total)
+	}
+	result, total, err = env.core.QueryAllPoolContacts(int(orgA), false, "active", "", int64(poolB), &departmentB, "id", "desc", 0, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 0 || len(result.([]models.SafePoolContact)) != 0 {
+		t.Errorf("organization A must not see department B's pool rows: %+v total=%d", result, total)
+	}
+	options, err := env.core.QueryAllPoolContactFilterOptions(int(orgA), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(options) != 2 || options[0].PoolID != int64(poolA) || options[1].PoolID != int64(poolB) ||
+		options[0].AllocationDepartment != "" || options[1].AllocationDepartment != "" {
+		t.Errorf("organization A filter options = %+v, want only own blank-department memberships", options)
+	}
+	options, err = env.core.QueryAllPoolContactFilterOptions(int(orgB), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(options) != 1 || options[0].PoolID != int64(poolB) || options[0].AllocationDepartment != departmentB {
+		t.Errorf("organization B filter options = %+v, want only pool-b/dept-b", options)
+	}
 }
 
 // TestValidatePoolCampaignAudienceRefreshesRoutes covers drafts that were
@@ -1318,13 +1429,13 @@ func TestAllOrgPoolSnapshotDeduplicatesByRotationOrder(t *testing.T) {
 		t.Errorf("delivered row was rewritten: organization=%v status=%q", got.OrganizationID, got.Status)
 	}
 
-	// An organization without a usable unified reply mailbox contributes no
-	// recipients, and a contact that is only allocated there is dropped.
+	// Customer-level reply addresses keep eligible recipients deliverable even
+	// when the organization fallback is unavailable.
 	env.setOrganizationMailbox(orgB, nil)
 	if err := env.core.EnsurePoolCampaignRecipients(campaign); err != nil {
 		t.Fatalf("EnsurePoolCampaignRecipients after mailbox removal: %v", err)
 	}
-	assertSameIDs(t, "all-org snapshot without org-b mailbox", env.snapshotIDs(campaign), []int64{shared})
+	assertSameIDs(t, "all-org snapshot without org-b mailbox", env.snapshotIDs(campaign), []int64{shared, onlyB})
 }
 
 // TestValidateAllOrgPoolCampaignAudienceRequiresEveryOrganization pins the

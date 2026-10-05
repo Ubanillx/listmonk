@@ -11,17 +11,18 @@ import (
 type Media struct {
 	models.ResourceScope
 
-	ID          int         `db:"id" json:"id"`
-	UUID        string      `db:"uuid" json:"uuid"`
-	Filename    string      `db:"filename" json:"filename"`
-	FolderID    null.Int    `db:"folder_id" json:"folder_id"`
-	ContentType string      `db:"content_type" json:"content_type"`
-	Thumb       string      `db:"thumb" json:"-"`
-	CreatedAt   null.Time   `db:"created_at" json:"created_at"`
-	ThumbURL    null.String `json:"thumb_url"`
-	Provider    string      `json:"provider"`
-	Meta        models.JSON `db:"meta" json:"meta"`
-	URL         string      `json:"url"`
+	ID               int         `db:"id" json:"id"`
+	UUID             string      `db:"uuid" json:"uuid"`
+	Filename         string      `db:"filename" json:"filename"`
+	FolderID         null.Int    `db:"folder_id" json:"folder_id"`
+	ContentType      string      `db:"content_type" json:"content_type"`
+	Thumb            string      `db:"thumb" json:"-"`
+	CreatedAt        null.Time   `db:"created_at" json:"created_at"`
+	ThumbURL         null.String `json:"thumb_url"`
+	Provider         string      `json:"provider"`
+	Meta             models.JSON `db:"meta" json:"meta"`
+	URL              string      `json:"url"`
+	FolderVisibility string      `db:"folder_visibility" json:"-"`
 
 	Total int `db:"total" json:"-"`
 }
@@ -37,6 +38,9 @@ type MediaFolder struct {
 	UpdatedAt  null.Time `db:"updated_at" json:"updated_at"`
 	MediaCount int       `db:"media_count" json:"media_count"`
 	ChildCount int       `db:"child_count" json:"child_count"`
+	Visibility string    `db:"visibility" json:"visibility"`
+	Manageable bool      `db:"-" json:"manageable"`
+	Writable   bool      `db:"-" json:"writable"`
 
 	// Workspace fields are used by Core to prevent cross-workspace folder
 	// moves, but are not part of the public folder DTO.

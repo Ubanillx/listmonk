@@ -149,6 +149,10 @@ CREATE TABLE campaigns (
     -- resolves every active organization's pool allocation of the selected
     -- first-level pool, rotates organizations fairly and sends each recipient
     -- through the target organization's member SMTP pool.
+    smtp_source         TEXT NOT NULL DEFAULT 'personal' CHECK (smtp_source IN ('personal', 'organization')),
+    smtp_pool_id        BIGINT,
+    smtp_rate_limit     INT NOT NULL DEFAULT 20 CHECK (smtp_rate_limit BETWEEN 0 AND 1000000),
+    pool_reply_priority TEXT NOT NULL DEFAULT 'contact_first' CHECK (pool_reply_priority IN ('contact_first','organization_first')),
     pool_scope          TEXT NOT NULL DEFAULT 'organization' CHECK (pool_scope IN ('organization', 'all_organizations')),
     -- Round-robin position into the campaign's persisted organization order.
     -- It advances whenever a recipient is claimed for an organization, so a
@@ -243,6 +247,13 @@ CREATE TABLE campaign_views (
 
     -- Customers may be deleted, but the view counts should remain.
     customer_id    INTEGER NULL REFERENCES customers(id) ON DELETE SET NULL ON UPDATE CASCADE,
+    -- Approximate IP geolocation captured at open time. Raw IPs are not stored.
+    country_code     TEXT NOT NULL DEFAULT '',
+    country          TEXT NOT NULL DEFAULT '',
+    region           TEXT NOT NULL DEFAULT '',
+    city             TEXT NOT NULL DEFAULT '',
+    latitude         DOUBLE PRECISION NULL,
+    longitude        DOUBLE PRECISION NULL,
     created_at       TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 DROP INDEX IF EXISTS idx_views_camp_id; CREATE INDEX idx_views_camp_id ON campaign_views(campaign_id);
@@ -386,8 +397,8 @@ INSERT INTO settings (key, value) VALUES
     ('upload.s3.bucket_type', '"public"'),
     ('upload.s3.expiry', '"167h"'),
     ('smtp',
-        '[{"enabled":true, "is_primary":true, "from_email":"listmonk <noreply@listmonk.yoursite.com>", "daily_limit":0, "host":"smtp.yoursite.com","port":465,"auth_protocol":"plain","username":"username","password":"password","hello_hostname":"","max_conns":10,"idle_timeout":"15s","wait_timeout":"5s","max_msg_retries":2,"tls_type":"TLS","tls_skip_verify":false,"email_headers":[]},
-          {"enabled":false, "is_primary":false, "from_email":"listmonk <noreply@listmonk.yoursite.com>", "daily_limit":0, "host":"smtp.gmail.com","port":465,"auth_protocol":"login","username":"username@gmail.com","password":"password","hello_hostname":"","max_conns":10,"idle_timeout":"15s","wait_timeout":"5s","max_msg_retries":2,"tls_type":"TLS","tls_skip_verify":false,"email_headers":[]}]'),
+        '[{"enabled":true, "is_primary":true, "from_email":"listmonk <noreply@listmonk.yoursite.com>", "daily_limit":0, "host":"smtp.yoursite.com","port":465,"auth_protocol":"plain","username":"username","password":"password","hello_hostname":"","max_conns":10,"idle_timeout":"15s","wait_timeout":"5s","max_msg_retries":2,"tls_type":"TLS","tls_skip_verify":false,"email_headers":[]}]'),
+    ('smtp_delivery', '{"max_conns":10,"max_msg_retries":2,"idle_timeout":"15s","wait_timeout":"5s","send_delay_min":0,"send_delay_max":0,"email_headers":[]}'),
     ('messengers', '[]'),
     ('bounce.enabled', 'false'),
     ('bounce.webhooks_enabled', 'false'),
@@ -494,7 +505,7 @@ DROP TABLE IF EXISTS user_smtp_servers CASCADE;
 CREATE TABLE user_smtp_servers (
     id               SERIAL PRIMARY KEY,
     uuid             UUID NOT NULL UNIQUE,
-    user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    user_id          INTEGER REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE,
     name             TEXT NOT NULL DEFAULT '',
     enabled          BOOLEAN NOT NULL DEFAULT TRUE,
     from_email       TEXT NOT NULL DEFAULT '',
@@ -538,6 +549,25 @@ CREATE TABLE organizations (
     created_at         TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at         TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+ALTER TABLE user_smtp_servers ADD COLUMN organization_id BIGINT REFERENCES organizations(id) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE user_smtp_servers ADD CONSTRAINT smtp_owner_exclusive CHECK ((user_id IS NULL) <> (organization_id IS NULL));
+CREATE INDEX idx_smtp_organization_enabled ON user_smtp_servers(organization_id, enabled);
+CREATE TABLE organization_smtp_pools (
+    id BIGSERIAL PRIMARY KEY,
+    organization_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    name TEXT NOT NULL CHECK (LENGTH(TRIM(name)) BETWEEN 1 AND 100),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(id, organization_id)
+);
+CREATE UNIQUE INDEX idx_organization_smtp_pool_name ON organization_smtp_pools(organization_id, LOWER(name));
+ALTER TABLE user_smtp_servers ADD COLUMN smtp_pool_id BIGINT;
+ALTER TABLE user_smtp_servers ADD CONSTRAINT smtp_pool_owner FOREIGN KEY(smtp_pool_id, organization_id)
+    REFERENCES organization_smtp_pools(id, organization_id) ON DELETE CASCADE;
+ALTER TABLE user_smtp_servers ADD CONSTRAINT smtp_pool_required CHECK ((organization_id IS NOT NULL) = (smtp_pool_id IS NOT NULL));
+CREATE UNIQUE INDEX idx_smtp_pool_name ON user_smtp_servers(smtp_pool_id, LOWER(name)) WHERE name <> '';
+CREATE INDEX idx_smtp_pool_enabled ON user_smtp_servers(smtp_pool_id, enabled);
+
 CREATE UNIQUE INDEX idx_organizations_name_lower ON organizations (LOWER(name));
 CREATE INDEX idx_organizations_status ON organizations(status);
 
@@ -731,6 +761,10 @@ ALTER TABLE campaigns
     ADD COLUMN original_owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('private', 'organization', 'global')),
     ADD COLUMN transfer_pending_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE campaigns ADD CONSTRAINT campaign_smtp_pool_fk FOREIGN KEY(smtp_pool_id)
+    REFERENCES organization_smtp_pools(id) ON DELETE RESTRICT;
+ALTER TABLE campaigns ADD CONSTRAINT campaign_smtp_pool_owner FOREIGN KEY(smtp_pool_id, organization_id)
+    REFERENCES organization_smtp_pools(id, organization_id) ON DELETE RESTRICT;
 ALTER TABLE media
     ADD COLUMN organization_id BIGINT REFERENCES organizations(id) ON DELETE RESTRICT,
     ADD COLUMN owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -741,8 +775,8 @@ ALTER TABLE media
 
 -- Media folders are logical workspace containers. Provider object names stay
 -- flat so historical /uploads links and cloned media remain valid. Personal
--- folders are private to their owner; organization folders are visible to
--- every member of that organization.
+-- folders default to private. Folder visibility may explicitly share the
+-- directory with organization members or all signed-in users.
 CREATE TABLE media_folders (
     id                SERIAL PRIMARY KEY,
     name              TEXT NOT NULL CHECK (name <> ''),
@@ -750,9 +784,12 @@ CREATE TABLE media_folders (
     organization_id   BIGINT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     owner_user_id     INTEGER NULL REFERENCES users(id) ON DELETE SET NULL,
     created_by_user_id INTEGER NULL REFERENCES users(id) ON DELETE SET NULL,
+    visibility        TEXT NOT NULL DEFAULT 'private',
     created_at        TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at        TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    CHECK (organization_id IS NOT NULL OR owner_user_id IS NOT NULL)
+    CHECK (organization_id IS NOT NULL OR owner_user_id IS NOT NULL),
+    CONSTRAINT media_folders_visibility_check CHECK (visibility IN ('private', 'organization', 'global')
+        AND (visibility <> 'organization' OR organization_id IS NOT NULL))
 );
 
 ALTER TABLE media
@@ -883,6 +920,9 @@ CREATE MATERIALIZED VIEW mat_dashboard_counts AS
                 'optin_single', (SELECT COUNT(*) FROM customer_lists WHERE optin='single'),
                 'optin_double', (SELECT COUNT(*) FROM customer_lists WHERE optin='double')
             ),
+            'poolLists', JSON_BUILD_OBJECT(
+                'total', (SELECT COUNT(*) FROM customer_lists WHERE type='pool' AND status='active')
+            ),
             'campaigns', JSON_BUILD_OBJECT(
                 'total', (SELECT COUNT(*) FROM campaigns),
                 'by_status', (
@@ -954,6 +994,7 @@ DROP TABLE IF EXISTS pool_members CASCADE;
 DROP TABLE IF EXISTS pool_contacts CASCADE;
 
 CREATE TABLE pool_contacts (
+    reply_to TEXT NOT NULL DEFAULT '',
     id BIGSERIAL PRIMARY KEY,
     uuid UUID NOT NULL DEFAULT gen_random_uuid() UNIQUE,
     customer_code TEXT NOT NULL DEFAULT '',
@@ -961,7 +1002,7 @@ CREATE TABLE pool_contacts (
     name TEXT NOT NULL DEFAULT '',
     allocation_department TEXT NOT NULL DEFAULT '',
     attribs JSONB NOT NULL DEFAULT '{}',
-    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','archived')),
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','archived','blocklisted')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -1048,6 +1089,8 @@ ALTER TABLE campaign_recipients ADD COLUMN IF NOT EXISTS source_allocation_id BI
 ALTER TABLE campaign_recipients ADD COLUMN IF NOT EXISTS source_organization_id BIGINT REFERENCES organizations(id) ON DELETE SET NULL;
 ALTER TABLE campaign_recipients ADD COLUMN IF NOT EXISTS reply_mailbox_id INTEGER REFERENCES reply_mailboxes(id) ON DELETE SET NULL;
 CREATE TABLE campaign_pool_recipients (
+    reply_to_snapshot TEXT NOT NULL DEFAULT '',
+    reply_to_source TEXT NOT NULL DEFAULT '',
     campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
     pool_contact_id BIGINT NOT NULL REFERENCES pool_contacts(id) ON DELETE CASCADE,
     pool_id INTEGER NOT NULL REFERENCES customer_lists(id) ON DELETE CASCADE,

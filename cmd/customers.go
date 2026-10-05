@@ -26,15 +26,15 @@ const (
 // subQueryReq is a "catch all" struct for reading various
 // customer related requests.
 type subQueryReq struct {
-	Search                string `json:"search"`
-	Query                 string `json:"query"`
-	CustomerListIDs       []int  `json:"customer_list_ids"`
-	TargetCustomerListIDs []int  `json:"target_customer_list_ids"`
-	CustomerIDs           []int  `json:"ids"`
-	Action                string `json:"action"`
-	Status                string `json:"status"`
-	SubscriptionStatus    string `json:"subscription_status"`
-	All                   bool   `json:"all"`
+	Search                string          `json:"search"`
+	Query                 json.RawMessage `json:"query"`
+	CustomerListIDs       []int           `json:"customer_list_ids"`
+	TargetCustomerListIDs []int           `json:"target_customer_list_ids"`
+	CustomerIDs           []int           `json:"ids"`
+	Action                string          `json:"action"`
+	Status                string          `json:"status"`
+	SubscriptionStatus    string          `json:"subscription_status"`
+	All                   bool            `json:"all"`
 }
 
 // subOptin contains the data that's passed to the double opt-in e-mail template.
@@ -113,8 +113,11 @@ func (a *App) GetCustomerActivity(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{out})
 }
 
-// QueryCustomers handles querying customers based on an arbitrary SQL expression.
+// QueryCustomers lists customers using the supported search filters.
 func (a *App) QueryCustomers(c echo.Context) error {
+	if _, supplied := c.QueryParams()["query"]; supplied {
+		return echo.NewHTTPError(http.StatusBadRequest, "advanced customer queries are no longer supported")
+	}
 	access, err := a.workspaceAccess(c)
 	if err != nil {
 		return err
@@ -130,13 +133,6 @@ func (a *App) QueryCustomers(c echo.Context) error {
 		return err
 	}
 
-	query := formatSQLExp(c.FormValue("query"))
-	if query != "" {
-		if err := a.requireCustomerSQLQuery(c); err != nil {
-			return err
-		}
-	}
-
 	var (
 		searchStr = strings.TrimSpace(c.FormValue("search"))
 		subStatus = c.FormValue("subscription_status")
@@ -145,17 +141,7 @@ func (a *App) QueryCustomers(c echo.Context) error {
 		pg        = a.pg.NewFromURL(c.Request().URL.Query())
 	)
 
-	// Advanced expressions retain their dedicated permission but always run
-	// inside the selected workspace and owner boundary.
-	var (
-		res   models.Customers
-		total int
-	)
-	if query != "" {
-		res, total, err = a.core.QueryWorkspaceCustomersWithSQL(access, searchStr, query, CustomerListIDs, subStatus, order, orderBy, pg.Offset, pg.Limit)
-	} else {
-		res, total, err = a.core.QueryWorkspaceCustomers(access, searchStr, CustomerListIDs, subStatus, order, orderBy, pg.Offset, pg.Limit)
-	}
+	res, total, err := a.core.QueryWorkspaceCustomers(access, searchStr, CustomerListIDs, subStatus, order, orderBy, pg.Offset, pg.Limit)
 	if err != nil {
 		return err
 	}
@@ -172,7 +158,7 @@ func (a *App) QueryCustomers(c echo.Context) error {
 	}
 
 	out := models.PageResults{
-		Query:   query,
+		Query:   "",
 		Search:  searchStr,
 		Results: res,
 		Total:   total,
@@ -275,8 +261,11 @@ func (a *App) redactWorkspaceCustomerSensitiveFields(access models.WorkspaceAcce
 	sub.CustomerLists = []byte("[]")
 }
 
-// ExportCustomers handles querying customers based on an arbitrary SQL expression.
+// ExportCustomers exports customers using the supported search filters.
 func (a *App) ExportCustomers(c echo.Context) error {
+	if _, supplied := c.QueryParams()["query"]; supplied {
+		return echo.NewHTTPError(http.StatusBadRequest, "advanced customer queries are no longer supported")
+	}
 	access, err := a.workspaceAccess(c)
 	if err != nil {
 		return err
@@ -303,15 +292,7 @@ func (a *App) ExportCustomers(c echo.Context) error {
 	// Filter by subscription status
 	subStatus := c.QueryParam("subscription_status")
 
-	var (
-		searchStr = strings.TrimSpace(c.FormValue("search"))
-		query     = formatSQLExp(c.FormValue("query"))
-	)
-	if query != "" {
-		if err := a.requireCustomerSQLQuery(c); err != nil {
-			return err
-		}
-	}
+	searchStr := strings.TrimSpace(c.FormValue("search"))
 
 	var exp func() ([]models.CustomerExport, error)
 	if len(subIDs) > 0 {
@@ -330,11 +311,7 @@ func (a *App) ExportCustomers(c echo.Context) error {
 	if len(subIDs) == 0 {
 		subIDs = []int{-1}
 	}
-	if query != "" {
-		exp, err = a.core.ExportWorkspaceCustomersWithSQL(access, searchStr, query, CustomerListIDs, subIDs, subStatus, a.cfg.DBBatchSize)
-	} else {
-		exp, err = a.core.ExportWorkspaceCustomers(access, searchStr, CustomerListIDs, subIDs, subStatus, a.cfg.DBBatchSize)
-	}
+	exp, err = a.core.ExportWorkspaceCustomers(access, searchStr, CustomerListIDs, subIDs, subStatus, a.cfg.DBBatchSize)
 	if err != nil {
 		return err
 	}
@@ -684,9 +661,8 @@ func (a *App) DeleteCustomers(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{true})
 }
 
-// DeleteCustomersByQuery bulk deletes based on an
-// arbitrary SQL expression.
-func (a *App) DeleteCustomersByQuery(c echo.Context) error {
+// DeleteCustomersByFilter deletes the managed customers matching ordinary filters.
+func (a *App) DeleteCustomersByFilter(c echo.Context) error {
 	access, err := a.workspaceAccess(c)
 	if err != nil {
 		return err
@@ -702,15 +678,16 @@ func (a *App) DeleteCustomersByQuery(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return err
 	}
+	if req.Query != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "advanced customer queries are no longer supported")
+	}
 
 	req.Search = strings.TrimSpace(req.Search)
-	req.Query = formatSQLExp(req.Query)
 	if req.All {
-		// If the "all" flag is set, ignore any subquery that may be present.
+		// The explicit all flag selects every managed customer in the scope.
 		req.Search = ""
-		req.Query = ""
-	} else if req.Search == "" && req.Query == "" {
-		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.Ts("globals.messages.invalidFields", "name", "query"))
+	} else if req.Search == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.Ts("globals.messages.invalidFields", "name", "search"))
 	}
 
 	CustomerListIDs, err := a.workspaceManagedCustomerListIDsForRequest(c, access, req.CustomerListIDs)
@@ -718,20 +695,6 @@ func (a *App) DeleteCustomersByQuery(c echo.Context) error {
 		return err
 	}
 	req.CustomerListIDs = CustomerListIDs
-	if req.Query != "" {
-		if err := a.requireCustomerSQLQuery(c); err != nil {
-			return err
-		}
-		ids, err := a.managedWorkspaceCustomerIDsWithSQL(access, req.Search, req.Query, req.CustomerListIDs, req.SubscriptionStatus)
-		if err != nil {
-			return err
-		}
-		if err := a.core.DeleteCustomersInWorkspace(access, ids); err != nil {
-			return err
-		}
-		return c.JSON(http.StatusOK, okResp{true})
-	}
-
 	ids, err := a.managedWorkspaceCustomerIDs(access, req.Search, req.CustomerListIDs, req.SubscriptionStatus)
 	if err != nil {
 		return err
@@ -743,9 +706,8 @@ func (a *App) DeleteCustomersByQuery(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{true})
 }
 
-// BlocklistCustomersByQuery bulk blocklists customers
-// based on an arbitrary SQL expression.
-func (a *App) BlocklistCustomersByQuery(c echo.Context) error {
+// BlocklistCustomersByFilter blocklists managed customers matching ordinary filters.
+func (a *App) BlocklistCustomersByFilter(c echo.Context) error {
 	access, err := a.workspaceAccess(c)
 	if err != nil {
 		return err
@@ -761,35 +723,21 @@ func (a *App) BlocklistCustomersByQuery(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return err
 	}
+	if req.Query != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "advanced customer queries are no longer supported")
+	}
 
 	req.Search = strings.TrimSpace(req.Search)
-	req.Query = formatSQLExp(req.Query)
 	if req.All {
-		// If the "all" flag is set, ignore any subquery that may be present.
 		req.Search = ""
-		req.Query = ""
-	} else if req.Search == "" && req.Query == "" {
-		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.Ts("globals.messages.invalidFields", "name", "query"))
+	} else if req.Search == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.Ts("globals.messages.invalidFields", "name", "search"))
 	}
 	CustomerListIDs, err := a.workspaceManagedCustomerListIDsForRequest(c, access, req.CustomerListIDs)
 	if err != nil {
 		return err
 	}
 	req.CustomerListIDs = CustomerListIDs
-	if req.Query != "" {
-		if err := a.requireCustomerSQLQuery(c); err != nil {
-			return err
-		}
-		ids, err := a.managedWorkspaceCustomerIDsWithSQL(access, req.Search, req.Query, req.CustomerListIDs, req.SubscriptionStatus)
-		if err != nil {
-			return err
-		}
-		if err := a.core.BlocklistCustomersInWorkspace(access, ids); err != nil {
-			return err
-		}
-		return c.JSON(http.StatusOK, okResp{true})
-	}
-
 	ids, err := a.managedWorkspaceCustomerIDs(access, req.Search, req.CustomerListIDs, req.SubscriptionStatus)
 	if err != nil {
 		return err
@@ -801,9 +749,8 @@ func (a *App) BlocklistCustomersByQuery(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{true})
 }
 
-// ManageCustomerListMembershipsByQuery bulk adds/removes/unsubscribes customers
-// from one or more customer_lists based on an arbitrary SQL expression.
-func (a *App) ManageCustomerListMembershipsByQuery(c echo.Context) error {
+// ManageCustomerListMembershipsByFilter changes memberships for filtered customers.
+func (a *App) ManageCustomerListMembershipsByFilter(c echo.Context) error {
 	access, err := a.workspaceAccess(c)
 	if err != nil {
 		return err
@@ -819,13 +766,15 @@ func (a *App) ManageCustomerListMembershipsByQuery(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return err
 	}
+	if req.Query != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "advanced customer queries are no longer supported")
+	}
 	if len(req.TargetCustomerListIDs) == 0 {
 		return echo.NewHTTPError(http.StatusBadRequest,
 			a.i18n.T("customers.errorNoListsGiven"))
 	}
 
 	req.Search = strings.TrimSpace(req.Search)
-	req.Query = formatSQLExp(req.Query)
 
 	CustomerListIDs, err := a.workspaceManagedCustomerListIDsForRequest(c, access, req.CustomerListIDs)
 	if err != nil {
@@ -835,31 +784,6 @@ func (a *App) ManageCustomerListMembershipsByQuery(c echo.Context) error {
 	if err := a.requireWorkspaceCustomerListIDsForRequest(c, access, req.TargetCustomerListIDs, true); err != nil {
 		return err
 	}
-	if req.Query != "" {
-		if err := a.requireCustomerSQLQuery(c); err != nil {
-			return err
-		}
-		subIDs, err := a.managedWorkspaceCustomerIDsWithSQL(access, req.Search, req.Query, req.CustomerListIDs, req.SubscriptionStatus)
-		if err != nil {
-			return err
-		}
-		var runErr error
-		switch req.Action {
-		case "add":
-			runErr = a.core.AddSubscriptionsInWorkspace(access, subIDs, req.TargetCustomerListIDs, req.Status)
-		case "remove":
-			runErr = a.core.DeleteSubscriptionsInWorkspace(access, subIDs, req.TargetCustomerListIDs)
-		case "unsubscribe":
-			runErr = a.core.UnsubscribeListsInWorkspace(access, subIDs, req.TargetCustomerListIDs)
-		default:
-			return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("customers.invalidAction"))
-		}
-		if runErr != nil {
-			return runErr
-		}
-		return c.JSON(http.StatusOK, okResp{true})
-	}
-
 	subIDs, err := a.managedWorkspaceCustomerIDs(access, req.Search, req.CustomerListIDs, req.SubscriptionStatus)
 	if err != nil {
 		return err
@@ -1240,48 +1164,6 @@ func (a *App) managedWorkspaceCustomerIDs(access models.WorkspaceAccess, search 
 		}
 	}
 	return out, nil
-}
-
-// managedWorkspaceCustomerIDsWithSQL resolves a raw-expression result set
-// through the fixed workspace predicate first, then intersects it with the
-// caller's mutable resources. This keeps a permitted advanced query from
-// becoming a cross-owner bulk-write capability.
-func (a *App) managedWorkspaceCustomerIDsWithSQL(access models.WorkspaceAccess, search, query string, CustomerListIDs []int, status string) ([]int, error) {
-	ids, err := a.core.GetWorkspaceCustomerIDsWithSQL(access, search, query, CustomerListIDs, status)
-	if err != nil {
-		return nil, err
-	}
-	managed, err := a.core.CustomerListManagedWorkspaceResources(access, resourceCustomers)
-	if err != nil {
-		return nil, err
-	}
-	allowed := make(map[int]struct{}, len(managed))
-	for _, id := range managed {
-		allowed[id] = struct{}{}
-	}
-	out := make([]int, 0, len(ids))
-	for _, id := range ids {
-		if _, ok := allowed[id]; ok {
-			out = append(out, id)
-		}
-	}
-	return out, nil
-}
-
-func (a *App) requireCustomerSQLQuery(c echo.Context) error {
-	user := auth.GetUser(c)
-	if user.HasPerm(auth.PermCustomersSqlQuery) {
-		return nil
-	}
-	return echo.NewHTTPError(http.StatusForbidden,
-		a.i18n.Ts("globals.messages.permissionDenied", "name", auth.PermCustomersSqlQuery))
-}
-
-// formatSQLExp normalizes arbitrary SQL expressions before the workspace
-// validator handles them. It intentionally retains statement separators so
-// the validator can reject them rather than silently accepting a trailing one.
-func formatSQLExp(q string) string {
-	return strings.TrimSpace(q)
 }
 
 // makeOptinNotifyHook returns an enclosed callback that sends optin confirmation e-mails.

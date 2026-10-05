@@ -348,6 +348,12 @@ func (a *App) CreateCampaign(c echo.Context) error {
 		return err
 	}
 	o.PoolScope = poolScope
+	if err := normalizeCampaignSMTPSource(&o.Campaign, access.OrganizationID); err != nil {
+		return err
+	}
+	if err := a.validateCampaignSMTPPool(&o.Campaign, access.OrganizationID); err != nil {
+		return err
+	}
 	allOrganizations := poolScope == models.CampaignPoolScopeAllOrganizations
 	regularListIDs, poolAudiences, err := a.splitCampaignAudienceIDs(access, o.CustomerListIDs, allOrganizations)
 	if err != nil {
@@ -517,6 +523,13 @@ func (a *App) UpdateCampaign(c echo.Context) error {
 	// Pool scope is immutable after creation: the request value is normalized
 	// against the saved campaign so an audience edit can never smuggle a
 	// different scope past the dedicated permission.
+	o.PoolScope = cm.PoolScope
+	if err := normalizeCampaignSMTPSource(&o.Campaign, cm.OrganizationID.Int); err != nil {
+		return err
+	}
+	if err := a.validateCampaignSMTPPool(&o.Campaign, cm.OrganizationID.Int); err != nil {
+		return err
+	}
 	allOrganizations := cm.PoolScope == models.CampaignPoolScopeAllOrganizations
 	regularListIDs, poolAudiences, err := a.splitCampaignAudienceIDs(access, o.CustomerListIDs, allOrganizations)
 	if err != nil {
@@ -666,7 +679,7 @@ func (a *App) UpdateCampaignStatus(c echo.Context) error {
 		if !current.OwnerUserID.Valid || current.OwnerUserID.Int < 1 {
 			return echo.NewHTTPError(http.StatusConflict, "campaign owner has no personal SMTP configured")
 		}
-		if err := a.requirePersonalSMTPAvailable(int(current.OwnerUserID.Int)); err != nil {
+		if err := a.requireCampaignSMTPAvailable(current); err != nil {
 			return err
 		}
 	}
@@ -984,11 +997,23 @@ func (a *App) TestCampaign(c echo.Context) error {
 	if err := requireCampaignSendOwnership(auth.GetUser(c), camp); err != nil {
 		return err
 	}
+	if req.SMTPSource != "" {
+		camp.SMTPSource = req.SMTPSource
+		if req.SMTPPoolID.Valid || req.SMTPSource != "organization" {
+			camp.SMTPPoolID = req.SMTPPoolID
+		}
+	}
+	if err := normalizeCampaignSMTPSource(&camp, camp.OrganizationID.Int); err != nil {
+		return err
+	}
+	if err := a.validateCampaignSMTPPool(&camp, camp.OrganizationID.Int); err != nil {
+		return err
+	}
 	if email.IsMessengerName(req.Messenger) {
 		if !camp.OwnerUserID.Valid || camp.OwnerUserID.Int < 1 {
 			return echo.NewHTTPError(http.StatusConflict, "campaign owner has no personal SMTP configured")
 		}
-		if err := a.requirePersonalSMTPAvailable(int(camp.OwnerUserID.Int)); err != nil {
+		if err := a.requireCampaignSMTPAvailable(camp); err != nil {
 			return err
 		}
 	}
@@ -1001,6 +1026,12 @@ func (a *App) TestCampaign(c echo.Context) error {
 	camp.Messenger = req.Messenger
 	camp.ContentType = req.ContentType
 	camp.Headers = req.Headers
+	if req.SMTPRateLimit < 0 || req.SMTPRateLimit > maxCampaignSMTPRateLimit {
+		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("campaigns.fieldInvalidSMTPRateLimit"))
+	}
+	if req.SMTPRateLimit > 0 {
+		camp.SMTPRateLimit = req.SMTPRateLimit
+	}
 	camp.TemplateID = req.TemplateID
 	if camp.ContentType == models.CampaignContentTypeVisual && tplID > 0 {
 		camp.NameFallback = camp.TemplateNameFallback
@@ -1110,12 +1141,13 @@ func (a *App) GetCampaignPoolSendStatus(c echo.Context) error {
 	}
 
 	var rows []struct {
-		OrganizationID     int64  `db:"organization_id"`
-		OrganizationName   string `db:"organization_name"`
-		OrganizationStatus string `db:"organization_status"`
-		MailboxReady       bool   `db:"mailbox_ready"`
-		ReplyMailboxEmail  string `db:"reply_mailbox_email"`
-		SMTPCount          int    `db:"smtp_count"`
+		OrganizationID     int64    `db:"organization_id"`
+		OrganizationName   string   `db:"organization_name"`
+		OrganizationStatus string   `db:"organization_status"`
+		MailboxReady       bool     `db:"mailbox_ready"`
+		ReplyMailboxID     null.Int `db:"reply_mailbox_id"`
+		ReplyMailboxEmail  string   `db:"reply_mailbox_email"`
+		SMTPCount          int      `db:"smtp_count"`
 	}
 	if err := a.queries.GetCampaignPoolOrgStatus.Select(&rows, id); err != nil {
 		return err
@@ -1239,6 +1271,48 @@ func (a *App) GetCampaignsReportSummary(c echo.Context) error {
 		return err
 	}
 
+	return c.JSON(http.StatusOK, okResp{out})
+}
+
+func (a *App) GetCampaignReportGeo(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
+	id := getID(c)
+	if err := a.requireCampaignAnalytics(c, access, id); err != nil {
+		return err
+	}
+	from, to, err := a.getCampaignReportDateRange(c)
+	if err != nil {
+		return err
+	}
+	out, err := a.core.GetWorkspaceCampaignsReportGeo(access, []int{id}, from, to)
+	if err != nil {
+		return err
+	}
+	out.Enabled = a.geoIP != nil
+	return c.JSON(http.StatusOK, okResp{out})
+}
+
+func (a *App) GetCampaignsReportGeo(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
+	ids, err := a.getAccessibleCampaignReportIDs(c)
+	if err != nil {
+		return err
+	}
+	from, to, err := a.getCampaignReportDateRange(c)
+	if err != nil {
+		return err
+	}
+	out, err := a.core.GetWorkspaceCampaignsReportGeo(access, ids, from, to)
+	if err != nil {
+		return err
+	}
+	out.Enabled = a.geoIP != nil
 	return c.JSON(http.StatusOK, okResp{out})
 }
 
@@ -1882,6 +1956,12 @@ func (a *App) normalizeCampaignPoolScope(user auth.User, scope string) (string, 
 
 // validateCampaignFields validates incoming campaign field values.
 func (a *App) validateCampaignFields(c campReq) (campReq, error) {
+	if c.PoolReplyPriority == "" {
+		c.PoolReplyPriority = "contact_first"
+	}
+	if c.PoolReplyPriority != "contact_first" && c.PoolReplyPriority != "organization_first" {
+		return c, errors.New(a.i18n.T("campaigns.invalidPoolReplyPriority"))
+	}
 	if c.FromEmail == "" {
 		c.FromEmail = a.cfg.FromEmail
 	} else if !reFromAddress.Match([]byte(c.FromEmail)) {
@@ -1924,11 +2004,17 @@ func (a *App) validateCampaignFields(c campReq) (campReq, error) {
 	}
 
 	if email.IsMessengerName(c.Messenger) {
+		if c.SMTPRateLimit < 0 || c.SMTPRateLimit > maxCampaignSMTPRateLimit {
+			return c, errors.New(a.i18n.T("campaigns.fieldInvalidSMTPRateLimit"))
+		}
+		c.SMTPRateLimit = normalizedCampaignSMTPRateLimit(c.SMTPRateLimit, c.SMTPSource)
 		// Campaigns never select a specific SMTP server. The account-owned
 		// round-robin pool is resolved by the campaign owner at send time.
 		c.Messenger = emailMsgr
 	} else if !a.manager.HasMessenger(c.Messenger) {
 		return c, errors.New(a.i18n.Ts("campaigns.fieldInvalidMessenger", "name", c.Messenger))
+	} else {
+		c.SMTPRateLimit = 0
 	}
 
 	if c.Type == "" {

@@ -343,6 +343,7 @@ func (c *Core) CreateCampaign(o models.Campaign, customerListIDs []int, mediaIDs
 		scope.OriginalOwnerUserID,
 		scope.Visibility,
 		o.PoolScope,
+		o.SMTPSource, o.SMTPPoolID, o.SMTPRateLimit, o.PoolReplyPriority,
 	); err != nil {
 		if err == sql.ErrNoRows {
 			return models.Campaign{}, echo.NewHTTPError(http.StatusBadRequest, c.i18n.T("campaigns.noSubs"))
@@ -468,7 +469,7 @@ func (c *Core) createCampaignTx(tx *sqlx.Tx, access models.WorkspaceAccess, o mo
 		scope.OwnerUserID,
 		scope.OriginalOwnerUserID,
 		scope.Visibility,
-		o.PoolScope); err != nil {
+		o.PoolScope, o.SMTPSource, o.SMTPPoolID, o.SMTPRateLimit, o.PoolReplyPriority); err != nil {
 		if err == sql.ErrNoRows {
 			return 0, echo.NewHTTPError(http.StatusBadRequest, c.i18n.T("campaigns.noSubs"))
 		}
@@ -506,7 +507,7 @@ func (c *Core) UpdateCampaign(id int, o models.Campaign, customerListIDs []int, 
 		o.ArchiveMeta,
 		pq.Array(mediaIDs),
 		o.BodySource,
-		o.AutoTrackLinks)
+		o.AutoTrackLinks, o.SMTPSource, o.SMTPPoolID, o.SMTPRateLimit, o.PoolReplyPriority)
 	if err != nil {
 		c.log.Printf("error updating campaign: %v", err)
 		return models.Campaign{}, echo.NewHTTPError(http.StatusInternalServerError,
@@ -1074,8 +1075,10 @@ func ratePtr(num, den int) *float64 {
 }
 
 // RegisterCampaignView registers a customer's view on a campaign.
-func (c *Core) RegisterCampaignView(campUUID, subUUID string) error {
-	if _, err := c.q.RegisterCampaignView.Exec(campUUID, subUUID); err != nil {
+func (c *Core) RegisterCampaignView(campUUID, subUUID string, location models.CampaignOpenLocation) error {
+	if _, err := c.q.RegisterCampaignView.Exec(campUUID, subUUID,
+		location.CountryCode, location.Country, location.Region, location.City,
+		location.Latitude, location.Longitude); err != nil {
 		if pqErr, ok := err.(*pq.Error); ok && pqErr.Column == "campaign_id" {
 			return nil
 		}

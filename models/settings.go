@@ -1,6 +1,12 @@
 package models
 
-import "gopkg.in/volatiletech/null.v6"
+import (
+	"encoding/json"
+	"fmt"
+	"time"
+
+	"gopkg.in/volatiletech/null.v6"
+)
 
 // SMTPServer is the persisted shape shared by platform and personal SMTP
 // configuration. Personal SMTP records additionally expose an owner and usage
@@ -28,14 +34,82 @@ type SMTPServer struct {
 	TLSSkipVerify bool    `json:"tls_skip_verify" db:"tls_skip_verify"`
 }
 
+// SMTPDeliverySettings are the platform-wide transport options applied to
+// both system notifications and account-owned SMTP delivery.
+type SMTPDeliverySettings struct {
+	SendDelayMin  int     `json:"send_delay_min"`
+	SendDelayMax  int     `json:"send_delay_max"`
+	MaxConns      int     `json:"max_conns"`
+	MaxMsgRetries int     `json:"max_msg_retries"`
+	IdleTimeout   string  `json:"idle_timeout"`
+	WaitTimeout   string  `json:"wait_timeout"`
+	EmailHeaders  Headers `json:"email_headers"`
+}
+
+// UnmarshalJSON accepts legacy duration strings while exposing milliseconds
+// as integers to API clients. Fractions of milliseconds are rejected.
+func (s *SMTPDeliverySettings) UnmarshalJSON(b []byte) error {
+	type settings SMTPDeliverySettings
+	var raw struct {
+		*settings
+		Min json.RawMessage `json:"send_delay_min"`
+		Max json.RawMessage `json:"send_delay_max"`
+	}
+	out := settings{}
+	raw.settings = &out
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	parse := func(value json.RawMessage) (int, error) {
+		if len(value) == 0 || string(value) == "null" {
+			return 0, nil
+		}
+		var ms int
+		if err := json.Unmarshal(value, &ms); err == nil {
+			return ms, nil
+		}
+		var legacy string
+		if err := json.Unmarshal(value, &legacy); err != nil {
+			return 0, fmt.Errorf("SMTP send delay must be an integer number of milliseconds")
+		}
+		if legacy == "" {
+			return 0, nil
+		}
+		d, err := time.ParseDuration(legacy)
+		if err != nil || d%time.Millisecond != 0 || d < 0 || d > time.Hour {
+			return 0, fmt.Errorf("invalid SMTP send delay in milliseconds")
+		}
+		return int(d / time.Millisecond), nil
+	}
+	var err error
+	if out.SendDelayMin, err = parse(raw.Min); err != nil {
+		return err
+	}
+	if out.SendDelayMax, err = parse(raw.Max); err != nil {
+		return err
+	}
+	*s = SMTPDeliverySettings(out)
+	return nil
+}
+
+// SendDelayRange accepts absent fields from older settings as disabled.
+func (s SMTPDeliverySettings) SendDelayRange() (time.Duration, time.Duration, error) {
+	if s.SendDelayMin < 0 || s.SendDelayMax < s.SendDelayMin || s.SendDelayMax > 3600000 {
+		return 0, 0, fmt.Errorf("SMTP send delay must satisfy 0 <= minimum <= maximum <= 3600000 milliseconds")
+	}
+	return time.Duration(s.SendDelayMin) * time.Millisecond, time.Duration(s.SendDelayMax) * time.Millisecond, nil
+}
+
 // PersonalSMTPServer is the API representation of a user-owned SMTP server.
 // SentToday is populated from the account-scoped usage table and is safe to
 // expose because it contains no credentials.
 type PersonalSMTPServer struct {
 	Base
 	SMTPServer
-	UserID    int `json:"user_id" db:"user_id"`
-	SentToday int `json:"sent_today" db:"sent_today"`
+	UserID         null.Int `json:"user_id" db:"user_id"`
+	SMTPPoolID     null.Int `json:"smtp_pool_id" db:"smtp_pool_id"`
+	OrganizationID null.Int `json:"organization_id" db:"organization_id"`
+	SentToday      int      `json:"sent_today" db:"sent_today"`
 }
 
 // Settings represents the app settings stored in the DB.
@@ -120,7 +194,8 @@ type Settings struct {
 	UploadS3BucketType         string   `json:"upload.s3.bucket_type"`
 	UploadS3Expiry             string   `json:"upload.s3.expiry"`
 
-	SMTP []SMTPServer `json:"smtp"`
+	SMTP         []SMTPServer         `json:"smtp"`
+	SMTPDelivery SMTPDeliverySettings `json:"smtp_delivery"`
 
 	Messengers []struct {
 		UUID          string `json:"uuid"`

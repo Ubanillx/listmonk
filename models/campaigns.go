@@ -32,6 +32,11 @@ const (
 	CampaignContentTypePlain    = "plain"
 	CampaignContentTypeVisual   = "visual"
 
+	// SMTP campaign defaults are deliberately conservative for personal pools
+	// and higher for organization pools, which are normally shared by a team.
+	DefaultPersonalSMTPRateLimit     = 20
+	DefaultOrganizationSMTPRateLimit = 100
+
 	// Public-pool audience scopes. PoolScopeOrganization keeps the legacy
 	// single-organization resolution; PoolScopeAllOrganizations marks a
 	// platform-level campaign that resolves every active organization's pool
@@ -58,19 +63,23 @@ type Campaign struct {
 	// never persisted or exposed in API responses.
 	SchedulerStatus string `db:"-" json:"-"`
 
-	UUID              string          `db:"uuid" json:"uuid"`
-	Type              string          `db:"type" json:"type"`
-	Name              string          `db:"name" json:"name"`
-	Subject           string          `db:"subject" json:"subject"`
-	FromEmail         string          `db:"from_email" json:"from_email"`
-	Body              string          `db:"body" json:"body"`
-	BodySource        null.String     `db:"body_source" json:"body_source"`
-	AltBody           null.String     `db:"altbody" json:"altbody"`
-	SendAt            null.Time       `db:"send_at" json:"send_at"`
-	Status            string          `db:"status" json:"status"`
-	ContentType       string          `db:"content_type" json:"content_type"`
-	DailySendLimit    int             `db:"daily_send_limit" json:"daily_send_limit"`
-	DailyResumeTime   string          `db:"daily_resume_time" json:"daily_resume_time"`
+	UUID            string      `db:"uuid" json:"uuid"`
+	Type            string      `db:"type" json:"type"`
+	Name            string      `db:"name" json:"name"`
+	Subject         string      `db:"subject" json:"subject"`
+	FromEmail       string      `db:"from_email" json:"from_email"`
+	Body            string      `db:"body" json:"body"`
+	BodySource      null.String `db:"body_source" json:"body_source"`
+	AltBody         null.String `db:"altbody" json:"altbody"`
+	SendAt          null.Time   `db:"send_at" json:"send_at"`
+	Status          string      `db:"status" json:"status"`
+	ContentType     string      `db:"content_type" json:"content_type"`
+	DailySendLimit  int         `db:"daily_send_limit" json:"daily_send_limit"`
+	DailyResumeTime string      `db:"daily_resume_time" json:"daily_resume_time"`
+	// SMTPRateLimit is the campaign-wide SMTP send cap per minute. A zero value
+	// is treated as the source default (20 for personal SMTP, 100 for an
+	// organization pool) for legacy rows created before this field existed.
+	SMTPRateLimit     int             `db:"smtp_rate_limit" json:"smtp_rate_limit"`
 	NextResumeAt      null.Time       `db:"next_resume_at" json:"next_resume_at"`
 	UnsentCount       int             `db:"unsent_count" json:"unsent_count"`
 	Tags              pq.StringArray  `db:"tags" json:"tags"`
@@ -85,9 +94,13 @@ type Campaign struct {
 	ArchiveMeta       json.RawMessage `db:"archive_meta" json:"archive_meta"`
 	ReplyMailboxID    null.Int        `db:"reply_mailbox_id" json:"reply_mailbox_id"`
 	ReplyMailboxEmail string          `db:"reply_mailbox_email" json:"reply_mailbox_email"`
+	PoolReplyPriority string          `db:"pool_reply_priority" json:"pool_reply_priority"`
 	// PoolScope selects how pool audiences resolve (see the constants above).
 	// It is set at creation time and never changed afterwards.
 	PoolScope string `db:"pool_scope" json:"pool_scope"`
+	// SMTPSource selects the independent personal or organization sender pool.
+	SMTPSource string   `db:"smtp_source" json:"smtp_source"`
+	SMTPPoolID null.Int `db:"smtp_pool_id" json:"smtp_pool_id"`
 
 	// PoolNextOrgIndex is the round-robin position into the campaign's
 	// persisted organization rotation. Sender-process state, not API state.

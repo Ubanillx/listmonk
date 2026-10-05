@@ -100,7 +100,15 @@ func workspaceOwnerScopedReadPredicate(access models.WorkspaceAccess, alias stri
 // delivery authorization and are therefore not widened by this predicate.
 func workspaceCustomerListReadPredicate(access models.WorkspaceAccess, alias string, firstArg int) (string, []any) {
 	if !access.PlatformAdmin || access.Archived {
-		return workspaceOwnerScopedReadPredicate(access, alias, firstArg)
+		scope, args := workspaceOwnerScopedReadPredicate(access, alias, firstArg)
+		if !access.IsOrganization() || access.IsOrganizationManager() {
+			return scope, args
+		}
+		// Sharing exposes list metadata to members of the selected organization.
+		// Customer rows and mutations continue to use owner-scoped predicates.
+		shared := fmt.Sprintf(`%s.organization_id = $%d AND %s.visibility = 'organization'
+			AND %s.transfer_pending_at IS NULL`, alias, firstArg, alias, alias)
+		return withActiveOrganizationPredicate(fmt.Sprintf("(%s) OR (%s)", scope, shared), alias), args
 	}
 
 	field := func(name string) string {
@@ -663,7 +671,7 @@ func (c *Core) QueryWorkspaceMedia(access models.WorkspaceAccess, provider strin
 		if *folderID == 0 {
 			folderFilter = fmt.Sprintf(`($%d = 0 AND m.folder_id IS NULL)`, folderArg)
 		} else {
-			folderScope, argsForFolder := mediaFolderWorkspacePredicate(access, "media_folder", nextArg)
+			folderScope, argsForFolder := mediaFolderReadPredicate(access, "media_folder", nextArg)
 			folderArgs = argsForFolder
 			folderFilter = fmt.Sprintf(`$%d > 0 AND m.folder_id = $%d AND EXISTS (
 				SELECT 1 FROM media_folders media_folder
@@ -675,10 +683,11 @@ func (c *Core) QueryWorkspaceMedia(access models.WorkspaceAccess, provider strin
 	offsetArg := nextArg
 	limitArg := nextArg + 1
 	stmt := fmt.Sprintf(`
-		SELECT COUNT(*) OVER() AS total, m.*, COALESCE(u.username, '') AS owner_username,
+		SELECT COUNT(*) OVER() AS total, m.*, COALESCE(mf.visibility, '') AS folder_visibility, COALESCE(u.username, '') AS owner_username,
 			COALESCE(u.name, '') AS owner_name
 		FROM media m
 		LEFT JOIN users u ON u.id = COALESCE(m.owner_user_id, m.original_owner_user_id)
+		LEFT JOIN media_folders mf ON mf.id = m.folder_id
 		WHERE (%s) AND ($%d = '' OR m.filename ILIKE $%d) AND m.provider = $%d
 			AND %s
 		-- paginator encodes per_page=all as a zero limit. PostgreSQL's
@@ -703,6 +712,9 @@ func (c *Core) QueryWorkspaceMedia(access models.WorkspaceAccess, provider strin
 		return nil, 0, workspaceQueryError("fetching media", err)
 	}
 	for i := range out {
+		if out[i].FolderVisibility != "" {
+			out[i].Visibility = out[i].FolderVisibility
+		}
 		out[i].URL = s.GetURL(out[i].Filename)
 		if out[i].Thumb != "" {
 			out[i].ThumbURL.String = s.GetURL(out[i].Thumb)
@@ -728,7 +740,7 @@ func (c *Core) GetWorkspaceMediaByID(access models.WorkspaceAccess, id int) (med
 	if id < 1 {
 		return media.Media{}, ErrNotFound
 	}
-	mediaScope, args := workspaceReadPredicate(access, "m", 1)
+	mediaScope, args := workspaceMediaReadPredicate(access, "m", 1)
 	templateScope, templateArgs := workspaceReadPredicate(access, "t", len(args)+1)
 	args = append(args, templateArgs...)
 	campaignScope, campaignArgs := workspaceReadPredicate(access, "c", len(args)+1)
@@ -746,7 +758,7 @@ func (c *Core) GetWorkspaceMediaByID(access models.WorkspaceAccess, id int) (med
 				-- managers can still inspect such a row through the direct media
 				-- predicate above when the selected workspace is the owning org;
 				-- the derived path is intentionally limited to live binaries.
-				OR (m.transfer_pending_at IS NULL
+				OR (m.folder_id IS NULL AND m.transfer_pending_at IS NULL
 					AND (m.organization_id IS NULL OR EXISTS (
 						SELECT 1 FROM organizations media_organization
 						WHERE media_organization.id = m.organization_id
@@ -781,7 +793,7 @@ func (c *Core) GetWorkspaceMediaByID(access models.WorkspaceAccess, id int) (med
 							)
 						)
 					))
-				OR (m.transfer_pending_at IS NULL
+				OR (m.folder_id IS NULL AND m.transfer_pending_at IS NULL
 					AND (m.organization_id IS NULL OR EXISTS (
 						SELECT 1 FROM organizations media_organization
 						WHERE media_organization.id = m.organization_id
@@ -813,7 +825,7 @@ func (c *Core) GetWorkspaceMediaByFilename(access models.WorkspaceAccess, filena
 	if filename == "" {
 		return media.Media{}, ErrNotFound
 	}
-	mediaScope, args := workspaceReadPredicate(access, "m", 1)
+	mediaScope, args := workspaceMediaReadPredicate(access, "m", 1)
 	templateScope, templateArgs := workspaceReadPredicate(access, "t", len(args)+1)
 	args = append(args, templateArgs...)
 	campaignScope, campaignArgs := workspaceReadPredicate(access, "c", len(args)+1)
@@ -825,7 +837,7 @@ func (c *Core) GetWorkspaceMediaByFilename(access models.WorkspaceAccess, filena
 		WHERE (m.filename = $%d OR m.thumb = $%d)
 			AND (
 				(%s)
-				OR (m.transfer_pending_at IS NULL
+				OR (m.folder_id IS NULL AND m.transfer_pending_at IS NULL
 					AND (m.organization_id IS NULL OR EXISTS (
 						SELECT 1 FROM organizations media_organization
 						WHERE media_organization.id = m.organization_id
@@ -856,7 +868,7 @@ func (c *Core) GetWorkspaceMediaByFilename(access models.WorkspaceAccess, filena
 							)
 						)
 					))
-				OR (m.transfer_pending_at IS NULL
+				OR (m.folder_id IS NULL AND m.transfer_pending_at IS NULL
 					AND (m.organization_id IS NULL OR EXISTS (
 						SELECT 1 FROM organizations media_organization
 						WHERE media_organization.id = m.organization_id
@@ -1348,11 +1360,12 @@ func (c *Core) QueryWorkspaceCustomers(access models.WorkspaceAccess, search str
 		customerListIDs = []int{}
 	}
 	fields := map[string]string{
-		"email":      "s.email",
-		"status":     "s.status",
-		"name":       "s.name",
-		"created_at": "s.created_at",
-		"updated_at": "s.updated_at",
+		"customer_code": "s.customer_code",
+		"email":         "s.email",
+		"status":        "s.status",
+		"name":          "s.name",
+		"created_at":    "s.created_at",
+		"updated_at":    "s.updated_at",
 	}
 	if _, ok := fields[orderBy]; !ok {
 		orderBy = "created_at"
@@ -1365,7 +1378,7 @@ func (c *Core) QueryWorkspaceCustomers(access models.WorkspaceAccess, search str
 		FROM customers s
 		LEFT JOIN users u ON u.id = COALESCE(s.owner_user_id, s.original_owner_user_id)
 		WHERE (%s)
-			AND ($%d = '' OR s.name ~* $%d OR s.email ~* $%d)
+			AND ($%d = '' OR s.name ~* $%d OR s.email ~* $%d OR s.customer_code ~* $%d)
 			AND (CARDINALITY($%d::INT[]) = 0 OR EXISTS (
 				SELECT 1 FROM customer_list_memberships sl
 				JOIN customer_lists l ON l.id = sl.customer_list_id
@@ -1377,7 +1390,7 @@ func (c *Core) QueryWorkspaceCustomers(access models.WorkspaceAccess, search str
 			))
 		ORDER BY %s OFFSET $%d LIMIT (CASE WHEN $%d < 1 THEN NULL ELSE $%d END)`,
 		scope,
-		first, first, first,
+		first, first, first, first,
 		first+1, first+1, first+2, first+2,
 		workspaceSort(orderBy, order, fields, "s.created_at"), first+3, first+4, first+4)
 	args = append(args, strings.TrimSpace(search), pq.Array(customerListIDs), subscriptionStatus, offset, limit)
@@ -1408,7 +1421,7 @@ func (c *Core) GetWorkspaceCustomerIDs(access models.WorkspaceAccess, search str
 	stmt := fmt.Sprintf(`
 		SELECT s.id FROM customers s
 		WHERE (%s)
-			AND ($%d = '' OR s.name ~* $%d OR s.email ~* $%d)
+			AND ($%d = '' OR s.name ~* $%d OR s.email ~* $%d OR s.customer_code ~* $%d)
 			AND (CARDINALITY($%d::INT[]) = 0 OR EXISTS (
 				SELECT 1 FROM customer_list_memberships sl
 				JOIN customer_lists l ON l.id = sl.customer_list_id
@@ -1420,7 +1433,7 @@ func (c *Core) GetWorkspaceCustomerIDs(access models.WorkspaceAccess, search str
 					AND ($%d = '' OR sl.status = $%d::subscription_status)
 			))`,
 		scope,
-		first, first, first,
+		first, first, first, first,
 		first+1, first+1, first+2, first+2)
 	args = append(args, strings.TrimSpace(search), pq.Array(customerListIDs), subscriptionStatus)
 	var ids []int
@@ -1507,7 +1520,7 @@ func (c *Core) GetManagedWorkspaceCustomersByEmails(access models.WorkspaceAcces
 // unscoped query. Managers are rejected at the handler boundary before this
 // helper is called.
 func (c *Core) ExportWorkspaceCustomers(access models.WorkspaceAccess, search string, customerListIDs, requestedIDs []int, subscriptionStatus string, batchSize int) (func() ([]models.CustomerExport, error), error) {
-	return c.exportWorkspaceCustomers(access, search, "", customerListIDs, requestedIDs, subscriptionStatus, batchSize)
+	return c.exportWorkspaceCustomers(access, search, customerListIDs, requestedIDs, subscriptionStatus, batchSize)
 }
 
 // InsertWorkspaceCustomer creates an owner-scoped customer and its customer_list

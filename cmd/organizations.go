@@ -243,7 +243,8 @@ func (a *App) workspaceAccessForOrganizationWithPersonal(c echo.Context, orgID i
 
 func isOrganizationManagementPath(path string) bool {
 	switch path {
-	case "/api/organizations/members",
+	case "/api/organizations/smtp-pools", "/api/organizations/smtp-pools/:id", "/api/organizations/smtp", "/api/organizations/smtp/:id", "/api/organizations/smtp/test",
+		"/api/organizations/members",
 		"/api/organizations/members/:user_id",
 		"/api/organizations/resources/transfer",
 		"/api/organizations/templates/:id/transfer",
@@ -275,19 +276,17 @@ func normalizeWorkspaceVisibility(access models.WorkspaceAccess, value string) (
 }
 
 // normalizeResourceVisibility additionally constrains the resource types that
-// can be published. Ordinary customer lists and customers are always owned by
-// one user. First-level public pools are the explicit exception: they are
-// global platform resources whose organization delivery permissions are stored
-// separately. An organization manager can inspect ordinary lists, but members
-// must never gain access through a visibility flag.
+// can be published. Ordinary customer lists may share their metadata within
+// their organization, while customers stay owner-private. First-level public
+// pools are global platform resources whose organization delivery permissions
+// are stored separately.
 func normalizeResourceVisibility(access models.WorkspaceAccess, resource, value string) (string, error) {
 	visibility, err := normalizeWorkspaceVisibility(access, value)
 	if err != nil {
 		return "", err
 	}
-	if (resource == resourceLists || resource == resourceCustomers) &&
-		visibility != models.ResourceVisibilityPrivate {
-		return "", echo.NewHTTPError(http.StatusBadRequest, "customer_lists and customers must remain private to their owner")
+	if resource == resourceCustomers && visibility != models.ResourceVisibilityPrivate {
+		return "", echo.NewHTTPError(http.StatusBadRequest, "customers must remain private to their owner")
 	}
 	if visibility == models.ResourceVisibilityGlobal &&
 		(resource == resourceLists || resource == resourceCustomers || resource == resourceMedia) {
@@ -613,6 +612,9 @@ func (a *App) ArchiveOrganization(c echo.Context) error {
 		}
 	}
 	a.stopOrganizationImport(orgID, 0)
+	if a.manager != nil {
+		_ = a.manager.WithPersonalSMTPUpdate(0, func() error { return nil })
+	}
 	for _, campaign := range stopped {
 		if campaign.Status == models.CampaignStatusPaused && a.manager != nil {
 			a.manager.StopCampaign(campaign.ID, models.CampaignStatusPaused)

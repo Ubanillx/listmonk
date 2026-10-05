@@ -19,8 +19,7 @@
             "customers:membership_manage",
             "customers:import",
             "customers:export",
-            "customers:sensitive_read",
-            "customers:sql_query"
+            "customers:sensitive_read"
         ]
     },
     {

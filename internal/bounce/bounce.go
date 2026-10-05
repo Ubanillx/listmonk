@@ -38,6 +38,12 @@ type Opt struct {
 	}
 
 	RecordBounceCB func(models.Bounce) error
+
+	// RecordBounceBatchCB, when set, receives aggregated bounce summaries: one
+	// per workspace per flush window (or sooner when a cap is reached) instead
+	// of one call per bounce. It is optional; a nil value leaves the writer
+	// with no aggregation state and no behaviour change.
+	RecordBounceBatchCB func(BounceBatch) error
 }
 
 // queueSize is the number of bounce events buffered between the producers
@@ -61,6 +67,11 @@ type Manager struct {
 	queries      *Queries
 	opt          Opt
 	log          *log.Logger
+
+	// aggregator accumulates persisted bounces per workspace for the optional
+	// RecordBounceBatchCB hook. It is nil when no such hook is configured, in
+	// which case the writer never touches it.
+	aggregator *bounceAggregator
 }
 
 // Queries contains the queries.
@@ -76,6 +87,11 @@ func New(opt Opt, q *Queries, lo *log.Logger) (*Manager, error) {
 		queries: q,
 		queue:   make(chan models.Bounce, queueSize),
 		log:     lo,
+	}
+
+	// Aggregation only exists when a consumer asked for it.
+	if opt.RecordBounceBatchCB != nil {
+		m.aggregator = newBounceAggregator()
 	}
 
 	// Is there a mailbox?
@@ -141,13 +157,47 @@ func (m *Manager) Run() {
 		go m.runMailboxScanner()
 	}
 
-	for b := range m.queue {
-		if b.CreatedAt.IsZero() {
-			b.CreatedAt = time.Now()
-		}
+	// With an aggregate recorder configured, the writer also owns the flush
+	// window. Without one, flushCh stays nil (a nil channel is never selected)
+	// and the loop consumes the queue exactly as it did before aggregation
+	// existed.
+	var (
+		ticker  *time.Ticker
+		flushCh <-chan time.Time
+	)
+	if m.aggregator != nil {
+		ticker = time.NewTicker(aggregateFlushInterval)
+		defer ticker.Stop()
+		flushCh = ticker.C
+	}
 
-		if err := m.opt.RecordBounceCB(b); err != nil {
-			continue
+	for {
+		select {
+		case b, ok := <-m.queue:
+			if !ok {
+				// The queue is closed: record what is still pending instead of
+				// losing the last window on shutdown.
+				m.flushBounces(m.aggregator.drain())
+				return
+			}
+
+			if b.CreatedAt.IsZero() {
+				b.CreatedAt = time.Now()
+			}
+
+			if err := m.opt.RecordBounceCB(b); err != nil {
+				continue
+			}
+
+			// Aggregate the bounce that was just persisted. The cap flush, if
+			// any, happens on this same goroutine, so the aggregation state
+			// needs no locks and spawns no goroutines.
+			if m.aggregator != nil {
+				m.flushBounces(m.aggregator.add(b))
+			}
+
+		case <-flushCh:
+			m.flushBounces(m.aggregator.drain())
 		}
 	}
 }

@@ -20,6 +20,10 @@ type Message struct {
 	Headers     textproto.MIMEHeader
 	Attachments []Attachment
 
+	// Internal cancellation signals for SMTP waits; never sent to postbacks.
+	SendCancel     <-chan struct{} `json:"-"`
+	CampaignCancel <-chan struct{} `json:"-"`
+
 	Customer     Customer
 	UseSMTPFrom  bool
 	UseSMTPQuota bool

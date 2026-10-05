@@ -17,11 +17,17 @@ func (a *App) GetLists(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	group, validGroup := parseCustomerListTypeGroup(c.FormValue("type_group"))
+	if !validGroup {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid customer list type group")
+	}
 	// Minimal query simply returns the customer_list of all customer_lists without JOIN customer counts. This is fast.
 	minimal, _ := strconv.ParseBool(c.FormValue("minimal"))
 	if minimal {
 		status := c.FormValue("status")
-		res, _, err := a.queryReadableWorkspaceLists(c, access, "", "", "", status, nil, "name", core.SortAsc, 0, 0)
+		res, _, err := a.queryReadableWorkspaceLists(c, access, customerListQuery{
+			group: group, status: status, orderBy: "name", order: core.SortAsc,
+		})
 		if err != nil {
 			return err
 		}
@@ -53,7 +59,10 @@ func (a *App) GetLists(c echo.Context) error {
 
 		pg = a.pg.NewFromURL(c.Request().URL.Query())
 	)
-	res, total, err := a.queryReadableWorkspaceLists(c, access, query, typ, optin, status, tags, orderBy, order, pg.Offset, pg.Limit)
+	res, total, err := a.queryReadableWorkspaceLists(c, access, customerListQuery{
+		search: query, typ: typ, group: group, optin: optin, status: status,
+		tags: tags, orderBy: orderBy, order: order, offset: pg.Offset, limit: pg.Limit,
+	})
 	if err != nil {
 		return err
 	}
@@ -335,6 +344,10 @@ func (a *App) DeleteLists(c echo.Context) error {
 			return err
 		}
 	} else {
+		group, validGroup := parseCustomerListTypeGroup(c.FormValue("type_group"))
+		if !validGroup {
+			return echo.NewHTTPError(http.StatusBadRequest, "invalid customer list type group")
+		}
 		if err := requireLegacyPermission(auth.GetUser(c), auth.PermListManageAll); err != nil {
 			return err
 		}
@@ -342,9 +355,12 @@ func (a *App) DeleteLists(c echo.Context) error {
 		if err != nil {
 			return err
 		}
-		// Keep the page filter when all=true. Managed IDs are an ownership
-		// boundary, not a replacement for the user-selected result set.
-		visible, _, err := a.core.QueryWorkspaceLists(access, query, "", "", "", nil, "id", "asc", 0, 0)
+		// Use the same filtered result set as the page before intersecting it
+		// with mutable IDs. This keeps status, pool/private grouping, and pool
+		// delivery grants consistent with the user's selection.
+		visible, _, err := a.queryReadableWorkspaceLists(c, access, customerListQuery{
+			search: query, group: group, status: c.FormValue("status"),
+		})
 		if err != nil {
 			return err
 		}
@@ -353,6 +369,9 @@ func (a *App) DeleteLists(c echo.Context) error {
 			allowed[id] = struct{}{}
 		}
 		for _, customer_list := range visible {
+			if customer_list.Type == models.CustomerListTypePool && !auth.GetUser(c).IsPlatformAdmin() {
+				continue
+			}
 			if _, ok := allowed[customer_list.ID]; ok {
 				ids = append(ids, customer_list.ID)
 			}

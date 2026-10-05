@@ -36,15 +36,23 @@ func (c *Core) GetResourceScope(resource string, id int) (models.ResourceScope, 
 		return models.ResourceScope{}, echo.NewHTTPError(http.StatusInternalServerError, "unknown workspace resource")
 	}
 	var out models.ResourceScope
+	visibility := "r.visibility"
+	folderJoin := ""
+	folderID := "NULL::INT"
+	if resource == resourceMedia {
+		visibility = "COALESCE(permission_folder.visibility, r.visibility) AS visibility"
+		folderJoin = "LEFT JOIN media_folders permission_folder ON permission_folder.id = r.folder_id"
+		folderID = "r.folder_id"
+	}
 	q := fmt.Sprintf(`
 		SELECT r.organization_id, COALESCE(o.name, '') AS organization_name,
-			r.owner_user_id, r.original_owner_user_id, r.visibility, r.transfer_pending_at,
+			r.owner_user_id, r.original_owner_user_id, %s, %s AS media_folder_id, r.transfer_pending_at,
 			(r.organization_id IS NOT NULL AND COALESCE(o.status, 'archived') <> 'active') AS organization_archived,
 			COALESCE(u.username, '') AS owner_username, COALESCE(u.name, '') AS owner_name
 		FROM %s r
 		LEFT JOIN organizations o ON o.id = r.organization_id
 		LEFT JOIN users u ON u.id = COALESCE(r.owner_user_id, r.original_owner_user_id)
-		WHERE r.id = $1`, table)
+		%s WHERE r.id = $1`, visibility, folderID, table, folderJoin)
 	if err := c.db.Get(&out, q, id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return out, ErrNotFound
@@ -257,6 +265,17 @@ func (c *Core) RequireReadResource(access models.WorkspaceAccess, resource strin
 		return scope, err
 	}
 	canRead := c.CanReadResource(access, scope)
+	if resource == resourceMedia {
+		allowed, err := c.mediaFolderAccessible(access, id)
+		if err != nil {
+			return scope, err
+		}
+		if scope.MediaFolderID.Valid {
+			canRead = allowed && (access.PlatformAdmin || (!scope.TransferPendingAt.Valid && !scope.OrganizationArchived))
+		} else {
+			canRead = canRead && allowed
+		}
+	}
 	if resource == resourceLists || resource == resourceCustomers {
 		canRead = c.CanReadOwnerScopedResource(access, scope)
 	}
@@ -274,7 +293,19 @@ func (c *Core) RequireUseResource(access models.WorkspaceAccess, resource string
 	if err != nil {
 		return scope, err
 	}
-	if !c.CanUseResource(access, scope) {
+	canUse := c.CanUseResource(access, scope)
+	if resource == resourceMedia {
+		allowed, err := c.mediaFolderAccessible(access, id)
+		if err != nil {
+			return scope, err
+		}
+		if scope.MediaFolderID.Valid {
+			canUse = allowed && !scope.TransferPendingAt.Valid && !scope.OrganizationArchived
+		} else {
+			canUse = canUse && allowed
+		}
+	}
+	if !canUse {
 		return scope, echo.NewHTTPError(http.StatusForbidden, "resource cannot be used for sending in the active workspace")
 	}
 	return scope, nil
@@ -295,7 +326,11 @@ func (c *Core) CanUseTemplateMedia(access models.WorkspaceAccess, templateID, me
 	if err != nil {
 		return false, err
 	}
-	if c.CanUseResource(access, mediaScope) {
+	if allowed, err := c.mediaFolderAccessible(access, mediaID); err != nil || !allowed {
+		return false, err
+	}
+	if (mediaScope.MediaFolderID.Valid || c.CanUseResource(access, mediaScope)) &&
+		!mediaScope.TransferPendingAt.Valid && !mediaScope.OrganizationArchived {
 		return true, nil
 	}
 	// A transferred or archived binary must not be resurrected through a stale
@@ -453,8 +488,8 @@ func validateResourceVisibility(resource string, visibility string) error {
 		visibility != models.ResourceVisibilityGlobal {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid resource visibility")
 	}
-	if (resource == resourceLists || resource == resourceCustomers) && visibility != models.ResourceVisibilityPrivate {
-		return echo.NewHTTPError(http.StatusBadRequest, "customer_lists and customers must remain private to their owner")
+	if resource == resourceCustomers && visibility != models.ResourceVisibilityPrivate {
+		return echo.NewHTTPError(http.StatusBadRequest, "customers must remain private to their owner")
 	}
 	if visibility == models.ResourceVisibilityGlobal &&
 		(resource == resourceLists || resource == resourceCustomers || resource == resourceMedia) {

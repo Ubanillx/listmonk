@@ -113,7 +113,7 @@ func (c *Core) HasPoolOrganizationPermission(poolID int, organizationID int64) (
 
 func (c *Core) GetPoolContactByUUID(rawUUID string) (models.PoolContact, error) {
 	var p models.PoolContact
-	if err := c.db.Get(&p, `SELECT id,uuid,customer_code,email,name,allocation_department,attribs,status,created_at,updated_at FROM pool_contacts WHERE uuid=$1::uuid`, rawUUID); err != nil {
+	if err := c.db.Get(&p, `SELECT id,uuid,customer_code,email,reply_to,name,allocation_department,attribs,status,created_at,updated_at FROM pool_contacts WHERE uuid=$1::uuid`, rawUUID); err != nil {
 		return p, err
 	}
 	return p, nil
@@ -307,6 +307,7 @@ var poolContactSortFields = map[string]string{
 	"id":                    "id",
 	"customer_code":         "customer_code",
 	"name":                  "name",
+	"reply_to":              "reply_to",
 	"email":                 "email",
 	"allocation_department": "allocation_department",
 	"status":                "status",
@@ -346,6 +347,38 @@ const poolGlobalExceptionJoin = ` LEFT JOIN (
 	ORDER BY exceptions.contact_id, exceptions.changed_at DESC,
 		exceptions.priority DESC, exceptions.allocation_id DESC NULLS LAST
 ) pool_exception ON pool_exception.contact_id=pc.id`
+
+// The aggregate view needs the same latest exception as a single pool, keyed
+// by both pool and contact because one contact may belong to several pools.
+const allPoolExceptionJoin = ` LEFT JOIN (
+	SELECT DISTINCT ON (exceptions.pool_id, exceptions.contact_id)
+		exceptions.pool_id, exceptions.contact_id, exceptions.allocation_id,
+		exceptions.organization_name, exceptions.reason
+	FROM (
+		SELECT ps.pool_id, sm.contact_id, ps.id AS allocation_id,
+			COALESCE(o.name, '') AS organization_name,
+			COALESCE(NULLIF(sm.removed_reason, ''), ex.reason, '') AS reason,
+			COALESCE(sm.removed_at, sm.updated_at) AS changed_at, 0 AS priority
+		FROM org_pool_allocation_members sm
+		JOIN org_pool_allocations ps ON ps.id=sm.allocation_id
+		JOIN organizations o ON o.id=ps.organization_id
+		LEFT JOIN org_pool_allocation_exclusions ex ON ex.pool_id=ps.pool_id
+			AND ex.organization_id=ps.organization_id AND ex.contact_id=sm.contact_id AND ex.restored_at IS NULL
+		WHERE sm.status='removed'
+		UNION ALL
+		SELECT ex.pool_id, ex.contact_id,
+			CASE WHEN sm.contact_id IS NOT NULL THEN ps.id END AS allocation_id,
+			COALESCE(o.name, '') AS organization_name, ex.reason,
+			ex.removed_at AS changed_at, 1 AS priority
+		FROM org_pool_allocation_exclusions ex
+		JOIN organizations o ON o.id=ex.organization_id
+		LEFT JOIN org_pool_allocations ps ON ps.pool_id=ex.pool_id AND ps.organization_id=ex.organization_id
+		LEFT JOIN org_pool_allocation_members sm ON sm.allocation_id=ps.id AND sm.contact_id=ex.contact_id
+		WHERE ex.restored_at IS NULL
+	) exceptions
+	ORDER BY exceptions.pool_id, exceptions.contact_id, exceptions.changed_at DESC,
+		exceptions.priority DESC, exceptions.allocation_id DESC NULLS LAST
+) pool_exception ON pool_exception.pool_id=pm.pool_id AND pool_exception.contact_id=pc.id`
 
 // AuthorizePoolListAccess applies the organization scope of a pool list to a
 // non-platform-admin caller: a first-level pool must be granted to the active
@@ -454,12 +487,12 @@ func (c *Core) QueryPoolContacts(poolID int, organizationID int, platformAdmin b
 
 	// The filtered rows are built as a subquery so the requested sort can be
 	// applied outside a DISTINCT ON selection, whose ORDER BY prefix is fixed.
-	inner := `SELECT pc.id, pc.uuid, pc.customer_code, pc.email, pc.name, pc.allocation_department, pc.status, pc.created_at, pc.updated_at,
+	inner := `SELECT pc.id, pc.uuid, pc.customer_code, pc.email, pc.reply_to, pc.name, pc.allocation_department, pc.status, pc.created_at, pc.updated_at,
 			` + exclusionSelect + `
 		FROM pool_contacts pc JOIN pool_members pm ON pm.contact_id=pc.id` + join + `
 		WHERE pm.pool_id=$1` + where
 	if !platformAdmin {
-		inner = `SELECT DISTINCT ON (pc.id) pc.id, pc.uuid, pc.customer_code, pc.email, pc.name, pc.allocation_department, pc.status, pc.created_at, pc.updated_at,
+		inner = `SELECT DISTINCT ON (pc.id) pc.id, pc.uuid, pc.customer_code, pc.email, pc.reply_to, pc.name, pc.allocation_department, pc.status, pc.created_at, pc.updated_at,
 			` + exclusionSelect + `
 			FROM pool_contacts pc JOIN pool_members pm ON pm.contact_id=pc.id` + join + `
 			WHERE pm.pool_id=$1` + where + ` ORDER BY pc.id, psm.updated_at DESC`
@@ -539,6 +572,140 @@ func (c *Core) QueryPoolContacts(poolID int, organizationID int, platformAdmin b
 	return rows, total, nil
 }
 
+// QueryAllPoolContacts pages over first-level pool memberships. A contact in
+// two pools appears twice, with its source pool on each row. Organization users
+// only see their own allocation memberships and receive masked contact data.
+func (c *Core) QueryAllPoolContacts(organizationID int, platformAdmin bool, poolStatus, search string, poolID int64, department *string, orderBy, order string, offset, limit int) (any, int, error) {
+	poolStatus = strings.ToLower(strings.TrimSpace(poolStatus))
+	if poolStatus != "" && poolStatus != "active" && poolStatus != "removed" {
+		return nil, 0, echo.NewHTTPError(http.StatusBadRequest, "invalid pool contact status")
+	}
+	if poolID < 0 {
+		return nil, 0, echo.NewHTTPError(http.StatusBadRequest, "invalid pool id")
+	}
+	if !platformAdmin && organizationID <= 0 {
+		return []models.SafePoolContact{}, 0, nil
+	}
+
+	args := []any{}
+	join := ""
+	where := " WHERE 1=1"
+	exclusionSelect := `pool_exception.contact_id IS NOT NULL AS excluded,
+		COALESCE(pool_exception.reason, '') AS exclusion_reason,
+		pool_exception.allocation_id AS exception_allocation_id,
+		COALESCE(pool_exception.organization_name, '') AS exception_organization_name`
+	if platformAdmin {
+		join = allPoolExceptionJoin
+		if poolStatus == "active" {
+			where += " AND pool_exception.contact_id IS NULL"
+		} else if poolStatus == "removed" {
+			where += " AND pool_exception.contact_id IS NOT NULL"
+		}
+	} else {
+		args = append(args, organizationID)
+		join = ` JOIN org_pool_allocations ps ON ps.pool_id=pm.pool_id AND ps.organization_id=$1
+			JOIN org_pool_allocation_members psm ON psm.allocation_id=ps.id AND psm.contact_id=pc.id
+			LEFT JOIN org_pool_allocation_exclusions ex ON ex.pool_id=pm.pool_id
+				AND ex.organization_id=ps.organization_id AND ex.contact_id=pc.id AND ex.restored_at IS NULL`
+		exclusionSelect = `(psm.status='removed' OR ex.contact_id IS NOT NULL) AS excluded,
+			COALESCE(NULLIF(psm.removed_reason, ''), ex.reason, '') AS exclusion_reason`
+		switch poolStatus {
+		case "active":
+			where += " AND psm.status='active' AND ex.contact_id IS NULL"
+		case "removed":
+			where += " AND (psm.status='removed' OR ex.contact_id IS NOT NULL)"
+		default:
+			where += " AND (psm.status IN ('active','removed') OR ex.contact_id IS NOT NULL)"
+		}
+	}
+	if s := strings.TrimSpace(search); s != "" {
+		args = append(args, "%"+s+"%")
+		placeholder := strconv.Itoa(len(args))
+		where += " AND (pc.customer_code ILIKE $" + placeholder + " OR pc.name ILIKE $" + placeholder + " OR pc.email ILIKE $" + placeholder + ")"
+	}
+	if poolID > 0 {
+		args = append(args, poolID)
+		where += " AND pm.pool_id=$" + strconv.Itoa(len(args))
+	}
+	if department != nil {
+		args = append(args, strings.TrimSpace(*department))
+		where += " AND BTRIM(pc.allocation_department)=$" + strconv.Itoa(len(args))
+	}
+
+	from := ` FROM pool_contacts pc
+		JOIN pool_members pm ON pm.contact_id=pc.id
+		JOIN customer_lists cl ON cl.id=pm.pool_id AND cl.type='pool'` + join + where
+	var total int
+	if err := c.db.Get(&total, `SELECT COUNT(*)`+from, args...); err != nil {
+		return nil, 0, err
+	}
+
+	sortField, ok := poolContactSortFields[orderBy]
+	if !ok {
+		sortField = "id"
+	}
+	if orderBy == "pool_name" {
+		sortField = "pool_name"
+	}
+	direction := "DESC"
+	if strings.EqualFold(order, SortAsc) {
+		direction = "ASC"
+	}
+	sortExpr := sortField + " " + direction
+	if sortField != "id" {
+		sortExpr += ", id DESC"
+	}
+	sortExpr += ", pool_id DESC"
+	q := `SELECT * FROM (
+		SELECT pc.id, pc.uuid, pc.customer_code, pc.email, pc.reply_to, pc.name, pc.allocation_department,
+			pc.status, pc.created_at, pc.updated_at, pm.pool_id, cl.name AS pool_name,
+			` + exclusionSelect + from + `
+	) pool_rows ORDER BY ` + sortExpr + fmt.Sprintf(
+		` OFFSET $%d LIMIT (CASE WHEN $%d < 1 THEN NULL ELSE $%d END)`, len(args)+1, len(args)+2, len(args)+2)
+	pageArgs := append(append([]any{}, args...), offset, limit)
+	var rows []models.PoolContact
+	if err := c.db.Select(&rows, q, pageArgs...); err != nil {
+		return nil, 0, err
+	}
+	if platformAdmin {
+		return rows, total, nil
+	}
+	masked := make([]models.SafePoolContact, 0, len(rows))
+	for _, row := range rows {
+		masked = append(masked, row.Safe())
+	}
+	return masked, total, nil
+}
+
+// QueryAllPoolContactFilterOptions returns only the pool/department pairs
+// visible in the caller's workspace. It does not load contact details or use
+// the current result page, so filter choices remain stable across pagination.
+func (c *Core) QueryAllPoolContactFilterOptions(organizationID int, platformAdmin bool) ([]models.PoolContactFilterOption, error) {
+	if !platformAdmin && organizationID <= 0 {
+		return []models.PoolContactFilterOption{}, nil
+	}
+	query := `SELECT DISTINCT pm.pool_id, cl.name AS pool_name,
+		BTRIM(pc.allocation_department) AS allocation_department
+		FROM pool_contacts pc
+		JOIN pool_members pm ON pm.contact_id=pc.id
+		JOIN customer_lists cl ON cl.id=pm.pool_id AND cl.type='pool'`
+	args := []any{}
+	if !platformAdmin {
+		query += ` JOIN org_pool_allocations ps ON ps.pool_id=pm.pool_id AND ps.organization_id=$1
+			JOIN org_pool_allocation_members psm ON psm.allocation_id=ps.id AND psm.contact_id=pc.id
+			LEFT JOIN org_pool_allocation_exclusions ex ON ex.pool_id=pm.pool_id
+				AND ex.organization_id=ps.organization_id AND ex.contact_id=pc.id AND ex.restored_at IS NULL
+			WHERE (psm.status IN ('active','removed') OR ex.contact_id IS NOT NULL)`
+		args = append(args, organizationID)
+	}
+	query += ` ORDER BY pool_name, pool_id, allocation_department`
+	options := []models.PoolContactFilterOption{}
+	if err := c.db.Select(&options, query, args...); err != nil {
+		return nil, err
+	}
+	return options, nil
+}
+
 func (c *Core) CreatePoolContact(poolID int, p models.PoolContact) (models.PoolContact, error) {
 	if poolID > 0 {
 		if err := c.ensurePool(poolID); err != nil {
@@ -549,6 +716,10 @@ func (c *Core) CreatePoolContact(poolID int, p models.PoolContact) (models.PoolC
 	p.Email = strings.TrimSpace(p.Email)
 	p.Name = strings.TrimSpace(p.Name)
 	p.AllocationDepartment = strings.TrimSpace(p.AllocationDepartment)
+	p.ReplyTo = strings.TrimSpace(p.ReplyTo)
+	if err := validatePoolReplyTo(p.ReplyTo); err != nil {
+		return models.PoolContact{}, err
+	}
 	if p.Email == "" {
 		return models.PoolContact{}, echo.NewHTTPError(http.StatusBadRequest, "email is required")
 	}
@@ -569,7 +740,7 @@ func (c *Core) CreatePoolContact(poolID int, p models.PoolContact) (models.PoolC
 		}
 	}
 	var id int64
-	if err = tx.Get(&id, `INSERT INTO pool_contacts(customer_code,email,name,allocation_department,attribs) VALUES($1,$2,$3,$4,$5::jsonb) RETURNING id`, p.CustomerCode, p.Email, p.Name, p.AllocationDepartment, `{}`); err != nil {
+	if err = tx.Get(&id, `INSERT INTO pool_contacts(customer_code,email,name,allocation_department,attribs,reply_to) VALUES($1,$2,$3,$4,$5::jsonb,$6) RETURNING id`, p.CustomerCode, p.Email, p.Name, p.AllocationDepartment, `{}`, p.ReplyTo); err != nil {
 		return models.PoolContact{}, err
 	}
 	if poolID > 0 {
@@ -594,18 +765,18 @@ func (c *Core) CreatePoolContact(poolID int, p models.PoolContact) (models.PoolC
 	if err = tx.Commit(); err != nil {
 		return models.PoolContact{}, err
 	}
-	if err := c.db.Get(&p, `SELECT id,uuid,customer_code,email,name,allocation_department,attribs,status,created_at,updated_at FROM pool_contacts WHERE id=$1`, id); err != nil {
+	if err := c.db.Get(&p, `SELECT id,uuid,customer_code,email,reply_to,name,allocation_department,attribs,status,created_at,updated_at FROM pool_contacts WHERE id=$1`, id); err != nil {
 		return models.PoolContact{}, err
 	}
 	return p, nil
 }
 
-// ImportPoolContacts imports the four business fields used by the unified
+// ImportPoolContacts imports the business fields used by the unified
 // public-pool import. Additional source columns are intentionally ignored by
 // the HTTP parser. A contact is reused when all imported identity fields
 // match; same-code differences are retained as separate contacts and written
 // to the pool conflict audit table, matching the existing pool merge policy.
-func (c *Core) ImportPoolContacts(poolID, userID int, rows []models.PoolContactImportRow) (models.PoolContactImportResult, error) {
+func (c *Core) ImportPoolContacts(poolID, userID int, rows []models.PoolContactImportRow, blocklist bool) (models.PoolContactImportResult, error) {
 	result := models.PoolContactImportResult{Target: models.CustomerListTypePool, PoolID: poolID, Total: len(rows)}
 	if poolID <= 0 {
 		return result, echo.NewHTTPError(http.StatusBadRequest, "pool_id is required")
@@ -636,6 +807,7 @@ func (c *Core) ImportPoolContacts(poolID, userID int, rows []models.PoolContactI
 	}
 
 	seen := make(map[string]struct{}, len(rows))
+	blockedEmails := make(map[string]struct{})
 	addIssue := func(issue models.PoolContactImportIssue) {
 		if len(result.Issues) < 200 {
 			result.Issues = append(result.Issues, issue)
@@ -645,6 +817,7 @@ func (c *Core) ImportPoolContacts(poolID, userID int, rows []models.PoolContactI
 		code := strings.TrimSpace(row.CustomerCode)
 		name := strings.TrimSpace(row.Name)
 		email := strings.TrimSpace(row.Email)
+		replyTo := strings.TrimSpace(row.ReplyTo)
 		department := strings.TrimSpace(row.AllocationDepartment)
 		issue := models.PoolContactImportIssue{Row: row.Row, CustomerCode: code, AllocationDepartment: department}
 		switch {
@@ -683,20 +856,38 @@ func (c *Core) ImportPoolContacts(poolID, userID int, rows []models.PoolContactI
 			continue
 		}
 
-		key := code + "\x00" + strings.ToLower(email) + "\x00" + name + "\x00" + department
+		if err := validatePoolReplyTo(replyTo); err != nil {
+			result.Invalid++
+			issue.Reason = "invalid_reply_to"
+			addIssue(issue)
+			continue
+		}
+
+		key := code + "\x00" + strings.ToLower(email) + "\x00" + name + "\x00" + department + "\x00" + strings.ToLower(replyTo)
 		if _, ok := seen[key]; ok {
 			result.Duplicates++
 			continue
 		}
 		seen[key] = struct{}{}
 		result.Valid++
+		contactStatus := "active"
+		var alreadyBlocked bool
+		if err := tx.Get(&alreadyBlocked, `SELECT EXISTS(SELECT 1 FROM pool_contacts pc
+			JOIN pool_members pm ON pm.contact_id=pc.id
+			WHERE pm.pool_id=$1 AND LOWER(pc.email)=LOWER($2) AND pc.status='blocklisted')`, poolID, email); err != nil {
+			return result, err
+		}
+		if blocklist || alreadyBlocked {
+			contactStatus = "blocklisted"
+		}
 
 		var contactID int64
 		err = tx.Get(&contactID, `SELECT id FROM pool_contacts
 			WHERE customer_code=$1 AND LOWER(email)=LOWER($2) AND name=$3 AND allocation_department=$4
 			ORDER BY id LIMIT 1`, code, email, name, department)
 		if err == nil {
-			if _, err = tx.Exec(`UPDATE pool_contacts SET status='active',updated_at=NOW() WHERE id=$1`, contactID); err != nil {
+			if _, err = tx.Exec(`UPDATE pool_contacts SET
+				status=CASE WHEN status='blocklisted' THEN status ELSE $2 END,reply_to=$3,updated_at=NOW() WHERE id=$1`, contactID, contactStatus, replyTo); err != nil {
 				return result, err
 			}
 			result.Existing++
@@ -709,8 +900,8 @@ func (c *Core) ImportPoolContacts(poolID, userID int, rows []models.PoolContactI
 			if codeErr != nil && codeErr != sql.ErrNoRows {
 				return result, codeErr
 			}
-			if err = tx.Get(&contactID, `INSERT INTO pool_contacts(customer_code,email,name,allocation_department,attribs)
-				VALUES($1,$2,$3,$4,'{}'::jsonb) RETURNING id`, code, email, name, department); err != nil {
+			if err = tx.Get(&contactID, `INSERT INTO pool_contacts(customer_code,email,name,allocation_department,attribs,status,reply_to)
+				VALUES($1,$2,$3,$4,'{}'::jsonb,$5,$6) RETURNING id`, code, email, name, department, contactStatus, replyTo); err != nil {
 				return result, err
 			}
 			result.Created++
@@ -729,6 +920,16 @@ func (c *Core) ImportPoolContacts(poolID, userID int, rows []models.PoolContactI
 		if _, err = tx.Exec(`INSERT INTO pool_members(pool_id,contact_id) VALUES($1,$2) ON CONFLICT DO NOTHING`, poolID, contactID); err != nil {
 			return result, err
 		}
+		if blocklist {
+			// Match by email within the selected pool, even when source identity
+			// fields differ. A shared contact's status applies to every allocation.
+			if _, err := tx.Exec(`UPDATE pool_contacts pc SET status='blocklisted',updated_at=NOW()
+				FROM pool_members pm WHERE pm.contact_id=pc.id AND pm.pool_id=$1
+				AND LOWER(pc.email)=LOWER($2)`, poolID, email); err != nil {
+				return result, err
+			}
+			blockedEmails[strings.ToLower(email)] = struct{}{}
+		}
 		// The imported department is the allocation target. If that
 		// organization already has a pool allocation for this pool, make the
 		// contact a member of it immediately. Keep an existing removed row
@@ -742,6 +943,17 @@ func (c *Core) ImportPoolContacts(poolID, userID int, rows []models.PoolContactI
 				ON CONFLICT (allocation_id,contact_id) DO NOTHING`, poolID, contactID, organizationID); err != nil {
 				return result, err
 			}
+		}
+	}
+	if blocklist {
+		emails := make([]string, 0, len(blockedEmails))
+		for email := range blockedEmails {
+			emails = append(emails, email)
+		}
+		if err := tx.Get(&result.Blocklisted, `SELECT COUNT(*) FROM pool_contacts pc
+			JOIN pool_members pm ON pm.contact_id=pc.id WHERE pm.pool_id=$1
+			AND pc.status='blocklisted' AND LOWER(pc.email)=ANY($2::TEXT[])`, poolID, pq.Array(emails)); err != nil {
+			return result, err
 		}
 	}
 	if err = tx.Commit(); err != nil {
@@ -1087,11 +1299,9 @@ func (c *Core) refreshPoolCampaignAudienceRoutes(campaignID int) error {
 // campaign. ValidatePoolCampaignAudience renders these rows so the administrator
 // sees which configuration step is missing instead of the former opaque
 // sentence. This struct only reports a problem; the resolution semantics are
-// unchanged and a pool audience still never falls back to a per-allocation,
-// personal or default mailbox: the only accepted route is the target
-// organization's unified reply mailbox. A first-level pool campaign may be
-// saved as a draft, but preview and send must be blocked while the target
-// organization has no effective pool allocation or unified reply mailbox.
+// determined by contact and organization reply addresses in campaign priority
+// order. A first-level pool campaign may be saved as a draft, but preview and
+// send require an effective allocation and an address for every recipient.
 type PoolAudienceRouteIssue struct {
 	PoolID             int    `db:"pool_id"`
 	PoolName           string `db:"pool_name"`
@@ -1172,7 +1382,7 @@ func (c *Core) poolAudienceRouteIssues(campaignID int) ([]PoolAudienceRouteIssue
 		FROM campaign_customer_lists ccl
 		LEFT JOIN organizations o ON o.id=ccl.source_organization_id
 		LEFT JOIN LATERAL (
-			SELECT ss.id,ss.list_id
+			SELECT ss.id,ss.list_id,ss.pool_id,ss.organization_id
 			FROM org_pool_allocations ss
 			WHERE ccl.source_organization_id IS NOT NULL
 				AND ss.pool_id=ccl.pool_id
@@ -1185,7 +1395,8 @@ func (c *Core) poolAudienceRouteIssues(campaignID int) ([]PoolAudienceRouteIssue
 		LEFT JOIN reply_mailboxes rm ON rm.id=o.reply_mailbox_id
 		WHERE ccl.campaign_id=$1
 			AND ccl.pool_id IS NOT NULL
-			AND (ccl.source_organization_id IS NULL OR ccl.resolved_reply_mailbox_id IS NULL)
+			AND (ccl.source_organization_id IS NULL OR s.id IS NULL OR
+				(ccl.resolved_reply_mailbox_id IS NULL AND `+poolMissingContactReplySQL+`))
 		ORDER BY ccl.pool_id,s.id NULLS FIRST`, campaignID)
 	if err != nil {
 		return nil, err
@@ -1269,15 +1480,13 @@ func poolAudienceRouteMessage(issues []PoolAudienceRouteIssue) string {
 }
 
 // ValidatePoolCampaignAudience is called by preview/send paths. Drafts may
-// retain an unresolved pool audience, but sending is blocked until every pool
-// row resolves to an organization allocation and the organization's unified
-// reply mailbox. The block message names each unresolved audience and the
-// concrete missing piece; it never substitutes a per-allocation, personal or
-// default mailbox for a missing organization mailbox.
+// retain an unresolved pool audience, but sending requires an organization
+// allocation and either an imported reply address or verified organization
+// fallback for every eligible contact. No personal mailbox is substituted.
 //
 // Platform-level ('all_organizations') campaigns are validated across every
 // active organization that owns a pool allocation for the campaign's pool:
-// each organization needs a usable unified reply mailbox and at least one
+// each organization needs complete reply routes and at least one
 // enabled SMTP account belonging to an enabled active member. A single
 // unready organization blocks the whole campaign.
 func (c *Core) ValidatePoolCampaignAudience(campaignID int) error {
@@ -1311,7 +1520,7 @@ type poolOrgStatusRow struct {
 	SMTPCount        int    `db:"smtp_count"`
 }
 
-const poolAllOrgMessageSMTPStep = "each target organization needs at least one enabled SMTP account belonging to an enabled active member (members add one in Profile -> SMTP)"
+const poolAllOrgMessageSMTPStep = "each target organization needs SMTP for the selected sender source: organization SMTP in Manage organization, or member SMTP in Profile -> SMTP"
 
 // validateAllOrgPoolCampaignAudience blocks preview/send for a platform-level
 // campaign until every active organization with a pool allocation for the
@@ -1323,16 +1532,16 @@ func (c *Core) validateAllOrgPoolCampaignAudience(campaignID int) error {
 	if err := c.db.Select(&rows, `SELECT s.organization_id,
 			o.name AS organization_name,
 			o.status AS organization_status,
-			(rm.id IS NOT NULL AND rm.status = 'active' AND rm.verified_at IS NOT NULL) AS mailbox_ready,
+			((rm.id IS NOT NULL AND rm.status = 'active' AND rm.verified_at IS NOT NULL)
+			OR NOT `+poolMissingContactReplySQL+`) AS mailbox_ready,
 			COALESCE(rm.email, '') AS reply_mailbox_email,
-			(
-				SELECT COUNT(*)
-				FROM user_smtp_servers s2
-				JOIN organization_members om2 ON om2.organization_id = s.organization_id
-					AND om2.user_id = s2.user_id AND om2.removed_at IS NULL
-				JOIN users u2 ON u2.id = s2.user_id AND u2.status = 'enabled'
-				WHERE s2.enabled = TRUE
-			) AS smtp_count
+    (SELECT COUNT(*) FROM user_smtp_servers s2 WHERE s2.enabled AND (
+        ((SELECT smtp_source FROM campaigns WHERE id=$1)='organization' AND ((SELECT smtp_pool_id FROM campaigns WHERE id=$1) IS NULL AND s2.organization_id=s.organization_id OR s2.smtp_pool_id=(SELECT smtp_pool_id FROM campaigns WHERE id=$1)))
+        OR ((SELECT smtp_source FROM campaigns WHERE id=$1)<>'organization' AND EXISTS (
+            SELECT 1 FROM organization_members om2 JOIN users u2 ON u2.id=om2.user_id AND u2.status='enabled'
+            WHERE om2.organization_id=s.organization_id AND om2.user_id=s2.user_id AND om2.removed_at IS NULL
+        ))
+    )) AS smtp_count
 		FROM org_pool_allocations s
 		JOIN organizations o ON o.id = s.organization_id
 		LEFT JOIN reply_mailboxes rm ON rm.id = o.reply_mailbox_id
@@ -1383,7 +1592,7 @@ func (c *Core) validateAllOrgPoolCampaignAudience(campaignID int) error {
 			continue
 		}
 		if row.SMTPCount == 0 {
-			clauses = append(clauses, fmt.Sprintf("pool list %q -> organization %q: no enabled SMTP account is available for the organization's active members", poolName, row.OrganizationName))
+			clauses = append(clauses, fmt.Sprintf("pool list %q -> organization %q: no enabled SMTP account is available for the selected sender source", poolName, row.OrganizationName))
 			total++
 		}
 	}
@@ -1408,10 +1617,9 @@ func (c *Core) validateAllOrgPoolCampaignAudience(campaignID int) error {
 // source or contact status cannot be added to one audience path while another
 // silently keeps sending to the contact.
 //
-// The fragment also joins the organization's single unified reply mailbox and
-// exposes it as rm.id, and only while that mailbox is active and verified.
-// Embedders read the per-recipient reply mailbox from rm.id; an organization
-// allocation carries no mailbox of its own.
+// The fragment exposes the active, verified organization fallback as rm.id.
+// Snapshot writers resolve it with pc.reply_to in campaign priority order;
+// an organization allocation carries no mailbox of its own.
 //
 // Positional parameter contract for every embedder:
 //
@@ -1435,9 +1643,9 @@ const poolRecipientMembershipSQL = `
 // poolRecipientSelectSQL reads the deliverable members of one pool audience. It
 // is the read half of the shared rule and is deduplicated by the pool contact's
 // stable internal ID, which is also the snapshot's primary key. The reply
-// mailbox of every row is the organization's unified reply mailbox, exposed by
-// the shared fragment as rm.id.
-const poolRecipientSelectSQL = `SELECT DISTINCT ON (pc.id) pc.id,pc.customer_code,pc.email,pc.name,pc.status,s.id AS allocation_id,s.organization_id,rm.id AS reply_mailbox_id` + poolRecipientMembershipSQL + ` ORDER BY pc.id,s.id`
+// mailbox ID here is the organization fallback. The snapshot writer selects
+// the final address and matching mailbox ID in campaign priority order.
+const poolRecipientSelectSQL = `SELECT DISTINCT ON (pc.id) pc.id,pc.customer_code,pc.email,pc.reply_to,pc.name,pc.status,s.id AS allocation_id,s.organization_id,rm.id AS reply_mailbox_id` + poolRecipientMembershipSQL + ` ORDER BY pc.id,s.id`
 
 // poolSnapshotRefreshStatuses lists the snapshot statuses a refresh owns: a row
 // in one of these states has not been handed to delivery yet, so the refresh may
@@ -1468,10 +1676,16 @@ const poolSnapshotRefreshStatuses = `('pending','deferred')`
 // Embedder positions continue after the rule's parameters:
 //
 //	$4 = campaign ID
-//	$5 = audience reply mailbox, or NULL to use the organization's unified
-//	     reply mailbox of each resolved row (rm.id from the shared rule)
-const poolRecipientSnapshotUpsertSQL = `INSERT INTO campaign_pool_recipients AS cpr(campaign_id,pool_contact_id,pool_id,allocation_id,organization_id,reply_mailbox_id,email_snapshot,name_snapshot)
-	SELECT $4,pc.id,$1,s.id,$2,COALESCE($5::INT,rm.id),pc.email,pc.name` + poolRecipientMembershipSQL + `
+//	$5 = legacy audience mailbox parameter retained for transaction callers;
+//	     the final route uses the current verified organization fallback.
+const poolRecipientSnapshotUpsertSQL = `INSERT INTO campaign_pool_recipients AS cpr(campaign_id,pool_contact_id,pool_id,allocation_id,organization_id,reply_mailbox_id,email_snapshot,name_snapshot,reply_to_snapshot,reply_to_source)
+	SELECT $4,chosen.contact_id,$1,chosen.allocation_id,chosen.organization_id,route_mailbox.id,chosen.email,chosen.name,route.email,route.source
+	FROM (
+		SELECT pc.id AS contact_id,pc.email,pc.name,s.id AS allocation_id,s.organization_id,
+			pc.reply_to AS contact_reply_to,COALESCE(rm.email,'') AS organization_reply_to,
+			(SELECT pool_reply_priority FROM campaigns WHERE id=$4) AS priority,
+			$5::INT AS audience_mailbox_id` + poolRecipientMembershipSQL + `
+	) chosen` + poolReplySnapshotRouteSQL + `
 	ON CONFLICT(campaign_id,pool_contact_id) DO UPDATE SET
 		email_snapshot=EXCLUDED.email_snapshot,
 		name_snapshot=EXCLUDED.name_snapshot,
@@ -1479,6 +1693,8 @@ const poolRecipientSnapshotUpsertSQL = `INSERT INTO campaign_pool_recipients AS 
 		allocation_id=EXCLUDED.allocation_id,
 		organization_id=EXCLUDED.organization_id,
 		reply_mailbox_id=EXCLUDED.reply_mailbox_id,
+		reply_to_snapshot=EXCLUDED.reply_to_snapshot,
+		reply_to_source=EXCLUDED.reply_to_source,
 		updated_at=NOW()
 	WHERE cpr.status IN ` + poolSnapshotRefreshStatuses
 
@@ -1499,8 +1715,7 @@ const poolRecipientSnapshotPruneSQL = `DELETE FROM campaign_pool_recipients
 
 // poolRecipientAllOrgMembershipSQL is the all-organization variant of the
 // shared membership rule: it iterates every active organization that owns a
-// pool allocation in the first-level pool, keeps only organizations whose
-// unified reply mailbox is usable, and deduplicates each contact to the first
+// pool allocation in the first-level pool, and deduplicates each contact to the first
 // organization in the campaign's persisted rotation order (falling back to the
 // organization ID order before the rotation is generated). The membership
 // predicates — active allocation member, active pool member, active contact,
@@ -1516,7 +1731,7 @@ const poolRecipientAllOrgMembershipSQL = `
 	JOIN organizations o ON o.id=s.organization_id AND o.status='active'
 	JOIN org_pool_allocation_members sm ON sm.allocation_id=s.id AND sm.status='active' AND sm.contact_id=pc.id
 	JOIN pool_members pm ON pm.pool_id=s.pool_id AND pm.contact_id=pc.id
-	JOIN reply_mailboxes rm ON rm.id=o.reply_mailbox_id AND rm.status='active' AND rm.verified_at IS NOT NULL
+	LEFT JOIN reply_mailboxes rm ON rm.id=o.reply_mailbox_id AND rm.status='active' AND rm.verified_at IS NOT NULL
 	LEFT JOIN org_pool_allocation_exclusions ex ON ex.pool_id=s.pool_id AND ex.organization_id=s.organization_id AND ex.contact_id=pc.id AND ex.restored_at IS NULL
 	LEFT JOIN campaign_pool_org_orders oo ON oo.campaign_id=$2 AND oo.organization_id=s.organization_id
 	WHERE ex.contact_id IS NULL AND pc.status='active'`
@@ -1534,15 +1749,17 @@ const poolRecipientAllOrgSelectSQL = `SELECT DISTINCT ON (pc.id) pc.id` +
 // rows the refresh owns (pending/deferred), exactly like the single-org
 // upsert, so queued/sent delivery history keeps its original target
 // organization, mailbox and sender.
-const poolRecipientAllOrgSnapshotUpsertSQL = `INSERT INTO campaign_pool_recipients AS cpr(campaign_id,pool_contact_id,pool_id,allocation_id,organization_id,reply_mailbox_id,email_snapshot,name_snapshot)
-	SELECT $2,chosen.contact_id,$1,chosen.allocation_id,chosen.organization_id,chosen.reply_mailbox_id,chosen.email,chosen.name
+const poolRecipientAllOrgSnapshotUpsertSQL = `INSERT INTO campaign_pool_recipients AS cpr(campaign_id,pool_contact_id,pool_id,allocation_id,organization_id,reply_mailbox_id,email_snapshot,name_snapshot,reply_to_snapshot,reply_to_source)
+	SELECT $2,chosen.contact_id,$1,chosen.allocation_id,chosen.organization_id,route_mailbox.id,chosen.email,chosen.name,route.email,route.source
 	FROM (
 		SELECT DISTINCT ON (pc.id)
 			pc.id AS contact_id, pc.email, pc.name,
-			s.id AS allocation_id, s.organization_id, rm.id AS reply_mailbox_id` +
+			s.id AS allocation_id, s.organization_id,
+			pc.reply_to AS contact_reply_to,COALESCE(rm.email,'') AS organization_reply_to,
+			(SELECT pool_reply_priority FROM campaigns WHERE id=$2) AS priority` +
 	poolRecipientAllOrgMembershipSQL + `
 		ORDER BY pc.id, COALESCE(oo.dispatch_order, 2147483647), s.organization_id
-	) chosen
+	) chosen` + poolReplySnapshotRouteSQL + `
 	ON CONFLICT(campaign_id,pool_contact_id) DO UPDATE SET
 		email_snapshot=EXCLUDED.email_snapshot,
 		name_snapshot=EXCLUDED.name_snapshot,
@@ -1550,6 +1767,8 @@ const poolRecipientAllOrgSnapshotUpsertSQL = `INSERT INTO campaign_pool_recipien
 		allocation_id=EXCLUDED.allocation_id,
 		organization_id=EXCLUDED.organization_id,
 		reply_mailbox_id=EXCLUDED.reply_mailbox_id,
+		reply_to_snapshot=EXCLUDED.reply_to_snapshot,
+		reply_to_source=EXCLUDED.reply_to_source,
 		updated_at=NOW()
 	WHERE cpr.status IN ` + poolSnapshotRefreshStatuses
 
@@ -1606,11 +1825,14 @@ func (c *Core) EnsurePoolCampaignRecipients(campaignID int) error {
 			}
 			continue
 		}
-		if !row.OrganizationID.Valid || !row.MailboxID.Valid {
+		if !row.OrganizationID.Valid {
 			continue
 		}
-		mailboxID := row.MailboxID.Int64
-		audience := poolAudience{poolID: row.PoolID, organizationID: row.OrganizationID.Int64, mailboxID: &mailboxID}
+		audience := poolAudience{poolID: row.PoolID, organizationID: row.OrganizationID.Int64}
+		if row.MailboxID.Valid {
+			mailboxID := row.MailboxID.Int64
+			audience.mailboxID = &mailboxID
+		}
 		if row.AllocationID.Valid {
 			allocationID := row.AllocationID.Int64
 			audience.allocationID = &allocationID

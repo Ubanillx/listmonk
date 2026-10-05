@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gofrs/uuid/v5"
+	"github.com/knadh/koanf/v2"
 	"github.com/knadh/listmonk/internal/auth"
 	"github.com/knadh/listmonk/internal/messenger/email"
 	"github.com/knadh/listmonk/models"
@@ -75,8 +77,8 @@ func (a *App) GetUserPersonalSMTP(c echo.Context) error {
 }
 
 func (a *App) getPersonalSMTP(c echo.Context, userID int) error {
-	if userID < 1 {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid user id")
+	if userID == 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid SMTP owner")
 	}
 	rows, err := a.loadPersonalSMTP(userID)
 	if err != nil {
@@ -101,7 +103,10 @@ func (a *App) loadPersonalSMTP(userID int) ([]models.PersonalSMTPServer, error) 
 // running campaign is allowed to continue and picks up the new pool on its
 // next message; the response tells the UI to warn the operator.
 func (a *App) UpdatePersonalSMTP(c echo.Context) error {
-	userID := auth.GetUser(c).ID
+	return a.updateOwnedSMTP(c, auth.GetUser(c).ID)
+}
+
+func (a *App) updateOwnedSMTP(c echo.Context, userID int) error {
 	var req personalSMTPRequest
 	if err := c.Bind(&req); err != nil {
 		return err
@@ -123,6 +128,16 @@ func (a *App) UpdatePersonalSMTP(c echo.Context) error {
 			return err
 		}
 		defer tx.Rollback()
+		var ownerID int
+		ownerQuery := `SELECT id FROM users WHERE id=$1 FOR UPDATE`
+		key := userID
+		if userID < 0 {
+			ownerQuery = `SELECT p.id FROM organization_smtp_pools p JOIN organizations o ON o.id=p.organization_id WHERE p.id=$1 AND o.status='active' FOR UPDATE OF o, p`
+			key = -userID
+		}
+		if err := tx.GetContext(ctx, &ownerID, ownerQuery, key); err != nil {
+			return err
+		}
 
 		// Lock the account's SMTP rows for the complete replacement so concurrent
 		// updates cannot interleave password preservation and deletions.
@@ -132,7 +147,7 @@ func (a *App) UpdatePersonalSMTP(c echo.Context) error {
 			FROM user_smtp_servers s
 			LEFT JOIN user_smtp_daily_usage u
 			  ON u.smtp_uuid = s.uuid AND u.usage_date = $2::DATE
-			WHERE s.user_id = $1
+			WHERE (s.user_id = $1 OR s.smtp_pool_id = -$1)
 			ORDER BY s.id
 			FOR UPDATE OF s`, userID, currentLocalDate()); err != nil {
 			return err
@@ -143,6 +158,7 @@ func (a *App) UpdatePersonalSMTP(c echo.Context) error {
 		}
 		seen := make(map[int]struct{}, len(req.SMTP))
 		seenNames := make(map[string]struct{}, len(req.SMTP))
+		platform := resolveSMTPPlatformDefaults()
 
 		for i := range req.SMTP {
 			item := &req.SMTP[i]
@@ -166,7 +182,10 @@ func (a *App) UpdatePersonalSMTP(c echo.Context) error {
 				// caller from attempting to retarget another row's usage key.
 				item.UUID = old.UUID
 			}
-			if err := validatePersonalSMTP(item, a.importer.SanitizeEmail); err != nil {
+			if item.ID > 0 && item.TLSType == "" {
+				item.TLSType, item.TLSSkipVerify = old.TLSType, old.TLSSkipVerify
+			}
+			if err := validatePersonalSMTP(item, platform, a.importer.SanitizeEmail); err != nil {
 				return err
 			}
 			if item.Name != "" {
@@ -255,7 +274,10 @@ func (a *App) UpdatePersonalSMTP(c echo.Context) error {
 // separate endpoint for API clients; the bulk replacement endpoint applies the
 // same ownership and running-campaign guard when rows are omitted.
 func (a *App) DeletePersonalSMTP(c echo.Context) error {
-	userID := auth.GetUser(c).ID
+	return a.deleteOwnedSMTP(c, auth.GetUser(c).ID)
+}
+
+func (a *App) deleteOwnedSMTP(c echo.Context, userID int) error {
 	id := getID(c)
 	running, err := a.userHasRunningCampaigns(userID)
 	if err != nil {
@@ -304,7 +326,7 @@ func (a *App) hasEnabledPersonalSMTPForUser(userID int) bool {
 	if err := a.db.Get(&enabled, `
 		SELECT EXISTS(
 			SELECT 1 FROM user_smtp_servers
-			WHERE user_id = $1 AND enabled = TRUE
+			WHERE (user_id = $1 OR smtp_pool_id = -$1) AND enabled = TRUE
 		)`, userID); err != nil {
 		// Treat an unavailable/failed check as unavailable. This keeps the
 		// strict no-fallback guarantee intact; the next campaign attempt will
@@ -322,7 +344,7 @@ func (a *App) hasEnabledPersonalSMTPForUser(userID int) bool {
 // configuring SMTP. The manager signal is sent only after commit: workers then
 // observe the durable state and cannot be picked up by a concurrent scanner.
 func (a *App) pauseUserRunningCampaigns(userID int) (int, error) {
-	if userID < 1 {
+	if userID == 0 {
 		return 0, nil
 	}
 	tx, err := a.db.BeginTxx(context.Background(), nil)
@@ -338,7 +360,7 @@ func (a *App) pauseUserRunningCampaigns(userID int) (int, error) {
 	var campaigns []campaignState
 	if err := tx.Select(&campaigns, `
 		SELECT id, status FROM campaigns
-		WHERE owner_user_id = $1
+		WHERE ((owner_user_id = $1 AND smtp_source = 'personal' AND pool_scope <> 'all_organizations') OR (smtp_pool_id = -$1 AND smtp_source = 'organization'))
 		  AND status = ANY('{running,scheduled,deferred}'::campaign_status[])
 		ORDER BY id FOR UPDATE`, userID); err != nil {
 		return 0, err
@@ -367,7 +389,7 @@ func (a *App) pauseUserRunningCampaigns(userID int) (int, error) {
 			next_resume_at = NULL,
 			updated_at = NOW()
 		WHERE id = ANY($1::INT[])
-		  AND owner_user_id = $2
+		  AND ((owner_user_id = $2 AND smtp_source = 'personal') OR (smtp_pool_id = -$2 AND smtp_source = 'organization'))
 		  AND status = ANY('{running,scheduled,deferred}'::campaign_status[])`,
 		pq.Array(ids), userID); err != nil {
 		return 0, err
@@ -404,7 +426,7 @@ func (a *App) userHasRunningCampaigns(userID int) (bool, error) {
 
 func (a *App) requirePersonalSMTPAvailable(userID int) error {
 	var count int
-	if err := a.db.Get(&count, `SELECT COUNT(*) FROM user_smtp_servers WHERE user_id = $1 AND enabled = TRUE`, userID); err != nil {
+	if err := a.db.Get(&count, `SELECT COUNT(*) FROM user_smtp_servers WHERE (user_id = $1 OR smtp_pool_id = -$1) AND enabled = TRUE`, userID); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 	if count == 0 {
@@ -413,7 +435,68 @@ func (a *App) requirePersonalSMTPAvailable(userID int) error {
 	return nil
 }
 
-func validatePersonalSMTP(item *models.PersonalSMTPServer, sanitizeEmail func(string) (string, error)) error {
+// Account SMTP credentials and quotas are owned by the account. Transport
+// behavior is owned by the platform and is resolved again at delivery time.
+type smtpPlatformDefaults = models.SMTPDeliverySettings
+
+func bootstrapSMTPPlatformDefaults() smtpPlatformDefaults {
+	return smtpPlatformDefaults{
+		MaxConns:      10,
+		MaxMsgRetries: 2,
+		IdleTimeout:   "15s",
+		WaitTimeout:   "5s",
+		EmailHeaders:  models.Headers{},
+	}
+}
+
+// Legacy installations stored these options on the primary system SMTP row.
+// Keep that value until the administrator saves the new smtp_delivery block.
+func smtpDeliveryFromLegacy(servers []models.SMTPServer) smtpPlatformDefaults {
+	out := bootstrapSMTPPlatformDefaults()
+	for _, s := range servers {
+		if !s.Enabled || !s.IsPrimary {
+			continue
+		}
+		if s.MaxConns > 0 {
+			out.MaxConns = s.MaxConns
+		}
+		if s.MaxMsgRetries > 0 {
+			out.MaxMsgRetries = s.MaxMsgRetries
+		}
+		if s.IdleTimeout != "" {
+			out.IdleTimeout = s.IdleTimeout
+		}
+		if s.WaitTimeout != "" {
+			out.WaitTimeout = s.WaitTimeout
+		}
+		if s.EmailHeaders != nil {
+			out.EmailHeaders = s.EmailHeaders
+		}
+		break
+	}
+	return out
+}
+
+func resolveSMTPPlatformDefaults() smtpPlatformDefaults {
+	if ko.Exists("smtp_delivery") {
+		var out smtpPlatformDefaults
+		b, err := json.Marshal(ko.Get("smtp_delivery"))
+		if err == nil && json.Unmarshal(b, &out) == nil && out.MaxConns > 0 {
+			return out
+		}
+	}
+	servers := make([]models.SMTPServer, 0)
+	for _, item := range ko.Slices("smtp") {
+		var s models.SMTPServer
+		if err := item.UnmarshalWithConf("", &s, koanf.UnmarshalConf{Tag: "json"}); err == nil {
+			servers = append(servers, s)
+		}
+	}
+	return smtpDeliveryFromLegacy(servers)
+}
+
+func validatePersonalSMTP(item *models.PersonalSMTPServer, platform smtpPlatformDefaults,
+	sanitizeEmail func(string) (string, error)) error {
 	item.Name = personalSMTPName.ReplaceAllString(strings.ToLower(strings.TrimSpace(item.Name)), "-")
 	item.Host = strings.TrimSpace(item.Host)
 	item.FromEmail = strings.TrimSpace(item.FromEmail)
@@ -422,9 +505,16 @@ func validatePersonalSMTP(item *models.PersonalSMTPServer, sanitizeEmail func(st
 	if item.AuthProtocol == "" {
 		item.AuthProtocol = "plain"
 	}
+	// Ignore transport options supplied by account clients. They are managed
+	// centrally and must not be pinned by a saved account SMTP row.
 	if item.TLSType == "" {
 		item.TLSType = "TLS"
 	}
+	item.MaxConns = platform.MaxConns
+	item.MaxMsgRetries = platform.MaxMsgRetries
+	item.IdleTimeout = platform.IdleTimeout
+	item.WaitTimeout = platform.WaitTimeout
+	item.EmailHeaders = platform.EmailHeaders
 	if item.Port < 1 || item.Port > 65535 || item.Host == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "SMTP host and port are required")
 	}
@@ -436,18 +526,6 @@ func validatePersonalSMTP(item *models.PersonalSMTPServer, sanitizeEmail func(st
 	}
 	if item.TLSType != "none" && item.TLSType != "TLS" && item.TLSType != "STARTTLS" {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid SMTP TLS type")
-	}
-	if item.MaxConns < 1 {
-		item.MaxConns = 10
-	}
-	if item.MaxMsgRetries < 1 {
-		item.MaxMsgRetries = 2
-	}
-	if item.IdleTimeout == "" {
-		item.IdleTimeout = "15s"
-	}
-	if item.WaitTimeout == "" {
-		item.WaitTimeout = "5s"
 	}
 	if _, err := time.ParseDuration(item.IdleTimeout); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid SMTP idle timeout")
@@ -465,9 +543,6 @@ func validatePersonalSMTP(item *models.PersonalSMTPServer, sanitizeEmail func(st
 		}
 		item.FromEmail = from
 	}
-	if item.EmailHeaders == nil {
-		item.EmailHeaders = models.Headers{}
-	}
 	return nil
 }
 
@@ -483,6 +558,10 @@ func redactPersonalSMTP(rows []models.PersonalSMTPServer) {
 // account configuration. It never persists the server and never uses the
 // platform SMTP fallback.
 func (a *App) TestPersonalSMTP(c echo.Context) error {
+	return a.testOwnedSMTP(c, auth.GetUser(c).ID)
+}
+
+func (a *App) testOwnedSMTP(c echo.Context, userID int) error {
 	var req personalSMTPTestRequest
 	if err := c.Bind(&req); err != nil {
 		return err
@@ -491,19 +570,21 @@ func (a *App) TestPersonalSMTP(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "recipient e-mail is required")
 	}
 	if req.ID > 0 {
-		userID := auth.GetUser(c).ID
 		var saved models.PersonalSMTPServer
 		if err := a.queries.GetUserSMTPServer.Get(&saved, req.ID, userID, currentLocalDate()); err != nil {
 			return echo.NewHTTPError(http.StatusNotFound, "SMTP server not found")
 		}
 		// The row UUID is server-owned; never allow a test request to replace it.
 		req.UUID = saved.UUID
+		if req.TLSType == "" {
+			req.TLSType, req.TLSSkipVerify = saved.TLSType, saved.TLSSkipVerify
+		}
 		if isPasswordMask(req.Password) || req.Password == "" {
 			req.Password = saved.Password
 		}
 	}
 	item := models.PersonalSMTPServer{SMTPServer: req.SMTPServer}
-	if err := validatePersonalSMTP(&item, a.importer.SanitizeEmail); err != nil {
+	if err := validatePersonalSMTP(&item, resolveSMTPPlatformDefaults(), a.importer.SanitizeEmail); err != nil {
 		return err
 	}
 	idle, _ := time.ParseDuration(item.IdleTimeout)
@@ -514,12 +595,15 @@ func (a *App) TestPersonalSMTP(c echo.Context) error {
 		AuthProtocol: item.AuthProtocol, TLSType: item.TLSType,
 		TLSSkipVerify: item.TLSSkipVerify, EmailHeaders: headersToMap(item.EmailHeaders),
 		Opt: smtppool.Opt{Host: item.Host, Port: item.Port, HelloHostname: item.HelloHostname,
-			MaxConns: 1, MaxMessageRetries: item.MaxMsgRetries, IdleTimeout: idle, PoolWaitTimeout: wait},
+			MaxConns: item.MaxConns, MaxMessageRetries: item.MaxMsgRetries, IdleTimeout: idle, PoolWaitTimeout: wait},
 	})
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("error creating SMTP connection: %v", err))
 	}
 	defer msgr.Close()
+	if a.manager != nil {
+		a.manager.ConfigureSMTP(msgr)
+	}
 	if err := msgr.Push(models.Message{From: item.FromEmail, To: []string{req.Email},
 		Subject: a.i18n.T("settings.smtp.testConnection"), Body: []byte("SMTP connection test")}); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())

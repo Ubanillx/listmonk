@@ -8,8 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/knadh/listmonk/internal/messenger/email"
 	"github.com/knadh/listmonk/internal/schedule"
 	"github.com/knadh/listmonk/models"
+	"github.com/knadh/smtppool/v2"
+	null "gopkg.in/volatiletech/null.v6"
 )
 
 type testMessenger struct {
@@ -30,6 +33,41 @@ func (m *testMessenger) Close() error { return nil }
 
 func newTestManager() *Manager {
 	return New(Config{Concurrency: 1}, nil, nil, log.New(io.Discard, "", 0))
+}
+
+func TestManagerShutdownCancelsSMTPDelayBeforeTakingSendLock(t *testing.T) {
+	msgr, err := email.New("email", email.Server{
+		UUID: t.Name(), AuthProtocol: "none", TLSType: "none",
+		SendDelayMin: time.Hour, SendDelayMax: time.Hour,
+		Opt: smtppool.Opt{Host: "127.0.0.1", Port: 1, MaxConns: 1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer msgr.Close()
+	resolved := make(chan struct{})
+	m := New(Config{PersonalSMTP: func(int) (*email.Emailer, error) {
+		close(resolved)
+		return msgr, nil
+	}}, nil, nil, log.New(io.Discard, "", 0))
+	sent := make(chan error, 1)
+	go func() { sent <- m.pushMessage(models.Message{Messenger: "email", OwnerUserID: 5}) }()
+	<-resolved
+	closed := make(chan struct{})
+	go func() { m.Close(); close(closed) }()
+	select {
+	case err := <-sent:
+		if !errors.Is(err, ErrManagerClosed) {
+			t.Fatalf("send during shutdown = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("manager shutdown did not cancel SMTP wait")
+	}
+	select {
+	case <-closed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("manager shutdown blocked after cancelling SMTP delay")
+	}
 }
 
 type optinListStore struct{ Store }
@@ -269,5 +307,43 @@ func TestPipeDeferImmediatelyStopsQueuedMessages(t *testing.T) {
 
 	if !p.stopped.Load() || p.stopReason.Load() != stopReasonDeferred {
 		t.Fatal("SMTP quota deferral did not stop queued messages")
+	}
+}
+
+func TestOrganizationSMTPSelectionIsIndependentAndInvalidated(t *testing.T) {
+	personalCalls, orgCalls := 0, 0
+	var orgID int
+	orgPool, err := email.New("email", email.Server{UUID: "org-test", AuthProtocol: "none", TLSType: "none", Opt: smtppool.Opt{Host: "127.0.0.1", Port: 1, MaxConns: 1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer orgPool.Close()
+	m := New(Config{
+		PersonalSMTP:     func(int) (*email.Emailer, error) { personalCalls++; return nil, nil },
+		OrganizationSMTP: func(id, poolID int) (*email.Emailer, error) { orgCalls++; orgID = id; return orgPool, nil },
+	}, nil, nil, log.New(io.Discard, "", 0))
+	msg := models.Message{Messenger: "email", OwnerUserID: 42, Campaign: &models.Campaign{SMTPSource: "organization", SMTPPoolID: null.IntFrom(11), ResourceScope: models.ResourceScope{OrganizationID: null.IntFrom(7)}}}
+	for i := 0; i < 2; i++ {
+		got, err := m.resolveMessenger(msg)
+		if err != nil || got != orgPool {
+			t.Fatalf("resolve=%v err=%v", got, err)
+		}
+	}
+	if orgCalls != 1 || personalCalls != 0 || orgID != 7 {
+		t.Fatalf("org calls=%d personal calls=%d orgID=%d", orgCalls, personalCalls, orgID)
+	}
+	if err := m.WithPersonalSMTPUpdate(-11, func() error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	m.organizationSMTP = func(int, int) (*email.Emailer, error) { return nil, nil }
+	if _, err := m.resolveMessenger(msg); !errors.Is(err, ErrPersonalSMTPUnavailable) {
+		t.Fatalf("removed organization SMTP resolved: %v", err)
+	}
+	if personalCalls != 0 {
+		t.Fatal("fell back to personal SMTP")
+	}
+	msg.Campaign.OrganizationID = null.Int{}
+	if _, err := m.resolveMessenger(msg); !errors.Is(err, ErrPersonalSMTPUnavailable) {
+		t.Fatalf("unscoped org send=%v", err)
 	}
 }

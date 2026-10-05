@@ -933,7 +933,7 @@ func (c *Core) TransferArchivedOrganizationResourcesToPersonal(orgID, targetUser
 		return c.organizationDBErr("moving archived organization customer_lists", err)
 	}
 	if _, err := tx.Exec(`
-		UPDATE campaigns SET organization_id = NULL, owner_user_id = $2,
+		UPDATE campaigns SET organization_id = NULL, owner_user_id = $2, smtp_source = 'personal', smtp_pool_id = NULL,
 			visibility = CASE WHEN visibility = 'global' THEN 'global' ELSE 'private' END,
 			transfer_pending_at = NULL, updated_at = NOW()
 		WHERE organization_id = $1 AND transfer_pending_at IS NOT NULL`, orgID, targetUserID); err != nil {

@@ -70,7 +70,56 @@ func mediaFolderFields(alias string) string {
 		prefix = alias + "."
 	}
 	return fmt.Sprintf(`%sid, %sname, %sparent_id, %sorganization_id, %sowner_user_id,
-		%screated_at, %supdated_at`, prefix, prefix, prefix, prefix, prefix, prefix, prefix)
+		%svisibility, %screated_at, %supdated_at`, prefix, prefix, prefix, prefix, prefix, prefix, prefix, prefix)
+}
+
+func normalizeMediaFolderVisibility(access models.WorkspaceAccess, visibility string) (string, error) {
+	if visibility == "" {
+		if access.IsOrganization() {
+			return models.ResourceVisibilityOrganization, nil
+		}
+		return models.ResourceVisibilityPrivate, nil
+	}
+	switch visibility {
+	case models.ResourceVisibilityPrivate, models.ResourceVisibilityGlobal:
+		return visibility, nil
+	case models.ResourceVisibilityOrganization:
+		if access.IsOrganization() {
+			return visibility, nil
+		}
+	}
+	return "", echo.NewHTTPError(http.StatusBadRequest, "invalid media folder visibility for this workspace")
+}
+
+func canManageMediaFolder(access models.WorkspaceAccess, folder media.MediaFolder) bool {
+	return !access.Archived && mediaFolderMatchesSelectedWorkspace(access, folder) &&
+		(access.PlatformAdmin || (folder.OwnerUserID.Valid && int(folder.OwnerUserID.Int) == access.UserID))
+}
+
+// Every ancestor must be readable, so a globally shared child cannot expose a
+// private parent. The organization audience is bound to the selected workspace.
+func mediaFolderReadPredicate(access models.WorkspaceAccess, alias string, firstArg int) (string, []any) {
+	if access.PlatformAdmin && access.Archived {
+		return "TRUE", nil
+	}
+	workspace, args := mediaFolderWorkspacePredicate(access, "ancestor", firstArg)
+	userArg := firstArg + len(args)
+	args = append(args, access.UserID)
+	audience := fmt.Sprintf(`ancestor.visibility = 'global' OR ((%s) AND
+		(ancestor.visibility = 'organization' OR ancestor.owner_user_id = $%d))`, workspace, userArg)
+	if access.PlatformAdmin {
+		audience = fmt.Sprintf("ancestor.visibility = 'global' OR (%s)", workspace)
+		args = args[:len(args)-1]
+	}
+	return fmt.Sprintf(`EXISTS (
+		WITH RECURSIVE ancestors AS (
+			SELECT id, parent_id, organization_id, owner_user_id, visibility FROM media_folders WHERE id = %s.id
+			UNION
+			SELECT parent.id, parent.parent_id, parent.organization_id, parent.owner_user_id, parent.visibility
+			FROM media_folders parent JOIN ancestors child ON parent.id = child.parent_id
+		)
+		SELECT 1 FROM ancestors ancestor HAVING BOOL_AND((%s) AND %s)
+	)`, alias, audience, activeOrganizationPredicate("ancestor")), args
 }
 
 func mediaFolderWorkspaceValues(access models.WorkspaceAccess) (any, int) {
@@ -103,7 +152,7 @@ func mediaFolderMatchesResourceScope(scope models.ResourceScope, folder media.Me
 // workspace there would make a valid cross-workspace drag look actionable.
 // Archived platform-admin sessions retain broad visibility for cleanup flows,
 // while ordinary writes remain blocked by the handler/core mutation guards.
-func workspaceMediaReadPredicate(access models.WorkspaceAccess, alias string, firstArg int) (string, []any) {
+func workspaceRootMediaReadPredicate(access models.WorkspaceAccess, alias string, firstArg int) (string, []any) {
 	if !access.PlatformAdmin || access.Archived {
 		return workspaceReadPredicate(access, alias, firstArg)
 	}
@@ -142,21 +191,27 @@ func sameMediaFolderWorkspace(left, right media.MediaFolder) bool {
 // workspace. The frontend builds the current tree and breadcrumbs locally,
 // while counts keep empty folders distinguishable from an empty library.
 func (c *Core) QueryWorkspaceMediaFolders(access models.WorkspaceAccess) ([]media.MediaFolder, error) {
-	scope, args := mediaFolderWorkspacePredicate(access, "f", 1)
+	scope, args := mediaFolderReadPredicate(access, "f", 1)
+	childScope, childArgs := mediaFolderReadPredicate(access, "child", len(args)+1)
+	args = append(args, childArgs...)
 	query := fmt.Sprintf(`
 		SELECT %s,
 			COUNT(DISTINCT m.id) AS media_count,
 			COUNT(DISTINCT child.id) AS child_count
 		FROM media_folders f
-		LEFT JOIN media m ON m.folder_id = f.id
-		LEFT JOIN media_folders child ON child.parent_id = f.id
+		LEFT JOIN media m ON m.folder_id = f.id AND m.transfer_pending_at IS NULL
+		LEFT JOIN media_folders child ON child.parent_id = f.id AND (%s)
 		WHERE (%s)
 		GROUP BY f.id, f.name, f.parent_id, f.organization_id, f.owner_user_id,
-			f.created_at, f.updated_at
-		ORDER BY LOWER(f.name), f.id`, mediaFolderFields("f"), scope)
+			f.visibility, f.created_at, f.updated_at
+		ORDER BY LOWER(f.name), f.id`, mediaFolderFields("f"), childScope, scope)
 	var out []media.MediaFolder
 	if err := c.db.Select(&out, query, args...); err != nil {
 		return nil, workspaceQueryError("fetching media folders", err)
+	}
+	for i := range out {
+		out[i].Manageable = canManageMediaFolder(access, out[i])
+		out[i].Writable = !access.Archived && mediaFolderMatchesSelectedWorkspace(access, out[i])
 	}
 	return out, nil
 }
@@ -168,7 +223,7 @@ func (c *Core) RequireReadableMediaFolder(access models.WorkspaceAccess, id int)
 	if id < 1 {
 		return nil
 	}
-	scope, args := mediaFolderWorkspacePredicate(access, "f", 1)
+	scope, args := mediaFolderReadPredicate(access, "f", 1)
 	var exists bool
 	query := fmt.Sprintf(`SELECT EXISTS(
 		SELECT 1 FROM media_folders f WHERE f.id = $%d AND (%s)
@@ -198,6 +253,15 @@ func (c *Core) lockMediaFolderForWorkspace(tx *sqlx.Tx, access models.WorkspaceA
 			return out, echo.NewHTTPError(http.StatusNotFound, "media folder not found")
 		}
 		return out, workspaceQueryError("locking media folder", err)
+	}
+	readScope, readArgs := mediaFolderReadPredicate(access, "f", 2)
+	var readable bool
+	if err := tx.Get(&readable, fmt.Sprintf(`SELECT EXISTS(SELECT 1 FROM media_folders f
+		WHERE f.id = $1 AND (%s))`, readScope), append([]any{id}, readArgs...)...); err != nil {
+		return out, workspaceQueryError("checking media folder access", err)
+	}
+	if !readable {
+		return out, workspaceMutationError()
 	}
 	return out, nil
 }
@@ -292,15 +356,22 @@ func (c *Core) withWorkspaceMediaFoldersMutation(access models.WorkspaceAccess, 
 }
 
 // CreateMediaFolderInWorkspace creates a folder in the current workspace.
-// Organization folders are workspace containers visible to all members;
-// personal folders are visible only to their owner.
-func (c *Core) CreateMediaFolderInWorkspace(access models.WorkspaceAccess, name string, parentID int) (media.MediaFolder, error) {
+// Omitted visibility retains the historical default audience of the workspace.
+func (c *Core) CreateMediaFolderInWorkspace(access models.WorkspaceAccess, name string, parentID int, visibility ...string) (media.MediaFolder, error) {
 	name, err := normalizeMediaFolderName(name)
 	if err != nil {
 		return media.MediaFolder{}, err
 	}
 	if parentID < 0 {
 		return media.MediaFolder{}, echo.NewHTTPError(http.StatusBadRequest, "invalid media folder")
+	}
+	requested := ""
+	if len(visibility) > 0 {
+		requested = visibility[0]
+	}
+	visible, err := normalizeMediaFolderVisibility(access, requested)
+	if err != nil {
+		return media.MediaFolder{}, err
 	}
 
 	organizationID, ownerUserID := mediaFolderWorkspaceValues(access)
@@ -317,9 +388,9 @@ func (c *Core) CreateMediaFolderInWorkspace(access models.WorkspaceAccess, name 
 		}
 
 		if err := tx.Get(&out, fmt.Sprintf(`INSERT INTO media_folders
-			(name, parent_id, organization_id, owner_user_id, created_by_user_id)
-			VALUES ($1, NULLIF($2, 0), $3, $4, $4)
-			RETURNING %s`, mediaFolderFields("")), name, parentID, organizationID, ownerUserID); err != nil {
+			(name, parent_id, organization_id, owner_user_id, created_by_user_id, visibility)
+			VALUES ($1, NULLIF($2, 0), $3, $4, $4, $5)
+			RETURNING %s`, mediaFolderFields("")), name, parentID, organizationID, ownerUserID, visible); err != nil {
 			if conflict := mediaFolderNameConflictError(err); conflict != nil {
 				return conflict
 			}
@@ -330,17 +401,26 @@ func (c *Core) CreateMediaFolderInWorkspace(access models.WorkspaceAccess, name 
 	return out, err
 }
 
-// RenameMediaFolderInWorkspace changes only the folder label. Moving a folder
-// is a separate operation so a drag cannot accidentally rename it.
-func (c *Core) RenameMediaFolderInWorkspace(access models.WorkspaceAccess, id int, name string) (media.MediaFolder, error) {
+// RenameMediaFolderInWorkspace edits the folder label and optional visibility.
+// Moving remains a separate operation so a drag cannot change permissions.
+func (c *Core) RenameMediaFolderInWorkspace(access models.WorkspaceAccess, id int, name string, visibility ...string) (media.MediaFolder, error) {
 	name, err := normalizeMediaFolderName(name)
 	if err != nil {
 		return media.MediaFolder{}, err
 	}
 	var out media.MediaFolder
 	err = c.withWorkspaceMediaFoldersMutation(access, []int{id}, func(tx *sqlx.Tx, locked map[int]media.MediaFolder) error {
-		if _, ok := locked[id]; !ok {
+		if row, ok := locked[id]; !ok || !canManageMediaFolder(access, row) {
 			return workspaceMutationError()
+		}
+		if len(visibility) > 0 && visibility[0] != "" {
+			visible, err := normalizeMediaFolderVisibility(access, visibility[0])
+			if err != nil {
+				return err
+			}
+			if _, err := tx.Exec(`UPDATE media_folders SET visibility = $2 WHERE id = $1`, id, visible); err != nil {
+				return workspaceQueryError("updating media folder visibility", err)
+			}
 		}
 		if _, err := tx.Exec(`UPDATE media_folders SET name = $2, updated_at = NOW() WHERE id = $1`, id, name); err != nil {
 			if conflict := mediaFolderNameConflictError(err); conflict != nil {
@@ -360,7 +440,7 @@ func (c *Core) RenameMediaFolderInWorkspace(access models.WorkspaceAccess, id in
 // media or an entire subtree by removing a container.
 func (c *Core) DeleteMediaFolderInWorkspace(access models.WorkspaceAccess, id int) error {
 	return c.withWorkspaceMediaFoldersMutation(access, []int{id}, func(tx *sqlx.Tx, locked map[int]media.MediaFolder) error {
-		if _, ok := locked[id]; !ok {
+		if row, ok := locked[id]; !ok || !canManageMediaFolder(access, row) {
 			return workspaceMutationError()
 		}
 		var contents int
@@ -395,7 +475,7 @@ func (c *Core) MoveMediaFolderInWorkspace(access models.WorkspaceAccess, id, par
 	}
 	return c.withWorkspaceMediaFoldersMutation(access, ids, func(tx *sqlx.Tx, locked map[int]media.MediaFolder) error {
 		source, ok := locked[id]
-		if !ok {
+		if !ok || !canManageMediaFolder(access, source) {
 			return workspaceMutationError()
 		}
 		if parentID == 0 {
@@ -407,6 +487,9 @@ func (c *Core) MoveMediaFolderInWorkspace(access models.WorkspaceAccess, id, par
 		target, ok := locked[parentID]
 		if !ok {
 			return workspaceMutationError()
+		}
+		if _, err := c.lockMediaFolderForWorkspace(tx, access, parentID); err != nil {
+			return err
 		}
 		if !sameMediaFolderWorkspace(source, target) {
 			return echo.NewHTTPError(http.StatusBadRequest, "media folder destination is outside the source workspace")
@@ -458,7 +541,7 @@ func (c *Core) MoveMediaToFolderInWorkspace(access models.WorkspaceAccess, media
 				return echo.NewHTTPError(http.StatusBadRequest, "media folder is outside the media workspace")
 			}
 		}
-		if _, err := tx.Exec(`UPDATE media SET folder_id = NULLIF($2, 0), updated_at = NOW() WHERE id = $1`, mediaID, folderID); err != nil {
+		if _, err := tx.Exec(`UPDATE media SET folder_id = NULLIF($2, 0) WHERE id = $1`, mediaID, folderID); err != nil {
 			return workspaceQueryError("moving media to folder", err)
 		}
 		return nil

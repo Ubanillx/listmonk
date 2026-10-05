@@ -127,7 +127,7 @@ func TestMigrationV6_46_0Tracking(t *testing.T) {
 	view := trackingQuery(t, "campaigns.sql", "register-campaign-view")
 	click := trackingQuery(t, "links.sql", "register-link-click")
 	for _, recipient := range []string{poolUUID, customerUUID, ""} {
-		if _, err := db.Exec(view, campaign, recipient); err != nil {
+		if _, err := db.Exec(view, campaign, recipient, "", "", "", "", nil, nil); err != nil {
 			t.Fatalf("view for %q: %v", recipient, err)
 		}
 		var url string
@@ -146,7 +146,7 @@ func TestMigrationV6_46_0Tracking(t *testing.T) {
 		t.Fatalf("private-list tracking rows: views=%d clicks=%d", ordinaryViews, ordinaryClicks)
 	}
 	// A campaign predating recipient snapshots still resolves a private-list member.
-	if _, err := db.Exec(view, otherCampaign, customerUUID); err != nil {
+	if _, err := db.Exec(view, otherCampaign, customerUUID, "", "", "", "", nil, nil); err != nil {
 		t.Fatalf("legacy private-list view: %v", err)
 	}
 	var legacyURL string
@@ -163,7 +163,7 @@ func TestMigrationV6_46_0Tracking(t *testing.T) {
 			t.Fatalf("invalid click unexpectedly resolved %q", url)
 		}
 	}
-	if _, err := db.Exec(view, otherCampaign, poolUUID); err != nil {
+	if _, err := db.Exec(view, otherCampaign, poolUUID, "", "", "", "", nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	var poolViews, poolClicks, invalidViews int

@@ -33,6 +33,8 @@ type pipe struct {
 	deferMut   sync.Mutex
 	withErrors atomic.Bool
 	stopReason atomic.Int32
+	done       chan struct{}
+	stopOnce   sync.Once
 
 	m *Manager
 }
@@ -72,7 +74,7 @@ func (m *Manager) newPipe(c *models.Campaign) (*pipe, error) {
 			}
 		}
 	} else {
-		msg := models.Message{Messenger: c.Messenger, OwnerUserID: c.OwnerUserID.Int}
+		msg := models.Message{Messenger: c.Messenger, OwnerUserID: c.OwnerUserID.Int, Campaign: c}
 		var err error
 		msgr, err = m.resolveMessenger(msg)
 		if err != nil {
@@ -111,6 +113,7 @@ func (m *Manager) newPipe(c *models.Campaign) (*pipe, error) {
 
 	// Add the campaign to the active map.
 	p := &pipe{
+		done: make(chan struct{}),
 		camp: c,
 		// Personal SMTP is resolved for every campaign message so a running
 		// campaign observes account configuration changes immediately. Other
@@ -180,11 +183,6 @@ func (p *pipe) NextCustomers() (bool, error) {
 		return false, nil
 	}
 
-	// Is there a sliding window limit configured?
-	hasSliding := p.m.cfg.SlidingWindow &&
-		p.m.cfg.SlidingWindowRate > 0 &&
-		p.m.cfg.SlidingWindowDuration.Seconds() > 1
-
 	// Push messages.
 	for _, s := range subs {
 		if p.stopped.Load() {
@@ -216,31 +214,6 @@ func (p *pipe) NextCustomers() (bool, error) {
 			return false, nil
 		}
 
-		// Check if the sliding window is active.
-		if hasSliding {
-			diff := time.Since(p.m.slidingStart)
-
-			// Window has expired. Reset the clock.
-			if diff >= p.m.cfg.SlidingWindowDuration {
-				p.m.slidingStart = time.Now()
-				p.m.slidingCount = 0
-			}
-
-			// Have the messages exceeded the limit?
-			p.m.slidingCount++
-			if p.m.slidingCount >= p.m.cfg.SlidingWindowRate {
-				wait := p.m.cfg.SlidingWindowDuration - diff
-
-				p.m.log.Printf("messages exceeded (%d) for the window (%v since %s). Sleeping for %s.",
-					p.m.slidingCount,
-					p.m.cfg.SlidingWindowDuration,
-					p.m.slidingStart.Format(time.RFC822Z),
-					wait.Round(time.Second)*1)
-
-				p.m.slidingCount = 0
-				time.Sleep(wait)
-			}
-		}
 	}
 
 	return true, nil
@@ -297,21 +270,19 @@ func (p *pipe) deferCampaign(stopQueuedMessages bool) {
 	}
 }
 
-// Stop "marks" a campaign as stopped. It doesn't actually stop the processing
-// of messages. That happens when every queued message in the campaign is processed,
-// marking .wg, the waitgroup counter as done. That triggers cleanup().
+// Stop marks a campaign as stopped and cancels pending SMTP waits. Queued
+// messages still finish their waitgroup accounting before cleanup() runs.
 func (p *pipe) Stop(reason int32, withErrors bool) {
-	// Already stopped.
-	if p.stopped.Load() {
-		return
-	}
-
-	if withErrors {
-		p.withErrors.Store(true)
-	}
-
-	p.stopReason.Store(reason)
-	p.stopped.Store(true)
+	p.stopOnce.Do(func() {
+		if withErrors {
+			p.withErrors.Store(true)
+		}
+		p.stopReason.Store(reason)
+		p.stopped.Store(true)
+		if p.done != nil {
+			close(p.done)
+		}
+	})
 }
 
 // newMessage returns a campaign message while internally incrementing the

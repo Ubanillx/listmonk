@@ -245,6 +245,43 @@ func (c *Core) GetWorkspaceCampaignsReportSummary(access models.WorkspaceAccess,
 	return out, nil
 }
 
+// GetWorkspaceCampaignsReportGeo returns location counts for campaign opens.
+// The workspace predicate is applied inside the query as well as by handlers.
+func (c *Core) GetWorkspaceCampaignsReportGeo(access models.WorkspaceAccess, campIDs []int, fromDate, toDate string) (models.CampaignGeoReport, error) {
+	out := models.CampaignGeoReport{Locations: []models.CampaignGeoLocation{}}
+	if err := validateWorkspaceAnalyticsDates(c, fromDate, toDate); err != nil {
+		return out, err
+	}
+	if len(campIDs) == 0 {
+		return out, nil
+	}
+
+	scope, scopeArgs := workspaceReadPredicate(access, "scoped_campaign", 4)
+	stmt := fmt.Sprintf(`
+		WITH %s
+		SELECT e.country_code, e.country, e.region, e.city, e.latitude, e.longitude,
+			COUNT(*) AS count
+		FROM campaign_views e
+		JOIN scoped_campaigns sc ON sc.id = e.campaign_id
+		WHERE e.campaign_id = ANY($1::INT[])
+			AND e.created_at >= $2 AND e.created_at <= $3
+		GROUP BY e.country_code, e.country, e.region, e.city, e.latitude, e.longitude
+		ORDER BY count DESC, e.country_code, e.region, e.city`, workspaceCampaignScopeCTE(scope))
+	args := []any{pq.Array(campIDs), fromDate, toDate}
+	args = append(args, scopeArgs...)
+	if err := c.db.Select(&out.Locations, stmt, args...); err != nil {
+		return out, workspaceQueryError("fetching campaign geographic analytics", err)
+	}
+	for _, row := range out.Locations {
+		out.TotalOpens += row.Count
+		if row.Latitude != nil && row.Longitude != nil {
+			out.LocatedOpens += row.Count
+		}
+	}
+	out.UnknownOpens = out.TotalOpens - out.LocatedOpens
+	return out, nil
+}
+
 func (c *Core) GetWorkspaceCampaignReportSeries(access models.WorkspaceAccess, campID int, fromDate, toDate string) (models.CampaignReportSeries, error) {
 	views, err := c.GetWorkspaceCampaignAnalyticsCounts(access, []int{campID}, CampaignAnalyticsViews, fromDate, toDate)
 	if err != nil {

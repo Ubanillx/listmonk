@@ -61,6 +61,17 @@ func (a *App) GetSettings(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	if s.SMTPDelivery.MaxConns == 0 {
+		s.SMTPDelivery = smtpDeliveryFromLegacy(s.SMTP)
+	}
+	// Older settings may still contain several platform SMTP rows. Only the
+	// system notification sender is exposed; the next save removes the rest.
+	for _, server := range s.SMTP {
+		if server.Enabled && server.IsPrimary {
+			s.SMTP = []models.SMTPServer{server}
+			break
+		}
+	}
 
 	// Empty out passwords.
 	for i := range s.SMTP {
@@ -101,27 +112,43 @@ func (a *App) UpdateSettings(c echo.Context) error {
 	// Do not let a broad settings payload overwrite them accidentally.
 	set.CustomFields = cur.CustomFields
 
-	// Validate and sanitize postback Messenger names along with SMTP names
-	// (where each SMTP is also considered as a standalone messenger).
-	// Duplicates are disallowed and "email" is a reserved name.
+	// One platform SMTP sends system notifications. Account SMTP pools handle
+	// campaigns and transactional messages.
 	names := map[string]bool{emailMsgr: true}
+	if len(set.SMTP) != 1 || !set.SMTP[0].Enabled {
+		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("settings.errorNoSMTP"))
+	}
+	set.SMTP[0].IsPrimary = true
+	if set.SMTPDelivery.MaxConns == 0 {
+		set.SMTPDelivery = cur.SMTPDelivery
+		if set.SMTPDelivery.MaxConns == 0 {
+			set.SMTPDelivery = smtpDeliveryFromLegacy(cur.SMTP)
+		}
+	}
+	delivery := set.SMTPDelivery
+	if _, _, err := delivery.SendDelayRange(); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	if delivery.MaxConns < 1 || delivery.MaxMsgRetries < 1 {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid SMTP delivery settings")
+	}
+	if idle, err := time.ParseDuration(delivery.IdleTimeout); err != nil || idle <= 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid SMTP idle timeout")
+	}
+	if wait, err := time.ParseDuration(delivery.WaitTimeout); err != nil || wait <= 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid SMTP wait timeout")
+	}
+	set.SMTP[0].MaxConns = delivery.MaxConns
+	set.SMTP[0].MaxMsgRetries = delivery.MaxMsgRetries
+	set.SMTP[0].IdleTimeout = delivery.IdleTimeout
+	set.SMTP[0].WaitTimeout = delivery.WaitTimeout
+	set.SMTP[0].EmailHeaders = delivery.EmailHeaders
 
-	// There should be at least one SMTP block that's enabled.
-	has := false
-	numPrimary := 0
 	for i, s := range set.SMTP {
-		if s.Enabled {
-			has = true
+		if s.TLSType != "none" && s.TLSType != "TLS" && s.TLSType != "STARTTLS" {
+			return echo.NewHTTPError(http.StatusBadRequest, "invalid SMTP TLS type")
 		}
-
 		set.SMTP[i].FromEmail = strings.TrimSpace(s.FromEmail)
-		if s.IsPrimary {
-			if !s.Enabled {
-				return echo.NewHTTPError(http.StatusBadRequest,
-					a.i18n.T("settings.errorPrimarySMTPDisabled"))
-			}
-			numPrimary++
-		}
 
 		// Sanitize and normalize the SMTP server name.
 		name := reAlphaNum.ReplaceAllString(strings.ToLower(strings.TrimSpace(s.Name)), "-")
@@ -176,15 +203,6 @@ func (a *App) UpdateSettings(c echo.Context) error {
 				}
 			}
 		}
-	}
-	if !has {
-		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("settings.errorNoSMTP"))
-	}
-	if numPrimary == 0 {
-		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("settings.errorNoPrimarySMTP"))
-	}
-	if numPrimary > 1 {
-		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("settings.errorMultiplePrimarySMTP"))
 	}
 
 	// Always remove the trailing slash from the app root URL.
@@ -376,6 +394,29 @@ func (a *App) UpdateSettingsByKey(c echo.Context) error {
 	if err := c.Bind(&b); err != nil {
 		return err
 	}
+	if key == "smtp_delivery" {
+		var delivery models.SMTPDeliverySettings
+		if err := json.Unmarshal(b, &delivery); err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, "invalid SMTP delivery settings")
+		}
+		if _, _, err := delivery.SendDelayRange(); err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+		}
+		if delivery.MaxConns < 1 || delivery.MaxMsgRetries < 1 {
+			return echo.NewHTTPError(http.StatusBadRequest, "invalid SMTP delivery settings")
+		}
+		if d, err := time.ParseDuration(delivery.IdleTimeout); err != nil || d <= 0 {
+			return echo.NewHTTPError(http.StatusBadRequest, "invalid SMTP idle timeout")
+		}
+		if d, err := time.ParseDuration(delivery.WaitTimeout); err != nil || d <= 0 {
+			return echo.NewHTTPError(http.StatusBadRequest, "invalid SMTP wait timeout")
+		}
+		normalized, err := json.Marshal(delivery)
+		if err != nil {
+			return err
+		}
+		b = normalized
+	}
 
 	// Update the value in the DB.
 	if err := a.core.UpdateSettingsByKey(key, b); err != nil {
@@ -442,13 +483,18 @@ func (a *App) TestSMTPSettings(c echo.Context) error {
 	}
 
 	// Initialize a new SMTP pool.
-	req.MaxConns = 1
+	req.MaxConns = resolveSMTPPlatformDefaults().MaxConns
 	req.IdleTimeout = time.Second * 2
 	req.PoolWaitTimeout = time.Second * 2
+	req.SendDelayMin, req.SendDelayMax = 0, 0
 	msgr, err := email.New("", req)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest,
 			a.i18n.Ts("globals.messages.errorCreating", "name", "SMTP", "error", err.Error()))
+	}
+	defer msgr.Close()
+	if a.manager != nil {
+		a.manager.ConfigureSMTP(msgr)
 	}
 
 	// Render the test email template body.

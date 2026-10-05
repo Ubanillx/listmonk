@@ -14,9 +14,12 @@ import (
 // path also creates the corresponding org-pool-allocation membership.
 type PoolContact struct {
 	ID                        int64                  `db:"id" json:"id"`
+	PoolID                    int64                  `db:"pool_id" json:"pool_id,omitempty"`
+	PoolName                  string                 `db:"pool_name" json:"pool_name,omitempty"`
 	UUID                      string                 `db:"uuid" json:"uuid"`
 	CustomerCode              string                 `db:"customer_code" json:"customer_code"`
 	Email                     string                 `db:"email" json:"email"`
+	ReplyTo                   string                 `db:"reply_to" json:"reply_to"`
 	Name                      string                 `db:"name" json:"name"`
 	AllocationDepartment      string                 `db:"allocation_department" json:"allocation_department"`
 	Attribs                   JSON                   `db:"attribs" json:"attribs"`
@@ -44,8 +47,11 @@ type PoolExclusionSummary struct {
 // allocation so members can identify the row.
 type SafePoolContact struct {
 	ID                   int64     `json:"id"`
+	PoolID               int64     `json:"pool_id,omitempty"`
+	PoolName             string    `json:"pool_name,omitempty"`
 	CustomerCode         string    `json:"customer_code"`
 	Email                string    `json:"email"`
+	ReplyTo              string    `json:"reply_to"`
 	Name                 string    `json:"name"`
 	AllocationDepartment string    `json:"allocation_department,omitempty"`
 	Status               string    `json:"status"`
@@ -53,6 +59,14 @@ type SafePoolContact struct {
 	UpdatedAt            time.Time `json:"updated_at"`
 	Excluded             bool      `json:"excluded,omitempty"`
 	ExclusionReason      string    `json:"exclusion_reason,omitempty"`
+}
+
+// PoolContactFilterOption is one visible pool/department pair used to build
+// aggregate contact filters without loading or exposing contact records.
+type PoolContactFilterOption struct {
+	PoolID               int64  `db:"pool_id" json:"pool_id"`
+	PoolName             string `db:"pool_name" json:"pool_name"`
+	AllocationDepartment string `db:"allocation_department" json:"allocation_department"`
 }
 
 type OrgPoolAllocation struct {
@@ -82,13 +96,14 @@ type PoolImportIssue struct {
 }
 
 // PoolContactImportRow is one row from the unified public-pool import. The
-// source template may contain additional columns; only these four fields are
+// source template may contain additional columns; only these business fields are
 // persisted by the pool import path.
 type PoolContactImportRow struct {
 	Row                  int
 	CustomerCode         string
 	Name                 string
 	Email                string
+	ReplyTo              string
 	AllocationDepartment string
 }
 
@@ -105,16 +120,17 @@ type PoolContactImportIssue struct {
 // PoolContactImportResult is returned synchronously by the unified import
 // endpoint when its target list is a first-level public pool.
 type PoolContactImportResult struct {
-	Target     string                   `json:"target"`
-	PoolID     int                      `json:"pool_id"`
-	Total      int                      `json:"total"`
-	Valid      int                      `json:"valid"`
-	Created    int                      `json:"created"`
-	Existing   int                      `json:"existing"`
-	Conflicts  int                      `json:"conflicts"`
-	Invalid    int                      `json:"invalid"`
-	Duplicates int                      `json:"duplicates"`
-	Issues     []PoolContactImportIssue `json:"issues,omitempty"`
+	Target      string                   `json:"target"`
+	PoolID      int                      `json:"pool_id"`
+	Total       int                      `json:"total"`
+	Valid       int                      `json:"valid"`
+	Created     int                      `json:"created"`
+	Existing    int                      `json:"existing"`
+	Conflicts   int                      `json:"conflicts"`
+	Invalid     int                      `json:"invalid"`
+	Duplicates  int                      `json:"duplicates"`
+	Blocklisted int                      `json:"blocklisted"`
+	Issues      []PoolContactImportIssue `json:"issues,omitempty"`
 }
 
 // PoolImportResult deliberately contains no email values. This keeps the
@@ -170,8 +186,11 @@ func (p PoolContact) Safe() SafePoolContact {
 	// own allocation; the raw address and internal identifiers stay hidden.
 	return SafePoolContact{
 		ID:                   p.ID,
+		PoolID:               p.PoolID,
+		PoolName:             p.PoolName,
 		CustomerCode:         p.CustomerCode,
 		Email:                MaskPoolEmail(p.Email),
+		ReplyTo:              p.ReplyTo,
 		Name:                 p.Name,
 		AllocationDepartment: p.AllocationDepartment,
 		Status:               p.Status,

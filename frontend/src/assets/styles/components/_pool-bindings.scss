@@ -1,0 +1,134 @@
+.pool-bindings {
+  color: var(--lm-color-text);
+
+  &__title {
+    margin: 0 0 var(--lm-space-3);
+    font-size: 1rem;
+    font-weight: 600;
+  }
+
+  &__grid {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    border: 1px solid var(--lm-color-border);
+    border-radius: var(--lm-radius-md);
+    overflow: hidden;
+  }
+
+  &__organizations,
+  &__detail {
+    min-width: 0;
+    padding: var(--lm-space-4);
+
+    h4 {
+      margin: 0 0 var(--lm-space-3);
+      font-size: 1rem;
+      font-weight: 600;
+      overflow-wrap: anywhere;
+    }
+  }
+
+  &__organizations {
+    background: var(--lm-color-canvas);
+    border-right: 1px solid var(--lm-color-border);
+  }
+
+  &__organization-list {
+    max-height: 16rem;
+    overflow-y: auto;
+    padding: var(--lm-space-1);
+  }
+
+  &__organization {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--lm-space-2);
+    width: 100%;
+    min-height: 44px;
+    padding: var(--lm-space-2);
+    border: 1px solid transparent;
+    border-radius: var(--lm-radius-sm);
+    text-align: left;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+
+    &:hover,
+    &.is-selected {
+      background: var(--lm-color-primary-soft);
+    }
+
+    &.is-selected {
+      border-color: var(--lm-color-primary);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--lm-color-primary);
+      outline-offset: 1px;
+    }
+
+    &:disabled {
+      cursor: wait;
+    }
+  }
+
+  &__organization-name {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  &__status {
+    flex-shrink: 0;
+    font-size: 0.75rem;
+    color: var(--lm-color-text-muted);
+
+    &.is-bound {
+      color: var(--lm-color-success);
+    }
+  }
+
+  &__detail-heading {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--lm-space-3);
+  }
+
+  &__hint {
+    margin: 0 0 var(--lm-space-4);
+  }
+
+  &__summary {
+    display: flex;
+    flex-direction: column;
+    gap: var(--lm-space-2);
+    overflow-wrap: anywhere;
+
+    > span {
+      color: var(--lm-color-text-muted);
+      font-size: 0.75rem;
+    }
+
+    > a {
+      margin-top: var(--lm-space-3);
+    }
+  }
+}
+
+@media screen and (max-width: 768px) {
+  .pool-bindings {
+    &__grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    &__organizations {
+      border-right: 0;
+      border-bottom: 1px solid var(--lm-color-border);
+    }
+
+    &__organization-list {
+      max-height: 12rem;
+    }
+  }
+}

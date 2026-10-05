@@ -1,91 +1,62 @@
 <template>
-  <section class="pool-manager">
-    <div class="pool-manager__intro">
-      <div>
-        <h3>{{ $t('pool.title') }}</h3>
-        <p>{{ isPlatformAdmin ? $t('pool.intro') : $t('pool.introManager') }}</p>
-      </div>
-      <b-tag type="is-info" class="is-light">{{ $t('pool.primaryTag') }}</b-tag>
-    </div>
-
-    <section class="pool-manager__section" data-cy="pool-target-organization-panel">
-      <div class="pool-manager__section-heading">
-        <span class="pool-manager__section-number">1</span>
-        <div>
-          <h4>{{ isPlatformAdmin ? $t('pool.stepSelectTitle') : $t('pool.currentOrganization') }}</h4>
-          <p v-if="isPlatformAdmin">{{ $t('pool.stepSelectHelp') }}</p>
+  <section class="pool-manager pool-bindings">
+    <h3 class="pool-bindings__title">{{ $t('pool.bindingTitle') }}</h3>
+    <div class="pool-bindings__grid">
+      <aside class="pool-bindings__organizations" data-cy="pool-target-organization-panel">
+        <h4>{{ $t('pool.organizationsTitle', { count: availableOrganizations.length }) }}</h4>
+        <b-input v-if="isPlatformAdmin" v-model="organizationSearch" type="search" icon="magnify"
+          :placeholder="$t('pool.searchOrganizations')" :aria-label="$t('pool.searchOrganizations')"
+          data-cy="pool-organization-search" />
+        <div class="pool-bindings__organization-list">
+          <button v-for="organization in filteredOrganizations" :key="organization.id" type="button"
+            class="pool-bindings__organization" :class="{ 'is-selected': Number(organization.id) === organizationID }"
+            :aria-pressed="Number(organization.id) === organizationID" :disabled="creatingAllocation"
+            :data-organization-id="organization.id" data-cy="pool-organization-option"
+            @click="targetOrganizationID = Number(organization.id)">
+            <span class="pool-bindings__organization-name">{{ organization.name }}</span>
+            <span v-if="!loadingAllocations && !loadError" :class="['pool-bindings__status', { 'is-bound': allocationFor(organization.id) }]">
+              {{ $t(allocationFor(organization.id) ? 'pool.bound' : 'pool.unbound') }}
+            </span>
+          </button>
+          <p v-if="!filteredOrganizations.length" class="help">{{ $t('pool.noOrganizations') }}</p>
         </div>
-      </div>
-      <div class="pool-manager__section-content">
-        <b-field v-if="isPlatformAdmin" :label="$t('pool.targetOrganizationLabel')" label-position="on-border">
-          <b-select v-model.number="targetOrganizationID" expanded data-cy="pool-target-organization">
-            <option :value="null">{{ $t('pool.selectOrganizationPlaceholder') }}</option>
-            <option v-for="organization in organizations" :key="organization.id" :value="organization.id">
-              {{ organization.name }}
-            </option>
-          </b-select>
-        </b-field>
+      </aside>
 
-        <!-- Organization admins are bound to the organization of the workspace
-             they are currently in, so the target is shown read-only. -->
-        <div v-else class="pool-manager__allocation-summary" data-cy="pool-current-organization">
-          <div>
-            <span>{{ $t('pool.targetOrganizationLabel') }}</span>
-            <strong>{{ currentOrganizationName }}</strong>
+      <section class="pool-bindings__detail" data-cy="pool-allocation-panel" aria-live="polite">
+        <p v-if="loadingAllocations" class="help">{{ $t('pool.loadingBindings') }}</p>
+        <div v-else-if="loadError">
+          <p class="help has-text-danger">{{ $t('pool.loadBindingsError') }}</p>
+          <b-button native-type="button" @click="loadAllocations" data-cy="pool-bindings-retry">{{ $t('globals.buttons.retry') }}</b-button>
+        </div>
+        <template v-else-if="organizationID">
+          <div class="pool-bindings__detail-heading">
+            <h4 data-cy="pool-current-organization">{{ targetOrganizationName }}</h4>
+            <span :class="['pool-bindings__status', { 'is-bound': selectedAllocation }]">
+              {{ $t(selectedAllocation ? 'pool.bound' : 'pool.unbound') }}
+            </span>
           </div>
-        </div>
-      </div>
-    </section>
-
-    <section v-if="organizationID" class="pool-manager__section" data-cy="pool-allocation-panel">
-      <div class="pool-manager__section-heading">
-        <span class="pool-manager__section-number">2</span>
-        <div>
-          <h4>{{ $t('pool.allocationTitle') }}</h4>
-          <p>{{ $t('pool.allocationHelp') }}</p>
-        </div>
-      </div>
-      <div class="pool-manager__section-content">
-        <div v-if="selectedAllocation" class="pool-manager__allocation-summary" data-cy="org-pool-allocation-summary">
-          <div>
+          <div v-if="selectedAllocation" class="pool-bindings__summary" data-cy="org-pool-allocation-summary">
             <span>{{ $t('pool.allocationNameLabel') }}</span>
             <strong>{{ selectedAllocation.listName || selectedAllocation.listId }}</strong>
+            <router-link v-if="$can('pools:get')" :to="'/pool-lists/' + selectedAllocation.listId + '/contacts'" data-cy="pool-bound-contacts">
+              {{ $t('pool.viewAllocationContacts') }}
+            </router-link>
           </div>
-          <div>
-            <span>{{ $t('pool.allocationOrganizationLabel') }}</span>
-            <strong>{{ selectedAllocation.organizationName || targetOrganizationName }}</strong>
+          <div v-else data-cy="org-pool-allocation-create">
+            <p class="help pool-bindings__hint">{{ $t('pool.bindingHelp') }}</p>
+            <b-field :label="$t('pool.createNameLabel')" label-position="on-border">
+              <b-input v-model.trim="allocationName" maxlength="200" :disabled="creatingAllocation"
+                data-cy="org-pool-allocation-name" />
+            </b-field>
+            <b-button type="is-primary" :loading="creatingAllocation" :disabled="creatingAllocation || !allocationName"
+              native-type="button" data-cy="create-org-pool-allocation" @click="createAllocation">
+              {{ $t('pool.createAndBind') }}
+            </b-button>
           </div>
-        </div>
-
-        <div v-if="!selectedAllocation" class="pool-manager__create-allocation" data-cy="org-pool-allocation-create">
-          <div class="pool-manager__create-allocation-title">
-            <div>
-              <span>{{ $t('pool.targetOrganizationLabel') }}</span>
-              <strong>{{ targetOrganizationName }}</strong>
-            </div>
-            <small>{{ $t('pool.createBindsPool') }}</small>
-          </div>
-          <b-field :label="$t('pool.createNameLabel')" label-position="on-border">
-            <b-input v-model.trim="newAllocation.name" maxlength="200"
-              :placeholder="$t('pool.createNamePlaceholder')" data-cy="org-pool-allocation-name" />
-          </b-field>
-          <p class="help pool-manager__organization-note-text">{{ $t('pool.createPlatformNote') }}</p>
-          <b-button type="is-primary" :loading="creatingAllocation" :disabled="!newAllocation.name"
-            data-cy="create-org-pool-allocation" @click="createAllocation">
-            {{ $t('pool.createAndBind') }}
-          </b-button>
-        </div>
-      </div>
-    </section>
-
-    <section v-else class="pool-manager__empty-state pool-manager__empty-state--top"
-      data-cy="pool-allocation-empty">
-      <b-icon icon="account-group-outline" size="is-medium" />
-      <div>
-        <strong>{{ $t('pool.noOrgTitle') }}</strong>
-        <p>{{ $t('pool.noOrgHelp') }}</p>
-      </div>
-    </section>
+        </template>
+        <p v-else class="help" data-cy="pool-allocation-empty">{{ $t('pool.noOrganizations') }}</p>
+      </section>
+    </div>
   </section>
 </template>
 
@@ -95,22 +66,20 @@ import { mapState } from 'vuex';
 
 export default Vue.extend({
   name: 'PoolManager',
-
   props: {
     pool: { type: Object, required: true },
   },
-
   data() {
     return {
       allocations: [],
       targetOrganizationID: null,
-      targetOrganizationNameOverride: '',
-      selectedAllocationID: null,
+      organizationSearch: '',
+      allocationNames: {},
+      loadingAllocations: true,
+      loadError: false,
       creatingAllocation: false,
-      newAllocation: { name: '' },
     };
   },
-
   computed: {
     ...mapState(['profile', 'organizations', 'workspace']),
 
@@ -118,104 +87,83 @@ export default Vue.extend({
       return Number(this.profile && this.profile.userRole && this.profile.userRole.id) === 1;
     },
 
-    // Organization admins may only split a pool inside the organization of the
-    // workspace they are currently in: the backend rejects any other
-    // organization. Highest administrators keep the cross-organization
-    // selector, so the target stays null for them until one is picked.
-    fixedOrganizationID() {
+    availableOrganizations() {
       if (this.isPlatformAdmin) {
-        return 0;
+        return (this.organizations || []).filter((organization) => !organization.status || organization.status === 'active');
       }
-      return Number(this.workspace && this.workspace.organizationId) || 0;
+      const id = Number(this.workspace.organizationId);
+      return id > 0 ? [{ id, name: this.workspace.organizationName || this.$t('pool.organizationFallback', { id }) }] : [];
     },
 
-    // Read-only name shown to organization admins, whose target organization is
-    // fixed by their workspace.
-    currentOrganizationName() {
-      return this.workspace.organizationName
-        || this.$t('pool.organizationFallback', { id: this.fixedOrganizationID });
+    filteredOrganizations() {
+      const search = this.organizationSearch.trim().toLowerCase();
+      return this.availableOrganizations.filter((organization) => organization.name.toLowerCase().includes(search));
     },
 
     organizationID() {
-      if (!this.isPlatformAdmin) {
-        return this.fixedOrganizationID;
-      }
-      return Number(this.targetOrganizationID) || 0;
+      return this.isPlatformAdmin ? Number(this.targetOrganizationID) || 0 : Number(this.workspace.organizationId) || 0;
     },
 
     targetOrganizationName() {
-      if (!this.isPlatformAdmin) {
-        return this.currentOrganizationName;
-      }
-      if (this.targetOrganizationNameOverride) {
-        return this.targetOrganizationNameOverride;
-      }
-      const org = (this.organizations || []).find((item) => Number(item.id) === this.organizationID);
-      return org ? org.name : this.$t('pool.organizationFallback', { id: this.organizationID });
+      const organization = this.availableOrganizations.find((item) => Number(item.id) === this.organizationID);
+      return organization ? organization.name : '';
     },
 
     selectedAllocation() {
-      return this.allocations.find((allocation) => Number(allocation.id) === Number(this.selectedAllocationID));
+      return this.allocationFor(this.organizationID);
+    },
+
+    allocationName: {
+      get() {
+        const draft = this.allocationNames[this.organizationID];
+        return draft === undefined ? this.$t('pool.defaultAllocationName', { organization: this.targetOrganizationName }) : draft;
+      },
+      set(value) {
+        this.$set(this.allocationNames, this.organizationID, value);
+      },
     },
   },
-
-  watch: {
-    targetOrganizationID() {
-      this.selectedAllocationID = null;
-      this.targetOrganizationNameOverride = '';
-      this.loadTargetOrganization();
-    },
-  },
-
   methods: {
+    allocationFor(organizationID) {
+      return this.allocations.find((allocation) => Number(allocation.organizationId || allocation.organization_id) === Number(organizationID));
+    },
+
     loadAllocations() {
+      this.loadingAllocations = true;
+      this.loadError = false;
       return this.$api.getOrgPoolAllocations(this.pool.id).then((rows) => {
         this.allocations = Array.isArray(rows) ? rows : [];
-        const current = this.allocations.find((allocation) => Number(allocation.organizationId || allocation.organization_id) === this.organizationID);
-        this.selectedAllocationID = current ? current.id : null;
+        if (!this.availableOrganizations.some((organization) => Number(organization.id) === this.organizationID)) {
+          const current = this.availableOrganizations.find((organization) => Number(organization.id) === Number(this.workspace.organizationId));
+          const initial = current || this.availableOrganizations[0];
+          this.targetOrganizationID = initial ? Number(initial.id) : null;
+        }
+      }).catch(() => {
+        this.loadError = true;
+      }).finally(() => {
+        this.loadingAllocations = false;
       });
     },
 
-    loadTargetOrganization() {
-      // Resolving an arbitrary organization's target is highest-administrator
-      // only (`GET /api/pools/:id/management-target`). Organization admins are
-      // fixed to their own workspace, so their own allocations are all that has to
-      // be reloaded.
-      if (!this.isPlatformAdmin) {
-        return this.loadAllocations();
-      }
-      if (!this.organizationID) {
-        this.allocations = [];
-        return Promise.resolve();
-      }
-      return this.$api.getPoolManagementTarget(this.pool.id, this.organizationID)
-        .then((target) => {
-          this.targetOrganizationNameOverride = target.organizationName || target.organization_name || '';
-          return this.loadAllocations();
-        });
-    },
-
     createAllocation() {
-      if (!this.organizationID || !this.newAllocation.name) {
+      if (!this.organizationID || !this.allocationName || this.selectedAllocation || this.creatingAllocation || this.loadingAllocations || this.loadError) {
         return Promise.resolve();
       }
       this.creatingAllocation = true;
       return this.$api.createOrgPoolAllocation({
         pool_id: this.pool.id,
         organization_id: this.organizationID,
-        name: this.newAllocation.name,
+        name: this.allocationName,
       }).then(() => {
-        this.newAllocation = { name: '' };
         this.$utils.toast(this.$t('pool.toastCreated'));
-        return this.loadTargetOrganization();
-      }).finally(() => {
+        return this.loadAllocations();
+      }).catch(() => this.loadAllocations()).finally(() => {
         this.creatingAllocation = false;
       });
     },
   },
-
   mounted() {
-    this.loadTargetOrganization();
+    this.loadAllocations();
   },
 });
 </script>

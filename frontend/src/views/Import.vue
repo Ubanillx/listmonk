@@ -1,8 +1,21 @@
 <template>
   <section class="import">
-    <h1 class="title is-4">
-      {{ $t('import.title') }}
-    </h1>
+    <h1 class="title is-4 mb-4">{{ $t('import.pageTitle') }}</h1>
+    <div class="tabs is-boxed" role="tablist" :aria-label="$t('import.pageTitle')" data-cy="import-tabs">
+      <ul>
+        <li :class="{ 'is-active': activeImportTab === 'private' }">
+          <a href="#" role="tab" :aria-selected="activeImportTab === 'private'"
+            data-cy="import-tab-private" @click.prevent="setImportTab('private')">{{ $t('import.privateTab') }}</a>
+        </li>
+        <li v-if="isPlatformAdmin" :class="{ 'is-active': activeImportTab === 'pool' }">
+          <a href="#" role="tab" :aria-selected="activeImportTab === 'pool'"
+            data-cy="import-tab-pool" @click.prevent="setImportTab('pool')">{{ $t('import.poolTab') }}</a>
+        </li>
+      </ul>
+    </div>
+    <h2 class="title is-5">
+      {{ poolImport ? $t('import.poolTitle') : $t('import.title') }}
+    </h2>
     <b-loading :active="isLoading" />
 
     <section v-if="isFree()" class="wrap">
@@ -16,57 +29,47 @@
                     {{ $t('import.subscribe') }}
                   </b-radio>
                   <br />
-                  <b-radio v-if="!poolImport" v-model="form.mode" name="mode" native-value="blocklist" data-cy="check-blocklist">
+                  <b-radio v-model="form.mode" name="mode" native-value="blocklist" data-cy="check-blocklist">
                     {{ $t('import.blocklist') }}
                   </b-radio>
                 </div>
               </b-field>
             </div>
-            <div class="column">
+            <div v-if="showSubscriptionStatus" class="column" data-cy="import-subscription-status">
               <b-field :label="$t('globals.fields.status')" :addons="false">
-                <template v-if="form.mode === 'subscribe'">
-                  <b-radio v-model="form.subStatus" name="subStatus" native-value="unconfirmed"
-                    data-cy="check-unconfirmed">
-                    {{ $t('customers.status.unconfirmed') }}
-                  </b-radio>
-                  <b-radio v-model="form.subStatus" name="subStatus" native-value="confirmed" data-cy="check-confirmed">
-                    {{ $t('customers.status.confirmed') }}
-                  </b-radio>
-                </template>
-
-                <b-radio v-else v-model="form.subStatus" name="subStatus" native-value="unsubscribed"
-                  data-cy="check-unsubscribed">
-                  {{ $t('customers.status.unsubscribed') }}
+                <b-radio v-model="form.subStatus" name="subStatus" native-value="unconfirmed"
+                  data-cy="check-unconfirmed">
+                  {{ $t('customers.status.unconfirmed') }}
                 </b-radio>
-                <p v-if="form.mode === 'subscribe'" class="help">{{ $t('import.statusHelp') }}</p>
+                <b-radio v-model="form.subStatus" name="subStatus" native-value="confirmed" data-cy="check-confirmed">
+                  {{ $t('customers.status.confirmed') }}
+                </b-radio>
+                <p class="help">{{ $t('import.statusHelp') }}</p>
               </b-field>
             </div>
           </div>
-          <div class="columns">
-            <div class="column is-4">
-              <b-field v-if="form.mode === 'subscribe' && !poolImport" :label="$t('import.overwriteUserInfo')"
-                :message="$t('import.overwriteUserInfoHelp')">
-                <div>
-                  <b-switch v-model="form.overwriteUserInfo" name="overwriteUserInfo" data-cy="overwrite-user-info" />
-                </div>
-              </b-field>
-            </div>
-
-            <div class="column">
-              <b-field v-if="form.mode === 'subscribe' && !poolImport" :label="$t('import.overwriteSubStatus')"
-                :message="$t('import.overwriteSubStatusHelp')">
-                <div>
-                  <b-switch v-model="form.overwriteSubStatus" name="overwriteSubStatus"
-                    data-cy="overwrite-sub-status" />
-                </div>
-              </b-field>
-            </div>
+          <p v-if="poolImport && form.mode === 'blocklist'" class="help mb-4" data-cy="pool-blocklist-help">
+            {{ $t('import.poolBlacklistHelp') }}
+          </p>
+          <div v-if="form.mode === 'subscribe' || poolImport" class="import-list-setup">
+            <customer-list-selector :key="activeImportTab"
+              :label="$t(poolImport ? 'menu.poolLists' : 'globals.terms.customer_lists')"
+              :placeholder="poolImport ? $t('import.selectPoolList') : $t('import.listSubHelp')"
+              :message="poolImport ? $t('import.poolListHelp') : $t('import.listSubHelp')"
+              v-model="form.customer_lists" :selected="form.customer_lists" :all="importListOptions"
+              :max-selected="poolImport ? 1 : 0" />
+            <p v-if="canCreateList" class="import-list-create">
+              {{ $t('import.noListPrompt') }}
+              <a href="#" data-cy="import-create-list" @click.prevent="showCreateList">
+                {{ $t(poolImport ? 'import.createPoolList' : 'import.createPrivateList') }}
+              </a>
+            </p>
           </div>
-
-          <customer-list-selector v-if="form.mode === 'subscribe'" :label="$t('globals.terms.customer_lists')"
-            :placeholder="$t('import.listSubHelp')" :message="poolImport ? $t('import.poolListHelp') : $t('import.listSubHelp')"
-            v-model="form.customer_lists" :selected="form.customer_lists" :all="importListOptions" />
           <p v-if="hasInvalidPoolSelection" class="help has-text-danger">{{ $t('import.poolListSelectionError') }}</p>
+
+          <div v-if="poolImport && selectedPoolLists.length === 1" class="import-pool-manager" data-cy="import-pool-manager">
+            <pool-manager :key="selectedPoolLists[0].id" :pool="selectedPoolLists[0]" />
+          </div>
 
           <b-field :label="$t('import.firstRowHeader')" :message="$t('import.previewHelp')">
             <b-switch v-model="preview.firstRowHeader" :disabled="poolImport" @input="rebuildPreviewFromRaw" />
@@ -96,7 +99,7 @@
             </div>
           </div>
 
-          <div v-if="form.mode === 'subscribe'" class="columns">
+          <div v-if="form.mode === 'subscribe' || poolImport" class="columns">
             <div class="column is-4">
               <b-field :label="$t('import.mapCustomerCodeField')"
                 :message="poolImport ? $t('import.poolRequiredFieldHelp') : $t('import.mapCustomerCodeFieldHelp')">
@@ -117,6 +120,16 @@
                 <b-select v-model="form.fieldMap.allocation_department" expanded required>
                   <option value="">{{ $t('globals.terms.none') }}</option>
                   <option v-for="col in preview.columns" :key="`allocation_department-${col.value}`" :value="col.value">
+                    {{ col.label }}
+                  </option>
+                </b-select>
+              </b-field>
+            </div>
+            <div class="column is-8">
+              <b-field :label="$t('import.mapReplyToField')" :message="$t('import.mapReplyToFieldHelp')">
+                <b-select v-model="form.fieldMap.reply_to" expanded data-cy="import-map-reply-to">
+                  <option value="">{{ $t('globals.terms.none') }}</option>
+                  <option v-for="col in preview.columns" :key="`reply_to-${col.value}`" :value="col.value">
                     {{ col.label }}
                   </option>
                 </b-select>
@@ -173,7 +186,7 @@
           </div>
           <div class="buttons">
             <b-button native-type="submit" type="is-primary" :disabled="isSubmitDisabled()"
-              :loading="isProcessing">
+              :loading="isProcessing" data-cy="btn-upload-import">
               {{ $t('import.upload') }}
             </b-button>
           </div>
@@ -189,7 +202,7 @@
         <br />
         <blockquote class="csv-example">
           <code v-if="poolImport" class="csv-headers">
-            <span>客户编号,</span> <span>姓名,</span> <span>邮箱,</span> <span>分配部门</span>
+            <span>客户编号,</span> <span>姓名,</span> <span>邮箱,</span> <span>分配部门,</span> <span>回信邮箱</span>
           </code>
           <code v-else class="csv-headers">
             <span>email,</span> <span>name,</span> <span>customer_code</span>
@@ -205,7 +218,7 @@
         <pre class="csv-example" v-text="poolImport ? form.poolExample : form.example" />
       </div>
 
-      <article v-if="poolImportResult"
+      <article v-if="poolImport && poolImportResult"
         :class="['message', poolImportResult.invalid ? 'is-warning' : 'is-success', 'import-pool-result']"
         data-cy="pool-import-result">
         <div class="message-header">
@@ -218,6 +231,9 @@
             <b-tag>{{ $t('import.poolResultTotal', { count: poolImportResult.total || 0 }) }}</b-tag>
             <b-tag type="is-success">{{ $t('import.poolResultCreated', { count: poolImportResult.created || 0 }) }}</b-tag>
             <b-tag type="is-info">{{ $t('import.poolResultExisting', { count: poolImportResult.existing || 0 }) }}</b-tag>
+            <b-tag v-if="poolImportResult.blocklisted" type="is-danger" data-cy="pool-result-blocklisted">
+              {{ $t('import.poolResultBlocklisted', { count: poolImportResult.blocklisted }) }}
+            </b-tag>
             <b-tag type="is-warning">{{ $t('import.poolResultConflicts', { count: poolImportResult.conflicts || 0 }) }}</b-tag>
             <b-tag type="is-danger">{{ $t('import.poolResultInvalid', { count: poolImportResult.invalid || 0 }) }}</b-tag>
             <b-tag>{{ $t('import.poolResultDuplicates', { count: poolImportResult.duplicates || 0 }) }}</b-tag>
@@ -263,6 +279,11 @@
         <log-view :lines="logs" :loading="false" />
       </div>
     </section>
+
+    <b-modal scroll="keep" :aria-modal="true" :active.sync="createListVisible" :width="600">
+      <customer-list-form :key="createFormKey" :data="{ type: poolImport ? 'pool' : 'private' }"
+        :list-group="activeImportTab" @finished="onListCreated" />
+    </b-modal>
   </section>
 </template>
 
@@ -272,13 +293,17 @@ import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { mapState } from 'vuex';
 import CustomerListSelector from '../components/CustomerListSelector.vue';
+import PoolManager from '../components/PoolManager.vue';
 import LogView from '../components/LogView.vue';
+import CustomerListForm from './CustomerListForm.vue';
 import { isOwnedActiveWorkspaceCustomerList } from '../utils/workspace';
 
 export default Vue.extend({
   components: {
     CustomerListSelector,
+    CustomerListForm,
     LogView,
+    PoolManager,
   },
 
   props: {
@@ -288,18 +313,21 @@ export default Vue.extend({
 
   data() {
     return {
+      activeImportTab: 'private',
+      selectedListsByTab: { private: [], pool: [] },
+      createListVisible: false,
+      createFormKey: 0,
       form: {
         mode: 'subscribe',
-        subStatus: 'unconfirmed',
+        subStatus: 'confirmed',
         customer_lists: [],
-        overwriteUserInfo: false,
-        overwriteSubStatus: false,
         file: null,
         fieldMap: {
           email: '',
           name: '',
           customer_code: '',
           allocation_department: '',
+          reply_to: '',
         },
         example: '',
         poolExample: '',
@@ -330,11 +358,17 @@ export default Vue.extend({
       // Select the appropriate status radio whenever mode changes.
       this.$nextTick(() => {
         if (this.form.mode === 'subscribe') {
-          this.form.subStatus = 'unconfirmed';
+          this.form.subStatus = 'confirmed';
         } else {
           this.form.subStatus = 'unsubscribed';
         }
       });
+    },
+
+    showSubscriptionStatus(value) {
+      if (!value && this.form.mode === 'subscribe') {
+        this.form.subStatus = 'confirmed';
+      }
     },
 
     'form.file': function onFileChanged(file) {
@@ -343,16 +377,6 @@ export default Vue.extend({
         return;
       }
       this.previewFromFile();
-    },
-
-    'form.customer_lists': {
-      deep: true,
-      handler() {
-        if (this.poolImport) {
-          this.form.mode = 'subscribe';
-          this.preview.firstRowHeader = true;
-        }
-      },
     },
 
     poolImport(value) {
@@ -365,6 +389,7 @@ export default Vue.extend({
           this.autoMapFields();
         } else {
           this.form.fieldMap.allocation_department = '';
+          this.form.fieldMap.reply_to = '';
         }
       });
     },
@@ -372,6 +397,37 @@ export default Vue.extend({
   },
 
   methods: {
+    setImportTab(tab) {
+      if (tab === this.activeImportTab || (tab === 'pool' && !this.isPlatformAdmin)) {
+        return;
+      }
+      this.selectedListsByTab[this.activeImportTab] = [...this.form.customer_lists];
+      this.activeImportTab = tab;
+      this.form.customer_lists = [...this.selectedListsByTab[tab]];
+      // The two imports require different source columns. Do not carry a file or
+      // its field mapping from one workflow into the other.
+      this.clearFile();
+      if (tab === 'pool') {
+        this.form.mode = 'subscribe';
+        this.preview.firstRowHeader = true;
+      }
+    },
+
+    showCreateList() {
+      if (!this.canCreateList) {
+        return;
+      }
+      this.createFormKey += 1;
+      this.createListVisible = true;
+    },
+
+    onListCreated(list) {
+      this.createListVisible = false;
+      this.form.customer_lists = [list];
+      this.selectedListsByTab[this.activeImportTab] = [list];
+      this.$api.getLists({ minimal: true, per_page: 'all', status: 'active' });
+    },
+
     clearFile() {
       this.form.file = null;
       this.clearPreview();
@@ -386,6 +442,7 @@ export default Vue.extend({
       this.form.fieldMap.name = '';
       this.form.fieldMap.customer_code = '';
       this.form.fieldMap.allocation_department = '';
+      this.form.fieldMap.reply_to = '';
     },
 
     getCellValue(row, idx) {
@@ -458,6 +515,7 @@ export default Vue.extend({
       };
 
       if (this.poolImport) {
+        keyMap.reply_to = ['reply_to', 'reply to', 'reply-to', 'reply_email', '回信邮箱', '回件邮箱', '回复邮箱'];
         keyMap.allocation_department = [
           'allocation_department', 'allocation department', 'department', '部门', '分配部门', '分配部门名称',
         ];
@@ -495,6 +553,7 @@ export default Vue.extend({
       this.form.fieldMap.name = '';
       this.form.fieldMap.customer_code = '';
       this.form.fieldMap.allocation_department = '';
+      this.form.fieldMap.reply_to = '';
       this.autoMapFields();
     },
 
@@ -656,30 +715,30 @@ export default Vue.extend({
 
       this.form.example = h;
 
-      this.form.poolExample = '客户编号,姓名,邮箱,分配部门\n'
-        + 'AE-20004,"JAGATHISH PICHAIYAPPA",jagath.p@example.com,分表1\n'
-        + 'AE-20005,"Contact Two",contact2@example.com,分表2';
+      this.form.poolExample = '客户编号,姓名,邮箱,分配部门,回信邮箱\n'
+        + 'AE-20004,"JAGATHISH PICHAIYAPPA",jagath.p@example.com,分表1,replies@example.com\n'
+        + 'AE-20005,"Contact Two",contact2@example.com,分表2,';
     },
 
     resetForm() {
       this.form.mode = 'subscribe';
-      this.form.overwriteUserInfo = false;
-      this.form.overwriteSubStatus = false;
       this.form.file = null;
       this.form.customer_lists = [];
-      this.form.subStatus = 'unconfirmed';
+      this.selectedListsByTab = { private: [], pool: [] };
+      this.form.subStatus = 'confirmed';
       this.form.fieldMap = {
         email: '',
         name: '',
         customer_code: '',
         allocation_department: '',
+        reply_to: '',
       };
       this.poolImportResult = null;
       this.clearPreview();
     },
 
     onUpload() {
-      if (this.form.mode === 'subscribe' && this.form.overwriteSubStatus) {
+      if (this.form.mode === 'subscribe' && !this.poolImport) {
         this.$utils.confirm(this.$t('import.subscribeWarning'), this.onSubmit, this.resetForm);
         return;
       }
@@ -703,13 +762,20 @@ export default Vue.extend({
       };
       if (this.poolImport) {
         fieldMap.allocation_department = this.form.fieldMap.allocation_department;
+        fieldMap.reply_to = this.form.fieldMap.reply_to;
+      }
+      let subscriptionStatus = 'confirmed';
+      if (this.form.mode === 'blocklist') {
+        subscriptionStatus = 'unsubscribed';
+      } else if (this.showSubscriptionStatus) {
+        subscriptionStatus = this.form.subStatus;
       }
       params.set('params', JSON.stringify({
         mode: this.form.mode,
-        subscription_status: this.form.subStatus,
+        subscription_status: subscriptionStatus,
         customer_list_ids: this.form.customer_lists.map((l) => l.id),
-        overwrite_userinfo: this.form.overwriteUserInfo,
-        overwrite_subscription_status: this.form.overwriteSubStatus,
+        overwrite_userinfo: !this.poolImport && this.form.mode === 'subscribe',
+        overwrite_subscription_status: !this.poolImport && this.form.mode === 'subscribe',
         field_map: fieldMap,
       }));
       params.set('file', this.form.file);
@@ -747,10 +813,10 @@ export default Vue.extend({
       if (!this.form.file || this.hasInvalidPoolSelection) {
         return true;
       }
-      if (this.form.mode === 'subscribe' && this.form.customer_lists.length === 0) {
+      if ((this.form.mode === 'subscribe' || this.poolImport) && this.form.customer_lists.length === 0) {
         return true;
       }
-      if (this.form.mode === 'subscribe' && !this.form.fieldMap.customer_code) {
+      if ((this.form.mode === 'subscribe' || this.poolImport) && !this.form.fieldMap.customer_code) {
         return true;
       }
       if (this.poolImport && (!this.form.fieldMap.email || !this.form.fieldMap.name
@@ -768,6 +834,7 @@ export default Vue.extend({
         allocation_department_required: this.$t('import.poolIssueDepartmentRequired'),
         allocation_department_not_found: this.$t('import.poolIssueDepartmentNotFound', { department: department || '-' }),
         invalid_email: this.$t('import.poolIssueInvalidEmail'),
+        invalid_reply_to: this.$t('import.poolIssueInvalidReplyTo'),
       };
       return labels[reason] || reason;
     },
@@ -776,7 +843,7 @@ export default Vue.extend({
       const poolID = Number(this.poolImportResult
         && (this.poolImportResult.poolId || this.poolImportResult.pool_id));
       if (poolID > 0) {
-        this.$router.push({ name: 'customersCustomerList', params: { customerListID: poolID } });
+        this.$router.push({ name: 'poolListContacts', params: { customerListID: poolID } });
       }
     },
   },
@@ -790,6 +857,11 @@ export default Vue.extend({
 
     selectedPoolLists() {
       return this.form.customer_lists.filter((list) => list.type === 'pool');
+    },
+
+    showSubscriptionStatus() {
+      return !this.poolImport && this.form.mode === 'subscribe'
+        && this.form.customer_lists.some((list) => list.optin === 'double');
     },
 
     regularImportLists() {
@@ -808,33 +880,24 @@ export default Vue.extend({
     },
 
     poolImport() {
-      return this.isPlatformAdmin
-        && this.selectedPoolLists.length === 1
-        && this.form.customer_lists.length === 1
-        && this.form.customer_lists[0].type === 'pool';
+      return this.isPlatformAdmin && this.activeImportTab === 'pool';
     },
 
     hasInvalidPoolSelection() {
       const selected = this.form.customer_lists;
-      const poolCount = selected.filter((list) => list.type === 'pool').length;
-      const allocationCount = selected.filter((list) => list.type === 'org_pool_allocation').length;
-      const regularCount = selected.filter((list) => list.type !== 'pool' && list.type !== 'org_pool_allocation').length;
-      return allocationCount > 0 || poolCount > 1 || (poolCount > 0 && (!this.isPlatformAdmin || regularCount > 0));
+      return this.poolImport
+        ? selected.length > 1 || selected.some((list) => list.type !== 'pool')
+        : selected.some((list) => list.type === 'pool' || list.type === 'org_pool_allocation');
     },
 
     importListOptions() {
-      const selected = this.form.customer_lists;
-      const selectedPool = selected.some((list) => list.type === 'pool');
-      const selectedRegular = selected.some((list) => list.type !== 'pool' && list.type !== 'org_pool_allocation');
-      if (selectedPool && this.isPlatformAdmin) {
-        return this.poolImportLists;
-      }
-      if (selectedPool || selectedRegular) {
-        return this.regularImportLists;
-      }
-      return this.isPlatformAdmin
-        ? this.regularImportLists.concat(this.poolImportLists)
-        : this.regularImportLists;
+      return this.poolImport ? this.poolImportLists : this.regularImportLists;
+    },
+
+    canCreateList() {
+      return this.poolImport
+        ? this.isPlatformAdmin
+        : this.$canCreateWorkspaceResource('customer_lists:manage_all');
     },
 
     uploadAccept() {
@@ -858,19 +921,53 @@ export default Vue.extend({
     this.pollStatus();
 
     const ids = this.$utils.parseQueryIDs(this.$route.query.customer_list_id);
-    if (ids.length > 0 && this.customer_lists.results) {
-      this.$nextTick(() => {
-        const options = this.isPlatformAdmin
-          ? this.regularImportLists.concat(this.poolImportLists)
-          : this.regularImportLists;
-        this.form.customer_lists = options.filter((list) => ids.indexOf(list.id) > -1);
-      });
-    }
+    this.$api.getLists({ minimal: true, per_page: 'all', status: 'active' }).then(() => {
+      if (ids.length === 0) {
+        return;
+      }
+      const pool = this.isPlatformAdmin && this.poolImportLists.find((list) => ids.includes(list.id));
+      if (pool) {
+        this.setImportTab('pool');
+        this.form.customer_lists = [pool];
+      } else {
+        this.form.customer_lists = this.regularImportLists.filter((list) => ids.includes(list.id));
+      }
+    });
   },
 });
 </script>
 
 <style scoped>
+.import-list-setup {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.import-list-setup .customer_list-selector {
+  flex: 1;
+  min-width: 0;
+}
+
+.import-list-create {
+  padding-top: 0.65rem;
+  white-space: nowrap;
+}
+
+.import-pool-manager {
+  margin: var(--lm-space-6) 0;
+}
+
+@media (max-width: 768px) {
+  .import-list-setup {
+    display: block;
+  }
+
+  .import-list-create {
+    padding-top: 0;
+  }
+}
+
 .preview-table-wrap {
   width: 100%;
   max-width: 100%;

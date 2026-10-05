@@ -8,6 +8,9 @@ describe('Media folders', () => {
 
     cy.get('[data-cy=btn-create-folder]').click();
     cy.get('.modal input').type(rootName);
+    cy.get('select[data-cy=folder-permission]').should('have.value', 'private');
+    cy.get('select[data-cy=folder-permission]').find('option[value=organization]').should('be.disabled');
+    cy.get('select[data-cy=folder-permission]').select('global');
     cy.get('.modal button.is-primary').click();
     cy.get('[data-cy=media-folder]').contains(rootName).click();
 
@@ -16,6 +19,15 @@ describe('Media folders', () => {
     cy.get('.modal input').type(childName);
     cy.get('.modal button.is-primary').click();
     cy.get('[data-cy=media-folder]').contains(childName).should('be.visible');
+
+    cy.get('[data-cy=media-folder]').contains(childName)
+      .parents('[data-cy=media-folder]').find('[data-cy=btn-rename-folder]').click();
+    cy.get('select[data-cy=folder-permission]').should('have.value', 'private').select('global');
+    cy.get('.modal button.is-primary').click();
+    cy.reload();
+    cy.get('[data-cy=media-folder]').contains(rootName).click();
+    cy.get('[data-cy=media-folder]').contains(childName)
+      .parents('[data-cy=media-folder]').find('.tag').should('contain', 'Everyone');
 
     cy.get('[data-cy=media-folder]').contains(childName)
       .parents('[data-cy=media-folder]')

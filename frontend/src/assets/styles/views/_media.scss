@@ -1,0 +1,32 @@
+.media-files {
+  .folder-item,
+  .item {
+    border-color: var(--lm-color-border);
+    border-radius: var(--lm-radius-md);
+    box-shadow: var(--lm-shadow-sm);
+
+    &:hover,
+    &:focus-within {
+      border-color: var(--lm-color-border-strong);
+      box-shadow: var(--lm-shadow-md);
+    }
+  }
+
+  .folder-item:focus-within .folder-actions,
+  .item:focus-within .actions {
+    opacity: 1;
+  }
+
+  .folder-actions a,
+  .actions {
+    min-width: 32px;
+    min-height: 32px;
+  }
+
+  @media (hover: none) {
+    .folder-actions,
+    .actions {
+      opacity: 1;
+    }
+  }
+}

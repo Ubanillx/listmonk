@@ -13,7 +13,7 @@
           {{ data.name }}
         </h4>
         <h4 v-else>
-          {{ $t('customer_lists.newList') }}
+          {{ $t(isPoolGroup ? 'customer_lists.newPoolList' : 'customer_lists.newList') }}
         </h4>
       </header>
       <section expanded class="modal-card-body">
@@ -24,13 +24,13 @@
 
         <b-field :label="$t('customer_lists.type')" label-position="on-border" :message="typeHelp">
           <b-select v-model="form.type" name="type" :placeholder="typeHelp" :disabled="!canSave" required expanded>
-            <option value="private">
+            <option v-if="!isPoolGroup" value="private">
               {{ $t('customer_lists.types.private') }}
             </option>
-            <option value="public">
+            <option v-if="!isPoolGroup" value="public">
               {{ $t('customer_lists.types.public') }}
             </option>
-            <option v-if="isPlatformAdmin" value="pool">
+            <option v-if="isPoolGroup && isPlatformAdmin" value="pool">
               {{ $t('customer_lists.types.pool') }}
             </option>
             <!-- Pool-allocation public-pool lists are created only from a first-level
@@ -38,6 +38,13 @@
             <option v-if="isEditing && data.type === 'org_pool_allocation'" value="org_pool_allocation">
               {{ $t('customer_lists.types.org_pool_allocation') }}
             </option>
+          </b-select>
+        </b-field>
+
+        <b-field v-if="!isPoolGroup" :label="$t('visibility.label')" label-position="on-border">
+          <b-select v-model="form.visibility" name="visibility" :disabled="!canSave" expanded data-cy="list-visibility">
+            <option value="private">{{ $t('visibility.private') }}</option>
+            <option v-if="workspace.organizationId" value="organization">{{ $t('visibility.organization') }}</option>
           </b-select>
         </b-field>
 
@@ -67,7 +74,7 @@
           <b-switch v-model="form.maskEmails" name="mask_emails" :disabled="!canSave" />
         </b-field>
 
-        <b-field :message="$t('customer_lists.archivedHelp')" :label="$t('customer_lists.archived')">
+        <b-field v-if="isEditing" :message="$t('customer_lists.archivedHelp')" :label="$t('customer_lists.archived')">
           <b-switch v-model="isArchived" name="status" :disabled="!canSave" />
         </b-field>
       </section>
@@ -100,18 +107,20 @@ export default Vue.extend({
   props: {
     data: { type: Object, default: () => ({}) },
     isEditing: { type: Boolean, default: false },
+    listGroup: { type: String, default: 'private' },
   },
 
   data() {
+    const workspaceVisibility = this.$store.state.workspace.organizationId > 0 ? 'organization' : 'private';
     return {
       // Binds form input values.
       form: {
         name: dayjs().format('YYYY-MM-DD'),
-        type: 'private',
+        type: this.listGroup === 'pool' ? 'pool' : 'private',
         optin: 'single',
         status: 'active',
         tags: [],
-        visibility: 'private',
+        visibility: this.listGroup === 'pool' ? 'global' : workspaceVisibility,
         maskEmails: false,
       },
     };
@@ -138,7 +147,7 @@ export default Vue.extend({
 
     createList() {
       this.$api.createList(this.toPayload()).then((data) => {
-        this.$emit('finished');
+        this.$emit('finished', data);
         this.$parent.close();
         this.$utils.toast(this.$t('globals.messages.created', { name: data.name }));
       });
@@ -163,7 +172,11 @@ export default Vue.extend({
       };
       return this.$t(helpKeys[this.form.type] || 'customer_lists.typeHelpPrivate');
     },
-    ...mapState(['loading', 'profile']),
+    ...mapState(['loading', 'profile', 'workspace']),
+
+    isPoolGroup() {
+      return this.listGroup === 'pool';
+    },
 
     isPlatformAdmin() {
       return Number(this.profile && this.profile.userRole && this.profile.userRole.id) === 1;
@@ -171,7 +184,9 @@ export default Vue.extend({
 
     canSave() {
       if (!this.isEditing) {
-        return this.$canCreateWorkspaceResource('customer_lists:manage_all');
+        return this.isPoolGroup
+          ? this.isPlatformAdmin
+          : this.$canCreateWorkspaceResource('customer_lists:manage_all');
       }
       if (this.data.type === 'pool' && !this.isPlatformAdmin) {
         return false;
@@ -190,7 +205,11 @@ export default Vue.extend({
   },
 
   mounted() {
-    this.form = { ...this.form, ...this.$props.data, visibility: 'private' };
+    this.form = {
+      ...this.form,
+      ...this.$props.data,
+      visibility: this.isPoolGroup ? 'global' : (this.$props.data.visibility || this.form.visibility),
+    };
 
     this.$nextTick(() => {
       this.$refs.focus.focus();

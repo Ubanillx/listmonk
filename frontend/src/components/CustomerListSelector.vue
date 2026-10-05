@@ -16,7 +16,8 @@
     <b-field :message="message" :label="label + (selectedItems ? ` (${selectedItems.length})` : '')"
       label-position="on-border">
       <b-autocomplete v-model="query" :placeholder="placeholder" clearable dropdown-position="top"
-        :disabled="all.length === 0 || $props.disabled" :keep-first="true" :clear-on-select="true" :open-on-focus="true"
+        :disabled="all.length === 0 || $props.disabled || (maxSelected > 0 && selectedItems.length >= maxSelected)"
+        :keep-first="true" :clear-on-select="true" :open-on-focus="true"
         :data="filteredLists" @select="selectList" field="name" />
     </b-field>
   </div>
@@ -34,6 +35,7 @@ export default {
     message: { type: String, default: '' },
     required: Boolean,
     disabled: Boolean,
+    maxSelected: { type: Number, default: 0 },
     classes: {
       type: Array,
       default: () => [],
@@ -57,7 +59,7 @@ export default {
 
   methods: {
     selectList(l) {
-      if (!l) {
+      if (!l || (this.maxSelected > 0 && this.selectedItems.length >= this.maxSelected)) {
         return;
       }
       this.selectedItems.push(l);

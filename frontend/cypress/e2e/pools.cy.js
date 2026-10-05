@@ -1,10 +1,10 @@
 /* eslint-env mocha */
 /* global cy, Cypress */
 
-// Requires dev/pools_e2e_seed.sql and the Docker development stack. The spec
+// Requires dev/pools_e2e_seed.sql and a running backend and frontend. The spec
 // is opt-in so the normal fresh-database suite stays deterministic.
 describe('Public pools', function poolSuite() { // eslint-disable-line prefer-arrow-callback
-  const password = Cypress.env('POOL_QA_PASSWORD') || 'Test@1234';
+  const password = Cypress.env('POOL_QA_PASSWORD') || 'possible1.';
   const superPassword = Cypress.env('POOL_QA_SUPER_PASSWORD') || password;
   let poolID = Number(Cypress.env('POOL_QA_POOL_ID')) || 0;
   let guidedOrganizationID = Number(Cypress.env('POOL_QA_GUIDED_ORGANIZATION_ID')) || 0;
@@ -76,9 +76,9 @@ describe('Public pools', function poolSuite() { // eslint-disable-line prefer-ar
     // The workspace selector may preserve /admin/404 while the SPA bootstraps
     // in a dev proxy; navigate through the menu rather than asserting the
     // intermediate URL.
-    cy.get('[data-cy=customerLists]').filter(':visible').first().click();
-    cy.get('[data-cy=all-customer_lists]').filter(':visible').first().click();
-    return cy.url().should('include', '/admin/customer-lists');
+    cy.get('[data-cy=customers]').filter(':visible').first().click();
+    cy.get('[data-cy=pool-lists]').filter(':visible').first().click();
+    return cy.url().should('include', '/admin/pool-lists');
   }
 
   afterEach(() => {
@@ -110,19 +110,32 @@ describe('Public pools', function poolSuite() { // eslint-disable-line prefer-ar
   it('guides the highest administrator from organization selection to a ready-to-use pool allocation', () => {
     loginAs(Cypress.env('POOL_QA_SUPER_USER') || 'root', undefined, superPassword);
     cy.contains('a', 'wsqa-pool-primary').closest('tr').find('[data-cy=btn-manage-pool]').click();
-    cy.get('[data-cy=pool-allocation-empty]').should('be.visible');
+    cy.get('[data-cy=pool-organization-option]').should('exist');
     cy.get('[data-cy=pool-contact-allocation]').should('not.exist');
-    cy.get('[data-cy=pool-target-organization]').select('1');
+    cy.get('[data-cy=pool-organization-option][data-organization-id="1"]').click();
     cy.get('[data-cy=pool-allocation-panel]').should('be.visible');
     cy.get('.pool-manager').should('be.visible');
     cy.get('[data-cy=org-pool-allocation-summary]').contains('wsqa-org-pool-allocation');
     cy.get('[data-cy=pool-contact-allocation]').should('not.exist');
   });
 
+  it('manages organization allocations inside the public-pool import tab', () => {
+    loginAs(Cypress.env('POOL_QA_SUPER_USER') || 'root', undefined, superPassword);
+    cy.visit(`/admin/customers/import?customer_list_id=${poolID}`);
+    cy.get('[data-cy=import-tab-pool]').should('have.attr', 'aria-selected', 'true');
+    cy.get('[data-cy=import-pool-manager]').should('be.visible');
+    cy.get('[data-cy=pool-organization-option][data-organization-id="1"]').click();
+    cy.get('[data-cy=org-pool-allocation-summary]').contains('wsqa-org-pool-allocation');
+    cy.get('[data-cy=import-tab-private]').click();
+    cy.get('[data-cy=import-pool-manager]').should('not.exist');
+    cy.get('[data-cy=import-tab-pool]').click();
+    cy.get('.customer_list-selector .customer_list').contains('wsqa-pool-primary');
+  });
+
   it('shows a single split workflow without merge controls', () => {
     loginAs(Cypress.env('POOL_QA_SUPER_USER') || 'root', undefined, superPassword);
     cy.contains('a', 'wsqa-pool-primary').closest('tr').find('[data-cy=btn-manage-pool]').click();
-    cy.get('[data-cy=pool-target-organization]').select(String(guidedOrganizationID));
+    cy.get(`[data-cy=pool-organization-option][data-organization-id="${guidedOrganizationID}"]`).click();
     cy.window().its('localStorage').invoke('getItem', 'listmonk.workspace.organizationId').should('be.null');
     cy.get('[data-cy=org-pool-allocation-create]').scrollIntoView().should('be.visible');
     cy.get('[data-cy=create-org-pool-allocation]').scrollIntoView().should('be.visible');
@@ -139,9 +152,9 @@ describe('Public pools', function poolSuite() { // eslint-disable-line prefer-ar
       superMembershipCount = (response.body.data || []).filter((member) => member.username === superUsername).length;
     });
     cy.contains('a', 'wsqa-pool-primary').closest('tr').find('[data-cy=btn-manage-pool]').click();
-    cy.get('[data-cy=pool-target-organization]').select(String(guidedOrganizationID));
+    cy.get(`[data-cy=pool-organization-option][data-organization-id="${guidedOrganizationID}"]`).click();
     cy.intercept('POST', '/api/org-pool-allocations').as('createAllocation');
-    cy.get('[data-cy=org-pool-allocation-name]').scrollIntoView().type(allocationName);
+    cy.get('[data-cy=org-pool-allocation-name]').scrollIntoView().clear().type(allocationName);
     cy.get('[data-cy=create-org-pool-allocation]').click();
     cy.wait('@createAllocation').then(({ request, response }) => {
       expect(response.statusCode).to.eq(200);
@@ -163,20 +176,37 @@ describe('Public pools', function poolSuite() { // eslint-disable-line prefer-ar
       .its('status').should('eq', 403);
   });
 
-  it('opens a pool list inside the customers view instead of a dedicated page', () => {
+  it('opens a pool list from the customer menu', () => {
     loginAs(Cypress.env('POOL_QA_SUPER_USER') || 'root', undefined, superPassword);
-    // The list name opens the edit form; the customer count opens the
-    // customers view, which now renders the pool contacts in place.
+    cy.get('[data-cy=pool-customers]').should('be.visible');
+    cy.contains('tr', 'wsqa-pool-primary').should('be.visible');
+    cy.get('[data-cy=all-customer_lists]').click();
+    cy.url().should('include', '/admin/customer-lists');
+    cy.contains('tr', 'wsqa-pool-primary').should('not.exist');
+    cy.get('[data-cy=pool-lists]').click();
+    cy.url().should('include', '/admin/pool-lists');
+    // The list name opens the edit form; the customer count opens its scoped
+    // contact view. The public-pool menu opens the aggregate.
     cy.contains('tr', 'wsqa-pool-primary')
-      .find('a[href*="/customers/customer-lists/"]').first().click();
-    cy.url().should('include', '/admin/customers/customer-lists/');
+      .find('a[href*="/pool-lists/"][href*="/contacts"]').first().click();
+    cy.url().should('include', `/admin/pool-lists/${poolID}/contacts`);
+    cy.get('[data-cy=pool-customers]').should('have.class', 'is-active');
+    cy.get('[data-cy=all-customers]').should('not.have.class', 'is-active');
     cy.get('[data-cy=pool-list-type]').filter(':visible').should('be.visible');
     cy.get('[data-cy=pool-contacts-table]').filter(':visible').should('contain', 'DUP-001');
     cy.get('[data-cy=pool-search]').filter(':visible').should('be.visible');
-    // The removed standalone page redirects to the same customers view.
+    // The legacy path redirects to the scoped contact view.
     cy.visit(`/admin/customers/pool-lists/${poolID}`);
-    cy.url().should('include', '/admin/customers/customer-lists/');
+    cy.url().should('include', `/admin/pool-lists/${poolID}/contacts`);
     cy.get('[data-cy=pool-contacts-table]').filter(':visible').should('contain', 'DUP-001');
+    cy.get('[data-cy=pool-customers]').click();
+    cy.url().should('match', /\/admin\/pool\/?$/);
+    cy.get('[data-cy=pool-contacts-table]').filter(':visible').should('contain', 'wsqa-pool-primary');
+    cy.get('.cy-pool-list').should('exist');
+    cy.contains('[data-cy=pool-contacts-table] a', 'wsqa-pool-primary').click();
+    cy.url().should('include', `/admin/pool-lists/${poolID}/contacts`);
+    cy.get('[data-cy=pool-customers]').should('have.class', 'is-active');
+    cy.get('[data-cy=all-customers]').should('not.have.class', 'is-active');
   });
 
   it('serves pool contacts as a paginated page with sortable columns and no company name', () => {
@@ -194,21 +224,24 @@ describe('Public pools', function poolSuite() { // eslint-disable-line prefer-ar
         expect(page.results[0]).to.have.property('name');
       });
 
-    // The pool tab renders the same table shape as ordinary customers.
-    cy.contains('tr', 'wsqa-pool-primary')
-      .find('a[href*="/customers/customer-lists/"]').first().click();
-    cy.get('[data-cy=customer-area-tabs]').filter(':visible').should('be.visible');
-    cy.get('[data-cy=tab-pool-contacts]').filter(':visible').closest('li').should('have.class', 'is-active');
+    cy.request('/api/pools/contacts?page=1&per_page=2&status=active').then((response) => {
+      expect(response.status).to.eq(200);
+      expect(response.body.data.results[0]).to.have.property('pool_name');
+    });
+
+    // The aggregate route renders one row per pool membership.
+    cy.get('[data-cy=pool-customers]').click();
+    cy.url().should('match', /\/admin\/pool\/?$/);
     cy.get('[data-cy=pool-contacts-table]').filter(':visible').within(() => {
       // The customer code is camel-cased in the API response; a snake-case-only
       // renderer would show "-" here.
-      cy.get('.cy-pool-customer_code').should('contain', 'DUP-001');
+      cy.get('tbody').should('contain', 'DUP-001');
       cy.get('.cy-pool-company_name').should('not.exist');
       cy.get('.pagination').should('exist');
     });
 
-    // Switching back to the all-customers tab leaves the pool store.
-    cy.get('[data-cy=tab-all-customers]').filter(':visible').click();
+    // Both customer views remain available from the same navigation group.
+    cy.get('[data-cy=all-customers]').click();
     cy.url().should('match', /\/admin\/customers\/?$/);
   });
 });

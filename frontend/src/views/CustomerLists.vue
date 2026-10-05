@@ -3,22 +3,22 @@
     <header class="columns page-header">
       <div class="column is-10">
         <h1 class="title is-4 mb-2">
-          {{ $t('globals.terms.customer_lists') }}
+          {{ $t(isPoolGroup ? 'menu.poolLists' : 'menu.allLists') }}
           <span v-if="queryParams.status === 'archived'" class="has-text-grey-light">/ {{ queryParams.status }} </span>
           <span v-if="!isNaN(customer_lists.total)">({{ customer_lists.total }})</span>
         </h1>
 
         <div class="is-size-7">
-          <router-link v-if="queryParams.status !== 'archived'" :to="{ name: 'customerLists', query: { status: 'archived' } }">
+          <router-link v-if="queryParams.status !== 'archived'" :to="{ name: listRouteName, query: { status: 'archived' } }">
             {{ $t('globals.buttons.view') }} {{ $t('customer_lists.archived').toLowerCase() }} &rarr;
           </router-link>
-          <router-link v-else :to="{ name: 'customerLists' }">
-            {{ $t('globals.buttons.view') }} {{ $t('menu.allLists').toLowerCase() }} &rarr;
+          <router-link v-else :to="{ name: listRouteName }">
+            {{ $t('globals.buttons.view') }} {{ $t(isPoolGroup ? 'menu.poolLists' : 'menu.allLists').toLowerCase() }} &rarr;
           </router-link>
         </div>
       </div>
       <div class="column has-text-right">
-        <b-field v-if="$canCreateWorkspaceResource('customer_lists:manage_all')" expanded>
+        <b-field v-if="canCreateList" expanded>
           <b-button expanded type="is-primary" icon-left="plus" class="btn-new" @click="showNewForm" data-cy="btn-new">
             {{ $t('globals.buttons.new') }}
           </b-button>
@@ -35,6 +35,7 @@
             <form @submit.prevent="onSearch">
               <b-field>
                 <b-input v-model="queryParams.query" name="query" expanded icon="magnify" ref="query" data-cy="query"
+                  :placeholder="$t(isPoolGroup ? 'customer_lists.poolSearchPlaceholder' : 'customer_lists.searchPlaceholder')"
                   :aria-label="$t('globals.buttons.search')" />
                 <p class="controls">
                   <b-button native-type="submit" type="is-primary" icon-left="magnify" data-cy="btn-query"
@@ -64,7 +65,7 @@
         width="25%" paginated backend-pagination pagination-position="both" :td-attrs="$utils.tdID"
         @page-change="onPageChange">
         <div>
-          <a :href="`/customer-lists/${props.row.id}`" @click.prevent="showEditForm(props.row)">
+          <a :href="customerListEditHref(props.row)" @click.prevent="showEditForm(props.row)">
             {{ props.row.name }}
           </a>
           <b-taglist>
@@ -108,22 +109,27 @@
         </b-tag>
       </b-table-column>
 
-      <b-table-column v-slot="props" field="customer_count" :label="$t('globals.terms.customers')"
-        header-class="cy-customers" numeric sortable centered>
-        <router-link :to="customerListCustomersRoute(props.row)">
-          {{ $utils.formatNumber(props.row.customerCount) }}
-          <span class="is-size-7 view">{{ $t('globals.buttons.view') }}</span>
+      <b-table-column v-slot="props" field="customer_count" :label="$t(isPoolGroup ? 'pool.tabPoolContacts' : 'globals.terms.customers')"
+        header-class="cy-customers" sortable>
+        <router-link v-if="canViewListCustomers(props.row)" class="customer-count" :to="customerListCustomersRoute(props.row)">
+          <strong>{{ $utils.formatNumber(props.row.customerCount) }}</strong>
+          <span class="customer-count-action">
+            {{ $t('globals.buttons.view') }}
+            <b-icon icon="arrow-right" size="is-small" />
+          </span>
         </router-link>
+        <strong v-else>{{ $utils.formatNumber(props.row.customerCount) }}</strong>
       </b-table-column>
 
-      <b-table-column v-slot="props" field="customer_counts" header-class="cy-customers" width="10%">
+      <b-table-column v-slot="props" field="customer_counts" :label="$t('globals.fields.status')"
+        header-class="cy-customer-statuses" width="12%">
         <div class="fields stats">
-          <p v-for="(count, status) in filterStatuses(props.row)" :key="status">
-            <label for="#">{{ $tc(`customers.status.${status}`, count) }}</label>
-            <router-link :to="`/customers/customer-lists/${props.row.id}?subscription_status=${status}`" :class="status">
-              {{ $utils.formatNumber(count) }}
-            </router-link>
-          </p>
+          <router-link v-for="(count, status) in canViewListCustomers(props.row) ? filterStatuses(props.row) : {}" :key="status"
+            class="status-item" :class="status"
+            :to="`/customers/customer-lists/${props.row.id}?subscription_status=${status}`">
+            <span class="status-label">{{ $tc(`customers.status.${status}`, count) }}</span>
+            <strong>{{ $utils.formatNumber(count) }}</strong>
+          </router-link>
         </div>
       </b-table-column>
 
@@ -184,7 +190,7 @@
 
     <!-- Add / edit form modal -->
     <b-modal scroll="keep" :aria-modal="true" :active.sync="isFormVisible" :width="600" @close="onFormClose">
-      <customer-list-form :data="curItem" :is-editing="isEditing" @finished="formFinished" />
+      <customer-list-form :data="curItem" :is-editing="isEditing" :list-group="listGroup" @finished="formFinished" />
     </b-modal>
 
     <b-modal scroll="keep" :aria-modal="true" :active.sync="isPoolVisible" :width="960">
@@ -254,6 +260,13 @@ export default Vue.extend({
     },
 
     // Show the edit customerList form.
+    customerListEditHref(customerList) {
+      return this.$router.resolve({
+        name: this.isPoolGroup ? 'poolList' : 'customerList',
+        params: { id: customerList.id },
+      }).href;
+    },
+
     showEditForm(customerList) {
       this.curItem = customerList;
       this.isFormVisible = true;
@@ -262,7 +275,7 @@ export default Vue.extend({
 
     // Show the new customerList form.
     showNewForm() {
-      this.curItem = {};
+      this.curItem = { type: this.isPoolGroup ? 'pool' : 'private' };
       this.isFormVisible = true;
       this.isEditing = false;
     },
@@ -278,7 +291,7 @@ export default Vue.extend({
 
     onFormClose() {
       if (this.$route.params.id) {
-        this.$router.push({ name: 'customerLists' });
+        this.$router.push({ name: this.listRouteName });
       }
     },
 
@@ -305,6 +318,7 @@ export default Vue.extend({
         order_by: this.queryParams.orderBy,
         order: this.queryParams.order,
         status: this.queryParams.status,
+        type_group: this.listGroup,
       }).then((resp) => {
         this.customer_lists = resp;
       });
@@ -351,6 +365,8 @@ export default Vue.extend({
           // 'All' is selected, delete by query.
           params.query = this.queryParams.query.replace(/[^\p{L}\p{N}\s]/gu, ' ');
           params.all = this.bulk.all;
+          params.type_group = this.listGroup;
+          params.status = this.queryParams.status;
         }
 
         const numSelected = this.numSelectedLists;
@@ -414,6 +430,14 @@ export default Vue.extend({
       ) && this.$canList(customerList.id, 'customer_list:manage');
     },
 
+    canViewListCustomers(customerList) {
+      if (customerList.type === 'pool' || customerList.type === 'org_pool_allocation') {
+        return true;
+      }
+      return this.isPlatformAdmin || this.canInspectOrganization
+        || isOwnedActiveWorkspaceCustomerList(customerList, this.workspace, this.profile && this.profile.id);
+    },
+
     ownerLabel(resource) {
       if (resource.type === 'org_pool_allocation') {
         return resource.organizationName || resource.organization_name || '-';
@@ -437,14 +461,37 @@ export default Vue.extend({
     },
 
     // Pool lists render their contacts inside the customers view, so every
-    // list opens the same customer page.
+    // A list's customer count opens its scoped detail; the navigation's
+    // public-pool entry opens the aggregate across all accessible pools.
     customerListCustomersRoute(customerList) {
-      return { name: 'customersCustomerList', params: { customerListID: customerList.id } };
+      const isPool = customerList.type === 'pool' || customerList.type === 'org_pool_allocation';
+      return {
+        name: isPool ? 'poolListContacts' : 'customersCustomerList',
+        params: { customerListID: customerList.id },
+      };
     },
   },
 
   computed: {
     ...mapState(['loading', 'settings', 'profile', 'workspace']),
+
+    isPoolGroup() {
+      return this.$route.name === 'poolLists' || this.$route.name === 'poolList';
+    },
+
+    listGroup() {
+      return this.isPoolGroup ? 'pool' : 'private';
+    },
+
+    listRouteName() {
+      return this.isPoolGroup ? 'poolLists' : 'customerLists';
+    },
+
+    canCreateList() {
+      return this.isPoolGroup
+        ? this.isPlatformAdmin
+        : this.$canCreateWorkspaceResource('customer_lists:manage_all');
+    },
 
     canManageLists() {
       return Array.isArray(this.customer_lists.results) && this.customer_lists.results.some((customerList) => this.canManageList(customerList));
@@ -494,6 +541,14 @@ export default Vue.extend({
   mounted() {
     if (this.$route.params.id) {
       this.$api.getList(parseInt(this.$route.params.id, 10)).then((data) => {
+        const isPool = data.type === 'pool' || data.type === 'org_pool_allocation';
+        if (isPool !== this.isPoolGroup) {
+          this.$router.replace({
+            name: isPool ? 'poolList' : 'customerList',
+            params: { id: data.id },
+          });
+          return;
+        }
         this.showEditForm(data);
       });
     } else {

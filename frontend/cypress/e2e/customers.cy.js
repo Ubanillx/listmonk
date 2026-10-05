@@ -9,6 +9,8 @@ describe('Customers', () => {
   it('Counts customers', () => {
     cy.get('tbody td[data-label=E-mail]').its('length').should('eq', 2);
     cy.get('thead th').eq(1).should('have.class', 'cy-customer_code');
+    cy.get('thead th.cy-customer_code').should('contain', 'Customer code');
+    cy.get('[data-cy=btn-download]').should('not.exist');
     cy.get('tbody td[data-label=CustomerLists] a').first()
       .should('have.attr', 'href').and('match', /\/customers\/customer_lists\/\d+$/);
   });
@@ -32,41 +34,34 @@ describe('Customers', () => {
   it('Exports customers', () => {
     const cases = [
       {
-        customerCustomerListIDs: [], ids: [], query: '', length: 3,
+        customerCustomerListIDs: [], ids: [], search: '', length: 3,
       },
       {
-        customerCustomerListIDs: [], ids: [], query: "name ILIKE '%anon%'", length: 2,
+        customerCustomerListIDs: [], ids: [], search: 'anon', length: 2,
       },
       {
-        customerCustomerListIDs: [], ids: [], query: "name like 'nope'", length: 1,
+        customerCustomerListIDs: [], ids: [], search: 'nope', length: 1,
       },
     ];
 
     // customerCustomerListIDs[] and ids[] are unused for now as Cypress doesn't support encoding of arrays in `qs`.
     cases.forEach((c) => {
-      cy.request({ url: `${apiUrl}/api/customers/export`, qs: { query: c.query, customer_list_id: c.customerCustomerListIDs, id: c.ids } }).then((resp) => {
+      cy.request({ url: `${apiUrl}/api/customers/export`, qs: { search: c.search, customer_list_id: c.customerCustomerListIDs, id: c.ids } }).then((resp) => {
         cy.expect(resp.body.trim().split('\n')).to.have.lengthOf(c.length);
       });
     });
   });
 
-  it('Advanced searches customers', () => {
-    cy.get('[data-cy=btn-advanced-search]').click();
-
-    const cases = [
-      { value: 'customers.attribs->>\'city\'=\'Bengaluru\'', count: 2 },
-      { value: 'customers.attribs->>\'city\'=\'Bengaluru\' AND id=1', count: 1 },
-      { value: '(customers.attribs->>\'good\')::BOOLEAN = true AND name like \'Anon%\'', count: 1 },
-    ];
-
-    cases.forEach((c) => {
-      cy.get('[data-cy=query]').clear().type(c.value);
-      cy.get('[data-cy=btn-query]').click();
-      cy.get('tbody td[data-label=E-mail]').its('length').should('eq', c.count);
-    });
-
-    cy.get('[data-cy=btn-query-reset]').click();
-    cy.wait(1000);
+  it('Rejects retired advanced queries', () => {
+    cy.get('[data-cy=btn-advanced-search]').should('not.exist');
+    cy.request({ url: `${apiUrl}/api/customers`, qs: { query: 'true' }, failOnStatusCode: false })
+      .its('status').should('eq', 400);
+    cy.request({ url: `${apiUrl}/api/customers/export`, qs: { query: 'true' }, failOnStatusCode: false })
+      .its('status').should('eq', 400);
+    cy.request({ url: `${apiUrl}/api/customers/query/delete`, method: 'POST', failOnStatusCode: false })
+      .its('status').should('eq', 404);
+    cy.request({ url: `${apiUrl}/api/customers/bulk/delete`, method: 'POST', body: { all: true, query: '' }, failOnStatusCode: false })
+      .its('status').should('eq', 400);
     cy.get('tbody td[data-label=E-mail]').its('length').should('eq', 2);
   });
 
@@ -172,6 +167,16 @@ describe('Customers', () => {
         cy.wrap($el).find('td[data-label=CustomerLists] a').its('length').should('eq', 2);
       });
     });
+  });
+
+  it('Searches customer codes in the table and export', () => {
+    cy.get('[data-cy=search]').clear().type('CUST-EDIT-0{enter}');
+    cy.get('tbody tr').should('have.length', 1);
+    cy.get('tbody tr').should('contain', 'CUST-EDIT-0');
+    cy.request({ url: `${apiUrl}/api/customers/export`, qs: { search: 'CUST-EDIT-0' } })
+      .its('body').should('contain', 'CUST-EDIT-0');
+    cy.get('[data-cy=search]').clear().type('{enter}');
+    cy.get('tbody tr').should('have.length', 2);
   });
 
   it('Deletes customers', () => {

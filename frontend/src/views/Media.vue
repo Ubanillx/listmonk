@@ -24,7 +24,7 @@
             </div>
           </form>
         </div>
-        <div v-if="$canCreateWorkspaceResource('media:manage')" class="column is-narrow">
+        <div v-if="canWriteCurrentFolder" class="column is-narrow">
           <div class="buttons">
             <b-button @click="onCreateFolder" icon-left="folder-plus-outline" data-cy="btn-create-folder">
               {{ $t('media.createFolder') }}
@@ -56,7 +56,7 @@
       </nav>
       <p class="media-folder-help has-text-grey is-size-7 mb-4">{{ $t('media.folderHelp') }}</p>
 
-      <b-collapse v-if="$canCreateWorkspaceResource('media:manage')" v-model="showUploadForm" animation="">
+      <b-collapse v-if="canWriteCurrentFolder" v-model="showUploadForm" animation="">
         <form @submit.prevent="onSubmit" class="mb-6" data-cy="upload">
           <div>
             <b-field :label="$t('media.upload')">
@@ -97,7 +97,7 @@
         <div v-if="visibleFolders.length > 0" class="folder-grid">
           <div v-for="folder in visibleFolders" :key="`folder-${folder.id}`" class="folder-item"
             :class="{ 'is-drop-target': dragOverFolderId === folder.id }"
-            :draggable="canManageMediaLibrary" role="button" tabindex="0"
+            :draggable="canManageMediaLibrary && folder.manageable" role="button" tabindex="0"
             @click="openFolder(folder.id)" @keydown.enter.prevent="openFolder(folder.id)"
             @keydown.space.prevent="openFolder(folder.id)"
             @dragstart="onDragStart('folder', folder.id, $event)" @dragend="onDragEnd"
@@ -106,14 +106,15 @@
             <div class="folder-icon"><b-icon icon="folder-outline" size="is-large" /></div>
             <div class="folder-info">
               <p class="folder-name" :title="folder.name">{{ folder.name }}</p>
+              <b-tag size="is-small">{{ folderPermissionLabel(folder.visibility) }}</b-tag>
               <p class="folder-meta">
                 {{ $tc('media.folderItems', folder.mediaCount, { count: folder.mediaCount }) }}
                 <span v-if="folder.childCount > 0"> · {{ $tc('media.folderFolders', folder.childCount, { count: folder.childCount }) }}</span>
               </p>
             </div>
-            <div v-if="canManageMediaLibrary" class="folder-actions">
+            <div v-if="canManageMediaLibrary && folder.manageable" class="folder-actions">
               <a href="#" @click.prevent.stop="onRenameFolder(folder)" data-cy="btn-rename-folder"
-                :aria-label="$t('globals.buttons.edit')">
+                :aria-label="$t('media.editFolder')">
                 <b-icon icon="pencil-outline" size="is-small" />
               </a>
               <a href="#" :class="{ disabled: folder.mediaCount > 0 || folder.childCount > 0 }"
@@ -178,6 +179,7 @@
 import Vue from 'vue';
 import { mapState } from 'vuex';
 import EmptyPlaceholder from '../components/EmptyPlaceholder.vue';
+import MediaFolderForm from '../components/MediaFolderForm.vue';
 
 export default Vue.extend({
   components: {
@@ -300,23 +302,30 @@ export default Vue.extend({
     },
 
     onCreateFolder() {
-      this.$utils.prompt(this.$t('media.createFolderPrompt'), {
-        placeholder: this.$t('media.folderNamePlaceholder'),
-      }, (name) => {
-        this.$api.createMediaFolder({
-          name,
-          parent_id: this.currentFolderId || null,
-        }).then(() => this.refreshLibrary());
-      });
+      this.openFolderForm();
     },
 
     onRenameFolder(folder) {
-      this.$utils.prompt(this.$t('media.renameFolderPrompt'), {
-        placeholder: this.$t('media.folderNamePlaceholder'),
-        value: folder.name,
-      }, (name) => {
-        this.$api.renameMediaFolder(folder.id, { name }).then(() => this.refreshLibrary());
+      this.openFolderForm(folder);
+    },
+
+    openFolderForm(folder = null) {
+      this.$buefy.modal.open({
+        parent: this,
+        component: MediaFolderForm,
+        hasModalCard: true,
+        props: {
+          folder,
+          parentId: this.currentFolderId,
+          isOrganization: Number(this.workspace.organizationId) > 0,
+          onSaved: () => this.refreshLibrary(),
+        },
       });
+    },
+
+    folderPermissionLabel(visibility) {
+      const labels = { private: 'media.folderPrivate', organization: 'media.folderOrganization', global: 'media.folderGlobal' };
+      return this.$t(labels[visibility] || labels.private);
     },
 
     onDeleteFolder(folder) {
@@ -384,6 +393,7 @@ export default Vue.extend({
     onDropOnFolder(folderID, event) {
       this.dragOverFolderId = null;
       const targetID = Number(folderID) || 0;
+      if (!this.canManageMediaLibrary || (targetID > 0 && (!this.folderByID[targetID] || !this.folderByID[targetID].writable))) return;
       const payload = this.dragPayload(event);
       if (payload) {
         if (payload.type === 'media') {
@@ -439,7 +449,12 @@ export default Vue.extend({
   },
 
   computed: {
-    ...mapState(['loading', 'media', 'serverConfig']),
+    ...mapState(['loading', 'media', 'serverConfig', 'workspace']),
+
+    canWriteCurrentFolder() {
+      return this.canManageMediaLibrary && (this.currentFolderId === 0
+        || (this.folderByID[this.currentFolderId] && this.folderByID[this.currentFolderId].writable));
+    },
 
     canManageMediaLibrary() {
       return this.$canCreateWorkspaceResource('media:manage');

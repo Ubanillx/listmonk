@@ -64,7 +64,8 @@ func replyMailboxDeleteTestContext(t *testing.T, e *echo.Echo, userID, roleID, w
 	c := e.NewContext(req, httptest.NewRecorder())
 	c.SetPath("/api/profile/reply-mailboxes/:id/delete")
 	c.Set("id", mailboxID)
-	c.Set(auth.UserHTTPCtxKey, auth.User{Base: auth.Base{ID: userID}, UserRoleID: roleID})
+	c.Set(auth.UserHTTPCtxKey, auth.User{Base: auth.Base{ID: userID}, UserRoleID: roleID,
+		PermissionsMap: map[string]struct{}{auth.PermMailboxesManage: {}, auth.PermMailboxesUse: {}}})
 	return c
 }
 
@@ -248,7 +249,8 @@ func replyMailboxListTestContext(e *echo.Echo, userID, roleID, workspaceOrgID in
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 	c.SetPath("/api/profile/reply-mailboxes")
-	c.Set(auth.UserHTTPCtxKey, auth.User{Base: auth.Base{ID: userID}, UserRoleID: roleID})
+	c.Set(auth.UserHTTPCtxKey, auth.User{Base: auth.Base{ID: userID}, UserRoleID: roleID,
+		PermissionsMap: map[string]struct{}{auth.PermMailboxesManage: {}, auth.PermMailboxesUse: {}}})
 	return c, rec
 }
 

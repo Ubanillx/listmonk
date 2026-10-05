@@ -231,7 +231,7 @@ func TestCreateOrgPoolAllocationAuthorization(t *testing.T) {
 	}
 
 	platformAdmin := auth.User{Base: auth.Base{ID: orgPoolAllocationTestAdminUser}, UserRoleID: auth.SuperAdminRoleID}
-	manager := auth.User{Base: auth.Base{ID: orgPoolAllocationTestManagerUser}}
+	manager := auth.User{Base: auth.Base{ID: orgPoolAllocationTestManagerUser}, PermissionsMap: map[string]struct{}{auth.PermPoolsManage: {}}}
 	ordinaryMember := auth.User{Base: auth.Base{ID: orgPoolAllocationTestMemberUser}}
 	outsider := auth.User{Base: auth.Base{ID: orgPoolAllocationTestOutsiderUser}}
 
@@ -255,6 +255,11 @@ func TestCreateOrgPoolAllocationAuthorization(t *testing.T) {
 	for i, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			poolID := seedOrgPoolAllocationPool(t, db, fmt.Sprintf("Pool %d", i))
+			if test.user.ID == orgPoolAllocationTestManagerUser && test.wantStatus == 0 {
+				if err := a.core.GrantPoolOrganization(poolID, test.targetOrg, orgPoolAllocationTestAdminUser); err != nil {
+					t.Fatal(err)
+				}
+			}
 			c, rec := newOrgPoolAllocationTestContext(t, e, test.user, test.workspaceOrg, poolID, test.targetOrg, fmt.Sprintf("Pool allocation %d", i))
 			err := a.CreateOrgPoolAllocation(c)
 
@@ -289,6 +294,9 @@ func TestCreateOrgPoolAllocationAuthorization(t *testing.T) {
 	// organization lock, so a stale handler decision cannot create a allocation.
 	t.Run("core re-verifies active membership for non-platform-admin callers", func(t *testing.T) {
 		poolID := seedOrgPoolAllocationPool(t, db, "Pool core recheck")
+		if err := a.core.GrantPoolOrganization(poolID, orgPoolAllocationTestHomeOrgID, orgPoolAllocationTestAdminUser); err != nil {
+			t.Fatal(err)
+		}
 
 		_, err := a.core.CreateOrgPoolAllocation(poolID, orgPoolAllocationTestHomeOrgID, "Pool allocation core recheck", nil, orgPoolAllocationTestOutsiderUser, false)
 		requireOrgPoolAllocationRejection(t, err, http.StatusConflict)

@@ -2,6 +2,8 @@
 
 快照日期：2026-10-05
 
+- 20 项业务权限补齐（2026-10-05，v6.56.0）：角色页面按私域、公海、营销、模板素材、邮箱五组显示用户确认的名称，不预设角色；旧部分授权保存不扩权。新增列表删除、公海主数据、公海投放授权、素材共享、邮箱使用/配置独立动作门，组织经理和所有者不再绕过业务查看、导出、统计及私域敏感信息。保护客户读写响应、CSV/JSON、收件人和退信身份，脱敏编辑省略字段保留存储值；委派公海维护只扩大一级池范围且仍脱敏。普通组织分配创建必须已有授权，不能借创建分配获得投放权限；共享模板素材例外不绕过素材使用权限。升级幂等保留旧删除、共享、邮箱自助和已有经理分配能力，不回填公海平台能力。验证：`go test ./...`、`go vet ./cmd ./internal/core`、隔离 PostgreSQL 的业务权限/组织分配/邮箱与迁移测试、前端 lint/build、Cypress 5/5（名称、部分授权保存、权限组切换、新高风险默认不选、委派公海入口）、文档 strict 构建及截图复查通过。生产资源已重建，开发后端已重启并完成 v6.56.0，数据库权限回填已确认，9173 返回 200；日志仍有既有事务模板 3 的 `RootURL` 编译错误，未新增启动错误。来源：`cmd/business_permissions*.go`、`internal/core/{workspace*,pools}.go`、`internal/migrations/v6.56.0*.go`、`frontend/src/{utils/businessPermissions.js,views/RoleForm.vue}`、`frontend/cypress/e2e/business-permissions.cy.js`、[业务权限说明](../docs/content/business-permissions.md)。
+
 - 营销统计城市热力与国家切换（2026-10-05）：地图新增国家选择、城市标记与次数明细、点击城市聚焦、恢复国家视图及返回世界地图；本地边界映射 ISO 国家码，处理跨日期变更线和无独立边界地区，同名不同地区城市分别统计，无城市名明确标注未知。筛选沿用已授权报告，未新增外部请求、依赖或 API。刷新报表将国家选择保留在 URL，条件不变也可重新加载；空数据、GeoIP 未配置或失败时清除热点并保留底图。修复空报告的 null 趋势数据读取。验证：前端 lint/build、隔离数据库 Cypress 2/2（全部本地国家边界、跨日期变更线、国家/城市切换、同名城市、空/失败/未配置数据、刷新和 390px 无横向溢出）；国家与城市示例截图使用测试数据。来源：`frontend/src/{components/CampaignGeoHeatmap.vue,utils/campaignGeo.js,views/CampaignAnalyticsReport.vue,components/CampaignReport.vue}`、`frontend/cypress/e2e/campaign-geo.cy.js`、`i18n/{en,zh-CN,zh-TW}.json`。
   生产资源已重建、开发后端已重启，9173 返回 200，无待升级；实际中文页面确认中国底图与空城市明细，当前开发环境未配置 GeoIP City。本次页面操作无新增浏览器错误；后端仍有既有事务模板 3 的 `RootURL` 编译错误。
 

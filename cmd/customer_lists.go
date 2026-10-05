@@ -91,7 +91,13 @@ func (a *App) GetList(c echo.Context) error {
 	// here; pool contact endpoints enforce the separate masked-detail policy.
 	var poolType string
 	if err := a.db.Get(&poolType, `SELECT type::text FROM customer_lists WHERE id=$1`, id); err == nil && (poolType == models.CustomerListTypePool || poolType == models.CustomerListTypeOrgPoolAllocation) {
-		if !access.PlatformAdmin {
+		if err := requireLegacyPermission(auth.GetUser(c), auth.PermPoolsGet, auth.PermPoolsMasterManage, auth.PermPoolsManage, auth.PermPoolsDeliveryManage,
+			auth.PermCampaignsManage, auth.PermCampaignsManageAll, auth.PermCampaignsPublicPoolSend); err != nil {
+			return err
+		}
+		user := auth.GetUser(c)
+		if !access.PlatformAdmin && !(poolType == models.CustomerListTypePool &&
+			(canManagePoolMaster(user) || canManagePoolDelivery(user) || user.HasPerm(auth.PermCampaignsPublicPoolSend))) {
 			if !access.IsOrganization() || access.OrganizationID <= 0 {
 				return echo.NewHTTPError(http.StatusForbidden, "public pool is outside the active workspace")
 			}
@@ -152,8 +158,8 @@ func (a *App) CreateList(c echo.Context) error {
 	// Pool-allocation public-pool lists are created only by the first-level pool split
 	// transaction. They must never be created as standalone customer lists.
 	if l.Type == models.CustomerListTypePool {
-		if !auth.GetUser(c).IsPlatformAdmin() {
-			return echo.NewHTTPError(http.StatusForbidden, "only highest administrators may create a public pool")
+		if err := requireLegacyPermission(auth.GetUser(c), auth.PermPoolsMasterManage); err != nil {
+			return err
 		}
 	} else if l.Type == models.CustomerListTypeOrgPoolAllocation {
 		return echo.NewHTTPError(http.StatusForbidden, "pool allocations can only be created by splitting a first-level public pool")
@@ -214,8 +220,10 @@ func (a *App) UpdateList(c echo.Context) error {
 	if err := c.Bind(&l); err != nil {
 		return err
 	}
-	if l.Type == models.CustomerListTypePool && !auth.GetUser(c).IsPlatformAdmin() {
-		return echo.NewHTTPError(http.StatusForbidden, "only highest administrators may manage a public pool")
+	if l.Type == models.CustomerListTypePool {
+		if err := requireLegacyPermission(auth.GetUser(c), auth.PermPoolsMasterManage); err != nil {
+			return err
+		}
 	}
 
 	// Validate.
@@ -258,10 +266,7 @@ func (a *App) requirePoolListAdministrator(c echo.Context, id int) error {
 	if err := a.db.Get(&typ, `SELECT type::text FROM customer_lists WHERE id=$1`, id); err != nil {
 		return err
 	}
-	if typ == models.CustomerListTypePool && !auth.GetUser(c).IsPlatformAdmin() {
-		return echo.NewHTTPError(http.StatusForbidden, "only highest administrators may manage a public pool")
-	}
-	return nil
+	return requireCustomerListAction(auth.GetUser(c), typ, false)
 }
 
 // DeleteList deletes a single customer_list by ID.
@@ -271,7 +276,11 @@ func (a *App) DeleteList(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if _, err := a.requireManagedWorkspaceList(c, access, id); err != nil {
+	scope, err := a.requireManagedWorkspaceList(c, access, id)
+	if err != nil {
+		return err
+	}
+	if err := requireCustomerListAction(auth.GetUser(c), scope.CustomerListType, true); err != nil {
 		return err
 	}
 	if err := a.requirePoolListAdministrator(c, id); err != nil {
@@ -330,7 +339,11 @@ func (a *App) DeleteLists(c echo.Context) error {
 	// no per-customer_list role can widen the active organization boundary.
 	if len(ids) > 0 {
 		for _, id := range ids {
-			if _, err := a.requireManagedWorkspaceList(c, access, id); err != nil {
+			scope, err := a.requireManagedWorkspaceList(c, access, id)
+			if err != nil {
+				return err
+			}
+			if err := requireCustomerListAction(auth.GetUser(c), scope.CustomerListType, true); err != nil {
 				return err
 			}
 			if err := a.requirePoolListAdministrator(c, id); err != nil {
@@ -348,7 +361,7 @@ func (a *App) DeleteLists(c echo.Context) error {
 		if !validGroup {
 			return echo.NewHTTPError(http.StatusBadRequest, "invalid customer list type group")
 		}
-		if err := requireLegacyPermission(auth.GetUser(c), auth.PermListManageAll); err != nil {
+		if err := requireLegacyPermission(auth.GetUser(c), auth.PermListManageAll, auth.PermPoolsMasterManage); err != nil {
 			return err
 		}
 		managed, err := a.core.CustomerListManagedWorkspaceResources(access, "customer_lists")
@@ -369,8 +382,14 @@ func (a *App) DeleteLists(c echo.Context) error {
 			allowed[id] = struct{}{}
 		}
 		for _, customer_list := range visible {
-			if customer_list.Type == models.CustomerListTypePool && !auth.GetUser(c).IsPlatformAdmin() {
+			if _, ok := allowed[customer_list.ID]; !ok {
 				continue
+			}
+			if _, err := a.requireManagedWorkspaceList(c, access, customer_list.ID); err != nil {
+				return err
+			}
+			if err := requireCustomerListAction(auth.GetUser(c), customer_list.Type, true); err != nil {
+				return err
 			}
 			if _, ok := allowed[customer_list.ID]; ok {
 				ids = append(ids, customer_list.ID)

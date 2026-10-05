@@ -269,6 +269,9 @@ func (a *App) requireReadableWorkspaceResource(c echo.Context, access models.Wor
 	if err != nil {
 		return scope, err
 	}
+	if err := requireLegacyPermission(auth.GetUser(c), permissions...); err != nil {
+		return scope, err
+	}
 	if workspaceReadException(access, scope) {
 		return scope, nil
 	}
@@ -298,9 +301,6 @@ func (a *App) requireManagedWorkspaceTemplate(c echo.Context, access models.Work
 	if err != nil {
 		return scope, err
 	}
-	if scope.Visibility == models.ResourceVisibilityGlobal {
-		return scope, nil
-	}
 	if err := requireLegacyPermission(auth.GetUser(c), auth.PermTemplatesManage); err != nil {
 		return scope, err
 	}
@@ -308,16 +308,12 @@ func (a *App) requireManagedWorkspaceTemplate(c echo.Context, access models.Work
 }
 
 // requireUsableWorkspaceResource is the sending/attachment counterpart to a
-// readable resource check. Globally and organization-published resources are
-// explicitly usable by their audience; private resources still require the
-// legacy resource grant after Core has verified the active owner/workspace.
+// readable resource check. Published and private resources both require the
+// action permission and Core's active workspace/audience authorization.
 func (a *App) requireUsableWorkspaceResource(c echo.Context, access models.WorkspaceAccess, resource string, id int, permissions ...string) (models.ResourceScope, error) {
 	scope, err := a.core.RequireUseResource(access, resource, id)
 	if err != nil {
 		return scope, err
-	}
-	if workspaceReadException(access, scope) {
-		return scope, nil
 	}
 	if err := requireLegacyPermission(auth.GetUser(c), permissions...); err != nil {
 		return scope, err
@@ -330,9 +326,6 @@ func (a *App) requireReadableWorkspaceList(c echo.Context, access models.Workspa
 	if err != nil {
 		return scope, err
 	}
-	if workspaceReadException(access, scope) {
-		return scope, nil
-	}
 	if err := requireLegacyListPermission(auth.GetUser(c), id, false); err != nil {
 		return scope, err
 	}
@@ -343,6 +336,9 @@ func (a *App) requireManagedWorkspaceList(c echo.Context, access models.Workspac
 	scope, err := a.core.RequireManageResource(access, resourceLists, id)
 	if err != nil {
 		return scope, err
+	}
+	if scope.CustomerListType == models.CustomerListTypePool {
+		return scope, requireLegacyPermission(auth.GetUser(c), auth.PermPoolsMasterManage)
 	}
 	if err := requireLegacyListPermission(auth.GetUser(c), id, true); err != nil {
 		return scope, err
@@ -471,6 +467,9 @@ func (a *App) hasLegacyCampaignListAccess(access models.WorkspaceAccess, user au
 }
 
 func (a *App) requireReadableWorkspaceCampaign(c echo.Context, access models.WorkspaceAccess, id int) (models.ResourceScope, error) {
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCampaignsGetAll, auth.PermCampaignsGet); err != nil {
+		return models.ResourceScope{}, err
+	}
 	scope, err := a.core.RequireReadResource(access, resourceCampaigns, id)
 	if err != nil {
 		return scope, err
@@ -523,6 +522,9 @@ func (a *App) requireSensitiveWorkspaceCampaign(c echo.Context, access models.Wo
 }
 
 func (a *App) requireCampaignAnalytics(c echo.Context, access models.WorkspaceAccess, id int) error {
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCampaignsGetAnalytics); err != nil {
+		return err
+	}
 	scope, err := a.core.RequireReadResource(access, resourceCampaigns, id)
 	if err != nil {
 		return err
@@ -594,7 +596,7 @@ func (a *App) queryReadableWorkspaceLists(c echo.Context, access models.Workspac
 		// list metadata is added; contact details stay behind the separate
 		// pool-contact policy, and the permission is re-checked when the
 		// campaign is created, updated, scheduled or started.
-		if permUser := auth.GetUser(c); permUser.HasPerm(auth.PermCampaignsPublicPoolSend) {
+		if permUser := auth.GetUser(c); permUser.HasPerm(auth.PermCampaignsPublicPoolSend) || canManagePoolMaster(permUser) || canManagePoolDelivery(permUser) {
 			platformPools, err := a.core.QueryPlatformPublicPoolLists()
 			if err != nil {
 				return nil, 0, err
@@ -618,6 +620,16 @@ func (a *App) queryReadableWorkspaceLists(c echo.Context, access models.Workspac
 	for _, customer_list := range all {
 		if !query.group.matches(customer_list) {
 			continue
+		}
+		if customer_list.Type == models.CustomerListTypePool || customer_list.Type == models.CustomerListTypeOrgPoolAllocation {
+			if !hasLegacyPermission(user, auth.PermPoolsGet, auth.PermPoolsMasterManage, auth.PermPoolsManage, auth.PermPoolsDeliveryManage,
+				auth.PermCampaignsManage, auth.PermCampaignsManageAll, auth.PermCampaignsPublicPoolSend) {
+				continue
+			}
+		} else if !hasAll {
+			if _, ok := permitted[customer_list.ID]; !ok {
+				continue
+			}
 		}
 		if customer_list.PoolDeliveryAllowed {
 			filtered = append(filtered, customer_list)
@@ -658,6 +670,9 @@ func (a *App) queryReadableWorkspaceCampaigns(c echo.Context, access models.Work
 
 	user := auth.GetUser(c)
 	canReadByRole := hasLegacyPermission(user, auth.PermCampaignsGetAll, auth.PermCampaignsGet)
+	if !canReadByRole {
+		return nil, 0, requireLegacyPermission(user, auth.PermCampaignsGetAll, auth.PermCampaignsGet)
+	}
 	filtered := make(models.Campaigns, 0, len(all))
 	for _, campaign := range all {
 		if workspaceReadException(access, campaign.ResourceScope) {

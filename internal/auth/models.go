@@ -51,6 +51,7 @@ const (
 const (
 	PermListGetAll                = "customer_lists:get_all"
 	PermListManageAll             = "customer_lists:manage_all"
+	PermListDelete                = "customer_lists:delete"
 	PermListManage                = "customer_list:manage"
 	PermListGet                   = "customer_list:get"
 	PermCustomersGet              = "customers:get"
@@ -87,6 +88,8 @@ const (
 	// the active workspace organization's own pool allocations.
 	PermPoolsGet                    = "pools:get"
 	PermPoolsManage                 = "pools:manage"
+	PermPoolsMasterManage           = "pools:master_manage"
+	PermPoolsDeliveryManage         = "pools:delivery_manage"
 	PermPoolsExport                 = "pools:export"
 	PermBouncesGet                  = "bounces:get"
 	PermBouncesManage               = "bounces:manage"
@@ -97,6 +100,9 @@ const (
 	PermMediaManage                 = "media:manage"
 	PermTemplatesGet                = "templates:get"
 	PermTemplatesManage             = "templates:manage"
+	PermAssetsShare                 = "assets:share"
+	PermMailboxesUse                = "mailboxes:use"
+	PermMailboxesManage             = "mailboxes:manage"
 	PermUsersGet                    = "users:get"
 	PermUsersManage                 = "users:manage"
 	PermUsersTokens                 = "users:tokens"

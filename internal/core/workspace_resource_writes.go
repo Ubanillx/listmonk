@@ -298,8 +298,7 @@ func (c *Core) UpdateListInWorkspace(access models.WorkspaceAccess, id int, l mo
 		}
 		if l.Type == models.CustomerListTypePool {
 			visibility = models.ResourceVisibilityGlobal
-		}
-		if visibility != "" {
+		} else if visibility != "" {
 			if err := validateResourceVisibility(resourceLists, visibility); err != nil {
 				return err
 			}

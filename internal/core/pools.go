@@ -72,6 +72,10 @@ func (c *Core) QueryPoolManagementTarget(poolID, organizationID int) (models.Poo
 	}
 	out.OrganizationID = org.ID
 	out.OrganizationName = org.Name
+	out.DeliveryAllowed, err = c.HasPoolOrganizationPermission(poolID, int64(organizationID))
+	if err != nil {
+		return out, err
+	}
 
 	var allocation models.OrgPoolAllocation
 	err = c.db.Get(&allocation, `
@@ -416,11 +420,15 @@ func (c *Core) AuthorizePoolListAccess(listID int, organizationID int64) error {
 // only to platform administrators; every other caller receives the masked DTO.
 // Search matches the customer code, name and e-mail; sorting is restricted to
 // the whitelisted columns.
-func (c *Core) QueryPoolContacts(poolID int, organizationID int, platformAdmin bool, poolStatus, search, orderBy, order string, offset, limit int) (any, int, error) {
+func (c *Core) QueryPoolContacts(poolID int, organizationID int, platformAdmin bool, poolStatus, search, orderBy, order string, offset, limit int, globalScope ...bool) (any, int, error) {
+	// Scope delegation never delegates plaintext access. Allocation lists
+	// retain their organization boundary for every non-platform caller.
+	plaintext := platformAdmin
 	scope, err := c.getPoolListScope(poolID)
 	if err != nil {
 		return nil, 0, err
 	}
+	platformAdmin = platformAdmin || (len(globalScope) > 0 && globalScope[0] && scope.AllocationID == nil)
 	poolStatus = strings.ToLower(strings.TrimSpace(poolStatus))
 	if poolStatus != "" && poolStatus != "active" && poolStatus != "removed" {
 		return nil, 0, echo.NewHTTPError(http.StatusBadRequest, "invalid pool contact status")
@@ -523,7 +531,7 @@ func (c *Core) QueryPoolContacts(poolID int, organizationID int, platformAdmin b
 		` OFFSET $%d LIMIT (CASE WHEN $%d < 1 THEN NULL ELSE $%d END)`, len(args)+1, len(args)+2, len(args)+2)
 	pageArgs := append(append([]any{}, args...), offset, limit)
 
-	if !platformAdmin {
+	if !plaintext {
 		var rows []struct {
 			models.PoolContact
 			Excluded        bool   `db:"excluded"`
@@ -575,7 +583,9 @@ func (c *Core) QueryPoolContacts(poolID int, organizationID int, platformAdmin b
 // QueryAllPoolContacts pages over first-level pool memberships. A contact in
 // two pools appears twice, with its source pool on each row. Organization users
 // only see their own allocation memberships and receive masked contact data.
-func (c *Core) QueryAllPoolContacts(organizationID int, platformAdmin bool, poolStatus, search string, poolID int64, department *string, orderBy, order string, offset, limit int) (any, int, error) {
+func (c *Core) QueryAllPoolContacts(organizationID int, platformAdmin bool, poolStatus, search string, poolID int64, department *string, orderBy, order string, offset, limit int, globalScope ...bool) (any, int, error) {
+	plaintext := platformAdmin
+	platformAdmin = platformAdmin || (len(globalScope) > 0 && globalScope[0])
 	poolStatus = strings.ToLower(strings.TrimSpace(poolStatus))
 	if poolStatus != "" && poolStatus != "active" && poolStatus != "removed" {
 		return nil, 0, echo.NewHTTPError(http.StatusBadRequest, "invalid pool contact status")
@@ -667,7 +677,7 @@ func (c *Core) QueryAllPoolContacts(organizationID int, platformAdmin bool, pool
 	if err := c.db.Select(&rows, q, pageArgs...); err != nil {
 		return nil, 0, err
 	}
-	if platformAdmin {
+	if plaintext {
 		return rows, total, nil
 	}
 	masked := make([]models.SafePoolContact, 0, len(rows))
@@ -997,6 +1007,15 @@ func (c *Core) CreateOrgPoolAllocation(poolID int, organizationID int64, name st
 		if poolType != models.CustomerListTypePool {
 			return echo.NewHTTPError(http.StatusBadRequest, "customer list is not a public pool")
 		}
+		if !platformAdmin {
+			var authorized bool
+			if err := tx.Get(&authorized, `SELECT EXISTS(SELECT 1 FROM pool_organization_permissions WHERE pool_id=$1 AND organization_id=$2)`, poolID, organizationID); err != nil {
+				return err
+			}
+			if !authorized {
+				return echo.NewHTTPError(http.StatusForbidden, "delivery authorization is required before creating this organization's pool allocation")
+			}
+		}
 		var exists bool
 		if err := tx.Get(&exists, `SELECT EXISTS(SELECT 1 FROM org_pool_allocations WHERE pool_id=$1 AND organization_id=$2)`, poolID, organizationID); err != nil {
 			return err
@@ -1015,8 +1034,10 @@ func (c *Core) CreateOrgPoolAllocation(poolID int, organizationID int64, name st
 		if _, err := tx.Exec(`UPDATE customer_lists SET pool_parent_id=$1 WHERE id=$2`, poolID, listID); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(`INSERT INTO pool_organization_permissions(pool_id,organization_id,granted_by_user_id) VALUES($1,$2,$3) ON CONFLICT(pool_id,organization_id) DO UPDATE SET granted_by_user_id=EXCLUDED.granted_by_user_id`, poolID, organizationID, userID); err != nil {
-			return err
+		if platformAdmin {
+			if _, err := tx.Exec(`INSERT INTO pool_organization_permissions(pool_id,organization_id,granted_by_user_id) VALUES($1,$2,$3) ON CONFLICT(pool_id,organization_id) DO UPDATE SET granted_by_user_id=EXCLUDED.granted_by_user_id`, poolID, organizationID, userID); err != nil {
+				return err
+			}
 		}
 		if err := tx.Get(&out, `INSERT INTO org_pool_allocations(list_id,pool_id,organization_id,created_by_user_id)
 			VALUES($1,$2,$3,$4)

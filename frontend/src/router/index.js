@@ -56,13 +56,15 @@ const routes = [
   {
     path: '/customers',
     name: 'customers',
-    meta: { title: 'globals.terms.customers', group: 'customers', refreshable: true },
+    meta: {
+      title: 'globals.terms.customers', group: 'customers', permission: ['customers:get', 'customers:get_all'], refreshable: true,
+    },
     component: () => import('../views/Customers.vue'),
   },
   {
     path: '/customers/import',
     name: 'import',
-    meta: { title: 'import.pageTitle', group: 'customers' },
+    meta: { title: 'import.pageTitle', group: 'customers', permission: ['customers:import', 'pools:master_manage'] },
     component: () => import('../views/Import.vue'),
   },
   {
@@ -113,19 +115,25 @@ const routes = [
   {
     path: '/campaigns',
     name: 'campaigns',
-    meta: { title: 'globals.terms.campaigns', group: 'campaigns', refreshable: true },
+    meta: {
+      title: 'globals.terms.campaigns', group: 'campaigns', permission: ['campaigns:get', 'campaigns:get_all'], refreshable: true,
+    },
     component: () => import('../views/Campaigns.vue'),
   },
   {
     path: '/campaigns/media',
     name: 'media',
-    meta: { title: 'globals.terms.media', group: 'campaigns', refreshable: true },
+    meta: {
+      title: 'globals.terms.media', group: 'campaigns', permission: 'media:get', refreshable: true,
+    },
     component: () => import('../views/Media.vue'),
   },
   {
     path: '/campaigns/templates',
     name: 'templates',
-    meta: { title: 'globals.terms.templates', group: 'campaigns', refreshable: true },
+    meta: {
+      title: 'globals.terms.templates', group: 'campaigns', permission: 'templates:get', refreshable: true,
+    },
     component: () => import('../views/Templates.vue'),
   },
   {
@@ -137,7 +145,7 @@ const routes = [
   {
     path: '/campaigns/analytics',
     name: 'campaignAnalytics',
-    meta: { title: 'analytics.title', group: 'campaigns' },
+    meta: { title: 'analytics.title', group: 'campaigns', permission: 'campaigns:get_analytics' },
     component: () => import('../views/CampaignAnalyticsReport.vue'),
   },
   {

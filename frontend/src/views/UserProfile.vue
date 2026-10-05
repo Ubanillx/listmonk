@@ -152,13 +152,13 @@
       </b-tab-item><!-- /personal information -->
 
       <!-- Personal mail configuration -->
-      <b-tab-item :label="$t('users.profileTabs.mail')">
+      <b-tab-item v-if="$can('mailboxes:manage')" :label="$t('users.profileTabs.mail')">
         <div class="profile-panel">
-          <personal-s-m-t-p-settings />
+          <personal-s-m-t-p-settings v-if="$can('mailboxes:manage')" />
 
           <!-- Personal reply mailboxes stay here only for the personal workspace.
                Organization-scoped mailboxes are managed under Organizations. -->
-          <reply-mailbox-settings v-if="!workspace.organizationId" />
+          <reply-mailbox-settings v-if="!workspace.organizationId && $can('mailboxes:manage')" />
         </div>
       </b-tab-item><!-- /personal mail -->
 

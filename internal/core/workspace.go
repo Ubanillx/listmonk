@@ -39,6 +39,10 @@ func (c *Core) GetResourceScope(resource string, id int) (models.ResourceScope, 
 	visibility := "r.visibility"
 	folderJoin := ""
 	folderID := "NULL::INT"
+	listType := "''::TEXT"
+	if resource == resourceLists {
+		listType = "r.type::TEXT"
+	}
 	if resource == resourceMedia {
 		visibility = "COALESCE(permission_folder.visibility, r.visibility) AS visibility"
 		folderJoin = "LEFT JOIN media_folders permission_folder ON permission_folder.id = r.folder_id"
@@ -46,13 +50,13 @@ func (c *Core) GetResourceScope(resource string, id int) (models.ResourceScope, 
 	}
 	q := fmt.Sprintf(`
 		SELECT r.organization_id, COALESCE(o.name, '') AS organization_name,
-			r.owner_user_id, r.original_owner_user_id, %s, %s AS media_folder_id, r.transfer_pending_at,
+			r.owner_user_id, r.original_owner_user_id, %s, %s AS media_folder_id, %s AS customer_list_type, r.transfer_pending_at,
 			(r.organization_id IS NOT NULL AND COALESCE(o.status, 'archived') <> 'active') AS organization_archived,
 			COALESCE(u.username, '') AS owner_username, COALESCE(u.name, '') AS owner_name
 		FROM %s r
 		LEFT JOIN organizations o ON o.id = r.organization_id
 		LEFT JOIN users u ON u.id = COALESCE(r.owner_user_id, r.original_owner_user_id)
-		%s WHERE r.id = $1`, visibility, folderID, table, folderJoin)
+		%s WHERE r.id = $1`, visibility, folderID, listType, table, folderJoin)
 	if err := c.db.Get(&out, q, id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return out, ErrNotFound
@@ -209,6 +213,9 @@ func (c *Core) CanReadOwnerScopedResource(access models.WorkspaceAccess, scope m
 	if access.PlatformAdmin {
 		return true
 	}
+	if access.PoolMaster && scope.CustomerListType == models.CustomerListTypePool && !scope.OrganizationID.Valid && !scope.TransferPendingAt.Valid && !scope.OrganizationArchived {
+		return true
+	}
 	if scope.OrganizationArchived {
 		return false
 	}
@@ -241,6 +248,9 @@ func (c *Core) CanManageResource(access models.WorkspaceAccess, scope models.Res
 		return false
 	}
 	if access.PlatformAdmin {
+		return true
+	}
+	if access.PoolMaster && scope.CustomerListType == models.CustomerListTypePool && !scope.OrganizationID.Valid && !scope.TransferPendingAt.Valid {
 		return true
 	}
 	if !scope.OwnerUserID.Valid || int(scope.OwnerUserID.Int) != access.UserID || scope.TransferPendingAt.Valid {
@@ -535,6 +545,9 @@ func (c *Core) CustomerListManagedWorkspaceResources(access models.WorkspaceAcce
 		stmt = fmt.Sprintf(`SELECT id FROM %s
 			WHERE organization_id IS NULL AND owner_user_id = $1 AND transfer_pending_at IS NULL`, table)
 		args = []any{access.UserID}
+	}
+	if resource == resourceLists && access.PoolMaster {
+		stmt += " OR (type='pool' AND organization_id IS NULL AND transfer_pending_at IS NULL)"
 	}
 	if err := c.db.Select(&ids, stmt, args...); err != nil {
 		return nil, echo.NewHTTPError(http.StatusInternalServerError, pqErrMsg(err))

@@ -25,7 +25,7 @@
         </b-field>
 
         <b-field :label="$t('customers.email')" label-position="on-border">
-          <b-input :maxlength="200" v-model="form.email" name="email" :disabled="!canEdit"
+          <b-input :maxlength="200" v-model="form.email" name="email" :disabled="!canEdit || (isEditing && !$can('customers:sensitive_read'))"
             :placeholder="$t('customers.email')" required />
         </b-field>
 
@@ -155,7 +155,7 @@
         <b-field :message="$t('customers.attribsHelp') + ' ' + egAttribs" class="mt-6">
           <div>
             <h5>{{ $t('globals.terms.attribs') }}</h5>
-            <b-input v-model="form.strAttribs" name="attribs" type="textarea" :disabled="!canEdit" />
+            <b-input v-model="form.strAttribs" name="attribs" type="textarea" :disabled="!canEdit || (isEditing && !$can('customers:sensitive_read'))" />
           </div>
         </b-field>
       </section>
@@ -300,6 +300,10 @@ export default Vue.extend({
         customer_list_ids: this.form.customer_lists.map((l) => l.id),
       };
 
+      if (!this.$can('customers:sensitive_read')) {
+        delete data.email;
+        delete data.attribs;
+      }
       this.$api.updateCustomer(data).then((d) => {
         this.$emit('finished');
         this.$parent.close();

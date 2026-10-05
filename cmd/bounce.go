@@ -27,7 +27,7 @@ func (a *App) GetBounce(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	a.redactWorkspaceBounceSensitiveFields(access, &out)
+	a.redactWorkspaceBounceSensitiveFields(access, &out, auth.GetUser(c))
 
 	return c.JSON(http.StatusOK, okResp{out})
 }
@@ -66,7 +66,7 @@ func (a *App) GetBounces(c echo.Context) error {
 		return c.JSON(http.StatusOK, okResp{models.PageResults{Results: []models.Bounce{}}})
 	}
 	for i := range res {
-		a.redactWorkspaceBounceSensitiveFields(access, &res[i])
+		a.redactWorkspaceBounceSensitiveFields(access, &res[i], auth.GetUser(c))
 	}
 
 	out := models.PageResults{
@@ -98,17 +98,17 @@ func (a *App) GetCustomerBounces(c echo.Context) error {
 		return err
 	}
 	for i := range out {
-		a.redactWorkspaceBounceSensitiveFields(access, &out[i])
+		a.redactWorkspaceBounceSensitiveFields(access, &out[i], auth.GetUser(c))
 	}
 
 	return c.JSON(http.StatusOK, okResp{out})
 }
 
 // redactWorkspaceBounceSensitiveFields keeps bounce type/source and aggregate
-// context available to an organization manager while hiding the recipient
-// identity and provider payload for another member's audience. Owners and
-// platform administrators retain the complete bounce record.
-func (a *App) redactWorkspaceBounceSensitiveFields(access models.WorkspaceAccess, bounce *models.Bounce) {
+// context available while protecting recipient identity and provider payload.
+// Private recipients require the sensitive grant and ownership; pool recipients
+// retain the platform-administrator-only plaintext boundary.
+func (a *App) redactWorkspaceBounceSensitiveFields(access models.WorkspaceAccess, bounce *models.Bounce, user auth.User) {
 	if bounce == nil {
 		return
 	}
@@ -117,7 +117,7 @@ func (a *App) redactWorkspaceBounceSensitiveFields(access models.WorkspaceAccess
 		OwnerUserID:       bounce.OwnerUserID,
 		TransferPendingAt: bounce.TransferPendingAt,
 	}
-	if a.core.CanSeeSensitiveResource(access, scope) {
+	if access.PlatformAdmin || (bounce.PoolContactID == 0 && user.HasPerm(auth.PermCustomersSensitiveRead) && a.core.CanSeeSensitiveResource(access, scope)) {
 		return
 	}
 	bounce.Email = ""

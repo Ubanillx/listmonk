@@ -12,15 +12,15 @@
       <b-menu-item v-if="$can('pools:get')" :to="{ name: 'poolContacts' }" tag="router-link"
         :active="activeItem.poolContacts || activeItem.poolListContacts" data-cy="pool-customers" icon="account-switch-outline"
         :label="$t('pool.tabPoolContacts')" />
-      <b-menu-item :to="{ name: 'poolLists' }" tag="router-link"
+      <b-menu-item v-if="$can('pools:get', 'pools:manage', 'pools:master_manage', 'pools:delivery_manage')" :to="{ name: 'poolLists' }" tag="router-link"
         :active="activeItem.poolLists || activeItem.poolList" data-cy="pool-lists"
         icon="format-list-bulleted-square" :label="$t('menu.poolLists')" />
-      <b-menu-item :to="{ name: 'customers' }" tag="router-link"
+      <b-menu-item v-if="$can('customers:get', 'customers:get_all')" :to="{ name: 'customers' }" tag="router-link"
         :active="activeItem.customers || activeItem.customer || activeItem.customersCustomerList" data-cy="all-customers" icon="account-multiple-outline"
         :label="$t('menu.allCustomers')" />
       <b-menu-item :to="{ name: 'customerLists' }" tag="router-link" :active="activeItem.customerLists || activeItem.customerList" data-cy="all-customer_lists"
         icon="format-list-bulleted-square" :label="$t('menu.allLists')" />
-      <b-menu-item v-if="$canCreateWorkspaceResource('customers:import')" :to="{ name: 'import' }" tag="router-link"
+      <b-menu-item v-if="$canCreateWorkspaceResource('customers:import', 'pools:master_manage')" :to="{ name: 'import' }" tag="router-link"
         :active="activeItem.import" data-cy="import" icon="file-upload-outline" :label="$t('menu.import')" />
       <b-menu-item v-if="canViewBounces" :to="{ name: 'bounces' }" tag="router-link" :active="activeItem.bounces"
         data-cy="bounces" icon="email-alert-outline" :label="$t('globals.terms.bounces')" />
@@ -31,20 +31,20 @@
     <b-menu-item :expanded="activeGroup.campaigns" :active="activeGroup.campaigns"
       data-cy="campaigns" @update:active="(state) => toggleGroup('campaigns', state)" icon="rocket-launch-outline"
       :label="$t('globals.terms.campaigns')">
-      <b-menu-item :to="{ name: 'campaigns' }" tag="router-link"
+      <b-menu-item v-if="$can('campaigns:get', 'campaigns:get_all')" :to="{ name: 'campaigns' }" tag="router-link"
         :active="activeItem.campaigns" data-cy="all-campaigns" icon="rocket-launch-outline"
         :label="$t('menu.allCampaigns')" />
       <b-menu-item v-if="$canCreateWorkspaceResource('campaigns:manage_all', 'campaigns:manage')" :to="{ name: 'campaign', params: { id: 'new' } }" tag="router-link"
         :active="activeItem.campaign" data-cy="new-campaign" icon="plus" :label="$t('menu.newCampaign')" />
-      <b-menu-item :to="{ name: 'media' }" tag="router-link" :active="activeItem.media"
+      <b-menu-item v-if="$can('media:get')" :to="{ name: 'media' }" tag="router-link" :active="activeItem.media"
         data-cy="media" icon="image-multiple-outline" :label="$t('menu.media')" />
-      <b-menu-item :to="{ name: 'templates' }" tag="router-link"
+      <b-menu-item v-if="$can('templates:get')" :to="{ name: 'templates' }" tag="router-link"
         :active="activeItem.templates" data-cy="templates" icon="email-outline"
         :label="$t('globals.terms.templates')" />
       <b-menu-item :to="{ name: 'customFields' }" tag="router-link"
         :active="activeItem.customFields" data-cy="custom-fields" icon="form-textbox"
         :label="$t('customFields.title')" />
-      <b-menu-item :to="{ name: 'campaignAnalytics' }" tag="router-link"
+      <b-menu-item v-if="$can('campaigns:get_analytics')" :to="{ name: 'campaignAnalytics' }" tag="router-link"
         :active="activeItem.campaignAnalytics" data-cy="analytics" icon="chart-box-outline"
         :label="$t('globals.terms.analytics')" />
     </b-menu-item><!-- campaigns -->

@@ -81,7 +81,7 @@ func (a *App) ImportCustomers(c echo.Context) error {
 	if err := requireWritableWorkspace(access); err != nil {
 		return err
 	}
-	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCustomersImport); err != nil {
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCustomersImport, auth.PermPoolsMasterManage); err != nil {
 		return err
 	}
 	// Is an import already running?
@@ -121,8 +121,8 @@ func (a *App) ImportCustomers(c echo.Context) error {
 		if len(targets.PoolIDs) != 1 || len(targets.OrgPoolAllocationIDs) > 0 || len(targets.RegularIDs) > 0 {
 			return echo.NewHTTPError(http.StatusBadRequest, "public-pool import requires exactly one first-level public pool")
 		}
-		if !auth.GetUser(c).IsPlatformAdmin() {
-			return echo.NewHTTPError(http.StatusForbidden, "only highest administrators may import public-pool contacts")
+		if err := requirePoolAdministrator(c); err != nil {
+			return err
 		}
 		if opt.Mode != subimporter.ModeSubscribe && opt.Mode != subimporter.ModeBlocklist {
 			return echo.NewHTTPError(http.StatusBadRequest, "invalid public-pool import mode")
@@ -130,10 +130,13 @@ func (a *App) ImportCustomers(c echo.Context) error {
 		if opt.Overwrite || opt.OverwriteUserInfo || opt.OverwriteSubStatus {
 			return echo.NewHTTPError(http.StatusBadRequest, "overwrite options are not supported for public-pool import")
 		}
-		if err := a.requireWorkspaceCustomerListIDsForRequestAllowPool(c, access, opt.CustomerListIDs, true); err != nil {
+		if _, err := a.core.RequireManageResource(access, resourceLists, targets.PoolIDs[0]); err != nil {
 			return err
 		}
 		return a.importPoolCustomers(c, targets.PoolIDs[0], opt)
+	}
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCustomersImport); err != nil {
+		return err
 	}
 	if len(opt.FieldMap) > 0 {
 		if _, ok := opt.FieldMap["allocation_department"]; ok && strings.TrimSpace(opt.FieldMap["allocation_department"]) != "" {
@@ -422,7 +425,7 @@ func (a *App) GetImportCustomers(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCustomersImport); err != nil {
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCustomersImport, auth.PermPoolsMasterManage); err != nil {
 		return err
 	}
 	if err := a.requireImportAccess(access); err != nil {
@@ -438,7 +441,7 @@ func (a *App) GetImportCustomerStats(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCustomersImport); err != nil {
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCustomersImport, auth.PermPoolsMasterManage); err != nil {
 		return err
 	}
 	if err := a.requireImportAccess(access); err != nil {
@@ -455,7 +458,7 @@ func (a *App) StopImportCustomers(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCustomersImport); err != nil {
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCustomersImport, auth.PermPoolsMasterManage); err != nil {
 		return err
 	}
 	if err := a.requireImportAccess(access); err != nil {

@@ -250,11 +250,15 @@ func (c *Core) lockWorkspaceMutationResources(tx *sqlx.Tx, access models.Workspa
 	where := "id = ANY($1::INT[]) AND transfer_pending_at IS NULL"
 	args := []any{pq.Array(ids)}
 	if !access.PlatformAdmin {
+		poolPredicate := ""
+		if resource == resourceLists && access.PoolMaster {
+			poolPredicate = " OR (type='pool' AND organization_id IS NULL)"
+		}
 		if access.IsOrganization() {
-			where += " AND organization_id = $2 AND owner_user_id = $3"
+			where += " AND ((organization_id = $2 AND owner_user_id = $3)" + poolPredicate + ")"
 			args = append(args, access.OrganizationID, access.UserID)
 		} else {
-			where += " AND organization_id IS NULL AND owner_user_id = $2"
+			where += " AND ((organization_id IS NULL AND owner_user_id = $2)" + poolPredicate + ")"
 			args = append(args, access.UserID)
 		}
 	}

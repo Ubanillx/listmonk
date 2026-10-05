@@ -23,7 +23,7 @@
             {{ $t('globals.buttons.new') }}
           </b-button>
         </b-field>
-        <b-field v-else-if="isPoolList && (isFirstLevelPool || isPoolRoute) && canManagePoolContacts
+        <b-field v-else-if="isPoolList && (isFirstLevelPool || isPoolRoute) && canMaintainPoolMaster
           && (!isPoolRoute || firstLevelPoolLists.length > 0)" expanded>
           <b-button expanded type="is-primary" icon-left="plus" @click="isPoolFormVisible = true" data-cy="btn-new-pool-contact"
             class="btn-new">
@@ -113,7 +113,7 @@
                 @click.prevent="restorePoolContacts(null)" data-cy="btn-restore-pool-contacts">
                 <b-icon icon="account-check-outline" size="is-small" /> {{ $t('pool.restoreSelected') }}
               </a>
-              <a v-if="canManagePoolContacts && hasEmailablePoolContacts" class="a" href="#"
+              <a v-if="canMaintainPoolMaster && hasEmailablePoolContacts" class="a" href="#"
                 @click.prevent="clearPoolContactsEmail" data-cy="btn-clear-pool-emails">
                 <b-icon icon="email-off-outline" size="is-small" /> {{ $t('pool.archiveInvalidSelected') }}
               </a>
@@ -202,7 +202,7 @@
                 <b-icon icon="account-check-outline" size="is-small" />
               </b-tooltip>
             </a>
-            <a v-if="canManagePoolContacts && props.row.email" href="#" @click.prevent="clearPoolContactEmail(props.row)"
+            <a v-if="canMaintainPoolMaster && props.row.email" href="#" @click.prevent="clearPoolContactEmail(props.row)"
               data-cy="btn-archive-invalid-pool-contact" :aria-label="$t('pool.actionArchiveInvalid')">
               <b-tooltip :label="$t('pool.actionArchiveInvalid')" type="is-dark">
                 <b-icon icon="email-off-outline" size="is-small" />
@@ -355,7 +355,6 @@
     <!-- New public-pool contact modal -->
     <b-modal scroll="keep" :aria-modal="true" :active.sync="isPoolFormVisible" :width="600" class="has-overflow">
       <pool-contact-form :pool-list-id="queryParams.customerListID || 0" :pool-lists="isPoolRoute ? firstLevelPoolLists : []"
-        :is-platform-admin="workspace.platformAdmin"
         @finished="loadPoolContacts" />
     </b-modal>
 
@@ -1174,8 +1173,7 @@ export default Vue.extend({
     },
 
     canExportCustomers() {
-      return (this.workspace.platformAdmin || (this.workspace.organizationId && this.workspace.role === 'manager')
-        || this.$can('customers:export'))
+      return this.$can('customers:export')
         && this.$canCreateWorkspaceResource('customers:get_all', 'customers:get')
         && (!this.bulk.checked.length || this.bulk.checked.every((customer) => this.$canManageResource(customer)));
     },
@@ -1268,8 +1266,12 @@ export default Vue.extend({
       return this.$can('pools:manage');
     },
 
+    canMaintainPoolMaster() {
+      return this.$can('pools:master_manage');
+    },
+
     canSelectPoolContacts() {
-      return this.canManagePoolContacts || this.canDeletePoolContacts || this.canExportPoolContacts;
+      return this.canManagePoolContacts || this.canMaintainPoolMaster || this.canDeletePoolContacts || this.canExportPoolContacts;
     },
 
     canAssignSelectedPoolContacts() {
@@ -1277,7 +1279,7 @@ export default Vue.extend({
     },
 
     canDeletePoolContacts() {
-      return this.isPlatformAdmin && (this.isFirstLevelPool || this.isPoolRoute);
+      return this.canMaintainPoolMaster && (this.isFirstLevelPool || this.isPoolRoute);
     },
 
     isPlatformAdmin() {

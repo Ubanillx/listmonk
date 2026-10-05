@@ -1,5 +1,14 @@
 listmonk supports (>= v4.0.0) creating systems users with granular permissions to various features, including customer_list-specific permissions. Users can login with a username and password, or via an OIDC (OpenID Connect) handshake if an auth provider is connected. Various permissions can be grouped into "user roles", which can be assigned to users. CustomerList-specific permissions can be grouped into "customer_list roles".
 
+## Business permission groups
+
+Since v6.56.0, the role form presents 20 business permissions across private
+customers/lists, public pools/lists, campaigns, templates/media, and sending/reply
+mailboxes. See [业务权限说明](business-permissions.md) for the display names,
+stable permission IDs, dependencies, and migration behavior. No preset roles are
+introduced. Existing partially granted groups remain partial when saved;
+only explicitly selecting a group grants all of its underlying permissions.
+
 ## Workspaces and resource boundaries
 
 Roles are necessary but not sufficient for access. Every authenticated request is
@@ -26,7 +35,7 @@ customer_list-specific grant never exposes a resource in another workspace.
   be readable. Folder media inherits this audience for browsing and use, while
   ownership and writes remain within the original workspace. Only the creator or
   a platform admin in that workspace can edit folder permissions; `media:manage`
-  is still required. Personal workspaces cannot choose Organization.
+  and `assets:share` are required when sharing changes. Personal workspaces cannot choose Organization.
 - Organization membership has separate `member` and `manager` roles. It does
   not grant system user-role or customer_list-role permissions. Archived organizations
   reject normal writes.
@@ -41,7 +50,8 @@ A user role is a collection of user related permissions. User roles are attached
 | Group       | Permission              | Description                                                                                                                                                                                                                          |
 | ----------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | customer_lists       | customer_lists:get_all           | Get details of all accessible customer_lists in the active workspace                                                                                                                                                                         |
-|             | customer_lists:manage_all        | Create, update, and delete all owner-managed customer_lists in the active workspace                                                                                                                                                          |
+|             | customer_lists:manage_all        | Create and update owner-managed customer lists in the active workspace |
+|             | customer_lists:delete            | Delete private customer lists; list maintenance and ownership checks also apply |
 | customers | customers:get         | Get individual customer details                                                                                                                                                                                                    |
 |             | customers:get_all     | Get all customers and their details in the active workspace                                                                                                                                                                       |
 |             | customers:manage      | Add and update customers |
@@ -50,9 +60,11 @@ A user role is a collection of user related permissions. User roles are attached
 |             | customers:membership_manage | Add, remove, or unsubscribe customers from customer lists |
 |             | customers:import      | Import customers from external files                                                                                                                                                                                               |
 |             | customers:export      | Export customer and blocklist data; ownership, workspace, and masking rules still apply |
-|             | customers:sensitive_read | View unmasked customer e-mail and attributes where the current customer list would otherwise mask them; this does not bypass workspace or ownership boundaries. Pool contacts are always masked except for platform administrators, so this permission does not unmask them |
+|             | customers:sensitive_read | View private customer email, UUID, and attributes within the authorized resource scope. Required even for owners and organization managers. Does not unmask public-pool contacts |
 | pools       | pools:get             | Browse and search public-pool contacts. Non-platform-administrators only see pools granted to the active organization, with masked e-mail addresses. |
-|             | pools:manage          | Create, assign, remove, restore, and clear the e-mail of public-pool contacts. Non-platform-administrators may only act on their own organization's pool allocation. |
+|             | pools:manage          | Create allocations for already-authorized pools and assign, remove, or restore allocation members in the active organization. Other organizations additionally require delivery administration |
+|             | pools:master_manage   | Create/edit/delete first-level pools, import/create/delete pool contacts, and archive invalid emails. Delegated maintainers still receive masked DTOs |
+|             | pools:delivery_manage | Grant/revoke organization pool delivery authorization and select another target organization; does not grant contact plaintext or allocation maintenance |
 |             | pools:export          | Export public-pool contacts. Non-platform-administrators only export pools granted to the active organization, with masked e-mail addresses. |
 | transactional | tx:send             | Send transactional messages to customers |
 | campaigns   | campaigns:get           | Get and view campaigns belonging to permitted customer_lists                                                                                                                                                                                  |
@@ -74,6 +86,9 @@ A user role is a collection of user related permissions. User roles are attached
 |             | media:manage            | Upload, update, and delete media                                                                                                                                                                                                     |
 | templates   | templates:get           | Get email templates                                                                                                                                                                                                                  |
 |             | templates:manage        | Create, update, and delete templates                                                                                                                                                                                                 |
+| assets      | assets:share            | Set or remove template/media sharing, including shared folder placement. Maintenance and ownership checks still apply |
+| mailboxes   | mailboxes:use           | Select available sending/reply mailboxes and use them for authorized campaign or transactional sending |
+|             | mailboxes:manage        | Configure/test/enable/disable/delete sending and reply mailboxes, SMTP pools, and reply forwarding rules within the existing ownership/organization boundary |
 | users       | users:get               | Get system user accounts                                                                                                                                                                                                             |
 |             | users:manage            | Create, update, and delete user accounts <span style="color: #de4a45;">**WARNING:**</span><span style="font-size: 0.875em; line-height: 1.3; color:#888;">This permission allows creation of users with any role, including Super Admin. This permission should only be given to Super Admin level accounts</span>                              |
 |             | users:tokens            | Create, list, and revoke API user integration tokens |
@@ -145,8 +160,7 @@ Two per-resource protections control what a viewer sees of a customer record:
   `customer_code` header); rows without a value are skipped. The customer code
   is included in customer listings and in CSV exports.
 - **Masked e-mails.** Each customer_list has a "mask e-mails" (`mask_emails`) setting. When
-  enabled, viewers who lack sensitive-data access to a customer (customer_list owners,
-  customer-list managers, and platform administrators are always exempt) see masked
+  enabled, viewers without `customers:sensitive_read` see masked
   e-mail addresses such as `liuxxx@gmail.com` instead of the full address in
   customer listings, detail views, API responses, and CSV exports scoped to
   that customer_list. The local part keeps its first 3 characters; the remainder is
@@ -154,7 +168,12 @@ Two per-resource protections control what a viewer sees of a customer record:
   fewer are fully replaced). Viewers with no sensitive-data access and no
   masking-enabled customer_list context continue to receive the pre-existing redaction
   (empty e-mail). Masking affects display only — searching and segmentation
-  still match against the full address.
+  still match against the full address. Owners and list/organization managers
+  also require the sensitive permission; platform administrators retain their
+  functional permission exemption. UUID and attributes are hidden in reads,
+  write responses, exports, and recipient/bounce reports without the required
+  sensitive grant. Saving an edit with email or attributes omitted preserves
+  the stored values.
 
 ## API users
 

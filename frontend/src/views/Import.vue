@@ -7,7 +7,7 @@
           <a href="#" role="tab" :aria-selected="activeImportTab === 'private'"
             data-cy="import-tab-private" @click.prevent="setImportTab('private')">{{ $t('import.privateTab') }}</a>
         </li>
-        <li v-if="isPlatformAdmin" :class="{ 'is-active': activeImportTab === 'pool' }">
+        <li v-if="canMaintainPoolMaster" :class="{ 'is-active': activeImportTab === 'pool' }">
           <a href="#" role="tab" :aria-selected="activeImportTab === 'pool'"
             data-cy="import-tab-pool" @click.prevent="setImportTab('pool')">{{ $t('import.poolTab') }}</a>
         </li>
@@ -67,7 +67,8 @@
           </div>
           <p v-if="hasInvalidPoolSelection" class="help has-text-danger">{{ $t('import.poolListSelectionError') }}</p>
 
-          <div v-if="poolImport && selectedPoolLists.length === 1" class="import-pool-manager" data-cy="import-pool-manager">
+          <div v-if="poolImport && selectedPoolLists.length === 1 && $can('pools:manage', 'pools:delivery_manage')"
+            class="import-pool-manager" data-cy="import-pool-manager">
             <pool-manager :key="selectedPoolLists[0].id" :pool="selectedPoolLists[0]" />
           </div>
 
@@ -398,7 +399,7 @@ export default Vue.extend({
 
   methods: {
     setImportTab(tab) {
-      if (tab === this.activeImportTab || (tab === 'pool' && !this.isPlatformAdmin)) {
+      if (tab === this.activeImportTab || (tab === 'pool' && !this.canMaintainPoolMaster)) {
         return;
       }
       this.selectedListsByTab[this.activeImportTab] = [...this.form.customer_lists];
@@ -851,8 +852,8 @@ export default Vue.extend({
   computed: {
     ...mapState(['customer_lists', 'profile', 'workspace']),
 
-    isPlatformAdmin() {
-      return Number(this.profile && this.profile.userRole && this.profile.userRole.id) === 1;
+    canMaintainPoolMaster() {
+      return this.$can('pools:master_manage');
     },
 
     selectedPoolLists() {
@@ -880,7 +881,7 @@ export default Vue.extend({
     },
 
     poolImport() {
-      return this.isPlatformAdmin && this.activeImportTab === 'pool';
+      return this.canMaintainPoolMaster && this.activeImportTab === 'pool';
     },
 
     hasInvalidPoolSelection() {
@@ -896,7 +897,7 @@ export default Vue.extend({
 
     canCreateList() {
       return this.poolImport
-        ? this.isPlatformAdmin
+        ? this.canMaintainPoolMaster
         : this.$canCreateWorkspaceResource('customer_lists:manage_all');
     },
 
@@ -925,7 +926,7 @@ export default Vue.extend({
       if (ids.length === 0) {
         return;
       }
-      const pool = this.isPlatformAdmin && this.poolImportLists.find((list) => ids.includes(list.id));
+      const pool = this.canMaintainPoolMaster && this.poolImportLists.find((list) => ids.includes(list.id));
       if (pool) {
         this.setImportTab('pool');
         this.form.customer_lists = [pool];

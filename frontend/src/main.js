@@ -59,7 +59,8 @@ function routePermissionAccess(route) {
     return true;
   }
 
-  return (profile.userRole.permissions || []).includes(perm);
+  const required = Array.isArray(perm) ? perm : [perm];
+  return required.some((p) => (profile.userRole.permissions || []).includes(p));
 }
 
 // The first transition can run before initConfig() has resolved the profile
@@ -267,12 +268,11 @@ async function initConfig(app) {
     return ownsResource && (!perms.length || Vue.prototype.$can(...perms));
   };
 
-  // Global template publication is intentionally open to every authenticated
-  // user. Its creator can maintain that shared template without receiving the
-  // broader templates:manage grant needed for private or organization work.
+  // Template ownership and maintenance permission are checked independently,
+  // including templates that have already been published globally.
   Vue.prototype.$canManageTemplate = (template) => (
     Vue.prototype.$canManageResource(template)
-    && (template.visibility === 'global' || Vue.prototype.$can('templates:manage'))
+    && Vue.prototype.$can('templates:manage')
   );
 
   // Recipient rows contain personal data. The server requires an owner-bound
@@ -303,6 +303,9 @@ async function initConfig(app) {
   // being editable. This matters for organization-shared and global media,
   // where a member may select the resource but cannot modify its source row.
   Vue.prototype.$canUseResource = (resource, ...perms) => {
+    if (perms.length && !Vue.prototype.$can(...perms)) {
+      return false;
+    }
     if (!resource || resource.transferPendingAt || resource.transfer_pending_at) {
       return false;
     }
@@ -341,6 +344,9 @@ async function initConfig(app) {
   // sync with requireCampaignAnalytics on the server so read-only rows do not
   // render a link that is guaranteed to return 403.
   Vue.prototype.$canViewCampaignAnalytics = (campaign) => {
+    if (!Vue.prototype.$can('campaigns:get_analytics')) {
+      return false;
+    }
     if (!campaign) {
       return false;
     }

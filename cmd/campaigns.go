@@ -348,6 +348,9 @@ func (a *App) CreateCampaign(c echo.Context) error {
 		return err
 	}
 	o.PoolScope = poolScope
+	if err := requireCampaignMailboxSelection(auth.GetUser(c), models.Campaign{}, o.Campaign); err != nil {
+		return err
+	}
 	if err := normalizeCampaignSMTPSource(&o.Campaign, access.OrganizationID); err != nil {
 		return err
 	}
@@ -436,6 +439,9 @@ func (a *App) CreateCampaign(c echo.Context) error {
 // CloneCampaign performs a server-side snapshot copy. The frontend only
 // selects a target; it never supplies customer_lists, sender settings, or media rows.
 func (a *App) CloneCampaign(c echo.Context) error {
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCampaignsManage, auth.PermCampaignsManageAll); err != nil {
+		return err
+	}
 	access, err := a.workspaceAccess(c)
 	if err != nil {
 		return err
@@ -524,6 +530,9 @@ func (a *App) UpdateCampaign(c echo.Context) error {
 	// against the saved campaign so an audience edit can never smuggle a
 	// different scope past the dedicated permission.
 	o.PoolScope = cm.PoolScope
+	if err := requireCampaignMailboxSelection(auth.GetUser(c), cm, o.Campaign); err != nil {
+		return err
+	}
 	if err := normalizeCampaignSMTPSource(&o.Campaign, cm.OrganizationID.Int); err != nil {
 		return err
 	}
@@ -921,6 +930,9 @@ func (a *App) GetRunningCampaignStats(c echo.Context) error {
 // TestCampaign handles the sending of a campaign message to
 // arbitrary customers for testing.
 func (a *App) TestCampaign(c echo.Context) error {
+	if err := requireMailboxPermission(c, auth.PermMailboxesUse); err != nil {
+		return err
+	}
 	access, err := a.workspaceAccess(c)
 	if err != nil {
 		return err
@@ -1089,6 +1101,11 @@ func (a *App) TestCampaign(c echo.Context) error {
 // start or schedule it. The permission holder stays auditable through the
 // campaign audit trail.
 func requireCampaignSendOwnership(user auth.User, camp models.Campaign) error {
+	if strings.HasPrefix(camp.Messenger, "email") {
+		if err := requireLegacyPermission(user, auth.PermMailboxesUse); err != nil {
+			return err
+		}
+	}
 	if camp.PoolScope == models.CampaignPoolScopeAllOrganizations && user.HasPerm(auth.PermCampaignsPublicPoolSend) {
 		return nil
 	}
@@ -1460,7 +1477,7 @@ func (a *App) GetCampaignReportRecipients(c echo.Context) error {
 	}
 	if !user.IsPlatformAdmin() {
 		for i := range out {
-			if out[i].PoolContactID != 0 {
+			if out[i].PoolContactID != 0 || !user.HasPerm(auth.PermCustomersSensitiveRead) {
 				out[i].Email = maskEmail(out[i].Email)
 				out[i].UUID = ""
 			}
@@ -1525,7 +1542,7 @@ func (a *App) GetCampaignsReportRecipients(c echo.Context) error {
 	}
 	if !user.IsPlatformAdmin() {
 		for i := range out {
-			if out[i].PoolContactID != 0 {
+			if out[i].PoolContactID != 0 || !user.HasPerm(auth.PermCustomersSensitiveRead) {
 				out[i].Email = maskEmail(out[i].Email)
 				out[i].UUID = ""
 			}
@@ -1745,6 +1762,9 @@ func (a *App) preloadTestCampaignMedia(c echo.Context, access models.WorkspaceAc
 		camp.Attachments = nil
 		return nil
 	}
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermMediaGet); err != nil {
+		return err
+	}
 
 	// The selected template itself must still be usable. This is normally
 	// checked by requireUsableCampaignResources, but the saved campaign
@@ -1845,6 +1865,9 @@ func (a *App) requireUsableCampaignResources(c echo.Context, access models.Works
 	for _, id := range req.MediaIDs {
 		if id < 1 {
 			continue
+		}
+		if err := requireLegacyPermission(auth.GetUser(c), auth.PermMediaGet); err != nil {
+			return err
 		}
 		if _, err := a.requireUsableWorkspaceResource(c, access, resourceMedia, id, auth.PermMediaGet); err == nil {
 			continue

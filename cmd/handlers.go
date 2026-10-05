@@ -198,6 +198,7 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.GET("/api/pools/:id/contacts/export", apiKeyScope(hasID(a.ExportPoolContacts), apiKeyScopeListsRead))
 		g.GET("/api/pools/:id/allocations", apiKeyScope(hasID(a.GetOrgPoolAllocations), apiKeyScopeListsRead))
 		g.GET("/api/pools/:id/management-target", apiKeyScope(hasID(a.GetPoolManagementTarget), apiKeyScopeListsRead))
+		g.GET("/api/pools/organizations", apiKeyScope(a.GetPoolOrganizations, apiKeyScopeListsRead))
 		g.GET("/api/pools/:id/import-conflicts", apiKeyScope(hasID(a.GetPoolImportConflicts), apiKeyScopeListsRead))
 		g.POST("/api/pools/permissions", apiKeyScope(a.GrantPoolOrganization, apiKeyScopeListsWrite))
 		g.DELETE("/api/pools/permissions", apiKeyScope(a.RevokePoolOrganization, apiKeyScopeListsWrite))

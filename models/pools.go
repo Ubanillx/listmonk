@@ -157,6 +157,7 @@ type PoolImportResult struct {
 type PoolManagementTarget struct {
 	OrganizationID   int                `json:"organization_id"`
 	OrganizationName string             `json:"organization_name"`
+	DeliveryAllowed  bool               `json:"delivery_allowed"`
 	Allocation       *OrgPoolAllocation `json:"allocation,omitempty"`
 }
 

@@ -4,7 +4,8 @@
         "permissions":
         [
             "customer_lists:get_all",
-            "customer_lists:manage_all"
+            "customer_lists:manage_all",
+            "customer_lists:delete"
         ]
     },
     {
@@ -28,6 +29,8 @@
         [
             "pools:get",
             "pools:manage",
+            "pools:master_manage",
+            "pools:delivery_manage",
             "pools:export"
         ]
     },
@@ -81,6 +84,14 @@
             "templates:get",
             "templates:manage"
         ]
+    },
+    {
+        "group": "assets",
+        "permissions": ["assets:share"]
+    },
+    {
+        "group": "mailboxes",
+        "permissions": ["mailboxes:use", "mailboxes:manage"]
     },
     {
         "group": "users",

@@ -32,6 +32,9 @@ type replyMailboxTestRequest struct {
 }
 
 func (a *App) GetReplyMailboxes(c echo.Context) error {
+	if err := requireMailboxPermission(c, auth.PermMailboxesUse, auth.PermMailboxesManage); err != nil {
+		return err
+	}
 	access, err := a.workspaceAccess(c)
 	if err != nil {
 		return err
@@ -46,15 +49,28 @@ func (a *App) GetReplyMailboxes(c echo.Context) error {
 	// the organization the mailbox belongs to. Rows without it stay without a
 	// delete button instead of offering a request the server answers with 404.
 	managesOrganization := access.OrganizationID > 0 && access.IsOrganizationManager()
+	user := auth.GetUser(c)
+	canConfigure := user.HasPerm(auth.PermMailboxesManage)
 	for i := range rows {
-		rows[i].Deletable = rows[i].UserID == userID ||
+		rows[i].Manageable = rows[i].Manageable && canConfigure
+		rows[i].Deletable = canConfigure && (rows[i].UserID == userID ||
 			(managesOrganization && rows[i].OrganizationID.Valid &&
-				rows[i].OrganizationID.Int == access.OrganizationID)
+				rows[i].OrganizationID.Int == access.OrganizationID))
+		if !canConfigure {
+			rows[i].Username = ""
+			rows[i].IMAPHost = ""
+			rows[i].IMAPPort = 0
+			rows[i].Folder = ""
+			rows[i].LastSyncErr = ""
+		}
 	}
 	return c.JSON(http.StatusOK, okResp{rows})
 }
 
 func (a *App) CreateReplyMailbox(c echo.Context) error {
+	if err := requireMailboxPermission(c, auth.PermMailboxesManage); err != nil {
+		return err
+	}
 	access, err := a.workspaceAccess(c)
 	if err != nil {
 		return err
@@ -93,6 +109,9 @@ func (a *App) CreateReplyMailbox(c echo.Context) error {
 }
 
 func (a *App) UpdateReplyMailbox(c echo.Context) error {
+	if err := requireMailboxPermission(c, auth.PermMailboxesManage); err != nil {
+		return err
+	}
 	access, err := a.workspaceAccess(c)
 	if err != nil {
 		return err
@@ -128,6 +147,9 @@ func (a *App) UpdateReplyMailbox(c echo.Context) error {
 }
 
 func (a *App) DisableReplyMailbox(c echo.Context) error {
+	if err := requireMailboxPermission(c, auth.PermMailboxesManage); err != nil {
+		return err
+	}
 	access, err := a.workspaceAccess(c)
 	if err != nil {
 		return err
@@ -148,6 +170,9 @@ func (a *App) DisableReplyMailbox(c echo.Context) error {
 // organization's unified reply mailbox and a mailbox an active reply forwarding
 // rule depends on.
 func (a *App) DeleteReplyMailbox(c echo.Context) error {
+	if err := requireMailboxPermission(c, auth.PermMailboxesManage); err != nil {
+		return err
+	}
 	access, err := a.workspaceAccess(c)
 	if err != nil {
 		return err
@@ -197,6 +222,9 @@ func (a *App) DeleteReplyMailbox(c echo.Context) error {
 // previously verified mailbox becomes active immediately; a mailbox that has
 // never passed a connection test remains pending and must be tested first.
 func (a *App) EnableReplyMailbox(c echo.Context) error {
+	if err := requireMailboxPermission(c, auth.PermMailboxesManage); err != nil {
+		return err
+	}
 	access, err := a.workspaceAccess(c)
 	if err != nil {
 		return err
@@ -213,6 +241,9 @@ func (a *App) EnableReplyMailbox(c echo.Context) error {
 // both IMAP and POP3; POP3 is used here because it is already supported by
 // the server and this endpoint only needs an authentication/connection test.
 func (a *App) TestReplyMailbox(c echo.Context) error {
+	if err := requireMailboxPermission(c, auth.PermMailboxesManage); err != nil {
+		return err
+	}
 	access, err := a.workspaceAccess(c)
 	if err != nil {
 		return err

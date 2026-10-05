@@ -30,7 +30,7 @@
             <option v-if="!isPoolGroup" value="public">
               {{ $t('customer_lists.types.public') }}
             </option>
-            <option v-if="isPoolGroup && isPlatformAdmin" value="pool">
+            <option v-if="isPoolGroup && canMaintainPoolMaster" value="pool">
               {{ $t('customer_lists.types.pool') }}
             </option>
             <!-- Pool-allocation public-pool lists are created only from a first-level
@@ -178,18 +178,19 @@ export default Vue.extend({
       return this.listGroup === 'pool';
     },
 
-    isPlatformAdmin() {
-      return Number(this.profile && this.profile.userRole && this.profile.userRole.id) === 1;
+    canMaintainPoolMaster() {
+      return this.$canCreateWorkspaceResource('pools:master_manage');
     },
 
     canSave() {
       if (!this.isEditing) {
         return this.isPoolGroup
-          ? this.isPlatformAdmin
+          ? this.canMaintainPoolMaster
           : this.$canCreateWorkspaceResource('customer_lists:manage_all');
       }
-      if (this.data.type === 'pool' && !this.isPlatformAdmin) {
-        return false;
+      if (this.data.type === 'pool') {
+        return this.canMaintainPoolMaster && !this.data.organizationId && !this.data.organization_id
+          && !this.data.transferPendingAt && !this.data.transfer_pending_at;
       }
       return this.$canManageResource(this.data) && this.$canList(this.data.id, 'customer_list:manage');
     },

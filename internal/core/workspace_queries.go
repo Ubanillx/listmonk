@@ -101,6 +101,9 @@ func workspaceOwnerScopedReadPredicate(access models.WorkspaceAccess, alias stri
 func workspaceCustomerListReadPredicate(access models.WorkspaceAccess, alias string, firstArg int) (string, []any) {
 	if !access.PlatformAdmin || access.Archived {
 		scope, args := workspaceOwnerScopedReadPredicate(access, alias, firstArg)
+		if access.PoolMaster && !access.Archived {
+			scope = fmt.Sprintf("(%s) OR (%s.type='pool' AND %s.organization_id IS NULL AND %s.transfer_pending_at IS NULL)", scope, alias, alias, alias)
+		}
 		if !access.IsOrganization() || access.IsOrganizationManager() {
 			return scope, args
 		}

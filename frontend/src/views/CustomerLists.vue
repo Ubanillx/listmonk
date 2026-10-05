@@ -28,7 +28,7 @@
     <b-table :data="customer_lists.results" :loading="loading.listsFull" @check-all="onTableCheck" @check="onTableCheck"
       :checked-rows.sync="bulk.checked" hoverable default-sort="createdAt" paginated backend-pagination
       pagination-position="both" @page-change="onPageChange" :current-page="queryParams.page" :per-page="customer_lists.perPage"
-      :total="customer_lists.total" :checkable="canManageLists" :is-row-checkable="canManageList" backend-sorting @sort="onSort">
+      :total="customer_lists.total" :checkable="canManageLists" :is-row-checkable="canDeleteList" backend-sorting @sort="onSort">
       <template #top-left>
         <div class="columns">
           <div class="column is-6">
@@ -174,7 +174,7 @@
             </b-tooltip>
           </router-link>
 
-          <a v-if="canManageList(props.row)" href="#"
+          <a v-if="canDeleteList(props.row)" href="#"
             @click.prevent="deleteList(props.row)" data-cy="btn-delete" :aria-label="$t('globals.buttons.delete')">
             <b-tooltip :label="$t('globals.buttons.delete')" type="is-dark">
               <b-icon icon="trash-can-outline" size="is-small" />
@@ -411,7 +411,8 @@ export default Vue.extend({
 
     canManageList(customerList) {
       if (customerList.type === 'pool') {
-        return this.isPlatformAdmin;
+        return this.$canCreateWorkspaceResource('pools:master_manage') && !customerList.organizationId
+          && !customerList.organization_id && !customerList.transferPendingAt && !customerList.transfer_pending_at;
       }
       if (customerList.type === 'org_pool_allocation') {
         return false;
@@ -419,11 +420,16 @@ export default Vue.extend({
       return this.$canManageResource(customerList) && this.$canList(customerList.id, 'customer_list:manage');
     },
 
+    canDeleteList(customerList) {
+      return this.canManageList(customerList)
+        && (customerList.type === 'pool' || this.$can('customer_lists:delete'));
+    },
+
     canImportList(customerList) {
       if (customerList.type === 'pool') {
-        return this.isPlatformAdmin;
+        return this.$can('pools:master_manage');
       }
-      return isOwnedActiveWorkspaceCustomerList(
+      return this.$can('customers:import') && isOwnedActiveWorkspaceCustomerList(
         customerList,
         this.workspace,
         this.profile && this.profile.id,
@@ -432,10 +438,10 @@ export default Vue.extend({
 
     canViewListCustomers(customerList) {
       if (customerList.type === 'pool' || customerList.type === 'org_pool_allocation') {
-        return true;
+        return this.$can('pools:get');
       }
-      return this.isPlatformAdmin || this.canInspectOrganization
-        || isOwnedActiveWorkspaceCustomerList(customerList, this.workspace, this.profile && this.profile.id);
+      return this.$can('customers:get', 'customers:get_all') && (this.isPlatformAdmin || this.canInspectOrganization
+        || isOwnedActiveWorkspaceCustomerList(customerList, this.workspace, this.profile && this.profile.id));
     },
 
     ownerLabel(resource) {
@@ -489,12 +495,12 @@ export default Vue.extend({
 
     canCreateList() {
       return this.isPoolGroup
-        ? this.isPlatformAdmin
+        ? this.$canCreateWorkspaceResource('pools:master_manage')
         : this.$canCreateWorkspaceResource('customer_lists:manage_all');
     },
 
     canManageLists() {
-      return Array.isArray(this.customer_lists.results) && this.customer_lists.results.some((customerList) => this.canManageList(customerList));
+      return Array.isArray(this.customer_lists.results) && this.customer_lists.results.some((customerList) => this.canDeleteList(customerList));
     },
 
     canInspectOrganization() {
@@ -522,7 +528,7 @@ export default Vue.extend({
     // Highest administrators manage any organization's pool; organization
     // admins manage the one they are currently in.
     canManagePool() {
-      return this.isPlatformAdmin || this.isOrganizationManager;
+      return this.$can('pools:delivery_manage') || (this.$can('pools:manage') && this.workspace.organizationId > 0);
     },
 
     numSelectedLists() {

@@ -119,6 +119,8 @@ type ResourceScope struct {
 	// same condition directly in SQL.
 	OrganizationArchived bool     `db:"organization_archived" json:"-"`
 	MediaFolderID        null.Int `db:"media_folder_id" json:"-"`
+	// CustomerListType is read from the database for pool-only administration.
+	CustomerListType string `db:"customer_list_type" json:"-"`
 
 	OwnerUsername string `db:"owner_username" json:"owner_username"`
 	OwnerName     string `db:"owner_name" json:"owner_name"`
@@ -144,6 +146,9 @@ type Workspace struct {
 type WorkspaceAccess struct {
 	Workspace
 	UserID int `json:"-"`
+	// PoolMaster grants administration of first-level pools only. It must never
+	// act as platform administration for ordinary workspace resources.
+	PoolMaster bool `json:"-"`
 }
 
 func (a WorkspaceAccess) IsOrganization() bool {

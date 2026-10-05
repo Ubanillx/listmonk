@@ -125,7 +125,7 @@
                   <h3 id="campaign-sender-title">{{ $t('campaigns.setupSender') }}</h3>
                   <div v-if="isSMTPMessenger" class="campaign-field-row">
                     <b-field :label="$t('campaigns.smtpSource')">
-                      <b-select v-model="form.smtpSource" expanded :disabled="!canEdit" data-cy="campaign-smtp-source" @input="onSMTPSourceSelection">
+                      <b-select v-model="form.smtpSource" expanded :disabled="!canEdit || !$can('mailboxes:use')" data-cy="campaign-smtp-source" @input="onSMTPSourceSelection">
                         <option value="personal">{{ $t('campaigns.smtpPersonalRotation') }}</option>
                         <option value="organization" :disabled="!workspace.organizationId && !isPlatformPoolCampaign">
                           {{ $t('campaigns.smtpOrganizationRotation') }}
@@ -134,7 +134,7 @@
                     </b-field>
                     <b-field v-if="form.smtpSource === 'organization' && workspace.organizationId && !isPlatformPoolCampaign"
                       :label="$t('organizations.smtpPoolSelect')">
-                      <b-select v-model.number="form.smtpPoolId" expanded :disabled="!canEdit || !smtpPools.length" data-cy="campaign-smtp-pool">
+                      <b-select v-model.number="form.smtpPoolId" expanded :disabled="!canEdit || !$can('mailboxes:use') || !smtpPools.length" data-cy="campaign-smtp-pool">
                         <option v-for="pool in smtpPools" :key="pool.id" :value="pool.id">{{ pool.name }} ({{ pool.enabledCount }}/{{ pool.smtpCount }})</option>
                       </b-select>
                     </b-field>
@@ -167,7 +167,7 @@
                   </b-field>
 
                   <b-field v-if="isSMTPMessenger && !hasPoolAudience" key="campaign-reply-mailbox" :label="$t('campaigns.replyMailbox')">
-                    <b-select v-model="form.replyMailboxId" :disabled="!canEdit || activeReplyMailboxes.length === 0" expanded>
+                    <b-select v-model="form.replyMailboxId" :disabled="!canEdit || !$can('mailboxes:use') || activeReplyMailboxes.length === 0" expanded>
                       <option :value="null">{{ $t('campaigns.replyMailboxNone') }}</option>
                       <option v-if="form.replyMailboxId && !activeReplyMailboxes.some((mailbox) => mailbox.id === Number(form.replyMailboxId))"
                         :value="form.replyMailboxId" disabled>
@@ -884,6 +884,11 @@ export default Vue.extend({
         pool_scope: this.isPlatformPoolCampaign ? 'all_organizations' : 'organization',
       };
 
+      if (!this.$can('mailboxes:use')) {
+        delete data.smtp_source;
+        delete data.smtp_pool_id;
+        delete data.reply_mailbox_id;
+      }
       this.$api.createCampaign(data).then((d) => {
         this.$router.push({ name: 'campaign', hash: '#content', params: { id: d.id } });
       });
@@ -933,6 +938,11 @@ export default Vue.extend({
       }
 
       // This promise is used by startCampaign to first save before starting.
+      if (!this.$can('mailboxes:use')) {
+        delete data.smtp_source;
+        delete data.smtp_pool_id;
+        delete data.reply_mailbox_id;
+      }
       return new Promise((resolve) => {
         this.$api.updateCampaign(this.data.id, data).then((d) => {
           this.data = d;
@@ -1030,6 +1040,7 @@ export default Vue.extend({
     },
 
     loadPersonalSMTPStatus() {
+      if (!this.$can('mailboxes:use')) return Promise.resolve();
       this.smtpOverviewRequest += 1;
       const request = this.smtpOverviewRequest;
       this.personalSMTPLoaded = false;
@@ -1075,6 +1086,7 @@ export default Vue.extend({
     },
 
     loadReplyMailboxes() {
+      if (!this.$can('mailboxes:use')) return Promise.resolve();
       this.replyMailboxesLoaded = false;
       return this.$api.getReplyMailboxes().then((data) => {
         this.replyMailboxes = (Array.isArray(data) ? data : []).map((mailbox) => ({
@@ -1133,7 +1145,7 @@ export default Vue.extend({
     },
 
     canSendCampaign() {
-      if (!this.canManage) {
+      if (!this.canManage || (this.isSMTPMessenger && !this.$can('mailboxes:use'))) {
         return false;
       }
       if (!this.$can('campaigns:send')) {
@@ -1152,7 +1164,7 @@ export default Vue.extend({
     },
 
     canTestCampaign() {
-      if (!this.canManage || !this.$can('campaigns:test')) {
+      if (!this.canManage || !this.$can('campaigns:test') || !this.$can('mailboxes:use')) {
         return false;
       }
       if (this.isNew) {
@@ -1169,6 +1181,7 @@ export default Vue.extend({
         : (this.isNew || (ownerID > 0 && ownerID === Number(this.profile && this.profile.id)));
       return this.canManage
         && this.$can('campaigns:schedule')
+        && (!this.isSMTPMessenger || this.$can('mailboxes:use'))
         && sendAuthorized
         && (!this.isSMTPMessenger || this.smtpReadyForSend)
         && (this.data.status === 'draft' || this.data.status === 'paused' || this.data.status === 'deferred')

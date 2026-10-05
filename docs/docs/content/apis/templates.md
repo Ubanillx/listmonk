@@ -1,5 +1,12 @@
 # API / Templates
 
+All template reads and use require `templates:get`, including global templates.
+Create, update, clone, set-default and delete require `templates:manage` plus
+the workspace/ownership boundary. Setting or removing organization/global
+visibility additionally requires `assets:share`; saving unchanged visibility
+does not. Media use still requires `media:get`, including private assets linked
+from a shared template. See [business permissions](../business-permissions.md).
+
 | Method | Endpoint | Description |
 | :----- | :------- | :---------- |
 | GET | [/api/templates](#get-apitemplates) | Retrieve all templates |

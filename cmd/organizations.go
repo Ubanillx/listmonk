@@ -174,7 +174,8 @@ func (a *App) workspaceAccess(c echo.Context) (models.WorkspaceAccess, error) {
 	if err != nil {
 		return models.WorkspaceAccess{}, err
 	}
-	return models.WorkspaceAccess{Workspace: ws, UserID: auth.GetUser(c).ID}, nil
+	user := auth.GetUser(c)
+	return models.WorkspaceAccess{Workspace: ws, UserID: user.ID, PoolMaster: user.HasPerm(auth.PermPoolsMasterManage)}, nil
 }
 
 // workspaceAccessForOrganization resolves an explicit clone or migration
@@ -201,8 +202,9 @@ func (a *App) workspaceAccessForOrganizationWithPersonal(c echo.Context, orgID i
 			}
 		}
 		return models.WorkspaceAccess{
-			Workspace: models.Workspace{Personal: true, PlatformAdmin: user.IsPlatformAdmin()},
-			UserID:    user.ID,
+			Workspace:  models.Workspace{Personal: true, PlatformAdmin: user.IsPlatformAdmin()},
+			UserID:     user.ID,
+			PoolMaster: user.HasPerm(auth.PermPoolsMasterManage),
 		}, nil
 	}
 	if orgID < 0 {
@@ -238,7 +240,7 @@ func (a *App) workspaceAccessForOrganizationWithPersonal(c echo.Context, orgID i
 		return models.WorkspaceAccess{}, err
 	}
 	ws.Role = membership.Role
-	return models.WorkspaceAccess{Workspace: ws, UserID: user.ID}, nil
+	return models.WorkspaceAccess{Workspace: ws, UserID: user.ID, PoolMaster: user.HasPerm(auth.PermPoolsMasterManage)}, nil
 }
 
 func isOrganizationManagementPath(path string) bool {
@@ -761,6 +763,9 @@ type organizationReplyMailboxInput struct {
 // The core setter re-verifies that the mailbox belongs to the organization;
 // pool allocations no longer carry a reply mailbox of their own.
 func (a *App) SetOrganizationReplyMailbox(c echo.Context) error {
+	if err := requireMailboxPermission(c, auth.PermMailboxesManage); err != nil {
+		return err
+	}
 	access, err := a.workspaceAccess(c)
 	if err != nil {
 		return err
@@ -881,6 +886,9 @@ func (a *App) GetOrganizationMembersForPlatform(c echo.Context) error {
 }
 
 func (a *App) TransferOrganizationTemplate(c echo.Context) error {
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermTemplatesManage); err != nil {
+		return err
+	}
 	ws, err := a.requireOrganizationManager(c)
 	if err != nil {
 		return err
@@ -901,6 +909,12 @@ func (a *App) TransferOrganizationTemplate(c echo.Context) error {
 }
 
 func (a *App) UnpublishOrganizationTemplate(c echo.Context) error {
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermTemplatesManage); err != nil {
+		return err
+	}
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermAssetsShare); err != nil {
+		return err
+	}
 	ws, err := a.requireOrganizationManager(c)
 	if err != nil {
 		return err

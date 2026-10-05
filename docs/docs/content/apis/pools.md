@@ -1,5 +1,14 @@
 # Public pools
 
+## Independent business permissions (v6.56.0)
+
+Pool browsing, organization allocation management, master-data maintenance,
+delivery authorization, and export are separate role permissions. Delegated
+master maintainers can access first-level platform pools while receiving masked
+contact DTOs; allocation-list reads remain limited to their organization.
+Permission names and dependencies are documented in
+[业务权限说明](../business-permissions.md).
+
 ## Customer reply routing (v6.55.0)
 
 Contact APIs, the aggregate pool view, first-level and allocation contact tables, and CSV exports include `reply_to`. It is an internal routing address and is not masked; recipient `email` remains masked for non-platform administrators. `order_by=reply_to` is supported. Single-contact creation accepts optional `reply_to` with the same email validation as import.
@@ -26,15 +35,18 @@ Key endpoints:
 - `GET /api/pools/:id/contacts?search=...&status=active|removed&page=1&per_page=20&order_by=created_at&order=desc` — page through first-level or pool-allocation contacts by imported code, name, or e-mail. The equivalent `GET /api/customer-lists/:id/pool-contacts` route also accepts an `org_pool_allocation` list ID. `status=active` shows unremoved contacts; `status=removed` shows unresolved organization removals or exclusions. In a first-level pool, platform administrators see all organizations' exceptions once per contact, with `excluded`, `exclusion_reason`, `exception_organization_name`, and `exception_allocation_id` (when a membership can be restored). Non-platform-administrators see only their current organization's allocation and receive masked e-mail addresses. Unassigned contacts remain active. Allocation-list reads stay scoped to that allocation. Omitting `status` preserves the legacy all-contacts response. The legacy `customer_code` filter remains a fallback alias of `search`. Requires `pools:get`; non-platform-administrators must have the pool granted to the active organization.
 - `GET /api/pools/:id/contacts/export` (alias `GET /api/customer-lists/:id/pool-contacts/export`) — stream the same filtered rows as CSV with masked e-mails. Repeat `contact=0:<contact_id>` to narrow the authorized result to selected contacts. Selection validation matches the aggregate export. Requires `pools:export`.
 - `POST /api/pools/:id/contacts` — single-contact compatibility route
-  (requires `pools:manage`); the product import entry is the unified customer
+  (requires `pools:master_manage`); the product import entry is the unified customer
   import endpoint below.
 - `DELETE /api/pools/:id/contacts/:contact_id` (alias
   `DELETE /api/customer-lists/:id/pool-contacts/:contact_id`) — permanently
   deletes one contact from a first-level pool. This destructive operation is
-  restricted to platform administrators; organization allocation list IDs are
+  requires `pools:master_manage`; organization allocation list IDs are
   rejected. Pool membership, allocation membership and pool campaign recipient
   rows follow their foreign-key deletion rules.
-- `POST /api/pools/allocations` — split a first-level pool into a new organization allocation. The list, pool grant and binding are created atomically. The allocation carries no reply mailbox of its own: pool recipients resolve imported customer reply addresses and the organization's verified fallback in campaign priority order; the organization fallback is configured once from **Organizations -> Manage organizations -> Organization reply mailboxes**.
+- `POST /api/pools/allocations` — create and bind an organization allocation; requires `pools:manage`. Ordinary members may act in their current organization only when a delivery grant already exists. With `pools:delivery_manage`, the caller may select another active organization and create its delivery grant in the same transaction. Allocations have no reply mailbox; the organization fallback is configured separately with `mailboxes:manage` and organization-management authorization.
+- `GET /api/pools/organizations` — list active organization IDs and names for the delivery authorization picker; requires `pools:delivery_manage`, without granting membership or organization management.
+- `POST|DELETE /api/pools/permissions` — grant/revoke a pool's organization delivery authorization; requires `pools:delivery_manage` and a `pool_id`/`organization_id` JSON body. Allocation management alone cannot grant or restore delivery access.
+- `DELETE /api/pools/:id/contacts/:contact_id/email` — archive an invalid contact by clearing its email; requires `pools:master_manage`.
 - `POST|DELETE|PUT /api/pools/allocations/members` — assign, logically remove, or restore a contact. Requires `pools:manage`; a non-platform-administrator is restricted to its own organization's allocation.
 - `POST /api/pools/allocations/:id/import-members` — legacy compatibility route;
   it is not the management UI's import path. Requires `pools:manage` and the
@@ -44,7 +56,7 @@ Key endpoints:
   sheet or XLSX worksheet must map `customer_code`, `name`, `email` and
   `allocation_department`. Chinese template headers `客户编号`/`客户编码`,
   `姓名`, `邮箱`, `分配部门` are recognized; optional `回信邮箱`/`reply_to` is supported and other columns are ignored.
-  Only the highest administrator may use this branch. `分配部门` must match an
+  Requires `pools:master_manage`. `分配部门` must match an
   active `organizations.name`; unknown or archived departments are rejected
   row-by-row and are not written. A valid value is stored on the pool contact
   and, when that organization already has a pool allocation for the pool, also
@@ -55,8 +67,8 @@ Key endpoints:
   searchable left column, with the selected organization's allocation or create
   form on the right. Allocation names are prefilled and editable; switching
   organizations retains each draft, and creating refreshes both columns.
-  Selecting a target does not switch the active workspace. Organization managers
-  see only their own workspace organization. On narrow screens the columns stack.
+  Selecting a target does not switch the active workspace. Allocation managers
+  without delivery administration see only their active organization. On narrow screens the columns stack.
 - The unified import also accepts `mode=blocklist` with the same four required columns and optional reply email. Matching email addresses within the selected pool are marked
   `blocklisted`; new contacts are created in that state. The contact state
   suppresses delivery across its organization allocations and any other pools
@@ -65,8 +77,9 @@ Key endpoints:
   identities with that email within the selected pool. Import results include
   a distinct `blocklisted` contact count; pool contact pages display the state.
 - `POST /api/pools/import` — legacy ordinary-list-to-pool compatibility route;
+  requires `pools:master_manage`, plus the source list's owner/workspace boundary;
   new product flows use the unified customer import endpoint.
-- `GET /api/pools/:id/management-target?organization_id=...` — highest-admin-only target context: the target organization's existing allocation state.
+- `GET /api/pools/:id/management-target?organization_id=...` — allocation state for an explicit organization; requires `pools:manage` or `pools:delivery_manage`. Allocation-only callers must target their active organization.
 - `POST /api/campaigns/:id/pools` — attach a first-level public-pool audience to a campaign draft. Organization allocation list IDs are rejected; the selected first-level pool is resolved to the applicable allocation when the campaign is sent.
 
 Preview and send operations reject unresolved pool audiences (missing the
@@ -99,11 +112,12 @@ appear in `/api/customers` results. Their dedicated CSV export requires
 `pools:export`. Non-highest administrators cannot obtain a pool contact's real
 email through list, detail, CSV, or API-key responses.
 
-Public-pool contact access is governed by three independent, role-configurable
-permissions: `pools:get` (browse/search), `pools:manage` (create, assign,
-remove, restore, archive invalid contacts) and `pools:export`. Platform administrators
-bypass the grants; every other caller is additionally restricted to the pool
-lists and allocations granted to the active workspace organization.
+Public-pool access uses five independent permissions: `pools:get` (browse),
+`pools:manage` (organization allocation), `pools:master_manage` (first-level
+lists, contacts and import), `pools:delivery_manage` (organization delivery
+grants), and `pools:export`. Platform administrators bypass functional grants.
+Other callers obey the organization boundary; master-data permission widens
+only platform first-level pool scope, and never permits plaintext contact reads.
 
 Campaign responses include `customer_pools[].reply_mailbox_email` so operators
 can see the organization fallback. Per-customer addresses and the campaign priority determine the actual Reply-To; delivery uses the immutable recipient snapshot.
@@ -118,24 +132,25 @@ remain protected by the pool contact DTO policy.
 ## Admin workflow
 
 Open a first-level pool from **CustomerLists**, then select **Manage pool**.
-For a highest administrator, first choose the **target organization** in the
+With delivery administration, first choose the **target organization** in the
 management dialog. This is an allocation target, not a workspace switch and
 not an organization-membership action: the administrator does not need to join
 the organization and remains in the current workspace. The dialog then offers
-one **Create and bind** action. It creates the pool allocation, grants delivery
-access and binds it to the open pool in one transaction. The reply route for the
+one **Create and bind** action when allocation management is also granted. It creates
+the allocation and binds it; delivery administration may grant access in that
+transaction, while allocation-only creation requires an existing grant. The reply route for the
 organization's pool recipients follows customer/organization priority. Its **organization fallback** is configured once by the organization's manager in
 **Organizations -> Manage organizations -> Organization reply mailboxes**
 (`PUT /api/organizations/:id/reply-mailbox`). A pool allocation carries no reply
 mailbox of its own, the campaign field **customer reply mailbox** does not feed
 this route, and a pool allocation cannot be created from the generic
 customer-list form; there is no pool-allocation-to-first-level merge flow.
-A highest administrator performs the split through `POST /api/org-pool-allocations`
+A caller with allocation and delivery administration performs the split through `POST /api/org-pool-allocations`
 (the `/api/pools/allocations` alias is equivalent) with the target organization's
-`organization_id`, without joining it. An organization manager may perform the
-same split for their own organization: the request must carry that organization's
-`organization_id`, and any other organization is rejected with `403`. Ordinary
-organization members cannot create lists.
+`organization_id`, without joining it. An ordinary active member with allocation
+management may perform the same split in their current organization after it
+has received delivery authorization. The request must target that organization;
+other organizations are rejected with `403` without delivery administration.
 
 Each first-level pool can have one bound pool allocation per organization. The
 dialog does not import contact files. Import the pool template (four required columns and optional reply email) from
@@ -151,6 +166,6 @@ of a dedicated page. Allocation views split active members under **Public pool
 server-side status filter, so each tab's count matches its rows. First-level
 pools have no organization-specific exception tab. That view keeps the pool data
 model separate and applies the same masked DTO policy as the API.
-Organization operators continue to work only inside their own organization
-workspace; they cannot select another target organization or manage a
-first-level pool. The server enforces the same boundary for direct API calls.
+Allocation-only operators work inside their organization; delivery administrators
+may select other targets, and master maintainers may maintain first-level pools.
+These capabilities remain independent in direct API calls.

@@ -259,7 +259,7 @@
               <b-icon icon="file-find-outline" size="is-small" />
             </b-tooltip>
           </a>
-          <a href="#" @click.prevent="openCloneCampaign(props.row)" data-cy="btn-clone"
+          <a v-if="$can('campaigns:manage', 'campaigns:manage_all')" href="#" @click.prevent="openCloneCampaign(props.row)" data-cy="btn-clone"
             :aria-label="$t('globals.buttons.clone')">
             <b-tooltip :label="$t('globals.buttons.clone')" type="is-dark">
               <b-icon icon="file-multiple-outline" size="is-small" />

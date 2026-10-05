@@ -131,6 +131,9 @@ func (a *App) disableReplyForwardRule(orgID, ruleID, actorID int) error {
 // GetReplyForwardRules customer_lists retained customer-reply forwarding rules for
 // the active organization. Only organization managers may inspect them.
 func (a *App) GetReplyForwardRules(c echo.Context) error {
+	if err := requireMailboxPermission(c, auth.PermMailboxesManage); err != nil {
+		return err
+	}
 	ws, err := a.requireOrganizationManager(c)
 	if err != nil {
 		return err
@@ -158,6 +161,9 @@ func (a *App) GetReplyForwardRules(c echo.Context) error {
 // always refreshes the target address, so a creator who has left is replaced
 // by an active organization manager.
 func (a *App) UpdateReplyForwardRule(c echo.Context) error {
+	if err := requireMailboxPermission(c, auth.PermMailboxesManage); err != nil {
+		return err
+	}
 	ws, err := a.requireOrganizationManager(c)
 	if err != nil {
 		return err
@@ -204,6 +210,9 @@ func (a *App) UpdateReplyForwardRule(c echo.Context) error {
 // DeleteReplyForwardRule is an explicit alias for disabling a rule. The
 // source mailbox and original messages are intentionally retained.
 func (a *App) DeleteReplyForwardRule(c echo.Context) error {
+	if err := requireMailboxPermission(c, auth.PermMailboxesManage); err != nil {
+		return err
+	}
 	ws, err := a.requireOrganizationManager(c)
 	if err != nil {
 		return err

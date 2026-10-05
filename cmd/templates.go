@@ -104,30 +104,15 @@ func (a *App) GetTemplate(c echo.Context) error {
 
 // GetTemplates handles retrieval of templates.
 func (a *App) GetTemplates(c echo.Context) error {
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermTemplatesGet); err != nil {
+		return err
+	}
 	access, err := a.workspaceAccess(c)
 	if err != nil {
 		return err
 	}
 	// If no_body is true, blank out the body of the template from the response.
 	noBody, _ := strconv.ParseBool(c.QueryParam("no_body"))
-	user := auth.GetUser(c)
-	if !access.IsOrganizationManager() && !user.IsPlatformAdmin() &&
-		!hasLegacyPermission(user, auth.PermTemplatesGet) {
-		// A globally published template is a documented read/copy exception.
-		// Filtered workspace retrieval still needs to avoid exposing private
-		// templates from the active workspace to a role with no template grant.
-		out, err := a.core.GetWorkspaceTemplates(access, "", noBody)
-		if err != nil {
-			return err
-		}
-		filtered := make([]models.Template, 0, len(out))
-		for _, tpl := range out {
-			if workspaceReadException(access, tpl.ResourceScope) {
-				filtered = append(filtered, tpl)
-			}
-		}
-		return c.JSON(http.StatusOK, okResp{filtered})
-	}
 	// Fetch templates from the DB.
 	out, err := a.core.GetWorkspaceTemplates(access, "", noBody)
 	if err != nil {
@@ -223,12 +208,11 @@ func (a *App) CreateTemplate(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	// Publishing a globally shared template is intentionally available to
-	// every authenticated user. Other template scopes retain the legacy role.
-	if visibility != models.ResourceVisibilityGlobal {
-		if err := requireLegacyPermission(auth.GetUser(c), auth.PermTemplatesManage); err != nil {
-			return err
-		}
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermTemplatesManage); err != nil {
+		return err
+	}
+	if err := requireAssetSharing(auth.GetUser(c), models.ResourceVisibilityPrivate, visibility); err != nil {
+		return err
 	}
 	o, err := a.prepareTemplate(req.template())
 	if err != nil {
@@ -287,13 +271,8 @@ func (a *App) UpdateTemplate(c echo.Context) error {
 		if err != nil {
 			return err
 		}
-		// Publishing is open, but changing a globally shared template into a
-		// private or organization asset would otherwise bypass templates:manage.
-		if scope.Visibility == models.ResourceVisibilityGlobal &&
-			visibility != models.ResourceVisibilityGlobal {
-			if err := requireLegacyPermission(auth.GetUser(c), auth.PermTemplatesManage); err != nil {
-				return err
-			}
+		if err := requireAssetSharing(auth.GetUser(c), scope.Visibility, visibility); err != nil {
+			return err
 		}
 	}
 	out, err := a.core.UpdateTemplateInWorkspace(access, id, o.Name, o.Subject, []byte(o.Body), o.BodySource, req.mediaIDs(), visibility, req.NameFallback)
@@ -350,10 +329,8 @@ func (a *App) CloneTemplate(c echo.Context) error {
 	if err := requireWritableWorkspace(target); err != nil {
 		return err
 	}
-	if !workspaceCopyException(access, scope) {
-		if err := requireLegacyPermission(auth.GetUser(c), auth.PermTemplatesManage); err != nil {
-			return err
-		}
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermTemplatesManage); err != nil {
+		return err
 	}
 
 	clone, err := a.prepareTemplate(src.Clone(req.Name, req.Subject))

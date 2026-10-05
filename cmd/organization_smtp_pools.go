@@ -231,6 +231,9 @@ func (a *App) validateCampaignSMTPPool(camp *models.Campaign, orgID int) error {
 }
 
 func (a *App) GetCampaignSMTPPools(c echo.Context) error {
+	if err := requireMailboxPermission(c, auth.PermMailboxesUse); err != nil {
+		return err
+	}
 	access, err := a.workspaceAccess(c)
 	if err != nil {
 		return err

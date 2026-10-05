@@ -238,9 +238,9 @@ func TestSetOrganizationReplyMailbox(t *testing.T) {
 	homeMailbox, otherMailbox := seedOrganizationReplyMailboxFixtures(t, db)
 
 	platformAdmin := auth.User{Base: auth.Base{ID: organizationReplyMailboxAdminUser}, UserRoleID: auth.SuperAdminRoleID}
-	manager := auth.User{Base: auth.Base{ID: organizationReplyMailboxManagerUser}}
-	ordinaryMember := auth.User{Base: auth.Base{ID: organizationReplyMailboxMemberUser}}
-	outsider := auth.User{Base: auth.Base{ID: organizationReplyMailboxOutsiderUser}}
+	manager := auth.User{Base: auth.Base{ID: organizationReplyMailboxManagerUser}, PermissionsMap: map[string]struct{}{auth.PermMailboxesManage: {}}}
+	ordinaryMember := auth.User{Base: auth.Base{ID: organizationReplyMailboxMemberUser}, PermissionsMap: map[string]struct{}{auth.PermMailboxesManage: {}}}
+	outsider := auth.User{Base: auth.Base{ID: organizationReplyMailboxOutsiderUser}, PermissionsMap: map[string]struct{}{auth.PermMailboxesManage: {}}}
 
 	e := echo.New()
 

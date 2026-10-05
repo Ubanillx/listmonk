@@ -43,6 +43,9 @@ const (
 
 // SendTxMessage handles the sending of a transactional message.
 func (a *App) SendTxMessage(c echo.Context) error {
+	if err := requireMailboxPermission(c, auth.PermMailboxesUse); err != nil {
+		return err
+	}
 	access, err := a.workspaceAccess(c)
 	if err != nil {
 		return err

@@ -51,7 +51,7 @@
           </div>
 
           <b-field :label="$t('visibility.label')" label-position="on-border">
-            <b-select v-model="form.visibility" :disabled="!canSave || !$can('templates:manage')" expanded>
+            <b-select v-model="form.visibility" :disabled="!canSave || !$can('assets:share')" expanded>
               <option value="private">{{ $t('visibility.private') }}</option>
               <option v-if="workspace.organizationId" value="organization">{{ $t('visibility.organization') }}</option>
               <option value="global">{{ $t('visibility.global') }}</option>
@@ -150,7 +150,7 @@ export default Vue.extend({
         body: '',
         bodySource: null,
         media: [],
-        visibility: 'global',
+        visibility: 'private',
         nameFallback: { enabled: false, value: '', invalidValues: [] },
       },
       previewItem: null,
@@ -252,8 +252,7 @@ export default Vue.extend({
       if (this.isEditing) {
         return this.$canManageTemplate(this.data);
       }
-      return this.$canCreateWorkspaceResource()
-        && (this.form.visibility === 'global' || this.$can('templates:manage'));
+      return this.$canCreateWorkspaceResource('templates:manage');
     },
   },
 

@@ -78,7 +78,8 @@
               <b-icon icon="pencil-outline" size="is-small" />
             </b-tooltip>
           </a>
-          <a href="#" @click.prevent="openCloneTemplate(props.row)" data-cy="btn-clone" :aria-label="$t('globals.buttons.clone')">
+          <a v-if="$can('templates:manage')" href="#" @click.prevent="openCloneTemplate(props.row)"
+            data-cy="btn-clone" :aria-label="$t('globals.buttons.clone')">
             <b-tooltip :label="$t('globals.buttons.clone')" type="is-dark">
               <b-icon icon="file-multiple-outline" size="is-small" />
             </b-tooltip>
@@ -234,7 +235,7 @@ export default Vue.extend({
     showNewForm() {
       this.curItem = {
         type: 'campaign',
-        visibility: this.$can('templates:manage') ? 'private' : 'global',
+        visibility: 'private',
       };
       this.isFormVisible = true;
       this.isEditing = false;
@@ -284,6 +285,7 @@ export default Vue.extend({
 
     canManageOrganizationTemplate(template) {
       return this.isOrganizationManager
+        && this.$can('templates:manage') && this.$can('assets:share')
         && template.visibility === 'organization'
         && !template.transferPendingAt;
     },
@@ -355,7 +357,7 @@ export default Vue.extend({
     },
 
     canCreateTemplate() {
-      return this.$canCreateWorkspaceResource();
+      return this.$canCreateWorkspaceResource('templates:manage');
     },
 
     activeOrganizationMembers() {

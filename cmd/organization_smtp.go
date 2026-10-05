@@ -16,6 +16,9 @@ import (
 // exclusive organization owner. A negative internal owner key is never bound
 // from request data; it is derived from an authorized workspace.
 func (a *App) organizationSMTPOwner(c echo.Context) (int, error) {
+	if err := requireMailboxPermission(c, auth.PermMailboxesManage); err != nil {
+		return 0, err
+	}
 	ws, err := a.requireOrganizationManager(c)
 	if err != nil {
 		return 0, err
@@ -77,6 +80,9 @@ type campaignSMTPOverview struct {
 // GetCampaignSMTPOverview deliberately projects only sender and usage fields;
 // campaign editors (including ordinary members) never receive credentials.
 func (a *App) GetCampaignSMTPOverview(c echo.Context) error {
+	if err := requireMailboxPermission(c, auth.PermMailboxesUse); err != nil {
+		return err
+	}
 	access, err := a.workspaceAccess(c)
 	if err != nil {
 		return err

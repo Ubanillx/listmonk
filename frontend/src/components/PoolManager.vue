@@ -42,7 +42,7 @@
               {{ $t('pool.viewAllocationContacts') }}
             </router-link>
           </div>
-          <div v-else data-cy="org-pool-allocation-create">
+          <div v-else-if="$can('pools:manage')" data-cy="org-pool-allocation-create">
             <p class="help pool-bindings__hint">{{ $t('pool.bindingHelp') }}</p>
             <b-field :label="$t('pool.createNameLabel')" label-position="on-border">
               <b-input v-model.trim="allocationName" maxlength="200" :disabled="creatingAllocation"
@@ -51,6 +51,13 @@
             <b-button type="is-primary" :loading="creatingAllocation" :disabled="creatingAllocation || !allocationName"
               native-type="button" data-cy="create-org-pool-allocation" @click="createAllocation">
               {{ $t('pool.createAndBind') }}
+            </b-button>
+          </div>
+          <div v-if="$can('pools:delivery_manage')" class="mt-4" data-cy="pool-delivery-grant">
+            <p>{{ $t(deliveryAllowed ? 'pool.deliveryGranted' : 'pool.deliveryRevoked') }}</p>
+            <b-button :disabled="deliveryLoading || creatingAllocation" :loading="deliveryLoading"
+              @click="toggleDelivery" data-cy="pool-toggle-delivery">
+              {{ $t(deliveryAllowed ? 'pool.revokeDelivery' : 'pool.grantDelivery') }}
             </b-button>
           </div>
         </template>
@@ -72,24 +79,27 @@ export default Vue.extend({
   data() {
     return {
       allocations: [],
+      poolOrganizations: [],
       targetOrganizationID: null,
       organizationSearch: '',
       allocationNames: {},
       loadingAllocations: true,
       loadError: false,
       creatingAllocation: false,
+      deliveryAllowed: false,
+      deliveryLoading: false,
     };
   },
   computed: {
     ...mapState(['profile', 'organizations', 'workspace']),
 
     isPlatformAdmin() {
-      return Number(this.profile && this.profile.userRole && this.profile.userRole.id) === 1;
+      return this.$can('pools:delivery_manage');
     },
 
     availableOrganizations() {
       if (this.isPlatformAdmin) {
-        return (this.organizations || []).filter((organization) => !organization.status || organization.status === 'active');
+        return this.poolOrganizations;
       }
       const id = Number(this.workspace.organizationId);
       return id > 0 ? [{ id, name: this.workspace.organizationName || this.$t('pool.organizationFallback', { id }) }] : [];
@@ -124,6 +134,31 @@ export default Vue.extend({
     },
   },
   methods: {
+    async loadDelivery() {
+      if (!this.$can('pools:delivery_manage') || !this.organizationID) return;
+      this.deliveryLoading = true;
+      const { organizationID } = this;
+      try {
+        const target = await this.$api.getPoolManagementTarget(this.pool.id, organizationID);
+        if (organizationID === this.organizationID) this.deliveryAllowed = !!target.deliveryAllowed;
+      } catch (err) {
+        this.loadError = true;
+      } finally {
+        if (organizationID === this.organizationID) this.deliveryLoading = false;
+      }
+    },
+
+    async toggleDelivery() {
+      if (this.deliveryLoading || !this.organizationID) return;
+      this.deliveryLoading = true;
+      const action = this.deliveryAllowed ? this.$api.revokePoolOrganization : this.$api.grantPoolOrganization;
+      try {
+        await action({ pool_id: this.pool.id, organization_id: this.organizationID });
+        await this.loadDelivery();
+      } finally {
+        this.deliveryLoading = false;
+      }
+    },
     allocationFor(organizationID) {
       return this.allocations.find((allocation) => Number(allocation.organizationId || allocation.organization_id) === Number(organizationID));
     },
@@ -131,13 +166,16 @@ export default Vue.extend({
     loadAllocations() {
       this.loadingAllocations = true;
       this.loadError = false;
-      return this.$api.getOrgPoolAllocations(this.pool.id).then((rows) => {
+      const organizations = this.isPlatformAdmin ? this.$api.getPoolOrganizations() : Promise.resolve([]);
+      return Promise.all([this.$api.getOrgPoolAllocations(this.pool.id), organizations]).then(([rows, targets]) => {
+        this.poolOrganizations = targets;
         this.allocations = Array.isArray(rows) ? rows : [];
         if (!this.availableOrganizations.some((organization) => Number(organization.id) === this.organizationID)) {
           const current = this.availableOrganizations.find((organization) => Number(organization.id) === Number(this.workspace.organizationId));
           const initial = current || this.availableOrganizations[0];
           this.targetOrganizationID = initial ? Number(initial.id) : null;
         }
+        return this.loadDelivery();
       }).catch(() => {
         this.loadError = true;
       }).finally(() => {
@@ -161,6 +199,9 @@ export default Vue.extend({
         this.creatingAllocation = false;
       });
     },
+  },
+  watch: {
+    organizationID() { this.loadDelivery(); },
   },
   mounted() {
     this.loadAllocations();

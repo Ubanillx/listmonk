@@ -213,7 +213,7 @@ func (a *App) GetPoolContacts(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid pool id")
 	}
 	user := auth.GetUser(c)
-	if !user.IsPlatformAdmin() {
+	if !canManagePoolMaster(user) {
 		if err := a.core.AuthorizePoolListAccess(id, int64(access.OrganizationID)); err != nil {
 			return err
 		}
@@ -227,7 +227,7 @@ func (a *App) GetPoolContacts(c echo.Context) error {
 	poolStatus := c.QueryParam("status")
 	pg := a.pg.NewFromURL(c.Request().URL.Query())
 	rows, total, err := a.core.QueryPoolContacts(id, access.OrganizationID, user.IsPlatformAdmin(),
-		poolStatus, search, c.QueryParam("order_by"), c.QueryParam("order"), pg.Offset, pg.Limit)
+		poolStatus, search, c.QueryParam("order_by"), c.QueryParam("order"), pg.Offset, pg.Limit, canManagePoolMaster(user))
 	if err != nil {
 		return err
 	}
@@ -259,7 +259,7 @@ func (a *App) GetAllPoolContacts(c echo.Context) error {
 	}
 	pg := a.pg.NewFromURL(c.Request().URL.Query())
 	rows, total, err := a.core.QueryAllPoolContacts(access.OrganizationID, user.IsPlatformAdmin(),
-		c.QueryParam("status"), search, poolID, department, c.QueryParam("order_by"), c.QueryParam("order"), pg.Offset, pg.Limit)
+		c.QueryParam("status"), search, poolID, department, c.QueryParam("order_by"), c.QueryParam("order"), pg.Offset, pg.Limit, canManagePoolMaster(user))
 	if err != nil {
 		return err
 	}
@@ -279,7 +279,7 @@ func (a *App) GetAllPoolContactFilters(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	options, err := a.core.QueryAllPoolContactFilterOptions(access.OrganizationID, auth.GetUser(c).IsPlatformAdmin())
+	options, err := a.core.QueryAllPoolContactFilterOptions(access.OrganizationID, canManagePoolMaster(auth.GetUser(c)))
 	if err != nil {
 		return err
 	}
@@ -340,7 +340,7 @@ func (a *App) ExportAllPoolContacts(c echo.Context) error {
 	for offset := 0; ; offset += batch {
 		rows, _, err := a.core.QueryAllPoolContacts(access.OrganizationID, user.IsPlatformAdmin(),
 			c.QueryParam("status"), c.QueryParam("search"), poolID, department,
-			c.QueryParam("order_by"), c.QueryParam("order"), offset, batch)
+			c.QueryParam("order_by"), c.QueryParam("order"), offset, batch, canManagePoolMaster(user))
 		if err != nil {
 			return err
 		}
@@ -394,7 +394,7 @@ func (a *App) ExportPoolContacts(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid pool id")
 	}
 	user := auth.GetUser(c)
-	if !user.IsPlatformAdmin() {
+	if !canManagePoolMaster(user) {
 		if err := a.core.AuthorizePoolListAccess(id, int64(access.OrganizationID)); err != nil {
 			return err
 		}
@@ -427,7 +427,7 @@ func (a *App) ExportPoolContacts(c echo.Context) error {
 		batch = 1000
 	}
 	for offset := 0; ; offset += batch {
-		rows, _, err := a.core.QueryPoolContacts(id, access.OrganizationID, user.IsPlatformAdmin(), poolStatus, search, orderBy, order, offset, batch)
+		rows, _, err := a.core.QueryPoolContacts(id, access.OrganizationID, user.IsPlatformAdmin(), poolStatus, search, orderBy, order, offset, batch, canManagePoolMaster(user))
 		if err != nil {
 			return err
 		}
@@ -467,6 +467,9 @@ func (a *App) ExportPoolContacts(c echo.Context) error {
 }
 
 func (a *App) GetOrgPoolAllocations(c echo.Context) error {
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermPoolsGet, auth.PermPoolsManage, auth.PermPoolsDeliveryManage); err != nil {
+		return err
+	}
 	access, err := a.workspaceAccess(c)
 	if err != nil {
 		return err
@@ -481,7 +484,7 @@ func (a *App) GetOrgPoolAllocations(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	rows, err := a.core.QueryOrgPoolAllocations(poolID, int64(access.OrganizationID), auth.GetUser(c).IsPlatformAdmin())
+	rows, err := a.core.QueryOrgPoolAllocations(poolID, int64(access.OrganizationID), canManagePoolDelivery(auth.GetUser(c)))
 	if err != nil {
 		return err
 	}
@@ -493,13 +496,22 @@ func (a *App) GetOrgPoolAllocations(c echo.Context) error {
 // a highest administrator can select any active organization here while
 // remaining in the current workspace.
 func (a *App) GetPoolManagementTarget(c echo.Context) error {
-	if err := requirePoolAdministrator(c); err != nil {
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermPoolsManage, auth.PermPoolsDeliveryManage); err != nil {
 		return err
 	}
 	poolID := getID(c)
 	organizationID, err := strconv.Atoi(c.QueryParam("organization_id"))
 	if err != nil || organizationID <= 0 {
 		return echo.NewHTTPError(http.StatusBadRequest, "organization_id is required")
+	}
+	if !canManagePoolDelivery(auth.GetUser(c)) {
+		access, err := a.workspaceAccess(c)
+		if err != nil {
+			return err
+		}
+		if organizationID != access.OrganizationID || !access.IsOrganization() {
+			return echo.NewHTTPError(http.StatusForbidden, "pool allocation is outside the active workspace")
+		}
 	}
 	out, err := a.core.QueryPoolManagementTarget(poolID, organizationID)
 	if err != nil {
@@ -509,16 +521,29 @@ func (a *App) GetPoolManagementTarget(c echo.Context) error {
 }
 
 func requirePoolAdministrator(c echo.Context) error {
-	if !auth.GetUser(c).IsPlatformAdmin() {
-		return echo.NewHTTPError(http.StatusForbidden, "only highest administrators may manage public pools")
+	return requireLegacyPermission(auth.GetUser(c), auth.PermPoolsMasterManage)
+}
+
+// Only a delivery administrator can inspect the platform organization picker.
+// It returns names and IDs and grants no membership or organization management.
+func (a *App) GetPoolOrganizations(c echo.Context) error {
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermPoolsDeliveryManage); err != nil {
+		return err
 	}
-	return nil
+	var rows []struct {
+		ID   int    `db:"id" json:"id"`
+		Name string `db:"name" json:"name"`
+	}
+	if err := a.db.Select(&rows, `SELECT id,name FROM organizations WHERE status='active' ORDER BY name,id`); err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, okResp{rows})
 }
 
 // requirePoolPermission resolves the active workspace and requires the given
 // pools permission. Platform administrators bypass the role grant; every other
-// caller is additionally restricted to the workspace organization by the
-// individual handlers.
+// caller is restricted by the individual handlers. Master-data maintenance
+// widens only first-level pool scope; allocation maintenance stays organization-bound.
 func (a *App) requirePoolPermission(c echo.Context, perm string) (models.WorkspaceAccess, error) {
 	access, err := a.workspaceAccess(c)
 	if err != nil {
@@ -530,6 +555,11 @@ func (a *App) requirePoolPermission(c echo.Context, perm string) (models.Workspa
 	}
 	if !u.HasPerm(perm) {
 		return access, echo.NewHTTPError(http.StatusForbidden, "permission denied: "+perm)
+	}
+	if perm != auth.PermPoolsGet && perm != auth.PermPoolsExport {
+		if err := requireWritableWorkspace(access); err != nil {
+			return access, err
+		}
 	}
 	return access, nil
 }
@@ -554,8 +584,8 @@ func (a *App) requirePoolAllocationScope(c echo.Context, access models.Workspace
 }
 
 func (a *App) GetPoolImportConflicts(c echo.Context) error {
-	if !auth.GetUser(c).IsPlatformAdmin() {
-		return echo.NewHTTPError(http.StatusForbidden, "only highest administrators may inspect pool conflicts")
+	if err := requirePoolAdministrator(c); err != nil {
+		return err
 	}
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -573,6 +603,19 @@ func (a *App) GetPoolImportConflicts(c echo.Context) error {
 	if err := a.db.Select(&rows, `SELECT id,contact_id,customer_code,existing_snapshot,incoming_snapshot,created_by_user_id,created_at::text FROM pool_merge_conflicts WHERE pool_id=$1 ORDER BY id DESC`, id); err != nil {
 		return err
 	}
+	if !auth.GetUser(c).IsPlatformAdmin() {
+		for i := range rows {
+			for _, snapshot := range []models.JSON{rows[i].ExistingSnapshot, rows[i].IncomingSnapshot} {
+				delete(snapshot, "uuid")
+				delete(snapshot, "attribs")
+				for _, field := range []string{"email", "reply_to"} {
+					if email, ok := snapshot[field].(string); ok {
+						snapshot[field] = models.PoolContact{Email: email}.Safe().Email
+					}
+				}
+			}
+		}
+	}
 	return c.JSON(http.StatusOK, okResp{rows})
 }
 
@@ -583,8 +626,8 @@ type poolOrganizationRequest struct {
 
 func (a *App) GrantPoolOrganization(c echo.Context) error {
 	u := auth.GetUser(c)
-	if !u.IsPlatformAdmin() {
-		return echo.NewHTTPError(http.StatusForbidden, "only highest administrators may grant pool delivery access")
+	if err := requireLegacyPermission(u, auth.PermPoolsDeliveryManage); err != nil {
+		return err
 	}
 	var req poolOrganizationRequest
 	if err := c.Bind(&req); err != nil {
@@ -592,6 +635,9 @@ func (a *App) GrantPoolOrganization(c echo.Context) error {
 	}
 	if req.PoolID <= 0 || req.OrganizationID <= 0 {
 		return echo.NewHTTPError(http.StatusBadRequest, "pool_id and organization_id are required")
+	}
+	if _, err := a.core.QueryPoolManagementTarget(req.PoolID, int(req.OrganizationID)); err != nil {
+		return err
 	}
 	setAuditOrganizationID(c, int(req.OrganizationID))
 	setAuditObjectID(c, strconv.Itoa(req.PoolID))
@@ -602,8 +648,8 @@ func (a *App) GrantPoolOrganization(c echo.Context) error {
 }
 
 func (a *App) RevokePoolOrganization(c echo.Context) error {
-	if !auth.GetUser(c).IsPlatformAdmin() {
-		return echo.NewHTTPError(http.StatusForbidden, "only highest administrators may revoke pool delivery access")
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermPoolsDeliveryManage); err != nil {
+		return err
 	}
 	var req poolOrganizationRequest
 	if err := c.Bind(&req); err != nil {
@@ -618,7 +664,7 @@ func (a *App) RevokePoolOrganization(c echo.Context) error {
 }
 
 func (a *App) CreatePoolContact(c echo.Context) error {
-	access, err := a.requirePoolPermission(c, auth.PermPoolsManage)
+	access, err := a.requirePoolPermission(c, auth.PermPoolsMasterManage)
 	if err != nil {
 		return err
 	}
@@ -630,18 +676,8 @@ func (a *App) CreatePoolContact(c echo.Context) error {
 	if err := c.Bind(&p); err != nil {
 		return err
 	}
-	if !auth.GetUser(c).IsPlatformAdmin() {
-		if err := a.core.AuthorizePoolListAccess(id, int64(access.OrganizationID)); err != nil {
-			return err
-		}
-		// A non-platform-admin may only add contacts for its own
-		// organization, so the department is pinned to it: the contact is
-		// never placed in another organization's allocation.
-		org, err := a.core.GetOrganization(access.OrganizationID)
-		if err != nil {
-			return err
-		}
-		p.AllocationDepartment = org.Name
+	if _, err := a.core.RequireManageResource(access, resourceLists, id); err != nil {
+		return err
 	}
 	out, err := a.core.CreatePoolContact(id, p)
 	if err != nil {
@@ -649,11 +685,14 @@ func (a *App) CreatePoolContact(c echo.Context) error {
 	}
 	setAuditObjectID(c, strconv.FormatInt(out.ID, 10))
 	setAuditMetadata(c, map[string]any{"pool_id": id})
+	if !auth.GetUser(c).IsPlatformAdmin() {
+		return c.JSON(http.StatusOK, okResp{out.Safe()})
+	}
 	return c.JSON(http.StatusOK, okResp{out})
 }
 
 func (a *App) ClearPoolContactEmail(c echo.Context) error {
-	access, err := a.requirePoolPermission(c, auth.PermPoolsManage)
+	access, err := a.requirePoolPermission(c, auth.PermPoolsMasterManage)
 	if err != nil {
 		return err
 	}
@@ -662,22 +701,20 @@ func (a *App) ClearPoolContactEmail(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid pool id")
 	}
 	user := auth.GetUser(c)
-	if !user.IsPlatformAdmin() {
-		if err := a.core.AuthorizePoolListAccess(listID, int64(access.OrganizationID)); err != nil {
-			return err
-		}
-	}
 	// The route accepts a first-level pool list or one of its allocation
 	// lists; the core update is keyed by the first-level pool.
 	poolID, _, err := a.core.ResolvePoolListPoolID(listID)
 	if err != nil {
 		return err
 	}
+	if _, err := a.core.RequireManageResource(access, resourceLists, poolID); err != nil {
+		return err
+	}
 	contactID, err := strconv.ParseInt(c.Param("contact_id"), 10, 64)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid contact id")
 	}
-	if err := a.core.ClearPoolContactEmail(poolID, contactID, int64(access.OrganizationID), user.IsPlatformAdmin()); err != nil {
+	if err := a.core.ClearPoolContactEmail(poolID, contactID, int64(access.OrganizationID), canManagePoolMaster(user)); err != nil {
 		return err
 	}
 	setAuditMetadata(c, map[string]any{"pool_id": poolID})
@@ -685,15 +722,19 @@ func (a *App) ClearPoolContactEmail(c echo.Context) error {
 }
 
 // DeletePoolContact permanently removes a contact from a first-level public
-// pool. This destructive action is intentionally restricted to platform
-// administrators and does not accept organization allocation list IDs.
+// pool. This destructive action requires master-data maintenance and does not
+// accept organization allocation list IDs.
 func (a *App) DeletePoolContact(c echo.Context) error {
-	if err := requirePoolAdministrator(c); err != nil {
+	access, err := a.requirePoolPermission(c, auth.PermPoolsMasterManage)
+	if err != nil {
 		return err
 	}
 	poolID, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid pool id")
+	}
+	if _, err := a.core.RequireManageResource(access, resourceLists, poolID); err != nil {
+		return err
 	}
 	contactID, err := strconv.ParseInt(c.Param("contact_id"), 10, 64)
 	if err != nil || contactID <= 0 {
@@ -716,13 +757,10 @@ type orgPoolAllocationRequest struct {
 
 // CreateOrgPoolAllocation splits a first-level public pool into a new organization
 // pool allocation and binds both in a single transaction. Authorization is
-// two-tiered: a platform administrator may split a pool for any active
-// organization without being a member of it and without switching the current
-// workspace, while an organization manager may only split a pool for the
-// organization of the workspace it manages. Ordinary organization members and
-// non-members are rejected. The core layer re-verifies, while holding the
-// organization row lock, that the target organization is active and that a
-// non-platform-admin caller is an active member of it.
+// two-tiered: allocation management requires pools:manage; a caller with
+// delivery administration can choose any active organization. Other callers
+// must use their own organization and an existing delivery grant. Core locks
+// the target organization and rechecks its state and membership.
 func (a *App) CreateOrgPoolAllocation(c echo.Context) error {
 	var req orgPoolAllocationRequest
 	if err := c.Bind(&req); err != nil {
@@ -730,6 +768,10 @@ func (a *App) CreateOrgPoolAllocation(c echo.Context) error {
 	}
 	u := auth.GetUser(c)
 	platformAdmin := u.IsPlatformAdmin()
+	if err := requireLegacyPermission(u, auth.PermPoolsManage); err != nil {
+		return err
+	}
+	platformAdmin = platformAdmin || canManagePoolDelivery(u)
 	if req.ReplyMailboxID != nil {
 		return echo.NewHTTPError(http.StatusForbidden, "reply mailbox must be configured in the organization workspace")
 	}
@@ -741,11 +783,11 @@ func (a *App) CreateOrgPoolAllocation(c echo.Context) error {
 		if err := requireWritableWorkspace(access); err != nil {
 			return err
 		}
-		if !access.IsOrganization() || !access.IsOrganizationManager() {
-			return echo.NewHTTPError(http.StatusForbidden, "only a highest administrator or the target organization's manager may manage public pools")
+		if !access.IsOrganization() {
+			return echo.NewHTTPError(http.StatusForbidden, "select an organization to manage its pool allocations")
 		}
 		if req.OrganizationID != int64(access.OrganizationID) {
-			return echo.NewHTTPError(http.StatusForbidden, "organization managers may only manage their own organization")
+			return echo.NewHTTPError(http.StatusForbidden, "pool allocation management is limited to the active organization")
 		}
 	}
 	setAuditOrganizationID(c, int(req.OrganizationID))
@@ -777,8 +819,8 @@ type poolImportRequest struct {
 }
 
 func (a *App) ImportListIntoPool(c echo.Context) error {
-	if !auth.GetUser(c).IsPlatformAdmin() {
-		return echo.NewHTTPError(http.StatusForbidden, "only highest administrators may import lists into a pool")
+	if err := requirePoolAdministrator(c); err != nil {
+		return err
 	}
 	var req poolImportRequest
 	if err := c.Bind(&req); err != nil {
@@ -786,6 +828,19 @@ func (a *App) ImportListIntoPool(c echo.Context) error {
 	}
 	if req.ListID <= 0 || req.PoolID <= 0 {
 		return echo.NewHTTPError(http.StatusBadRequest, "list_id and pool_id are required")
+	}
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
+	if err := requireWritableWorkspace(access); err != nil {
+		return err
+	}
+	if _, err := a.core.RequireManageResource(access, resourceLists, req.ListID); err != nil {
+		return err
+	}
+	if _, err := a.core.RequireManageResource(access, resourceLists, req.PoolID); err != nil {
+		return err
 	}
 	setAuditObjectID(c, strconv.Itoa(req.PoolID))
 	setAuditMetadata(c, map[string]any{"source_list_id": req.ListID})

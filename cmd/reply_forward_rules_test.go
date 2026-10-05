@@ -76,7 +76,8 @@ func replyForwardRuleTestContext(t *testing.T, e *echo.Echo, method string, id i
 	c.SetPath("/api/organizations/reply-forwarding/:id")
 	// hasID normally parses the path parameter into this context value.
 	c.Set("id", id)
-	c.Set(auth.UserHTTPCtxKey, auth.User{Base: auth.Base{ID: replyForwardRuleTestManagerUser}})
+	c.Set(auth.UserHTTPCtxKey, auth.User{Base: auth.Base{ID: replyForwardRuleTestManagerUser},
+		PermissionsMap: map[string]struct{}{auth.PermMailboxesManage: {}}})
 	return c
 }
 

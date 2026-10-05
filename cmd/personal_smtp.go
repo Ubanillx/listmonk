@@ -77,6 +77,9 @@ func (a *App) GetUserPersonalSMTP(c echo.Context) error {
 }
 
 func (a *App) getPersonalSMTP(c echo.Context, userID int) error {
+	if err := requireMailboxPermission(c, auth.PermMailboxesManage); err != nil {
+		return err
+	}
 	if userID == 0 {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid SMTP owner")
 	}
@@ -107,6 +110,9 @@ func (a *App) UpdatePersonalSMTP(c echo.Context) error {
 }
 
 func (a *App) updateOwnedSMTP(c echo.Context, userID int) error {
+	if err := requireMailboxPermission(c, auth.PermMailboxesManage); err != nil {
+		return err
+	}
 	var req personalSMTPRequest
 	if err := c.Bind(&req); err != nil {
 		return err
@@ -278,6 +284,9 @@ func (a *App) DeletePersonalSMTP(c echo.Context) error {
 }
 
 func (a *App) deleteOwnedSMTP(c echo.Context, userID int) error {
+	if err := requireMailboxPermission(c, auth.PermMailboxesManage); err != nil {
+		return err
+	}
 	id := getID(c)
 	running, err := a.userHasRunningCampaigns(userID)
 	if err != nil {
@@ -562,6 +571,9 @@ func (a *App) TestPersonalSMTP(c echo.Context) error {
 }
 
 func (a *App) testOwnedSMTP(c echo.Context, userID int) error {
+	if err := requireMailboxPermission(c, auth.PermMailboxesManage); err != nil {
+		return err
+	}
 	var req personalSMTPTestRequest
 	if err := c.Bind(&req); err != nil {
 		return err

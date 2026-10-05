@@ -65,6 +65,13 @@ func (a *App) UploadMedia(c echo.Context) error {
 	if err := requireLegacyPermission(auth.GetUser(c), auth.PermMediaManage); err != nil {
 		return err
 	}
+	visibility, err := normalizeResourceVisibility(access, resourceMedia, c.FormValue("visibility"))
+	if err != nil {
+		return err
+	}
+	if err := requireAssetSharing(auth.GetUser(c), models.ResourceVisibilityPrivate, visibility); err != nil {
+		return err
+	}
 	file, err := c.FormFile("file")
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest,
@@ -76,6 +83,9 @@ func (a *App) UploadMedia(c echo.Context) error {
 	}
 	if folderID > 0 {
 		if err := a.core.RequireReadableMediaFolder(access, folderID); err != nil {
+			return err
+		}
+		if err := a.requireMediaPlacementSharing(c, 0, folderID); err != nil {
 			return err
 		}
 	}
@@ -238,11 +248,6 @@ func (a *App) UploadMedia(c echo.Context) error {
 	}
 
 	// Insert the media into the DB.
-	visibility, err := normalizeResourceVisibility(access, resourceMedia, c.FormValue("visibility"))
-	if err != nil {
-		cleanUp = true
-		return err
-	}
 	scope := core.ApplyWorkspaceScope(access, visibility)
 	m, err := a.core.InsertMediaInWorkspace(access, fName, thumbfName, contentType, meta, a.cfg.MediaUpload.Provider, folderID, scope, a.media)
 	if err != nil {
@@ -276,10 +281,8 @@ func (a *App) GetAllMedia(c echo.Context) error {
 		return err
 	}
 	user := auth.GetUser(c)
-	if !access.IsOrganizationManager() && !user.IsPlatformAdmin() {
-		if err := requireLegacyPermission(user, auth.PermMediaGet); err != nil {
-			return err
-		}
+	if err := requireLegacyPermission(user, auth.PermMediaGet); err != nil {
+		return err
 	}
 	var (
 		query = c.FormValue("query")
@@ -405,7 +408,7 @@ func (a *App) serveWorkspaceOrPublicMedia(c echo.Context, rawFilename string) er
 	}
 
 	if _, ok := c.Get(auth.UserHTTPCtxKey).(auth.User); ok {
-		if access, err := a.workspaceAccess(c); err == nil {
+		if access, err := a.workspaceAccess(c); err == nil && hasLegacyPermission(auth.GetUser(c), auth.PermMediaGet) {
 			if _, err := a.core.GetWorkspaceMediaByFilename(access, filename); err == nil {
 				return a.streamMediaBlob(c, filename)
 			}
@@ -440,6 +443,9 @@ func (a *App) serveWorkspaceOrPublicMediaByID(c echo.Context, id int, rawFilenam
 	// row. The active workspace cookie/header is still required for private and
 	// organization resources; the ID never grants access on its own.
 	if _, ok := c.Get(auth.UserHTTPCtxKey).(auth.User); ok {
+		if err := requireLegacyPermission(auth.GetUser(c), auth.PermMediaGet); err != nil {
+			return err
+		}
 		access, err := a.workspaceAccess(c)
 		if err != nil {
 			return err

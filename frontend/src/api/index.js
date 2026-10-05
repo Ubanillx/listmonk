@@ -244,6 +244,7 @@ export const getOrgPoolAllocations = (id) => http.get(`/api/customer-lists/${id}
 export const getPoolManagementTarget = (id, organizationID) => http.get(`/api/pools/${id}/management-target`, {
   params: { organization_id: organizationID },
 });
+export const getPoolOrganizations = () => http.get('/api/pools/organizations');
 export const getPoolImportConflicts = (id) => http.get(`/api/pools/${id}/import-conflicts`);
 export const createPoolContact = (id, data) => http.post(`/api/customer-lists/${id}/pool-contacts`, data);
 export const createOrgPoolAllocation = (data) => http.post('/api/org-pool-allocations', data);

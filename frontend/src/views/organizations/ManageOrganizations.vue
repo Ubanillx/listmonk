@@ -135,7 +135,7 @@
         </section>
       </b-tab-item>
 
-      <b-tab-item v-if="selectedOrganizationID" :label="$t('organizations.tabReplyMailboxes')" icon="email-multiple-outline">
+      <b-tab-item v-if="selectedOrganizationID && $can('mailboxes:manage')" :label="$t('organizations.tabReplyMailboxes')" icon="email-multiple-outline">
         <section class="wrap">
           <section class="mb-6" data-cy="org-unified-reply-mailbox">
             <h2 class="title is-5">{{ $t('organizations.unifiedReplyMailbox') }}</h2>
@@ -170,7 +170,7 @@
         </section>
       </b-tab-item>
 
-      <b-tab-item v-if="selectedOrganizationID" :label="$t('organizations.tabReplyForward')" icon="email-arrow-left-outline">
+      <b-tab-item v-if="selectedOrganizationID && $can('mailboxes:manage')" :label="$t('organizations.tabReplyForward')" icon="email-arrow-left-outline">
         <section class="wrap">
           <p class="has-text-grey mb-4">{{ $t('organizations.replyForwardHelp') }}</p>
           <div class="table-scroll">
@@ -197,7 +197,7 @@
         </section>
       </b-tab-item>
 
-      <b-tab-item v-if="selectedOrganizationID" :label="$t('organizations.smtpTitle')" icon="email-fast-outline">
+      <b-tab-item v-if="selectedOrganizationID && $can('mailboxes:manage')" :label="$t('organizations.smtpTitle')" icon="email-fast-outline">
         <section class="wrap smtp-pool-wrap" data-cy="organization-smtp">
           <div class="columns is-variable is-5 smtp-pool-layout">
             <div class="column is-3">
@@ -505,10 +505,12 @@ export default Vue.extend({
         ]);
         this.members = members;
         this.invites = invites;
-        this.replyForwardRules = await this.$api.getReplyForwardRules(this.selectedOrganizationID);
-        await this.loadSMTPPools();
+        if (this.$can('mailboxes:manage')) {
+          this.replyForwardRules = await this.$api.getReplyForwardRules(this.selectedOrganizationID);
+          await this.loadSMTPPools();
+        }
         this.transferTargetUserID = null;
-        await this.loadUnifiedReplyMailbox();
+        if (this.$can('mailboxes:manage')) await this.loadUnifiedReplyMailbox();
       } finally {
         this.isLoading = false;
       }

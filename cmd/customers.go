@@ -80,12 +80,7 @@ func (a *App) GetCustomer(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	// Organization managers are explicitly allowed to inspect the complete
-	// customer and customer_list relationship for members of the active organization.
-	// This is read-only at the HTTP/Core mutation boundary (edit/delete/import/
-	// export/bulk operations still require ownership), but the detail and customer_list
-	// views must include the recipient identity and attributes so managers can
-	// administer the organization's audiences and understand ownership.
+	// Oversight and ownership do not replace the sensitive-data permission.
 	a.redactWorkspaceCustomerSensitiveFields(access, masked, &out, auth.GetUser(c))
 
 	return c.JSON(http.StatusOK, okResp{out})
@@ -123,10 +118,8 @@ func (a *App) QueryCustomers(c echo.Context) error {
 		return err
 	}
 	user := auth.GetUser(c)
-	if !access.IsOrganizationManager() && !user.IsPlatformAdmin() {
-		if err := requireLegacyPermission(user, auth.PermCustomersGetAll, auth.PermCustomersGet); err != nil {
-			return err
-		}
+	if err := requireLegacyPermission(user, auth.PermCustomersGetAll, auth.PermCustomersGet); err != nil {
+		return err
 	}
 	CustomerListIDs, err := a.workspaceCustomerListIDsForRequest(c, access, "customer_list_id", c.QueryParams(), false)
 	if err != nil {
@@ -185,10 +178,8 @@ func (a *App) requestMaskedLists(c echo.Context, access models.WorkspaceAccess, 
 }
 
 // exportMasked decides whether a CSV export should mask e-mail addresses. It
-// applies when the exported customer_list scope contains customer_lists with masking enabled and
-// the caller has neither a legacy customer_list-manage grant nor workspace ownership of
-// those customer_lists. Owners, customer_list managers, users with the dedicated sensitive
-// customer permission, and platform administrators always receive the complete record.
+// applies when the selected lists enable masking and the caller lacks the
+// sensitive-data permission. Ownership and list maintenance do not bypass it.
 func (a *App) exportMasked(c echo.Context, access models.WorkspaceAccess, CustomerListIDs []int) (bool, error) {
 	masked, err := a.core.MaskedCustomerListIDs(CustomerListIDs)
 	if err != nil {
@@ -198,21 +189,10 @@ func (a *App) exportMasked(c echo.Context, access models.WorkspaceAccess, Custom
 		return false, nil
 	}
 	user := auth.GetUser(c)
-	if user.IsPlatformAdmin() || user.HasPerm(auth.PermCustomersSensitiveRead) || user.HasPerm(auth.PermListManageAll) {
+	if user.HasPerm(auth.PermCustomersSensitiveRead) {
 		return false, nil
 	}
-	for id := range masked {
-		// Legacy per-customer_list manage grant?
-		if err := requireLegacyListPermission(user, id, true); err == nil {
-			continue
-		}
-		// Workspace ownership?
-		if _, err := a.core.RequireManageResource(access, resourceLists, id); err == nil {
-			continue
-		}
-		return true, nil
-	}
-	return false, nil
+	return true, nil
 }
 
 // maskEmail masks a customer's e-mail address for viewers without
@@ -232,23 +212,11 @@ func maskEmail(email string) string {
 	return local[:3] + strings.Repeat("x", len(local)-3) + domain
 }
 
-// redactWorkspaceCustomerSensitiveFields is retained for callers that may
-// fetch a customer through a non-workspace path. In the active organization,
-// managers have the documented read-only right to see member customer
-// details, including e-mail, attributes, and customer_list memberships. Users with
-// customers:sensitive_read receive the same sensitive-field visibility for records
-// they can otherwise read. Managers still
-// cannot mutate or export those rows: the corresponding handlers use the
-// stricter managed/export predicates before reaching this response layer.
-//
-// Viewers without sensitive-data access see a masked e-mail when the currently
-// viewed customer_list has e-mail masking enabled; otherwise the pre-existing
-// redaction (empty e-mail) is retained.
+// redactWorkspaceCustomerSensitiveFields runs after the resource boundary.
+// Sensitive data requires an explicit grant; membership stays available for
+// maintenance. Email is masked in masked-list views and otherwise hidden.
 func (a *App) redactWorkspaceCustomerSensitiveFields(access models.WorkspaceAccess, maskedLists map[int]bool, sub *models.Customer, user auth.User) {
-	if sub == nil || user.HasPerm(auth.PermCustomersSensitiveRead) || a.core.CanSeeSensitiveResource(access, sub.ResourceScope) ||
-		(access.IsOrganizationManager() && access.IsOrganization() &&
-			sub.OrganizationID.Valid && int(sub.OrganizationID.Int) == access.OrganizationID &&
-			!sub.OrganizationArchived) {
+	if sub == nil || user.HasPerm(auth.PermCustomersSensitiveRead) {
 		return
 	}
 	if len(maskedLists) > 0 && sub.Email != "" {
@@ -258,7 +226,6 @@ func (a *App) redactWorkspaceCustomerSensitiveFields(access models.WorkspaceAcce
 	}
 	sub.UUID = ""
 	sub.Attribs = models.JSON{}
-	sub.CustomerLists = []byte("[]")
 }
 
 // ExportCustomers exports customers using the supported search filters.
@@ -270,10 +237,8 @@ func (a *App) ExportCustomers(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if !access.IsOrganizationManager() {
-		if err := requireLegacyPermission(auth.GetUser(c), auth.PermCustomersExport); err != nil {
-			return err
-		}
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCustomersExport); err != nil {
+		return err
 	}
 	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCustomersGetAll, auth.PermCustomersGet); err != nil {
 		return err
@@ -321,10 +286,8 @@ func (a *App) ExportCustomers(c echo.Context) error {
 		wr  = csv.NewWriter(c.Response())
 	)
 
-	// E-mail masking on export. When the export is scoped to customer_lists that have
-	// masking enabled, callers who cannot manage those customer_lists receive masked
-	// e-mail addresses; owners, customer_list managers and platform administrators
-	// still get the complete record.
+	// The sensitive-data grant controls export fields independently of ownership.
+	// Selected masked lists use masked email; other exports hide it entirely.
 	maskExport, err := a.exportMasked(c, access, CustomerListIDs)
 	if err != nil {
 		return err
@@ -350,8 +313,14 @@ loop:
 
 		for _, r := range out {
 			email := r.Email
-			if maskExport && email != "" {
-				email = maskEmail(email)
+			user := auth.GetUser(c)
+			if !user.HasPerm(auth.PermCustomersSensitiveRead) {
+				if maskExport {
+					email = maskEmail(email)
+				} else {
+					email = ""
+				}
+				r.UUID, r.Attribs = "", "{}"
 			}
 			if err = wr.Write([]string{r.UUID, email, r.Name, r.CustomerCode, r.Attribs, r.Status,
 				r.CreatedAt.Time.String(), r.UpdatedAt.Time.String()}); err != nil {
@@ -409,6 +378,7 @@ func (a *App) CreateCustomer(c echo.Context) error {
 	}
 	setAuditObjectID(c, strconv.Itoa(sub.ID))
 	setAuditObjectDetails(c, auditCustomerDetails(sub))
+	a.redactWorkspaceCustomerSensitiveFields(access, nil, &sub, auth.GetUser(c))
 
 	return c.JSON(http.StatusOK, okResp{sub})
 }
@@ -423,6 +393,10 @@ func (a *App) UpdateCustomer(c echo.Context) error {
 	if _, err := a.requireManagedWorkspaceCustomer(c, access, id); err != nil {
 		return err
 	}
+	previous, err := a.core.GetWorkspaceCustomer(access, id)
+	if err != nil {
+		return err
+	}
 
 	// Get and validate fields.
 	req := struct {
@@ -430,8 +404,15 @@ func (a *App) UpdateCustomer(c echo.Context) error {
 		CustomerLists  []int `json:"customer_list_ids"`
 		PreconfirmSubs bool  `json:"preconfirm_subscriptions"`
 	}{}
+	// Omitted sensitive fields retain stored values, allowing edits of a
+	// redacted record without overwriting its email or attributes.
+	req.Customer = previous
+	req.Attribs = nil
 	if err := c.Bind(&req); err != nil {
 		return err
+	}
+	if req.Attribs == nil {
+		req.Attribs = previous.Attribs
 	}
 
 	// Sanitize and validate the email field.
@@ -466,6 +447,7 @@ func (a *App) UpdateCustomer(c echo.Context) error {
 		return err
 	}
 	setAuditObjectDetails(c, auditCustomerDetails(out))
+	a.redactWorkspaceCustomerSensitiveFields(access, nil, &out, auth.GetUser(c))
 
 	return c.JSON(http.StatusOK, okResp{out})
 }
@@ -842,10 +824,8 @@ func (a *App) ExportCustomerData(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if !access.IsOrganizationManager() {
-		if err := requireLegacyPermission(auth.GetUser(c), auth.PermCustomersExport); err != nil {
-			return err
-		}
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCustomersExport); err != nil {
+		return err
 	}
 	// Get the customer's data. A single query that gets the profile,
 	// customer_list subscriptions, campaign views, and link clicks. Names of
@@ -854,11 +834,24 @@ func (a *App) ExportCustomerData(c echo.Context) error {
 	if _, err := a.requireExportableWorkspaceCustomer(c, access, id); err != nil {
 		return err
 	}
-	_, b, err := a.exportWorkspaceCustomerData(access, id, a.cfg.Privacy.Exportable)
+	data, _, err := a.exportWorkspaceCustomerData(access, id, a.cfg.Privacy.Exportable)
 	if err != nil {
 		a.log.Printf("error exporting customer data: %s", err)
 		return echo.NewHTTPError(http.StatusInternalServerError,
 			a.i18n.Ts("globals.messages.errorFetching", "name", "{globals.terms.customers}", "error", err.Error()))
+	}
+	user := auth.GetUser(c)
+	if !user.HasPerm(auth.PermCustomersSensitiveRead) {
+		if len(data.Profile) > 0 {
+			data.Profile, err = redactCustomerExportProfile(data.Profile)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	b, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return err
 	}
 
 	// Set headers to force the browser to prompt for download.

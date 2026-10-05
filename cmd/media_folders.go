@@ -114,6 +114,9 @@ func parseMediaFolderFilter(raw string) (*int, error) {
 }
 
 func (a *App) GetMediaFolders(c echo.Context) error {
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermMediaGet); err != nil {
+		return err
+	}
 	c.Response().Header().Set(echo.HeaderCacheControl, "no-store")
 	access, err := a.workspaceAccess(c)
 	if err != nil {
@@ -147,6 +150,12 @@ func (a *App) CreateMediaFolder(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return err
 	}
+	if req.Visibility == "" {
+		req.Visibility = models.ResourceVisibilityPrivate
+	}
+	if err := requireAssetSharing(auth.GetUser(c), models.ResourceVisibilityPrivate, req.Visibility); err != nil {
+		return err
+	}
 	folder, err := a.core.CreateMediaFolderInWorkspace(access, req.Name, req.ParentID, req.Visibility)
 	if err != nil {
 		return err
@@ -171,6 +180,15 @@ func (a *App) RenameMediaFolder(c echo.Context) error {
 	var req mediaFolderRequest
 	if err := c.Bind(&req); err != nil {
 		return err
+	}
+	if req.Visibility != "" {
+		var previous string
+		if err := a.db.Get(&previous, `SELECT visibility FROM media_folders WHERE id=$1`, getID(c)); err != nil {
+			return err
+		}
+		if err := requireAssetSharing(auth.GetUser(c), previous, req.Visibility); err != nil {
+			return err
+		}
 	}
 	folder, err := a.core.RenameMediaFolderInWorkspace(access, getID(c), req.Name, req.Visibility)
 	if err != nil {
@@ -221,6 +239,13 @@ func (a *App) MoveMediaFolder(c echo.Context) error {
 	if req.ParentID != nil {
 		parentID = *req.ParentID
 	}
+	var sourceParent int
+	if err := a.db.Get(&sourceParent, `SELECT COALESCE(parent_id,0) FROM media_folders WHERE id=$1`, getID(c)); err != nil {
+		return err
+	}
+	if err := a.requireMediaPlacementSharing(c, sourceParent, parentID); err != nil {
+		return err
+	}
 	a.setAuditMediaFolderMoveDetails(c, access, getID(c), parentID)
 	setAuditMetadata(c, map[string]any{"parent_folder_id": parentID})
 	if err := a.core.MoveMediaFolderInWorkspace(access, getID(c), parentID); err != nil {
@@ -247,6 +272,13 @@ func (a *App) MoveMediaToFolder(c echo.Context) error {
 	folderID := 0
 	if req.FolderID != nil {
 		folderID = *req.FolderID
+	}
+	var sourceFolder int
+	if err := a.db.Get(&sourceFolder, `SELECT COALESCE(folder_id,0) FROM media WHERE id=$1`, getID(c)); err != nil {
+		return err
+	}
+	if err := a.requireMediaPlacementSharing(c, sourceFolder, folderID); err != nil {
+		return err
 	}
 	a.setAuditMediaMoveDetails(c, access, getID(c), folderID)
 	setAuditMetadata(c, map[string]any{"folder_id": folderID})

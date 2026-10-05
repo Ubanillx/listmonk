@@ -9,7 +9,7 @@
           autofocus data-cy="folder-name" />
       </b-field>
       <b-field :label="$t('media.folderPermission')" :message="$t('media.folderPermissionHelp')">
-        <b-select v-model="visibility" expanded data-cy="folder-permission">
+        <b-select v-model="visibility" expanded :disabled="!$can('assets:share')" data-cy="folder-permission">
           <option value="private">{{ $t('media.folderPrivate') }}</option>
           <option value="organization" :disabled="!isOrganization">{{ $t('media.folderOrganization') }}</option>
           <option value="global">{{ $t('media.folderGlobal') }}</option>
@@ -35,7 +35,7 @@ export default {
   },
 
   data() {
-    const defaultVisibility = this.isOrganization ? 'organization' : 'private';
+    const defaultVisibility = this.isOrganization && this.$can('assets:share') ? 'organization' : 'private';
     return {
       name: this.folder ? this.folder.name : '',
       visibility: this.folder ? this.folder.visibility : defaultVisibility,

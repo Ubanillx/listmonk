@@ -87,22 +87,25 @@
             </div>
           </div>
 
-          <b-table :data="serverConfig.permissions">
+          <b-table :data="permissionGroups">
             <b-table-column v-slot="props" field="group" :label="$t('users.roleGroup')">
-              {{ $tc(`globals.terms.${props.row.group}`) }}
+              {{ props.row.business ? $t(`users.businessGroup.${props.row.group}`) : $tc(`globals.terms.${props.row.group}`) }}
             </b-table-column>
 
             <b-table-column v-slot="props" field="permissions" :label="$t('users.perms')">
-              <div v-for="p in props.row.permissions" :key="p" class="permission-row">
-                <b-checkbox v-model="form.permissions" :native-value="p" :disabled="disabled">
-                  {{ permissionLabel(p) }}
-                  <span v-if="isHighRiskPermission(p)"
+              <div v-for="p in props.row.permissions" :key="p.id" class="permission-row">
+                <b-checkbox :value="bundleStatus(p).checked" :indeterminate="bundleStatus(p).partial" :disabled="disabled"
+                  :data-cy="`permission-${p.id}`" @input="onToggleBundle(p, $event)">
+                  {{ p.business ? $t(`users.businessPermission.${p.id}`) : permissionLabel(p.id) }}
+                  <span v-if="bundleStatus(p).partial" class="has-text-grey">（{{ $t('users.partialPermission') }}）</span>
+                  <span v-if="p.permissions.some(isHighRiskPermission)"
                     :title="$t('users.highRiskPermission')"
                     :aria-label="$t('users.highRiskPermission')">
                     <b-icon icon="warning-empty" type="is-danger" size="is-small" />
                   </span>
                 </b-checkbox>
-                <b-tooltip :label="permissionDescription(p)" type="is-dark" position="is-right" multilined>
+                <b-tooltip :label="p.business ? $t(`users.businessHelp.${p.id}`) : permissionDescription(p.id)"
+                  type="is-dark" position="is-right" multilined>
                   <span class="permission-help" tabindex="0" role="button"
                     :aria-label="$t('users.permissionHelp.label')"
                     :title="$t('users.permissionHelp.label')">
@@ -132,6 +135,9 @@
 import Vue from 'vue';
 import { mapState } from 'vuex';
 import CopyText from '../components/CopyText.vue';
+import {
+  businessPermissionGroups, bundledPermissionIDs, bundleState, toggleBundle,
+} from '../utils/businessPermissions';
 
 export default Vue.extend({
   name: 'RoleForm',
@@ -160,6 +166,13 @@ export default Vue.extend({
   },
 
   methods: {
+    bundleStatus(bundle) {
+      return bundleState(Array.isArray(this.form.permissions) ? this.form.permissions : [], bundle);
+    },
+
+    onToggleBundle(bundle, checked) {
+      this.form.permissions = toggleBundle(this.form.permissions, bundle, checked);
+    },
     permissionLabel(permission) {
       const key = `users.permission.${permission}`;
       return this.$te(key) ? this.$t(key) : permission;
@@ -179,6 +192,8 @@ export default Vue.extend({
         'campaigns:schedule', 'campaigns:control', 'campaigns:recipients', 'bounces:delete',
         'bounces:blocklist', 'users:tokens', 'pools:manage', 'pools:export',
         'organizations:platform_manage',
+        'customer_lists:delete', 'pools:master_manage', 'pools:delivery_manage',
+        'assets:share', 'mailboxes:manage', 'campaigns:public_pool_send',
       ].includes(permission);
     },
 
@@ -280,6 +295,20 @@ export default Vue.extend({
   computed: {
     ...mapState(['loading', 'serverConfig', 'customer_lists']),
 
+    permissionGroups() {
+      const business = businessPermissionGroups.map((group) => ({
+        ...group,
+        business: true,
+        permissions: group.permissions.map((p) => ({ ...p, business: true })),
+      }));
+      const other = this.serverConfig.permissions.map((group) => ({
+        ...group,
+        permissions: group.permissions.filter((p) => !bundledPermissionIDs.has(p))
+          .map((p) => ({ id: p, permissions: [p] })),
+      })).filter((group) => group.permissions.length);
+      return [...business, ...other];
+    },
+
     // Mirrors the loading model used by the corresponding role API call.
     isLoading() {
       return this.type === 'user' ? this.loading.userRoles : this.loading.customerListRoles;
@@ -328,6 +357,12 @@ export default Vue.extend({
         'pools:manage',
         'pools:export',
         'organizations:platform_manage',
+        'campaigns:public_pool_send',
+        'customer_lists:delete',
+        'pools:master_manage',
+        'pools:delivery_manage',
+        'assets:share',
+        'mailboxes:manage',
       ];
       this.form.permissions = this.serverConfig.permissions.reduce((acc, item) => {
         if (skip.includes(item.group)) {

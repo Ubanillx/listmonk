@@ -27,9 +27,7 @@
           <b-input v-model.trim="form.reply_to" type="email" data-cy="pool-form-reply-to" />
         </b-field>
 
-        <!-- A non-platform-admin always adds the contact to its own
-             organization; the server pins the department in that case. -->
-        <b-field v-if="isPlatformAdmin" :label="$t('pool.tableDepartment')"
+        <b-field :label="$t('pool.tableDepartment')"
           :message="$t('pool.formDepartmentHelp')">
           <b-input v-model.trim="form.allocation_department" data-cy="pool-form-department" />
         </b-field>
@@ -56,7 +54,6 @@ export default Vue.extend({
   props: {
     poolListID: { type: Number, default: 0 },
     poolLists: { type: Array, default: () => [] },
-    isPlatformAdmin: { type: Boolean, default: false },
   },
 
   data() {

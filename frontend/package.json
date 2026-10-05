@@ -11,7 +11,6 @@
     "postinstall": "cp node_modules/altcha/dist/altcha.umd.cjs ../static/public/static/altcha.umd.js"
   },
   "dependencies": {
-    "@mdi/font": "7.4.47",
     "@codemirror/commands": "^6.8.1",
     "@codemirror/lang-css": "^6.3.1",
     "@codemirror/lang-html": "^6.4.9",
@@ -23,6 +22,7 @@
     "@codemirror/state": "^6.5.2",
     "@codemirror/view": "^6.36.5",
     "@lezer/highlight": "^1.2.1",
+    "@mdi/font": "7.4.47",
     "@tinymce/tinymce-vue": "^3",
     "axios": "^1.13.5",
     "buefy": "^0.9.25",
@@ -30,6 +30,7 @@
     "chart.js": "^4.4.1",
     "codemirror": "^6.0.0",
     "dayjs": "^1.11.10",
+    "echarts": "^6.0.0",
     "indent.js": "^0.3.5",
     "js-beautify": "^1.15.1",
     "papaparse": "^5.5.3",
@@ -46,10 +47,10 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "altcha": "^2.3.0",
     "@types/js-beautify": "^1.14.3",
     "@vitejs/plugin-vue2": "^2.3.1",
     "@vue/eslint-config-airbnb": "^7.0.1",
+    "altcha": "^2.3.0",
     "cypress": "15.8.1",
     "cypress-file-upload": "^5.0.2",
     "cypress-wait-until": "^3.0.2",

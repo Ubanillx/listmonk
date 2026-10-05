@@ -1,0 +1,68 @@
+section.dashboard {
+  .tile.notification.metric-card {
+    min-height: 168px;
+    padding: var(--lm-space-6);
+    border-width: 1px;
+    border-color: var(--lm-color-border);
+  }
+
+  .tile.notification.metric-card--compact {
+    min-height: 108px;
+  }
+
+  .counts .column {
+    padding: 12px;
+  }
+
+  .metric-value {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    color: var(--lm-color-text);
+    font-size: 1.75rem;
+    line-height: 1.1;
+    font-weight: 600;
+  }
+
+  .metric-value .icon {
+    color: var(--lm-color-primary);
+  }
+
+  .metric-label {
+    color: var(--lm-color-text-muted);
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+
+  .metric-breakdown {
+    color: var(--lm-color-text-muted);
+
+    li {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 28px;
+    }
+
+    strong {
+      color: var(--lm-color-text);
+      font-weight: 600;
+    }
+  }
+
+  .tile.notification.dashboard-chart-card {
+    min-height: 300px;
+    padding: var(--lm-space-6);
+    border-width: 1px;
+    border-color: var(--lm-color-border);
+  }
+
+  .dashboard-chart-title {
+    margin-bottom: 20px;
+    color: var(--lm-color-text);
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+}

@@ -197,6 +197,65 @@
         </section>
       </b-tab-item>
 
+      <b-tab-item v-if="selectedOrganizationID" :label="$t('organizations.smtpTitle')" icon="email-fast-outline">
+        <section class="wrap smtp-pool-wrap" data-cy="organization-smtp">
+          <div class="columns is-variable is-5 smtp-pool-layout">
+            <div class="column is-3">
+              <aside class="box smtp-pool-sidebar">
+                <div class="smtp-pool-sidebar-heading">
+                  <div>
+                    <p class="heading mb-1">{{ $t('organizations.smtpPoolSelect') }}</p>
+                    <p class="help">{{ $t('organizations.smtpHelp') }}</p>
+                  </div>
+                  <b-tag v-if="smtpPools.length" type="is-light" rounded>{{ smtpPools.length }}</b-tag>
+                </div>
+
+                <div v-if="smtpPools.length" class="smtp-pool-list" role="list">
+                  <button v-for="pool in smtpPools" :key="pool.id" type="button" role="listitem"
+                    :class="['smtp-pool-option', { 'is-active': Number(pool.id) === Number(selectedSMTPPoolID) }]"
+                    @click="selectSMTPPool(pool.id)">
+                    <span class="smtp-pool-option-main">
+                      <strong>{{ pool.name }}</strong>
+                      <span class="help">{{ pool.enabledCount }}/{{ pool.smtpCount }} {{ $t('organizations.smtpTitle') }}</span>
+                    </span>
+                    <b-icon icon="chevron-right" size="is-small" />
+                  </button>
+                </div>
+                <div v-else class="notification is-light smtp-pool-empty mb-4">
+                  {{ $t('organizations.smtpPoolEmpty') }}
+                </div>
+
+                <div class="smtp-pool-create">
+                  <b-field :label="$t('organizations.smtpPoolName')" label-position="on-border">
+                    <b-input v-model.trim="newSMTPPoolName" @keyup.native.enter="createSMTPPool" />
+                  </b-field>
+                  <b-button type="is-primary" expanded icon-left="plus" :disabled="!newSMTPPoolName" @click="createSMTPPool">
+                    {{ $t('organizations.smtpPoolCreate') }}
+                  </b-button>
+                </div>
+
+                <b-button v-if="selectedSMTPPoolID" type="is-text" size="is-small" class="smtp-pool-delete"
+                  icon-left="delete-outline" :disabled="selectedSMTPPool && selectedSMTPPool.smtpCount > 0" @click="deleteSMTPPool">
+                  {{ $t('organizations.smtpPoolDelete') }}
+                </b-button>
+              </aside>
+            </div>
+
+            <div class="column is-9">
+              <div v-if="selectedSMTPPoolID" class="smtp-pool-editor">
+                <personal-s-m-t-p-settings ref="smtpSettings" :key="`${selectedOrganizationID}-${selectedSMTPPoolID}`"
+                  :organization-id="Number(selectedOrganizationID)" :smtp-pool-id="Number(selectedSMTPPoolID)"
+                  :organization-pool-name="selectedSMTPPool ? selectedSMTPPool.name : ''" />
+              </div>
+              <div v-else class="notification is-light smtp-pool-first-step">
+                <b-icon icon="arrow-left" />
+                <span>{{ $t('organizations.smtpPoolEmpty') }}</span>
+              </div>
+            </div>
+          </div>
+        </section>
+      </b-tab-item>
+
       <b-tab-item v-if="canManageAllOrganizations" :label="$t('organizations.tabPlatform')" icon="shield-crown-outline">
         <section class="mb-6">
           <h2 class="title is-5">{{ $t('organizations.creationRequests') }}</h2>
@@ -287,9 +346,10 @@ import Vue from 'vue';
 import { mapState } from 'vuex';
 import CopyText from '../../components/CopyText.vue';
 import ReplyMailboxSettings from '../../components/ReplyMailboxSettings.vue';
+import PersonalSMTPSettings from '../../components/PersonalSMTPSettings.vue';
 
 export default Vue.extend({
-  components: { CopyText, ReplyMailboxSettings },
+  components: { CopyText, ReplyMailboxSettings, PersonalSMTPSettings },
 
   data() {
     return {
@@ -313,11 +373,15 @@ export default Vue.extend({
       archiveTransferOrganization: null,
       archiveTransferMembers: [],
       archiveTransferTargetUserID: null,
+      smtpPools: [],
+      selectedSMTPPoolID: null,
+      newSMTPPoolName: '',
     };
   },
 
   computed: {
-    ...mapState(['organizations', 'profile']),
+    ...mapState(['profile']),
+    ...mapState({ organizations: (state) => state.organizationMemberships }),
 
     canManageAllOrganizations() {
       return this.profile.userRole && (Number(this.profile.userRole.id) === 1
@@ -346,6 +410,10 @@ export default Vue.extend({
     selectedOrganizationReplyMailboxEmail() {
       const organization = this.selectedOrganization;
       return (organization && (organization.replyMailboxEmail || organization.reply_mailbox_email)) || '';
+    },
+
+    selectedSMTPPool() {
+      return this.smtpPools.find((pool) => Number(pool.id) === Number(this.selectedSMTPPoolID)) || null;
     },
 
     canEditUnifiedReplyMailbox() {
@@ -381,6 +449,8 @@ export default Vue.extend({
   watch: {
     selectedOrganizationID() {
       this.newInviteCode = '';
+      this.smtpPools = [];
+      this.selectedSMTPPoolID = null;
       this.refreshSelectedOrganization();
     },
   },
@@ -389,8 +459,7 @@ export default Vue.extend({
     async refresh() {
       this.isLoading = true;
       try {
-        const organizations = await this.$api.getMyOrganizations();
-        this.$store.commit('setOrganizations', organizations);
+        await this.$api.refreshOrganizationDirectory();
         if (this.canManageAllOrganizations) {
           const [requests, platformOrganizations] = await Promise.all([
             this.$api.getOrganizationRequests(),
@@ -401,6 +470,8 @@ export default Vue.extend({
         }
         this.ensureSelectedOrganization();
         await this.refreshSelectedOrganization();
+      } catch (err) {
+        if (!this.$store.state.organizationDirectoryError) throw err;
       } finally {
         this.isLoading = false;
       }
@@ -422,6 +493,8 @@ export default Vue.extend({
         this.transferTargetUserID = null;
         this.organizationReplyMailboxes = [];
         this.unifiedReplyMailboxID = null;
+        this.smtpPools = [];
+        this.selectedSMTPPoolID = null;
         return;
       }
       this.isLoading = true;
@@ -433,11 +506,58 @@ export default Vue.extend({
         this.members = members;
         this.invites = invites;
         this.replyForwardRules = await this.$api.getReplyForwardRules(this.selectedOrganizationID);
+        await this.loadSMTPPools();
         this.transferTargetUserID = null;
         await this.loadUnifiedReplyMailbox();
       } finally {
         this.isLoading = false;
       }
+    },
+
+    async loadSMTPPools() {
+      const pools = await this.$api.getOrganizationSMTPPools(this.selectedOrganizationID);
+      this.smtpPools = pools || [];
+      if (!this.smtpPools.some((pool) => Number(pool.id) === Number(this.selectedSMTPPoolID))) {
+        this.selectedSMTPPoolID = this.smtpPools.length ? this.smtpPools[0].id : null;
+      }
+    },
+
+    async createSMTPPool() {
+      if (!this.newSMTPPoolName) return;
+      const create = async () => {
+        const pool = await this.$api.createOrganizationSMTPPool({ name: this.newSMTPPoolName }, this.selectedOrganizationID);
+        this.newSMTPPoolName = '';
+        await this.loadSMTPPools();
+        this.selectedSMTPPoolID = pool.id;
+      };
+      if (this.hasUnsavedSMTPChanges()) {
+        this.$utils.confirm(this.$t('globals.messages.confirmDiscard'), create);
+        return;
+      }
+      await create();
+    },
+
+    hasUnsavedSMTPChanges() {
+      const settings = this.$refs.smtpSettings;
+      return !!settings && settings.isDirty();
+    },
+
+    selectSMTPPool(poolID) {
+      if (Number(poolID) === Number(this.selectedSMTPPoolID)) return;
+      const select = () => { this.selectedSMTPPoolID = poolID; };
+      if (this.hasUnsavedSMTPChanges()) {
+        this.$utils.confirm(this.$t('globals.messages.confirmDiscard'), select);
+        return;
+      }
+      select();
+    },
+
+    deleteSMTPPool() {
+      if (!this.selectedSMTPPoolID) return;
+      this.$utils.confirm(this.$t('organizations.smtpPoolDeleteConfirm'), async () => {
+        await this.$api.deleteOrganizationSMTPPool(this.selectedSMTPPoolID, this.selectedOrganizationID);
+        await this.loadSMTPPools();
+      });
     },
 
     selectOrganization(organization) {
@@ -622,5 +742,108 @@ export default Vue.extend({
 <style scoped>
 .table-scroll {
   overflow-x: auto;
+}
+
+.smtp-pool-layout {
+  align-items: flex-start;
+}
+
+/* The SMTP workspace is a two-pane editor and needs the full tab width.
+   Other organization tabs keep the shared readable .wrap max-width. */
+.smtp-pool-wrap {
+  width: 100%;
+  max-width: none !important;
+}
+
+.smtp-pool-sidebar,
+.smtp-pool-editor {
+  height: 100%;
+}
+
+.smtp-pool-sidebar-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.smtp-pool-sidebar-heading .help {
+  margin-top: .25rem;
+}
+
+.smtp-pool-list {
+  display: grid;
+  gap: .5rem;
+  margin: 1rem 0 1.25rem;
+}
+
+.smtp-pool-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  padding: .75rem .85rem;
+  border: 1px solid #dbdbdb;
+  border-radius: 6px;
+  background: #fff;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .15s ease, background-color .15s ease;
+}
+
+.smtp-pool-option:hover,
+.smtp-pool-option:focus-visible {
+  border-color: #3273dc;
+  outline: none;
+}
+
+.smtp-pool-option.is-active {
+  border-color: #3273dc;
+  background: #eff5ff;
+  box-shadow: 0 0 0 1px #3273dc;
+}
+
+.smtp-pool-option-main {
+  min-width: 0;
+  display: grid;
+  gap: .15rem;
+}
+
+.smtp-pool-option-main strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.smtp-pool-create {
+  padding-top: 1rem;
+  border-top: 1px solid #ededed;
+}
+
+.smtp-pool-delete {
+  margin-top: .75rem;
+  padding-left: 0;
+}
+
+.smtp-pool-editor {
+  padding: 1.25rem;
+  border: 1px solid #ededed;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.smtp-pool-first-step {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  min-height: 12rem;
+}
+
+@media screen and (max-width: 768px) {
+  .smtp-pool-editor {
+    padding: 1rem;
+  }
 }
 </style>

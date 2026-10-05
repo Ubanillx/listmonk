@@ -6,6 +6,7 @@
 
 <script>
 import Chart from 'chart.js/auto';
+import { colors } from '../constants';
 
 const DEFAULT_DONUT = {
   type: 'doughnut',
@@ -20,10 +21,10 @@ const DEFAULT_DONUT = {
       },
       tooltip: {
         backgroundColor: '#fff',
-        borderColor: '#ddd',
+        borderColor: colors.grid,
         borderWidth: 1,
-        titleColor: '#666',
-        bodyColor: '#666',
+        titleColor: colors.text,
+        bodyColor: colors.muted,
         bodyFont: {
           size: 15,
         },
@@ -69,9 +70,10 @@ const DEFAULT_LINE = {
       },
       tooltip: {
         backgroundColor: '#fff',
-        borderColor: '#ddd',
+        borderColor: colors.grid,
         borderWidth: 1,
-        bodyColor: '#666',
+        titleColor: colors.text,
+        bodyColor: colors.muted,
         displayColors: true,
         bodyFont: {
           size: 15,
@@ -112,10 +114,10 @@ const DEFAULT_BAR = {
       },
       tooltip: {
         backgroundColor: '#fff',
-        borderColor: '#ddd',
+        borderColor: colors.grid,
         borderWidth: 1,
-        titleColor: '#666',
-        bodyColor: '#666',
+        titleColor: colors.text,
+        bodyColor: colors.muted,
         bodyFont: {
           size: 15,
         },

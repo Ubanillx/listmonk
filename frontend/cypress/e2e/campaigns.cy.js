@@ -67,6 +67,9 @@ describe('Campaigns', () => {
     cy.get('.customer-list-selector .autocomplete a').eq(0).click();
 
     // Clear and redo tags.
+    cy.get('[data-cy=campaign-advanced]').then(($details) => {
+      if (!$details.prop('open')) cy.wrap($details).find('summary').click();
+    });
     cy.get('input[name=tags]').type('{backspace}new-tag{enter}');
 
     // Enable schedule.
@@ -231,6 +234,7 @@ describe('Campaigns', () => {
         });
 
         // Add tags.
+        cy.get('[data-cy=campaign-advanced] > summary').click();
         for (let i = 0; i < 3; i++) {
           cy.get('input[name=tags]').type(`tag${i}{enter}`);
         }

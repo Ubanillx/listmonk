@@ -1,9 +1,9 @@
 <template>
-  <section class="personal-smtp mt-6">
+  <section class="personal-smtp">
     <div class="personal-smtp-header level mb-5">
       <div>
-        <h2 class="title is-5 mb-1">{{ $t('settings.personalSMTP.title') }}</h2>
-        <p class="help">{{ $t('settings.personalSMTP.help') }}</p>
+        <h2 class="title is-5 mb-1">{{ organizationPoolName || $t(organizationId ? 'organizations.smtpTitle' : 'settings.personalSMTP.title') }}</h2>
+        <p class="help">{{ $t(organizationId ? 'organizations.smtpHelp' : 'settings.personalSMTP.help') }}</p>
       </div>
       <b-button type="is-primary" icon-left="plus" class="add-smtp-button" @click="addServer">
         {{ $t('globals.buttons.addNew') }}
@@ -12,7 +12,7 @@
 
     <div v-if="servers.length === 0" class="notification is-light smtp-empty-state">
       <b-icon icon="email-off-outline" size="is-small" />
-      <span>{{ $t('settings.personalSMTP.empty') }}</span>
+      <span>{{ $t(organizationId ? 'organizations.smtpEmpty' : 'settings.personalSMTP.empty') }}</span>
     </div>
 
     <div v-for="(server, index) in servers" :key="server.id || `new-${index}`" class="box smtp-card">
@@ -51,23 +51,23 @@
           </div>
 
           <div class="columns is-multiline smtp-grid">
-            <div class="column is-8">
-              <b-field :label="$t('globals.fields.name')" label-position="on-border">
+            <div class="column is-6">
+              <b-field :label="$t('globals.fields.name')">
                 <b-input v-model="server.name" maxlength="100" :placeholder="$t('globals.fields.name')" />
               </b-field>
             </div>
-            <div class="column is-8">
-              <b-field :label="$t('settings.mailserver.host')" label-position="on-border">
+            <div class="column is-6">
+              <b-field :label="$t('settings.mailserver.host')">
                 <b-input v-model="server.host" required maxlength="200" placeholder="smtp.example.com" />
               </b-field>
             </div>
-            <div class="column is-4">
-              <b-field :label="$t('settings.mailserver.port')" label-position="on-border">
+            <div class="column is-6">
+              <b-field :label="$t('settings.mailserver.port')">
                 <b-numberinput v-model="server.port" min="1" max="65535" controls-position="compact" placeholder="465" />
               </b-field>
             </div>
-            <div class="column is-3">
-              <b-field :label="$t('settings.mailserver.authProtocol')" label-position="on-border">
+            <div class="column is-6">
+              <b-field :label="$t('settings.mailserver.authProtocol')">
                 <b-select v-model="server.authProtocol" expanded>
                   <option value="login">LOGIN</option>
                   <option value="cram">CRAM</option>
@@ -76,101 +76,51 @@
                 </b-select>
               </b-field>
             </div>
-            <div class="column is-5">
-              <b-field :label="$t('settings.mailserver.username')" label-position="on-border">
+            <div class="column is-6">
+              <b-field :label="$t('settings.mailserver.username')">
                 <b-input v-model="server.username" :disabled="server.authProtocol === 'none'" maxlength="200"
                   placeholder="user@example.com" />
               </b-field>
             </div>
-            <div class="column is-4">
-              <b-field :label="$t('settings.mailserver.password')" label-position="on-border">
+            <div class="column is-6">
+              <b-field :label="$t('settings.mailserver.password')">
                 <b-input v-model="server.password" type="password" :disabled="server.authProtocol === 'none'"
                   maxlength="200" placeholder="••••••••" />
               </b-field>
             </div>
-            <div class="column is-8">
-              <b-field :label="$t('settings.smtp.fromEmail')" label-position="on-border">
+            <div class="column is-6">
+              <b-field :label="$t('settings.smtp.fromEmail')">
                 <b-input v-model="server.fromEmail" maxlength="200" placeholder="sender@example.com" />
               </b-field>
             </div>
-            <div class="column is-4">
-              <b-field :label="$t('settings.smtp.dailyLimit')" :message="$t('settings.smtp.dailyLimitHelp')"
-                label-position="on-border">
+            <div class="column is-6">
+              <b-field :label="$t('settings.smtp.dailyLimit')" :message="$t('settings.smtp.dailyLimitHelp')">
                 <b-numberinput v-model="server.dailyLimit" min="0" max="100000000" controls-position="compact"
                   placeholder="0" />
               </b-field>
             </div>
-          </div>
-        </div>
-
-        <div class="smtp-section smtp-advanced-section">
-          <div class="smtp-section-heading smtp-advanced-heading">
-            <div>
-              <h3 class="smtp-section-title">{{ $t('settings.personalSMTP.advancedSection') }}</h3>
-              <p class="smtp-section-help">{{ $t('settings.personalSMTP.advancedHelp') }}</p>
+            <div class="column is-6">
+              <b-field :label="$t('settings.smtp.heloHost')" :message="$t('settings.smtp.heloHostHelp')">
+                <b-input v-model="server.helloHostname" maxlength="200" placeholder="mail.example.com" />
+              </b-field>
             </div>
-            <b-button type="is-text" size="is-small" :icon-left="server.showAdvanced ? 'chevron-up' : 'chevron-down'"
-              :aria-expanded="server.showAdvanced ? 'true' : 'false'" @click="server.showAdvanced = !server.showAdvanced">
-              {{ server.showAdvanced ? $t('settings.personalSMTP.advancedHide') : $t('settings.personalSMTP.advancedShow') }}
-            </b-button>
-          </div>
-
-          <div v-if="server.showAdvanced" class="columns is-multiline smtp-grid smtp-advanced-content">
-            <div class="column is-4">
-              <b-field :label="$t('settings.mailserver.tls')" label-position="on-border">
-                <b-select v-model="server.tlsType" expanded>
+            <div class="column is-6">
+              <b-field :label="$t('settings.mailserver.tls')" :message="$t('settings.mailserver.tlsHelp')">
+                <b-select v-model="server.tlsType" expanded data-cy="account-smtp-tls-type">
                   <option value="none">{{ $t('globals.states.off') }}</option>
                   <option value="STARTTLS">STARTTLS</option>
                   <option value="TLS">SSL/TLS</option>
                 </b-select>
               </b-field>
             </div>
-            <div class="column is-4">
+            <div class="column is-6">
               <b-field :label="$t('settings.mailserver.skipTLS')" :message="$t('settings.mailserver.skipTLSHelp')">
                 <b-switch v-model="server.tlsSkipVerify" :disabled="server.tlsType === 'none'" />
               </b-field>
             </div>
-            <div class="column is-4">
-              <b-field :label="$t('settings.mailserver.maxConns')" label-position="on-border">
-                <b-numberinput v-model="server.maxConns" min="1" max="65535" controls-position="compact" />
-              </b-field>
-            </div>
-            <div class="column is-4">
-              <b-field :label="$t('settings.smtp.retries')" label-position="on-border">
-                <b-numberinput v-model="server.maxMsgRetries" min="1" max="1000" controls-position="compact" />
-              </b-field>
-            </div>
-            <div class="column is-4">
-              <b-field :label="$t('settings.smtp.heloHost')" :message="$t('settings.smtp.heloHostHelp')"
-                label-position="on-border">
-                <b-input v-model="server.helloHostname" maxlength="200" placeholder="mail.example.com" />
-              </b-field>
-            </div>
-            <div class="column is-4">
-              <b-field :label="$t('settings.mailserver.idleTimeout')" :message="$t('settings.mailserver.idleTimeoutHelp')"
-                label-position="on-border">
-                <b-input v-model="server.idleTimeout" placeholder="15s" maxlength="10" />
-              </b-field>
-            </div>
-            <div class="column is-4">
-              <b-field :label="$t('settings.mailserver.waitTimeout')" :message="$t('settings.mailserver.waitTimeoutHelp')"
-                label-position="on-border">
-                <b-input v-model="server.waitTimeout" placeholder="5s" maxlength="10" />
-              </b-field>
-            </div>
-            <div class="column is-8">
-              <p v-if="server.emailHeaders.length === 0 && !server.showHeaders">
-                <a href="#" @click.prevent="server.showHeaders = true">
-                  <b-icon icon="plus" />{{ $t('settings.smtp.setCustomHeaders') }}
-                </a>
-              </p>
-              <b-field v-if="server.emailHeaders.length > 0 || server.showHeaders"
-                :message="$t('settings.smtp.customHeadersHelp')" label-position="on-border">
-                <b-input v-model="server.emailHeadersStr" type="textarea"
-                  placeholder="[{&quot;X-Custom&quot;: &quot;value&quot;}, {&quot;X-Custom2&quot;: &quot;value&quot;}]" />
-              </b-field>
-            </div>
           </div>
+
+          <p class="smtp-section-help smtp-platform-note">{{ $t('settings.personalSMTP.platformManaged') }}</p>
         </div>
 
         <div class="smtp-card-footer">
@@ -179,7 +129,7 @@
             <p class="smtp-section-help">{{ $t('settings.personalSMTP.testHelp') }}</p>
           </div>
           <div class="smtp-test-controls">
-            <b-field :label="$t('settings.personalSMTP.testRecipient')" label-position="on-border">
+            <b-field :label="$t('settings.personalSMTP.testRecipient')">
               <b-input v-model="server.testEmail" type="email" placeholder="email@example.com" />
             </b-field>
             <b-button type="is-light" icon-left="rocket-launch-outline" :loading="testing === index"
@@ -215,42 +165,55 @@ function blankServer() {
     helloHostname: '',
     port: 465,
     authProtocol: 'plain',
-    username: '',
-    password: '',
-    emailHeaders: [],
-    maxConns: 10,
-    maxMsgRetries: 2,
-    idleTimeout: '15s',
-    waitTimeout: '5s',
     tlsType: 'TLS',
     tlsSkipVerify: false,
-    emailHeadersStr: '[]',
-    showHeaders: false,
+    username: '',
+    password: '',
     sentToday: 0,
     testEmail: '',
-    showAdvanced: false,
   };
 }
 
 export default Vue.extend({
+  props: {
+    organizationId: { type: Number, default: 0 },
+    smtpPoolId: { type: Number, default: 0 },
+    organizationPoolName: { type: String, default: '' },
+  },
   data() {
     return {
       servers: [],
       saving: false,
       testing: null,
+      loading: false,
+      savedSnapshot: '',
     };
   },
 
   methods: {
+    snapshot() {
+      return JSON.stringify(this.servers.map(this.wireServer));
+    },
+
+    isDirty() {
+      return !this.loading && this.savedSnapshot !== this.snapshot();
+    },
+
+    markClean() {
+      this.savedSnapshot = this.snapshot();
+    },
+
     load() {
-      this.$api.getPersonalSMTP().then((data) => {
+      this.loading = true;
+      (this.organizationId ? this.$api.getOrganizationSMTP(this.organizationId, this.smtpPoolId) : this.$api.getPersonalSMTP()).then((data) => {
         const rows = Array.isArray(data) ? data : data.smtp;
         this.servers = (rows || []).map((row) => ({
           ...blankServer(),
           ...row,
-          emailHeaders: row.emailHeaders || [],
-          emailHeadersStr: JSON.stringify(row.emailHeaders || [], null, 4),
         }));
+        this.markClean();
+      }).finally(() => {
+        this.loading = false;
       });
     },
 
@@ -265,8 +228,10 @@ export default Vue.extend({
           this.servers.splice(index, 1);
           return;
         }
-        this.$api.deletePersonalSMTP(server.id).then((data) => {
+        (this.organizationId ? this.$api.deleteOrganizationSMTP(server.id, this.organizationId, this.smtpPoolId) : this.$api.deletePersonalSMTP(server.id)).then((data) => {
           this.servers.splice(index, 1);
+          const baseline = this.savedSnapshot ? JSON.parse(this.savedSnapshot) : [];
+          this.savedSnapshot = JSON.stringify(baseline.filter((row) => Number(row.id) !== Number(server.id)));
           if (data && data.runningCampaigns) {
             this.$utils.toast(this.$t('settings.personalSMTP.runningWarning'), 'is-warning');
           }
@@ -286,48 +251,25 @@ export default Vue.extend({
         hello_hostname: server.helloHostname,
         port: Number(server.port) || 465,
         auth_protocol: server.authProtocol,
+        tls_type: server.tlsType,
+        tls_skip_verify: server.tlsSkipVerify,
         username: server.username,
         password: server.password,
-        email_headers: server.emailHeaders || [],
-        max_conns: Number(server.maxConns) || 10,
-        max_msg_retries: Number(server.maxMsgRetries) || 2,
-        idle_timeout: server.idleTimeout || '15s',
-        wait_timeout: server.waitTimeout || '5s',
-        tls_type: server.tlsType || 'TLS',
-        tls_skip_verify: !!server.tlsSkipVerify,
       };
     },
 
     save() {
-      const invalidHeaders = this.servers.some((server) => {
-        if (server.emailHeadersStr && server.emailHeadersStr !== '[]') {
-          try {
-            const headers = JSON.parse(server.emailHeadersStr);
-            if (!Array.isArray(headers)) {
-              throw new Error('custom headers must be an array');
-            }
-            this.$set(server, 'emailHeaders', headers);
-          } catch (e) {
-            this.$utils.toast(e.toString(), 'is-danger');
-            return true;
-          }
-        } else {
-          this.$set(server, 'emailHeaders', []);
-          this.$set(server, 'emailHeadersStr', '[]');
-        }
-        return false;
-      });
-      if (invalidHeaders) return;
       this.saving = true;
-      this.$api.updatePersonalSMTP({ smtp: this.servers.map(this.wireServer) }).then((data) => {
+      (this.organizationId
+        ? this.$api.updateOrganizationSMTP({ smtp: this.servers.map(this.wireServer) }, this.organizationId, this.smtpPoolId)
+        : this.$api.updatePersonalSMTP({ smtp: this.servers.map(this.wireServer) })).then((data) => {
         const rows = Array.isArray(data) ? data : data.smtp;
         this.servers = (rows || []).map((row) => ({
           ...blankServer(),
           ...row,
-          emailHeaders: row.emailHeaders || [],
-          emailHeadersStr: JSON.stringify(row.emailHeaders || [], null, 4),
         }));
-        this.$utils.toast(this.$t('globals.messages.updated', { name: this.$t('settings.personalSMTP.title') }));
+        this.markClean();
+        this.$utils.toast(this.$t('globals.messages.updated', { name: this.$t(this.organizationId ? 'organizations.smtpTitle' : 'settings.personalSMTP.title') }));
         if (data && data.runningCampaigns) {
           this.$utils.toast(this.$t('settings.personalSMTP.runningWarning'), 'is-warning');
         }
@@ -342,12 +284,19 @@ export default Vue.extend({
         return;
       }
       this.testing = index;
-      this.$api.testPersonalSMTP({ ...this.wireServer(server), id: server.id || 0, email: server.testEmail }).then(() => {
+      (this.organizationId
+        ? this.$api.testOrganizationSMTP({ ...this.wireServer(server), id: server.id || 0, email: server.testEmail }, this.organizationId, this.smtpPoolId)
+        : this.$api.testPersonalSMTP({ ...this.wireServer(server), id: server.id || 0, email: server.testEmail })).then(() => {
         this.$utils.toast(this.$t('campaigns.testSent'));
       }).finally(() => {
         this.testing = null;
       });
     },
+  },
+
+  watch: {
+    organizationId() { this.servers = []; this.load(); },
+    smtpPoolId() { this.servers = []; this.load(); },
   },
 
   mounted() {
@@ -390,12 +339,11 @@ export default Vue.extend({
 .smtp-card {
   padding: 0;
   overflow: hidden;
-  border: 1px solid #e5e9f0;
-  border-radius: 10px;
-  box-shadow: 0 2px 8px rgba(29, 41, 57, .05);
+  border: 1px solid var(--lm-color-border);
+  border-radius: var(--lm-radius-md);
 
   & + .smtp-card {
-    margin-top: 1.25rem;
+    margin-top: var(--lm-space-4);
   }
 }
 
@@ -405,8 +353,8 @@ export default Vue.extend({
   justify-content: space-between;
   gap: 1rem;
   padding: 1.1rem 1.25rem;
-  background: #f8fafc;
-  border-bottom: 1px solid #edf0f4;
+  background: var(--lm-color-surface-subtle);
+  border-bottom: 1px solid var(--lm-color-border);
 }
 
 .smtp-card-title {
@@ -456,11 +404,7 @@ export default Vue.extend({
 }
 
 .smtp-section {
-  padding: 1rem;
-  margin-bottom: 1rem;
-  border: 1px solid #edf0f4;
-  border-radius: 8px;
-  background: #fff;
+  margin-bottom: var(--lm-space-6);
 
   &:last-child {
     margin-bottom: 0;
@@ -489,30 +433,36 @@ export default Vue.extend({
   line-height: 1.45;
 }
 
-.smtp-advanced-section {
-  background: #fbfcfe;
-}
-
-.smtp-advanced-heading {
-  align-items: center;
-  margin-bottom: 0;
-}
-
-.smtp-advanced-content {
-  padding-top: .85rem;
-  margin-top: .85rem;
-  border-top: 1px solid #edf0f4;
+.smtp-platform-note {
+  padding-top: var(--lm-space-3);
+  margin-top: var(--lm-space-3);
+  border-top: 1px solid var(--lm-color-border);
 }
 
 .smtp-grid {
   margin: -.35rem;
 
   > .column {
+    min-width: 0;
     padding: .35rem;
   }
 
   .field {
+    min-width: 0;
     margin-bottom: .35rem;
+  }
+
+  .b-numberinput {
+    width: 100%;
+
+    .control.is-expanded {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    input {
+      min-width: 0;
+    }
   }
 }
 
@@ -523,7 +473,7 @@ export default Vue.extend({
   gap: 1rem;
   padding: 1rem 0 0;
   margin-top: 1rem;
-  border-top: 1px solid #edf0f4;
+  border-top: 1px solid var(--lm-color-border);
 }
 
 .smtp-test-controls {

@@ -2,25 +2,10 @@
   <div>
     <div class="items mail-servers">
       <div class="block box" v-for="(item, n) in form.smtp" :key="n">
+        <h2 class="is-size-5 mb-2">{{ $t('settings.smtp.systemTitle') }}</h2>
+        <p class="help mb-5">{{ $t('settings.smtp.systemHelp') }}</p>
         <div class="columns">
-          <div class="column is-2">
-            <b-field :label="$t('globals.buttons.enabled')">
-              <b-switch v-model="item.enabled" name="enabled" :native-value="true" data-cy="btn-enable-smtp" />
-            </b-field>
-            <b-field :label="$t('settings.smtp.primary')" :message="$t('settings.smtp.primaryHelp')">
-              <b-radio v-model="primarySMTP" :native-value="smtpKey(item, n)" name="primary_smtp">
-                {{ $t('settings.smtp.primaryLabel') }}
-              </b-radio>
-            </b-field>
-            <b-field v-if="form.smtp.length > 1">
-              <a @click.prevent="$utils.confirm(null, () => removeSMTP(n))" href="#" data-cy="btn-delete-smtp">
-                <b-icon icon="trash-can-outline" />
-                {{ $t('globals.buttons.delete') }}
-              </a>
-            </b-field>
-          </div><!-- first column -->
-
-          <div class="column" :class="{ disabled: !item.enabled }">
+          <div class="column">
             <div class="columns">
               <div class="column is-9">
                 <b-field :label="$t('settings.mailserver.host')" label-position="on-border"
@@ -36,6 +21,23 @@
                 </b-field>
               </div>
             </div><!-- host -->
+
+            <div class="columns" data-cy="system-smtp-tls">
+              <div class="column is-6">
+                <b-field :label="$t('settings.mailserver.tls')" :message="$t('settings.mailserver.tlsHelp')">
+                  <b-select v-model="item.tls_type" expanded data-cy="system-smtp-tls-type">
+                    <option value="none">{{ $t('globals.states.off') }}</option>
+                    <option value="STARTTLS">STARTTLS</option>
+                    <option value="TLS">SSL/TLS</option>
+                  </b-select>
+                </b-field>
+              </div>
+              <div class="column is-6">
+                <b-field :label="$t('settings.mailserver.skipTLS')" :message="$t('settings.mailserver.skipTLSHelp')">
+                  <b-switch v-model="item.tls_skip_verify" :disabled="item.tls_type === 'none'" />
+                </b-field>
+              </div>
+            </div>
 
             <div class="columns">
               <div class="column is-2">
@@ -71,8 +73,10 @@
                 </b-field>
               </div>
             </div><!-- auth -->
-            <div class="spaced-links is-size-7">
+            <div class="smtp-presets is-size-7">
               <a href="#" @click.prevent="() => fillSettings(n, 'gmail')">Gmail</a>
+              <a href="#" @click.prevent="() => fillSettings(n, '263net')">263net</a>
+              <a href="#" @click.prevent="() => fillSettings(n, 'topmax')">topmax</a>
               <a href="#" @click.prevent="() => fillSettings(n, 'ses')">Amazon SES</a>
               <a href="#" @click.prevent="() => fillSettings(n, 'mailgun')">Mailgun</a>
               <a href="#" @click.prevent="() => fillSettings(n, 'mailjet')">Mailjet</a>
@@ -81,68 +85,11 @@
               <a href="#" @click.prevent="() => fillSettings(n, 'forwardemail')">Forward Email</a>
               <a href="#" @click.prevent="() => fillSettings(n, 'lettermint')">Lettermint</a>
             </div>
-            <hr />
-
             <div class="columns">
               <div class="column is-6">
                 <b-field :label="$t('settings.smtp.heloHost')" label-position="on-border"
                   :message="$t('settings.smtp.heloHostHelp')">
                   <b-input v-model="item.hello_hostname" name="hello_hostname" placeholder="" :maxlength="200" />
-                </b-field>
-              </div>
-              <div class="column">
-                <b-field grouped>
-                  <b-field :label="$t('settings.mailserver.tls')" expanded :message="$t('settings.mailserver.tlsHelp')"
-                    label-position="on-border">
-                    <b-select v-model="item.tls_type" name="items.tls_type">
-                      <option value="none">
-                        {{ $t('globals.states.off') }}
-                      </option>
-                      <option value="STARTTLS">
-                        STARTTLS
-                      </option>
-                      <option value="TLS">
-                        SSL/TLS
-                      </option>
-                    </b-select>
-                  </b-field>
-                  <b-field :label="$t('settings.mailserver.skipTLS')" expanded
-                    :message="$t('settings.mailserver.skipTLSHelp')">
-                    <b-switch v-model="item.tls_skip_verify" :disabled="item.tls_type === 'none'"
-                      name="item.tls_skip_verify" />
-                  </b-field>
-                </b-field>
-              </div>
-            </div><!-- TLS -->
-            <hr />
-
-            <div class="columns">
-              <div class="column is-3">
-                <b-field :label="$t('settings.mailserver.maxConns')" label-position="on-border"
-                  :message="$t('settings.mailserver.maxConnsHelp')">
-                  <b-numberinput v-model="item.max_conns" name="max_conns" type="is-light" controls-position="compact"
-                    placeholder="25" min="1" max="65535" />
-                </b-field>
-              </div>
-              <div class="column is-3">
-                <b-field :label="$t('settings.smtp.retries')" label-position="on-border"
-                  :message="$t('settings.smtp.retriesHelp')">
-                  <b-numberinput v-model="item.max_msg_retries" name="max_msg_retries" type="is-light"
-                    controls-position="compact" placeholder="2" min="1" max="1000" />
-                </b-field>
-              </div>
-              <div class="column is-3">
-                <b-field :label="$t('settings.mailserver.idleTimeout')" label-position="on-border"
-                  :message="$t('settings.mailserver.idleTimeoutHelp')">
-                  <b-input v-model="item.idle_timeout" name="idle_timeout" placeholder="15s" :pattern="regDuration"
-                    :maxlength="10" />
-                </b-field>
-              </div>
-              <div class="column is-3">
-                <b-field :label="$t('settings.mailserver.waitTimeout')" label-position="on-border"
-                  :message="$t('settings.mailserver.waitTimeoutHelp')">
-                  <b-input v-model="item.wait_timeout" name="wait_timeout" placeholder="5s" :pattern="regDuration"
-                    :maxlength="10" />
                 </b-field>
               </div>
             </div>
@@ -166,26 +113,13 @@
             <div class="columns">
               <div class="column is-4">
                 <b-field :label="$t('settings.smtp.dailyLimit')" label-position="on-border"
-                  :message="$t('settings.smtp.dailyLimitHelp')">
+                  :message="$t('settings.smtp.systemDailyLimitHelp')">
                   <b-numberinput v-model="item.daily_limit" name="daily_limit" type="is-light"
                     controls-position="compact" min="0" max="100000000" />
                 </b-field>
               </div>
             </div>
 
-            <div class="columns">
-              <div class="column">
-                <p v-if="item.email_headers.length === 0 && !item.showHeaders">
-                  <a href="#" @click.prevent="() => showSMTPHeaders(n)">
-                    <b-icon icon="plus" />{{ $t('settings.smtp.setCustomHeaders') }}</a>
-                </p>
-                <b-field v-if="item.email_headers.length > 0 || item.showHeaders" label-position="on-border"
-                  :message="$t('settings.smtp.customHeadersHelp')">
-                  <b-input v-model="item.strEmailHeaders" name="email_headers" type="textarea"
-                    placeholder="[{&quot;X-Custom&quot;: &quot;value&quot;}, {&quot;X-Custom2&quot;: &quot;value&quot;}]" />
-                </b-field>
-              </div>
-            </div>
             <hr />
 
             <form @submit.prevent="() => doSMTPTest(item, n)">
@@ -226,45 +160,93 @@
       </div><!-- block -->
     </div><!-- mail-servers -->
 
-    <b-button @click="addSMTP" icon-left="plus" type="is-primary">
-      {{ $t('globals.buttons.addNew') }}
-    </b-button>
+    <div class="block box" v-if="data.smtp_delivery" data-cy="smtp-delivery-settings">
+      <h2 class="is-size-5 mb-2">{{ $t('settings.smtp.deliveryTitle') }}</h2>
+      <p class="help mb-5">{{ $t('settings.smtp.deliveryHelp') }}</p>
+      <div class="columns is-multiline">
+        <div class="column is-3">
+          <b-field :label="$t('settings.mailserver.maxConns')" :message="$t('settings.mailserver.maxConnsHelp')">
+            <b-numberinput v-model="data.smtp_delivery.max_conns" min="1" max="65535" controls-position="compact"
+              data-cy="smtp-delivery-max-conns" />
+          </b-field>
+        </div>
+        <div class="column is-3">
+          <b-field :label="$t('settings.smtp.retries')" :message="$t('settings.smtp.retriesHelp')">
+            <b-numberinput v-model="data.smtp_delivery.max_msg_retries" min="1" max="1000" controls-position="compact" />
+          </b-field>
+        </div>
+        <div class="column is-3">
+          <b-field :label="$t('settings.mailserver.idleTimeout')" :message="$t('settings.mailserver.idleTimeoutHelp')">
+            <b-input v-model="data.smtp_delivery.idle_timeout" placeholder="15s" :pattern="regDuration" :maxlength="10" />
+          </b-field>
+        </div>
+        <div class="column is-3">
+          <b-field :label="$t('settings.mailserver.waitTimeout')" :message="$t('settings.mailserver.waitTimeoutHelp')">
+            <b-input v-model="data.smtp_delivery.wait_timeout" placeholder="5s" :pattern="regDuration" :maxlength="10" />
+          </b-field>
+        </div>
+        <div class="column is-6">
+          <b-field :label="$t('settings.smtp.sendDelayMin')" :message="$t('settings.smtp.sendDelayMinHelp')">
+            <b-numberinput v-model="data.smtp_delivery.send_delay_min" min="0" max="3600000" step="1"
+              controls-position="compact" data-cy="smtp-send-delay-min" required />
+          </b-field>
+        </div>
+        <div class="column is-6">
+          <b-field :label="$t('settings.smtp.sendDelayMax')" :message="$t('settings.smtp.sendDelayMaxHelp')">
+            <b-numberinput v-model="data.smtp_delivery.send_delay_max" min="0" max="3600000" step="1"
+              controls-position="compact" data-cy="smtp-send-delay-max" required />
+          </b-field>
+        </div>
+        <div class="column is-12">
+          <p class="help mb-3">{{ $t('settings.smtp.sendDelayHelp') }}</p>
+        </div>
+        <div class="column is-12">
+          <b-field :label="$t('settings.smtp.setCustomHeaders')" :message="$t('settings.smtp.customHeadersHelp')">
+            <b-input v-model="data.smtp_delivery.strEmailHeaders" type="textarea"
+              placeholder="[{&quot;X-Custom&quot;: &quot;value&quot;}]" />
+          </b-field>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script>
 import Vue from 'vue';
-import { mapState } from 'vuex';
 import { regDuration } from '../../constants';
 
 const smtpTemplates = {
+  '263net': {
+    host: 'smtp.263.net', port: 465, auth_protocol: 'login', tls_type: 'TLS',
+  },
+  topmax: {
+    host: 'smtp.topmax.cn', port: 465, auth_protocol: 'login', tls_type: 'TLS',
+  },
   gmail: {
-    host: 'smtp.gmail.com', port: 465, auth_protocol: 'login', tls_type: 'TLS',
+    host: 'smtp.gmail.com', port: 465, auth_protocol: 'login',
   },
   ses: {
-    host: 'email-smtp.YOUR-REGION.amazonaws.com', port: 465, auth_protocol: 'login', tls_type: 'TLS',
+    host: 'email-smtp.YOUR-REGION.amazonaws.com', port: 465, auth_protocol: 'login',
   },
   mailjet: {
-    host: 'in-v3.mailjet.com', port: 465, auth_protocol: 'cram', tls_type: 'TLS',
+    host: 'in-v3.mailjet.com', port: 465, auth_protocol: 'cram',
   },
   mailgun: {
-    host: 'smtp.mailgun.org', port: 465, auth_protocol: 'login', tls_type: 'TLS',
+    host: 'smtp.mailgun.org', port: 465, auth_protocol: 'login',
   },
   sendgrid: {
-    host: 'smtp.sendgrid.net', port: 465, auth_protocol: 'login', tls_type: 'TLS',
+    host: 'smtp.sendgrid.net', port: 465, auth_protocol: 'login',
   },
   forwardemail: {
-    host: 'smtp.forwardemail.net', port: 465, auth_protocol: 'login', tls_type: 'TLS',
+    host: 'smtp.forwardemail.net', port: 465, auth_protocol: 'login',
   },
   postmark: {
-    host: 'smtp.postmarkapp.com', port: 587, auth_protocol: 'cram', tls_type: 'STARTTLS',
+    host: 'smtp.postmarkapp.com', port: 587, auth_protocol: 'cram',
   },
   lettermint: {
-    host: 'smtp.lettermint.co', port: 465, auth_protocol: 'login', tls_type: 'TLS',
+    host: 'smtp.lettermint.co', port: 465, auth_protocol: 'login',
   },
 };
-
-const smtpKey = (item, n) => item.uuid || `smtp-${n}`;
 
 export default Vue.extend({
   props: {
@@ -274,11 +256,9 @@ export default Vue.extend({
   },
 
   data() {
-    const primary = this.form.smtp.findIndex((item) => item.is_primary);
     return {
       data: this.form,
       regDuration,
-      primarySMTP: primary >= 0 ? smtpKey(this.form.smtp[primary], primary) : null,
       // Index of the SMTP block item in the array to show the
       // test form in.
       smtpTestItem: null,
@@ -288,66 +268,6 @@ export default Vue.extend({
   },
 
   methods: {
-    addSMTP() {
-      this.data.smtp.push({
-        name: '',
-        enabled: true,
-        is_primary: this.data.smtp.length === 0,
-        from_email: this.settings['app.from_email'],
-        daily_limit: 0,
-        host: '',
-        hello_hostname: '',
-        port: 465,
-        auth_protocol: 'plain',
-        username: '',
-        password: '',
-        email_headers: [],
-        max_conns: 10,
-        max_msg_retries: 2,
-        idle_timeout: '15s',
-        wait_timeout: '5s',
-        tls_type: 'TLS',
-        tls_skip_verify: false,
-      });
-
-      if (this.data.smtp.length === 1) {
-        this.primarySMTP = smtpKey(this.data.smtp[0], 0);
-      }
-
-      this.$nextTick(() => {
-        const items = document.querySelectorAll('.mail-servers input[name="host"]');
-        items[items.length - 1].focus();
-      });
-    },
-
-    removeSMTP(i) {
-      this.data.smtp.splice(i, 1);
-      if (this.data.smtp.length === 0) {
-        this.primarySMTP = null;
-        return;
-      }
-
-      const primary = this.data.smtp.findIndex((item) => item.is_primary);
-      if (primary >= 0) {
-        this.primarySMTP = smtpKey(this.data.smtp[primary], primary);
-      } else {
-        this.primarySMTP = smtpKey(this.data.smtp[0], 0);
-      }
-    },
-
-    showSMTPHeaders(i) {
-      const s = this.data.smtp[i];
-      s.showHeaders = true;
-      this.data.smtp.splice(i, 1, s);
-    },
-
-    testConnection() {
-      let em = this.settings['app.from_email'].replace('>', '').split('<');
-      if (em.length > 1) {
-        em = `<${em[em.length - 1]}>`;
-      }
-    },
-
     doSMTPTest(item, n) {
       if (!this.isTestEnabled(item)) {
         this.$utils.toast(this.$t('settings.smtp.testEnterEmail'), 'is-danger');
@@ -361,7 +281,12 @@ export default Vue.extend({
       }
 
       this.errMsg = '';
-      this.$api.testSMTP({ ...item, email: this.testEmail }).then(() => {
+      this.$api.testSMTP({
+        ...item,
+        ...this.data.smtp_delivery,
+        email_headers: JSON.parse(this.data.smtp_delivery.strEmailHeaders || '[]'),
+        email: this.testEmail,
+      }).then(() => {
         this.$utils.toast(this.$t('campaigns.testSent'));
       }).catch((err) => {
         if (err.response?.data?.message) {
@@ -395,10 +320,10 @@ export default Vue.extend({
       this.data.smtp.splice(n, 1, {
         ...this.data.smtp[n],
         ...smtpTemplates[key],
+        tls_type: smtpTemplates[key].port === 587 ? 'STARTTLS' : 'TLS',
         username: '',
         password: '',
         hello_hostname: '',
-        tls_skip_verify: false,
       });
 
       this.$nextTick(() => {
@@ -406,24 +331,19 @@ export default Vue.extend({
       });
     },
 
-    smtpKey(item, n) {
-      return smtpKey(item, n);
-    },
-  },
-
-  computed: {
-    ...mapState(['settings']),
-  },
-
-  watch: {
-    primarySMTP(value) {
-      const items = this.data.smtp.map((item, n) => ({
-        ...item,
-        // Keep a single primary SMTP selected in the form state.
-        is_primary: smtpKey(item, n) === value,
-      }));
-      this.data.smtp.splice(0, this.data.smtp.length, ...items);
-    },
   },
 });
 </script>
+
+<style lang="scss" scoped>
+.smtp-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem 1rem;
+  margin-bottom: 1.25rem;
+
+  & + .columns {
+    margin-top: 0;
+  }
+}
+</style>

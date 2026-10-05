@@ -18,7 +18,7 @@
                   v-model="filters.from"
                   icon="calendar-clock"
                   :timepicker="{ hourFormat: '24' }"
-                  :datetime-formatter="formatDateTime"
+                  :datetime-formatter="formatDateTime" :datetime-parser="$utils.parseDateTime"
                 />
               </b-field>
             </div>
@@ -28,7 +28,7 @@
                   v-model="filters.to"
                   icon="calendar-clock"
                   :timepicker="{ hourFormat: '24' }"
-                  :datetime-formatter="formatDateTime"
+                  :datetime-formatter="formatDateTime" :datetime-parser="$utils.parseDateTime"
                 />
               </b-field>
             </div>
@@ -112,6 +112,13 @@
         <b-loading :active="loading.series" :is-full-page="false" />
       </div>
     </section>
+
+    <campaign-geo-heatmap
+      v-if="active && geoRefreshToken > 0 && !trackingDisabled"
+      :campaign-id="campaign.id"
+      :params="reportParams()"
+      :refresh-token="geoRefreshToken"
+    />
 
     <section class="report-section">
       <div class="columns is-vcentered">
@@ -285,6 +292,7 @@ export default Vue.extend({
 
   components: {
     Chart,
+    CampaignGeoHeatmap: () => import('./CampaignGeoHeatmap.vue'),
   },
 
   props: {
@@ -302,6 +310,7 @@ export default Vue.extend({
     return {
       initialized: false,
       chartVersion: 0,
+      geoRefreshToken: 0,
       loading: {
         summary: false,
         series: false,
@@ -543,7 +552,7 @@ export default Vue.extend({
     },
 
     formatDateTime(value) {
-      return dayjs(value).format('YYYY-MM-DD HH:mm');
+      return this.$utils.niceDate(value, true);
     },
 
     formatMetric(value) {
@@ -567,7 +576,7 @@ export default Vue.extend({
     buildChartData(series) {
       const mkDataset = (label, data, color) => ({
         label,
-        data: data.map((item) => ({
+        data: (data || []).map((item) => ({
           x: this.formatDateTime(item.timestamp),
           y: item.count,
         })),
@@ -595,6 +604,7 @@ export default Vue.extend({
         return;
       }
 
+      this.geoRefreshToken += 1;
       this.loadSeries();
       this.loadLinks();
       if (this.canShowRecipients) {

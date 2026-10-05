@@ -59,228 +59,245 @@
     <b-tabs type="is-boxed" :animated="false" v-model="activeTab" @input="onTab">
       <b-tab-item :label="$tc('globals.terms.campaign')" label-position="on-border" value="campaign"
         icon="rocket-launch-outline">
-        <section class="wrap">
-          <div class="columns">
-            <div class="column is-7">
-              <form @submit.prevent="() => onSubmit(isNew ? 'create' : 'update')">
-                <b-field :label="$t('globals.fields.name')" label-position="on-border">
-                  <b-input :maxlength="200" :ref="'focus'" v-model="form.name" name="name" :disabled="!canEdit"
-                    :placeholder="$t('globals.fields.name')" required autofocus />
-                </b-field>
-
-                <b-field :label="$t('visibility.label')" label-position="on-border">
-                  <b-select v-model="form.visibility" :disabled="!canEdit" expanded>
-                    <option value="private">{{ $t('visibility.private') }}</option>
-                    <option v-if="workspace.organizationId" value="organization">{{ $t('visibility.organization') }}</option>
-                    <option value="global">{{ $t('visibility.global') }}</option>
-                  </b-select>
-                </b-field>
-
-                <b-field :label="$t('campaigns.subject')" label-position="on-border">
-                  <b-input :maxlength="5000" v-model="form.subject" name="subject" :disabled="!canEdit"
-                    :placeholder="$t('campaigns.subject')" required />
-                </b-field>
-
-                <b-field v-if="!isSMTPMessenger" :label="$t('campaigns.fromAddress')" label-position="on-border">
-                  <b-input :maxlength="200" v-model="form.fromEmail" name="from_email" :disabled="!canEdit"
-                    :placeholder="$t('campaigns.fromAddressPlaceholder')" required />
-                </b-field>
-                <b-field v-else :label="$t('campaigns.fromAddress')" label-position="on-border"
-                  :message="smtpFromHint">
-                  <b-input :value="smtpFromPreview" disabled />
-                </b-field>
-
-                <b-field v-if="isSMTPMessenger && !hasPoolAudience" :label="$t('campaigns.replyMailbox')" label-position="on-border"
-                  :message="$t('campaigns.replyMailboxHelp')">
-                  <b-select v-model="form.replyMailboxId" :disabled="!canEdit || activeReplyMailboxes.length === 0" expanded>
-                    <option :value="null">{{ $t('campaigns.replyMailboxNone') }}</option>
-                    <option v-if="form.replyMailboxId && !activeReplyMailboxes.some((mailbox) => mailbox.id === Number(form.replyMailboxId))"
-                      :value="form.replyMailboxId" disabled>
-                      {{ form.replyMailboxEmail || data.replyMailboxEmail || $t('campaigns.replyMailboxLegacy') }}
-                    </option>
-                    <option v-for="mailbox in activeReplyMailboxes" :key="mailbox.id" :value="mailbox.id">
-                      {{ mailbox.name || mailbox.email }}{{ mailbox.isDefault ? $t('campaigns.replyMailboxDefaultTag') : '' }}
-                    </option>
-                  </b-select>
-                </b-field>
-                <p v-if="isSMTPMessenger && !hasPoolAudience && replyMailboxesLoaded && activeReplyMailboxes.length === 0" class="help is-warning mb-4">
-                  {{ $t('campaigns.replyMailboxMissing') }}
-                </p>
-
-                <customer-list-selector v-model="form.customer_lists" :selected="form.customer_lists" :all="availableLists" :disabled="!canEdit || listsLocked"
-                  :label="$t('globals.terms.customer_lists')" :placeholder="$t('campaigns.sendToLists')" />
-
-                <b-notification v-if="poolNoticeRows.length" :type="hasUnresolvedPoolRoute ? 'is-warning' : 'is-info'" :closable="false"
-                  class="pool-routing-notice" data-cy="pool-routing-notice">
-                  <strong>{{ $t('campaigns.poolRouteTitle') }}</strong>
-                  <p v-if="hasUnresolvedPoolRoute" class="mt-2">{{ $t('campaigns.poolRouteBlocked') }}</p>
-                  <ul>
-                    <li v-for="(pool, index) in poolNoticeRows" :key="`pool-route-${pool.poolId || pool.pool_id}-${index}`">
-                      <template v-if="pool.replyMailboxEmail || pool.reply_mailbox_email">
-                        {{ pool.name || $t('campaigns.poolFallback', { id: pool.poolId || pool.pool_id }) }} →
-                        {{ pool.replyMailboxEmail || pool.reply_mailbox_email }}
-                      </template>
-                      <template v-else>
-                        {{ pool.name || $t('campaigns.poolFallback', { id: pool.poolId || pool.pool_id }) }} →
-                        {{ pool.pending ? $t('campaigns.poolRoutePending') : $t('campaigns.poolRouteUnresolved') }}
-                        <p class="help">{{ $t('campaigns.replyMailboxPoolHelp') }}</p>
-                      </template>
-                    </li>
-                  </ul>
-                </b-notification>
-
-                <!-- Platform-level public pool: audience, SMTP rotation and
-                  per-organization readiness. -->
-                <b-notification v-if="isPlatformPoolCampaign" type="is-info" :closable="false"
-                  class="pool-scope-all-notice" data-cy="pool-scope-all-notice">
-                  <strong>{{ $t('campaigns.poolScopeAllTitle') }}</strong>
-                  <p class="mt-2">{{ $t('campaigns.poolScopeAllHelp') }}</p>
-                  <template v-if="poolSendStatus">
-                    <p :class="['mt-2', poolSendStatus.ready ? 'has-text-success' : 'has-text-warning']"
-                      data-cy="pool-send-status-ready">
-                      {{ poolSendStatus.ready ? $t('campaigns.poolSendReadyShort') : $t('campaigns.poolSendUnavailable') }}
-                      — {{ poolSendStatus.ready ? $t('campaigns.poolSendReady') : $t('campaigns.poolSendBlocked') }}
-                    </p>
-                    <ul v-if="poolSendStatus.issues && poolSendStatus.issues.length" data-cy="pool-send-status-issues">
-                      <li v-for="(issue, index) in poolSendStatus.issues" :key="`pool-send-issue-${index}`">{{ issue }}</li>
-                    </ul>
-                    <p class="help">{{ $t('campaigns.poolSendStatusTitle') }}</p>
-                  </template>
-                </b-notification>
-
-                <p v-if="listsLocked" class="help is-info">
-                  {{ $t('campaigns.listsLockedHelp') }}
-                </p>
-
-                <div class="columns">
-                  <div class="column is-6">
-                    <b-field :label="$tc('globals.terms.messenger')" label-position="on-border">
-                      <b-select :placeholder="$tc('globals.terms.messenger')" v-model="form.messenger" name="messenger"
-                        :disabled="!canEdit" required expanded>
-                        <template v-if="emailMessengers.length > 1">
-                          <optgroup label="email">
-                            <option v-for="m in emailMessengers" :value="m" :key="m">
-                              {{ m }}
-                            </option>
-                          </optgroup>
-                        </template>
-                        <template v-else>
-                          <option value="email">email</option>
-                        </template>
-                        <option v-for="m in otherMessengers" :value="m" :key="m">{{ m }}</option>
+        <section class="wrap campaign-setup">
+          <form @submit.prevent="() => onSubmit(isNew ? 'create' : 'update')">
+            <div class="campaign-setup-grid">
+              <div class="campaign-setup-column">
+                <section class="campaign-config-section" aria-labelledby="campaign-basics-title" data-cy="campaign-basics">
+                  <h3 id="campaign-basics-title">{{ $t('campaigns.setupBasics') }}</h3>
+                  <div class="campaign-field-row">
+                    <b-field :label="$t('globals.fields.name')">
+                      <b-input :maxlength="200" :ref="'focus'" v-model="form.name" name="name" :disabled="!canEdit"
+                        :placeholder="$t('globals.fields.name')" required autofocus />
+                    </b-field>
+                    <b-field :label="$t('visibility.label')">
+                      <b-select v-model="form.visibility" :disabled="!canEdit" expanded data-cy="campaign-visibility">
+                        <option value="private">{{ $t('visibility.private') }}</option>
+                        <option v-if="workspace.organizationId" value="organization">{{ $t('visibility.organization') }}</option>
+                        <option value="global">{{ $t('visibility.global') }}</option>
                       </b-select>
                     </b-field>
                   </div>
-                  <div class="column is-6">
-                    <b-field :label="$t('campaigns.format')" label-position="on-border" class="mr-4 mb-0">
-                      <b-select v-model="form.content.contentType" :disabled="!canEdit || isEditing" value="richtext"
-                        expanded>
-                        <option v-for="(name, f) in contentTypes" :key="f" name="format" :value="f"
-                          :data-cy="`check-${f}`">
+                  <b-field :label="$t('campaigns.subject')">
+                    <b-input :maxlength="5000" v-model="form.subject" name="subject" :disabled="!canEdit"
+                      :placeholder="$t('campaigns.subject')" required />
+                  </b-field>
+                  <div class="campaign-field-row">
+                    <b-field :label="$t('campaigns.format')">
+                      <b-select v-model="form.content.contentType" :disabled="!canEdit || isEditing" value="richtext" expanded>
+                        <option v-for="(name, f) in contentTypes" :key="f" name="format" :value="f" :data-cy="`check-${f}`">
                           {{ name }}
                         </option>
                       </b-select>
                     </b-field>
-                  </div>
-                </div>
-
-                <div v-if="isLimitedSMTPCampaign" class="columns">
-                  <div class="column is-6">
-                    <b-field :label="$t('campaigns.dailySendLimit')" label-position="on-border"
-                      :message="$t('campaigns.dailySendLimitHelp')">
-                      <b-numberinput v-model="form.dailySendLimit" :disabled="!canEdit" name="daily_send_limit"
-                        min="1" max="100000000" type="is-light" controls-position="compact" required />
-                    </b-field>
-                  </div>
-                  <div class="column is-6">
-                    <b-field :label="$t('campaigns.dailyResumeTime')" label-position="on-border"
-                      :message="$t('campaigns.dailyResumeTimeHelp')">
-                      <b-input v-model="form.dailyResumeTime" :disabled="!canEdit" placeholder="09:00"
-                        maxlength="5" @blur="form.dailyResumeTime = normalizeDailyResumeTime(form.dailyResumeTime)"
-                        required />
-                    </b-field>
-                  </div>
-                </div>
-
-                <p v-if="data.status === 'deferred' && data.nextResumeAt" class="help is-warning">
-                  {{ $t('campaigns.nextResumeAt') }}: {{ $utils.niceDate(data.nextResumeAt, true) }}
-                </p>
-
-                <b-field :label="$t('globals.terms.tags')" label-position="on-border">
-                  <b-taginput v-model="form.tags" name="tags" :disabled="!canEdit" ellipsis icon="tag-outline"
-                    :placeholder="$t('globals.terms.tags')" />
-                </b-field>
-                <div class="campaign-toggle-field">
-                  <p class="label">{{ $t('campaigns.autoTrackLinks') }}</p>
-                  <b-switch v-model="form.autoTrackLinks" :disabled="!canEdit" />
-                  <p class="help">{{ $t('campaigns.autoTrackLinksHelp') }}</p>
-                </div>
-                <hr />
-
-                <div class="columns campaign-send-later-row">
-                  <div class="column is-4">
-                    <div class="campaign-toggle-field" data-cy="btn-send-later">
-                      <p class="label">{{ $t('campaigns.sendLater') }}</p>
-                      <b-switch v-model="form.sendLater" :disabled="!canEdit" />
+                    <div class="campaign-inline-toggle">
+                      <b-switch v-model="form.autoTrackLinks" :disabled="!canEdit" data-cy="campaign-auto-track-links">
+                        {{ $t('campaigns.autoTrackLinks') }}
+                      </b-switch>
                     </div>
                   </div>
-                  <div class="column">
+                </section>
+
+                <section class="campaign-config-section" aria-labelledby="campaign-audience-title" data-cy="campaign-audience-section">
+                  <h3 id="campaign-audience-title">{{ $t('campaigns.setupAudience') }}</h3>
+                  <campaign-audience-tree-select v-model="form.customer_lists" :all="availableLists"
+                    :disabled="!canEdit || listsLocked" :exclusive-groups="exclusiveAudienceGroups"
+                    :pool-only="isEditing && isPlatformPoolCampaign"
+                    :label="$t('campaigns.audienceLists')" :placeholder="$t('campaigns.sendToLists')" />
+                  <p v-if="listsLocked" class="help is-info">{{ $t('campaigns.listsLockedHelp') }}</p>
+                  <div v-if="isPlatformPoolCampaign" class="campaign-context-note pool-scope-all-notice" data-cy="pool-scope-all-notice">
+                    <strong>{{ $t('campaigns.poolScopeAllTitle') }}</strong>
+                    <p class="help">{{ $t('campaigns.poolScopeAllHelp') }}</p>
+                    <template v-if="poolSendStatus">
+                      <p :class="poolSendStatus.ready ? 'has-text-success' : 'has-text-warning'" data-cy="pool-send-status-ready">
+                        {{ poolSendStatus.ready ? $t('campaigns.poolSendReadyShort') : $t('campaigns.poolSendUnavailable') }}
+                      </p>
+                      <ul v-if="poolSendStatus.issues && poolSendStatus.issues.length" class="campaign-issue-list" data-cy="pool-send-status-issues">
+                        <li v-for="(issue, index) in poolSendStatus.issues" :key="`pool-send-issue-${index}`">{{ issue }}</li>
+                      </ul>
+                    </template>
+                  </div>
+                </section>
+              </div>
+
+              <div class="campaign-setup-column">
+                <section class="campaign-config-section" aria-labelledby="campaign-sender-title" data-cy="campaign-sender-section">
+                  <h3 id="campaign-sender-title">{{ $t('campaigns.setupSender') }}</h3>
+                  <div v-if="isSMTPMessenger" class="campaign-field-row">
+                    <b-field :label="$t('campaigns.smtpSource')">
+                      <b-select v-model="form.smtpSource" expanded :disabled="!canEdit" data-cy="campaign-smtp-source" @input="onSMTPSourceSelection">
+                        <option value="personal">{{ $t('campaigns.smtpPersonalRotation') }}</option>
+                        <option value="organization" :disabled="!workspace.organizationId && !isPlatformPoolCampaign">
+                          {{ $t('campaigns.smtpOrganizationRotation') }}
+                        </option>
+                      </b-select>
+                    </b-field>
+                    <b-field v-if="form.smtpSource === 'organization' && workspace.organizationId && !isPlatformPoolCampaign"
+                      :label="$t('organizations.smtpPoolSelect')">
+                      <b-select v-model.number="form.smtpPoolId" expanded :disabled="!canEdit || !smtpPools.length" data-cy="campaign-smtp-pool">
+                        <option v-for="pool in smtpPools" :key="pool.id" :value="pool.id">{{ pool.name }} ({{ pool.enabledCount }}/{{ pool.smtpCount }})</option>
+                      </b-select>
+                    </b-field>
+                  </div>
+                  <section v-if="isSMTPMessenger" class="campaign-sender-overview" data-cy="campaign-smtp-overview">
+                    <div class="campaign-section-caption">
+                      <strong>{{ $t('campaigns.smtpOverview') }}</strong>
+                      <span class="campaign-count">{{ smtpSenders.length }}</span>
+                    </div>
+                    <p v-if="!personalSMTPLoaded" class="help">{{ $t('campaigns.smtpOverviewLoading') }}</p>
+                    <p v-else-if="!smtpSenders.length" class="help is-warning" data-cy="campaign-smtp-unavailable">
+                      {{ smtpUnavailableMessage }}
+                    </p>
+                    <ul v-else class="campaign-sender-list">
+                      <li v-for="sender in smtpSenders" :key="sender.id">
+                        <div>
+                          <strong>{{ sender.fromEmail }}</strong>
+                          <span class="help">{{ sender.organizationName || sender.name }}</span>
+                        </div>
+                        <span class="help">
+                          {{ $t('settings.personalSMTP.sentToday', { count: sender.sentToday }) }} ·
+                          {{ $t('campaigns.smtpQuotaOverview', { limit: sender.dailyLimit || $t('campaigns.smtpUnlimited') }) }}
+                        </span>
+                      </li>
+                    </ul>
+                  </section>
+                  <b-field v-else key="campaign-custom-from" :label="$t('campaigns.fromAddress')">
+                    <b-input :maxlength="200" v-model="form.fromEmail" name="from_email" :disabled="!canEdit"
+                      :placeholder="$t('campaigns.fromAddressPlaceholder')" required />
+                  </b-field>
+
+                  <b-field v-if="isSMTPMessenger && !hasPoolAudience" key="campaign-reply-mailbox" :label="$t('campaigns.replyMailbox')">
+                    <b-select v-model="form.replyMailboxId" :disabled="!canEdit || activeReplyMailboxes.length === 0" expanded>
+                      <option :value="null">{{ $t('campaigns.replyMailboxNone') }}</option>
+                      <option v-if="form.replyMailboxId && !activeReplyMailboxes.some((mailbox) => mailbox.id === Number(form.replyMailboxId))"
+                        :value="form.replyMailboxId" disabled>
+                        {{ form.replyMailboxEmail || data.replyMailboxEmail || $t('campaigns.replyMailboxLegacy') }}
+                      </option>
+                      <option v-for="mailbox in activeReplyMailboxes" :key="mailbox.id" :value="mailbox.id">
+                        {{ mailbox.name || mailbox.email }}{{ mailbox.isDefault ? $t('campaigns.replyMailboxDefaultTag') : '' }}
+                      </option>
+                    </b-select>
+                  </b-field>
+                  <p v-if="isSMTPMessenger && !hasPoolAudience && replyMailboxesLoaded && activeReplyMailboxes.length === 0" class="help is-warning">
+                    {{ $t('campaigns.replyMailboxMissing') }}
+                  </p>
+                  <b-field v-if="isSMTPMessenger && hasPoolAudience" key="campaign-pool-reply-priority" :label="$t('campaigns.poolReplyPriority')"
+                    :message="$t('campaigns.poolReplyPriorityHelp')">
+                    <b-select v-model="form.poolReplyPriority" :disabled="!canEdit" expanded data-cy="campaign-pool-reply-priority">
+                      <option value="contact_first">{{ $t('campaigns.poolReplyContactFirst') }}</option>
+                      <option value="organization_first">{{ $t('campaigns.poolReplyOrganizationFirst') }}</option>
+                    </b-select>
+                  </b-field>
+
+                  <details v-if="poolNoticeRows.length" class="campaign-config-details pool-routing-notice" data-cy="pool-routing-notice">
+                    <summary>{{ $t('campaigns.poolRouteTitle') }}</summary>
+                    <p v-if="hasUnresolvedPoolRoute" class="help is-warning">{{ $t('campaigns.poolRouteBlocked') }}</p>
+                    <ul class="campaign-route-list">
+                      <li v-for="(pool, index) in poolNoticeRows" :key="`pool-route-${pool.poolId || pool.pool_id}-${index}`">
+                        <span>{{ pool.name || $t('campaigns.poolFallback', { id: pool.poolId || pool.pool_id }) }}</span>
+                        <strong v-if="pool.replyMailboxEmail || pool.reply_mailbox_email">{{ pool.replyMailboxEmail || pool.reply_mailbox_email }}</strong>
+                        <span v-else class="has-text-warning">{{ pool.pending ? $t('campaigns.poolRoutePending') : $t('campaigns.poolRouteUnresolved') }}</span>
+                      </li>
+                    </ul>
+                  </details>
+                  <details v-if="isSMTPMessenger" class="campaign-config-details" data-cy="campaign-sender-rules">
+                    <summary>{{ $t('campaigns.setupSenderRules') }}</summary>
+                    <p class="help">{{ $t('campaigns.smtpOverviewHelp') }}</p>
+                    <p v-if="!hasPoolAudience" class="help">{{ $t('campaigns.replyMailboxHelp') }}</p>
+                    <p v-else class="help">{{ $t('campaigns.replyMailboxPoolHelp') }}</p>
+                  </details>
+                </section>
+
+                <section class="campaign-config-section" aria-labelledby="campaign-delivery-title" data-cy="campaign-delivery-section">
+                  <h3 id="campaign-delivery-title">{{ $t('campaigns.setupDelivery') }}</h3>
+                  <div v-if="isSMTPMessenger" data-cy="campaign-delivery-limits">
+                    <div class="campaign-field-row">
+                      <b-field :label="$t('campaigns.smtpRateLimit')">
+                        <b-numberinput v-model="form.smtpRateLimit" :disabled="!canEdit" name="smtp_rate_limit"
+                          min="1" max="1000000" type="is-light" controls-position="compact" required data-cy="campaign-smtp-rate-limit" />
+                      </b-field>
+                      <b-field v-if="isLimitedSMTPCampaign" :label="$t('campaigns.dailySendLimit')">
+                        <b-numberinput v-model="form.dailySendLimit" :disabled="!canEdit" name="daily_send_limit"
+                          min="1" max="100000000" type="is-light" controls-position="compact" required />
+                      </b-field>
+                    </div>
+                    <b-field v-if="isLimitedSMTPCampaign" :label="$t('campaigns.dailyResumeTime')">
+                      <b-timepicker v-model="dailyResumeTimeDate" :disabled="!canEdit" placeholder="09:00"
+                        hour-format="24" icon="clock-outline" :time-formatter="formatResumeTime"
+                        :aria-label="$t('campaigns.dailyResumeTime')" data-cy="campaign-daily-resume-time" mobile-native expanded required />
+                    </b-field>
+                    <p v-if="data.status === 'deferred' && data.nextResumeAt" class="help is-warning">
+                      {{ $t('campaigns.nextResumeAt') }}: {{ $utils.niceDate(data.nextResumeAt, true) }}
+                    </p>
+                  </div>
+                  <div class="campaign-schedule-control" data-cy="btn-send-later">
+                    <b-switch v-model="form.sendLater" :disabled="!canEdit">{{ $t('campaigns.sendLater') }}</b-switch>
                     <b-field v-if="form.sendLater" class="campaign-send-at-field" data-cy="send_at"
                       :message="form.sendAtDate ? $utils.duration(Date(), form.sendAtDate) : ''">
                       <b-datetimepicker v-model="form.sendAtDate" :disabled="!canEdit" required editable mobile-native
                         position="is-top-right" :placeholder="$t('campaigns.dateAndTime')" icon="calendar-clock"
                         :timepicker="{ hourFormat: '24' }" :datetime-formatter="formatDateTime"
-                        horizontal-time-picker />
+                        :datetime-parser="$utils.parseDateTime" horizontal-time-picker />
                     </b-field>
                   </div>
-                </div>
-
-                <div>
-                  <p class="has-text-right">
-                    <a href="#" @click.prevent="onShowHeaders" data-cy="btn-headers">
-                      <b-icon icon="plus" />{{ $t('settings.smtp.setCustomHeaders') }}
-                    </a>
-                  </p>
-                  <b-field v-if="form.headersStr !== '[]' || isHeadersVisible" label-position="on-border"
-                    :message="$t('campaigns.customHeadersHelp')">
-                    <b-input v-model="form.headersStr" name="headers" type="textarea"
-                      placeholder="[{&quot;X-Custom&quot;: &quot;value&quot;}, {&quot;X-Custom2&quot;: &quot;value&quot;}]"
-                      :disabled="!canEdit" />
-                  </b-field>
-                </div>
-                <hr />
-
-                <b-field v-if="isNew">
-                  <b-button native-type="submit" type="is-primary" :loading="loading.campaigns" data-cy="btn-continue">
-                    {{ $t('campaigns.continue') }}
-                  </b-button>
-                </b-field>
-              </form>
-            </div>
-            <div v-if="canManage" class="column is-4 is-offset-1">
-              <br />
-              <div class="box">
-                <h3 class="title is-size-6">
-                  {{ $t('campaigns.sendTest') }}
-                </h3>
-                <b-field :message="$t('campaigns.sendTestHelp')">
-                  <b-taginput v-model="form.testEmails" :before-adding="$utils.validateEmail" :disabled="isNew" ellipsis
-                    icon="email-outline" :placeholder="$t('campaigns.testEmails')" />
-                </b-field>
-                <b-field>
-                  <b-button @click="() => onSubmit('test')" :loading="loading.campaigns"
-                    :disabled="isNew || !canTestCampaign || (isSMTPMessenger && !personalSMTPAvailable)"
-                    type="is-primary" icon-left="email-outline">
-                    {{ $t('campaigns.send') }}
-                  </b-button>
-                </b-field>
-                <b-notification v-if="isSMTPMessenger && canManage && personalSMTPLoaded && !personalSMTPAvailable"
-                  type="is-warning" :closable="false" class="mt-4">
-                  {{ $t('settings.personalSMTP.empty') }}
-                </b-notification>
+                  <details v-if="isSMTPMessenger" class="campaign-config-details" data-cy="campaign-delivery-rules">
+                    <summary>{{ $t('campaigns.setupDeliveryRules') }}</summary>
+                    <p class="help">{{ $t('campaigns.smtpRateLimitHelp') }}</p>
+                    <p v-if="isLimitedSMTPCampaign" class="help">{{ $t('campaigns.dailyResumeTimeHelp') }}</p>
+                  </details>
+                </section>
               </div>
             </div>
-          </div>
+
+            <details class="campaign-config-section campaign-advanced" data-cy="campaign-advanced"
+              :open="!isNew && (form.headersStr !== '[]' || form.tags.length > 0 || !isSMTPMessenger)">
+              <summary>{{ $t('campaigns.setupAdvanced') }}</summary>
+              <div class="campaign-field-row">
+                <b-field :label="$t('globals.terms.tags')">
+                  <b-taginput v-model="form.tags" name="tags" :disabled="!canEdit" ellipsis icon="tag-outline" :placeholder="$t('globals.terms.tags')" />
+                </b-field>
+                <b-field :label="$tc('globals.terms.messenger')">
+                  <b-select :placeholder="$tc('globals.terms.messenger')" v-model="form.messenger" name="messenger" :disabled="!canEdit" required expanded>
+                    <template v-if="emailMessengers.length > 1">
+                      <optgroup label="email">
+                        <option v-for="m in emailMessengers" :value="m" :key="m">{{ m }}</option>
+                      </optgroup>
+                    </template>
+                    <template v-else><option value="email">email</option></template>
+                    <option v-for="m in otherMessengers" :value="m" :key="m">{{ m }}</option>
+                  </b-select>
+                </b-field>
+              </div>
+              <button type="button" class="campaign-text-button" @click="onShowHeaders" data-cy="btn-headers">
+                {{ $t('settings.smtp.setCustomHeaders') }}
+              </button>
+              <b-field v-if="form.headersStr !== '[]' || isHeadersVisible" :message="$t('campaigns.customHeadersHelp')">
+                <b-input v-model="form.headersStr" name="headers" type="textarea"
+                  placeholder="[{&quot;X-Custom&quot;: &quot;value&quot;}, {&quot;X-Custom2&quot;: &quot;value&quot;}]" :disabled="!canEdit" />
+              </b-field>
+            </details>
+
+            <div v-if="isNew" class="campaign-setup-actions">
+              <span class="help">{{ $t('campaigns.setupNextStep') }}</span>
+              <b-button native-type="submit" type="is-primary" :loading="loading.campaigns" data-cy="btn-continue">
+                {{ $t('campaigns.continue') }}
+              </b-button>
+            </div>
+          </form>
+
+          <section v-if="canManage && isEditing" class="campaign-config-section campaign-test" data-cy="campaign-test-section">
+            <h3>{{ $t('campaigns.sendTest') }}</h3>
+            <div class="campaign-test-controls">
+              <b-field :message="$t('campaigns.sendTestHelp')">
+                <b-taginput v-model="form.testEmails" :before-adding="$utils.validateEmail" ellipsis
+                  icon="email-outline" :placeholder="$t('campaigns.testEmails')" />
+              </b-field>
+              <b-button @click="() => onSubmit('test')" :loading="loading.campaigns"
+                :disabled="!canTestCampaign || (isSMTPMessenger && !personalSMTPAvailable)" type="is-primary" icon-left="email-outline">
+                {{ $t('campaigns.send') }}
+              </b-button>
+            </div>
+          </section>
         </section>
       </b-tab-item><!-- campaign -->
 
@@ -460,13 +477,13 @@ import CampaignPreview from '../components/CampaignPreview.vue';
 import CampaignReport from '../components/CampaignReport.vue';
 import CopyText from '../components/CopyText.vue';
 import Editor from '../components/Editor.vue';
-import CustomerListSelector from '../components/CustomerListSelector.vue';
+import CampaignAudienceTreeSelect from '../components/CampaignAudienceTreeSelect.vue';
 import { isActiveWorkspaceCustomerList } from '../utils/workspace';
 import Media from './Media.vue';
 
 export default Vue.extend({
   components: {
-    CustomerListSelector,
+    CampaignAudienceTreeSelect,
     Editor,
     Media,
     CopyText,
@@ -475,6 +492,7 @@ export default Vue.extend({
   },
 
   data() {
+    const organizationWorkspace = this.$store.state.workspace.organizationId > 0;
     return {
       contentTypes: Object.freeze({
         richtext: this.$t('campaigns.richText'),
@@ -492,7 +510,10 @@ export default Vue.extend({
       isPreviewingArchive: false,
       activeTab: 'campaign',
       templateMedia: [],
-      personalSMTPAvailable: false,
+      smtpSenders: [],
+      smtpPools: [],
+      smtpPoolsLoaded: false,
+      smtpOverviewRequest: 0,
       personalSMTPLoaded: false,
       // Per-organization readiness of a platform-level public-pool campaign.
       poolSendStatus: null,
@@ -511,13 +532,17 @@ export default Vue.extend({
         name: '',
         subject: '',
         fromEmail: '',
+        smtpSource: organizationWorkspace ? 'organization' : 'personal',
+        smtpPoolId: null,
+        smtpRateLimit: organizationWorkspace ? 100 : 20,
         replyMailboxId: null,
+        poolReplyPriority: 'contact_first',
         headersStr: '[]',
         headers: [],
         attribsStr: '{}',
         messenger: 'email',
-        autoTrackLinks: false,
-        visibility: 'private',
+        autoTrackLinks: true,
+        visibility: organizationWorkspace ? 'organization' : 'private',
         dailySendLimit: 300,
         dailyResumeTime: '09:00',
         customer_lists: [],
@@ -544,8 +569,12 @@ export default Vue.extend({
   },
 
   methods: {
+    onSMTPSourceSelection(source) {
+      this.form.smtpRateLimit = source === 'organization' ? 100 : 20;
+    },
+
     formatDateTime(s) {
-      return dayjs(s).format('YYYY-MM-DD HH:mm');
+      return this.$utils.niceDate(s, true);
     },
 
     onToggleArchivePreview() {
@@ -640,6 +669,10 @@ export default Vue.extend({
       return `${match[1].padStart(2, '0')}:${match[2]}`;
     },
 
+    formatResumeTime(value) {
+      return `${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}`;
+    },
+
     normalizeSMTPDailyFields(limit, resumeTime) {
       return {
         dailySendLimit: limit > 0 ? limit : 300,
@@ -654,7 +687,7 @@ export default Vue.extend({
           return;
         }
         if (this.isSMTPMessenger && !this.personalSMTPAvailable) {
-          this.$utils.toast(this.$t('settings.personalSMTP.empty'), 'is-danger');
+          this.$utils.toast(this.smtpUnavailableMessage, 'is-danger');
           return;
         }
       }
@@ -663,6 +696,11 @@ export default Vue.extend({
         const normalized = this.normalizeSMTPDailyFields(this.form.dailySendLimit, this.form.dailyResumeTime);
         this.form.dailySendLimit = normalized.dailySendLimit;
         this.form.dailyResumeTime = normalized.dailyResumeTime;
+      }
+      if (this.isSMTPMessenger && (!Number.isInteger(this.form.smtpRateLimit)
+        || this.form.smtpRateLimit < 1 || this.form.smtpRateLimit > 1000000)) {
+        this.$utils.toast(this.$t('campaigns.fieldInvalidSMTPRateLimit'), 'is-danger');
+        return;
       }
 
       // Validate custom JSON headers.
@@ -726,14 +764,11 @@ export default Vue.extend({
         const customerPools = Array.isArray(data.customerPools) ? data.customerPools : [];
         const poolAudienceLists = customerPools.reduce((lists, pool) => {
           const poolID = Number(pool.poolId || pool.pool_id);
-          const allocationListID = Number(pool.allocationListId || pool.allocation_list_id);
-          const listID = allocationListID > 0 ? allocationListID : poolID;
-          if (listID > 0) {
+          if (poolID > 0) {
             lists.push({
-              id: listID,
-              name: pool.allocationListName || pool.allocation_list_name
-                || pool.name || this.$t('campaigns.poolFallback', { id: poolID }),
-              type: allocationListID > 0 ? 'org_pool_allocation' : 'pool',
+              id: poolID,
+              name: pool.name || this.$t('campaigns.poolFallback', { id: poolID }),
+              type: 'pool',
               poolDeliveryAllowed: true,
             });
           }
@@ -761,6 +796,10 @@ export default Vue.extend({
           customer_lists: [...customerLists, ...poolAudienceLists],
           headersStr: JSON.stringify(data.headers, null, 4),
           archiveMetaStr: data.archiveMeta ? JSON.stringify(data.archiveMeta, null, 4) : '{}',
+          smtpSource: data.smtpSource || 'personal',
+          smtpPoolId: data.smtpPoolId || null,
+          smtpRateLimit: data.smtpRateLimit || (data.smtpSource === 'organization' ? 100 : 20),
+          poolReplyPriority: data.poolReplyPriority || 'contact_first',
           attribsStr: data.attribs ? JSON.stringify(data.attribs, null, 4) : '{}',
 
           // The structure that is populated by editor input event.
@@ -792,6 +831,9 @@ export default Vue.extend({
         daily_send_limit: this.isLimitedSMTPCampaign ? this.form.dailySendLimit : 0,
         daily_resume_time: this.isLimitedSMTPCampaign ? this.form.dailyResumeTime : '09:00',
         messenger: this.form.messenger,
+        smtp_source: this.form.smtpSource,
+        smtp_rate_limit: this.isSMTPMessenger ? this.form.smtpRateLimit : 0,
+        smtp_pool_id: this.form.smtpPoolId,
         auto_track_links: this.form.autoTrackLinks,
         type: 'regular',
         headers: this.form.headers,
@@ -804,6 +846,7 @@ export default Vue.extend({
         media: this.form.media.map((m) => m.id),
         visibility: this.form.visibility,
         reply_mailbox_id: this.campaignReplyMailboxID,
+        pool_reply_priority: this.form.poolReplyPriority,
       };
 
       this.$api.testCampaign(data).then(() => {
@@ -823,6 +866,9 @@ export default Vue.extend({
         daily_resume_time: this.isLimitedSMTPCampaign ? this.form.dailyResumeTime : '09:00',
         content_type: this.form.content.contentType,
         messenger: this.form.messenger,
+        smtp_source: this.form.smtpSource,
+        smtp_rate_limit: this.isSMTPMessenger ? this.form.smtpRateLimit : 0,
+        smtp_pool_id: this.form.smtpPoolId,
         auto_track_links: this.form.autoTrackLinks,
         type: 'regular',
         tags: this.form.tags,
@@ -832,6 +878,7 @@ export default Vue.extend({
         media: this.form.media.map((m) => m.id),
         visibility: this.form.visibility,
         reply_mailbox_id: this.campaignReplyMailboxID,
+        pool_reply_priority: this.form.poolReplyPriority,
         // Platform-level public pool: the audience is every active
         // organization's allocation of the selected first-level pool.
         pool_scope: this.isPlatformPoolCampaign ? 'all_organizations' : 'organization',
@@ -853,6 +900,9 @@ export default Vue.extend({
         daily_send_limit: this.isLimitedSMTPCampaign ? this.form.dailySendLimit : 0,
         daily_resume_time: this.isLimitedSMTPCampaign ? this.form.dailyResumeTime : '09:00',
         messenger: this.form.messenger,
+        smtp_source: this.form.smtpSource,
+        smtp_rate_limit: this.isSMTPMessenger ? this.form.smtpRateLimit : 0,
+        smtp_pool_id: this.form.smtpPoolId,
         auto_track_links: this.form.autoTrackLinks,
         type: 'regular',
         tags: this.form.tags,
@@ -870,6 +920,7 @@ export default Vue.extend({
         media: this.form.media.map((m) => m.id),
         visibility: this.form.visibility,
         reply_mailbox_id: this.campaignReplyMailboxID,
+        pool_reply_priority: this.form.poolReplyPriority,
       };
 
       let typMsg = 'globals.messages.updated';
@@ -979,15 +1030,33 @@ export default Vue.extend({
     },
 
     loadPersonalSMTPStatus() {
+      this.smtpOverviewRequest += 1;
+      const request = this.smtpOverviewRequest;
       this.personalSMTPLoaded = false;
-      return this.$api.getPersonalSMTP().then((data) => {
-        const rows = Array.isArray(data) ? data : data && data.smtp;
-        this.personalSMTPAvailable = (rows || []).some((server) => server.enabled === true);
+      this.smtpSenders = [];
+      this.smtpPoolsLoaded = false;
+      const poolsPromise = (this.form.smtpSource === 'organization' && this.workspace.organizationId && !this.isPlatformPoolCampaign)
+        ? this.$api.getCampaignSMTPPools(this.data.id)
+        : Promise.resolve([]);
+      return poolsPromise.then((pools) => {
+        if (request !== this.smtpOverviewRequest) return null;
+        this.smtpPools = pools || [];
+        if (this.form.smtpSource === 'organization' && !this.isPlatformPoolCampaign
+          && !this.smtpPools.some((pool) => Number(pool.id) === Number(this.form.smtpPoolId))) {
+          this.form.smtpPoolId = this.smtpPools.length ? this.smtpPools[0].id : null;
+        }
+        this.smtpPoolsLoaded = true;
+        return this.$api.getCampaignSMTPOverview(this.form.smtpSource, this.data.id, {
+          pool_scope: this.isPlatformPoolCampaign ? 'all_organizations' : 'organization',
+          customer_list_ids: this.form.customer_lists.map((list) => list.id).join(','),
+          smtp_pool_id: this.form.smtpPoolId || undefined,
+        });
+      }).then((rows) => {
+        if (request === this.smtpOverviewRequest) this.smtpSenders = rows || [];
       }).catch(() => {
-        // A failed status check must remain fail-closed in strict SMTP mode.
-        this.personalSMTPAvailable = false;
+        if (request === this.smtpOverviewRequest) this.smtpSenders = [];
       }).finally(() => {
-        this.personalSMTPLoaded = true;
+        if (request === this.smtpOverviewRequest) this.personalSMTPLoaded = true;
       });
     },
 
@@ -1035,8 +1104,8 @@ export default Vue.extend({
       // customer-list read/manage grants. The backend still enforces the
       // organization grant; this flag only keeps an authorized pool visible
       // in the campaign selector when contact details are unavailable.
-      if ((customerList.type === 'pool' || customerList.type === 'org_pool_allocation')
-        && customerList.poolDeliveryAllowed) {
+      if (customerList.type === 'pool'
+        && (customerList.poolDeliveryAllowed || this.$can('campaigns:public_pool_send'))) {
         return true;
       }
       if (!isActiveWorkspaceCustomerList(customerList, this.workspace, this.profile && this.profile.id)) {
@@ -1163,9 +1232,18 @@ export default Vue.extend({
     isPlatformPoolCampaign() {
       if (this.isNew) {
         return this.$can('campaigns:public_pool_send')
-          && this.selectedPoolLists.some((list) => list.type === 'pool');
+          && this.selectedPoolLists.some((list) => list.type === 'pool')
+          && this.form.customer_lists.every((list) => list.type === 'pool');
       }
       return (this.data.poolScope || this.data.pool_scope) === 'all_organizations';
+    },
+
+    exclusiveAudienceGroups() {
+      return this.isNew && !this.workspace.organizationId && this.$can('campaigns:public_pool_send');
+    },
+
+    personalSMTPAvailable() {
+      return this.personalSMTPLoaded && this.smtpSenders.length > 0;
     },
 
     smtpReadyForSend() {
@@ -1179,12 +1257,20 @@ export default Vue.extend({
       return this.isEditing && this.data.toSend > 0;
     },
 
-    smtpFromHint() {
-      return this.$t('campaigns.smtpFromHintPooled');
+    dailyResumeTimeDate: {
+      get() {
+        const match = /^(\d{1,2}):(\d{2})$/.exec(this.form.dailyResumeTime || '');
+        if (!match || Number(match[1]) > 23 || Number(match[2]) > 59) return null;
+        // Only local clock fields are used; the API stores a server-time HH:mm value.
+        return new Date(2000, 0, 1, Number(match[1]), Number(match[2]));
+      },
+      set(value) {
+        this.form.dailyResumeTime = value ? this.formatResumeTime(value) : '';
+      },
     },
 
-    smtpFromPreview() {
-      return this.$t('campaigns.smtpFromPreviewPooled');
+    smtpUnavailableMessage() {
+      return this.$t(this.form.smtpSource === 'organization' ? 'campaigns.smtpOrganizationUnavailable' : 'campaigns.smtpPersonalUnavailable');
     },
 
     activeReplyMailboxes() {
@@ -1233,7 +1319,7 @@ export default Vue.extend({
     },
 
     // Pool audiences never use the campaign-level mailbox: their reply route is
-    // always resolved from the target organization's unified reply mailbox.
+    // resolved per customer from its imported address and organization fallback.
     campaignReplyMailboxID() {
       if (this.hasPoolAudience) {
         return null;
@@ -1251,6 +1337,10 @@ export default Vue.extend({
   },
 
   watch: {
+    'form.smtpSource': function onSMTPSourceChange() { this.form.smtpPoolId = null; this.loadPersonalSMTPStatus(); },
+    'form.smtpPoolId': function onSMTPPoolChange() { if (this.form.smtpSource === 'organization') this.loadPersonalSMTPStatus(); },
+    'data.id': function onCampaignIDChange() { this.loadPersonalSMTPStatus(); },
+    'form.customer_lists': function onAudienceChange() { if (this.isNew) this.loadPersonalSMTPStatus(); },
     selectedLists() {
       // This computed value is only for preselecting lists on a new campaign.
       // An edited campaign receives its regular and pool audiences from the

@@ -29,13 +29,13 @@
             <div class="column is-6">
               <b-field data-cy="from" :label="$t('analytics.fromDate')" label-position="on-border">
                 <b-datetimepicker v-model="form.from" icon="calendar-clock" :timepicker="{ hourFormat: '24' }"
-                  :datetime-formatter="formatDateTime" @input="onFromDateChange" />
+                  :datetime-formatter="formatDateTime" :datetime-parser="$utils.parseDateTime" @input="onFromDateChange" />
               </b-field>
             </div>
             <div class="column is-6">
               <b-field data-cy="to" :label="$t('analytics.toDate')" label-position="on-border">
                 <b-datetimepicker v-model="form.to" icon="calendar-clock" :timepicker="{ hourFormat: '24' }"
-                  :datetime-formatter="formatDateTime" @input="onToDateChange" />
+                  :datetime-formatter="formatDateTime" :datetime-parser="$utils.parseDateTime" @input="onToDateChange" />
               </b-field>
             </div>
           </div><!-- columns -->
@@ -183,7 +183,7 @@ export default Vue.extend({
     },
 
     formatDateTime(s) {
-      return dayjs(s).format('YYYY-MM-DD HH:mm');
+      return this.$utils.niceDate(s, true);
     },
 
     isCampaignSelected(camp) {

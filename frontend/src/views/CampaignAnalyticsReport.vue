@@ -89,7 +89,7 @@
               v-model="filters.from"
               icon="calendar-clock"
               :timepicker="{ hourFormat: '24' }"
-              :datetime-formatter="formatDateTime"
+              :datetime-formatter="formatDateTime" :datetime-parser="$utils.parseDateTime"
               @input="onFromDateChange"
             />
           </b-field>
@@ -100,7 +100,7 @@
               v-model="filters.to"
               icon="calendar-clock"
               :timepicker="{ hourFormat: '24' }"
-              :datetime-formatter="formatDateTime"
+              :datetime-formatter="formatDateTime" :datetime-parser="$utils.parseDateTime"
               @input="onToDateChange"
             />
           </b-field>
@@ -191,6 +191,14 @@
         <b-loading :active="loading.series" :is-full-page="false" />
       </div>
     </section>
+
+    <campaign-geo-heatmap
+      v-if="geoRefreshToken > 0 && !trackingDisabled"
+      :campaign-id="singleCampaign ? singleCampaign.id : null"
+      :params="baseReportParams()"
+      :refresh-token="geoRefreshToken"
+      :country.sync="geoCountry"
+    />
 
     <section class="report-section">
       <div class="columns is-vcentered">
@@ -382,6 +390,7 @@ export default Vue.extend({
 
   components: {
     Chart,
+    CampaignGeoHeatmap: () => import('../components/CampaignGeoHeatmap.vue'),
   },
 
   data() {
@@ -391,6 +400,8 @@ export default Vue.extend({
       campaignQuery: '',
       queriedCampaigns: [],
       chartVersion: 0,
+      geoRefreshToken: 0,
+      geoCountry: String(this.$route.query.country || ''),
       loading: {
         summary: false,
         series: false,
@@ -608,6 +619,7 @@ export default Vue.extend({
     async syncFromRoute() {
       const token = this.syncToken + 1;
       this.syncToken = token;
+      this.geoCountry = String(this.$route.query.country || '');
 
       const defaults = this.defaultDateRange();
       this.filters.from = this.$route.query.from ? dayjs.unix(this.$route.query.from).toDate() : defaults.from;
@@ -659,7 +671,7 @@ export default Vue.extend({
     },
 
     formatDateTime(value) {
-      return dayjs(value).format('YYYY-MM-DD HH:mm');
+      return this.$utils.niceDate(value, true);
     },
 
     formatMetric(value) {
@@ -683,7 +695,7 @@ export default Vue.extend({
     buildChartData(series) {
       const mkDataset = (label, data, color) => ({
         label,
-        data: data.map((item) => ({
+        data: (data || []).map((item) => ({
           x: this.formatDateTime(item.timestamp),
           y: item.count,
         })),
@@ -789,7 +801,15 @@ export default Vue.extend({
         query.id = this.form.campaigns.map((c) => c.id);
       }
 
-      this.$router.push({ query });
+      if (this.geoCountry) {
+        query.country = this.geoCountry;
+      }
+
+      if (this.$router.resolve({ query }).route.fullPath === this.$route.fullPath) {
+        this.refreshReport();
+      } else {
+        this.$router.push({ query });
+      }
     },
 
     refreshReport() {
@@ -801,6 +821,7 @@ export default Vue.extend({
         return;
       }
 
+      this.geoRefreshToken += 1;
       this.loadSeries();
       this.loadLinks();
       if (this.canShowRecipients) {

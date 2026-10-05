@@ -137,13 +137,9 @@ export default Vue.extend({
         } else if (this.hasDummy(form.smtp[i].password)) {
           hasDummy = `smtp #${i + 1}`;
         }
-
-        if (form.smtp[i].strEmailHeaders && form.smtp[i].strEmailHeaders !== '[]') {
-          form.smtp[i].email_headers = JSON.parse(form.smtp[i].strEmailHeaders);
-        } else {
-          form.smtp[i].email_headers = [];
-        }
       }
+      form.smtp_delivery.email_headers = form.smtp_delivery.strEmailHeaders
+        ? JSON.parse(form.smtp_delivery.strEmailHeaders) : [];
 
       // Bounces boxes.
       for (let i = 0; i < form['bounce.mailboxes'].length; i += 1) {
@@ -244,10 +240,8 @@ export default Vue.extend({
           return;
         }
 
-        // Serialize the `email_headers` array map to display on the form.
-        for (let i = 0; i < d.smtp.length; i += 1) {
-          d.smtp[i].strEmailHeaders = JSON.stringify(d.smtp[i].email_headers, null, 4);
-        }
+        // Serialize centrally managed delivery headers for the form.
+        d.smtp_delivery.strEmailHeaders = JSON.stringify(d.smtp_delivery.email_headers || [], null, 4);
 
         // Domain blocklist array to multi-line string.
         d['privacy.domain_blocklist'] = d['privacy.domain_blocklist'].join('\n');

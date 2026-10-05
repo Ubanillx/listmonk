@@ -42,10 +42,11 @@
         </div>
       </div>
 
+      <div class="reply-card-body">
       <div class="columns is-multiline reply-grid">
         <div class="column is-6">
           <b-field :label="$t('replyMailbox.emailLabel')" label-position="on-border">
-            <b-input v-model.trim="mailbox.email" type="email" required placeholder="employee@company.example" :disabled="mailbox.readOnly" />
+            <b-input v-model.trim="mailbox.email" type="email" required placeholder="name@example.com" :disabled="mailbox.readOnly" />
           </b-field>
         </div>
         <div class="column is-6">
@@ -55,7 +56,7 @@
         </div>
         <div class="column is-6">
           <b-field :label="$t('replyMailbox.usernameLabel')" label-position="on-border" :message="$t('replyMailbox.usernameHelp')">
-            <b-input v-model.trim="mailbox.username" placeholder="employee@company.example" :disabled="mailbox.readOnly" />
+            <b-input v-model.trim="mailbox.username" placeholder="user@example.com" :disabled="mailbox.readOnly" />
           </b-field>
         </div>
         <div class="column is-6">
@@ -80,6 +81,7 @@
             <b-input v-model.trim="mailbox.folder" placeholder="INBOX" :disabled="mailbox.readOnly" />
           </b-field>
         </div>
+      </div>
       </div>
 
       <div class="reply-card-footer">
@@ -322,14 +324,16 @@ export default Vue.extend({
 .reply-mailboxes-header { align-items: flex-end; gap: 1rem; }
 .reply-mailboxes-header .help { max-width: 800px; margin-top: .25rem; }
 .reply-empty-state { display: flex; align-items: center; gap: .65rem; border: 1px dashed #d9e0ea; background: #f8fafc; color: #5b6575; }
-.reply-mailbox-card { padding: 0; overflow: hidden; border: 1px solid #e5e9f0; border-radius: 10px; box-shadow: 0 2px 8px rgba(29, 41, 57, .05); }
-.reply-mailbox-card + .reply-mailbox-card { margin-top: 1.25rem; }
-.reply-card-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1.1rem 1.25rem; background: #f8fafc; border-bottom: 1px solid #edf0f4; }
+.reply-mailbox-card { padding: 0; overflow: hidden; border: 1px solid var(--lm-color-border); border-radius: var(--lm-radius-md); }
+.reply-mailbox-card + .reply-mailbox-card { margin-top: var(--lm-space-4); }
+.reply-card-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1.1rem 1.25rem; background: var(--lm-color-surface-subtle); border-bottom: 1px solid var(--lm-color-border); }
 .reply-card-title { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; font-size: 1.05rem; font-weight: 600; color: #273142; }
 .reply-card-subtitle { margin-top: .25rem; color: #718096; font-size: .85rem; word-break: break-all; }
-.reply-grid { padding: 1.25rem 1.25rem .5rem; margin: 0; }
-.reply-grid > .column { padding: .35rem; }
-.reply-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.25rem; border-top: 1px solid #edf0f4; }
+.reply-card-body { padding: 1.25rem; }
+.reply-grid { margin: -.35rem; padding: 0; }
+.reply-grid > .column { min-width: 0; padding: .35rem; }
+.reply-grid .field { min-width: 0; margin-bottom: .35rem; }
+.reply-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.25rem; border-top: 1px solid var(--lm-color-border); }
 .reply-card-ai-toggle { flex: 1; min-width: 240px; }
 .reply-card-ai-toggle .help { margin-top: .3rem; margin-bottom: 0; }
 .reply-card-default-toggle { flex-shrink: 0; }

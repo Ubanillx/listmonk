@@ -1,5 +1,5 @@
 <template>
-  <section class="personal-api-keys mt-6">
+  <section class="personal-api-keys">
     <div class="level api-key-header mb-5">
       <div>
         <h2 class="title is-5 mb-1">{{ $t('apiKeys.title') }}</h2>
@@ -271,7 +271,7 @@ export default Vue.extend({
     formatDate(value) {
       if (!value) return this.$t('apiKeys.never');
       const date = new Date(value);
-      return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
+      return Number.isNaN(date.getTime()) ? String(value) : this.$utils.niceDate(date, true);
     },
     isActive(key) {
       if (key.revokedAt || key.revoked_at) return false;

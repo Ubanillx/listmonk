@@ -14,33 +14,33 @@
           <div class="tile">
             <div class="tile is-parent is-vertical relative">
               <b-loading v-if="isCountsLoading" active :is-full-page="false" />
-              <article class="tile is-child notification" data-cy="customerLists">
+              <article class="tile is-child notification metric-card" data-cy="customerLists">
                 <div class="columns is-mobile">
                   <div class="column is-6">
-                    <p class="title">
+                    <p class="metric-value">
                       <b-icon icon="format-list-bulleted-square" />
                       {{ $utils.niceNumber(counts.customerLists.total) }}
                     </p>
-                    <p class="is-size-6 has-text-grey">
+                    <p class="metric-label">
                       {{ $tc('globals.terms.customer_list', counts.customerLists.total) }}
                     </p>
                   </div>
-                  <div class="column is-6">
-                    <ul class="no has-text-grey">
+                  <div class="column is-6 metric-breakdown">
+                    <ul class="no">
                       <li>
-                        <label for="#">{{ $utils.niceNumber(counts.customerLists.public) }}</label>
+                        <strong>{{ $utils.niceNumber(counts.customerLists.public) }}</strong>
                         {{ $t('customer_lists.types.public') }}
                       </li>
                       <li>
-                        <label for="#">{{ $utils.niceNumber(counts.customerLists.private) }}</label>
+                        <strong>{{ $utils.niceNumber(counts.customerLists.private) }}</strong>
                         {{ $t('customer_lists.types.private') }}
                       </li>
                       <li>
-                        <label for="#">{{ $utils.niceNumber(counts.customerLists.optinSingle) }}</label>
+                        <strong>{{ $utils.niceNumber(counts.customerLists.optinSingle) }}</strong>
                         {{ $t('customer_lists.optins.single') }}
                       </li>
                       <li>
-                        <label for="#">{{ $utils.niceNumber(counts.customerLists.optinDouble) }}</label>
+                        <strong>{{ $utils.niceNumber(counts.customerLists.optinDouble) }}</strong>
                         {{ $t('customer_lists.optins.double') }}
                       </li>
                     </ul>
@@ -48,21 +48,53 @@
                 </div>
               </article><!-- customer_lists -->
 
-              <article class="tile is-child notification" data-cy="campaigns">
+              <article class="tile is-child notification metric-card" data-cy="pool-lists">
                 <div class="columns is-mobile">
                   <div class="column is-6">
-                    <p class="title">
+                    <p class="metric-value">
+                      <b-icon icon="format-list-bulleted-square" />
+                      {{ $utils.niceNumber(counts.poolLists.total) }}
+                    </p>
+                    <p class="metric-label">{{ $t('menu.poolLists') }}</p>
+                  </div>
+                  <div class="column is-6 metric-breakdown">
+                    <ul class="no">
+                      <li>
+                        <strong data-cy="pool-lists-bound">{{ $utils.niceNumber(counts.poolLists.bound) }}</strong>
+                        {{ $t('dashboard.boundPools') }}
+                      </li>
+                      <li>
+                        <strong data-cy="pool-lists-unbound">{{ $utils.niceNumber(counts.poolLists.unbound) }}</strong>
+                        {{ $t('dashboard.unboundPools') }}
+                      </li>
+                      <li>
+                        <strong data-cy="pool-lists-allocations">{{ $utils.niceNumber(counts.poolLists.allocations) }}</strong>
+                        {{ $t('dashboard.poolAllocations') }}
+                      </li>
+                      <li>
+                        <strong data-cy="pool-lists-organizations">{{ $utils.niceNumber(counts.poolLists.organizations) }}</strong>
+                        {{ $t('dashboard.boundOrganizations') }}
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </article><!-- pool_lists -->
+
+              <article class="tile is-child notification metric-card" data-cy="campaigns">
+                <div class="columns is-mobile">
+                  <div class="column is-6">
+                    <p class="metric-value">
                       <b-icon icon="rocket-launch-outline" />
                       {{ $utils.niceNumber(counts.campaigns.total) }}
                     </p>
-                    <p class="is-size-6 has-text-grey">
+                    <p class="metric-label">
                       {{ $tc('globals.terms.campaign', counts.campaigns.total) }}
                     </p>
                   </div>
-                  <div class="column is-6">
-                    <ul class="no has-text-grey">
+                  <div class="column is-6 metric-breakdown">
+                    <ul class="no">
                       <li v-for="(num, status) in counts.campaigns.byStatus" :key="status">
-                        <label for="#" :data-cy="`campaigns-${status}`">{{ num }}</label>
+                        <strong :data-cy="`campaigns-${status}`">{{ num }}</strong>
                         {{ $t(`campaigns.status.${status}`) }}
                         <span v-if="status === 'running'" class="spinner is-tiny">
                           <b-loading :is-full-page="false" active />
@@ -74,65 +106,88 @@
               </article><!-- campaigns -->
             </div><!-- block -->
 
-            <div class="tile is-parent relative">
+            <div class="tile is-parent is-vertical relative">
               <b-loading v-if="isCountsLoading" active :is-full-page="false" />
-              <article class="tile is-child notification" data-cy="customers">
+              <article class="tile is-child notification metric-card" data-cy="private-customers">
                 <div class="columns is-mobile">
                   <div class="column is-6">
-                    <p class="title">
+                    <p class="metric-value">
                       <b-icon icon="account-multiple" />
-                      {{ $utils.niceNumber(counts.customers.total) }}
+                      {{ $utils.niceNumber(counts.privateCustomers.total) }}
                     </p>
-                    <p class="is-size-6 has-text-grey">
-                      {{ $tc('globals.terms.customer', counts.customers.total) }}
+                    <p class="metric-label">
+                      {{ $tc('globals.terms.customer', counts.privateCustomers.total) }}
                     </p>
                   </div>
 
-                  <div class="column is-6">
-                    <ul class="no has-text-grey">
+                  <div class="column is-6 metric-breakdown">
+                    <ul class="no">
                       <li>
-                        <label for="#">{{ $utils.niceNumber(counts.customers.blocklisted) }}</label>
+                        <strong>{{ $utils.niceNumber(counts.privateCustomers.blocklisted) }}</strong>
                         {{ $t('customers.status.blocklisted') }}
                       </li>
                       <li>
-                        <label for="#">{{ $utils.niceNumber(counts.customers.orphans) }}</label>
+                        <strong>{{ $utils.niceNumber(counts.privateCustomers.orphans) }}</strong>
                         {{ $t('dashboard.orphanSubs') }}
                       </li>
                     </ul>
                   </div><!-- customer breakdown -->
                 </div><!-- customer columns -->
-                <hr />
-                <div class="columns" data-cy="messages">
-                  <div class="column is-12">
-                    <p class="title">
-                      <b-icon icon="email-outline" />
-                      {{ $utils.niceNumber(counts.messages) }}
+              </article><!-- private customers -->
+
+              <article class="tile is-child notification metric-card" data-cy="dashboard-pool-customers">
+                <div class="columns is-mobile">
+                  <div class="column is-6">
+                    <p class="metric-value">
+                      <b-icon icon="account-group-outline" />
+                      {{ $utils.niceNumber(counts.poolCustomers.total) }}
                     </p>
-                    <p class="is-size-6 has-text-grey">
-                      {{ $t('dashboard.messagesSent') }}
+                    <p class="metric-label">
+                      {{ $t('dashboard.poolCustomers') }}
                     </p>
                   </div>
+                  <div class="column is-6 metric-breakdown">
+                    <ul class="no">
+                      <li>
+                        <strong>{{ $utils.niceNumber(counts.poolCustomers.active) }}</strong>
+                        {{ $t('pool.activeContacts') }}
+                      </li>
+                      <li>
+                        <strong>{{ $utils.niceNumber(counts.poolCustomers.removed) }}</strong>
+                        {{ $t('pool.statusRemovedGlobal') }}
+                      </li>
+                    </ul>
+                  </div>
                 </div>
-              </article><!-- customers -->
+              </article><!-- pool customers -->
             </div>
           </div>
           <div class="tile is-parent relative">
+            <article class="tile is-child notification metric-card metric-card--compact" data-cy="messages">
+              <p class="metric-value">
+                <b-icon icon="email-outline" />
+                {{ $utils.niceNumber(counts.messages) }}
+              </p>
+              <p class="metric-label">{{ $t('dashboard.messagesSent') }}</p>
+            </article>
+          </div>
+          <div class="tile is-parent relative">
             <b-loading v-if="isChartsLoading" active :is-full-page="false" />
-            <article class="tile is-child notification charts">
+            <article class="tile is-child notification charts dashboard-chart-card">
               <div class="columns">
                 <div class="column is-6">
-                  <h3 class="title is-size-6">
+                  <h3 class="dashboard-chart-title">
                     {{ $t('dashboard.campaignViews') }}
-                  </h3><br />
+                  </h3>
                   <chart type="line" v-if="campaignViews" :data="campaignViews" />
                   <p v-else-if="!isChartsLoading" class="has-text-grey">
                     {{ $t('dashboard.noChartData') }}
                   </p>
                 </div>
                 <div class="column is-6">
-                  <h3 class="title is-size-6 has-text-right">
+                  <h3 class="dashboard-chart-title has-text-right">
                     {{ $t('dashboard.linkClicks') }}
-                  </h3><br />
+                  </h3>
                   <chart type="line" v-if="campaignClicks" :data="campaignClicks" />
                   <p v-else-if="!isChartsLoading" class="has-text-grey has-text-right">
                     {{ $t('dashboard.noChartData') }}
@@ -151,7 +206,6 @@
 </template>
 
 <script>
-import dayjs from 'dayjs';
 import Vue from 'vue';
 import { mapState } from 'vuex';
 import { colors } from '../constants';
@@ -170,7 +224,9 @@ export default Vue.extend({
       campaignClicks: null,
       counts: {
         customerLists: {},
-        customers: {},
+        poolLists: {},
+        privateCustomers: {},
+        poolCustomers: {},
         campaigns: {},
         messages: 0,
       },
@@ -207,14 +263,20 @@ export default Vue.extend({
         return null;
       }
       return {
-        labels: data.map((d) => dayjs(d.date).format('DD MMM')),
+        labels: data.map((d) => this.$utils.niceDate(d.date)),
         datasets: [
           {
             data: [...data.map((d) => d.count)],
             borderColor: colors.primary,
+            backgroundColor: colors.primarySoft,
             borderWidth: 2,
-            pointHoverBorderWidth: 5,
-            pointBorderWidth: 0.5,
+            pointBackgroundColor: colors.primary,
+            pointBorderColor: '#ffffff',
+            pointHoverBackgroundColor: colors.primary,
+            pointHoverBorderColor: '#ffffff',
+            pointHoverBorderWidth: 3,
+            pointBorderWidth: 2,
+            fill: true,
           },
         ],
       };
@@ -223,9 +285,6 @@ export default Vue.extend({
 
   computed: {
     ...mapState(['settings']),
-    dayjs() {
-      return dayjs;
-    },
   },
 
   created() {

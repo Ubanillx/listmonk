@@ -2,157 +2,173 @@
   <section class="user-profile">
     <b-loading v-if="loading.users" :active="loading.users" :is-full-page="false" />
 
-    <h1 class="title">
+    <h1 class="title mb-1">
       @{{ data.username }}
     </h1>
     <b-tag v-if="data.userRole">{{ data.userRole.name }}</b-tag>
 
-    <br /><br /><br />
-    <form @submit.prevent="onSubmit">
-      <b-field v-if="data.type !== 'api'" :label="$t('customers.email')" label-position="on-border">
-        <b-input :maxlength="200" v-model="form.email" name="email" :placeholder="$t('customers.email')"
-          :disabled="!data.passwordLogin" required autofocus />
-      </b-field>
-
-      <b-field :label="$t('globals.fields.name')" label-position="on-border">
-        <b-input :maxlength="200" v-model="form.name" name="name" :placeholder="$t('globals.fields.name')" />
-      </b-field>
-
-      <section v-if="customFields.length" class="account-custom-fields mb-5">
-        <h3 class="title is-5">{{ $t('customFields.accountValues') }}</h3>
-        <div class="columns is-multiline">
-          <div v-for="field in customFields" :key="field.key" class="column is-6">
-            <b-field :label="field.label" label-position="on-border" :message="field.description">
-              <b-select v-if="field.type === 'select'" v-model="customValues[field.key]" expanded :required="field.required">
-                <option value="">{{ $t('globals.terms.none') }}</option>
-                <option v-for="option in field.options" :key="option" :value="option">{{ option }}</option>
-              </b-select>
-              <b-select v-else-if="field.type === 'multi_select'" v-model="customValues[field.key]" expanded multiple :required="field.required">
-                <option v-for="option in field.options" :key="option" :value="option">{{ option }}</option>
-              </b-select>
-              <b-checkbox v-else-if="field.type === 'checkbox'" v-model="customValues[field.key]">{{ field.label }}</b-checkbox>
-              <b-input v-else-if="field.type === 'textarea'" v-model="customValues[field.key]" type="textarea" :required="field.required" />
-              <b-input v-else v-model="customValues[field.key]"
-                :type="fieldInputType(field.type)"
-                :required="field.required" />
-            </b-field>
-          </div>
-        </div>
-      </section>
-
-      <div v-if="data.passwordLogin" class="columns">
-        <div class="column is-6">
-          <b-field :label="$t('users.password')" label-position="on-border">
-            <b-input minlength="8" :maxlength="200" v-model="form.password" type="password" name="password"
-              :placeholder="$t('users.password')" />
-          </b-field>
-        </div>
-        <div class="column is-6">
-          <b-field :label="$t('users.passwordRepeat')" label-position="on-border">
-            <b-input minlength="8" :maxlength="200" v-model="form.password2" type="password" name="password2"
-              :placeholder="$t('users.passwordRepeat')" />
-          </b-field>
-        </div>
-      </div>
-
-      <b-field expanded>
-        <b-button type="is-primary" icon-left="content-save-outline" native-type="submit" data-cy="btn-save"
-          :loading="loading.users" :disabled="loading.users">
-          {{ $t('globals.buttons.save') }}
-        </b-button>
-      </b-field>
-    </form>
-
-    <personal-s-m-t-p-settings />
-
-    <personal-a-p-i-key-settings v-if="data.type === 'user'" />
-
-    <!-- Personal reply mailboxes stay here only for the personal workspace.
-         Organization-scoped mailboxes are managed under Organizations. -->
-    <reply-mailbox-settings v-if="!workspace.organizationId" />
-
     <br /><br />
 
-    <!-- 2FA -->
-    <section v-if="this.data.passwordLogin" class="twofa-section">
-      <!-- TOTP disabled -->
-      <div v-if="data.twofaType === 'none'" class="box">
-        <div class="columns is-vcentered mb-4">
-          <div class="column">
-            <h3 class="title is-size-5 mb-0">{{ $t('users.twoFA') }}</h3>
-          </div>
-          <div class="column is-narrow">
-            <b-switch v-if="!isTotpVisible" v-model="twofaEnabled" @input="onToggleEnableTotp" />
-          </div>
-        </div>
+    <b-tabs class="profile-card-tabs" :animated="false" v-model="tab">
+      <!-- Personal information -->
+      <b-tab-item :label="$t('users.profileTabs.info')">
+        <div class="profile-panel">
+          <form @submit.prevent="onSubmit">
+            <b-field v-if="data.type !== 'api'" :label="$t('customers.email')" label-position="on-border">
+              <b-input :maxlength="200" v-model="form.email" name="email" :placeholder="$t('customers.email')"
+                :disabled="!data.passwordLogin" required autofocus />
+            </b-field>
 
-        <p>{{ $t('users.twoFANotEnabled') }}</p>
-        <br />
+            <b-field :label="$t('globals.fields.name')" label-position="on-border">
+              <b-input :maxlength="200" v-model="form.name" name="name" :placeholder="$t('globals.fields.name')" />
+            </b-field>
 
-        <!-- TOTP setup -->
-        <div v-if="isTotpVisible" class="totp-setup">
-          <div v-if="totpQR" class="qr-section">
-            <p class="has-text-grey">{{ $t('users.totpScanQR') }}</p><br />
-
-            <img :src="'data:image/png;base64,' + totpQR" :alt="$t('users.totpQRCode')" />
-
-            <br /><br />
-            <p>
-              <strong>{{ $t('users.totpSecret') }}</strong><br />
-              <code><copy-text :text="`${totpSecret}`" /></code>
-            </p>
-
-            <br /><br />
-            <form @submit.prevent="confirmTOTP">
-              <b-field :label="$t('users.totpCode')" label-position="on-border">
-                <b-input ref="totpCodeInput" v-model="totpCode" maxlength="6" pattern="[0-9]{6}" placeholder="000000"
-                  required />
-              </b-field>
-              <div class="buttons">
-                <b-button type="is-primary" native-type="submit">
-                  {{ $t('globals.buttons.enable') }}
-                </b-button>
-                <b-button type="button" @click="onCancelTOTPSetup">
-                  {{ $t('globals.buttons.cancel') }}
-                </b-button>
+            <section v-if="customFields.length" class="account-custom-fields mb-5">
+              <h3 class="title is-5">{{ $t('customFields.accountValues') }}</h3>
+              <div class="columns is-multiline">
+                <div v-for="field in customFields" :key="field.key" class="column is-6">
+                  <b-field :label="field.label" label-position="on-border" :message="field.description">
+                    <b-select v-if="field.type === 'select'" v-model="customValues[field.key]" expanded :required="field.required">
+                      <option value="">{{ $t('globals.terms.none') }}</option>
+                      <option v-for="option in field.options" :key="option" :value="option">{{ option }}</option>
+                    </b-select>
+                    <b-select v-else-if="field.type === 'multi_select'" v-model="customValues[field.key]" expanded multiple :required="field.required">
+                      <option v-for="option in field.options" :key="option" :value="option">{{ option }}</option>
+                    </b-select>
+                    <b-checkbox v-else-if="field.type === 'checkbox'" v-model="customValues[field.key]">{{ field.label }}</b-checkbox>
+                    <b-input v-else-if="field.type === 'textarea'" v-model="customValues[field.key]" type="textarea" :required="field.required" />
+                    <b-input v-else v-model="customValues[field.key]"
+                      :type="fieldInputType(field.type)"
+                      :required="field.required" />
+                  </b-field>
+                </div>
               </div>
-            </form>
-          </div>
+            </section>
+
+            <div v-if="data.passwordLogin" class="columns">
+              <div class="column is-6">
+                <b-field :label="$t('users.password')" label-position="on-border">
+                  <b-input minlength="8" :maxlength="200" v-model="form.password" type="password" name="password"
+                    :placeholder="$t('users.password')" />
+                </b-field>
+              </div>
+              <div class="column is-6">
+                <b-field :label="$t('users.passwordRepeat')" label-position="on-border">
+                  <b-input minlength="8" :maxlength="200" v-model="form.password2" type="password" name="password2"
+                    :placeholder="$t('users.passwordRepeat')" />
+                </b-field>
+              </div>
+            </div>
+
+            <b-field expanded>
+              <b-button type="is-primary" icon-left="content-save-outline" native-type="submit" data-cy="btn-save"
+                :loading="loading.users" :disabled="loading.users">
+                {{ $t('globals.buttons.save') }}
+              </b-button>
+            </b-field>
+          </form>
+
+          <!-- 2FA -->
+          <section v-if="this.data.passwordLogin" class="twofa-section">
+            <!-- TOTP disabled -->
+            <div v-if="data.twofaType === 'none'" class="box">
+              <div class="columns is-vcentered mb-4">
+                <div class="column">
+                  <h3 class="title is-size-5 mb-0">{{ $t('users.twoFA') }}</h3>
+                </div>
+                <div class="column is-narrow">
+                  <b-switch v-if="!isTotpVisible" v-model="twofaEnabled" @input="onToggleEnableTotp" />
+                </div>
+              </div>
+
+              <p>{{ $t('users.twoFANotEnabled') }}</p>
+              <br />
+
+              <!-- TOTP setup -->
+              <div v-if="isTotpVisible" class="totp-setup">
+                <div v-if="totpQR" class="qr-section">
+                  <p class="has-text-grey">{{ $t('users.totpScanQR') }}</p><br />
+
+                  <img :src="'data:image/png;base64,' + totpQR" :alt="$t('users.totpQRCode')" />
+
+                  <br /><br />
+                  <p>
+                    <strong>{{ $t('users.totpSecret') }}</strong><br />
+                    <code><copy-text :text="`${totpSecret}`" /></code>
+                  </p>
+
+                  <br /><br />
+                  <form @submit.prevent="confirmTOTP">
+                    <b-field :label="$t('users.totpCode')" label-position="on-border">
+                      <b-input ref="totpCodeInput" v-model="totpCode" maxlength="6" pattern="[0-9]{6}" placeholder="000000"
+                        required />
+                    </b-field>
+                    <div class="buttons">
+                      <b-button type="is-primary" native-type="submit">
+                        {{ $t('globals.buttons.enable') }}
+                      </b-button>
+                      <b-button type="button" @click="onCancelTOTPSetup">
+                        {{ $t('globals.buttons.cancel') }}
+                      </b-button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+
+            <!-- TOTP Enabled -->
+            <div v-if="data.twofaType === 'totp'" class="box">
+              <div class="columns is-vcentered">
+                <div class="column">
+                  <h3 class="title is-size-5">
+                    <b-icon icon="check-circle-outline" type="is-success" /> {{ $t('users.twoFAEnabled') }}
+                  </h3>
+                </div>
+                <div class="column is-narrow">
+                  <b-switch v-if="!showDisableTOTP" v-model="twofaEnabled" @input="toggleDisableTOTP" />
+                </div>
+              </div>
+
+              <p>{{ $t('users.twoFAEnabledDesc', { type: data.twofaType.toUpperCase() }) }}</p>
+
+              <!-- Disable TOTP Flow -->
+              <form v-if="showDisableTOTP" class="disable-totp mt-5" @submit.prevent="confirmDisableTOTP">
+                <b-field :label="$t('users.password')" label-position="on-border">
+                  <b-input ref="disablePasswordInput" v-model="disableTOTPPassword" type="password" minlength="8"
+                    :placeholder="$t('users.password')" required />
+                </b-field>
+                <div class="buttons">
+                  <b-button type="is-danger" native-type="submit">
+                    {{ $t('globals.buttons.disable') }}
+                  </b-button>
+                  <b-button type="button" @click="onCancelTOTPSetup">
+                    {{ $t('globals.buttons.cancel') }}
+                  </b-button>
+                </div>
+              </form>
+            </div>
+          </section>
         </div>
-      </div>
+      </b-tab-item><!-- /personal information -->
 
-      <!-- TOTP Enabled -->
-      <div v-if="data.twofaType === 'totp'" class="box">
-        <div class="columns is-vcentered">
-          <div class="column">
-            <h3 class="title is-size-5">
-              <b-icon icon="check-circle-outline" type="is-success" /> {{ $t('users.twoFAEnabled') }}
-            </h3>
-          </div>
-          <div class="column is-narrow">
-            <b-switch v-if="!showDisableTOTP" v-model="twofaEnabled" @input="toggleDisableTOTP" />
-          </div>
+      <!-- Personal mail configuration -->
+      <b-tab-item :label="$t('users.profileTabs.mail')">
+        <div class="profile-panel">
+          <personal-s-m-t-p-settings />
+
+          <!-- Personal reply mailboxes stay here only for the personal workspace.
+               Organization-scoped mailboxes are managed under Organizations. -->
+          <reply-mailbox-settings v-if="!workspace.organizationId" />
         </div>
+      </b-tab-item><!-- /personal mail -->
 
-        <p>{{ $t('users.twoFAEnabledDesc', { type: data.twofaType.toUpperCase() }) }}</p>
-
-        <!-- Disable TOTP Flow -->
-        <form v-if="showDisableTOTP" class="disable-totp mt-5" @submit.prevent="confirmDisableTOTP">
-          <b-field :label="$t('users.password')" label-position="on-border">
-            <b-input ref="disablePasswordInput" v-model="disableTOTPPassword" type="password" minlength="8"
-              :placeholder="$t('users.password')" required />
-          </b-field>
-          <div class="buttons">
-            <b-button type="is-danger" native-type="submit">
-              {{ $t('globals.buttons.disable') }}
-            </b-button>
-            <b-button type="button" @click="onCancelTOTPSetup">
-              {{ $t('globals.buttons.cancel') }}
-            </b-button>
-          </div>
-        </form>
-      </div>
-    </section>
+      <!-- API keys -->
+      <b-tab-item v-if="data.type === 'user'" :label="$t('apiKeys.title')">
+        <div class="profile-panel">
+          <personal-a-p-i-key-settings />
+        </div>
+      </b-tab-item><!-- /api keys -->
+    </b-tabs>
   </section>
 </template>
 
@@ -176,6 +192,7 @@ export default Vue.extend({
 
   data() {
     return {
+      tab: 0,
       form: {},
       data: {},
       isTotpVisible: false,
@@ -310,6 +327,13 @@ export default Vue.extend({
   },
 
   mounted() {
+    // Restore the last visited tab once the profile data is available. The
+    // API keys tab only exists for human users, so clamp stale preferences.
+    const savedTab = parseInt(this.$utils.getPref('profile.tab'), 10);
+    if (!Number.isNaN(savedTab) && savedTab > 0) {
+      this.tab = savedTab;
+    }
+
     Promise.all([this.$api.getUserProfile(), this.$api.getCustomFields()]).then(([data, fields]) => {
       this.data = { ...data };
       this.form = { name: data.name, email: data.email };
@@ -331,6 +355,10 @@ export default Vue.extend({
         this.$set(this.customValues, field.key, value);
       });
       this.twofaEnabled = data.twofaType === 'totp';
+
+      if (this.data.type !== 'user' && this.tab > 1) {
+        this.tab = 1;
+      }
     });
   },
 
@@ -338,6 +366,11 @@ export default Vue.extend({
     ...mapState(['loading', 'workspace']),
   },
 
+  watch: {
+    tab(t) {
+      this.$utils.setPref('profile.tab', t);
+    },
+  },
 });
 </script>
 
@@ -349,14 +382,70 @@ export default Vue.extend({
 
 // Keep the account form and 2FA panel readable while allowing the SMTP
 // configuration cards to use the full profile content width.
-.user-profile > form,
-.user-profile > .twofa-section {
+.profile-panel > form,
+.profile-panel > .twofa-section {
   width: 100%;
-  max-width: 760px;
+  max-width: var(--lm-field-max-width);
+}
+
+.twofa-section {
+  margin-top: var(--lm-space-6);
 }
 
 .user-profile .personal-smtp {
   width: 100%;
+}
+
+// Card-style tabs (Ant Design "card" look): inactive tabs sit on a subtle
+// surface, the active tab merges into the bordered content panel below.
+.profile-card-tabs {
+  ::v-deep nav.tabs {
+    margin-bottom: 0;
+
+    ul {
+      border-bottom: 1px solid var(--lm-color-border);
+    }
+
+    li {
+      margin-right: var(--lm-space-1);
+
+      a {
+        margin-bottom: -1px;
+        padding: 0.55em 1.4em;
+        border: 1px solid var(--lm-color-border);
+        border-radius: var(--lm-radius-sm) var(--lm-radius-sm) 0 0;
+        background: var(--lm-color-surface-subtle);
+        color: var(--lm-color-text);
+      }
+
+      a:hover {
+        background: var(--lm-color-surface);
+        color: var(--lm-color-primary);
+        border-bottom-color: var(--lm-color-border);
+      }
+
+      &.is-active a {
+        background: var(--lm-color-surface);
+        border-bottom-color: var(--lm-color-surface) !important;
+        color: var(--lm-color-primary);
+        font-weight: 500;
+      }
+    }
+  }
+
+  ::v-deep .tab-content {
+    margin-top: -1px;
+    padding: var(--lm-space-6);
+    border: 1px solid var(--lm-color-border);
+    border-radius: 0 var(--lm-radius-sm) var(--lm-radius-sm) var(--lm-radius-sm);
+    background: var(--lm-color-surface);
+  }
+}
+
+// The settings sections carry their own top margin; drop it on the first
+// section inside a panel so the card looks flush.
+.profile-panel > section:first-child {
+  margin-top: 0;
 }
 
 @media (max-width: 768px) {
@@ -364,9 +453,13 @@ export default Vue.extend({
     max-width: none;
   }
 
-  .user-profile > form,
-  .user-profile > .twofa-section {
+  .profile-panel > form,
+  .profile-panel > .twofa-section {
     max-width: none;
+  }
+
+  .profile-card-tabs ::v-deep .tab-content {
+    padding: var(--lm-space-4);
   }
 }
 </style>

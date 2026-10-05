@@ -27,7 +27,7 @@ describe('Reply AI gateway settings', function replyAISuite() {
           form: true,
           body: {
             username: Cypress.env('REPLY_AI_QA_USER') || 'root',
-            password: Cypress.env('REPLY_AI_QA_PASSWORD') || 'Test@1234',
+            password: Cypress.env('REPLY_AI_QA_PASSWORD') || 'possible1.',
             nonce,
             next: '/admin',
           },

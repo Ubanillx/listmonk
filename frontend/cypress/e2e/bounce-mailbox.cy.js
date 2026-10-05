@@ -9,7 +9,7 @@ describe('Bounce mailbox diagnostics', function bounceMailboxSuite() {
       const nonce = /name="nonce" value="([^"]+)"/.exec(response.body)[1];
       cy.request({
         method: 'POST', url: '/admin/login', form: true,
-        body: { username: Cypress.env('BOUNCE_QA_USER') || 'root', password: Cypress.env('BOUNCE_QA_PASSWORD') || 'Test@1234', nonce, next: '/admin' },
+        body: { username: Cypress.env('BOUNCE_QA_USER') || 'root', password: Cypress.env('BOUNCE_QA_PASSWORD') || 'possible1.', nonce, next: '/admin' },
       });
     });
     cy.request('/api/settings').its('status').should('eq', 200);

@@ -1039,6 +1039,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#pool-list-hierarchy-in-the-admin-ui" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pool list hierarchy in the admin UI
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#independent-business-permissions-v6560" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1778,6 +1789,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#pool-list-hierarchy-in-the-admin-ui" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pool list hierarchy in the admin UI
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#independent-business-permissions-v6560" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1828,6 +1850,17 @@
 
 
 <h1 id="public-pools">Public pools<a class="headerlink" href="#public-pools" title="Permanent link">&para;</a></h1>
+<h2 id="pool-list-hierarchy-in-the-admin-ui">Pool list hierarchy in the admin UI<a class="headerlink" href="#pool-list-hierarchy-in-the-admin-ui" title="Permanent link">&para;</a></h2>
+<p>The public pool list page groups organization allocations below their source pool
+using <code>pool_parent_id</code>. Each source can be expanded or collapsed; name search,
+organization and type dropdowns can be combined. A matching allocation retains
+its readable source pool as context, outside the matching count and bulk selection.
+Pagination keeps each pool and its matching allocations together. Allocations
+whose source is outside the current visible scope remain visible with an explicit
+notice; the UI never requests otherwise inaccessible source metadata.</p>
+<p>Filters operate on the permission-scoped list metadata returned by
+<code>GET /api/customer-lists?type_group=pool&amp;per_page=all</code> for the current active or
+archived view. They do not switch workspace or change customer access permissions.</p>
 <h2 id="independent-business-permissions-v6560">Independent business permissions (v6.56.0)<a class="headerlink" href="#independent-business-permissions-v6560" title="Permanent link">&para;</a></h2>
 <p>Pool browsing, organization allocation management, master-data maintenance,
 delivery authorization, and export are separate role permissions. Delegated
@@ -1843,6 +1876,11 @@ Permission names and dependencies are documented in
 repeat), name, allocation department and real email server-side; all
 non-highest-administrator responses return a masked email. Internal reply
 mailbox addresses are not masked.</p>
+<p>Masked recipient addresses use <code>*</code> characters, for example
+<code>liuxin@gmail.com</code> becomes <code>liu***@gmail.com</code>. The first three local-part
+characters remain visible for longer addresses; local parts of three characters
+or fewer are fully masked. Each hidden character is replaced with one <code>*</code>.
+The list APIs, aggregate pool view and CSV exports use the same format.</p>
 <p>First-level <code>pool</code> rows use the platform-wide <code>global</code> scope. A <code>org_pool_allocation</code>
 row uses the selected organization's scope and exposes that organization's
 name as <code>organization_name</code>; the creating administrator remains available in

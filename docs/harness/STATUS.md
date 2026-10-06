@@ -1,6 +1,12 @@
 # 工作状态
 
-快照日期：2026-10-05
+快照日期：2026-10-06
+
+- 客户邮箱星号打码（2026-10-06）：检查发现私域与公海邮箱仍使用 `x` 遮罩，已统一改为 `*`，例如 `liuxin@gmail.com` → `liu***@gmail.com`；保留现有前缀、长度和权限规则，三位及以下的用户名全部打码。列表、明细、API、聚合公海及 CSV 导出使用相同格式，同步更新权限与公海 API 文档。来源：`cmd/customers.go::maskEmail`、`models/pools.go::MaskPoolEmail`。
+  验证：`go test ./...`、定向打码/业务权限测试、隔离 PostgreSQL 公海查询与聚合脱敏测试、`git diff --check` 通过。开发后端已重启，9173 返回 200、无待升级；日志仍有此前记录的事务模板 3 `RootURL` 编译错误，无新增启动错误。
+
+- 公海列表树形布局与筛选（2026-10-06）：以 `pool_parent_id` 将组织公海分配置于来源公海下，支持逐组及全部展开/收起、名称搜索、组织与类型组合筛选、匹配计数和空态重置。仅作上下文的父公海不计入匹配数且不能批量勾选；切换筛选/分页清空选择，分页按完整分组进行。来源不可见的分配独立显示并提示，不请求额外元数据；读取和管理权限沿用现有规则。复用当前工作区组织目录和已有列表 API，新增中英文文案及响应式样式。来源：`frontend/src/views/CustomerLists.vue`、`frontend/src/utils/poolListTree.js`、`frontend/src/assets/styles/views/_pool-lists.scss`、`frontend/cypress/e2e/pool-list-tree.cy.js`、`i18n/{en,zh-CN,zh-TW}.json`。
+  验证：前端 lint/build、隔离数据库 Cypress 公海层级 3/3 和私域列表 1/1、`git diff --check` 通过；覆盖父子排序、不可见来源、组织/类型组合筛选、名称搜索、筛选后选择清理、展开/收起、跨 21 组分页、加载失败重试和 390px 无横向溢出。实际中文页面在 1440px/390px 检查，并通过浏览器确认 Enter 展开/收起；桌面、手机截图已保存。生产资源已重建，开发后端已重启，9173 返回 200、无待升级；日志仍有此前记录的事务模板 3 `RootURL` 编译错误。
 
 - OpenClaw 营销 skill 对齐当前对外 API（2026-10-05）：以 v6.56.0 实际路由/处理器为基线，重写任务描述与工作流，新增按模块的 API 方法、用途、参数、scope、返回值和权限边界参考，区分个人 Key 可调用路径、公海兼容路径与未开放的配置/管理接口。修正今日统计的跨活动入口、事件时间口径、日期午夜边界、重复 tag/id 和收件人分页说明。修复完整流程未声明 reply_mailbox_id，补齐 SMTP 来源、组织池、发送频率、可见性与链接追踪参数；内容蓝本保留 visual 源/称呼兜底但不复制发送身份配置。报表 CLI 支持单活动/多个 ID/授权工作区、可选 geo、指定收件人页及明细 403 降级。验证：pytest 37 项与 10 个子测试通过，API 表覆盖个人 Key 允许的全部 89 个方法/路径组合且与实际路由一致，技能格式/UI 元数据/引用与站点文档链接检查通过。已重启开发后端，9173 返回 200、无待升级；启动仍有此前记录的事务模板 3 `RootURL` 编译错误。未使用真实 Key 或发送邮件。来源：`skills/listmonk-openclaw-marketing/{SKILL.md,agents/openai.yaml,references/,scripts/,tests/}`、`docs/docs/content/external-integration.md`、`docs/ARCHITECTURE.md`。
 

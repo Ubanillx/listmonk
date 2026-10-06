@@ -645,7 +645,7 @@ func TestQueryAllPoolContactsAggregatesPoolsAndMasksOrganizationRows(t *testing.
 		t.Fatal(err)
 	}
 	masked := result.([]models.SafePoolContact)
-	if total != 1 || len(masked) != 1 || masked[0].PoolID != int64(poolB) || masked[0].Email == "shared@example.test" {
+	if total != 1 || len(masked) != 1 || masked[0].PoolID != int64(poolB) || masked[0].Email != "sha***@example.test" {
 		t.Errorf("organization A rows = %+v total=%d, want one masked pool-b membership", masked, total)
 	}
 	result, total, err = env.core.QueryAllPoolContacts(int(orgB), false, "active", "", 0, nil, "id", "desc", 0, 20)
@@ -653,7 +653,7 @@ func TestQueryAllPoolContactsAggregatesPoolsAndMasksOrganizationRows(t *testing.
 		t.Fatal(err)
 	}
 	masked = result.([]models.SafePoolContact)
-	if total != 1 || len(masked) != 1 || masked[0].ID != onlyB || masked[0].PoolID != int64(poolB) {
+	if total != 1 || len(masked) != 1 || masked[0].ID != onlyB || masked[0].PoolID != int64(poolB) || masked[0].Email != "oth**@example.test" {
 		t.Errorf("organization B rows = %+v total=%d, want own pool-b contact only", masked, total)
 	}
 

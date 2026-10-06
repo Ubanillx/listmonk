@@ -1,5 +1,5 @@
 <template>
-  <section class="customer_lists">
+  <section class="customer_lists" :class="{ 'pool-list-tree': isPoolGroup }">
     <header class="columns page-header">
       <div class="column is-10">
         <h1 class="title is-4 mb-2">
@@ -25,12 +25,78 @@
         </b-field>
       </div>
     </header>
-    <b-table :data="customer_lists.results" :loading="loading.listsFull" @check-all="onTableCheck" @check="onTableCheck"
-      :checked-rows.sync="bulk.checked" hoverable default-sort="createdAt" paginated backend-pagination
-      pagination-position="both" @page-change="onPageChange" :current-page="queryParams.page" :per-page="customer_lists.perPage"
-      :total="customer_lists.total" :checkable="canManageLists" :is-row-checkable="canDeleteList" backend-sorting @sort="onSort">
+    <div v-if="isPoolGroup" class="pool-list-toolbar" data-cy="pool-list-filters">
+      <form class="pool-list-filters" @submit.prevent="onSearch">
+        <b-field :label="$t('globals.buttons.search')" class="pool-list-search">
+          <b-input v-model="queryParams.query" name="query" expanded icon="magnify" ref="query" data-cy="query"
+            :placeholder="$t('customer_lists.poolSearchPlaceholder')" :aria-label="$t('globals.buttons.search')" />
+          <p class="controls">
+            <b-button native-type="submit" type="is-primary" icon-left="magnify" data-cy="btn-query"
+              :aria-label="$t('globals.buttons.search')" />
+          </p>
+        </b-field>
+        <b-field :label="$t('customer_lists.organizationFilter')">
+          <b-select v-model="poolFilters.organizationId" expanded :aria-label="$t('customer_lists.organizationFilter')"
+            data-cy="pool-list-organization-filter" @input="onPoolFilterChange">
+            <option value="">{{ $t('customer_lists.allOrganizations') }}</option>
+            <option value="0">{{ $t('customer_lists.visibility.globalPool') }}</option>
+            <option v-for="organization in poolOrganizations" :key="organization.id" :value="String(organization.id)">
+              {{ organization.name }}
+            </option>
+          </b-select>
+        </b-field>
+        <b-field :label="$t('globals.fields.type')">
+          <b-select v-model="poolFilters.type" expanded :aria-label="$t('globals.fields.type')"
+            data-cy="pool-list-type-filter" @input="onPoolFilterChange">
+            <option value="">{{ $t('customer_lists.allTypes') }}</option>
+            <option value="pool">{{ $t('customer_lists.types.pool') }}</option>
+            <option value="org_pool_allocation">{{ $t('customer_lists.types.org_pool_allocation') }}</option>
+          </b-select>
+        </b-field>
+        <b-button native-type="button" class="pool-list-reset" :disabled="!hasPoolFilters && !queryParams.query"
+          data-cy="pool-list-reset" @click="resetPoolFilters">
+          {{ $t('customer_lists.resetFilters') }}
+        </b-button>
+      </form>
+      <div class="pool-list-tree-heading">
+        <div>
+          <strong>{{ $t('customer_lists.poolHierarchy') }}</strong>
+          <span class="pool-list-result-count" aria-live="polite" data-cy="pool-list-result-count">
+            {{ $t('customer_lists.poolResults', { count: poolMatchingCount, groups: poolGroups.length }) }}
+          </span>
+          <p>{{ $t('customer_lists.poolHierarchyHelp') }}</p>
+        </div>
+        <div class="pool-list-tree-controls">
+          <b-button size="is-small" icon-left="unfold-more-horizontal" :disabled="!poolGroups.length"
+            data-cy="pool-list-expand-all" @click="collapsedPools = []">
+            {{ $t('customer_lists.expandAll') }}
+          </b-button>
+          <b-button size="is-small" icon-left="unfold-less-horizontal" :disabled="!poolGroups.length"
+            data-cy="pool-list-collapse-all" @click="collapseAllPools">
+            {{ $t('customer_lists.collapseAll') }}
+          </b-button>
+        </div>
+      </div>
+    </div>
+    <div v-if="isPoolGroup && poolLoadError" class="notification is-light" role="alert">
+      {{ $t('customer_lists.poolLoadError') }}
+      <b-button size="is-small" @click="getLists">{{ $t('globals.buttons.retry') }}</b-button>
+    </div>
+    <div v-if="isPoolGroup && canManageLists && bulk.checked.length" class="pool-list-bulk actions">
+      <a href="#" @click.prevent="deleteLists" data-cy="btn-delete-customer_lists">
+        <b-icon icon="trash-can-outline" size="is-small" /> {{ $t('globals.buttons.delete') }}
+      </a>
+      <span>{{ $tc('globals.messages.numSelected', numSelectedLists, { num: numSelectedLists }) }}</span>
+    </div>
+    <b-table :data="tableRows" :loading="loading.listsFull" @check-all="onTableCheck" @check="onTableCheck"
+      :checked-rows.sync="bulk.checked" hoverable :default-sort="isPoolGroup ? 'name' : 'createdAt'"
+      :paginated="!isPoolGroup" backend-pagination
+      :pagination-position="isPoolGroup ? 'bottom' : 'both'" @page-change="onPageChange" :current-page="queryParams.page"
+      :per-page="isPoolGroup ? poolPageSize : customer_lists.perPage" :total="isPoolGroup ? poolGroups.length : customer_lists.total"
+      :checkable="canManageLists" :is-row-checkable="canDeleteList" :row-class="listRowClass"
+      custom-row-key="id" :custom-is-checked="(left, right) => left.id === right.id" backend-sorting @sort="onSort">
       <template #top-left>
-        <div class="columns">
+        <div v-if="!isPoolGroup" class="columns">
           <div class="column is-6">
             <form @submit.prevent="onSearch">
               <b-field>
@@ -62,21 +128,37 @@
       </template>
 
       <b-table-column v-slot="props" field="name" :label="$t('globals.fields.name')" header-class="cy-name" sortable
-        width="25%" paginated backend-pagination pagination-position="both" :td-attrs="$utils.tdID"
+        :width="isPoolGroup ? '34%' : '25%'" paginated backend-pagination pagination-position="both" :td-attrs="$utils.tdID"
         @page-change="onPageChange">
-        <div>
-          <a :href="customerListEditHref(props.row)" @click.prevent="showEditForm(props.row)">
-            {{ props.row.name }}
-          </a>
-          <b-taglist>
-            <b-tag class="is-small" v-for="t in props.row.tags" :key="t">
-              {{ t }}
-            </b-tag>
-          </b-taglist>
+        <div :class="{ 'pool-tree-name': isPoolGroup, 'is-child': props.row.treeDepth === 1 }">
+          <span v-if="isPoolGroup && props.row.treeDepth === 1" class="pool-tree-branch" aria-hidden="true" />
+          <button v-if="isPoolGroup && props.row.treeChildrenCount" type="button" class="pool-tree-toggle"
+            :aria-expanded="String(!collapsedPools.includes(props.row.id))" :aria-label="$t('customer_lists.togglePool', { name: props.row.name })"
+            :data-pool-id="props.row.id" data-cy="pool-tree-toggle" @click="togglePool(props.row.id)">
+            <b-icon :icon="collapsedPools.includes(props.row.id) ? 'chevron-right' : 'chevron-down'" size="is-small" />
+          </button>
+          <span v-else-if="isPoolGroup" class="pool-tree-spacer" aria-hidden="true" />
+          <b-icon v-if="isPoolGroup" :icon="props.row.type === 'pool' ? 'database-outline' : 'office-building-outline'"
+            size="is-small" class="pool-tree-icon" />
+          <div :class="{ 'pool-tree-label': isPoolGroup }">
+            <a :href="customerListEditHref(props.row)" @click.prevent="showEditForm(props.row)">
+              {{ props.row.name }}
+            </a>
+            <span v-if="isPoolGroup && props.row.treeChildrenCount" class="pool-tree-allocation-count">
+              {{ $t('customer_lists.allocationCount', { count: props.row.treeChildrenCount }) }}
+            </span>
+            <p v-if="props.row.treeContext" class="pool-tree-note">{{ $t('customer_lists.parentContext') }}</p>
+            <p v-if="props.row.treeOrphan" class="pool-tree-note">{{ $t('customer_lists.parentUnavailable') }}</p>
+            <b-taglist>
+              <b-tag class="is-small" v-for="t in props.row.tags" :key="t">
+                {{ t }}
+              </b-tag>
+            </b-taglist>
+          </div>
         </div>
       </b-table-column>
 
-      <b-table-column v-slot="props" field="type" :label="$t('globals.fields.type')" header-class="cy-type" sortable
+      <b-table-column v-slot="props" field="type" :label="$t('globals.fields.type')" header-class="cy-type" :sortable="!isPoolGroup"
         width="15%">
         <div class="tags">
           <b-tag :class="props.row.type" :data-cy="`type-${props.row.type}`">
@@ -84,14 +166,14 @@
           </b-tag>
           {{ ' ' }}
 
-          <b-tag :class="props.row.optin" :data-cy="`optin-${props.row.optin}`">
+          <b-tag v-if="!isPoolGroup" :class="props.row.optin" :data-cy="`optin-${props.row.optin}`">
             <b-icon :icon="props.row.optin === 'double' ? 'account-check-outline' : 'account-off-outline'"
               size="is-small" />
             {{ ' ' }}
             {{ $t(`customer_lists.optins.${props.row.optin}`) }}
           </b-tag>{{ ' ' }}
 
-          <a v-if="props.row.optin === 'double' && canManageList(props.row)" class="is-size-7 send-optin" href="#"
+          <a v-if="!isPoolGroup && props.row.optin === 'double' && canManageList(props.row)" class="is-size-7 send-optin" href="#"
             @click="$utils.confirm(null, () => createOptinCampaign(props.row))" data-cy="btn-send-optin-campaign">
             <b-tooltip :label="$t('customer_lists.sendOptinCampaign')" type="is-dark">
               <b-icon icon="rocket-launch-outline" size="is-small" />
@@ -123,7 +205,10 @@
 
       <b-table-column v-slot="props" field="customer_counts" :label="$t('globals.fields.status')"
         header-class="cy-customer-statuses" width="12%">
-        <div class="fields stats">
+        <b-tag v-if="isPoolGroup" :type="props.row.status === 'active' ? 'is-success' : 'is-light'" class="is-light">
+          {{ $t(props.row.status === 'active' ? 'customer_lists.active' : 'customer_lists.archived') }}
+        </b-tag>
+        <div v-else class="fields stats">
           <router-link v-for="(count, status) in canViewListCustomers(props.row) ? filterStatuses(props.row) : {}" :key="status"
             class="status-item" :class="status"
             :to="`/customers/customer-lists/${props.row.id}?subscription_status=${status}`">
@@ -133,16 +218,16 @@
         </div>
       </b-table-column>
 
-      <b-table-column v-slot="props" field="created_at" :label="$t('globals.fields.createdAt')"
+      <b-table-column v-if="!isPoolGroup" v-slot="props" field="created_at" :label="$t('globals.fields.createdAt')"
         header-class="cy-created_at" sortable>
         {{ $utils.niceDate(props.row.createdAt) }}
       </b-table-column>
       <b-table-column v-slot="props" field="updated_at" :label="$t('globals.fields.updatedAt')"
-        header-class="cy-updated_at" sortable>
+        header-class="cy-updated_at" :cell-class="isPoolGroup ? 'pool-tree-date' : ''" sortable>
         {{ $utils.niceDate(props.row.updatedAt) }}
       </b-table-column>
 
-      <b-table-column v-slot="props" cell-class="actions" align="right">
+      <b-table-column v-slot="props" cell-class="actions" align="right" :width="isPoolGroup ? 112 : undefined">
         <div>
           <router-link v-if="canManageList(props.row)"
             :to="`/campaigns/new?customer_list_id=${props.row.id}`"
@@ -184,9 +269,18 @@
       </b-table-column>
 
       <template #empty v-if="!loading.listsFull">
-        <empty-placeholder />
+        <div v-if="isPoolGroup && !poolLoadError" class="pool-list-empty">
+          <b-icon icon="file-tree-outline" />
+          <p>{{ $t('customer_lists.poolEmpty') }}</p>
+          <b-button v-if="hasPoolFilters" size="is-small" @click="resetPoolFilters">{{ $t('customer_lists.resetFilters') }}</b-button>
+        </div>
+        <empty-placeholder v-else-if="!poolLoadError" />
       </template>
     </b-table>
+    <div v-if="isPoolGroup && poolGroups.length" class="pool-list-pagination">
+      <b-pagination :total="poolGroups.length" :per-page="poolPageSize" :current="queryParams.page"
+        order="is-right" @change="onPageChange" />
+    </div>
 
     <!-- Add / edit form modal -->
     <b-modal scroll="keep" :aria-modal="true" :active.sync="isFormVisible" :width="600" @close="onFormClose">
@@ -214,6 +308,7 @@ import EmptyPlaceholder from '../components/EmptyPlaceholder.vue';
 import PoolManager from '../components/PoolManager.vue';
 import CustomerListForm from './CustomerListForm.vue';
 import { isOwnedActiveWorkspaceCustomerList } from '../utils/workspace';
+import buildPoolListGroups from '../utils/poolListTree';
 
 export default Vue.extend({
   components: {
@@ -231,6 +326,11 @@ export default Vue.extend({
       isPoolVisible: false,
       poolItem: null,
       customer_lists: [],
+      poolFilters: { organizationId: '', type: '' },
+      poolSearch: '',
+      collapsedPools: [],
+      poolPageSize: 20,
+      poolLoadError: false,
       queryParams: {
         page: 1,
         query: '',
@@ -250,6 +350,10 @@ export default Vue.extend({
   methods: {
     onPageChange(p) {
       this.queryParams.page = p;
+      if (this.isPoolGroup) {
+        this.bulk = { checked: [], all: false };
+        return;
+      }
       this.getLists();
     },
 
@@ -257,6 +361,33 @@ export default Vue.extend({
       this.queryParams.orderBy = field;
       this.queryParams.order = direction;
       this.getLists();
+    },
+
+    onPoolFilterChange() {
+      this.queryParams.page = 1;
+      this.bulk = { checked: [], all: false };
+      this.collapsedPools = [];
+    },
+
+    resetPoolFilters() {
+      this.poolFilters = { organizationId: '', type: '' };
+      this.queryParams.query = '';
+      this.poolSearch = '';
+      this.onPoolFilterChange();
+    },
+
+    togglePool(id) {
+      this.collapsedPools = this.collapsedPools.includes(id)
+        ? this.collapsedPools.filter((poolID) => poolID !== id) : [...this.collapsedPools, id];
+    },
+
+    collapseAllPools() {
+      this.collapsedPools = this.poolGroups.map((group) => group.parent.id);
+    },
+
+    listRowClass(row) {
+      if (!this.isPoolGroup) return '';
+      return row.treeDepth === 1 ? 'pool-tree-child' : 'pool-tree-root';
     },
 
     // Show the edit customerList form.
@@ -307,20 +438,34 @@ export default Vue.extend({
     // A new search starts a new result set; keeping the old page number would
     // request a page that may not exist and render an empty table.
     onSearch() {
+      if (this.isPoolGroup) {
+        this.poolSearch = this.queryParams.query.trim();
+        this.onPoolFilterChange();
+        return;
+      }
       this.queryParams.page = 1;
       this.getLists();
     },
 
     getLists() {
+      this.poolLoadError = false;
+      if (this.isPoolGroup) this.bulk = { checked: [], all: false };
       this.$api.queryLists({
-        page: this.queryParams.page,
-        query: this.queryParams.query.replace(/[^\p{L}\p{N}\s]/gu, ' '),
+        // Load the readable pool metadata together so filters and pagination
+        // cannot separate a parent from its allocations.
+        ...(this.isPoolGroup ? { per_page: 'all', page: 1 } : { page: this.queryParams.page }),
+        query: this.isPoolGroup ? '' : this.queryParams.query.replace(/[^\p{L}\p{N}\s]/gu, ' '),
         order_by: this.queryParams.orderBy,
         order: this.queryParams.order,
         status: this.queryParams.status,
         type_group: this.listGroup,
       }).then((resp) => {
         this.customer_lists = resp;
+        if (this.isPoolGroup) {
+          this.queryParams.page = Math.min(this.queryParams.page, Math.max(1, Math.ceil(this.poolGroups.length / this.poolPageSize)));
+        }
+      }).catch(() => {
+        if (this.isPoolGroup) this.poolLoadError = true;
       });
 
       // Also fetch the minimal customer_lists for the global store that appears
@@ -421,7 +566,7 @@ export default Vue.extend({
     },
 
     canDeleteList(customerList) {
-      return this.canManageList(customerList)
+      return !customerList.treeContext && this.canManageList(customerList)
         && (customerList.type === 'pool' || this.$can('customer_lists:delete'));
     },
 
@@ -479,7 +624,40 @@ export default Vue.extend({
   },
 
   computed: {
-    ...mapState(['loading', 'settings', 'profile', 'workspace']),
+    ...mapState(['loading', 'settings', 'profile', 'workspace', 'organizations']),
+
+    poolOrganizations() {
+      const organizations = new Map((this.organizations || []).map((organization) => [Number(organization.id), organization]));
+      (this.customer_lists.results || []).forEach((list) => {
+        const id = Number(list.organizationId);
+        if (id && !organizations.has(id)) {
+          organizations.set(id, { id, name: list.organizationName || this.$t('pool.organizationFallback', { id }) });
+        }
+      });
+      return [...organizations.values()].sort((left, right) => left.name.localeCompare(right.name));
+    },
+
+    poolGroups() {
+      return buildPoolListGroups(this.customer_lists.results || [], { ...this.poolFilters, query: this.poolSearch });
+    },
+
+    poolMatchingCount() {
+      return this.poolGroups.reduce((count, group) => count + (group.parent.treeContext ? 0 : 1) + group.children.length, 0);
+    },
+
+    hasPoolFilters() {
+      return !!(this.poolSearch || this.poolFilters.organizationId || this.poolFilters.type);
+    },
+
+    tableRows() {
+      if (!this.isPoolGroup) return this.customer_lists.results || [];
+      const start = (this.queryParams.page - 1) * this.poolPageSize;
+      return this.poolGroups.slice(start, start + this.poolPageSize).reduce((rows, group) => {
+        rows.push(group.parent);
+        if (!this.collapsedPools.includes(group.parent.id)) rows.push(...group.children);
+        return rows;
+      }, []);
+    },
 
     isPoolGroup() {
       return this.$route.name === 'poolLists' || this.$route.name === 'poolList';
@@ -510,7 +688,7 @@ export default Vue.extend({
     // Organization managers can inspect member customer_lists but must never bulk
     // select them. Cross-page selection is therefore platform-admin only.
     canSelectAllLists() {
-      return this.$isPlatformAdmin();
+      return !this.isPoolGroup && this.$isPlatformAdmin();
     },
 
     isPlatformAdmin() {

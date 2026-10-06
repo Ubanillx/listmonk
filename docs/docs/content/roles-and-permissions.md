@@ -161,10 +161,10 @@ Two per-resource protections control what a viewer sees of a customer record:
   is included in customer listings and in CSV exports.
 - **Masked e-mails.** Each customer_list has a "mask e-mails" (`mask_emails`) setting. When
   enabled, viewers without `customers:sensitive_read` see masked
-  e-mail addresses such as `liuxxx@gmail.com` instead of the full address in
+  e-mail addresses such as `liu***@gmail.com` instead of the full address in
   customer listings, detail views, API responses, and CSV exports scoped to
   that customer_list. The local part keeps its first 3 characters; the remainder is
-  replaced with `x`s, preserving the length (local parts of 3 characters or
+  replaced with `*`s, preserving the length (local parts of 3 characters or
   fewer are fully replaced). Viewers with no sensitive-data access and no
   masking-enabled customer_list context continue to receive the pre-existing redaction
   (empty e-mail). Masking affects display only — searching and segmentation

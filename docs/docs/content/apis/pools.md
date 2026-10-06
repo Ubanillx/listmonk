@@ -1,5 +1,19 @@
 # Public pools
 
+## Pool list hierarchy in the admin UI
+
+The public pool list page groups organization allocations below their source pool
+using `pool_parent_id`. Each source can be expanded or collapsed; name search,
+organization and type dropdowns can be combined. A matching allocation retains
+its readable source pool as context, outside the matching count and bulk selection.
+Pagination keeps each pool and its matching allocations together. Allocations
+whose source is outside the current visible scope remain visible with an explicit
+notice; the UI never requests otherwise inaccessible source metadata.
+
+Filters operate on the permission-scoped list metadata returned by
+`GET /api/customer-lists?type_group=pool&per_page=all` for the current active or
+archived view. They do not switch workspace or change customer access permissions.
+
 ## Independent business permissions (v6.56.0)
 
 Pool browsing, organization allocation management, master-data maintenance,
@@ -21,6 +35,12 @@ Public customer pools are first-class `customer_list` types (`pool` and
 repeat), name, allocation department and real email server-side; all
 non-highest-administrator responses return a masked email. Internal reply
 mailbox addresses are not masked.
+
+Masked recipient addresses use `*` characters, for example
+`liuxin@gmail.com` becomes `liu***@gmail.com`. The first three local-part
+characters remain visible for longer addresses; local parts of three characters
+or fewer are fully masked. Each hidden character is replaced with one `*`.
+The list APIs, aggregate pool view and CSV exports use the same format.
 
 First-level `pool` rows use the platform-wide `global` scope. A `org_pool_allocation`
 row uses the selected organization's scope and exposes that organization's

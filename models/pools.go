@@ -177,9 +177,9 @@ func MaskPoolEmail(email string) string {
 	}
 	local, domain := email[:at], email[at:]
 	if len(local) <= 3 {
-		return strings.Repeat("x", len(local)) + domain
+		return strings.Repeat("*", len(local)) + domain
 	}
-	return local[:3] + strings.Repeat("x", len(local)-3) + domain
+	return local[:3] + strings.Repeat("*", len(local)-3) + domain
 }
 
 func (p PoolContact) Safe() SafePoolContact {

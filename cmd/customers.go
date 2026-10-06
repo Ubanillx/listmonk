@@ -197,9 +197,9 @@ func (a *App) exportMasked(c echo.Context, access models.WorkspaceAccess, Custom
 
 // maskEmail masks a customer's e-mail address for viewers without
 // sensitive-data access. The local part keeps its first 3 characters while the
-// remainder is replaced with 'x's, preserving the original length. Local parts
+// remainder is replaced with '*'s, preserving the original length. Local parts
 // of 3 characters or fewer are fully replaced so no private prefix leaks.
-// Eg: liuxin@gmail.com => liuxxx@gmail.com.
+// Eg: liuxin@gmail.com => liu***@gmail.com.
 func maskEmail(email string) string {
 	at := strings.Index(email, "@")
 	if at <= 0 {
@@ -207,9 +207,9 @@ func maskEmail(email string) string {
 	}
 	local, domain := email[:at], email[at:]
 	if len(local) <= 3 {
-		return strings.Repeat("x", len(local)) + domain
+		return strings.Repeat("*", len(local)) + domain
 	}
-	return local[:3] + strings.Repeat("x", len(local)-3) + domain
+	return local[:3] + strings.Repeat("*", len(local)-3) + domain
 }
 
 // redactWorkspaceCustomerSensitiveFields runs after the resource boundary.

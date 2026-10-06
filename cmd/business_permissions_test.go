@@ -48,7 +48,7 @@ func TestSensitiveCustomerPermissionAlsoAppliesToOwnersAndManagers(t *testing.T)
 		customer := models.Customer{ResourceScope: permissionTestScope(7, 3, "private", false), Email: "alice@example.com",
 			UUID: "private-uuid", Attribs: models.JSON{"phone": "123"}, CustomerLists: []byte(`[{"id":1}]`)}
 		a.redactWorkspaceCustomerSensitiveFields(access, map[int]bool{1: true}, &customer, permissionTestUser(auth.PermCustomersManage))
-		if customer.Email != "alixx@example.com" || customer.UUID != "" || len(customer.Attribs) != 0 {
+		if customer.Email != "ali**@example.com" || customer.UUID != "" || len(customer.Attribs) != 0 {
 			t.Fatalf("%s read bypassed sensitive permission: %+v", role, customer)
 		}
 		if len(customer.CustomerLists) == 0 {

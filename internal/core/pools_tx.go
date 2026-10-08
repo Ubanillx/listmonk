@@ -75,7 +75,7 @@ func (c *Core) organizationReplyMailboxIDTx(tx *sqlx.Tx, organizationID int64) (
 		SELECT o.reply_mailbox_id
 		FROM organizations o
 		JOIN reply_mailboxes rm ON rm.id=o.reply_mailbox_id
-			AND rm.status='active' AND rm.verified_at IS NOT NULL
+			AND rm.status='active' AND (NOT rm.ai_enabled OR rm.verified_at IS NOT NULL)
 		WHERE o.id=$1`, organizationID); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil

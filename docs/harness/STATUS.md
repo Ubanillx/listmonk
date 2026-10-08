@@ -1,6 +1,14 @@
 # 工作状态
 
-快照日期：2026-10-06
+快照日期：2026-10-08
+
+- 客户回信邮箱 QA 复检（2026-10-08）：补测并修复连接测试隐式启用 `disabled` 邮箱的问题，前后端均保持停用状态；无法解析的邮件先落 `malformed_message` 忽略事件，再推进扫描，入库失败仍重试原 UID，避免坏信阻塞后续回信。新增真实 PostgreSQL/模拟 IMAP 回归和停用状态 Cypress；混合受众脚本修正组织 Cookie 的异步赋值及单组织状态接口断言。验证：回信/相关审计专项 89 个顶层用例通过（2 个另需审计 DSN 的既有审计用例跳过）、全量普通 Go 测试、`go vet ./...`、diff 检查通过；隔离 Cypress 5/5、前端 lint/build 和 390px 无横向溢出检查通过。原先记录的 4 个全库 PostgreSQL 夹具失败本轮未改动、未重新跑全库数据库测试。来源：`cmd/{reply_ai,reply_mailboxes,reply_imap_test,reply_mailbox_test_connection_test}.go`、`frontend/src/components/ReplyMailboxSettings.vue`、`frontend/cypress/e2e/{pool-reply-routing,reply-mailbox-config}.cy.js`。
+
+- 客户回信邮箱链路修复（2026-10-08，v6.57.0）：统一按实际收件地址/组织的 sent 投递快照解析私域与公海；新发邮件带活动/收件人 Message-ID，In-Reply-To/References 优先定位，歧义停止自动变更。共享组织邮箱覆盖成员的真实私域投递，管理员创建的组织邮箱无需额外加入组织。提交事务重验全局/逐邮箱 AI 开关、邮箱验证、组织/成员、客户归属、投递来源与租约。真实 IMAP 与只读文件夹取代隐式 POP3 改写，持久 UID/UIDVALIDITY 按最旧未处理消息分批推进，失败可重试、超限明确留痕；转发仍重访源消息维持原重试语义。停用保留 AI 意图；混选活动保留私域 Reply-To，新增私域 sent 地址快照；启动/调度/发送检查邮箱，失效暂停。来源：`cmd/{reply_ai,reply_imap,campaign_reply_route,reply_mailboxes,manager_store}.go`、`internal/core/{reply_ai,reply_ai_delivery}.go`、`internal/manager/{manager,pipe}.go`、`models/reply_delivery.go`、`queries/{replies,campaigns}.sql`、`frontend/src/views/Campaign.vue`、`internal/migrations/v6.57.0.go`。
+  - 验证：全量 Go 测试与 vet、相关隔离 PostgreSQL 回归、IMAP 201 封分批/进度恢复/失败重试/超限、AI 状态竞态、来源引用、公海导入地址后配置收件、实际发送器邮件头与停用阻断、v6.57.0 迁移幂等通过。隔离 Cypress `pool-reply-routing.cy.js`（含公海/私域混选保存与重载）1/1 和 `reply-mailbox-config.cy.js` 3/3 通过；前端 lint/build 完成，后端升级/重启及 9173=200 验证完成。真实供应商 IMAP 与 AI 网关未连接。额外全量数据库集成检查出现 4 个既有夹具失败：`internal/core/campaign_audience_tx_db_test.go` 缺 `smtp_rate_limit`（2 个用例）；`internal/migrations/v6.40.0_test.go` 将 NULL 组织 ID 扫入 int64；`internal/migrations/v6.46.0_test.go` 缺 `country_code`。这三份夹具未在本轮改动。启动仍有既有事务模板 3 `RootURL` 编译错误；前端仅既有 lint/Sass 警告。
+
+- 回信地址与 AI 收件配置拆分（2026-10-06）：普通邮箱仅需地址，保存后立即可选用；AI 开关展开收件连接，先保存后测试，服务端复用已保存密码，响应仅含 `has_password`。未保存编辑禁止测试，连接变化重新验证，并发编辑不错误标记通过。AI 检查与离组转发改用全局 `reply_ai.scan_interval`（默认 60s，10s–24h），设置页可编辑，旧数据自动兜底，无需迁移。营销活动与公海统一路由同步支持纯地址模式。来源：`cmd/{reply_mailboxes,reply_ai,reply_forwarder,settings,main}.go`、`queries/{replies,campaigns}.sql`、`models/{reply_ai,reply_mailboxes}.go`、`internal/core/{pools,pools_tx,pool_reply_routes}.go`、`frontend/src/components/ReplyMailboxSettings.vue`、`frontend/src/views/settings/inbound-replies.vue`。
+  - 验证：`go test ./...`、隔离 PostgreSQL 的邮箱保存/密码复用/连接测试与权限边界、公海回信路由及收件人回归通过；前端 lint、生产构建、文档链接检查通过。隔离 Cypress `reply-mailbox-config.cy.js` 3/3 通过，保存与间隔设置使用真实 API，仅外部邮箱连接测试模拟；覆盖重载、失败重试、AI 开关及 390px 无横向溢出，未连接用户真实邮箱。生产资源已重建并重启 `dev-backend-1`，9173 返回 200，无待升级；浏览器确认生产页面加载新文案和布局。启动仍有既有事务模板 3 的 `RootURL` 编译错误，未新增启动错误。
 
 - 客户邮箱星号打码（2026-10-06）：检查发现私域与公海邮箱仍使用 `x` 遮罩，已统一改为 `*`，例如 `liuxin@gmail.com` → `liu***@gmail.com`；保留现有前缀、长度和权限规则，三位及以下的用户名全部打码。列表、明细、API、聚合公海及 CSV 导出使用相同格式，同步更新权限与公海 API 文档。来源：`cmd/customers.go::maskEmail`、`models/pools.go::MaskPoolEmail`。
   验证：`go test ./...`、定向打码/业务权限测试、隔离 PostgreSQL 公海查询与聚合脱敏测试、`git diff --check` 通过。开发后端已重启，9173 返回 200、无待升级；日志仍有此前记录的事务模板 3 `RootURL` 编译错误，无新增启动错误。

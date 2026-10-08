@@ -10,6 +10,8 @@ describe('Public-pool reply routing', () => {
     let poolID;
     let allocationListID;
     let campaignID;
+    let privateListID;
+    let replyMailboxID;
     cy.request('/api/profile').then(({ body }) => cy.request('POST', '/api/organizations', {
       name: 'Reply routing team', manager_user_id: body.data.id,
     })).then(({ body }) => { orgID = body.data.id; });
@@ -40,9 +42,13 @@ describe('Public-pool reply routing', () => {
     cy.then(() => cy.request(`/api/customer-lists/${poolID}/pool-contacts/export`))
       .its('body').should('contain', 'reply_to').and('contain', 'reply@example.com');
     cy.window().then((win) => win.localStorage.setItem('listmonk.workspace.organizationId', String(orgID)));
-    cy.setCookie('listmonk_workspace_organization_id', String(orgID));
+    cy.then(() => cy.setCookie('listmonk_workspace_organization_id', String(orgID)));
     cy.request('PUT', '/api/profile/smtp', { smtp: [{ name: 'Reply test sender', enabled: true,
       host: 'host.docker.internal', port: 6125, auth_protocol: 'none', from_email: 'sender@example.com', tls_type: 'none' }] });
+    cy.request('POST', '/api/customer-lists', { name: 'Private reply audience', type: 'private', optin: 'single' })
+      .then(({ body }) => { privateListID = body.data.id; });
+    cy.request('POST', '/api/profile/reply-mailboxes', { email: 'private-reply@example.com', ai_enabled: false })
+      .then(({ body }) => { replyMailboxID = body.data.id; });
     cy.then(() => cy.visit(`/admin/campaigns/new?customer_list_id=${poolID}`));
     cy.get('[data-cy=campaign-smtp-source]').select('personal');
     cy.get('[data-cy=campaign-pool-reply-priority]').should('have.value', 'contact_first').select('organization_first');
@@ -59,11 +65,17 @@ describe('Public-pool reply routing', () => {
     cy.then(() => cy.get(`[data-cy=campaign-audience-${poolID}]`).check());
     cy.get('[data-cy=campaign-audience-trigger]').click();
     cy.get('[data-cy=campaign-pool-reply-priority]').should('have.value', 'organization_first');
+    cy.get('[data-cy=campaign-audience-trigger]').click();
+    cy.then(() => cy.get(`[data-cy=campaign-audience-${privateListID}]`).check());
+    cy.get('[data-cy=campaign-audience-trigger]').click();
+    cy.then(() => cy.get('[data-cy=campaign-reply-mailbox]').select(String(replyMailboxID)));
+    cy.get('[data-cy=campaign-pool-reply-priority]').should('have.value', 'organization_first');
     cy.get('input[name=name]').type('Reply priority campaign');
     cy.get('input[name=subject]').type('Reply routing subject');
     cy.intercept('POST', '/api/campaigns').as('createReplyCampaign');
     cy.get('[data-cy=btn-continue]').click();
-    cy.wait('@createReplyCampaign').then(({ response }) => {
+    cy.wait('@createReplyCampaign').then(({ request, response }) => {
+      expect(request.body.reply_mailbox_id).to.eq(replyMailboxID);
       expect(response.statusCode).to.eq(200);
       expect(response.body.data.pool_reply_priority).to.eq('organization_first');
       campaignID = response.body.data.id;
@@ -74,10 +86,14 @@ describe('Public-pool reply routing', () => {
     cy.get('[data-cy=btn-save]').first().click();
     cy.wait('@updateReplyCampaign').its('response.body.data.pool_reply_priority').should('eq', 'contact_first');
     cy.reload();
+    cy.then(() => cy.get('[data-cy=campaign-reply-mailbox]').should('have.value', String(replyMailboxID)));
     cy.get('[data-cy=campaign-pool-reply-priority]').should('have.value', 'contact_first');
     cy.then(() => cy.request(`/api/campaigns/${campaignID}/pool-send-status`)).then(({ body }) => {
       expect(body.data.ready, JSON.stringify(body.data)).to.eq(true);
-      expect(body.data.organizations[0].mailbox_ready).to.eq(true);
+      // Mixed audiences are scoped to this organization; per-organization
+      // readiness entries belong only to all_organizations pool campaigns.
+      expect(body.data.pool_scope).to.eq('organization');
+      expect(body.data.organizations).to.deep.equal([]);
     });
     cy.then(() => cy.request({ method: 'PUT', url: `/api/campaigns/${campaignID}`,
       body: { pool_reply_priority: 'invalid' }, failOnStatusCode: false })).its('status').should('eq', 400);

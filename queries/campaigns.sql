@@ -1388,11 +1388,12 @@ WITH picked AS (
 u AS (
     UPDATE campaign_recipients cr
     SET status = 'queued',
+		reply_to_snapshot = COALESCE((SELECT rm.email FROM campaigns c JOIN reply_mailboxes rm ON rm.id=c.reply_mailbox_id WHERE c.id=$1 AND rm.status='active'),''),
         updated_at = NOW()
     FROM picked
     WHERE cr.campaign_id = $1
       AND cr.customer_id = picked.customer_id
-    RETURNING cr.customer_id, cr.status AS recipient_status, cr.sent_at
+    RETURNING cr.customer_id, cr.status AS recipient_status, cr.sent_at, cr.reply_to_snapshot AS private_reply_to
 )
 SELECT s.id, s.uuid,
     COALESCE(cr.email_snapshot, s.email) AS email,
@@ -1401,7 +1402,7 @@ SELECT s.id, s.uuid,
     s.status, s.created_at, s.updated_at,
     s.organization_id, s.owner_user_id, s.original_owner_user_id, s.visibility,
     s.transfer_pending_at,
-    u.recipient_status, u.sent_at
+    u.recipient_status, u.sent_at, u.private_reply_to
 FROM u
 JOIN customers s ON s.id = u.customer_id
 JOIN campaign_recipients cr ON cr.campaign_id = $1 AND cr.customer_id = s.id
@@ -1715,7 +1716,7 @@ SELECT s.organization_id,
     o.status AS organization_status,
     o.reply_mailbox_id,
     COALESCE(rm.email, '') AS reply_mailbox_email,
-    ((rm.id IS NOT NULL AND rm.status = 'active' AND rm.verified_at IS NOT NULL) OR NOT (NOT EXISTS (
+    ((rm.id IS NOT NULL AND rm.status = 'active' AND (NOT rm.ai_enabled OR rm.verified_at IS NOT NULL)) OR NOT (NOT EXISTS (
 	SELECT 1 FROM org_pool_allocation_members am
 	JOIN pool_members pm ON pm.contact_id=am.contact_id AND pm.pool_id=s.pool_id
 	JOIN pool_contacts pc ON pc.id=am.contact_id

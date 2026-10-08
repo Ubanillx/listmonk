@@ -19,6 +19,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- Organization tenancy tables are declared after users below because they
 -- reference user IDs. Drop them explicitly on a destructive fresh install.
 DROP TABLE IF EXISTS audit_events CASCADE;
+DROP TABLE IF EXISTS reply_mailbox_scan_cursors CASCADE;
 DROP TABLE IF EXISTS reply_ai_events CASCADE;
 DROP TABLE IF EXISTS reply_forward_messages CASCADE;
 DROP TABLE IF EXISTS reply_forward_rules CASCADE;
@@ -212,6 +213,7 @@ CREATE TABLE campaign_recipients (
     customer_id  INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE ON UPDATE CASCADE,
     status         campaign_recipient_status NOT NULL DEFAULT 'pending',
     email_snapshot TEXT,
+	 reply_to_snapshot TEXT,
     name_snapshot  TEXT,
     attribs_snapshot JSONB,
     sent_at        TIMESTAMP WITH TIME ZONE,
@@ -410,7 +412,7 @@ INSERT INTO settings (key, value) VALUES
     ('bounce.forwardemail', '{"enabled": false, "key": ""}'),
     ('bounce.mailboxes',
         '[{"enabled":false, "type": "pop", "host":"pop.yoursite.com","port":995,"auth_protocol":"userpass","username":"username","password":"password","return_path": "bounce@listmonk.yoursite.com","scan_interval":"15m","tls_enabled":true,"tls_skip_verify":false}]'),
-    ('reply_ai', '{"enabled": false, "base_url": "", "api_key": "", "model": "", "timeout": "15s", "min_confidence": 0.98}'),
+    ('reply_ai', '{"enabled": false, "base_url": "", "api_key": "", "model": "", "timeout": "15s", "scan_interval": "60s", "min_confidence": 0.98}'),
     ('appearance.admin.custom_css', '""'),
     ('appearance.admin.custom_js', '""'),
     ('appearance.public.custom_css', '""'),
@@ -698,7 +700,17 @@ CREATE INDEX idx_reply_forward_messages_pending ON reply_forward_messages(status
 -- AI classifications are an idempotent, leased work queue. The normalized
 -- message body is cleared once the item reaches a terminal state; the hash and
 -- bounded decision fields remain for customer-level audit.
+CREATE TABLE reply_mailbox_scan_cursors (
+    mailbox_id INTEGER NOT NULL REFERENCES reply_mailboxes(id) ON DELETE CASCADE,
+    consumer TEXT NOT NULL CHECK(consumer IN ('ai','forward')),
+    connection_hash TEXT NOT NULL,
+    uid_validity BIGINT NOT NULL,
+    last_uid BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY(mailbox_id,consumer)
+);
+
 CREATE TABLE reply_ai_events (
+	 reply_references TEXT NOT NULL DEFAULT '',
     id                BIGSERIAL PRIMARY KEY,
     reply_mailbox_id  INTEGER NOT NULL REFERENCES reply_mailboxes(id) ON DELETE CASCADE ON UPDATE CASCADE,
     customer_id       INTEGER NULL REFERENCES customers(id) ON DELETE SET NULL ON UPDATE CASCADE,

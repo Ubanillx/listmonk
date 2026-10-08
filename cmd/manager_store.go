@@ -209,6 +209,13 @@ func (s *store) NextCampaigns(currentIDs []int64) ([]*models.Campaign, error) {
 			c.NextResumeAt.Valid = false
 		}
 
+		if err := s.validateLoadedCampaignReplyMailbox(c); err != nil {
+			if err := s.MarkCampaignStartFailure(c.ID, c.SchedulerStatus); err != nil {
+				return nil, err
+			}
+			continue
+		}
+
 		hasRecipients := false
 		if err := s.queries.HasCampaignRecipients.Get(&hasRecipients, c.ID); err != nil {
 			return nil, err

@@ -4,8 +4,9 @@ import null "gopkg.in/volatiletech/null.v6"
 
 type CampaignCustomer struct {
 	Customer
-	RecipientStatus string    `db:"recipient_status" json:"recipient_status"`
-	SentAt          null.Time `db:"sent_at" json:"sent_at"`
+	RecipientStatus string      `db:"recipient_status" json:"recipient_status"`
+	SentAt          null.Time   `db:"sent_at" json:"sent_at"`
+	PrivateReplyTo  null.String `db:"private_reply_to" json:"-"`
 	// PoolContactID is set for a first-class public-pool recipient. Pool
 	// recipients do not have a legacy customers row and are tracked in the
 	// campaign_pool_recipients table.

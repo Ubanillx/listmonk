@@ -92,6 +92,7 @@ The response contains every key modelled by the server. A few orphan keys exist 
       "api_key": "",
       "model": "",
       "timeout": "15s",
+      "scan_interval": "60s",
       "min_confidence": 0.98
     }
   }
@@ -101,6 +102,13 @@ The response contains every key modelled by the server. A few orphan keys exist 
 ______________________________________________________________________
 
 #### PUT /api/settings
+
+`reply_ai.scan_interval` controls both AI reply checks and retained-mailbox
+forwarding. It accepts duration strings from `10s` through `24h`, defaults to
+`60s` for older installations, and is validated even when classification is
+disabled. Invalid values return HTTP 400 from both the full settings update and
+`PUT /api/settings/reply_ai`. An omitted interval in the full settings update
+preserves the stored value. Saving follows the usual settings reload flow.
 
 Replaces the settings object. Requires `settings:manage` (`cmd/handlers.go:116`, `internal/auth/models.go:107`).
 

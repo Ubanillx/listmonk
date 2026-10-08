@@ -27,7 +27,7 @@ Permission names and dependencies are documented in
 
 Contact APIs, the aggregate pool view, first-level and allocation contact tables, and CSV exports include `reply_to`. It is an internal routing address and is not masked; recipient `email` remains masked for non-platform administrators. `order_by=reply_to` is supported. Single-contact creation accepts optional `reply_to` with the same email validation as import.
 
-Campaign `pool_reply_priority` defaults to `contact_first`; `organization_first` reverses the two sources. The first available address is used for each customer. An organization mailbox must be verified and active; customer addresses do not require mailbox registration for sending. A recipient without either address blocks preview/send. For reply synchronization, configure the matching organization mailbox before sending; only an active verified mailbox in that target organization is linked to the snapshot.
+Campaign `pool_reply_priority` defaults to `contact_first`; `organization_first` reverses the two sources. The first available address is used for each customer. An organization mailbox must be active; AI-enabled mailboxes also require connection verification. Customer addresses do not require mailbox registration for sending. A recipient without either address blocks preview/send. The snapshot links the matching available mailbox in the target organization. Automatic reply synchronization additionally requires AI receiving credentials, successful connection verification, and enabled global AI settings.
 
 
 Public customer pools are first-class `customer_list` types (`pool` and
@@ -111,18 +111,18 @@ fix — `pool list "<pool>" -> organization allocation "<allocation>"
 (organization "<org>")` — followed by the first failing condition: `has no
 target organization, so no reply mailbox can be resolved`, `has no organization
 allocation bound to the pool`, `has not configured its unified reply mailbox`,
-or `its unified reply mailbox "<address>" is not verified and active`. At most
+or `its unified reply mailbox "<address>" is unavailable (must be active; AI receiving connections must be verified)`. At most
 five audiences are listed, the remainder is summarized as `(+N more)`, and the
 message closes with the actionable steps, prefixed by `Fix: `: bind the
 organization's allocation for that pool in `Customer lists -> Public pool
 management` when that is one of the reasons, then have a manager of the
-organization open its workspace and save a verified mailbox in `Manage
+organization open its workspace and save an available reply address in `Manage
 organizations -> Organization reply mailboxes` as the organization's unified
-reply mailbox, and `then retry preview or send.` The steps are single-line and
+reply mailbox (AI receiving connections must be verified), and `then retry preview or send.` The steps are single-line and
 never localized differently per reason.
 
 An unresolved audience can be fixed by supplying the missing customer reply
-addresses or configuring a verified organization fallback. Personal or system
+addresses or configuring an available organization fallback. Personal or system
 mailboxes are not implicit public-pool routes. Pool exclusions are organization
 scoped and do not physically delete
 the first-level pool contact.

@@ -33,6 +33,7 @@ type ReplyMailbox struct {
 	VerifiedAt     *time.Time `db:"verified_at" json:"verified_at"`
 	IsDefault      bool       `db:"is_default" json:"is_default"`
 	AIEnabled      bool       `db:"ai_enabled" json:"ai_enabled"`
+	HasPassword    bool       `db:"has_password" json:"has_password"`
 	LastSyncAt     *time.Time `db:"last_sync_at" json:"last_sync_at"`
 	LastSyncErr    string     `db:"last_sync_error" json:"last_sync_error"`
 	ForwardCount   int        `db:"forward_count" json:"forward_count"`

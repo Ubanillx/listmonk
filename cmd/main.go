@@ -59,6 +59,8 @@ type App struct {
 	log        *log.Logger
 	bufLog     *buflog.BufLog
 
+	replyScanInterval time.Duration
+
 	// throttle limits repeated authentication failures. The zero value is
 	// ready to use; tests that build App literals need no setup.
 	throttle authThrottle
@@ -357,6 +359,11 @@ func main() {
 	// Retained 263 customer-reply mailboxes are polled independently from the
 	// bounce mailbox. The worker never deletes source messages and forwards
 	// them through the platform system SMTP.
+	interval, err := models.ReplyScanInterval(ko.String("reply_ai.scan_interval"))
+	if err != nil {
+		lo.Fatalf("invalid reply mailbox scan interval: %v", err)
+	}
+	app.replyScanInterval = interval
 	go runReplyForwarder(app)
 	if app.replyAI.Enabled() {
 		go runReplyAIProcessor(app)

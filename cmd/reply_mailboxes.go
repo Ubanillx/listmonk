@@ -7,7 +7,6 @@ import (
 	"net/mail"
 	"strings"
 
-	"github.com/knadh/go-pop3"
 	"github.com/knadh/listmonk/internal/auth"
 	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
@@ -27,7 +26,6 @@ type replyMailboxRequest struct {
 }
 
 type replyMailboxTestRequest struct {
-	replyMailboxRequest
 	ID int `json:"id"`
 }
 
@@ -80,8 +78,11 @@ func (a *App) CreateReplyMailbox(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return err
 	}
-	if strings.TrimSpace(req.Password) == "" {
+	if req.AIEnabled && strings.TrimSpace(req.Password) == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "password or client authorization code is required")
+	}
+	if !req.AIEnabled {
+		req.Password = ""
 	}
 	if err := validateReplyMailboxRequest(&req); err != nil {
 		return err
@@ -120,6 +121,17 @@ func (a *App) UpdateReplyMailbox(c echo.Context) error {
 	var req replyMailboxRequest
 	if err := c.Bind(&req); err != nil {
 		return err
+	}
+	if req.AIEnabled && req.Password == "" {
+		var hasPassword bool
+		if err := a.db.Get(&hasPassword, `SELECT password <> '' FROM reply_mailboxes
+			WHERE id=$1 AND user_id=$2 AND organization_id IS NOT DISTINCT FROM $3`,
+			id, userID, nullableOrganizationID(access.OrganizationID)); err != nil {
+			return echo.NewHTTPError(http.StatusNotFound, "reply mailbox not found")
+		}
+		if !hasPassword {
+			return echo.NewHTTPError(http.StatusBadRequest, "password or client authorization code is required for AI reply processing")
+		}
 	}
 	if err := validateReplyMailboxRequest(&req); err != nil {
 		return err
@@ -219,8 +231,8 @@ func (a *App) DeleteReplyMailbox(c echo.Context) error {
 }
 
 // EnableReplyMailbox restores a mailbox that was manually disabled. A
-// previously verified mailbox becomes active immediately; a mailbox that has
-// never passed a connection test remains pending and must be tested first.
+// reply address becomes active immediately; an AI-enabled mailbox requires a
+// previously verified connection or remains pending until tested.
 func (a *App) EnableReplyMailbox(c echo.Context) error {
 	if err := requireMailboxPermission(c, auth.PermMailboxesManage); err != nil {
 		return err
@@ -237,9 +249,9 @@ func (a *App) EnableReplyMailbox(c echo.Context) error {
 	return a.getReplyMailboxResponse(c, userID, enabledID, access.OrganizationID)
 }
 
-// TestReplyMailbox verifies a 263 mailbox using POP3-over-TLS. 263 exposes
-// both IMAP and POP3; POP3 is used here because it is already supported by
-// the server and this endpoint only needs an authentication/connection test.
+// TestReplyMailbox verifies the saved mailbox configuration. The browser only
+// supplies its ID; credentials are loaded with the same owner/workspace scope
+// as updates and never returned to the browser.
 func (a *App) TestReplyMailbox(c echo.Context) error {
 	if err := requireMailboxPermission(c, auth.PermMailboxesManage); err != nil {
 		return err
@@ -253,59 +265,56 @@ func (a *App) TestReplyMailbox(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return err
 	}
-	if req.ID > 0 {
-		var saved models.ReplyMailbox
-		if err := a.queries.GetReplyMailbox.Get(&saved, req.ID, userID, nullableOrganizationID(access.OrganizationID)); err != nil {
-			return echo.NewHTTPError(http.StatusNotFound, "reply mailbox not found")
-		}
-		if req.Email == "" {
-			req.Email = saved.Email
-		}
-		if req.Username == "" {
-			req.Username = saved.Username
-		}
-		if req.Password == "" {
-			return echo.NewHTTPError(http.StatusBadRequest, "password or client authorization code is required")
-		}
-		if req.IMAPHost == "" {
-			req.IMAPHost = saved.IMAPHost
-		}
-		if req.IMAPPort == 0 {
-			req.IMAPPort = saved.IMAPPort
-		}
+	if req.ID <= 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("replyMailbox.saveBeforeTest"))
 	}
-	if err := validateReplyMailboxRequest(&req.replyMailboxRequest); err != nil {
-		return err
+	var saved struct {
+		replyAIMailboxSource
+		Status    string `db:"status"`
+		AIEnabled bool   `db:"ai_enabled"`
 	}
-	host, port := req.IMAPHost, req.IMAPPort
-	if strings.HasPrefix(strings.ToLower(host), "imap.") {
-		host = "pop." + strings.TrimPrefix(host, "imap.")
-		port = 995
+	if err := a.db.Get(&saved, `SELECT id, user_id, organization_id, email, username, password,
+		imap_host, imap_port, imap_tls, folder, status, ai_enabled FROM reply_mailboxes
+		WHERE id = $1 AND user_id = $2 AND organization_id IS NOT DISTINCT FROM $3`,
+		req.ID, userID, nullableOrganizationID(access.OrganizationID)); err != nil {
+		return echo.NewHTTPError(http.StatusNotFound, "reply mailbox not found")
 	}
-	// Refuse a blocked target before any connection is attempted, and let the
-	// dialer apply the same policy with the address it validated.
-	if _, err := resolveMailboxHost(c.Request().Context(), host); err != nil {
-		if errors.Is(err, errMailboxHostBlocked) {
-			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	if !saved.AIEnabled {
+		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("replyMailbox.testRequiresAI"))
+	}
+	if saved.Password == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "password or client authorization code is required")
+	}
+	if err := withReplyIMAPBudget(replyAIScanBudget{dial: mailboxDialTimeout, read: replyAIMailboxReadTimeout, scan: replyAIMailboxTimeout}, func(dialer *replyAIDialer) error {
+		client, _, err := connectReplyIMAP(saved.replyAIMailboxSource, dialer)
+		if err != nil {
+			return err
 		}
-		return echo.NewHTTPError(http.StatusBadGateway, err.Error())
-	}
-	client := pop3.New(pop3.Opt{Host: host, Port: port, TLSEnabled: true, Dialer: &mailboxPolicyDialer{}})
-	conn, err := client.NewConn()
-	if err != nil {
+		return client.Logout()
+	}); err != nil {
 		if errors.Is(err, errMailboxHostBlocked) {
 			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 		}
 		return echo.NewHTTPError(http.StatusBadGateway, fmt.Sprintf("mailbox connection failed: %v", err))
 	}
-	defer conn.Quit()
-	if err := conn.Auth(req.Username, req.Password); err != nil {
-		return echo.NewHTTPError(http.StatusBadGateway, fmt.Sprintf("mailbox authentication failed: %v", err))
+	// A concurrent edit/disable must not be marked verified by a test of the old
+	// configuration. Retained mailboxes keep their forwarding lifecycle state.
+	res, err := a.db.Exec(`UPDATE reply_mailboxes
+		SET status = CASE WHEN status IN ('disabled', 'retained') THEN status ELSE 'active' END,
+		verified_at = COALESCE(verified_at, NOW()), updated_at = NOW(), last_sync_error = ''
+		WHERE id = $1 AND user_id = $2 AND organization_id IS NOT DISTINCT FROM $3
+		AND ai_enabled = TRUE
+		AND (email, username, password, imap_host, imap_port, imap_tls, folder, status)
+		IS NOT DISTINCT FROM ($4, $5, $6, $7, $8, $9, $10, $11)`,
+		req.ID, userID, nullableOrganizationID(access.OrganizationID), saved.Email,
+		saved.Username, saved.Password, saved.Host, saved.Port, saved.TLSEnabled, saved.Folder, saved.Status)
+	if err != nil {
+		return err
 	}
-	if req.ID > 0 {
-		if _, err := a.db.Exec(`UPDATE reply_mailboxes SET status = 'active', verified_at = COALESCE(verified_at, NOW()), updated_at = NOW(), last_sync_error = '' WHERE id = $1 AND user_id = $2 AND organization_id IS NOT DISTINCT FROM $3`, req.ID, userID, nullableOrganizationID(access.OrganizationID)); err != nil {
-			return err
-		}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return echo.NewHTTPError(http.StatusConflict, a.i18n.T("replyMailbox.changedDuringTest"))
 	}
 	return c.JSON(http.StatusOK, okResp{true})
 }
@@ -319,6 +328,7 @@ func (a *App) getReplyMailboxResponse(c echo.Context, userID, id, organizationID
 	// it; the flag keeps the card rendered after a save in step with the
 	// listing, which computes the same right for every row.
 	row.Deletable = true
+	row.Manageable = true
 	return c.JSON(http.StatusOK, okResp{row})
 }
 
@@ -329,6 +339,13 @@ func validateReplyMailboxRequest(req *replyMailboxRequest) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "valid reply mailbox email is required")
 	}
 	req.Name = strings.TrimSpace(req.Name)
+	// Address-only mailboxes do not require or validate receiving parameters.
+	// Unused defaults keep the existing storage shape; updates preserve any
+	// previously saved connection configuration while AI is turned off.
+	if !req.AIEnabled {
+		req.Username, req.IMAPHost, req.IMAPPort, req.Folder = req.Email, "imap.263.net", 993, "INBOX"
+		return nil
+	}
 	req.Username = strings.TrimSpace(req.Username)
 	if req.Username == "" {
 		req.Username = req.Email

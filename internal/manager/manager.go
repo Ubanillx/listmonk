@@ -269,6 +269,7 @@ type CampaignMessage struct {
 	OrgPoolAllocationID   int64
 	PoolReplyMailboxID    null.Int
 	PoolReplyMailboxEmail string
+	PrivateReplyTo        null.String
 
 	// Platform-level public-pool delivery context. PoolOrganizationID is the
 	// target organization of this recipient; PoolSenderSMTPUUID is the SMTP
@@ -1110,12 +1111,18 @@ func (m *Manager) worker() {
 			// Public-pool Reply-To comes from the per-recipient routing snapshot.
 			// Apply it after custom headers so they cannot override the chosen order.
 			replyTo := msg.Campaign.ReplyMailboxEmail
+			if msg.PrivateReplyTo.Valid {
+				replyTo = msg.PrivateReplyTo.String
+			}
 			if msg.PoolContactID > 0 {
 				replyTo = msg.PoolReplyMailboxEmail
 				h.Del("Reply-To")
 			}
 			if replyTo != "" {
 				h.Set("Reply-To", replyTo)
+			}
+			if id := models.CampaignReplyMessageID(msg.Campaign.UUID, msg.Customer.ID, msg.PoolContactID); id != "" {
+				h.Set("Message-ID", id)
 			}
 
 			// Set the headers.
@@ -1145,9 +1152,14 @@ func (m *Manager) worker() {
 			// account; resolution goes through the organization pool path.
 			out.PoolSenderSMTPUUID = msg.PoolSenderSMTPUUID
 			var err error
-			if msg.pipe != nil && msg.pipe.messenger != nil {
+			if guard, ok := m.store.(interface {
+				ValidateCampaignReplyRoute(int, int64, string) error
+			}); ok {
+				err = guard.ValidateCampaignReplyRoute(msg.Campaign.ID, msg.PoolContactID, replyTo)
+			}
+			if err == nil && msg.pipe != nil && msg.pipe.messenger != nil {
 				err = msg.pipe.messenger.Push(out)
-			} else {
+			} else if err == nil {
 				err = m.pushMessage(out)
 			}
 			if err != nil && !errors.Is(err, email.ErrSendCancelled) && !errors.Is(err, ErrManagerClosed) {
@@ -1159,6 +1171,8 @@ func (m *Manager) worker() {
 				if errors.Is(err, ErrManagerClosed) || errors.Is(err, email.ErrSendCancelled) {
 					// Shutdown is an intentional cancellation, not a delivery
 					// failure. Stop the pipe and leave its recipients retryable.
+					msg.pipe.Stop(stopReasonPause, false)
+				} else if errors.Is(err, ErrReplyMailboxUnavailable) {
 					msg.pipe.Stop(stopReasonPause, false)
 				} else if errors.Is(err, ErrPersonalSMTPUnavailable) {
 					// A user's SMTP pool was disabled or removed while the

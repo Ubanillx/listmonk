@@ -87,7 +87,8 @@ func (a *App) activateReplyForwardingForMember(orgID, userID int) error {
 		WHERE c.organization_id = $1
 		  AND c.original_owner_user_id = $2
 		  AND c.reply_mailbox_id IS NOT NULL
-		  AND m.organization_id = $1`, orgID, userID); err != nil {
+		  AND m.organization_id = $1
+		  AND m.verified_at IS NOT NULL AND m.password <> ''`, orgID, userID); err != nil {
 		return err
 	}
 	for _, mailboxID := range mailboxIDs {

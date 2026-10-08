@@ -351,6 +351,7 @@ startup fails.
 | `api_key` | string | `""` | yes, when enabled | API key sent as a bearer token. |
 | `model` | string | `""` | yes, when enabled | Model name, eg: `gpt-4o-mini`. |
 | `timeout` | duration string | `15s` | no | HTTP request timeout for classification requests. |
+| `scan_interval` | duration string | `60s` | no | Check interval for AI reply scanning and retained-mailbox forwarding, from `10s` to `24h` (e.g. `5m`). Independent of the classifier enable switch. Saved changes use the settings reload flow; running campaigns defer reload until restart. |
 | `min_confidence` | float | `0.98` | no | Minimum confidence between `0` and `1` required to act on a classification. Values outside that range fail startup. |
 
 ### `[maintenance.db]`

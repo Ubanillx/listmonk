@@ -23,7 +23,8 @@ func validatePoolReplyTo(address string) error {
 }
 
 // Both snapshot writers resolve from the same two sources. Mailbox IDs are
-// associated only with an active, verified mailbox in the target organization;
+// associated only with an active mailbox in the target organization (receiving
+// verification is required for AI mode, but not for address-only mode);
 // an external imported Reply-To must never be attributed to the fallback mailbox.
 const poolReplySnapshotRouteSQL = `
 	CROSS JOIN LATERAL (
@@ -36,12 +37,12 @@ const poolReplySnapshotRouteSQL = `
 	) route
 	LEFT JOIN LATERAL (
 		SELECT id FROM reply_mailboxes WHERE organization_id=chosen.organization_id
-			AND LOWER(email)=LOWER(route.email) AND status='active' AND verified_at IS NOT NULL
+			AND LOWER(email)=LOWER(route.email) AND status='active' AND (NOT ai_enabled OR verified_at IS NOT NULL)
 		ORDER BY id LIMIT 1
 	) route_mailbox ON TRUE`
 
 // Used by validation and status reporting: every eligible recipient must have
-// either its own reply address or the organization's verified fallback.
+// either its own reply address or the organization's available fallback.
 const poolReplyCandidateSQL = `
 	SELECT 1 FROM org_pool_allocation_members am
 	JOIN pool_members pm ON pm.contact_id=am.contact_id AND pm.pool_id=s.pool_id

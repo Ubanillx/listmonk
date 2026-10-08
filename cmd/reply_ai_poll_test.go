@@ -14,65 +14,78 @@ import (
 	"time"
 )
 
-// fakeReplyAIPOP serves one POP3 conversation on 127.0.0.1 and returns the
-// messages given to it from RETR. The returned channel receives every command
-// the server saw once the conversation is over.
-func fakeReplyAIPOP(t *testing.T, messages []string) (int, <-chan []string) {
+// fakeReplyIMAP serves a local read-only IMAP conversation and records commands.
+func fakeReplyIMAP(t *testing.T, messages []string) (int, <-chan []string) {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { ln.Close() })
-
-	done := make(chan []string, 1)
-	go func() {
+	done := make(chan []string, 16)
+	handle := func(c net.Conn) {
 		var commands []string
 		defer func() { done <- commands }()
-
-		c, err := ln.Accept()
-		if err != nil {
-			return
-		}
 		defer c.Close()
 		_ = c.SetDeadline(time.Now().Add(10 * time.Second))
-		fmt.Fprint(c, "+OK ready\r\n")
-
-		r := bufio.NewReader(c)
+		fmt.Fprint(c, "* OK [CAPABILITY IMAP4rev1] ready\r\n")
+		reader := bufio.NewReader(c)
 		for {
-			line, err := r.ReadString('\n')
+			line, err := reader.ReadString('\n')
 			if err != nil {
 				return
 			}
-			line = strings.TrimSpace(line)
-			commands = append(commands, line)
+			fields := strings.Fields(strings.TrimSpace(line))
+			if len(fields) < 2 {
+				return
+			}
+			tag := fields[0]
+			cmd := strings.Join(fields[1:], " ")
+			commands = append(commands, strings.ReplaceAll(cmd, `"`, ""))
 			switch {
-			case strings.HasPrefix(line, "USER "), strings.HasPrefix(line, "PASS "), line == "NOOP":
-				fmt.Fprint(c, "+OK\r\n")
-			case line == "STAT":
-				fmt.Fprintf(c, "+OK %d 4096\r\n", len(messages))
-			case line == "LIST":
-				fmt.Fprintf(c, "+OK %d messages\r\n", len(messages))
-				for i, m := range messages {
-					fmt.Fprintf(c, "%d %d\r\n", i+1, len(m))
+			case strings.HasPrefix(cmd, "LOGIN "):
+			case cmd == "CAPABILITY":
+				fmt.Fprint(c, "* CAPABILITY IMAP4rev1\r\n")
+			case strings.HasPrefix(cmd, "EXAMINE "):
+				fmt.Fprintf(c, "* %d EXISTS\r\n* OK [UIDVALIDITY 42] valid\r\n* OK [UIDNEXT %d] next\r\n", len(messages), len(messages)+1)
+			case strings.HasPrefix(cmd, "UID SEARCH "):
+				fmt.Fprint(c, "* SEARCH")
+				for i := range messages {
+					fmt.Fprintf(c, " %d", i+1)
 				}
-				fmt.Fprint(c, ".\r\n")
-			case strings.HasPrefix(line, "RETR "):
-				id, err := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(line, "RETR ")))
-				if err != nil || id < 1 || id > len(messages) {
-					fmt.Fprint(c, "-ERR no such message\r\n")
+				fmt.Fprint(c, "\r\n")
+			case strings.HasPrefix(cmd, "UID FETCH "):
+				uid, err := strconv.Atoi(fields[3])
+				if err != nil || uid < 1 || uid > len(messages) {
+					fmt.Fprintf(c, "%s NO missing\r\n", tag)
 					continue
 				}
-				raw := strings.TrimSuffix(messages[id-1], "\r\n")
-				fmt.Fprint(c, "+OK message\r\n"+raw+"\r\n.\r\n")
-			case line == "QUIT":
-				fmt.Fprint(c, "+OK bye\r\n")
+				raw := messages[uid-1]
+				if strings.Contains(cmd, "BODY.PEEK") {
+					fmt.Fprintf(c, "* %d FETCH (UID %d BODY[]<0> {%d}\r\n%s)\r\n", uid, uid, len(raw), raw)
+				} else {
+					fmt.Fprintf(c, "* %d FETCH (UID %d RFC822.SIZE %d)\r\n", uid, uid, len(raw))
+				}
+			case cmd == "LOGOUT":
+				fmt.Fprintf(c, "* BYE bye\r\n%s OK logout\r\n", tag)
 				return
 			default:
-				fmt.Fprint(c, "-ERR unexpected command\r\n")
+				fmt.Fprintf(c, "%s BAD unexpected\r\n", tag)
+				continue
 			}
+			fmt.Fprintf(c, "%s OK done\r\n", tag)
+		}
+	}
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go handle(c)
 		}
 	}()
+
 	return ln.Addr().(*net.TCPAddr).Port, done
 }
 
@@ -155,7 +168,7 @@ func dribblingReplyAIPOP(t *testing.T) (int, <-chan struct{}) {
 			return
 		}
 		defer c.Close()
-		fmt.Fprint(c, "+OK ready\r\n")
+		fmt.Fprint(c, "* OK [CAPABILITY IMAP4rev1] ready\r\n")
 		for {
 			if _, err := fmt.Fprint(c, "STAT "); err != nil {
 				return
@@ -193,8 +206,8 @@ type replyAIScanResult struct {
 func TestReplyAIPoolScansOtherMailboxesWhileOneHangs(t *testing.T) {
 	allowLoopbackMailboxHosts(t)
 	hungPort, releaseHung := silentReplyAIPOP(t)
-	firstPort, firstCommands := fakeReplyAIPOP(t, []string{"Subject: first\r\n\r\nfirst body\r\n"})
-	secondPort, secondCommands := fakeReplyAIPOP(t, []string{"Subject: second\r\n\r\nsecond body\r\n"})
+	firstPort, firstCommands := fakeReplyIMAP(t, []string{"Subject: first\r\n\r\nfirst body\r\n"})
+	secondPort, secondCommands := fakeReplyIMAP(t, []string{"Subject: second\r\n\r\nsecond body\r\n"})
 
 	// The hung mailbox is scanned first and gets a long budget, so it is still
 	// blocked while the other two are scanned.
@@ -252,11 +265,11 @@ func TestReplyAIPoolScansOtherMailboxesWhileOneHangs(t *testing.T) {
 		cmds <-chan []string
 		want string
 	}{
-		{2, firstCommands, "USER user,PASS pass,NOOP,STAT,LIST,RETR 1,QUIT"},
-		{3, secondCommands, "USER user,PASS pass,NOOP,STAT,LIST,RETR 1,QUIT"},
+		{2, firstCommands, "LOGIN user pass"},
+		{3, secondCommands, "LOGIN user pass"},
 	} {
-		if got := strings.Join(<-tc.cmds, ","); got != tc.want {
-			t.Fatalf("mailbox %d POP3 conversation = %q, want %q", tc.id, got, tc.want)
+		if got := strings.Join(<-tc.cmds, ","); !strings.Contains(got, tc.want) || !strings.Contains(got, "EXAMINE INBOX") || !strings.Contains(got, "BODY.PEEK[]") {
+			t.Fatalf("mailbox %d IMAP conversation = %q, want %q", tc.id, got, tc.want)
 		}
 	}
 

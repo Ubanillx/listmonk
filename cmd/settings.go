@@ -64,6 +64,9 @@ func (a *App) GetSettings(c echo.Context) error {
 	if s.SMTPDelivery.MaxConns == 0 {
 		s.SMTPDelivery = smtpDeliveryFromLegacy(s.SMTP)
 	}
+	if s.ReplyAI.ScanInterval == "" {
+		s.ReplyAI.ScanInterval = "60s"
+	}
 	// Older settings may still contain several platform SMTP rows. Only the
 	// system notification sender is exposed; the next save removes the rest.
 	for _, server := range s.SMTP {
@@ -248,6 +251,14 @@ func (a *App) UpdateSettings(c echo.Context) error {
 	}
 	set.ReplyAI.BaseURL = strings.TrimSpace(set.ReplyAI.BaseURL)
 	set.ReplyAI.Model = strings.TrimSpace(set.ReplyAI.Model)
+	if set.ReplyAI.ScanInterval == "" {
+		set.ReplyAI.ScanInterval = cur.ReplyAI.ScanInterval
+	}
+	interval, err := models.ReplyScanInterval(set.ReplyAI.ScanInterval)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("settings.inboundReplies.errorScanInterval"))
+	}
+	set.ReplyAI.ScanInterval = interval.String()
 	if set.ReplyAI.Timeout == "" {
 		set.ReplyAI.Timeout = "15s"
 	}
@@ -393,6 +404,15 @@ func (a *App) UpdateSettingsByKey(c echo.Context) error {
 	var b json.RawMessage
 	if err := c.Bind(&b); err != nil {
 		return err
+	}
+	if key == "reply_ai" {
+		var cfg models.ReplyAISettings
+		if err := json.Unmarshal(b, &cfg); err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("globals.messages.invalidData"))
+		}
+		if _, err := models.ReplyScanInterval(cfg.ScanInterval); err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("settings.inboundReplies.errorScanInterval"))
+		}
 	}
 	if key == "smtp_delivery" {
 		var delivery models.SMTPDeliverySettings

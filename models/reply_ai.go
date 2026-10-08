@@ -1,6 +1,12 @@
 package models
 
-import null "gopkg.in/volatiletech/null.v6"
+import (
+	"fmt"
+	"strings"
+	"time"
+
+	null "gopkg.in/volatiletech/null.v6"
+)
 
 const (
 	ReplyAIIntentUnsubscribe      = "unsubscribe"
@@ -30,7 +36,22 @@ type ReplyAISettings struct {
 	APIKey        string  `json:"api_key,omitempty"`
 	Model         string  `json:"model"`
 	Timeout       string  `json:"timeout"`
+	ScanInterval  string  `json:"scan_interval"`
 	MinConfidence float64 `json:"min_confidence"`
+}
+
+// ReplyScanInterval is shared by reply classification and retained-mailbox
+// forwarding. Existing installations without this setting retain a one-minute
+// interval. Validate even when AI is disabled, since forwarding is independent.
+func ReplyScanInterval(raw string) (time.Duration, error) {
+	if strings.TrimSpace(raw) == "" {
+		return time.Minute, nil
+	}
+	d, err := time.ParseDuration(strings.TrimSpace(raw))
+	if err != nil || d < 10*time.Second || d > 24*time.Hour {
+		return 0, fmt.Errorf("reply mailbox scan interval must be between 10s and 24h")
+	}
+	return d, nil
 }
 
 // ReplyAIEvent is an auditable inbound reply classification. Body is retained
@@ -47,6 +68,7 @@ type ReplyAIEvent struct {
 	FromEmail            string   `db:"from_email" json:"from_email"`
 	Subject              string   `db:"subject" json:"subject"`
 	MessageKey           string   `db:"message_key" json:"-"`
+	ReplyReferences      string   `db:"reply_references" json:"-"`
 	Body                 string   `db:"body" json:"-"`
 	BodyHash             string   `db:"body_hash" json:"body_hash"`
 

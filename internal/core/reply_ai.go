@@ -1,12 +1,10 @@
 package core
 
 import (
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -23,6 +21,7 @@ var ErrReplyAILeaseLost = errors.New("reply AI event lease lost")
 // ReplyAIAction is the bounded, already-classified mutation request emitted by
 // the inbound-reply worker. It intentionally contains no reply body.
 type ReplyAIAction struct {
+	CampaignID           int
 	EventID              int
 	LeaseToken           string
 	CustomerID           int
@@ -37,53 +36,7 @@ type ReplyAIAction struct {
 	SourceOrganizationID int64
 }
 
-func (c *Core) FindReplyAIPoolContact(access models.WorkspaceAccess, email string) (models.PoolContact, PublicPoolRecipient, bool, error) {
-	if !access.IsOrganization() || access.OrganizationID <= 0 {
-		return models.PoolContact{}, PublicPoolRecipient{}, false, nil
-	}
-	var row struct {
-		models.PoolContact
-		PublicPoolRecipient
-	}
-	err := c.db.Get(&row, `SELECT pc.id,pc.uuid,pc.customer_code,pc.email,pc.name,pc.attribs,pc.status,pc.created_at,pc.updated_at,cpr.campaign_id,cpr.pool_contact_id,cpr.organization_id,cpr.allocation_id FROM pool_contacts pc JOIN campaign_pool_recipients cpr ON cpr.pool_contact_id=pc.id WHERE LOWER(pc.email)=LOWER($1) AND cpr.organization_id=$2 AND pc.status='active' AND cpr.status IN ('pending','queued','sent') ORDER BY cpr.created_at DESC LIMIT 1`, email, access.OrganizationID)
-	if err == sql.ErrNoRows {
-		return models.PoolContact{}, PublicPoolRecipient{}, false, nil
-	}
-	if err != nil {
-		return models.PoolContact{}, PublicPoolRecipient{}, false, err
-	}
-	return row.PoolContact, row.PublicPoolRecipient, true, nil
-}
-
-// FindReplyAIWorkspaceCustomer resolves a sender only inside the reply
-// mailbox owner's active resource boundary. A caller must treat false as a
-// no-action condition; it must never fall back to an unscoped email search.
-func (c *Core) FindReplyAIWorkspaceCustomer(access models.WorkspaceAccess, email string) (models.Customer, bool, error) {
-	email = strings.ToLower(strings.TrimSpace(email))
-	if email == "" {
-		return models.Customer{}, false, nil
-	}
-
-	scope, args := workspaceManagedCustomerPredicate(access, "s", 1)
-	stmt := fmt.Sprintf(`
-		SELECT s.id, s.uuid, s.email, s.status
-		FROM customers s
-		WHERE (%s) AND LOWER(s.email) = $%d
-		ORDER BY s.id
-		LIMIT 2`, scope, len(args)+1)
-	args = append(args, email)
-
-	var rows []models.Customer
-	if err := c.db.Select(&rows, stmt, args...); err != nil {
-		return models.Customer{}, false, workspaceQueryError("resolving reply AI customer", err)
-	}
-	if len(rows) != 1 {
-		return models.Customer{}, false, nil
-	}
-	return rows[0], true, nil
-}
-
-// ApplyReplyAIAction rechecks and locks the mailbox owner's workspace before
+// ApplyReplyAIAction rechecks the resolved customer's workspace and mailbox before
 // applying a global customer blocklist. Complaint actions additionally create
 // exactly one bounce row tied to the durable queue event, making retries safe.
 // The terminal queue update runs in the same transaction, so a crash cannot
@@ -111,6 +64,12 @@ func (c *Core) ApplyReplyAIAction(access models.WorkspaceAccess, action ReplyAIA
 			return err
 		}
 		defer tx.Rollback()
+		if err := c.lockActiveWorkspaceOrganization(tx, access.OrganizationID); err != nil {
+			return err
+		}
+		if err := c.lockReplyAIAuthority(tx, access, action); err != nil {
+			return err
+		}
 		// Lock the leased event row before writing any side effect. Under READ
 		// COMMITTED a locking read re-checks the predicate against the newest
 		// row version, so a concurrent reclaim that rotated the lease token
@@ -153,6 +112,9 @@ func (c *Core) ApplyReplyAIAction(access models.WorkspaceAccess, action ReplyAIA
 		return tx.Commit()
 	}
 	return c.withWorkspaceResourceMutation(access, resourceCustomers, []int{action.CustomerID}, func(tx *sqlx.Tx) error {
+		if err := c.lockReplyAIAuthority(tx, access, action); err != nil {
+			return err
+		}
 		// Re-check the lease inside the transaction that will perform the
 		// mutation. A claim whose lease expired while the external classifier
 		// ran must not blocklist or record a complaint twice.

@@ -94,6 +94,19 @@ func TestNormalizeReplyAIProbe(t *testing.T) {
 	}
 }
 
+func TestReplyScanIntervalSettingsByKeyRejectsInvalid(t *testing.T) {
+	a := probeTestApp(t)
+	for _, value := range []string{"0s", "9s", "25h", "not-a-duration"} {
+		c, _ := probeContext(t, "/api/settings/reply_ai", `{"enabled":false,"scan_interval":"`+value+`"}`)
+		c.SetParamNames("key")
+		c.SetParamValues("reply_ai")
+		err := a.UpdateSettingsByKey(c)
+		if got := replyMailboxDeleteStatus(t, err); got != http.StatusBadRequest {
+			t.Fatalf("invalid interval %q status=%d", value, got)
+		}
+	}
+}
+
 func TestListReplyAIModelsHTTPEnvelope(t *testing.T) {
 	gateway := probeGateway(t, []string{"gpt-4o-mini", "text-embedding-3-small"}, "", http.StatusOK)
 	app := probeTestApp(t)

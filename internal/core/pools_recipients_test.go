@@ -91,7 +91,8 @@ CREATE TABLE reply_mailboxes (
     email           TEXT NOT NULL,
     organization_id BIGINT,
     status          TEXT NOT NULL DEFAULT 'pending',
-    verified_at     TIMESTAMPTZ
+    verified_at     TIMESTAMPTZ,
+    ai_enabled      BOOLEAN NOT NULL DEFAULT TRUE
 );
 -- schema.sql adds the organization's unified reply mailbox through a trailing
 -- ALTER because organizations is created before reply_mailboxes.
@@ -761,7 +762,7 @@ func TestValidatePoolCampaignAudienceRefreshesRoutes(t *testing.T) {
 	if err := env.core.ValidatePoolCampaignAudience(campaign); err == nil {
 		t.Fatal("ValidatePoolCampaignAudience accepted a disabled mailbox")
 	} else {
-		want := fmt.Sprintf(`pool list "ws-pool" -> organization allocation %q (organization "org-a"): the organization's unified reply mailbox "pool-a@example.invalid" is not verified and active`, seedAllocationListName(poolID, org))
+		want := fmt.Sprintf(`pool list "ws-pool" -> organization allocation %q (organization "org-a"): the organization's unified reply mailbox "pool-a@example.invalid" is unavailable (must be active; AI receiving connections must be verified)`, seedAllocationListName(poolID, org))
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("ValidatePoolCampaignAudience error = %q, want it to contain %q", err.Error(), want)
 		}
@@ -819,7 +820,7 @@ func TestValidatePoolCampaignAudienceReportsRouteReasons(t *testing.T) {
 				env.seedAllocation(poolID, org)
 				campaign := env.seedCampaign()
 				env.seedAudience(campaign, poolID, org, nil, nil)
-				return campaign, fmt.Sprintf(`pool list "pool-disabled-mailbox" -> organization allocation %q (organization "org-disabled-mailbox"): the organization's unified reply mailbox "disabled@example.invalid" is not verified and active`, seedAllocationListName(poolID, org))
+				return campaign, fmt.Sprintf(`pool list "pool-disabled-mailbox" -> organization allocation %q (organization "org-disabled-mailbox"): the organization's unified reply mailbox "disabled@example.invalid" is unavailable (must be active; AI receiving connections must be verified)`, seedAllocationListName(poolID, org))
 			},
 		},
 		{

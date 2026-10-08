@@ -140,3 +140,32 @@ func TestPoolReplyPrioritySnapshotsAndFallback(t *testing.T) {
 		})
 	}
 }
+
+func TestPoolAddressOnlyReplyMailbox(t *testing.T) {
+	env := newPoolRecipientsTestEnv(t)
+	org := env.seedOrganization("Address-only org")
+	pool := env.seedPool("Address-only pool")
+	allocation := env.seedAllocation(pool, org)
+	mailbox := env.seedMailbox(org, "reply@example.com")
+	env.exec(`UPDATE reply_mailboxes SET ai_enabled=FALSE,verified_at=NULL WHERE id=$1`, mailbox)
+	env.setOrganizationMailbox(org, &mailbox)
+	contact := env.seedContact("ADDR", "Customer", "customer@example.com", "active")
+	env.joinPool(pool, contact)
+	env.allocate(allocation, contact, "active")
+	campaign := env.seedCampaign()
+	env.seedAudience(campaign, pool, org, nil, &mailbox)
+	if err := env.core.ValidatePoolCampaignAudience(campaign); err != nil {
+		t.Fatalf("address-only reply route rejected: %v", err)
+	}
+	if err := env.core.EnsurePoolCampaignRecipients(campaign); err != nil {
+		t.Fatal(err)
+	}
+	var reply string
+	if err := env.db.Get(&reply, `SELECT reply_to_snapshot FROM campaign_pool_recipients WHERE campaign_id=$1 AND pool_contact_id=$2`, campaign, contact); err != nil || reply != "reply@example.com" {
+		t.Fatalf("address-only reply snapshot = %q, %v", reply, err)
+	}
+	env.exec(`UPDATE reply_mailboxes SET ai_enabled=TRUE WHERE id=$1`, mailbox)
+	if err := env.core.ValidatePoolCampaignAudience(campaign); err == nil {
+		t.Fatal("AI mailbox without a verified receiving connection was accepted")
+	}
+}

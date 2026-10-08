@@ -250,7 +250,7 @@ export default Vue.extend({
         // Guard the reply AI block for deployments where the settings row
         // predates the feature (a migration normally inserts the default).
         d.reply_ai = d.reply_ai || {
-          enabled: false, base_url: '', api_key: '', model: '', timeout: '15s', min_confidence: 0.98,
+          enabled: false, base_url: '', api_key: '', model: '', timeout: '15s', scan_interval: '60s', min_confidence: 0.98,
         };
 
         this.key += 1;

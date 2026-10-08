@@ -300,6 +300,7 @@ func (p *pipe) newMessage(s models.CampaignCustomer) (CampaignMessage, error) {
 	msg.OrgPoolAllocationID = s.OrgPoolAllocationID
 	msg.PoolReplyMailboxID = s.ReplyMailboxID
 	msg.PoolReplyMailboxEmail = s.PoolReplyMailboxEmail
+	msg.PrivateReplyTo = s.PrivateReplyTo
 	msg.PoolOrganizationID = s.PoolOrganizationID
 	msg.PoolSenderSMTPUUID = s.PoolSenderSMTPUUID
 	msg.PoolSenderUserID = s.PoolSenderUserID

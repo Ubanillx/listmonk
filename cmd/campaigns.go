@@ -693,6 +693,9 @@ func (a *App) UpdateCampaignStatus(c echo.Context) error {
 		}
 	}
 	if req.Status == models.CampaignStatusScheduled || req.Status == models.CampaignStatusRunning {
+		if err := a.validateCampaignReplyMailbox(access, &current); err != nil {
+			return err
+		}
 		if err := a.core.ValidatePoolCampaignAudience(id); err != nil {
 			return err
 		}

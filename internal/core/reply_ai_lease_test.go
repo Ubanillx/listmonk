@@ -44,6 +44,25 @@ var replyAITestAccess = models.WorkspaceAccess{
 // columns from internal/migrations/v6.27.0; bounces carries the same
 // reply_ai_event_id idempotency key added by v6.25.0.
 const replyAITestDDL = `
+CREATE TABLE settings(key TEXT,value JSONB);
+INSERT INTO settings VALUES('reply_ai','{"enabled":true}');
+CREATE TABLE organizations(id BIGINT PRIMARY KEY,status TEXT);
+INSERT INTO organizations VALUES(10,'active');
+CREATE TABLE users(id INT PRIMARY KEY,status TEXT,user_role_id INT);
+INSERT INTO users VALUES(1,'enabled',2);
+CREATE TABLE organization_members(organization_id BIGINT,user_id INT,removed_at TIMESTAMPTZ);
+INSERT INTO organization_members VALUES(10,1,NULL);
+CREATE TABLE reply_mailboxes(id INT PRIMARY KEY,user_id INT,organization_id BIGINT,email TEXT,status TEXT,ai_enabled BOOLEAN,verified_at TIMESTAMPTZ);
+INSERT INTO reply_mailboxes VALUES(1,1,10,'reply@example.invalid','active',TRUE,NOW());
+CREATE TABLE campaigns(id INT PRIMARY KEY,uuid UUID,reply_mailbox_id INT,organization_id BIGINT);
+INSERT INTO campaigns VALUES(1,gen_random_uuid(),1,10);
+CREATE TABLE customers(id INT,owner_user_id INT,organization_id BIGINT,transfer_pending_at TIMESTAMPTZ,email TEXT);
+CREATE TABLE campaign_recipients(campaign_id INT,customer_id INT,status TEXT,email_snapshot TEXT,reply_to_snapshot TEXT);
+CREATE TABLE pool_contacts(id BIGINT PRIMARY KEY,status TEXT);
+INSERT INTO pool_contacts VALUES(7,'active');
+CREATE TABLE campaign_pool_recipients(campaign_id INT,pool_contact_id BIGINT,pool_id INT,allocation_id BIGINT,organization_id BIGINT,reply_mailbox_id INT,status TEXT,email_snapshot TEXT,reply_to_snapshot TEXT);
+INSERT INTO campaign_pool_recipients VALUES(1,7,42,3,10,1,'sent','pool@example.invalid','reply@example.invalid');
+
 CREATE TABLE reply_ai_events (
     id                     BIGSERIAL PRIMARY KEY,
     reply_mailbox_id       INTEGER NOT NULL,
@@ -53,6 +72,7 @@ CREATE TABLE reply_ai_events (
     source_allocation_id      BIGINT NULL,
     source_organization_id BIGINT NULL,
     message_key            TEXT NOT NULL,
+    reply_references TEXT NOT NULL DEFAULT '',
     from_email             TEXT NOT NULL DEFAULT '',
     subject                TEXT NOT NULL DEFAULT '',
     body                   TEXT NOT NULL DEFAULT '',
@@ -296,6 +316,7 @@ func (env *replyAITestEnv) requeueEvent(eventID int, token string) {
 
 func replyAITestAction(eventID int, token string) ReplyAIAction {
 	return ReplyAIAction{
+		CampaignID:           1,
 		EventID:              eventID,
 		LeaseToken:           token,
 		PoolContactID:        replyAITestPoolContactID,

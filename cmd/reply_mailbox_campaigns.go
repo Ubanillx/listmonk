@@ -10,7 +10,7 @@ import (
 
 // validateCampaignReplyMailbox enforces that a campaign can only reference a
 // reply mailbox of the workspace the campaign belongs to, and that the mailbox
-// is currently verified/active.
+// is currently active (address-only mailboxes need no receiving test).
 //
 // Selecting is deliberately NOT an ownership check. An organization workspace
 // shares its customer reply mailboxes: the listing
@@ -47,7 +47,7 @@ func (a *App) validateCampaignReplyMailbox(access models.WorkspaceAccess, campai
 		return echo.NewHTTPError(http.StatusForbidden, "reply mailbox is not owned by this account")
 	}
 	if status != models.ReplyMailboxStatusActive {
-		return echo.NewHTTPError(http.StatusConflict, "reply mailbox must be verified and active")
+		return echo.NewHTTPError(http.StatusConflict, "reply mailbox must be active; AI receiving connections must be verified")
 	}
 	return nil
 }

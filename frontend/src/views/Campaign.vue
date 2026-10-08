@@ -166,8 +166,8 @@
                       :placeholder="$t('campaigns.fromAddressPlaceholder')" required />
                   </b-field>
 
-                  <b-field v-if="isSMTPMessenger && !hasPoolAudience" key="campaign-reply-mailbox" :label="$t('campaigns.replyMailbox')">
-                    <b-select v-model="form.replyMailboxId" :disabled="!canEdit || !$can('mailboxes:use') || activeReplyMailboxes.length === 0" expanded>
+                  <b-field v-if="isSMTPMessenger && hasPrivateAudience" key="campaign-reply-mailbox" :label="$t('campaigns.replyMailbox')">
+                    <b-select v-model="form.replyMailboxId" :disabled="!canEdit || !$can('mailboxes:use') || activeReplyMailboxes.length === 0" expanded data-cy="campaign-reply-mailbox">
                       <option :value="null">{{ $t('campaigns.replyMailboxNone') }}</option>
                       <option v-if="form.replyMailboxId && !activeReplyMailboxes.some((mailbox) => mailbox.id === Number(form.replyMailboxId))"
                         :value="form.replyMailboxId" disabled>
@@ -178,7 +178,7 @@
                       </option>
                     </b-select>
                   </b-field>
-                  <p v-if="isSMTPMessenger && !hasPoolAudience && replyMailboxesLoaded && activeReplyMailboxes.length === 0" class="help is-warning">
+                  <p v-if="isSMTPMessenger && hasPrivateAudience && replyMailboxesLoaded && activeReplyMailboxes.length === 0" class="help is-warning">
                     {{ $t('campaigns.replyMailboxMissing') }}
                   </p>
                   <b-field v-if="isSMTPMessenger && hasPoolAudience" key="campaign-pool-reply-priority" :label="$t('campaigns.poolReplyPriority')"
@@ -1309,6 +1309,11 @@ export default Vue.extend({
       return this.poolRoutingRows.length > 0 || this.selectedPoolLists.length > 0;
     },
 
+    hasPrivateAudience() {
+      const poolTypes = ['pool', 'pool_segment', 'pool_allocation', 'org_pool_allocation'];
+      return !this.hasPoolAudience || this.form.customer_lists.some((list) => !poolTypes.includes(list.type));
+    },
+
     // Rows of the read-only routing notice: the resolved rows of a saved
     // campaign, or the locally selected pool lists before the first save. A
     // pending row states that the route is resolved on save/send instead of
@@ -1331,10 +1336,10 @@ export default Vue.extend({
       ));
     },
 
-    // Pool audiences never use the campaign-level mailbox: their reply route is
-    // resolved per customer from its imported address and organization fallback.
+    // Retain the campaign mailbox for private recipients in a mixed audience.
+    // Pool recipients always use their independent per-customer route.
     campaignReplyMailboxID() {
-      if (this.hasPoolAudience) {
+      if (!this.hasPrivateAudience) {
         return null;
       }
       return this.form.replyMailboxId || null;

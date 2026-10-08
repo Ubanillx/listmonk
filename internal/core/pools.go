@@ -17,7 +17,7 @@ import (
 
 // PoolRecipient is the server-side sending snapshot source for a pool contact.
 // ReplyMailboxID is the organization's unified reply mailbox, resolved only
-// while that mailbox is active and verified.
+// while that mailbox is active (AI receiving connections must be verified).
 type PoolRecipient struct {
 	models.PoolContact
 	AllocationID   int64 `db:"allocation_id" json:"allocation_id"`
@@ -1306,7 +1306,7 @@ func (c *Core) refreshPoolCampaignAudienceRoutes(campaignID int) error {
 			FROM org_pool_allocations s
 			JOIN organizations o ON o.id=s.organization_id
 			LEFT JOIN reply_mailboxes rm ON rm.id=o.reply_mailbox_id
-				AND rm.status='active' AND rm.verified_at IS NOT NULL
+				AND rm.status='active' AND (NOT rm.ai_enabled OR rm.verified_at IS NOT NULL)
 			WHERE ccl.source_organization_id IS NOT NULL
 				AND s.pool_id=ccl.pool_id
 				AND s.organization_id=ccl.source_organization_id
@@ -1362,7 +1362,7 @@ const poolAudienceRouteMessagePrefix = "public-pool audience requires an organiz
 // missing or unusable organization reply mailbox. It names the organization
 // workspace on purpose: the setting belongs to the organization, and a platform
 // administrator cannot configure it on the organization's behalf.
-const poolAudienceRouteMessageMailboxStep = "a manager of that organization opens its workspace and saves a verified mailbox in Manage organizations -> Organization reply mailboxes as the organization's unified reply mailbox"
+const poolAudienceRouteMessageMailboxStep = "a manager of that organization opens its workspace and saves an available reply address in Manage organizations -> Organization reply mailboxes as the organization's unified reply mailbox (AI receiving connections must be verified)"
 
 // poolAudienceRouteMessageAllocationStep is prepended when an audience has no
 // organization allocation yet: without the allocation there is no recipient
@@ -1377,7 +1377,7 @@ const poolAudienceRouteMessageRetry = "then retry preview or send."
 // read-only diagnostics: the SQL mirrors refreshPoolCampaignAudienceRoutes, so
 // it matches the same pool, organization and pinned-allocation triple, resolves
 // the mailbox from the organization's unified reply mailbox, accepts it only
-// under status='active' AND verified_at IS NOT NULL, and uses the exact
+// when active (with connection verification required for AI), and uses the exact
 // unresolved predicate ValidatePoolCampaignAudience checks. No mailbox is
 // substituted for a missing one; the row is only labelled.
 func (c *Core) poolAudienceRouteIssues(campaignID int) ([]PoolAudienceRouteIssue, error) {
@@ -1397,7 +1397,7 @@ func (c *Core) poolAudienceRouteIssues(campaignID int) ([]PoolAudienceRouteIssue
 				WHEN ccl.source_organization_id IS NULL THEN 'organization_missing'
 				WHEN s.id IS NULL THEN 'allocation_missing'
 				WHEN o.reply_mailbox_id IS NULL THEN 'mailbox_missing'
-				WHEN rm.status='active' AND rm.verified_at IS NOT NULL THEN 'unresolved'
+				WHEN rm.status='active' AND (NOT rm.ai_enabled OR rm.verified_at IS NOT NULL) THEN 'unresolved'
 				ELSE 'mailbox_unavailable'
 			END AS reason
 		FROM campaign_customer_lists ccl
@@ -1454,9 +1454,9 @@ func poolAudienceRouteIssueClause(issue PoolAudienceRouteIssue) string {
 		return fmt.Sprintf("pool list %q -> organization allocation %s (organization %q): the organization has not configured its unified reply mailbox", issue.PoolName, allocation, issue.OrganizationName)
 	case poolAudienceRouteReasonMailboxUnavailable:
 		if issue.BoundMailboxEmail == "" {
-			return fmt.Sprintf("pool list %q -> organization allocation %s (organization %q): the organization's unified reply mailbox is not verified and active", issue.PoolName, allocation, issue.OrganizationName)
+			return fmt.Sprintf("pool list %q -> organization allocation %s (organization %q): the organization's unified reply mailbox is unavailable (must be active; AI receiving connections must be verified)", issue.PoolName, allocation, issue.OrganizationName)
 		}
-		return fmt.Sprintf("pool list %q -> organization allocation %s (organization %q): the organization's unified reply mailbox %q is not verified and active", issue.PoolName, allocation, issue.OrganizationName, issue.BoundMailboxEmail)
+		return fmt.Sprintf("pool list %q -> organization allocation %s (organization %q): the organization's unified reply mailbox %q is unavailable (must be active; AI receiving connections must be verified)", issue.PoolName, allocation, issue.OrganizationName, issue.BoundMailboxEmail)
 	default:
 		// The "unresolved" fallback and any unknown code state the symptom
 		// without naming a missing piece.
@@ -1553,7 +1553,7 @@ func (c *Core) validateAllOrgPoolCampaignAudience(campaignID int) error {
 	if err := c.db.Select(&rows, `SELECT s.organization_id,
 			o.name AS organization_name,
 			o.status AS organization_status,
-			((rm.id IS NOT NULL AND rm.status = 'active' AND rm.verified_at IS NOT NULL)
+			((rm.id IS NOT NULL AND rm.status = 'active' AND (NOT rm.ai_enabled OR rm.verified_at IS NOT NULL))
 			OR NOT `+poolMissingContactReplySQL+`) AS mailbox_ready,
 			COALESCE(rm.email, '') AS reply_mailbox_email,
     (SELECT COUNT(*) FROM user_smtp_servers s2 WHERE s2.enabled AND (
@@ -1605,7 +1605,7 @@ func (c *Core) validateAllOrgPoolCampaignAudience(campaignID int) error {
 		}
 		if !row.MailboxReady {
 			if row.MailboxEmail != "" {
-				clauses = append(clauses, fmt.Sprintf("pool list %q -> organization %q: the organization's unified reply mailbox %q is not verified and active", poolName, row.OrganizationName, row.MailboxEmail))
+				clauses = append(clauses, fmt.Sprintf("pool list %q -> organization %q: the organization's unified reply mailbox %q is unavailable (must be active; AI receiving connections must be verified)", poolName, row.OrganizationName, row.MailboxEmail))
 			} else {
 				clauses = append(clauses, fmt.Sprintf("pool list %q -> organization %q: the organization has not configured its unified reply mailbox", poolName, row.OrganizationName))
 			}
@@ -1657,7 +1657,7 @@ const poolRecipientMembershipSQL = `
 	JOIN org_pool_allocation_members sm ON sm.allocation_id=s.id AND sm.status='active'
 	JOIN pool_members pm ON pm.pool_id=s.pool_id AND pm.contact_id=sm.contact_id
 	JOIN pool_contacts pc ON pc.id=sm.contact_id
-	LEFT JOIN reply_mailboxes rm ON rm.id=o.reply_mailbox_id AND rm.status='active' AND rm.verified_at IS NOT NULL
+	LEFT JOIN reply_mailboxes rm ON rm.id=o.reply_mailbox_id AND rm.status='active' AND (NOT rm.ai_enabled OR rm.verified_at IS NOT NULL)
 	LEFT JOIN org_pool_allocation_exclusions ex ON ex.pool_id=s.pool_id AND ex.organization_id=s.organization_id AND ex.contact_id=pc.id AND ex.restored_at IS NULL
 	WHERE s.pool_id=$1 AND s.organization_id=$2 AND ($3::BIGINT IS NULL OR s.id=$3::BIGINT) AND ex.contact_id IS NULL AND pc.status='active'`
 
@@ -1752,7 +1752,7 @@ const poolRecipientAllOrgMembershipSQL = `
 	JOIN organizations o ON o.id=s.organization_id AND o.status='active'
 	JOIN org_pool_allocation_members sm ON sm.allocation_id=s.id AND sm.status='active' AND sm.contact_id=pc.id
 	JOIN pool_members pm ON pm.pool_id=s.pool_id AND pm.contact_id=pc.id
-	LEFT JOIN reply_mailboxes rm ON rm.id=o.reply_mailbox_id AND rm.status='active' AND rm.verified_at IS NOT NULL
+	LEFT JOIN reply_mailboxes rm ON rm.id=o.reply_mailbox_id AND rm.status='active' AND (NOT rm.ai_enabled OR rm.verified_at IS NOT NULL)
 	LEFT JOIN org_pool_allocation_exclusions ex ON ex.pool_id=s.pool_id AND ex.organization_id=s.organization_id AND ex.contact_id=pc.id AND ex.restored_at IS NULL
 	LEFT JOIN campaign_pool_org_orders oo ON oo.campaign_id=$2 AND oo.organization_id=s.organization_id
 	WHERE ex.contact_id IS NULL AND pc.status='active'`
@@ -1950,7 +1950,7 @@ func (c *Core) organizationReplyMailboxID(organizationID int64) (*int64, error) 
 //
 // The audience carries no reply mailbox of its own any more: the resolved route
 // is the target organization's unified reply mailbox, and only while that
-// mailbox is active and verified. A draft is still saved without one so the
+// mailbox is active (verified when AI-enabled). A draft is still saved without one so the
 // administrator can finish the organization configuration later; preview and
 // send stay blocked until then.
 func (c *Core) AttachPoolToCampaign(campaignID, poolID int, allocationID *int64, organizationID int64, allOrganizations bool) error {

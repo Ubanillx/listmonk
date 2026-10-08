@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/emersion/go-message"
-	"github.com/knadh/go-pop3"
 	"github.com/knadh/listmonk/internal/core"
 	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
@@ -25,7 +24,6 @@ import (
 )
 
 const (
-	replyAIPollInterval    = 60 * time.Second
 	replyAIMaxRunes        = 6000
 	replyAIMaxMessages     = 200
 	replyAIMaxMessageBytes = 5 << 20
@@ -44,10 +42,8 @@ const (
 )
 
 // The dial and per-operation read deadlines are variables so tests can shrink
-// them; production runs with the values below. The go-pop3 client exposes no
-// read deadline and no context (NewConn, Auth and RetrRaw block inside
-// bufio.Reader.ReadLine), so both bounds are installed through its Opt.Dialer
-// hook and a watchdog that force-closes the connection.
+// them; production runs with the values below. IMAP uses the guarded dialer
+// for per-operation deadlines and a watchdog that force-closes the connection.
 var (
 	replyAIMailboxDialTimeout = 10 * time.Second
 	replyAIMailboxReadTimeout = 30 * time.Second
@@ -79,7 +75,7 @@ func runReplyAIProcessor(a *App) {
 	if a == nil || a.db == nil || a.replyAI == nil || !a.replyAI.Enabled() {
 		return
 	}
-	ticker := time.NewTicker(replyAIPollInterval)
+	ticker := time.NewTicker(a.replyScanInterval)
 	defer ticker.Stop()
 	for {
 		a.scanReplyAIMailboxes()
@@ -157,14 +153,11 @@ func replyAIMailboxFailureMessage(source replyAIMailboxSource, err error, budget
 	return fmt.Sprintf("reply AI mailbox %d (%s:%d) scan failed: %v", source.ID, source.Host, source.Port, err)
 }
 
-// scanOneReplyAIMailbox keeps the mailbox semantics unchanged: it never deletes
-// source messages, and every message goes through the durable event queue so
-// deduplication and leasing stay in the database.
+// scanOneReplyAIMailbox advances only after durable ingestion, without deleting
+// source messages or marking them read.
 func (a *App) scanOneReplyAIMailbox(source replyAIMailboxSource, budget replyAIScanBudget) error {
-	return fetchReplyAIMailbox(source, budget, func(id int, raw []byte) {
-		if err := a.ingestReplyAIMessage(source, raw); err != nil {
-			a.log.Printf("reply AI mailbox %d message %d ingest failed: %v", source.ID, id, err)
-		}
+	return withReplyIMAPBudget(budget, func(dialer *replyAIDialer) error {
+		return scanReplyIMAP(source, dialer, a.replyIMAPCursor(source, "ai", func(_ uint32, raw []byte) error { return a.ingestReplyAIMessage(source, raw) }))
 	})
 }
 
@@ -184,75 +177,9 @@ func replyAIDefaultScanBudget() replyAIScanBudget {
 // once the budget expires the connection is force-closed, which unblocks the
 // pending read and releases the worker instead of leaking it.
 func fetchReplyAIMailbox(source replyAIMailboxSource, budget replyAIScanBudget, handle func(id int, raw []byte)) error {
-	dialer := &replyAIDialer{dialTimeout: budget.dial, readTimeout: budget.read}
-	done := make(chan error, 1)
-	go func() { done <- fetchReplyAIMessages(source, dialer, handle) }()
-
-	if budget.scan <= 0 {
-		return <-done
-	}
-	timer := time.NewTimer(budget.scan)
-	defer timer.Stop()
-	select {
-	case err := <-done:
-		return err
-	case <-timer.C:
-	}
-
-	_ = dialer.Close()
-	grace := time.NewTimer(replyAIScanCloseGrace)
-	defer grace.Stop()
-	select {
-	case <-done:
-	case <-grace.C:
-	}
-	return fmt.Errorf("%w after %s", errReplyAIScanTimeout, budget.scan)
-}
-
-// fetchReplyAIMessages dials the mailbox and hands every message that may be
-// processed to handle, preserving the previous per-mailbox behaviour (no
-// deletion, newest replyAIMaxMessages messages, size cap, individual read
-// failures skipped).
-func fetchReplyAIMessages(source replyAIMailboxSource, dialer *replyAIDialer, handle func(id int, raw []byte)) error {
-	host, port := source.Host, source.Port
-	if strings.HasPrefix(strings.ToLower(host), "imap.") {
-		host = "pop." + strings.TrimPrefix(host, "imap.")
-		port = 995
-	}
-	if port == 0 {
-		port = 995
-	}
-	client := pop3.New(pop3.Opt{Host: host, Port: port, TLSEnabled: source.TLSEnabled, Dialer: dialer})
-	conn, err := client.NewConn()
-	if err != nil {
-		return err
-	}
-	defer conn.Quit()
-	if err := conn.Auth(source.Username, source.Password); err != nil {
-		return err
-	}
-	if _, _, err := conn.Stat(); err != nil {
-		return err
-	}
-	ids, err := conn.List(0)
-	if err != nil {
-		return err
-	}
-	start := 0
-	if len(ids) > replyAIMaxMessages {
-		start = len(ids) - replyAIMaxMessages
-	}
-	for _, msg := range ids[start:] {
-		if msg.Size > replyAIMaxMessageBytes {
-			continue
-		}
-		raw, err := conn.RetrRaw(msg.ID)
-		if err != nil {
-			continue
-		}
-		handle(msg.ID, raw.Bytes())
-	}
-	return nil
+	return withReplyIMAPBudget(budget, func(dialer *replyAIDialer) error {
+		return scanReplyIMAP(source, dialer, replyIMAPConsumer{handle: func(uid uint32, raw []byte) error { handle(int(uid), raw); return nil }})
+	})
 }
 
 // replyAIDeadlineConn re-arms an idle deadline before every read and write, so
@@ -286,8 +213,9 @@ type replyAIDialer struct {
 	dialTimeout time.Duration
 	readTimeout time.Duration
 
-	mu   sync.Mutex
-	conn net.Conn
+	mu     sync.Mutex
+	conn   net.Conn
+	closed bool
 }
 
 func (d *replyAIDialer) Dial(network, address string) (net.Conn, error) {
@@ -304,6 +232,11 @@ func (d *replyAIDialer) Dial(network, address string) (net.Conn, error) {
 		conn = &replyAIDeadlineConn{Conn: conn, idle: d.readTimeout}
 	}
 	d.mu.Lock()
+	if d.closed {
+		d.mu.Unlock()
+		conn.Close()
+		return nil, errReplyAIScanTimeout
+	}
 	d.conn = conn
 	d.mu.Unlock()
 	return conn, nil
@@ -314,6 +247,7 @@ func (d *replyAIDialer) Close() error {
 	d.mu.Lock()
 	conn := d.conn
 	d.conn = nil
+	d.closed = true
 	d.mu.Unlock()
 	if conn == nil {
 		return nil
@@ -324,6 +258,13 @@ func (d *replyAIDialer) Close() error {
 func (a *App) ingestReplyAIMessage(source replyAIMailboxSource, raw []byte) error {
 	entity, err := message.Read(bytes.NewReader(raw))
 	if err != nil {
+		// A permanently malformed message must not pin the incremental cursor
+		// and prevent later replies from being received. Persist its terminal
+		// audit record first; database failures still retry the same UID.
+		hash := sha256.Sum256(raw)
+		_, err := a.db.Exec(`INSERT INTO reply_ai_events(reply_mailbox_id,message_key,status,action,reason_code)
+			VALUES($1,$2,'ignored','ignored','malformed_message')
+			ON CONFLICT(reply_mailbox_id,message_key) DO NOTHING`, source.ID, "malformed:"+hex.EncodeToString(hash[:]))
 		return err
 	}
 	if isAutomatedInboundReply(entity) {
@@ -344,7 +285,7 @@ func (a *App) ingestReplyAIMessage(source replyAIMailboxSource, raw []byte) erro
 	messageKey := entity.Header.Get("Message-ID") + ":" + hex.EncodeToString(rawHash[:])
 	var id int
 	err = a.queries.InsertReplyAIEvent.Get(&id, source.ID, messageKey, from,
-		strings.TrimSpace(entity.Header.Get("Subject")), body, hex.EncodeToString(bodyHash[:]), time.Now())
+		strings.TrimSpace(entity.Header.Get("Subject")), body, hex.EncodeToString(bodyHash[:]), time.Now(), replyReferenceHeaders(entity))
 	if err == sql.ErrNoRows {
 		return nil
 	}
@@ -398,6 +339,13 @@ func replyAIEventOrganizationID(event models.ReplyAIEvent) *int64 {
 }
 
 func (a *App) processReplyAIEvent(event models.ReplyAIEvent) error {
+	var enabled bool
+	if err := a.db.Get(&enabled, `SELECT COALESCE((value->>'enabled')::BOOLEAN,FALSE) FROM settings WHERE key='reply_ai'`); err != nil {
+		return err
+	}
+	if !enabled {
+		return a.finishReplyAIEvent(event, nil, models.ReplyAIIntentOther, 0, "global_ai_disabled", "", models.ReplyAIActionIgnored, models.ReplyAIEventStatusIgnored)
+	}
 	var source replyAIMailboxSource
 	if err := a.queries.GetReplyAIMailbox.Get(&source, event.ReplyMailboxID); err != nil {
 		if err == sql.ErrNoRows {
@@ -414,21 +362,20 @@ func (a *App) processReplyAIEvent(event models.ReplyAIEvent) error {
 		},
 		UserID: source.UserID,
 	}
-	customer, ok, err := a.core.FindReplyAIWorkspaceCustomer(access, event.FromEmail)
+	delivery, ok, err := a.core.FindReplyAIDelivery(source.ID, event.FromEmail, 0, event.ReplyReferences)
 	if err != nil {
 		return err
 	}
-	var poolContact models.PoolContact
-	var poolRecipient core.PublicPoolRecipient
-	if !ok {
-		poolContact, poolRecipient, ok, err = a.core.FindReplyAIPoolContact(access, event.FromEmail)
-		if err != nil {
-			return err
-		}
-	}
 	if !ok {
 		return a.finishReplyAIEvent(event, nil, models.ReplyAIIntentOther, 0,
-			"unmatched_sender", "", models.ReplyAIActionIgnored, models.ReplyAIEventStatusIgnored)
+			"unmatched_or_ambiguous_delivery", "", models.ReplyAIActionIgnored, models.ReplyAIEventStatusIgnored)
+	}
+	customer := models.Customer{}
+	customer.ID = delivery.CustomerID
+	poolContact := models.PoolContact{}
+	poolContact.ID = delivery.PoolContactID
+	if customer.ID > 0 {
+		access.UserID = delivery.UserID
 	}
 	if strings.TrimSpace(event.Body) == "" {
 		if poolContact.ID > 0 {
@@ -465,6 +412,7 @@ func (a *App) processReplyAIEvent(event models.ReplyAIEvent) error {
 		occurredAt = event.ReceivedAt.Time
 	}
 	action := core.ReplyAIAction{
+		CampaignID: delivery.CampaignID,
 		EventID:    event.ID,
 		LeaseToken: event.LeaseToken,
 		CustomerID: customer.ID,
@@ -476,14 +424,13 @@ func (a *App) processReplyAIEvent(event models.ReplyAIEvent) error {
 	}
 	if poolContact.ID > 0 {
 		action.PoolContactID = poolContact.ID
-		action.SourceAllocationID = int64(poolRecipient.AllocationID.Int)
-		action.SourceOrganizationID = int64(poolRecipient.OrganizationID.Int)
-		// Recover the parent pool ID from the immutable delivery snapshot.
-		_ = a.db.Get(&action.PoolID, `SELECT pool_id FROM campaign_pool_recipients WHERE campaign_id=$1 AND pool_contact_id=$2`, poolRecipient.CampaignID, poolRecipient.PoolContactID)
+		action.SourceAllocationID = delivery.AllocationID
+		action.SourceOrganizationID = int64(delivery.OrganizationID)
+		action.PoolID = delivery.PoolID
 	}
 	if err := a.core.ApplyReplyAIAction(access, action); err != nil {
 		if httpErr, ok := err.(*echo.HTTPError); ok && httpErr.Code == 409 {
-			return a.finishReplyAIEvent(event, &customer.ID, models.ReplyAIIntentOther, decision.Confidence,
+			return a.finishReplyAIEvent(event, nil, models.ReplyAIIntentOther, decision.Confidence,
 				"workspace_not_writable", a.replyAI.Model(), models.ReplyAIActionIgnored, models.ReplyAIEventStatusIgnored)
 		}
 		return err
@@ -522,6 +469,18 @@ func normalizeReplyAddress(raw string) string {
 		return ""
 	}
 	return strings.ToLower(strings.TrimSpace(addr.Address))
+}
+
+func replyReferenceHeaders(entity *message.Entity) string {
+	refs := strings.Fields(entity.Header.Get("References"))
+	for i, j := 0, len(refs)-1; i < j; i, j = i+1, j-1 {
+		refs[i], refs[j] = refs[j], refs[i]
+	}
+	text := entity.Header.Get("In-Reply-To") + " " + strings.Join(refs, " ")
+	if len(text) > 8192 {
+		text = text[:8192]
+	}
+	return text
 }
 
 func normalizedReplyText(entity *message.Entity) string {

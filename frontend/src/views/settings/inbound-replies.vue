@@ -14,6 +14,16 @@
       </div>
     </div>
 
+    <div class="columns mb-5">
+      <div class="column is-4">
+        <b-field :label="$t('settings.inboundReplies.scanInterval')" label-position="on-border"
+          :message="$t('settings.inboundReplies.scanIntervalHelp')">
+          <b-input v-model.trim="cfg.scan_interval" name="reply_ai_scan_interval" placeholder="60s" required
+            data-cy="reply-scan-interval" />
+        </b-field>
+      </div>
+    </div>
+
     <!-- Step 1: gateway address and credentials. -->
     <h4 class="title is-6 mb-3">1. {{ $t('settings.inboundReplies.connection') }}</h4>
     <div class="columns">
@@ -196,8 +206,9 @@ export default Vue.extend({
   data() {
     const d = this.form || {};
     d.reply_ai = d.reply_ai || {
-      enabled: false, base_url: '', api_key: '', model: '', timeout: '15s', min_confidence: 0.98,
+      enabled: false, base_url: '', api_key: '', model: '', timeout: '15s', scan_interval: '60s', min_confidence: 0.98,
     };
+    Vue.set(d.reply_ai, 'scan_interval', d.reply_ai.scan_interval || '60s');
     return {
       data: d,
       // Probe state stays out of `data` so it never reaches the settings API.

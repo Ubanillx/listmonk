@@ -3980,6 +3980,13 @@ startup fails.</p>
 <td>HTTP request timeout for classification requests.</td>
 </tr>
 <tr>
+<td><code>scan_interval</code></td>
+<td>duration string</td>
+<td><code>60s</code></td>
+<td>no</td>
+<td>Check interval for AI reply scanning and retained-mailbox forwarding, from <code>10s</code> to <code>24h</code> (e.g. <code>5m</code>). Independent of the classifier enable switch. Saved changes use the settings reload flow; running campaigns defer reload until restart.</td>
+</tr>
+<tr>
 <td><code>min_confidence</code></td>
 <td>float</td>
 <td><code>0.98</code></td>

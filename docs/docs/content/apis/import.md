@@ -88,6 +88,15 @@ is saved on the pool contact. If the matching organization already has a
 pool allocation for the selected pool, the import also creates the contact's
 pool-allocation membership. Creating that pool allocation later backfills
 existing matching contacts; it does not create an organization.
+The `email` cell may contain multiple addresses. The importer extracts bare
+addresses separated by semicolons, commas, newlines, slashes, or pipe characters, and
+also extracts addresses followed by punctuation or a short note. Each extracted
+address becomes one contact row and reuses the source row's customer code, name,
+allocation department, and Reply-To value. Duplicate addresses still follow the
+normal duplicate handling. Invalid fragments are reported with their original
+source row number. Import totals and the 100,000-contact limit apply after
+expansion. If a template contains both `部门` and `分配部门`, automatic field
+mapping prefers `分配部门` for the allocation target.
 This branch is synchronous, does not support overwrite flags or ZIP
 uploads, and is restricted to the highest administrator.
 

@@ -118,7 +118,7 @@
             <div class="column is-4">
               <b-field :label="$t('import.mapAllocationDepartmentField')"
                 :message="$t('import.mapAllocationDepartmentFieldHelp')">
-                <b-select v-model="form.fieldMap.allocation_department" expanded required>
+                <b-select v-model="form.fieldMap.allocation_department" expanded required data-cy="import-map-allocation-department">
                   <option value="">{{ $t('globals.terms.none') }}</option>
                   <option v-for="col in preview.columns" :key="`allocation_department-${col.value}`" :value="col.value">
                     {{ col.label }}
@@ -229,7 +229,7 @@
         </div>
         <div class="message-body">
           <div class="tags">
-            <b-tag>{{ $t('import.poolResultTotal', { count: poolImportResult.total || 0 }) }}</b-tag>
+            <b-tag data-cy="pool-result-total">{{ $t('import.poolResultTotal', { count: poolImportResult.total || 0 }) }}</b-tag>
             <b-tag type="is-success">{{ $t('import.poolResultCreated', { count: poolImportResult.created || 0 }) }}</b-tag>
             <b-tag type="is-info">{{ $t('import.poolResultExisting', { count: poolImportResult.existing || 0 }) }}</b-tag>
             <b-tag v-if="poolImportResult.blocklisted" type="is-danger" data-cy="pool-result-blocklisted">
@@ -518,7 +518,7 @@ export default Vue.extend({
       if (this.poolImport) {
         keyMap.reply_to = ['reply_to', 'reply to', 'reply-to', 'reply_email', '回信邮箱', '回件邮箱', '回复邮箱'];
         keyMap.allocation_department = [
-          'allocation_department', 'allocation department', 'department', '部门', '分配部门', '分配部门名称',
+          'allocation_department', 'allocation department', '分配部门', '分配部门名称', 'department', '部门',
         ];
       }
 
@@ -526,10 +526,9 @@ export default Vue.extend({
         if (this.form.fieldMap[target]) {
           return;
         }
-        const col = this.preview.columns.find((c) => {
-          const norm = this.normalizeFieldName(c.header || c.value);
-          return keyMap[target].includes(norm);
-        });
+        const col = keyMap[target].map((alias) => this.preview.columns.find((c) => (
+          this.normalizeFieldName(c.header || c.value) === alias
+        ))).find(Boolean);
         if (col) {
           this.form.fieldMap[target] = col.value;
         }

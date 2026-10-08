@@ -482,7 +482,7 @@
     "import.poolImportWithErrors": "公海匯入完成，但有資料列未寫入，請修正錯誤",
     "import.poolImportRejected": "公海匯入未寫入任何記錄，請修正錯誤",
     "import.poolResultTitle": "公海匯入結果",
-    "import.poolResultTotal": "來源檔案 {count} 列",
+    "import.poolResultTotal": "聯絡人記錄 {count} 筆",
     "import.poolResultCreated": "新增 {count} 筆",
     "import.poolResultExisting": "重用 {count} 筆",
     "import.poolResultConflicts": "編碼衝突 {count} 筆",

@@ -526,7 +526,7 @@
     "import.poolImportWithErrors": "Public-pool import completed with rejected rows",
     "import.poolImportRejected": "Public-pool import wrote no records; correct the errors",
     "import.poolResultTitle": "Public-pool import result",
-    "import.poolResultTotal": "{count} source rows",
+    "import.poolResultTotal": "{count} contact records",
     "import.poolResultCreated": "{count} created",
     "import.poolResultExisting": "{count} reused",
     "import.poolResultConflicts": "{count} code conflicts",

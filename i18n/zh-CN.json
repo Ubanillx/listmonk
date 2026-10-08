@@ -529,7 +529,7 @@
     "import.poolImportWithErrors": "公海导入完成，但有行未写入，请修正错误",
     "import.poolImportRejected": "公海导入未写入任何记录，请修正错误",
     "import.poolResultTitle": "公海导入结果",
-    "import.poolResultTotal": "源文件 {count} 行",
+    "import.poolResultTotal": "联系人记录 {count} 条",
     "import.poolResultCreated": "新建 {count} 条",
     "import.poolResultExisting": "复用 {count} 条",
     "import.poolResultConflicts": "编码冲突 {count} 条",

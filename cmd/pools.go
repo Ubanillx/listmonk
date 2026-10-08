@@ -6,6 +6,8 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/mail"
+	"regexp"
 	"strconv"
 	"strings"
 	"unicode"
@@ -25,11 +27,108 @@ const (
 )
 
 var poolContactImportAliases = map[string][]string{
-	"customer_code":         {"customer_code", "customer code", "customercode", "客户编码", "客户编号"},
-	"name":                  {"name", "fullname", "full name", "联系人", "姓名"},
-	"email":                 {"email", "e-mail", "mail", "邮箱", "邮件地址"},
-	"reply_to":              {"reply_to", "reply to", "reply-to", "reply_email", "回信邮箱", "回件邮箱", "回复邮箱"},
-	"allocation_department": {"allocation_department", "allocation department", "department", "部门", "分配部门", "分配部门名称"},
+	"customer_code": {"customer_code", "customer code", "customercode", "客户编码", "客户编号"},
+	"name":          {"name", "fullname", "full name", "联系人", "姓名"},
+	"email":         {"email", "e-mail", "mail", "邮箱", "邮件地址"},
+	"reply_to":      {"reply_to", "reply to", "reply-to", "reply_email", "回信邮箱", "回件邮箱", "回复邮箱"},
+	// Prefer the explicit allocation column when a business template also has
+	// a general "department" column. The latter can describe the contact's
+	// source data and is not the organization routing target.
+	"allocation_department": {"allocation_department", "allocation department", "分配部门", "分配部门名称", "department", "部门"},
+}
+
+// Match whole address-like tokens, including malformed ones, so the domain
+// validator can reject them without silently importing a valid-looking suffix.
+var poolImportEmailPattern = regexp.MustCompile(`[^\s<>()[\]";|]+@[^\s<>()[\]";|]+`)
+var poolImportEmailPunctuation = strings.NewReplacer("＠", "@", "．", ".", "；", ";", "，", ",", "｜", "|")
+
+func splitPoolImportEmails(value string) []string {
+	value = strings.TrimSpace(poolImportEmailPunctuation.Replace(value))
+	// Preserve already-valid bare addresses with characters that are also
+	// commonly used as list separators.
+	if parsed, err := mail.ParseAddress(value); err == nil && parsed.Address == value {
+		return []string{value}
+	}
+
+	var emails []string
+	appendCell := func(cell string) {
+		cell = strings.TrimSpace(cell)
+		if cell == "" {
+			return
+		}
+		if parsed, err := mail.ParseAddress(cell); err == nil {
+			emails = append(emails, parsed.Address)
+			return
+		}
+		candidates := poolImportEmailPattern.FindAllString(cell, -1)
+		if len(candidates) == 0 {
+			emails = append(emails, cell)
+			return
+		}
+		normalized := make([]string, 0, len(candidates))
+		undotted := false
+		for _, candidate := range candidates {
+			candidate = strings.TrimRight(candidate, ".。")
+			if candidate == "" {
+				continue
+			}
+			// An undotted domain cut off at whitespace can be part of a broken
+			// address ("user@public 1 example.com"). Keep it intact for validation.
+			at := strings.LastIndexByte(candidate, '@')
+			if at >= 0 && !strings.Contains(candidate[at+1:], ".") {
+				undotted = true
+			}
+			normalized = append(normalized, candidate)
+		}
+		if undotted && len(normalized) == 1 {
+			emails = append(emails, cell)
+			return
+		}
+		emails = append(emails, normalized...)
+	}
+
+	// Commas and slashes after an @ are separators. A comma inside a malformed local part,
+	// such as "first,last@example.com", must remain an invalid address rather
+	// than becoming "last@example.com". Quoted local parts may contain separators.
+	start, hasAt, boundary, quoted, escaped := 0, false, false, false, false
+	for i, r := range value {
+		if escaped {
+			escaped = false
+			continue
+		}
+		if quoted && r == '\\' {
+			escaped = true
+			continue
+		}
+		if r == '"' {
+			quoted = !quoted
+		}
+		if quoted {
+			continue
+		}
+		if r == ';' || r == '|' || r == '\n' || r == '\r' || ((r == ',' || r == '/') && (hasAt || boundary)) {
+			appendCell(value[start:i])
+			start, hasAt, boundary = i+1, false, false
+			continue
+		}
+		// Track the current token rather than the entire segment: an earlier
+		// address must not turn the comma in "one@example.com first,last@example.com"
+		// into a separator and silently import "last@example.com".
+		if unicode.IsSpace(r) || r == '>' || r == ')' || r == ']' {
+			hasAt, boundary = false, true
+		} else {
+			boundary = false
+			if r == '@' {
+				hasAt = true
+			}
+		}
+	}
+	appendCell(value[start:])
+	if len(emails) == 0 {
+		// A blank cell remains one row so core reports email_required.
+		return []string{value}
+	}
+	return emails
 }
 
 func normalizePoolImportHeader(value string) string {
@@ -186,16 +285,19 @@ func parsePoolContactImportRows(header []string, next func() ([]string, error), 
 			}
 		}
 		if !isEmpty {
-			rows = append(rows, models.PoolContactImportRow{
+			base := models.PoolContactImportRow{
 				Row:                  rowNumber,
 				CustomerCode:         valueAt(values, "customer_code"),
 				Name:                 valueAt(values, "name"),
-				Email:                valueAt(values, "email"),
 				ReplyTo:              valueAt(values, "reply_to"),
 				AllocationDepartment: valueAt(values, "allocation_department"),
-			})
-			if len(rows) > 100000 {
-				return nil, fmt.Errorf("文件最多支持 100000 条联系人")
+			}
+			for _, email := range splitPoolImportEmails(valueAt(values, "email")) {
+				base.Email = email
+				rows = append(rows, base)
+				if len(rows) > 100000 {
+					return nil, fmt.Errorf("文件最多支持 100000 条联系人")
+				}
 			}
 		}
 		rowNumber++

@@ -1914,6 +1914,9 @@ the owner fields for audit purposes.</p>
   sheet or XLSX worksheet must map <code>customer_code</code>, <code>name</code>, <code>email</code> and
   <code>allocation_department</code>. Chinese template headers <code>客户编号</code>/<code>客户编码</code>,
   <code>姓名</code>, <code>邮箱</code>, <code>分配部门</code> are recognized; optional <code>回信邮箱</code>/<code>reply_to</code> is supported and other columns are ignored.
+  The name column is required, but name values may be empty or whitespace-only;
+  they are stored as empty strings. This applies to both normal and blocklist
+  imports. Customer code, email, and allocation department values remain required.
   Requires <code>pools:master_manage</code>. <code>分配部门</code> must match an
   active <code>organizations.name</code>; unknown or archived departments are rejected
   row-by-row and are not written. A valid value is stored on the pool contact

@@ -3379,6 +3379,20 @@ curl<span class="w"> </span>-u<span class="w"> </span><span class="s2">"api_user
 <hr />
 <h4 id="delete-apicustomer-listscustomer_list_id">DELETE /api/customer-lists/{customer_list_id}<a class="headerlink" href="#delete-apicustomer-listscustomer_list_id" title="Permanent link">&para;</a></h4>
 <p>Delete a specific customer_list.</p>
+<p>By default, customers are kept. Set <code>delete_customers=true</code> to also delete
+customers belonging only to the selected list. A customer with membership in
+any other list is preserved, including archived lists and unsubscribed
+memberships. Customers outside the caller's mutable workspace/ownership scope
+or pending transfer are also preserved. Private customer deletion additionally
+requires <code>customers:delete</code>; public-pool contact deletion uses
+<code>pools:master_manage</code>. Personal API keys additionally need <code>customers:write</code>.
+Organization allocation deletion cannot delete public-pool master contacts.
+List and customer deletion commit in one transaction. The response remains
+<code>{"data": true}</code>; audit metadata records <code>delete_customers</code> and
+<code>deleted_customer_count</code>.</p>
+<p>The admin UI confirms the list selection first, then offers Cancel, Delete
+lists only, or Delete lists and customers. Closing either confirmation cancels
+the operation. The customer deletion choice is disabled without its permission.</p>
 <h5 id="parameters_4">Parameters<a class="headerlink" href="#parameters_4" title="Permanent link">&para;</a></h5>
 <table>
 <thead>
@@ -3396,6 +3410,12 @@ curl<span class="w"> </span>-u<span class="w"> </span><span class="s2">"api_user
 <td style="text-align: left;">Yes</td>
 <td style="text-align: left;">ID of the customer_list to delete.</td>
 </tr>
+<tr>
+<td style="text-align: left;">delete_customers</td>
+<td style="text-align: left;">Boolean</td>
+<td style="text-align: left;"></td>
+<td style="text-align: left;">Also delete unshared, manageable customers. Defaults to <code>false</code>.</td>
+</tr>
 </tbody>
 </table>
 <h5 id="example-request_5">Example Request<a class="headerlink" href="#example-request_5" title="Permanent link">&para;</a></h5>
@@ -3409,6 +3429,13 @@ curl<span class="w"> </span>-u<span class="w"> </span><span class="s2">"api_user
 <hr />
 <h4 id="delete-apicustomer-lists">DELETE /api/customer-lists<a class="headerlink" href="#delete-apicustomer-lists" title="Permanent link">&para;</a></h4>
 <p>Delete multiple customer_lists by IDs or by a search query.</p>
+<p>The same optional <code>delete_customers=true</code> behavior applies to the entire
+selected set. A customer shared only among the lists being deleted is removed;
+membership in any list outside that set preserves it. Public-pool contacts
+are similarly preserved when another first-level pool or surviving organization
+allocation uses them. Unrelated customers already without lists are untouched.
+An empty filtered selection is a successful no-op. Permissions, workspace
+boundaries, and transaction behavior match single-list deletion above.</p>
 <blockquote>
 <p><strong>Note:</strong> Users can only delete customer_lists they have <code>manage</code> permission for. Any customer_lists in the query that the user doesn't have permission to manage is ignored.</p>
 </blockquote>
@@ -3452,6 +3479,12 @@ curl<span class="w"> </span>-u<span class="w"> </span><span class="s2">"api_user
 <td style="text-align: left;">string</td>
 <td style="text-align: left;"></td>
 <td style="text-align: left;">With query or <code>all</code>, restrict deletion to <code>active</code> or <code>archived</code> lists; omitted includes both.</td>
+</tr>
+<tr>
+<td style="text-align: left;">delete_customers</td>
+<td style="text-align: left;">boolean</td>
+<td style="text-align: left;"></td>
+<td style="text-align: left;">Also delete customers exclusively associated with the selected manageable lists. Defaults to <code>false</code>.</td>
 </tr>
 </tbody>
 </table>

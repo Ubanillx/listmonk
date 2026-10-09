@@ -115,12 +115,16 @@
           {{ $t('shared.transferPending', { date: $utils.niceDate(transferPendingAt(props.row), true) }) }}
         </b-tag>
       </b-table-column>
-      <b-table-column v-slot="props" cell-class="customer_lists" field="customerLists" :label="$t('globals.terms.customer_lists')" width="15%">
+      <b-table-column v-slot="props" cell-class="customer_lists" field="customerLists" :label="$t('campaigns.audienceLists')" width="15%">
         <ul>
-          <li v-for="l in props.row.customerLists" :key="l.id">
-            <router-link :to="{ name: 'customersCustomerList', params: { customerListID: l.id } }">
+          <li v-for="l in campaignAudienceLists(props.row)" :key="`${l.type}-${l.id}-${l.name}`" class="campaign-customer-list">
+            <router-link v-if="l.id" :to="{ name: l.type === 'pool' ? 'poolListContacts' : 'customersCustomerList', params: { customerListID: l.id } }">
               {{ l.name }}
             </router-link>
+            <span v-else>{{ l.name }}</span>
+            <b-tag size="is-small" :type="l.type === 'pool' ? 'is-info' : ''" class="is-light">
+              {{ $t(`customer_lists.types.${l.type}`) }}
+            </b-tag>
           </li>
         </ul>
       </b-table-column>
@@ -356,6 +360,23 @@ export default Vue.extend({
   },
 
   methods: {
+    campaignAudienceLists(campaign) {
+      const lists = (campaign.customerLists || []).map((list) => ({ ...list, type: 'private' }));
+      const poolIDs = new Set();
+      (campaign.customerPools || []).forEach((pool) => {
+        const id = Number(pool.poolId);
+        if (id > 0 && !poolIDs.has(id)) {
+          poolIDs.add(id);
+          lists.push({
+            id,
+            name: pool.name || this.$t('campaigns.poolFallback', { id }),
+            type: 'pool',
+          });
+        }
+      });
+      return lists;
+    },
+
     // Campaign statuses.
     canStart(c) {
       return this.canManageCampaign(c) && this.$can('campaigns:send')

@@ -1,3 +1,21 @@
+.campaigns .campaign-customer-list {
+  display: flex;
+  align-items: center;
+  gap: var(--lm-space-1);
+  margin-bottom: var(--lm-space-1);
+
+  > a,
+  > span:not(.tag) {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .tag {
+    flex-shrink: 0;
+  }
+}
+
 .campaign-setup {
   .campaign-setup-grid {
     display: grid;

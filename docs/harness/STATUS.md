@@ -1,6 +1,8 @@
 # 工作状态
 
-快照日期：2026-10-08
+快照日期：2026-10-09
+
+- 营销活动客户列表类型标识（2026-10-09）：活动列表的列名统一为“客户列表”，同时展示接口返回的私域列表与公海受众，名称旁分别标记“私有”和“公海”；同一公海的多组织分配按公海 ID 合并，链接分别进入私域客户和公海联系人页面，已删除私域列表保留历史名称且不生成无效链接。复用现有三语言文案，不改变 API 或权限。验证：前端 lint/生产构建、隔离 Cypress 1/1（私域、公海、多分配去重、混合受众、缺失名称、历史列表、空受众、390px 布局）、桌面截图及 diff 检查通过；开发后端已重启，9173 返回 200、无待升级，启动仅有此前已记录的事务模板 3 `RootURL` 编译错误。来源：`frontend/src/views/Campaigns.vue`、`frontend/src/assets/styles/views/_campaign.scss`、`frontend/cypress/e2e/campaign-audience-labels.cy.js`。
 
 - 公海多邮箱导入（2026-10-08）：统一 CSV/XLSX 公海导入在解析层拆分 `email` 单元格中的分号、逗号、换行、斜线、竖线及备注文本；每个地址复用源行的客户编号、姓名、分配部门和回信邮箱。保留无法解析的完整片段，让核心校验按原始行号报告 `invalid_email`；扩展后联系人总数仍受 100000 上限约束，结果标签按联系人记录数显示。含“部门”和“分配部门”的模板自动优先后者。验证：全量 Go 测试、CSV/XLSX 解析与展开上限回归、前端 lint/生产构建、隔离 Cypress 多邮箱导入 1/1（实际创建、字段复用、重复重导入、坏地址、黑名单和结果总数标签）、三语言 JSON/键集、文档链接及 diff 检查通过。开发后端已重启，9173 返回 200、无待升级；仅保留此前已记录的事务模板 3 `RootURL` 编译错误。来源：`cmd/pools.go`、`cmd/pool_import_test.go`、`frontend/src/views/Import.vue`、`i18n/{en,zh-CN,zh-TW}.json`、`frontend/cypress/e2e/pool-multi-email-import.cy.js`。
 

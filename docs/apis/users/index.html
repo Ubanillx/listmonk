@@ -1363,6 +1363,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#smtp-connection-test-feedback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SMTP connection test feedback
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#reply-mailbox-receiving-configuration" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2023,6 +2034,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#smtp-connection-test-feedback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SMTP connection test feedback
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#reply-mailbox-receiving-configuration" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2163,6 +2185,16 @@
 <span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
 <span class="p">}</span>
 </code></pre></div>
+<h3 id="smtp-connection-test-feedback">SMTP connection test feedback<a class="headerlink" href="#smtp-connection-test-feedback" title="Permanent link">&para;</a></h3>
+<p>The personal profile and organization SMTP forms send a test message using the
+current configuration without saving it. A saved server ID allows the backend
+to reuse its masked/empty password. The test requires <code>mailboxes:manage</code> and
+the existing ownership/workspace permissions.</p>
+<p>While a test runs, the button shows progress and prevents duplicate tests.
+Success or failure remains visible below the SMTP card's test controls. Server
+errors (including authentication, TLS and connection failures) display the API
+message; network failures display the request error. A failed test can be
+retried after correcting the configuration.</p>
 <h3 id="reply-mailbox-receiving-configuration">Reply mailbox receiving configuration<a class="headerlink" href="#reply-mailbox-receiving-configuration" title="Permanent link">&para;</a></h3>
 <p><code>POST /api/profile/reply-mailboxes</code> and
 <code>PUT /api/profile/reply-mailboxes/{id}</code> require <code>mailboxes:manage</code> and the

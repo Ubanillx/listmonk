@@ -3784,7 +3784,7 @@ v6.53.0 upgrade.</p>
 <td>duration string</td>
 <td><code>5s</code></td>
 <td>no</td>
-<td>Shared wait timeout for a free connection (<code>smtp_delivery</code>).</td>
+<td>Shared wait timeout for a free connection and for creating a new connection, including the implicit TLS handshake (<code>smtp_delivery</code>).</td>
 </tr>
 <tr>
 <td><code>max_msg_retries</code></td>
@@ -3831,6 +3831,14 @@ v6.53.0 upgrade.</p>
 </tbody>
 </table>
 <p>The same settings are edited as <code>Settings</code> -&gt; <code>SMTP</code>.</p>
+<p>The SMTP pool applies <code>wait_timeout</code> per connection attempt. Values shorter than
+one second use the pool's <code>2s</code> fallback; retries can extend the total request
+time. With implicit SSL/TLS, <code>context deadline exceeded</code> during connection
+creation occurs before SMTP authentication. Personal and organization tests
+show the target and effective timeout. Check the network from the application
+server and the SMTP service before adjusting the wait timeout; changing a
+password or disabling certificate verification does not resolve a connection
+deadline.</p>
 <p>For a variable sending cadence, set the random delay to a range such as <code>2000</code>–<code>5000</code> milliseconds.
 Before every message, including the first, the sender waits a uniformly sampled
 duration in the range. When enabled, messages using the same SMTP UUID wait and

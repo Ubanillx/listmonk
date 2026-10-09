@@ -1,5 +1,9 @@
 # 管理端 UI/UX 审计
 
+## 2026-10-09 SMTP 测试无反馈
+
+用户截图与审计 HTTP 500 表明个人 SMTP 测试已提交但失败；`testPersonalSMTP` 的 `disableToast: true` 与组件缺少 catch 共同导致失败无可见反馈。个人/组织共用 SMTP 表单现捕获后端和网络错误，在测试按钮下方持续显示结果并弹出提示；重试先清除旧结果，请求期间禁用重复测试，结束后恢复按钮。来源：`PersonalSMTPSettings.vue::testServer`、`frontend/src/api/index.js`，验证入口：`frontend/cypress/e2e/personal-smtp-test.cy.js`。
+
 ## 2026-09-30 组织 SMTP 发件池操作流复查
 
 组织营销 SMTP 已收敛为“左侧选择/创建发件池，右侧编辑当前池 SMTP”的两栏流程。池列表提供明确的选中态和启用数/总数，右侧标题显示当前池名称；切换池和创建新池会检查 SMTP 草稿，避免未保存内容被切换丢弃。隔离 Cypress 覆盖了多池显示、切换空池后恢复有 SMTP 池以及活动保存流程。

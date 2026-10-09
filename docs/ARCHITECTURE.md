@@ -191,6 +191,8 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 
 管理端入口 `frontend/index.html` 的 favicon、custom.css 和 custom.js 使用 `/admin/` 绝对路径，避免嵌套组织页刷新时将回退 HTML 当脚本加载。组织营销配置位于 `frontend/src/views/organizations/ManageOrganizations.vue` 的独立 SMTP 标签，复用带组织 owner 参数的 `PersonalSMTPSettings.vue`。
 
+个人/组织 SMTP 测试由 `PersonalSMTPSettings.vue::testServer` 接收 API 的成功或失败：发送期间显示 loading 并禁用重复测试，完成后在对应 SMTP 卡片内持续显示结果并弹出提示；SMTP 服务端错误原文优先，断网等无响应错误使用请求错误信息。两类测试 API 均关闭全局 toast，由组件统一反馈，避免个人测试失败无提示及组织测试重复提示。测试仍使用当前配置且不保存，结果字段不计入待保存配置。回归：`frontend/cypress/e2e/personal-smtp-test.cy.js`。
+
 自 v6.50.0 起，“管理组织”可配置一个或多个组织自有营销 SMTP，与个人 SMTP、系统通知 SMTP 独立。`user_smtp_servers` 复用连接字段与额度存储，但 `user_id` / `organization_id` 必须且只能存在一个；组织行不附着任何成员账号。迁移保留所有个人行、UUID、密码与使用量，旧活动的 `campaigns.smtp_source` 默认 `personal`。
 
 自 v6.52.0 起，组织 SMTP 再按组织划分为多个发件池（`organization_smtp_pools`）。每个组织可创建、重命名和删除空池；SMTP 行通过 `smtp_pool_id` 严格归属一个同组织池，旧组织 SMTP 和组织来源活动迁移到“默认发件池”。活动保存 `campaigns.smtp_pool_id`，组织轮询只读取该池；删除有 SMTP 或活动引用的池会被拒绝。

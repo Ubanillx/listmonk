@@ -298,7 +298,9 @@ const organizationSMTPConfig = (id, poolId) => ({
 export const getOrganizationSMTP = (id, poolId) => http.get('/api/organizations/smtp', organizationSMTPConfig(id, poolId));
 export const updateOrganizationSMTP = (data, id, poolId) => http.put('/api/organizations/smtp', data, organizationSMTPConfig(id, poolId));
 export const deleteOrganizationSMTP = (smtpID, id, poolId) => http.delete(`/api/organizations/smtp/${smtpID}`, organizationSMTPConfig(id, poolId));
-export const testOrganizationSMTP = (data, id, poolId) => http.post('/api/organizations/smtp/test', data, organizationSMTPConfig(id, poolId));
+export const testOrganizationSMTP = (data, id, poolId) => http.post('/api/organizations/smtp/test', data, {
+  ...organizationSMTPConfig(id, poolId), disableToast: true,
+});
 export const getOrganizationSMTPPools = (id) => http.get('/api/organizations/smtp-pools', organizationWorkspaceConfig(id));
 export const createOrganizationSMTPPool = (data, id) => http.post('/api/organizations/smtp-pools', data, organizationWorkspaceConfig(id));
 export const updateOrganizationSMTPPool = (poolId, data, id) => http.put(`/api/organizations/smtp-pools/${poolId}`, data, organizationWorkspaceConfig(id));

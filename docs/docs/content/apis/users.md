@@ -95,6 +95,19 @@ curl -u "api_user:token" -X DELETE \
 }
 ```
 
+### SMTP connection test feedback
+
+The personal profile and organization SMTP forms send a test message using the
+current configuration without saving it. A saved server ID allows the backend
+to reuse its masked/empty password. The test requires `mailboxes:manage` and
+the existing ownership/workspace permissions.
+
+While a test runs, the button shows progress and prevents duplicate tests.
+Success or failure remains visible below the SMTP card's test controls. Server
+errors (including authentication, TLS and connection failures) display the API
+message; network failures display the request error. A failed test can be
+retried after correcting the configuration.
+
 ### Reply mailbox receiving configuration
 
 `POST /api/profile/reply-mailboxes` and

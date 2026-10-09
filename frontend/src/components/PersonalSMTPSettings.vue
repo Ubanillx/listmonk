@@ -133,10 +133,15 @@
               <b-input v-model="server.testEmail" type="email" placeholder="email@example.com" />
             </b-field>
             <b-button type="is-light" icon-left="rocket-launch-outline" :loading="testing === index"
+              :disabled="testing !== null || saving || loading"
               @click="testServer(server, index)">
               {{ $t('settings.smtp.testConnection') }}
             </b-button>
           </div>
+        </div>
+        <div v-if="server.testResult" class="notification smtp-test-result mt-3" :class="server.testResult.type"
+          role="status" aria-live="polite" data-cy="account-smtp-test-result">
+          {{ server.testResult.message }}
         </div>
       </div>
     </div>
@@ -171,6 +176,7 @@ function blankServer() {
     password: '',
     sentToday: 0,
     testEmail: '',
+    testResult: null,
   };
 }
 
@@ -279,15 +285,23 @@ export default Vue.extend({
     },
 
     testServer(server, index) {
+      if (this.testing !== null) return;
       if (!server.testEmail) {
         this.$utils.toast(this.$t('settings.personalSMTP.testRecipient'), 'is-danger');
         return;
       }
+      this.$set(server, 'testResult', null);
       this.testing = index;
       (this.organizationId
         ? this.$api.testOrganizationSMTP({ ...this.wireServer(server), id: server.id || 0, email: server.testEmail }, this.organizationId, this.smtpPoolId)
         : this.$api.testPersonalSMTP({ ...this.wireServer(server), id: server.id || 0, email: server.testEmail })).then(() => {
-        this.$utils.toast(this.$t('campaigns.testSent'));
+        const message = this.$t('campaigns.testSent');
+        this.$set(server, 'testResult', { message, type: 'is-success' });
+        this.$utils.toast(message);
+      }).catch((err) => {
+        const message = err.response?.data?.message || err.message || this.$t('globals.messages.internalError');
+        this.$set(server, 'testResult', { message, type: 'is-danger' });
+        this.$utils.toast(message, 'is-danger');
       }).finally(() => {
         this.testing = null;
       });
@@ -490,6 +504,10 @@ export default Vue.extend({
   .button {
     flex: 0 0 auto;
   }
+}
+
+.smtp-test-result {
+  overflow-wrap: anywhere;
 }
 
 .smtp-save-bar {

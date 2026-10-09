@@ -7,6 +7,12 @@ library files are no longer attached as binary or CID MIME parts. This applies
 to campaign tests, new sends, paused/deferred campaigns resumed after upgrade,
 and transactional template media. Previously delivered messages remain unchanged.
 
+Campaigns that already started sending before the upgrade also use remote links
+for their remaining recipients after pausing and resuming. The sender reloads
+the existing media associations and converts legacy upload URLs and CID image
+references at delivery time. There is no need to recreate the campaign, edit its
+saved body, or reset its progress; already sent recipients are not sent again.
+
 `GET /email-media/{token}/{filename}` is a file-specific recipient capability:
 no login or public archive is required. Links are issued after sending-resource
 authorization, survive application restarts, and can be forwarded by recipients.

@@ -601,14 +601,15 @@ func (a *App) testOwnedSMTP(c echo.Context, userID int) error {
 	}
 	idle, _ := time.ParseDuration(item.IdleTimeout)
 	wait, _ := time.ParseDuration(item.WaitTimeout)
-	msgr, err := email.New("personal-test", email.Server{
+	server := email.Server{
 		Name: item.Name, UUID: item.UUID, FromEmail: item.FromEmail,
 		DailyLimit: item.DailyLimit, Username: item.Username, Password: item.Password,
 		AuthProtocol: item.AuthProtocol, TLSType: item.TLSType,
 		TLSSkipVerify: item.TLSSkipVerify, EmailHeaders: headersToMap(item.EmailHeaders),
 		Opt: smtppool.Opt{Host: item.Host, Port: item.Port, HelloHostname: item.HelloHostname,
 			MaxConns: item.MaxConns, MaxMessageRetries: item.MaxMsgRetries, IdleTimeout: idle, PoolWaitTimeout: wait},
-	})
+	}
+	msgr, err := email.New("personal-test", server)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("error creating SMTP connection: %v", err))
 	}
@@ -618,7 +619,7 @@ func (a *App) testOwnedSMTP(c echo.Context, userID int) error {
 	}
 	if err := msgr.Push(models.Message{From: item.FromEmail, To: []string{req.Email},
 		Subject: a.i18n.T("settings.smtp.testConnection"), Body: []byte("SMTP connection test")}); err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+		return a.smtpTestError(err, server)
 	}
 	return c.JSON(http.StatusOK, okResp{true})
 }

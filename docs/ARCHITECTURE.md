@@ -117,6 +117,10 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 
 自 v6.58.0 起，实际邮件投递通过 `internal/manager/linked_media.go::LinkMediaAttachments` 将关联图片的 `src`、背景图及文件 `href` 转换为 `app.root_url` 下的收件人链接，不发送媒体库文件的 CID 或附件 MIME。正文图片保留原位置自动远程加载，未引用的图片以正文图片补充，其他文件追加下载链接；纯文本和已有替代正文补充文件 URL。新发、测试、暂停恢复、延迟续发与事务模板媒体共用此处理；系统客户数据导出与事务 API 的临时原始附件仍遵守原消息契约。外部图片 URL 保留，历史本机 `/uploads/` 与 ID/文件名保护 URL 在已授权的媒体集合内匹配，带 ID 的引用不回退到同名克隆。
 
+已开始且部分投递的历史活动暂停后恢复时，调度器重新加载活动与已关联素材，剩余收件人走上述链接转换，包含旧 `/uploads/`、保护 URL 与 CID 图片引用；无需重新创建活动、修改正文或重置进度。已发送的收件人不重复投递，原始 `started_at` 与已发送记录保留，旧队列中的未发送收件人可继续领取。真实数据库与 SMTP MIME 的完整恢复回归见 `cmd/email_media_resume_test.go::TestStartedCampaignResumesWithRemoteMedia`。
+
+活动控制 API 的数据库状态变更和 `StopCampaign` 信号通过 `Manager.WithCampaignStatusChange` 与本进程后台完成/自动暂停/延迟互斥；锁不覆盖 SMTP 投递或通知发送。显式暂停/取消优先于旧管道尚未清理的 SMTP/错误停止原因；旧管道在最终读取活动后重验停止状态，快速暂停再继续时先清理旧队列，再由调度器重新加载活动，不误标为完成。后台完成和错误暂停仅通过 `store.UpdateRunningCampaignStatus` 改动仍为 running、归属有效的记录；额度延迟也要求 running，活动状态、次日时间及普通/公海 pending 收件人变更在同一事务内完成，拒绝过期工作覆盖手动状态。暂停不强行中断已进入 SMTP 网络投递的消息，投递成功仍记为 sent；未投递 queued 恢复 pending，继续只领取 pending/deferred，且重新验证当前 SMTP、回信路由和受众，保留历史额度与进度。回归：`cmd/campaign_pause_test.go`、`cmd/email_media_resume_test.go`、`internal/manager/pause_test.go`。
+
 `cmd/email_media.go` 在现有活动/模板/工作区使用授权后生成独立随机 UUID 能力链接；`email_media_links` 持久化媒体 ID、文件名、媒体 UUID 与归属快照，安装 schema 与 `internal/migrations/v6.58.0.go` 一致。`GET /email-media/:token/:filename` 无需登录且独立于公开归档开关，仅访问该精确文件，不开放媒体列表或其它文件。重启/暂停保留已寄出链接；删除、替换、待转移、归属变化或组织归档阻止读取，重新授权后发信可轮换失效链接。链接持有者可访问和转发该文件，文件夹可见性控制新发送授权，不追溯撤销已经寄出的文件能力。沿用媒体 MIME 嗅探、安全响应头和短缓存。部署需保证 `app.root_url` 是收件人可访问的 HTTPS 域名、反向代理转发 `/email-media/`、媒体文件持久保存；邮件客户端屏蔽远程图片时仍需用户允许加载。
 
 `CampaignPreview.vue` 通过带工作区的登录请求获取渲染结果，只对当前活动/所选模板已关联或表单明确选择的媒体读取二进制，将图片转换为预览专用 data URL 后放入 `sandbox="allow-scripts"` 的 `srcdoc`。ID 与文件名同时匹配媒体元数据，旧文件名链接也解析为已关联的精确 ID；未关联图片与外域 URL 不触发父页面的鉴权读取。文件接口继续执行媒体角色、工作区和派生关联校验，隔离窗口不取得登录 Cookie，保存正文仍保留保护 URL，纯文本预览保留转义显示。活动列表、编辑器、归档与模板预览共用此路径。
@@ -209,6 +213,8 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 平台设置自 v6.49.0 起只保留一个用于系统通知的 SMTP；营销活动使用账号或组织发件池，事务邮件仍使用账号 SMTP。`settings.smtp_delivery` 统一定义每个 SMTP 的连接数、重试、超时、随机延迟和邮件头：`cmd/manager_store.go` 每次解析时应用它，系统通知 SMTP 保存时同步这些字段。TLS 协议和证书校验属于各 SMTP 的连接配置。v6.53.0 将旧全局 TLS 的实际生效值复制到各 SMTP，转换延迟单位，并回填活动频率；后续迁移重跑不覆盖单 SMTP TLS 或活动频率修改。设置保存后需重启，运行中的活动按既有规则延迟重启。
 
 统一投递配置的 `send_delay_min` / `send_delay_max` 是整数毫秒，满足 `0 ≤ 下限 ≤ 上限 ≤ 3600000`；两者为 0 时关闭，兼容读取旧 `2s` 等时长字符串并按原时长转换。每封 SMTP 邮件（包括首封）发送前按整数毫秒均匀抽样。`internal/messenger/email/send_delay.go` 在进程内按 SMTP UUID 共享可取消的发送门与连接容量，避免同一 SMTP 被多个缓存池重复放大并发；开启随机延迟时同 SMTP 依次等待并投递，不同 SMTP 可并行。网络重试属于同一发送尝试，不重新抽样。暂停/取消或关闭可中断等待，释放 SMTP 每日额度预占；连接测试跳过随机延迟。
+
+个人/组织 SMTP 测试共用 `cmd/personal_smtp.go::testOwnedSMTP` 和 `cmd/smtp_errors.go::smtpTestError`。当前 smtppool v2.0.2 将 `wait_timeout` 同时用于连接池等待与新连接创建；隐式 TLS 的 `context deadline exceeded` 表示 TCP 连接/SSL/TLS 握手尚未完成，未进入 SMTP 认证。测试 API 保持 HTTP 500，使用本地化诊断说明目标地址和单次连接时限，并保留内部原始错误；不更改凭据、TLS 校验或全局超时。重试可使请求总时间超过单次时限，本机连接成功不能证明部署服务器的出站网络正常。
 
 投递限速分三层：`campaigns.smtp_rate_limit` 先约束单活动所有 SMTP 的合计发送频率（封/分钟），个人来源默认 20、组织来源默认 100，用户可设 1–1000000；以活动 UUID 共享平滑间隔，全组织公海也共用该活动额度。平台 `app.message_rate` 是所有 SMTP 合计的每秒硬上限，滑动窗口同样为平台总量；`app.concurrency` 同时控制工作线程数和所有 SMTP 的实际投递总并发。超限等待、不丢弃，线程数不乘大发送频率。`internal/messenger/email/delivery_limiter.go` 在实际 SMTP Send 前统一取得活动、平台频率及并发许可，完成或失败时释放并发许可并唤醒队列；`internal/manager/manager.go` 给系统通知、个人/组织缓存池、公海单发件池及临时连接测试挂同一 limiter，因此直接发送的系统通知也受平台限制。单 SMTP 连接、重试、超时和随机延迟仍独立生效。所有限速与发送门为进程内状态，重启重置，多个活动工作进程之间不共享；需要平台合计上限时采用一个活动发送进程。
 

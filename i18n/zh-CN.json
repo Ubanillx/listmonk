@@ -1138,6 +1138,7 @@
     "settings.smtp.sendTest": "发送电子邮件",
     "settings.smtp.setCustomHeaders": "设置自定义标头",
     "settings.smtp.testConnection": "测试连接",
+    "settings.smtp.tlsConnectionTimeout": "SMTP TCP 连接或 SSL/TLS 握手超时（{address}，单次连接限时 {timeout}）。本次连接在账号认证前失败。请检查运行 listmonk 的服务器到该地址的网络及 SMTP 服务；等待超时可在“设置 → SMTP”中调整。",
     "settings.smtp.testEnterEmail": "输入收件邮箱用于测试",
     "settings.smtp.toEmail": "发到邮箱",
     "settings.title": "设置",

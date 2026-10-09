@@ -108,6 +108,19 @@ errors (including authentication, TLS and connection failures) display the API
 message; network failures display the request error. A failed test can be
 retried after correcting the configuration.
 
+For implicit SSL/TLS, a `context deadline exceeded` from connection creation is
+reported with the SMTP host/port and the effective timeout per attempt. This
+means that connection attempt failed while establishing TCP or negotiating TLS,
+before authentication. Check reachability from the server running listmonk and the SMTP
+service; a successful connection from a desktop does not establish server
+reachability. The test uses the platform's `smtp_delivery.wait_timeout` (default
+`5s`), including the pool's `2s` fallback for values shorter than one second.
+Retries can make the request take longer than the per-attempt timeout. The
+diagnostic describes the failed connection attempt, not earlier retries.
+Authentication and certificate errors retain their original messages. The
+response remains HTTP 500, and no credentials or recipient address are added to
+the timeout diagnostic.
+
 ### Reply mailbox receiving configuration
 
 `POST /api/profile/reply-mailboxes` and

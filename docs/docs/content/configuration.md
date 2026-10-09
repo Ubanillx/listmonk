@@ -282,7 +282,7 @@ v6.53.0 upgrade.
 | `hello_hostname` | string | `""` | no | Hostname sent in the SMTP `HELO`/`EHLO` command. |
 | `max_conns` | int | `10` | no | Shared maximum number of concurrent connections per SMTP server (`smtp_delivery`). |
 | `idle_timeout` | duration string | `15s` | no | Shared idle connection timeout (`smtp_delivery`). |
-| `wait_timeout` | duration string | `5s` | no | Shared wait timeout for a free connection (`smtp_delivery`). |
+| `wait_timeout` | duration string | `5s` | no | Shared wait timeout for a free connection and for creating a new connection, including the implicit TLS handshake (`smtp_delivery`). |
 | `max_msg_retries` | int | `2` | no | Shared transient-send retry count (`smtp_delivery`). |
 | `send_delay_min` | int | `0` | no | Minimum random wait in milliseconds before each SMTP message (`smtp_delivery`). |
 | `send_delay_max` | int | `0` | no | Maximum random wait in milliseconds, at least the minimum and at most `3600000` (`smtp_delivery`). |
@@ -291,6 +291,15 @@ v6.53.0 upgrade.
 | `email_headers` | table | empty | no | Shared additional e-mail headers (`smtp_delivery`). |
 
 The same settings are edited as `Settings` -> `SMTP`.
+
+The SMTP pool applies `wait_timeout` per connection attempt. Values shorter than
+one second use the pool's `2s` fallback; retries can extend the total request
+time. With implicit SSL/TLS, `context deadline exceeded` during connection
+creation occurs before SMTP authentication. Personal and organization tests
+show the target and effective timeout. Check the network from the application
+server and the SMTP service before adjusting the wait timeout; changing a
+password or disabling certificate verification does not resolve a connection
+deadline.
 
 For a variable sending cadence, set the random delay to a range such as `2000`–`5000` milliseconds.
 Before every message, including the first, the sender waits a uniformly sampled

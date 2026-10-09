@@ -701,14 +701,21 @@ func (a *App) UpdateCampaignStatus(c echo.Context) error {
 	}
 
 	// Update the campaign status in the DB.
-	out, err := a.core.UpdateCampaignStatusInWorkspace(access, id, req.Status)
+	var out models.Campaign
+	err = a.manager.WithCampaignStatusChange(func() error {
+		var changeErr error
+		out, changeErr = a.core.UpdateCampaignStatusInWorkspace(access, id, req.Status)
+		if changeErr != nil {
+			return changeErr
+		}
+		// Keep the stop signal in the same lifecycle section as the DB change.
+		if req.Status == models.CampaignStatusPaused || req.Status == models.CampaignStatusCancelled {
+			a.manager.StopCampaign(id, req.Status)
+		}
+		return nil
+	})
 	if err != nil {
 		return err
-	}
-
-	// If the campaign is being stopped, send the signal to the manager to stop it in flight.
-	if req.Status == models.CampaignStatusPaused || req.Status == models.CampaignStatusCancelled {
-		a.manager.StopCampaign(id, req.Status)
 	}
 	setAuditObjectDetails(c, auditCampaignDetails(out))
 	return c.JSON(http.StatusOK, okResp{out})

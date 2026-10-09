@@ -1106,6 +1106,7 @@
     "settings.smtp.sendTest": "Send e-mail",
     "settings.smtp.setCustomHeaders": "Set custom headers",
     "settings.smtp.testConnection": "Test connection",
+    "settings.smtp.tlsConnectionTimeout": "SMTP TCP connection or SSL/TLS handshake timed out ({address}; timeout per attempt: {timeout}). This connection attempt failed before account authentication. Check connectivity from the server running listmonk and the SMTP service. The wait timeout can be adjusted under Settings → SMTP.",
     "settings.smtp.testEnterEmail": "Re-enter password to test",
     "settings.smtp.toEmail": "To e-mail",
     "settings.personalSMTP.title": "Personal SMTP",

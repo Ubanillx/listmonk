@@ -707,6 +707,18 @@ func (s *store) UpdateCampaignStatus(campID int, status string) error {
 	return err
 }
 
+func (s *store) UpdateRunningCampaignStatus(campID int, status string) (bool, error) {
+	res, err := s.db.Exec(`UPDATE campaigns SET status=$2::campaign_status, updated_at=NOW()
+		WHERE id=$1 AND status='running' AND transfer_pending_at IS NULL
+		AND (organization_id IS NULL OR EXISTS (SELECT 1 FROM organizations o
+			WHERE o.id=campaigns.organization_id AND o.status='active'))`, campID, status)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
 // MarkCampaignSMTPUnavailable atomically applies the strict no-fallback state
 // after the scheduler has claimed a campaign but cannot resolve its owner's
 // personal SMTP pool. A claim that originated from scheduled/deferred is
@@ -811,10 +823,29 @@ func (s *store) UpdateCampaignRecipientStatuses(campID int, toStatus string, fro
 }
 
 func (s *store) DeferCampaign(campID int, nextResumeAt time.Time) error {
-	if _, err := s.queries.SetCampaignDeferred.Exec(campID, nextResumeAt); err != nil {
+	tx, err := s.db.Beginx()
+	if err != nil {
 		return err
 	}
-	return s.UpdateCampaignRecipientStatuses(campID, models.CampaignRecipientStatusDeferred, []string{models.CampaignRecipientStatusPending})
+	defer tx.Rollback()
+	res, err := tx.Stmtx(s.queries.SetCampaignDeferred).Exec(campID, nextResumeAt)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return manager.ErrCampaignNotRunning
+	}
+	if _, err := tx.Stmtx(s.queries.UpdateCampaignRecipientStatuses).Exec(campID,
+		models.CampaignRecipientStatusDeferred, pq.Array([]string{models.CampaignRecipientStatusPending})); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE campaign_pool_recipients SET status='deferred', updated_at=NOW()
+		WHERE campaign_id=$1 AND status='pending'`, campID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // GetAttachment fetches a media attachment blob.

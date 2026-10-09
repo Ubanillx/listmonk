@@ -1059,6 +1059,7 @@
     "settings.smtp.sendTest": "發送電子郵件",
     "settings.smtp.setCustomHeaders": "設定自定義 header",
     "settings.smtp.testConnection": "測試聯接",
+    "settings.smtp.tlsConnectionTimeout": "SMTP TCP 連線或 SSL/TLS 交握逾時（{address}，單次連線限時 {timeout}）。本次連線在帳號認證前失敗。請檢查執行 listmonk 的伺服器到該位址的網路及 SMTP 服務；等待逾時可在「設定 → SMTP」中調整。",
     "settings.smtp.testEnterEmail": "輸入密碼以進行測試",
     "settings.smtp.toEmail": "電子郵件至",
     "settings.title": "設定",

@@ -1334,7 +1334,11 @@ UPDATE campaigns
 SET status = 'deferred',
     next_resume_at = $2,
     updated_at = NOW()
-WHERE id = $1;
+WHERE id = $1 AND status = 'running'
+    AND transfer_pending_at IS NULL
+    AND (organization_id IS NULL OR EXISTS (
+        SELECT 1 FROM organizations o WHERE o.id=campaigns.organization_id AND o.status='active'
+    ));
 
 -- name: queue-campaign-customers
 -- Recheck every snapshot recipient immediately before queuing. This protects

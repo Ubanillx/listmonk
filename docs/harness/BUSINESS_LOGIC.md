@@ -1,5 +1,7 @@
 # 业务逻辑
 
+- **活动暂停/继续**：手动状态变更与停止信号必须作为同一个生命周期操作执行，后台仅可从 running 完成、自动暂停或额度延迟；额度延迟及普通/公海收件人状态更新同事务。手动停止优先于旧管道的自动错误/SMTP 原因，旧管道不能把快速恢复的活动标为完成或再次暂停。已经进入 SMTP 的投递可完成并记 sent，未发送 queued 清理成 pending，恢复保留启动时间、历史 sent 和每日使用量，并重新验证当前发件条件；素材继续使用远程链接。来源：`cmd/campaigns.go::UpdateCampaignStatus`、`cmd/manager_store.go::{UpdateRunningCampaignStatus,DeferCampaign}`、`internal/manager/{manager,pipe,pause_test}.go`、`cmd/{campaign_pause_test,email_media_resume_test}.go`。
+
 - **客户列表删除与客户清理**：单个及批量（ID/筛选结果）删除列表默认保留客户。显式 `delete_customers=true` 只删除全部成员关系均在本次所删列表内的可维护客户，客户还属于其他列表（含归档、已退订）则保留；不清理无关孤立客户，不删除他人/其他工作区或待转移客户。公海同样保护其他一级公海及存续组织分配的共享联系人，分配删除不得清除主数据。私域另需客户删除权限，公海沿用主数据权限，个人 Key 另需客户写入 scope。先确认列表，再弹窗选取消/仅删列表/同时删除；两步中关闭或取消均不写入。Core 先锁客户再锁列表，重查共享关系及新增关联竞态，删除同事务，审计保存选项及实际删除数。来源：`cmd/customer_lists.go::{DeleteList,DeleteLists,requireListCustomerDeletion}`、`internal/core/list_customer_deletion.go`、`frontend/src/views/CustomerLists.vue`。
 
 ## 业务权限不变量（v6.56.0）
@@ -14,7 +16,7 @@
 
 ## 核心对象
 
-- **发信媒体链接（v6.58.0）**：媒体使用授权后才签发独立随机收件人链接，图片以正文 `img src`/背景图远程加载，其他媒体以下载链接展示，不发送媒体库文件 MIME。新发、测试、暂停/延迟续发、事务模板媒体共用发送准备；重启不更改已寄出链接，精确媒体 ID 不回退到同名克隆。匿名路由仅允许能力指定的精确文件；删除/替换/待转移/归属变化/组织归档后拒绝访问，目录权限变化只控制新发送授权。来源：`cmd/email_media.go`、`internal/manager/linked_media.go`、`internal/migrations/v6.58.0.go`。
+- **发信媒体链接（v6.58.0）**：媒体使用授权后才签发独立随机收件人链接，图片以正文 `img src`/背景图远程加载，其他媒体以下载链接展示，不发送媒体库文件 MIME。新发、测试、暂停/延迟续发、事务模板媒体共用发送准备；已开始且部分投递的历史活动暂停恢复后重新加载素材，剩余收件人直接切换到链接，保留原始正文、启动时间及已发送记录，不重发已发送收件人。重启不更改已寄出链接，精确媒体 ID 不回退到同名克隆。匿名路由仅允许能力指定的精确文件；删除/替换/待转移/归属变化/组织归档后拒绝访问，目录权限变化只控制新发送授权。来源：`cmd/email_media.go`、`cmd/email_media_resume_test.go::TestStartedCampaignResumesWithRemoteMedia`、`internal/manager/linked_media.go`、`internal/migrations/v6.58.0.go`。
 
 - **工作区**：个人工作区或组织工作区；请求必须先解析并验证当前用户的成员资格和组织状态。
 - **组织目录**：可进入组织与实际成员组织分别维护；最高管理员可进入未加入的活跃组织，但“已加入组织”和个人资源迁移目标仍只取真实成员关系。刷新失败不能当作空列表，也不能把网络错误当作成员资格撤销；业务组件必须等启动的目录与工作区校验完成后初始化。共享目录由 `refreshOrganizationDirectory` 原子更新，并发调用共用一次请求；每次真实 API 响应及后端权限校验仍为权威。
@@ -79,6 +81,7 @@
 
 - **SMTP 配置归属**：平台只保留一个用于系统通知的 SMTP；活动使用账号或组织 SMTP 池，事务邮件使用账号池。连接数、重试、超时、随机延迟、邮件头统一取 `settings.smtp_delivery`，对各 SMTP 分别应用；主机、认证、TLS、From 与每日额度取各 SMTP 自身配置。v6.53.0 将旧全局 TLS 生效值迁入各行，保留凭据和 UUID。
 - **随机投递延迟**：`smtp_delivery.send_delay_min/max` 为整数毫秒，范围 `0 ≤ 下限 ≤ 上限 ≤ 3600000`，两者为 0 时关闭；旧时长字符串兼容读取并按原时长升级。每封邮件抽取均匀整数毫秒等待，同一进程同 SMTP UUID 跨缓存池共用并发容量与延迟队列；开启延迟时依次等待并发送，不同 SMTP 独立。暂停/取消和关闭中断等待、释放每日额度预占；连接测试跳过随机等待，网络重试不重新抽样。来源：`models/settings.go`、`internal/messenger/email/send_delay.go`、`internal/manager/{manager,pipe}.go`。
+- **连接测试诊断**：个人/组织 SMTP 测试的隐式 TLS 建连 deadline 表示 TCP/TLS 尚未完成、未进入认证；API 返回本地化目标地址和实际单次时限（遵循 smtppool 小于 1 秒时回退 2 秒），仍为 HTTP 500，不添加密码、用户名、收件人，不改变 TLS 校验或平台超时。认证/证书/其他错误保留原文，重试总时间不等于单次限时。来源：`cmd/{personal_smtp,smtp_errors,smtp_errors_test}.go`。
 - **三级投递限制**：活动 `smtp_rate_limit` 为所有发件 SMTP 的合计封/分钟，1–1000000，个人来源默认 20、组织来源默认 100；活动 UUID 共用平滑发送间隔。平台 `app.message_rate` 与滑动窗口为所有 SMTP 合计硬上限，`app.concurrency` 限制实际总投递并发，工作线程数不放大发送频率；各 SMTP 再受统一投递参数独立限制。达到任一上限就等待，等待不算投递错误或已发送；系统通知与连接测试也受平台总限速。完成或失败释放平台并发许可，暂停/关闭中断排队。状态仅在单进程内共享，重启重置。来源：`internal/messenger/email/delivery_limiter.go`、`internal/manager/manager.go`、`cmd/send_limits.go`、`internal/migrations/v6.53.0.go`。
 
 - **受众范围**：`campaigns.pool_scope = 'all_organizations'` 的活动只能选择一级公海列表（不接受显式公海分配列表、不允许混入普通客户列表），受众为全部选中公海下所有活跃组织的公海分配并集。创建全组织活动需专用权限 `campaigns:public_pool_send`；组织工作区默认本组织并提供显式范围选择，已有范围不可改。普通查看者只能预览已保存公海及其子集，跨公海扩大 SMTP 概览需专用权限。来源：`frontend/src/views/Campaign.vue`、`cmd/organization_smtp.go`。

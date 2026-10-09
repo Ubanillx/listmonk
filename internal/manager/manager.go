@@ -37,6 +37,9 @@ const (
 
 var ErrCampaignDeferred = errors.New("campaign deferred")
 
+// ErrCampaignNotRunning rejects a stale automatic transition after a manual stop.
+var ErrCampaignNotRunning = errors.New("campaign is no longer running")
+
 // ErrManagerClosed is returned when a caller attempts to enqueue work after
 // the campaign manager has begun shutting down. Keeping one sentinel lets
 // HTTP/transactional callers distinguish an intentional reload from a
@@ -121,6 +124,12 @@ type PersonalSMTPUnavailableStore interface {
 // compatibility with the lightweight stores used by integrations and tests.
 type CampaignStartFailureStore interface {
 	MarkCampaignStartFailure(campaignID int, previousStatus string) error
+}
+
+// RunningCampaignStatusStore prevents stale background workers from replacing
+// an explicit pause/cancel with an automatic pause or completion.
+type RunningCampaignStatusStore interface {
+	UpdateRunningCampaignStatus(campaignID int, status string) (bool, error)
 }
 
 // campaignStartFailureStatus returns the safe state for a campaign that could
@@ -229,6 +238,9 @@ type Manager struct {
 	// Campaigns that are currently running.
 	pipes    map[int]*pipe
 	pipesMut sync.RWMutex
+	// Serialize manual status changes and their stop signal with automatic
+	// lifecycle transitions. SMTP delivery and notifications never take this lock.
+	campaignStatusMut sync.Mutex
 
 	tpls    map[int]*models.Template
 	tplsMut sync.RWMutex
@@ -951,6 +963,26 @@ func (m *Manager) GenericTemplateFuncs() template.FuncMap {
 	return m.tplFuncs
 }
 
+// WithCampaignStatusChange keeps a persisted manual status change and its stop
+// signal together, so old pipe cleanup cannot finish a newly resumed campaign.
+func (m *Manager) WithCampaignStatusChange(change func() error) error {
+	m.campaignStatusMut.Lock()
+	defer m.campaignStatusMut.Unlock()
+	return change()
+}
+
+func (m *Manager) updateRunningCampaignStatus(id int, status string) (bool, error) {
+	if s, ok := m.store.(RunningCampaignStatusStore); ok {
+		return s.UpdateRunningCampaignStatus(id, status)
+	}
+	current, err := m.store.GetCampaign(id)
+	if err != nil || current.Status != models.CampaignStatusRunning {
+		return false, err
+	}
+	err = m.store.UpdateCampaignStatus(id, status)
+	return err == nil, err
+}
+
 // StopCampaign marks a running campaign as stopped so that all its queued messages are ignored.
 func (m *Manager) StopCampaign(id int, status string) {
 	m.pipesMut.RLock()
@@ -960,6 +992,11 @@ func (m *Manager) StopCampaign(id int, status string) {
 			reason = stopReasonCancelled
 		}
 		p.Stop(reason, false)
+		// Explicit control supersedes an automatic error/SMTP stop whose
+		// cleanup has not finished yet. A later resume must not be paused again
+		// by the old pipe's automatic stop reason.
+		p.withErrors.Store(false)
+		p.stopReason.Store(reason)
 	}
 	m.pipesMut.RUnlock()
 }

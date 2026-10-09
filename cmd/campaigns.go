@@ -955,15 +955,18 @@ func (a *App) TestCampaign(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return err
 	}
+	// Test sends use the saved, immutable audience scope just like updates.
+	// A request must not widen or downgrade its public-pool authorization.
+	saved, err := a.core.GetWorkspaceCampaign(access, id)
+	if err != nil {
+		return err
+	}
+	req.PoolScope = saved.PoolScope
 	// The test form historically omitted messenger when it used the campaign's
 	// saved value. Resolve that value before validation and SMTP checks; an
 	// empty request must not accidentally bypass the account-SMTP guard (or be
 	// rejected as an unknown messenger).
 	if strings.TrimSpace(req.Messenger) == "" {
-		saved, err := a.core.GetWorkspaceCampaign(access, id)
-		if err != nil {
-			return err
-		}
 		req.Messenger = saved.Messenger
 	}
 
@@ -973,7 +976,22 @@ func (a *App) TestCampaign(c echo.Context) error {
 	} else {
 		req = c
 	}
-	if err := a.requireWorkspaceCustomerListIDsForRequest(c, access, req.CustomerListIDs, true); err != nil {
+	// First-level public pools use delivery grants/allocations rather than
+	// ordinary list ownership. Keep the workspace boundary for private lists.
+	allOrganizations := req.PoolScope == models.CampaignPoolScopeAllOrganizations
+	regularListIDs, poolAudiences, err := a.splitCampaignAudienceIDs(access, req.CustomerListIDs, allOrganizations)
+	if err != nil {
+		return err
+	}
+	if allOrganizations {
+		if len(regularListIDs) > 0 {
+			return echo.NewHTTPError(http.StatusBadRequest, "an all-organization public pool campaign accepts public pool audiences only")
+		}
+		if len(poolAudiences) == 0 {
+			return echo.NewHTTPError(http.StatusBadRequest, "an all-organization public pool campaign requires a first-level public pool audience")
+		}
+	}
+	if err := a.requireWorkspaceCustomerListIDsForRequest(c, access, regularListIDs, true); err != nil {
 		return err
 	}
 	if err := a.requireUsableCampaignResources(c, access, req); err != nil {

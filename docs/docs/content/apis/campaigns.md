@@ -633,6 +633,8 @@ Test campaign with arbitrary customers.
 
 Use the same parameters in [POST /api/campaigns](#post-apicampaigns) in addition to the below parameters.
 
+`customer_list_ids` accepts first-level public pools using the same delivery-grant/allocation authorization as campaign creation and updates. Regular lists retain the active-workspace and list-permission checks. The saved campaign's immutable `pool_scope` controls validation; a request cannot override it. An `all_organizations` campaign accepts only first-level public pools. Test delivery targets only the specified customers that the caller can manage in the active workspace; it does not start bulk public-pool delivery.
+
 ##### Parameters
 
 | Name        | Type       | Required | Description                                        |

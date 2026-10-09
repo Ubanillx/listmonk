@@ -283,6 +283,39 @@
     </div>
 
     <!-- Add / edit form modal -->
+    <b-modal scroll="keep" :aria-modal="true" :active.sync="isDeleteChoiceVisible" :width="640" :can-cancel="!deletingLists"
+      has-modal-card custom-content-class="list-delete-choice-container" @after-enter="focusDeleteCancel">
+      <div v-if="pendingDeletion" class="modal-card" role="alertdialog" aria-labelledby="list-delete-choice-title"
+        aria-describedby="list-delete-choice-help" data-cy="list-delete-choice">
+        <header class="modal-card-head">
+          <h2 id="list-delete-choice-title" class="modal-card-title">{{ $t('customer_lists.deleteCustomersTitle') }}</h2>
+        </header>
+        <section class="modal-card-body">
+          <p class="mb-3">{{ $t('customer_lists.deleteCustomersQuestion', { num: pendingDeletion.count }) }}</p>
+          <p class="has-text-weight-semibold mb-3">{{ pendingDeletion.name }}</p>
+          <p id="list-delete-choice-help">{{ $t('customer_lists.deleteCustomersHelp') }}</p>
+          <p v-if="!canDeleteAssociatedCustomers" class="help mt-3" data-cy="list-delete-permission-help">
+            {{ $t('customer_lists.deleteCustomersPermissionHelp') }}
+          </p>
+        </section>
+        <footer class="modal-card-foot">
+          <div class="buttons mb-0">
+            <b-button ref="deleteCancel" :disabled="deletingLists" @click="isDeleteChoiceVisible = false" data-cy="list-delete-cancel">
+              {{ $t('globals.buttons.cancel') }}
+            </b-button>
+            <b-button :disabled="deletingLists" :loading="deletingLists && !deletingAssociatedCustomers"
+              @click="performListDeletion(false)" data-cy="list-delete-only">
+              {{ $t('customer_lists.deleteListsOnly') }}
+            </b-button>
+            <b-button type="is-danger" :disabled="deletingLists || !canDeleteAssociatedCustomers"
+              :loading="deletingLists && deletingAssociatedCustomers" @click="performListDeletion(true)" data-cy="list-delete-with-customers">
+              {{ $t('customer_lists.deleteListsAndCustomers') }}
+            </b-button>
+          </div>
+        </footer>
+      </div>
+    </b-modal>
+
     <b-modal scroll="keep" :aria-modal="true" :active.sync="isFormVisible" :width="600" @close="onFormClose">
       <customer-list-form :data="curItem" :is-editing="isEditing" :list-group="listGroup" @finished="formFinished" />
     </b-modal>
@@ -331,6 +364,10 @@ export default Vue.extend({
       collapsedPools: [],
       poolPageSize: 20,
       poolLoadError: false,
+      isDeleteChoiceVisible: false,
+      pendingDeletion: null,
+      deletingLists: false,
+      deletingAssociatedCustomers: false,
       queryParams: {
         page: 1,
         query: '',
@@ -474,16 +511,45 @@ export default Vue.extend({
     },
 
     deleteList(customerList) {
-      this.$utils.confirm(
-        this.$t('customer_lists.confirmDelete'),
-        () => {
-          this.$api.deleteList(customerList.id).then(() => {
-            this.getLists();
-
-            this.$utils.toast(this.$t('globals.messages.deleted', { name: customerList.name }));
-          });
+      this.confirmListDeletion(
+        {
+          id: customerList.id, count: 1, name: customerList.name, pool: customerList.type === 'pool',
         },
+        this.$t('customer_lists.confirmDelete', { name: customerList.name }),
       );
+    },
+
+    confirmListDeletion(selection, message) {
+      this.$utils.confirm(message, () => {
+        this.pendingDeletion = selection;
+        this.isDeleteChoiceVisible = true;
+      }, undefined, { type: 'is-danger', confirmText: this.$t('globals.buttons.continue') });
+    },
+
+    focusDeleteCancel() {
+      if (this.$refs.deleteCancel) this.$refs.deleteCancel.$el.focus();
+    },
+
+    performListDeletion(deleteCustomers) {
+      if (this.deletingLists || !this.pendingDeletion || (deleteCustomers && !this.canDeleteAssociatedCustomers)) return;
+      const selection = this.pendingDeletion;
+      this.deletingLists = true;
+      this.deletingAssociatedCustomers = deleteCustomers;
+      const params = { ...selection.params, delete_customers: deleteCustomers };
+      const request = selection.id ? this.$api.deleteList(selection.id, params) : this.$api.deleteLists(params);
+      request.then(() => {
+        this.isDeleteChoiceVisible = false;
+        this.pendingDeletion = null;
+        this.bulk = { checked: [], all: false };
+        this.getLists();
+        this.$utils.toast(selection.id
+          ? this.$t('globals.messages.deleted', { name: selection.name })
+          : this.$tc('globals.messages.deletedCount', selection.count, { num: selection.count, name: selection.name }));
+      }).catch(() => {
+        // The API error toast explains the failure; keep the choice available to retry.
+      }).finally(() => {
+        this.deletingLists = false;
+      });
     },
 
     // Mark all customer_lists in the query as selected.
@@ -499,42 +565,24 @@ export default Vue.extend({
     },
 
     deleteLists() {
-      const name = this.$tc('globals.terms.customer_list', this.numSelectedCampaigns);
-
-      const fn = () => {
-        const params = {};
-        if (!this.bulk.all && this.bulk.checked.length > 0) {
-          // If 'all' is not selected, delete customer_lists by IDs.
-          params.id = this.bulk.checked.map((l) => l.id);
-        } else {
-          // 'All' is selected, delete by query.
-          params.query = this.queryParams.query.replace(/[^\p{L}\p{N}\s]/gu, ' ');
-          params.all = this.bulk.all;
-          params.type_group = this.listGroup;
-          params.status = this.queryParams.status;
-        }
-
-        const numSelected = this.numSelectedLists;
-        this.$api.deleteLists(params)
-          .then(() => {
-            // Reset the selection: Buefy only syncs its internal `checkedRows`
-            // when the prop changes, so reloading left the stale count in the
-            // toolbar and allowed a second delete of ids that no longer exist.
-            this.bulk = { checked: [], all: false };
-            this.getLists();
-            this.$utils.toast(this.$tc(
-              'globals.messages.deletedCount',
-              numSelected,
-              { num: numSelected, name },
-            ));
-          });
-      };
-
-      this.$utils.confirm(this.$tc(
+      const count = this.numSelectedLists;
+      const name = this.$tc('globals.terms.customer_list', count);
+      const params = {};
+      if (!this.bulk.all && this.bulk.checked.length > 0) {
+        params.id = this.bulk.checked.map((list) => list.id);
+      } else {
+        params.query = this.queryParams.query.replace(/[^\p{L}\p{N}\s]/gu, ' ');
+        params.all = this.bulk.all;
+        params.type_group = this.listGroup;
+        params.status = this.queryParams.status;
+      }
+      this.confirmListDeletion({
+        params, count, name, pool: this.isPoolGroup,
+      }, this.$tc(
         'globals.messages.confirmDelete',
-        this.numSelectedLists,
-        { num: this.numSelectedLists, name: name.toLowerCase() },
-      ), fn, null, { type: 'is-danger' });
+        count,
+        { num: count, name: name.toLowerCase() },
+      ));
     },
 
     createOptinCampaign(customerList) {
@@ -624,6 +672,9 @@ export default Vue.extend({
   },
 
   computed: {
+    canDeleteAssociatedCustomers() {
+      return this.pendingDeletion && (this.pendingDeletion.pool ? this.$can('pools:master_manage') : this.$can('customers:delete'));
+    },
     ...mapState(['loading', 'settings', 'profile', 'workspace', 'organizations']),
 
     poolOrganizations() {

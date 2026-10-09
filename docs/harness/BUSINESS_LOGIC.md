@@ -1,5 +1,7 @@
 # 业务逻辑
 
+- **客户列表删除与客户清理**：单个及批量（ID/筛选结果）删除列表默认保留客户。显式 `delete_customers=true` 只删除全部成员关系均在本次所删列表内的可维护客户，客户还属于其他列表（含归档、已退订）则保留；不清理无关孤立客户，不删除他人/其他工作区或待转移客户。公海同样保护其他一级公海及存续组织分配的共享联系人，分配删除不得清除主数据。私域另需客户删除权限，公海沿用主数据权限，个人 Key 另需客户写入 scope。先确认列表，再弹窗选取消/仅删列表/同时删除；两步中关闭或取消均不写入。Core 先锁客户再锁列表，重查共享关系及新增关联竞态，删除同事务，审计保存选项及实际删除数。来源：`cmd/customer_lists.go::{DeleteList,DeleteLists,requireListCustomerDeletion}`、`internal/core/list_customer_deletion.go`、`frontend/src/views/CustomerLists.vue`。
+
 ## 业务权限不变量（v6.56.0）
 
 - 五个模块呈现 20 项易懂权限名称，见 [业务权限说明](../docs/content/business-permissions.md)。不预设角色；旧角色部分授权保存不扩权。

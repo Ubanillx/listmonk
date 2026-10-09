@@ -225,9 +225,9 @@ export const updateList = (data) => http.put(
   { loading: models.customer_lists },
 );
 
-export const deleteList = (id) => http.delete(
+export const deleteList = (id, params = {}) => http.delete(
   `/api/customer-lists/${id}`,
-  { loading: models.customer_lists },
+  { params, loading: models.customer_lists },
 );
 
 export const deleteLists = (params) => http.delete(

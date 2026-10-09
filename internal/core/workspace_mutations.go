@@ -60,6 +60,12 @@ func (c *Core) withWorkspaceCreation(access models.WorkspaceAccess, fn func(*sql
 // before a member leaves/archival or after it (in which case validation
 // rejects the stale request).
 func (c *Core) withWorkspaceResourceMutation(access models.WorkspaceAccess, resource string, ids []int, fn func(*sqlx.Tx) error) error {
+	return c.withPreparedWorkspaceResourceMutation(access, resource, ids, nil, fn)
+}
+
+// prepare runs after organization checks and before resource row locks. List
+// deletion uses it to lock customers before lists, matching membership writes.
+func (c *Core) withPreparedWorkspaceResourceMutation(access models.WorkspaceAccess, resource string, ids []int, prepare, fn func(*sqlx.Tx) error) error {
 	if _, ok := workspaceResourceTables[resource]; !ok || fn == nil {
 		return workspaceMutationError()
 	}
@@ -98,6 +104,11 @@ func (c *Core) withWorkspaceResourceMutation(access models.WorkspaceAccess, reso
 		}
 	}
 
+	if prepare != nil {
+		if err := prepare(tx); err != nil {
+			return err
+		}
+	}
 	if err := c.lockWorkspaceMutationResources(tx, access, resource, ids); err != nil {
 		return err
 	}

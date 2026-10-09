@@ -271,6 +271,10 @@ func (a *App) requirePoolListAdministrator(c echo.Context, id int) error {
 
 // DeleteList deletes a single customer_list by ID.
 func (a *App) DeleteList(c echo.Context) error {
+	deleteCustomers, err := parseListCustomerDeletion(c)
+	if err != nil {
+		return err
+	}
 	id := getID(c)
 	access, err := a.workspaceAccess(c)
 	if err != nil {
@@ -286,6 +290,9 @@ func (a *App) DeleteList(c echo.Context) error {
 	if err := a.requirePoolListAdministrator(c, id); err != nil {
 		return err
 	}
+	if err := requireListCustomerDeletion(c, scope.CustomerListType, deleteCustomers); err != nil {
+		return err
+	}
 	if out, err := a.core.GetWorkspaceList(access, id); err == nil {
 		setAuditObjectDetails(c, map[string]any{
 			"name": out.Name,
@@ -295,15 +302,21 @@ func (a *App) DeleteList(c echo.Context) error {
 
 	// Delete the customer_list from the DB.
 	// Pass getAll=true since we've already verified permissions above.
-	if err := a.core.DeleteListsInWorkspace(access, []int{id}); err != nil {
+	deleted, err := a.core.DeleteListsWithCustomersInWorkspace(access, []int{id}, deleteCustomers)
+	if err != nil {
 		return err
 	}
+	setAuditMetadata(c, map[string]any{"delete_customers": deleteCustomers, "deleted_customer_count": deleted})
 
 	return c.JSON(http.StatusOK, okResp{true})
 }
 
 // DeleteLists deletes multiple customer_lists by IDs or by query.
 func (a *App) DeleteLists(c echo.Context) error {
+	deleteCustomers, err := parseListCustomerDeletion(c)
+	if err != nil {
+		return err
+	}
 	access, err := a.workspaceAccess(c)
 	if err != nil {
 		return err
@@ -349,12 +362,9 @@ func (a *App) DeleteLists(c echo.Context) error {
 			if err := a.requirePoolListAdministrator(c, id); err != nil {
 				return err
 			}
-		}
-
-		// Delete the customer_lists from the DB.
-		// Pass getAll=true since we've already verified permissions above.
-		if err := a.core.DeleteListsInWorkspace(access, ids); err != nil {
-			return err
+			if err := requireListCustomerDeletion(c, scope.CustomerListType, deleteCustomers); err != nil {
+				return err
+			}
 		}
 	} else {
 		group, validGroup := parseCustomerListTypeGroup(c.FormValue("type_group"))
@@ -391,6 +401,9 @@ func (a *App) DeleteLists(c echo.Context) error {
 			if err := requireCustomerListAction(auth.GetUser(c), customer_list.Type, true); err != nil {
 				return err
 			}
+			if err := requireListCustomerDeletion(c, customer_list.Type, deleteCustomers); err != nil {
+				return err
+			}
 			if _, ok := allowed[customer_list.ID]; ok {
 				ids = append(ids, customer_list.ID)
 			}
@@ -398,12 +411,39 @@ func (a *App) DeleteLists(c echo.Context) error {
 		// DeleteLists' legacy query treats an empty ID array as an
 		// unrestricted search. A filter that finds no manageable customer_lists must be
 		// a successful no-op, never a broad delete.
-		if len(ids) > 0 {
-			if err := a.core.DeleteListsInWorkspace(access, ids); err != nil {
-				return err
-			}
-		}
 	}
+	deleted, err := a.core.DeleteListsWithCustomersInWorkspace(access, ids, deleteCustomers)
+	if err != nil {
+		return err
+	}
+	setAuditMetadata(c, map[string]any{"delete_customers": deleteCustomers, "deleted_customer_count": deleted})
 
 	return c.JSON(http.StatusOK, okResp{true})
+}
+
+func parseListCustomerDeletion(c echo.Context) (bool, error) {
+	value := c.QueryParam("delete_customers")
+	if value == "" {
+		return false, nil
+	}
+	deleteCustomers, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, echo.NewHTTPError(http.StatusBadRequest, "invalid delete_customers value")
+	}
+	return deleteCustomers, nil
+}
+
+func requireListCustomerDeletion(c echo.Context, listType string, deleteCustomers bool) error {
+	if !deleteCustomers {
+		return nil
+	}
+	if listType == models.CustomerListTypeOrgPoolAllocation {
+		return echo.NewHTTPError(http.StatusBadRequest, "allocation deletion cannot delete public pool contacts")
+	}
+	if listType != models.CustomerListTypePool {
+		if err := requireLegacyPermission(auth.GetUser(c), auth.PermCustomersDelete); err != nil {
+			return err
+		}
+	}
+	return requireAPIKeyScope(c, apiKeyScopeCustomersWrite)
 }

@@ -275,11 +275,28 @@ ______________________________________________________________________
 
 Delete a specific customer_list.
 
+By default, customers are kept. Set `delete_customers=true` to also delete
+customers belonging only to the selected list. A customer with membership in
+any other list is preserved, including archived lists and unsubscribed
+memberships. Customers outside the caller's mutable workspace/ownership scope
+or pending transfer are also preserved. Private customer deletion additionally
+requires `customers:delete`; public-pool contact deletion uses
+`pools:master_manage`. Personal API keys additionally need `customers:write`.
+Organization allocation deletion cannot delete public-pool master contacts.
+List and customer deletion commit in one transaction. The response remains
+`{"data": true}`; audit metadata records `delete_customers` and
+`deleted_customer_count`.
+
+The admin UI confirms the list selection first, then offers Cancel, Delete
+lists only, or Delete lists and customers. Closing either confirmation cancels
+the operation. The customer deletion choice is disabled without its permission.
+
 ##### Parameters
 
 | Name    | Type   | Required | Description               |
 | :------ | :----- | :------- | :------------------------ |
 | customer_list_id | Number | Yes      | ID of the customer_list to delete. |
+| delete_customers | Boolean | | Also delete unshared, manageable customers. Defaults to `false`. |
 
 ##### Example Request
 
@@ -301,6 +318,14 @@ ______________________________________________________________________
 
 Delete multiple customer_lists by IDs or by a search query.
 
+The same optional `delete_customers=true` behavior applies to the entire
+selected set. A customer shared only among the lists being deleted is removed;
+membership in any list outside that set preserves it. Public-pool contacts
+are similarly preserved when another first-level pool or surviving organization
+allocation uses them. Unrelated customers already without lists are untouched.
+An empty filtered selection is a successful no-op. Permissions, workspace
+boundaries, and transaction behavior match single-list deletion above.
+
 > **Note:** Users can only delete customer_lists they have `manage` permission for. Any customer_lists in the query that the user doesn't have permission to manage is ignored.
 
 ##### Parameters
@@ -312,6 +337,7 @@ Delete multiple customer_lists by IDs or by a search query.
 | all | boolean | Yes (when deleting the entire filtered result) | Delete all manageable lists matching the query and optional `type_group`. |
 | type_group | string | | With query or `all`, restrict deletion to `pool` or `private` lists; omitted keeps the previous behavior. |
 | status | string | | With query or `all`, restrict deletion to `active` or `archived` lists; omitted includes both. |
+| delete_customers | boolean | | Also delete customers exclusively associated with the selected manageable lists. Defaults to `false`. |
 
 ##### Example Request (by IDs)
 

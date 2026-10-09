@@ -68,6 +68,20 @@
   flex-grow: 0;
 }
 
+.list-delete-choice-container {
+  width: calc(100% - var(--lm-space-6));
+
+  .modal-card {
+    width: 100%;
+    margin: 0;
+  }
+
+  .modal-card-title,
+  .modal-card-body {
+    overflow-wrap: anywhere;
+  }
+}
+
 .richtext-editor .tox-tinymce {
   border-color: var(--lm-color-border);
   border-radius: var(--lm-radius-md);

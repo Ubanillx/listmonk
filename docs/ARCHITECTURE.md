@@ -2,6 +2,8 @@
 
 ## 业务权限分组与独立动作门（v6.56.0）
 
+列表删除支持可选 `delete_customers=true`，管理端先确认列表，再选择仅删列表或同时删除对应客户。默认保留客户；同时删除仅作用于本次所选列表独占、当前操作者可维护且非待转移的客户，其他列表（包括归档及已退订成员）仍在使用的客户与无关孤立客户保留。私域另需 `customers:delete`；公海沿用 `pools:master_manage`，共享其他一级公海或存续组织分配的主数据保留，分配删除不得清除主数据；个人 API Key 另需 `customers:write`。Core 在组织锁后先锁客户再锁列表，与成员写入顺序一致；锁内重查关联和共享关系，客户/列表同事务删除，有新关联竞态返回冲突而不倒序加锁。审计记录选择及实际客户删除数。来源：`cmd/customer_lists.go`、`internal/core/{list_customer_deletion,workspace_mutations}.go`、`frontend/src/views/CustomerLists.vue`。
+
 角色配置以私域客户与列表、公海客户与列表、营销活动、模板与素材、发信与回信邮箱五组呈现 20 项业务权限，不设计预设角色。`frontend/src/utils/businessPermissions.js` 只负责显示分组，服务端仍持久化原权限 ID；旧角色的部分授权不会因打开、保存而扩展。名称、映射、依赖和升级语义见 [业务权限说明](docs/content/business-permissions.md)。
 
 新增 `customer_lists:delete`、`pools:master_manage`、`pools:delivery_manage`、`assets:share`、`mailboxes:use`、`mailboxes:manage`。组织身份和所有权决定数据范围，不能绕过查看、导出、统计或私域敏感信息权限；列表、明细、写入响应、CSV、JSON 和收件人报告一致脱敏，省略的编辑字段保留原值。全局模板也要求查看/维护权限，改变共享范围另需共享权限。发信与回信邮箱使用和配置分别授权，配置仍保留所有者/组织边界。

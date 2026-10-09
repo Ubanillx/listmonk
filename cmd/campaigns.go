@@ -1175,6 +1175,13 @@ func (a *App) GetCampaignPoolSendStatus(c echo.Context) error {
 	if len(rows) == 0 {
 		out.Issues = append(out.Issues, "the selected public pool has no active organization pool allocation")
 	}
+	emptyPools, err := a.core.PoolCampaignUnallocatedLists(id)
+	if err != nil {
+		return err
+	}
+	for _, name := range emptyPools {
+		out.Issues = append(out.Issues, fmt.Sprintf("%s: no organization pool allocation", name))
+	}
 	for _, row := range rows {
 		org := poolSendStatusOrg{
 			ID:           row.OrganizationID,
@@ -1191,7 +1198,7 @@ func (a *App) GetCampaignPoolSendStatus(c echo.Context) error {
 		case !row.MailboxReady:
 			out.Issues = append(out.Issues, fmt.Sprintf("%s: unified reply mailbox is missing or not verified", row.OrganizationName))
 		case row.SMTPCount == 0:
-			out.Issues = append(out.Issues, fmt.Sprintf("%s: no enabled SMTP account for active members", row.OrganizationName))
+			out.Issues = append(out.Issues, fmt.Sprintf("%s: no enabled SMTP account for the selected sender source", row.OrganizationName))
 		}
 	}
 	out.Ready = len(rows) > 0 && len(out.Issues) == 0

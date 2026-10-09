@@ -105,10 +105,19 @@
                     :pool-only="isEditing && isPlatformPoolCampaign"
                     :label="$t('campaigns.audienceLists')" :placeholder="$t('campaigns.sendToLists')" />
                   <p v-if="listsLocked" class="help is-info">{{ $t('campaigns.listsLockedHelp') }}</p>
+                  <b-field v-if="isNew && workspace.organizationId && hasPoolAudience && $can('campaigns:public_pool_send')"
+                    :label="$t('campaigns.poolScopeLabel')">
+                    <b-select v-model="form.poolScope" expanded :disabled="!canEdit" data-cy="campaign-pool-scope">
+                      <option value="organization">{{ $t('campaigns.poolScopeOrganization') }}</option>
+                      <option value="all_organizations" :disabled="form.customer_lists.some((list) => list.type !== 'pool')">
+                        {{ $t('campaigns.poolScopeAllOrganizations') }}
+                      </option>
+                    </b-select>
+                  </b-field>
                   <div v-if="isPlatformPoolCampaign" class="campaign-context-note pool-scope-all-notice" data-cy="pool-scope-all-notice">
                     <strong>{{ $t('campaigns.poolScopeAllTitle') }}</strong>
                     <p class="help">{{ $t('campaigns.poolScopeAllHelp') }}</p>
-                    <template v-if="poolSendStatus">
+                    <template v-if="poolSendStatusCurrent">
                       <p :class="poolSendStatus.ready ? 'has-text-success' : 'has-text-warning'" data-cy="pool-send-status-ready">
                         {{ poolSendStatus.ready ? $t('campaigns.poolSendReadyShort') : $t('campaigns.poolSendUnavailable') }}
                       </p>
@@ -116,6 +125,7 @@
                         <li v-for="(issue, index) in poolSendStatus.issues" :key="`pool-send-issue-${index}`">{{ issue }}</li>
                       </ul>
                     </template>
+                    <p v-else-if="isEditing" class="help" data-cy="pool-send-status-save">{{ $t('campaigns.poolSendSaveToCheck') }}</p>
                   </div>
                 </section>
               </div>
@@ -134,11 +144,15 @@
                     </b-field>
                     <b-field v-if="form.smtpSource === 'organization' && workspace.organizationId && !isPlatformPoolCampaign"
                       :label="$t('organizations.smtpPoolSelect')">
-                      <b-select v-model.number="form.smtpPoolId" expanded :disabled="!canEdit || !$can('mailboxes:use') || !smtpPools.length" data-cy="campaign-smtp-pool">
+                      <b-select v-model.number="form.smtpPoolId" expanded
+                        :disabled="!canEdit || !$can('mailboxes:use') || !smtpPoolsLoaded || !smtpPools.length" data-cy="campaign-smtp-pool">
                         <option v-for="pool in smtpPools" :key="pool.id" :value="pool.id">{{ pool.name }} ({{ pool.enabledCount }}/{{ pool.smtpCount }})</option>
                       </b-select>
                     </b-field>
                   </div>
+                  <p v-if="isSMTPMessenger && isPlatformPoolCampaign" class="help" data-cy="campaign-pool-smtp-help">
+                    {{ $t(form.smtpSource === 'organization' ? 'campaigns.poolOrganizationSMTPHelp' : 'campaigns.poolMemberSMTPHelp') }}
+                  </p>
                   <section v-if="isSMTPMessenger" class="campaign-sender-overview" data-cy="campaign-smtp-overview">
                     <div class="campaign-section-caption">
                       <strong>{{ $t('campaigns.smtpOverview') }}</strong>
@@ -517,6 +531,8 @@ export default Vue.extend({
       personalSMTPLoaded: false,
       // Per-organization readiness of a platform-level public-pool campaign.
       poolSendStatus: null,
+      poolSendStatusKey: '',
+      poolSendStatusRequest: 0,
       replyMailboxes: [],
       replyMailboxesLoaded: false,
       customFields: [],
@@ -534,6 +550,7 @@ export default Vue.extend({
         fromEmail: '',
         smtpSource: organizationWorkspace ? 'organization' : 'personal',
         smtpPoolId: null,
+        poolScope: organizationWorkspace ? 'organization' : 'all_organizations',
         smtpRateLimit: organizationWorkspace ? 100 : 20,
         replyMailboxId: null,
         poolReplyPriority: 'contact_first',
@@ -777,11 +794,6 @@ export default Vue.extend({
 
         this.data = data;
         const normalizedMessenger = data.messenger?.startsWith('email-') ? 'email' : (data.messenger || 'email');
-        // A platform-level public-pool campaign reports per-organization
-        // mailbox/SMTP readiness instead of the owner's personal SMTP.
-        if (data.poolScope === 'all_organizations' || data.pool_scope === 'all_organizations') {
-          this.loadPoolSendStatus();
-        }
         this.form = {
           ...this.form,
           ...data,
@@ -818,6 +830,8 @@ export default Vue.extend({
           }
           return f;
         });
+        if (this.isPlatformPoolCampaign) return this.loadPoolSendStatus();
+        return null;
       });
     },
 
@@ -834,7 +848,7 @@ export default Vue.extend({
         messenger: this.form.messenger,
         smtp_source: this.form.smtpSource,
         smtp_rate_limit: this.isSMTPMessenger ? this.form.smtpRateLimit : 0,
-        smtp_pool_id: this.form.smtpPoolId,
+        smtp_pool_id: this.campaignSMTPPoolID,
         auto_track_links: this.form.autoTrackLinks,
         type: 'regular',
         headers: this.form.headers,
@@ -869,7 +883,7 @@ export default Vue.extend({
         messenger: this.form.messenger,
         smtp_source: this.form.smtpSource,
         smtp_rate_limit: this.isSMTPMessenger ? this.form.smtpRateLimit : 0,
-        smtp_pool_id: this.form.smtpPoolId,
+        smtp_pool_id: this.campaignSMTPPoolID,
         auto_track_links: this.form.autoTrackLinks,
         type: 'regular',
         tags: this.form.tags,
@@ -909,7 +923,7 @@ export default Vue.extend({
         messenger: this.form.messenger,
         smtp_source: this.form.smtpSource,
         smtp_rate_limit: this.isSMTPMessenger ? this.form.smtpRateLimit : 0,
-        smtp_pool_id: this.form.smtpPoolId,
+        smtp_pool_id: this.campaignSMTPPoolID,
         auto_track_links: this.form.autoTrackLinks,
         type: 'regular',
         tags: this.form.tags,
@@ -945,7 +959,7 @@ export default Vue.extend({
         delete data.smtp_pool_id;
         delete data.reply_mailbox_id;
       }
-      return this.$api.updateCampaign(this.data.id, data).then((d) => {
+      return this.$api.updateCampaign(this.data.id, data).then(async (d) => {
         this.data = d;
         if (d.messenger) {
           this.form.messenger = d.messenger.startsWith('email-') ? 'email' : d.messenger;
@@ -969,6 +983,7 @@ export default Vue.extend({
         this.form.content.bodySource = d.bodySource;
 
         this.$utils.toast(this.$t(typMsg, { name: d.name }));
+        if (this.isPlatformPoolCampaign) await this.loadPoolSendStatus();
         return true;
       }).catch(() => false);
     },
@@ -1041,11 +1056,16 @@ export default Vue.extend({
     },
 
     loadPersonalSMTPStatus() {
+      if (this.form.smtpSource !== 'organization' || this.isPlatformPoolCampaign) this.form.smtpPoolId = null;
+      if (this.isNew && !this.workspace.organizationId && !this.isPlatformPoolCampaign && this.form.smtpSource === 'organization') {
+        this.form.smtpSource = 'personal';
+      }
       if (!this.$can('mailboxes:use')) return Promise.resolve();
       this.smtpOverviewRequest += 1;
       const request = this.smtpOverviewRequest;
       this.personalSMTPLoaded = false;
       this.smtpSenders = [];
+      this.smtpPools = [];
       this.smtpPoolsLoaded = false;
       const poolsPromise = (this.form.smtpSource === 'organization' && this.workspace.organizationId && !this.isPlatformPoolCampaign)
         ? this.$api.getCampaignSMTPPools(this.data.id)
@@ -1061,7 +1081,7 @@ export default Vue.extend({
         return this.$api.getCampaignSMTPOverview(this.form.smtpSource, this.data.id, {
           pool_scope: this.isPlatformPoolCampaign ? 'all_organizations' : 'organization',
           customer_list_ids: this.form.customer_lists.map((list) => list.id).join(','),
-          smtp_pool_id: this.form.smtpPoolId || undefined,
+          smtp_pool_id: this.campaignSMTPPoolID || undefined,
         });
       }).then((rows) => {
         if (request === this.smtpOverviewRequest) this.smtpSenders = rows || [];
@@ -1073,14 +1093,21 @@ export default Vue.extend({
     },
 
     loadPoolSendStatus() {
+      this.poolSendStatusRequest += 1;
+      const request = this.poolSendStatusRequest;
+      const key = this.savedPoolSendSettingsKey;
       this.poolSendStatus = null;
       return this.$api.getCampaignPoolSendStatus(this.data.id).then((data) => {
+        if (request !== this.poolSendStatusRequest || key !== this.savedPoolSendSettingsKey) return;
+        this.poolSendStatusKey = key;
         this.poolSendStatus = {
           ready: !!(data && data.ready),
           organizations: (data && Array.isArray(data.organizations)) ? data.organizations : [],
           issues: (data && Array.isArray(data.issues)) ? data.issues : [],
         };
       }).catch(() => {
+        if (request !== this.poolSendStatusRequest || key !== this.savedPoolSendSettingsKey) return;
+        this.poolSendStatusKey = key;
         // Fail closed: a status read failure must not enable delivery.
         this.poolSendStatus = { ready: false, organizations: [], issues: [] };
       });
@@ -1250,6 +1277,7 @@ export default Vue.extend({
     isPlatformPoolCampaign() {
       if (this.isNew) {
         return this.$can('campaigns:public_pool_send')
+          && this.form.poolScope === 'all_organizations'
           && this.selectedPoolLists.some((list) => list.type === 'pool')
           && this.form.customer_lists.every((list) => list.type === 'pool');
       }
@@ -1257,7 +1285,28 @@ export default Vue.extend({
     },
 
     exclusiveAudienceGroups() {
-      return this.isNew && !this.workspace.organizationId && this.$can('campaigns:public_pool_send');
+      return this.isNew && this.$can('campaigns:public_pool_send')
+        && (!this.workspace.organizationId || this.form.poolScope === 'all_organizations');
+    },
+
+    campaignSMTPPoolID() {
+      return this.form.smtpSource === 'organization' && !this.isPlatformPoolCampaign ? this.form.smtpPoolId : null;
+    },
+
+    poolSendSettingsKey() {
+      return JSON.stringify([this.data.id, this.form.smtpSource, this.form.poolReplyPriority,
+        [...new Set(this.form.customer_lists.map((list) => Number(list.id)))].sort((a, b) => a - b)]);
+    },
+
+    savedPoolSendSettingsKey() {
+      const ids = [...(this.data.customerLists || []).map((list) => Number(list.id)),
+        ...(this.data.customerPools || []).map((pool) => Number(pool.poolId || pool.pool_id))];
+      return JSON.stringify([this.data.id, this.data.smtpSource || 'personal', this.data.poolReplyPriority || 'contact_first',
+        [...new Set(ids)].sort((a, b) => a - b)]);
+    },
+
+    poolSendStatusCurrent() {
+      return this.poolSendStatusKey === this.poolSendSettingsKey ? this.poolSendStatus : null;
     },
 
     personalSMTPAvailable() {
@@ -1268,7 +1317,7 @@ export default Vue.extend({
       if (!this.isPlatformPoolCampaign) {
         return this.personalSMTPAvailable;
       }
-      return !!this.poolSendStatus && this.poolSendStatus.ready === true;
+      return !!this.poolSendStatusCurrent && this.poolSendStatusCurrent.ready === true;
     },
 
     listsLocked() {
@@ -1363,7 +1412,8 @@ export default Vue.extend({
     'form.smtpSource': function onSMTPSourceChange() { this.form.smtpPoolId = null; this.loadPersonalSMTPStatus(); },
     'form.smtpPoolId': function onSMTPPoolChange() { if (this.form.smtpSource === 'organization') this.loadPersonalSMTPStatus(); },
     'data.id': function onCampaignIDChange() { this.loadPersonalSMTPStatus(); },
-    'form.customer_lists': function onAudienceChange() { if (this.isNew) this.loadPersonalSMTPStatus(); },
+    'form.customer_lists': function onAudienceChange() { this.loadPersonalSMTPStatus(); },
+    'form.poolScope': function onPoolScopeChange() { this.loadPersonalSMTPStatus(); },
     selectedLists() {
       // This computed value is only for preselecting lists on a new campaign.
       // An edited campaign receives its regular and pool audiences from the

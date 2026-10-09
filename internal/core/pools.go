@@ -1533,6 +1533,7 @@ func (c *Core) ValidatePoolCampaignAudience(campaignID int) error {
 
 // poolOrgStatusRow is one row of the all-organization readiness read.
 type poolOrgStatusRow struct {
+	PoolName         string `db:"pool_name"`
 	OrganizationID   int64  `db:"organization_id"`
 	OrganizationName string `db:"organization_name"`
 	OrgStatus        string `db:"organization_status"`
@@ -1543,6 +1544,18 @@ type poolOrgStatusRow struct {
 
 const poolAllOrgMessageSMTPStep = "each target organization needs SMTP for the selected sender source: organization SMTP in Manage organization, or member SMTP in Profile -> SMTP"
 
+// PoolCampaignUnallocatedLists identifies selected pools with no organization
+// allocation, even when another selected pool has a usable audience.
+func (c *Core) PoolCampaignUnallocatedLists(campaignID int) ([]string, error) {
+	names := make([]string, 0)
+	err := c.db.Select(&names, `SELECT pl.name FROM campaign_customer_lists ccl
+        JOIN customer_lists pl ON pl.id=ccl.pool_id
+        WHERE ccl.campaign_id=$1 AND ccl.pool_id IS NOT NULL AND NOT EXISTS (
+            SELECT 1 FROM org_pool_allocations a WHERE a.pool_id=ccl.pool_id)
+        ORDER BY pl.id`, campaignID)
+	return names, err
+}
+
 // validateAllOrgPoolCampaignAudience blocks preview/send for a platform-level
 // campaign until every active organization with a pool allocation for the
 // campaign's pool has a usable unified reply mailbox and at least one
@@ -1550,7 +1563,7 @@ const poolAllOrgMessageSMTPStep = "each target organization needs SMTP for the s
 // operator can fix them one by one.
 func (c *Core) validateAllOrgPoolCampaignAudience(campaignID int) error {
 	var rows []poolOrgStatusRow
-	if err := c.db.Select(&rows, `SELECT s.organization_id,
+	if err := c.db.Select(&rows, `SELECT pl.name AS pool_name, s.organization_id,
 			o.name AS organization_name,
 			o.status AS organization_status,
 			((rm.id IS NOT NULL AND rm.status = 'active' AND (NOT rm.ai_enabled OR rm.verified_at IS NOT NULL))
@@ -1564,40 +1577,36 @@ func (c *Core) validateAllOrgPoolCampaignAudience(campaignID int) error {
         ))
     )) AS smtp_count
 		FROM org_pool_allocations s
+		JOIN customer_lists pl ON pl.id = s.pool_id
 		JOIN organizations o ON o.id = s.organization_id
 		LEFT JOIN reply_mailboxes rm ON rm.id = o.reply_mailbox_id
-		WHERE s.pool_id = (
+		WHERE s.pool_id IN (
 			SELECT ccl.pool_id
 			FROM campaign_customer_lists ccl
 			WHERE ccl.campaign_id = $1 AND ccl.pool_id IS NOT NULL
-			LIMIT 1
 		)
-		ORDER BY s.organization_id`, campaignID); err != nil {
+		ORDER BY s.pool_id, s.organization_id`, campaignID); err != nil {
 		return err
 	}
-	var poolName string
-	if err := c.db.Get(&poolName, `SELECT COALESCE(MAX(ccl.customer_list_name), '')
-		FROM campaign_customer_lists ccl WHERE ccl.campaign_id=$1 AND ccl.pool_id IS NOT NULL`, campaignID); err != nil {
+	emptyPools, err := c.PoolCampaignUnallocatedLists(campaignID)
+	if err != nil {
 		return err
 	}
-	if poolName == "" {
-		var id int
-		if err := c.db.Get(&id, `SELECT ccl.pool_id FROM campaign_customer_lists ccl WHERE ccl.campaign_id=$1 AND ccl.pool_id IS NOT NULL LIMIT 1`, campaignID); err != nil {
-			return err
-		}
-		if err := c.db.Get(&poolName, `SELECT name FROM customer_lists WHERE id=$1`, id); err != nil {
-			return err
-		}
+	if len(emptyPools) > 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, poolAudienceRouteMessagePrefix+": "+
+			fmt.Sprintf("public pools %q have no organization pool allocation to send to", strings.Join(emptyPools, ", "))+
+			". Fix: "+poolAudienceRouteMessageAllocationStep+"; "+poolAudienceRouteMessageRetry)
 	}
 	if len(rows) == 0 {
 		return echo.NewHTTPError(http.StatusBadRequest,
-			poolAudienceRouteMessagePrefix+": "+fmt.Sprintf("pool list %q has no active organization pool allocation to send to", poolName)+
+			poolAudienceRouteMessagePrefix+": the selected public pools have no active organization pool allocation to send to"+
 				". Fix: "+poolAudienceRouteMessageAllocationStep+"; "+poolAudienceRouteMessageRetry)
 	}
 
 	clauses := make([]string, 0, len(rows))
 	total := 0
 	for _, row := range rows {
+		poolName := row.PoolName
 		if row.OrgStatus != "active" {
 			clauses = append(clauses, fmt.Sprintf("pool list %q -> organization %q: the organization is archived", poolName, row.OrganizationName))
 			total++

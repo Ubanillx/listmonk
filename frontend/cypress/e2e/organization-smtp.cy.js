@@ -152,7 +152,7 @@ describe('Organization marketing SMTP', () => {
   it('allows members to see senders while protecting credentials and other organizations', () => {
     let memberID;
     cy.request('POST', '/api/roles/users', {
-      name: 'SMTP campaign member', permissions: ['campaigns:get', 'campaigns:manage', 'workspaces:personal'],
+      name: 'SMTP campaign member', permissions: ['campaigns:get', 'campaigns:manage', 'mailboxes:use', 'workspaces:personal'],
     }).then(({ body }) => cy.request('POST', '/api/users', {
       username: 'smtp-member', name: 'SMTP member', email: 'smtp-member@example.com',
       type: 'user', status: 'enabled', password_login: true, password: 'smtp-member-test', user_role_id: body.data.id,

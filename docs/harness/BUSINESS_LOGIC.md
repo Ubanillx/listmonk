@@ -76,14 +76,15 @@
 - **随机投递延迟**：`smtp_delivery.send_delay_min/max` 为整数毫秒，范围 `0 ≤ 下限 ≤ 上限 ≤ 3600000`，两者为 0 时关闭；旧时长字符串兼容读取并按原时长升级。每封邮件抽取均匀整数毫秒等待，同一进程同 SMTP UUID 跨缓存池共用并发容量与延迟队列；开启延迟时依次等待并发送，不同 SMTP 独立。暂停/取消和关闭中断等待、释放每日额度预占；连接测试跳过随机等待，网络重试不重新抽样。来源：`models/settings.go`、`internal/messenger/email/send_delay.go`、`internal/manager/{manager,pipe}.go`。
 - **三级投递限制**：活动 `smtp_rate_limit` 为所有发件 SMTP 的合计封/分钟，1–1000000，个人来源默认 20、组织来源默认 100；活动 UUID 共用平滑发送间隔。平台 `app.message_rate` 与滑动窗口为所有 SMTP 合计硬上限，`app.concurrency` 限制实际总投递并发，工作线程数不放大发送频率；各 SMTP 再受统一投递参数独立限制。达到任一上限就等待，等待不算投递错误或已发送；系统通知与连接测试也受平台总限速。完成或失败释放平台并发许可，暂停/关闭中断排队。状态仅在单进程内共享，重启重置。来源：`internal/messenger/email/delivery_limiter.go`、`internal/manager/manager.go`、`cmd/send_limits.go`、`internal/migrations/v6.53.0.go`。
 
-- **受众范围**：`campaigns.pool_scope = 'all_organizations'` 的活动只能选择一级公海列表（不接受显式公海分配列表、不允许混入普通客户列表），受众为该一级公海下所有活跃组织的公海分配并集。该能力由专用权限 `campaigns:public_pool_send` 控制；没有该权限的请求一律按单组织范围（`organization`）处理或直接 403。
+- **受众范围**：`campaigns.pool_scope = 'all_organizations'` 的活动只能选择一级公海列表（不接受显式公海分配列表、不允许混入普通客户列表），受众为全部选中公海下所有活跃组织的公海分配并集。创建全组织活动需专用权限 `campaigns:public_pool_send`；组织工作区默认本组织并提供显式范围选择，已有范围不可改。普通查看者只能预览已保存公海及其子集，跨公海扩大 SMTP 概览需专用权限。来源：`frontend/src/views/Campaign.vue`、`cmd/organization_smtp.go`。
 - **去重与归属**：同一公海联系人属于多个组织时，本活动只发送一次，归属为活动持久化组织顺序中的第一个组织；该邮件的发件 SMTP 池与 Reply-To 都取该组织。投递历史行（`queued`/`sent`/`cancelled`）的目标组织、回件邮箱与发件人不因后续重排或配置变更被改写，只有 `pending`/`deferred` 行参与刷新。
-- **组织顺序**：组织顺序在活动首次可发送时随机生成并写入 `campaign_pool_org_orders`，此后不重排；暂停、服务重启、次日续发都沿用同一顺序。`campaigns.pool_next_org_index` 记录轮转位置，使并发批次与恢复后的活动继续轮转而不是每次从头开始。组织不再拥有该公海的活跃分配时，其顺序行被清理。
-- **组织 SMTP 池**：每个组织的池由“组织活跃 + 成员未离组 + 用户 enabled + SMTP enabled”动态过滤后的所有 SMTP 行扁平组成，排序稳定为（user_id, smtp id）。发件人在每次领取收件人时重新分配，因此成员离组、账号停用、SMTP 停用立即生效，新增 SMTP 立即参与后续轮询。
+- **组织顺序**：组织顺序在活动首次可发送时随机生成并写入 `campaign_pool_org_orders`，暂停、服务重启、次日续发不重排。缺失或新增目标组织追加到顺序尾部，已有组织保持相对顺序；组织不再拥有任一选中公海的分配时清理其顺序行。`campaigns.pool_next_org_index` 记录轮转位置。来源：`cmd/manager_store.go::ensurePoolOrgOrders`。
+- **组织 SMTP 池**：组织来源只取目标组织在组织管理中配置的启用 SMTP，跨该组织各发件池，不使用成员个人 SMTP；个人来源只取组织有效且未离组、账号 enabled 的成员个人 SMTP，不使用组织自有 SMTP。两种来源独立且不相互回退。全组织活动的 `smtp_pool_id` 必须为空，页面切换范围时清空隐藏池并规范化提交参数。来源：`queries/campaigns.sql::get-org-pool-smtp-servers`、`frontend/src/views/Campaign.vue`。
 - **持久化轮询游标**：组织级游标 `org_pool_smtp_cursors.next_smtp_uuid` 在该组织的所有公海活动之间共享，并在数据库行锁（`FOR UPDATE`）下推进；多个 worker 或多实例并发领取时不会重复或跳号。游标只保存稳定 UUID，成员增删不影响其含义。
 - **额度**：不新增平台级或组织级固定总额度。每个活动仍受 `daily_send_limit` 限制，每个 SMTP 行仍受自身 `daily_limit` 限制，且该额度在所有使用它的公海活动之间共享。额度预检（组织聚合剩余）只用于决定批量大小，最终上限由发送时的原子额度预占（`smtpQuotaTracker.ReserveServer`）保证。
 - **失败语义**：某 SMTP 额度耗尽时跳过并继续使用同组织其他可用 SMTP；某组织全部 SMTP 额度耗尽时该组织本轮不领取收件人，全部组织均耗尽则按 `daily_resume_time` 延迟。某一组织**没有任何**可用 SMTP 时（结构性缺失）整个活动暂停并提示修复，不回退活动所有者或平台 SMTP。发送结果不确定（超时/连接中断）时，重试保持原发件人分配，不跨账号重发，以免同一客户重复收到邮件；系统整体仍为 at-least-once。
 - **启动阻断**：预览/发送前校验每个目标组织：组织活跃、每个有效客户有回信地址或 active 的组织回退（AI 模式需已验证）、所选 SMTP 来源有可用账号；任一组织不满足即阻止整个活动，错误逐条列出组织与缺失项。空分配保留组织邮箱配置检查；全组织活动运行中变为不满足时暂停并提示修复。
+- **发送条件显示**：多公海就绪响应按组织去重，并要求该组织每个选中公海分配的回信条件均满足；未绑定组织的选中公海不能被其他公海掩盖。前端状态绑定已保存的来源、受众和回信优先级，编辑后旧状态不启用发送，保存后重查；异步旧响应不能覆盖新状态。来源：`cmd/campaigns.go::GetCampaignPoolSendStatus`、`internal/core/pools.go::validateAllOrgPoolCampaignAudience`、`queries/campaigns.sql::get-campaign-pool-org-status`。
 - **权限与凭据**：成员 SMTP 凭据只在服务端投递链路使用；任何 API、前端或审计输出都不得返回其他成员的主机、用户名或密码，`GET /api/campaigns/:id/pool-send-status` 只返回组织名、回件邮箱地址与 SMTP 数量。持有 `campaigns:public_pool_send` 的账号可以启动/排期他人创建的全量公海活动，但该权限不扩大普通活动、客户明细或组织管理能力。
 - **回件路由**：平台级公海邮件 From 取分配的 SMTP；Reply-To 取逐客户按活动优先级解析的 `reply_to_snapshot`。客户地址为空时回退组织地址，组织来源不可用时可回退客户地址；无可用地址阻止发送。排队/成功/取消的历史路由不重写。
 

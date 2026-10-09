@@ -187,6 +187,8 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 
 自 v6.52.0 起，组织 SMTP 再按组织划分为多个发件池（`organization_smtp_pools`）。每个组织可创建、重命名和删除空池；SMTP 行通过 `smtp_pool_id` 严格归属一个同组织池，旧组织 SMTP 和组织来源活动迁移到“默认发件池”。活动保存 `campaigns.smtp_pool_id`，组织轮询只读取该池；删除有 SMTP 或活动引用的池会被拒绝。
 
+全组织公海活动不绑定单个 `smtp_pool_id`：组织来源读取每个目标组织在组织管理中配置的全部启用 SMTP，覆盖该组织的各发件池；个人来源只读取该目标组织有效成员的个人 SMTP，两种来源不混用。`Campaign.vue` 在全组织/个人来源模式清空隐藏的池选择，并在创建、保存、测试及概览请求中按实际范围规范化池 ID；单组织池选择在加载完成前禁用。
+
 - `cmd/organization_smtp.go` 的 `/api/organizations/smtp` GET/PUT、`/:id` DELETE、`/test` POST 由组织经理或平台组织管理权限授权，归档组织不可编辑。内部将正账号 ID / 负组织 ID 作为可信 owner key 复用经过校验的保存、删除、连接测试与使用量查询；数据库以独占 owner CHECK 和各 owner 名称唯一索引约束隔离。批量保存同时锁住 owner 行与 SMTP 行，防止空池并发覆盖；密码空值或掩码保留旧值，客户端不能改变 UUID 或归属。
 - 活动保存 `smtp_source=personal|organization`，个人工作区不可选择组织来源（全组织公海范围除外）。个人来源轮询活动所有者的启用 SMTP，组织来源轮询活动所属组织选定发件池的独立 SMTP。组织缓存以负池 ID 与账号缓存分开，共用发送读写锁；配置变更关闭并失效对应池及所有公海单发件池，后续消息重新解析。没有可用池时暂停/回草稿，额度用尽时延迟；不回退到其他来源或系统 SMTP。移出已归档组织到个人工作区的活动重置个人来源；克隆至组织保留来源、克隆至个人重置个人来源。
 - `GET /api/campaigns/smtp-overview?source=...`（新建）与 `GET /api/campaigns/:id/smtp-overview?source=...`（已有活动）返回启用的发件邮箱、名称、今日使用量、每日额度，绝不查询/返回 host、用户名、密码或连接设置。普通组织成员可按活动权限读取；已有活动使用活动 owner/组织，而不是查看者的 SMTP。新建全组织公海预览还传 `pool_scope=all_organizations` 和逗号分隔的 `customer_list_ids`，服务端验证专用发送权限及受众可用范围。
@@ -201,6 +203,8 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 投递限速分三层：`campaigns.smtp_rate_limit` 先约束单活动所有 SMTP 的合计发送频率（封/分钟），个人来源默认 20、组织来源默认 100，用户可设 1–1000000；以活动 UUID 共享平滑间隔，全组织公海也共用该活动额度。平台 `app.message_rate` 是所有 SMTP 合计的每秒硬上限，滑动窗口同样为平台总量；`app.concurrency` 同时控制工作线程数和所有 SMTP 的实际投递总并发。超限等待、不丢弃，线程数不乘大发送频率。`internal/messenger/email/delivery_limiter.go` 在实际 SMTP Send 前统一取得活动、平台频率及并发许可，完成或失败时释放并发许可并唤醒队列；`internal/manager/manager.go` 给系统通知、个人/组织缓存池、公海单发件池及临时连接测试挂同一 limiter，因此直接发送的系统通知也受平台限制。单 SMTP 连接、重试、超时和随机延迟仍独立生效。所有限速与发送门为进程内状态，重启重置，多个活动工作进程之间不共享；需要平台合计上限时采用一个活动发送进程。
 
 - 营销活动勾选一级公海时，默认仍是单组织范围（`campaigns.pool_scope = 'organization'`，按当前工作区组织的公海分配解析）。持有专用权限 `campaigns:public_pool_send` 的账号可以把活动创建为 `all_organizations`：受众是该一级公海下**所有活跃组织**的公海分配并集，只接受一级公海列表（显式公海分配列表与普通客户列表都会被拒绝），权限常量在 `internal/auth/models.go`、清单在 `permissions.json`（`campaigns` 组），前端以 `$can('campaigns:public_pool_send')` 控制入口。
+- 组织工作区的新活动通过“公海发送范围”显式选择本组织或全部目标组织，默认本组织；选择全部目标组织后禁止混选私域列表。个人工作区仅允许纯公海受众进入全组织路径。已有活动范围不可修改。发送条件状态绑定已保存活动的发件来源、受众 ID 集合及回信优先级；编辑后隐藏旧状态并提示保存，成功保存后重新检查，异步旧响应不能覆盖新状态。已有全组织活动的 SMTP 概览也按表单传入的 `customer_list_ids` 解析，省略该参数才使用已保存受众。
+- 多公海活动的组织集合取全部选中公海分配的并集。就绪接口按组织去重、对同组织每个分配的回信条件取逻辑与；发送校验逐公海/组织报告问题，任何未绑定组织的选中公海均阻止发送。组织轮询保留既有顺序并追加新目标组织（包括旧活动此前漏掉的目标组织），不重排已有组织；邮箱概览、校验、调度和剩余额度使用同一受众范围。
 - 收件人解析在 `internal/core/pools.go` 的全组织规则中保持活跃成员、联系人和剔除边界，并按持久化组织顺序去重。单组织和全组织快照共用 `poolReplySnapshotRouteSQL`：写入实际 `reply_to_snapshot`、`reply_to_source`，仅当实际地址匹配目标组织启用的邮箱时记录该 `reply_mailbox_id`，AI 模式还需收件连接已验证，外部地址不得归到回退或其他组织邮箱。关联普通地址 ID 不会自动开启收信。`pending`/`deferred` 允许刷新，`queued`/`sent`/`cancelled` 路由保持投递历史；发送队列与分配器只读取地址快照。
 - 组织顺序持久化在 `campaign_pool_org_orders`：活动首次被调度（`cmd/manager_store.go` 的分配器）时按活跃分配组织随机打散写入，不因暂停/重启/次日续发而重排；不再持有该公海分配的组织其顺序行会被清理。`campaigns.pool_next_org_index` 保存轮转位置，分配器每领取一封就推进一次，因此并发批次、多 worker 与恢复后的活动继续轮转。
 - 发件侧不再使用活动所有者的个人 SMTP：分配器在同一个数据库事务里按“组织轮转 → 组织内稳定顺序（user_id, smtp id）”领取收件人，并用组织级持久化游标 `org_pool_smtp_cursors.next_smtp_uuid`（`FOR UPDATE` 行锁）选择发件 SMTP，同时把 `sender_smtp_uuid`/`sender_user_id`/`sender_from_snapshot`/`sender_assigned_at` 写入投递快照。组织池成员动态过滤（组织 active、`organization_members.removed_at IS NULL`、用户 enabled、SMTP enabled），因此成员离组、账号停用、SMTP 停用立即生效。已分配且仍可用（在池中且有剩余额度）的发件人会被复用，使失败重试不跨账号。

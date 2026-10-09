@@ -1666,11 +1666,10 @@ INSERT INTO campaign_views (campaign_id, customer_id, pool_contact_id,
 SELECT DISTINCT s.organization_id
 FROM org_pool_allocations s
 JOIN organizations o ON o.id = s.organization_id AND o.status = 'active'
-WHERE s.pool_id = (
+WHERE s.pool_id IN (
     SELECT ccl.pool_id
     FROM campaign_customer_lists ccl
     WHERE ccl.campaign_id = $1 AND ccl.pool_id IS NOT NULL
-    LIMIT 1
 )
 ORDER BY s.organization_id;
 
@@ -1711,6 +1710,7 @@ UPDATE campaigns SET pool_next_org_index = $2, updated_at = NOW() WHERE id = $1;
 -- whether the organization is active, every eligible contact has a reply
 -- address or verified organization fallback, and the selected SMTP source
 -- has at least one enabled sender.
+WITH allocation_status AS (
 SELECT s.organization_id,
     o.name AS organization_name,
     o.status AS organization_status,
@@ -1741,13 +1741,18 @@ SELECT s.organization_id,
 FROM org_pool_allocations s
 JOIN organizations o ON o.id = s.organization_id
 LEFT JOIN reply_mailboxes rm ON rm.id = o.reply_mailbox_id
-WHERE s.pool_id = (
+WHERE s.pool_id IN (
     SELECT ccl.pool_id
     FROM campaign_customer_lists ccl
     WHERE ccl.campaign_id = $1 AND ccl.pool_id IS NOT NULL
-    LIMIT 1
 )
-ORDER BY s.organization_id;
+)
+SELECT organization_id, organization_name, organization_status,
+    reply_mailbox_id, reply_mailbox_email, BOOL_AND(mailbox_ready) AS mailbox_ready,
+    MAX(smtp_count) AS smtp_count
+FROM allocation_status
+GROUP BY organization_id, organization_name, organization_status, reply_mailbox_id, reply_mailbox_email
+ORDER BY organization_id;
 
 -- name: get-org-pool-smtp-servers
 SELECT s.uuid, COALESCE(s.user_id,0) AS user_id, s.from_email, s.daily_limit,

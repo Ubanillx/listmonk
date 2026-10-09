@@ -411,9 +411,9 @@ type poolClaimRow struct {
 
 // ensurePoolOrgOrders guarantees the campaign has a persisted, fair
 // organization rotation inside the given transaction. The order is generated
-// once by shuffling the active organizations that own a pool allocation for
-// the campaign's pool; afterwards it never changes (stale organizations are
-// pruned, the remaining order keeps its sequence).
+// by shuffling active organizations across all selected pools. Stale entries
+// are pruned and missing target organizations are appended; existing entries
+// retain their relative order across pauses, restarts and audience edits.
 func (s *store) ensurePoolOrgOrders(tx *sqlx.Tx, campID int) ([]int64, error) {
 	var orders []int64
 	if err := tx.Select(&orders, `SELECT organization_id FROM campaign_pool_org_orders WHERE campaign_id=$1 ORDER BY dispatch_order`, campID); err != nil {
@@ -435,36 +435,42 @@ func (s *store) ensurePoolOrgOrders(tx *sqlx.Tx, campID int) ([]int64, error) {
 			return nil, err
 		}
 	}
-	if len(orders) > 0 {
-		return orders, nil
-	}
-
-	var poolID null.Int
-	if err := tx.Get(&poolID, `SELECT pool_id FROM campaign_customer_lists WHERE campaign_id=$1 AND pool_id IS NOT NULL LIMIT 1`, campID); err != nil {
-		if err == sql.ErrNoRows {
-			return nil, manager.ErrPoolSMTPUnavailable
-		}
-		return nil, err
-	}
 	var orgs []int64
 	if err := tx.Select(&orgs, `SELECT DISTINCT s.organization_id
 		FROM org_pool_allocations s
 		JOIN organizations o ON o.id = s.organization_id AND o.status = 'active'
-		WHERE s.pool_id = $1
-		ORDER BY s.organization_id`, poolID.Int); err != nil {
+		JOIN campaign_customer_lists ccl ON ccl.pool_id=s.pool_id AND ccl.campaign_id=$1
+		ORDER BY s.organization_id`, campID); err != nil {
 		return nil, err
 	}
 	if len(orgs) == 0 {
 		return nil, manager.ErrPoolSMTPUnavailable
 	}
-	rand.Shuffle(len(orgs), func(i, j int) { orgs[i], orgs[j] = orgs[j], orgs[i] })
-	for i, org := range orgs {
+	known := make(map[int64]bool, len(orders))
+	for _, org := range orders {
+		known[org] = true
+	}
+	missing := make([]int64, 0)
+	for _, org := range orgs {
+		if !known[org] {
+			missing = append(missing, org)
+		}
+	}
+	rand.Shuffle(len(missing), func(i, j int) { missing[i], missing[j] = missing[j], missing[i] })
+	var nextOrder int
+	if err := tx.Get(&nextOrder, `SELECT COALESCE(MAX(dispatch_order)+1,0) FROM campaign_pool_org_orders WHERE campaign_id=$1`, campID); err != nil {
+		return nil, err
+	}
+	for i, org := range missing {
 		if _, err := tx.Exec(`INSERT INTO campaign_pool_org_orders(campaign_id, organization_id, dispatch_order)
-			VALUES($1, $2, $3) ON CONFLICT (campaign_id, organization_id) DO NOTHING`, campID, org, i); err != nil {
+			VALUES($1, $2, $3) ON CONFLICT (campaign_id, organization_id) DO NOTHING`, campID, org, nextOrder+i); err != nil {
 			return nil, err
 		}
 	}
-	return orgs, nil
+	if err := tx.Select(&orders, `SELECT organization_id FROM campaign_pool_org_orders WHERE campaign_id=$1 ORDER BY dispatch_order`, campID); err != nil {
+		return nil, err
+	}
+	return orders, nil
 }
 
 // pickPoolOrgSMTP advances the organization's durable round-robin cursor and

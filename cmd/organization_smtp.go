@@ -87,7 +87,8 @@ func (a *App) GetCampaignSMTPOverview(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	userID := auth.GetUser(c).ID
+	user := auth.GetUser(c)
+	userID := user.ID
 	orgID := access.OrganizationID
 	var camp models.Campaign
 	id, _ := c.Get("id").(int)
@@ -132,11 +133,14 @@ func (a *App) GetCampaignSMTPOverview(c echo.Context) error {
 	rows := make([]campaignSMTPOverview, 0)
 	poolIDs := make([]int64, 0)
 	allOrgs := camp.PoolScope == models.CampaignPoolScopeAllOrganizations
+	audienceProvided := c.QueryParams().Has("customer_list_ids")
 	if camp.ID == 0 && c.QueryParam("pool_scope") == models.CampaignPoolScopeAllOrganizations {
-		user := auth.GetUser(c)
 		if !user.HasPerm(auth.PermCampaignsPublicPoolSend) {
 			return auth.ErrPermDenied
 		}
+		allOrgs = true
+	}
+	if allOrgs && audienceProvided {
 		var listIDs []int
 		for _, value := range strings.Split(c.QueryParam("customer_list_ids"), ",") {
 			if value == "" {
@@ -148,14 +152,30 @@ func (a *App) GetCampaignSMTPOverview(c echo.Context) error {
 			}
 			listIDs = append(listIDs, id)
 		}
-		_, audiences, err := a.splitCampaignAudienceIDs(access, listIDs, true)
+		// Read access to a saved campaign permits previews of its saved pools,
+		// including subsets, but cannot expose arbitrary cross-organization
+		// sender accounts without the dedicated public-pool capability.
+		if camp.ID > 0 && !user.HasPerm(auth.PermCampaignsPublicPoolSend) {
+			var expands bool
+			if err := a.db.Get(&expands, `SELECT EXISTS (
+				SELECT 1 FROM unnest($2::INT[]) requested(id) WHERE NOT EXISTS (
+					SELECT 1 FROM campaign_customer_lists ccl WHERE ccl.campaign_id=$1 AND ccl.pool_id=requested.id))`, camp.ID, pq.Array(listIDs)); err != nil {
+				return err
+			}
+			if expands {
+				return auth.ErrPermDenied
+			}
+		}
+		regular, audiences, err := a.splitCampaignAudienceIDs(access, listIDs, true)
 		if err != nil {
 			return err
+		}
+		if len(regular) > 0 {
+			return echo.NewHTTPError(http.StatusBadRequest, "an all-organization public pool campaign accepts public pool audiences only")
 		}
 		for _, audience := range audiences {
 			poolIDs = append(poolIDs, int64(audience.PoolID))
 		}
-		allOrgs = true
 	}
 	if allOrgs {
 		err = a.db.Select(&rows, `SELECT DISTINCT s.id, s.name, s.from_email, s.daily_limit,
@@ -167,9 +187,10 @@ func (a *App) GetCampaignSMTPOverview(c echo.Context) error {
 					WHERE om.organization_id=o.id AND om.user_id=s.user_id AND om.removed_at IS NULL)))
 			JOIN org_pool_allocations opa ON opa.organization_id=o.id
 			LEFT JOIN user_smtp_daily_usage u ON u.smtp_uuid=s.uuid AND u.usage_date=$2::DATE
-			WHERE o.status='active' AND (opa.pool_id=ANY($4::BIGINT[]) OR EXISTS (
+			WHERE o.status='active' AND (($5::BOOLEAN AND opa.pool_id=ANY($4::BIGINT[])) OR (NOT $5::BOOLEAN AND EXISTS (
 				SELECT 1 FROM campaign_customer_lists ccl WHERE ccl.pool_id=opa.pool_id AND ccl.campaign_id=$1))
-			ORDER BY s.id`, camp.ID, currentLocalDate(), source, pq.Int64Array(poolIDs))
+			)
+			ORDER BY s.id`, camp.ID, currentLocalDate(), source, pq.Int64Array(poolIDs), audienceProvided)
 	} else {
 		if source == "organization" && orgID < 1 {
 			return c.JSON(http.StatusOK, okResp{rows})

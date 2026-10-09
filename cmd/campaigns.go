@@ -16,7 +16,6 @@ import (
 
 	"github.com/knadh/listmonk/internal/auth"
 	"github.com/knadh/listmonk/internal/core"
-	"github.com/knadh/listmonk/internal/manager"
 	"github.com/knadh/listmonk/internal/messenger/email"
 	"github.com/knadh/listmonk/internal/notifs"
 	"github.com/knadh/listmonk/models"
@@ -1855,21 +1854,15 @@ func (a *App) preloadTestCampaignMedia(c echo.Context, access models.WorkspaceAc
 		if err != nil {
 			return err
 		}
-		m.URL = a.media.GetURL(m.Filename)
-		content, err := a.media.GetBlob(m.URL)
+		linked, err := newManagerStore(a.queries, a.core, a.media, a.db).
+			linkedMediaAttachment(m)
 		if err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError,
 				a.i18n.Ts("globals.messages.errorFetching", "name", "{globals.terms.media}", "error", err.Error()))
 		}
-		attachments = append(attachments, models.Attachment{
-			Name:      m.Filename,
-			Content:   content,
-			Header:    manager.MakeAttachmentHeader(m.Filename, "base64", m.ContentType),
-			MediaID:   m.ID,
-			SourceURL: workspaceMediaIDFileURL(m.ID, m.Filename),
-		})
+		attachments = append(attachments, linked)
 	}
-	// Keep the effective IDs on the campaign so the renderer's CID replacement
+	// Keep the effective IDs on the campaign so the renderer's URL replacement
 	// can match both explicitly selected and template-provided images.
 	camp.MediaIDs = make(pq.Int64Array, 0, len(ids))
 	for _, id := range ids {

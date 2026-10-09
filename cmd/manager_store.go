@@ -824,21 +824,7 @@ func (s *store) GetAttachment(mediaID int) (models.Attachment, error) {
 		return models.Attachment{}, err
 	}
 
-	b, err := s.media.GetBlob(m.URL)
-	if err != nil {
-		return models.Attachment{}, err
-	}
-
-	return models.Attachment{
-		Name:    m.Filename,
-		Content: b,
-		Header:  manager.MakeAttachmentHeader(m.Filename, "base64", m.ContentType),
-		MediaID: mediaID,
-		// SourceURL is an internal matching key used while preparing HTML mail.
-		// Use the ID-qualified protected route so duplicate provider filenames
-		// (which are normal after a campaign/template clone) remain distinct.
-		SourceURL: personalMediaSourceURL(mediaID, m.Filename),
-	}, nil
+	return s.linkedMediaAttachment(m)
 }
 
 // GetTemplateAttachments resolves the media snapshot for a transactional
@@ -859,14 +845,9 @@ func (s *store) GetTemplateAttachments(access models.WorkspaceAccess, templateID
 		return s.loadLegacyAttachments(mediaIDs)
 	}
 
-	type attachmentRow struct {
-		ID          int    `db:"id"`
-		Filename    string `db:"filename"`
-		ContentType string `db:"content_type"`
-	}
-	var rows []attachmentRow
+	var rows []media.Media
 	if err := s.db.Select(&rows, `
-		SELECT DISTINCT m.id, m.filename, m.content_type
+		SELECT DISTINCT m.id, m.uuid, m.filename, m.content_type, m.organization_id, m.owner_user_id
 		FROM template_media tm
 		JOIN media m ON m.id = tm.media_id
 		WHERE tm.template_id = $1
@@ -875,7 +856,7 @@ func (s *store) GetTemplateAttachments(access models.WorkspaceAccess, templateID
 		return nil, err
 	}
 
-	byID := make(map[int]attachmentRow, len(rows))
+	byID := make(map[int]media.Media, len(rows))
 	for _, row := range rows {
 		byID[row.ID] = row
 	}
@@ -901,17 +882,11 @@ func (s *store) GetTemplateAttachments(access models.WorkspaceAccess, templateID
 		if !allowed {
 			return nil, fmt.Errorf("media %d is not usable by template %d", rawID, templateID)
 		}
-		blob, err := s.media.GetBlob(s.media.GetURL(row.Filename))
+		linked, err := s.linkedMediaAttachment(row)
 		if err != nil {
 			return nil, fmt.Errorf("error fetching attachment %d: %w", rawID, err)
 		}
-		attachments = append(attachments, models.Attachment{
-			Name:      row.Filename,
-			Content:   blob,
-			Header:    manager.MakeAttachmentHeader(row.Filename, "base64", row.ContentType),
-			MediaID:   row.ID,
-			SourceURL: personalMediaSourceURL(row.ID, row.Filename),
-		})
+		attachments = append(attachments, linked)
 	}
 	return attachments, nil
 }
@@ -954,12 +929,7 @@ func (s *store) GetCampaignAttachments(campaign *models.Campaign, mediaIDs []int
 		return s.loadLegacyAttachments(mediaIDs)
 	}
 
-	type attachmentRow struct {
-		ID          int    `db:"id"`
-		Filename    string `db:"filename"`
-		ContentType string `db:"content_type"`
-	}
-	var rows []attachmentRow
+	var rows []media.Media
 	// A direct campaign media reference is usable only when it is global,
 	// owned by the campaign owner in the same workspace, or organization-shared
 	// in that workspace.  A template reference follows the same rule for the
@@ -974,7 +944,7 @@ func (s *store) GetCampaignAttachments(campaign *models.Campaign, mediaIDs []int
 				AND c.transfer_pending_at IS NULL
 				AND (c.organization_id IS NULL OR co.status = 'active')
 		)
-		SELECT DISTINCT m.id, m.filename, m.content_type
+		SELECT DISTINCT m.id, m.uuid, m.filename, m.content_type, m.organization_id, m.owner_user_id
 		FROM media m
 		JOIN campaign c ON TRUE
 		WHERE m.id = ANY($2::BIGINT[])
@@ -1036,7 +1006,7 @@ func (s *store) GetCampaignAttachments(campaign *models.Campaign, mediaIDs []int
 		return nil, err
 	}
 
-	byID := make(map[int]attachmentRow, len(rows))
+	byID := make(map[int]media.Media, len(rows))
 	for _, row := range rows {
 		byID[row.ID] = row
 	}
@@ -1054,17 +1024,11 @@ func (s *store) GetCampaignAttachments(campaign *models.Campaign, mediaIDs []int
 		if !ok {
 			return nil, fmt.Errorf("media %d is not usable by campaign %d", rawID, campaign.ID)
 		}
-		blob, err := s.media.GetBlob(s.media.GetURL(row.Filename))
+		linked, err := s.linkedMediaAttachment(row)
 		if err != nil {
 			return nil, fmt.Errorf("error fetching attachment %d: %w", rawID, err)
 		}
-		attachments = append(attachments, models.Attachment{
-			Name:      row.Filename,
-			Content:   blob,
-			Header:    manager.MakeAttachmentHeader(row.Filename, "base64", row.ContentType),
-			MediaID:   row.ID,
-			SourceURL: personalMediaSourceURL(row.ID, row.Filename),
-		})
+		attachments = append(attachments, linked)
 	}
 	return attachments, nil
 }

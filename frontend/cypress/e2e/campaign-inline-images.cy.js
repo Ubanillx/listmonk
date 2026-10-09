@@ -22,7 +22,7 @@ describe('Campaign inline image uploads', () => {
     cy.intercept('GET', '/api/config', (req) => req.continue((res) => { res.body.data.lang = 'en'; }));
   });
 
-  it('uploads dialog and pasted images, waits before saving, previews and sends inline MIME parts', () => {
+  it('uploads dialog and pasted images, waits before saving, previews and sends remotely loaded images', () => {
     cy.resetDB();
     cy.loginAndVisit('/admin/campaigns');
     cy.request('PUT', '/api/profile/smtp', { smtp: [{ name: 'Inline image test', enabled: true,
@@ -100,8 +100,24 @@ describe('Campaign inline image uploads', () => {
     cy.request({ url: 'http://127.0.0.1:8265/api/v2/search',
       qs: { kind: 'containing', query: subject, start: 0, limit: 10 } }).then(({ body }) => {
       const raw = body.items[0].Raw.Data;
-      uploaded.forEach((media) => expect(raw.toLowerCase()).to.contain(`content-id: <media-${media.id}@listmonk>`));
-      expect(raw).to.contain('Content-Disposition: inline;').and.to.contain('multipart/related');
+      expect(raw.toLowerCase()).not.to.contain('content-id:').and.not.to.contain('content-disposition: inline');
+      expect(raw).not.to.contain('multipart/related').and.not.to.contain('multipart/mixed');
+      const decoded = raw.replace(/=\r?\n/g, '').replace(/=([0-9a-f]{2})/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+      const links = [...decoded.matchAll(/<img[^>]+src="([^"]*\/email-media\/[^"]+)"/g)].map((match) => match[1]);
+      expect(links).to.have.length(2);
+      cy.window().then((win) => Promise.all(links.map(async (link) => {
+        // Use the isolated backend and omit browser cookies: a recipient has
+        // no application session. Decode the image without clicking a link.
+        const response = await win.fetch(new URL(link).pathname, { credentials: 'omit' });
+        expect(response.status).to.eq(200);
+        expect(response.headers.get('content-type')).to.eq('image/png');
+        const objectURL = win.URL.createObjectURL(await response.blob());
+        const image = new win.Image();
+        image.src = objectURL;
+        await image.decode();
+        expect(image.naturalWidth).to.eq(32);
+        win.URL.revokeObjectURL(objectURL);
+      })));
     });
     cy.visit('/admin/campaigns/media');
     cy.get('.media-files').should('contain', 'inline-direct.png');

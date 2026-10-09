@@ -113,7 +113,11 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 
 ### 媒体逻辑文件夹（v6.37.0）
 
-活动富文本编辑器的本地图片（图片对话框上传、粘贴、拖入及图片编辑产生的 Blob）通过现有 `POST /api/media` 上传到当前工作区根目录，复用媒体维护权限及默认可见性。`RichtextEditor.vue` 在上传成功后返回带媒体 ID 的保护 URL，并经 `Editor.vue` 的 `media-selected` 事件关联活动媒体；预览、保存、测试发送、启动/排期及格式转换先调用 `prepareContent` 等待上传完成并同步正文，失败时保留图片、阻止后续动作。实际发送继续由 `internal/manager/inline_media.go` 将关联图片转换为 CID 内嵌 MIME，不向匿名访问者开放私有媒体。
+活动富文本编辑器的本地图片（图片对话框上传、粘贴、拖入及图片编辑产生的 Blob）通过现有 `POST /api/media` 上传到当前工作区根目录，复用媒体维护权限及默认可见性。`RichtextEditor.vue` 在上传成功后返回带媒体 ID 的保护 URL，并经 `Editor.vue` 的 `media-selected` 事件关联活动媒体；预览、保存、测试发送、启动/排期及格式转换先调用 `prepareContent` 等待上传完成并同步正文，失败时保留图片、阻止后续动作。
+
+自 v6.58.0 起，实际邮件投递通过 `internal/manager/linked_media.go::LinkMediaAttachments` 将关联图片的 `src`、背景图及文件 `href` 转换为 `app.root_url` 下的收件人链接，不发送媒体库文件的 CID 或附件 MIME。正文图片保留原位置自动远程加载，未引用的图片以正文图片补充，其他文件追加下载链接；纯文本和已有替代正文补充文件 URL。新发、测试、暂停恢复、延迟续发与事务模板媒体共用此处理；系统客户数据导出与事务 API 的临时原始附件仍遵守原消息契约。外部图片 URL 保留，历史本机 `/uploads/` 与 ID/文件名保护 URL 在已授权的媒体集合内匹配，带 ID 的引用不回退到同名克隆。
+
+`cmd/email_media.go` 在现有活动/模板/工作区使用授权后生成独立随机 UUID 能力链接；`email_media_links` 持久化媒体 ID、文件名、媒体 UUID 与归属快照，安装 schema 与 `internal/migrations/v6.58.0.go` 一致。`GET /email-media/:token/:filename` 无需登录且独立于公开归档开关，仅访问该精确文件，不开放媒体列表或其它文件。重启/暂停保留已寄出链接；删除、替换、待转移、归属变化或组织归档阻止读取，重新授权后发信可轮换失效链接。链接持有者可访问和转发该文件，文件夹可见性控制新发送授权，不追溯撤销已经寄出的文件能力。沿用媒体 MIME 嗅探、安全响应头和短缓存。部署需保证 `app.root_url` 是收件人可访问的 HTTPS 域名、反向代理转发 `/email-media/`、媒体文件持久保存；邮件客户端屏蔽远程图片时仍需用户允许加载。
 
 `CampaignPreview.vue` 通过带工作区的登录请求获取渲染结果，只对当前活动/所选模板已关联或表单明确选择的媒体读取二进制，将图片转换为预览专用 data URL 后放入 `sandbox="allow-scripts"` 的 `srcdoc`。ID 与文件名同时匹配媒体元数据，旧文件名链接也解析为已关联的精确 ID；未关联图片与外域 URL 不触发父页面的鉴权读取。文件接口继续执行媒体角色、工作区和派生关联校验，隔离窗口不取得登录 Cookie，保存正文仍保留保护 URL，纯文本预览保留转义显示。活动列表、编辑器、归档与模板预览共用此路径。
 

@@ -64,7 +64,9 @@ type Attachment struct {
 	// while preparing an e-mail for delivery.
 	MediaID   int    `json:"-"`
 	SourceURL string `json:"-"`
-	Inline    bool   `json:"-"`
+	// DeliveryURL is an opaque recipient link issued after media authorization.
+	DeliveryURL string `json:"-"`
+	Inline      bool   `json:"-"`
 }
 
 // TxMessage customer modes.

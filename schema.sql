@@ -338,6 +338,17 @@ DROP INDEX IF EXISTS idx_clicks_link_id; CREATE INDEX idx_clicks_link_id ON link
 DROP INDEX IF EXISTS idx_clicks_sub_id; CREATE INDEX idx_clicks_sub_id ON link_clicks(customer_id);
 DROP INDEX IF EXISTS idx_clicks_date; CREATE INDEX idx_clicks_date ON link_clicks(created_at);
 
+-- Durable recipient links are distinct from authenticated media-library URLs.
+CREATE TABLE email_media_links (
+    media_id INTEGER PRIMARY KEY REFERENCES media(id) ON DELETE CASCADE,
+    token UUID NOT NULL UNIQUE,
+    filename TEXT NOT NULL,
+    media_uuid UUID NOT NULL,
+    organization_id INTEGER,
+    owner_user_id INTEGER,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- settings
 DROP TABLE IF EXISTS settings CASCADE;
 CREATE TABLE settings (

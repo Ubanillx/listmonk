@@ -648,6 +648,14 @@ func (m *Manager) resolveMessenger(msg models.Message) (Messenger, error) {
 // an in-flight delivery, close the old pool, and prevent subsequent sends from
 // borrowing it.
 func (m *Manager) pushMessage(msg models.Message) error {
+	if email.IsMessengerName(msg.Messenger) {
+		var err error
+		msg.Body, msg.AltBody, msg.Attachments, err = LinkMediaAttachments(
+			msg.Body, msg.AltBody, msg.Attachments, m.cfg.RootURL, msg.ContentType == models.CampaignContentTypePlain)
+		if err != nil {
+			return err
+		}
+	}
 	msg.SendCancel = m.done
 	if m.closed.Load() {
 		return ErrManagerClosed
@@ -1071,9 +1079,12 @@ func (m *Manager) worker() {
 
 			// Outgoing message.
 			body := msg.body
+			altBody := msg.altBody
 			attachments := msg.Campaign.Attachments
-			if msg.Campaign.ContentType != models.CampaignContentTypePlain && email.IsMessengerName(msg.Campaign.Messenger) {
-				body, attachments = InlineMediaImages(body, attachments)
+			var mediaErr error
+			if email.IsMessengerName(msg.Campaign.Messenger) {
+				body, altBody, attachments, mediaErr = LinkMediaAttachments(
+					body, altBody, attachments, m.cfg.RootURL, msg.Campaign.ContentType == models.CampaignContentTypePlain)
 			}
 
 			out := models.Message{
@@ -1082,7 +1093,7 @@ func (m *Manager) worker() {
 				Subject:      msg.subject,
 				ContentType:  msg.Campaign.ContentType,
 				Body:         body,
-				AltBody:      msg.altBody,
+				AltBody:      altBody,
 				Customer:     msg.Customer,
 				Messenger:    msg.Campaign.Messenger,
 				UseSMTPFrom:  email.IsMessengerName(msg.Campaign.Messenger),
@@ -1151,10 +1162,10 @@ func (m *Manager) worker() {
 			// A platform-level public-pool recipient carries its assigned SMTP
 			// account; resolution goes through the organization pool path.
 			out.PoolSenderSMTPUUID = msg.PoolSenderSMTPUUID
-			var err error
+			err := mediaErr
 			if guard, ok := m.store.(interface {
 				ValidateCampaignReplyRoute(int, int64, string) error
-			}); ok {
+			}); ok && err == nil {
 				err = guard.ValidateCampaignReplyRoute(msg.Campaign.ID, msg.PoolContactID, replyTo)
 			}
 			if err == nil && msg.pipe != nil && msg.pipe.messenger != nil {

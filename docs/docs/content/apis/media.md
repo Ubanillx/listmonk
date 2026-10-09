@@ -1,5 +1,25 @@
 # API / Media
 
+Email delivery uses remote links for media-library files. HTML images retain an
+`<img src="https://your-domain/email-media/{token}/{filename}">` source and load
+when the recipient opens the message. Other files appear as download links;
+library files are no longer attached as binary or CID MIME parts. This applies
+to campaign tests, new sends, paused/deferred campaigns resumed after upgrade,
+and transactional template media. Previously delivered messages remain unchanged.
+
+`GET /email-media/{token}/{filename}` is a file-specific recipient capability:
+no login or public archive is required. Links are issued after sending-resource
+authorization, survive application restarts, and can be forwarded by recipients.
+They stop working when the media is deleted/replaced, pending transfer, moved to
+another owner/workspace, or its organization is archived. Folder visibility
+controls new sending authorization; it does not revoke an already delivered link.
+Authenticated library URLs and list APIs retain their existing permissions.
+
+Configure `app.root_url` with a publicly reachable HTTPS origin, route
+`/email-media/` through the reverse proxy, and retain the uploaded files. Some
+mail clients require the recipient to allow remote images. System data exports
+and raw one-off transactional API attachments retain their original behavior.
+
 Method | Endpoint                                             | Description
 -------|------------------------------------------------------|---------------------------------
 GET    | [/api/media/folders](#get-apimediafolders)           | Get visible media folders

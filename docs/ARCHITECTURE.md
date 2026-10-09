@@ -109,6 +109,10 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 
 ### 媒体逻辑文件夹（v6.37.0）
 
+活动富文本编辑器的本地图片（图片对话框上传、粘贴、拖入及图片编辑产生的 Blob）通过现有 `POST /api/media` 上传到当前工作区根目录，复用媒体维护权限及默认可见性。`RichtextEditor.vue` 在上传成功后返回带媒体 ID 的保护 URL，并经 `Editor.vue` 的 `media-selected` 事件关联活动媒体；预览、保存、测试发送、启动/排期及格式转换先调用 `prepareContent` 等待上传完成并同步正文，失败时保留图片、阻止后续动作。实际发送继续由 `internal/manager/inline_media.go` 将关联图片转换为 CID 内嵌 MIME，不向匿名访问者开放私有媒体。
+
+`CampaignPreview.vue` 通过带工作区的登录请求获取渲染结果，只对当前活动/所选模板已关联或表单明确选择的媒体读取二进制，将图片转换为预览专用 data URL 后放入 `sandbox="allow-scripts"` 的 `srcdoc`。ID 与文件名同时匹配媒体元数据，旧文件名链接也解析为已关联的精确 ID；未关联图片与外域 URL 不触发父页面的鉴权读取。文件接口继续执行媒体角色、工作区和派生关联校验，隔离窗口不取得登录 Cookie，保存正文仍保留保护 URL，纯文本预览保留转义显示。活动列表、编辑器、归档与模板预览共用此路径。
+
 媒体文件夹是工作区内的数据库逻辑容器，不改变 filesystem 或 S3 provider 中的对象名。这样历史邮件正文中的媒体 URL、缩略图和跨 provider 行为不受影响。`media.folder_id` 指向 `media_folders`；`NULL` 表示根目录，`parent_id` 只形成同一工作区的树。v6.51.0 增加独立 `visibility`：`private`（个人）只对当前工作区的创建者可见，`organization`（组织）对当前组织成员可见，`global`（全体）对所有登录用户跨工作区可见；平台管理员可在所选工作区审查个人目录。个人工作区不能选择组织权限。迁移将既有个人目录回填为 `private`、组织目录回填为 `organization`，重复执行保留显式权限。
 
 `internal/core/media_folder_permissions.go` 与 `media_folders.go` 对每个目录递归检查全部祖先的可见性及组织活动状态，目录内媒体的库查询、明细、保护 URL 和发送关联使用目录权限；根目录媒体保留原资源策略，不能直接设为全局。媒体 API 返回目录对应的有效 `visibility`，但不改变媒体所有权。目录改名、权限编辑、移动和删除只允许创建者或所选工作区的平台管理员，并继续要求 `media:manage`；目录上传和嵌套创建可由本工作区的可读目录成员执行，全体共享不会赋予其它工作区写入权。发送关联在锁定媒体行后以 `FOR SHARE` 锁定祖先目录并重验权限，权限修改和移动使用 `FOR UPDATE`。模板/活动的历史派生保护 URL 仅对根目录媒体生效，目录内媒体不能借关联绕过目录权限。

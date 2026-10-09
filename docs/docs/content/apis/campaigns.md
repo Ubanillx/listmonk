@@ -1,5 +1,9 @@
 # API / Campaigns
 
+### Images in the admin rich text editor
+
+Upload a local image in the image dialog, or paste/drag it into the editor. Local images are uploaded to the current workspace's media library and associated with the campaign automatically. Preview, save, test sending and starting/scheduling wait for uploads to finish; failed uploads keep the image in the editor and require a successful retry before continuing. Uploading requires media maintenance permission. Images selected from the media library reuse the existing media record. Referenced campaign images are sent as inline MIME parts so email recipients do not need access to the private media library.
+
 ## Public-pool reply email priority
 
 Create and update accept `pool_reply_priority`; responses and clones retain it. Allowed values:

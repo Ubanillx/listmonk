@@ -198,6 +198,7 @@
     "campaigns.editor.sourceCode": "源代码",
     "campaigns.editor.insertHTML": "插入 HTML",
     "campaigns.editor.imageNone": "无",
+    "campaigns.editor.imageUploadFailed": "图片尚未上传成功，请重试后再预览、保存或发送。",
     "campaigns.editor.imageFloatLeft": "左浮动",
     "campaigns.editor.imageFloatRight": "右浮动",
     "campaigns.contentHelp": "内容在这里",

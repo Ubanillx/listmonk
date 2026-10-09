@@ -9,17 +9,7 @@
         </div>
         <section expanded class="modal-card-body preview">
           <b-loading :active="isLoading" :is-full-page="false" />
-          <form v-if="isPost" method="post" :action="previewURL" target="iframe" ref="form">
-            <input v-if="templateId" type="hidden" name="template_id" :value="templateId" />
-            <input v-if="contentType" type="hidden" name="content_type" :value="contentType" />
-            <input v-if="templateType" type="hidden" name="template_type" :value="templateType" />
-            <input v-if="archiveMeta" type="hidden" name="archive_meta" :value="archiveMeta" />
-            <input v-if="autoTrackLinks !== null" type="hidden" name="auto_track_links" :value="autoTrackLinks" />
-            <input v-if="nameFallback" type="hidden" name="name_fallback" :value="JSON.stringify(nameFallback)" />
-            <input v-if="body" type="hidden" name="body" :value="body" />
-          </form>
-
-          <iframe id="iframe" name="iframe" ref="iframe" :title="title" :src="isPost ? 'about:blank' : previewURL"
+          <iframe id="iframe" name="iframe" ref="iframe" :title="title" :srcdoc="previewHTML"
             @load="onLoaded" sandbox="allow-scripts" />
         </section>
         <footer class="modal-card-foot has-text-right">
@@ -55,6 +45,7 @@ export default {
 
     nameFallback: { type: Object, default: null },
     body: { type: String, default: '' },
+    media: { type: Array, default: () => [] },
     contentType: { type: String, default: '' },
     templateId: { type: [Number, null], default: null },
     autoTrackLinks: { type: [Boolean, null], default: null },
@@ -65,7 +56,7 @@ export default {
     return {
       isVisible: true,
       isLoading: true,
-      formSubmitted: false,
+      previewHTML: null,
     };
   },
 
@@ -77,14 +68,40 @@ export default {
 
     // On iframe load, kill the spinner.
     onLoaded() {
-      if (!this.isPost) {
+      if (this.previewHTML !== null) {
         this.isLoading = false;
-        return;
       }
+    },
 
-      if (this.formSubmitted) {
-        this.isLoading = false;
-      }
+    async embedPreviewImages(html) {
+      const template = document.createElement('template');
+      template.innerHTML = html;
+      const sources = [...new Set(Array.from(template.content.querySelectorAll('img')).map((image) => image.getAttribute('src')).filter(Boolean))];
+      const embedded = new Map();
+      await Promise.all(sources.map(async (source) => {
+        const url = new URL(source, window.location.href);
+        if (url.origin !== window.location.origin || !/^\/(?:api\/media\/file|uploads)\//.test(url.pathname)) return;
+        const match = url.pathname.match(/^\/api\/media\/file\/(\d+)\/([^/]+)$/);
+        const filename = decodeURIComponent(url.pathname.split('/').pop());
+        const media = this.media.find((item) => item.id && item.filename === filename && (!match || Number(item.id) === Number(match[1])));
+        if (!media) return;
+        // Read protected files with the parent's authenticated workspace request.
+        // The sandbox receives only these authorized bytes, never a session cookie.
+        const blob = await this.$api.getMediaFile(`/api/media/file/${media.id}/${encodeURIComponent(media.filename)}`);
+        const dataURL = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(blob);
+        });
+        embedded.set(source, dataURL);
+      }));
+      return html.replace(/(<img\b[^>]*?\ssrc\s*=\s*)(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gi, (match, prefix, double, single, unquoted) => {
+        const decoder = document.createElement('template');
+        decoder.innerHTML = double ?? single ?? unquoted;
+        const source = decoder.content.textContent;
+        return embedded.has(source) ? `${prefix}"${embedded.get(source)}"` : match;
+      });
     },
   },
 
@@ -106,12 +123,30 @@ export default {
     },
   },
 
-  mounted() {
+  async mounted() {
+    let data = null;
     if (this.isPost) {
-      setTimeout(() => {
-        this.$refs.form.submit();
-        this.formSubmitted = true;
-      }, 100);
+      data = new URLSearchParams();
+      if (this.templateId) data.set('template_id', this.templateId);
+      if (this.contentType) data.set('content_type', this.contentType);
+      if (this.templateType) data.set('template_type', this.templateType);
+      if (this.archiveMeta) data.set('archive_meta', this.archiveMeta);
+      if (this.autoTrackLinks !== null) data.set('auto_track_links', this.autoTrackLinks);
+      if (this.nameFallback) data.set('name_fallback', JSON.stringify(this.nameFallback));
+      if (this.body) data.set('body', this.body);
+    }
+    try {
+      const response = await this.$api.renderPreview(this.previewURL, data);
+      let html = response.body;
+      if (response.contentType?.startsWith('text/plain')) {
+        const pre = document.createElement('pre');
+        pre.textContent = html;
+        html = pre.outerHTML;
+      }
+      this.previewHTML = await this.embedPreviewImages(html);
+    } catch (error) {
+      this.isLoading = false;
+      this.$utils.toast(this.$t('globals.messages.errorFetching', { name: this.$t('campaigns.preview'), error: error.toString() }), 'is-danger');
     }
   },
 };

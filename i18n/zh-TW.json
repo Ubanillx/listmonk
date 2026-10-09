@@ -1325,6 +1325,7 @@
     "campaigns.editor.sourceCode": "源代码",
     "campaigns.editor.insertHTML": "插入 HTML",
     "campaigns.editor.imageNone": "无",
+    "campaigns.editor.imageUploadFailed": "圖片尚未上傳成功，請重試後再預覽、儲存或傳送。",
     "campaigns.editor.imageFloatLeft": "左浮动",
     "campaigns.editor.imageFloatRight": "右浮动",
     "campaigns.templateAttachments": "邮件模板附件",

@@ -138,7 +138,7 @@ export default {
       const { lang } = this.serverConfig;
 
       this.richtextConf = {
-        init_instance_callback: () => { this.isReady = true; },
+        init_instance_callback: (editor) => { this.editor = editor; this.isReady = true; },
         urlconverter_callback: this.onEditorURLConvert,
 
         setup: (editor) => {
@@ -203,6 +203,9 @@ export default {
         language_url: LANGS[lang] ? `${uris.static}/tinymce/lang/${LANGS[lang]}.js` : null,
 
         image_advtab: true,
+        automatic_uploads: true,
+        paste_data_images: true,
+        images_upload_handler: this.uploadImage,
         image_class_list: [
           { title: this.$t('campaigns.editor.imageNone'), value: '' },
           { title: this.$t('campaigns.editor.imageFloatLeft'), value: 'img-float-left' },
@@ -217,6 +220,32 @@ export default {
       };
 
       this.isRichtextReady = true;
+    },
+
+    uploadImage(blobInfo, success, failure) {
+      const data = new FormData();
+      data.set('file', blobInfo.blob(), blobInfo.filename());
+      this.$api.uploadMedia(data).then((media) => {
+        this.$emit('media-selected', media);
+        success(media.url);
+      }).catch((error) => {
+        failure(error.response?.data?.message || this.$t('campaigns.editor.imageUploadFailed'));
+      });
+    },
+
+    async prepareContent() {
+      try {
+        if (!this.isReady) throw new Error('Editor is not ready');
+        const results = await this.editor.uploadImages();
+        const localImage = this.editor.getBody().querySelector('img[src^="blob:"], img[src^="data:"], img[src^="file:"]');
+        if (results.some((result) => !result.status) || localImage) throw new Error('Image upload is incomplete');
+        this.computedValue = this.editor.getContent();
+        await this.$nextTick();
+        return true;
+      } catch (error) {
+        this.$utils.toast(this.$t('campaigns.editor.imageUploadFailed'), 'is-danger');
+        return false;
+      }
     },
 
     onEditorURLConvert(url) {

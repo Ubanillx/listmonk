@@ -59,7 +59,7 @@
 
     <!-- wsywig //-->
     <richtext-editor v-if="self.contentType === 'richtext'" :disabled="disabled" v-model="self.body"
-      @media-selected="onMediaSelect" />
+      @media-selected="onMediaSelect" ref="richtextEditor" />
 
     <!-- visual editor //-->
     <!-- visual editor. The email builder has no read-only mode, so a viewer
@@ -83,7 +83,7 @@
     <!-- campaign preview //-->
     <campaign-preview v-if="isPreviewing" is-post @close="onTogglePreview" type="campaign" :id="id" :title="title"
       :content-type="self.contentType" :template-id="templateId" :body="self.body"
-      :auto-track-links="autoTrackLinks" />
+      :auto-track-links="autoTrackLinks" :media="previewMedia" />
   </section>
 </template>
 
@@ -115,6 +115,7 @@ export default {
     disabled: { type: Boolean, default: false },
     templates: { type: Array, default: null },
     autoTrackLinks: { type: Boolean, default: false },
+    media: { type: Array, default: () => [] },
 
     // value is provided by the parent component.
     // Throught the editor, `this.self` (a mutable clone of `value`) is used,
@@ -161,7 +162,11 @@ export default {
       );
     },
 
-    convertContentType(to, from) {
+    async convertContentType(to, from) {
+      if (!(await this.prepareContent())) {
+        this.contentTypeSel = from;
+        return;
+      }
       let body = this.self.body ?? '';
       let bodySource = null;
 
@@ -246,8 +251,17 @@ export default {
       }
     },
 
-    onTogglePreview() {
-      this.isPreviewing = !this.isPreviewing;
+    async prepareContent() {
+      if (this.$refs.richtextEditor) return this.$refs.richtextEditor.prepareContent();
+      return true;
+    },
+
+    async onTogglePreview() {
+      if (this.isPreviewing) {
+        this.isPreviewing = false;
+      } else if (await this.prepareContent()) {
+        this.isPreviewing = true;
+      }
     },
 
     onKeyboardShortcut(e) {
@@ -364,9 +378,7 @@ export default {
 
     window.addEventListener('keydown', this.onKeyboardShortcut);
 
-    this.$events.$on('campaign.preview', () => {
-      this.isPreviewing = true;
-    });
+    this.$events.$on('campaign.preview', this.onTogglePreview);
   },
 
   beforeDestroy() {
@@ -376,6 +388,11 @@ export default {
 
   computed: {
     ...mapState(['serverConfig', 'loading']),
+
+    previewMedia() {
+      const template = this.validTemplates.find((item) => item.id === this.templateId);
+      return [...this.media, ...(template?.media || [])];
+    },
 
     // This is a clone of the incoming `value` prop that's mutated here.
     self: {

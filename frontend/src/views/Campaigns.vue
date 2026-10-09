@@ -289,7 +289,7 @@
       </template>
     </b-table>
 
-    <campaign-preview v-if="previewItem" type="campaign" :id="previewItem.id" :title="previewItem.name"
+    <campaign-preview v-if="previewItem" type="campaign" :id="previewItem.id" :title="previewItem.name" :media="previewItem.media || []"
       @close="closePreview" />
 
     <b-modal scroll="keep" :aria-modal="true" :active.sync="isCloneFormVisible" :width="520">

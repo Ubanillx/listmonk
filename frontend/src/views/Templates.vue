@@ -126,7 +126,7 @@
     </b-modal>
 
     <campaign-preview v-if="previewItem" type="template" :id="previewItem.id" :template-type="previewItem.type"
-      :title="previewItem.name" @close="closePreview" />
+      :title="previewItem.name" :media="previewItem.media || []" @close="closePreview" />
 
     <b-modal scroll="keep" :aria-modal="true" :active.sync="isCloneFormVisible" :width="520">
       <div class="modal-card content" style="width: auto">

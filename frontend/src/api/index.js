@@ -54,6 +54,7 @@ http.interceptors.response.use((resp) => {
   // Binary downloads (for example audit CSV exports) must bypass the normal
   // { data: ... } API envelope and camel-case conversion.
   if (resp.config.responseType === 'blob' || resp.config.rawResponse) {
+    if (resp.config.includeHeaders) return { body: resp.data, contentType: resp.headers['content-type'] };
     return resp.data;
   }
 
@@ -727,6 +728,13 @@ export const uploadMedia = (data) => http.post(
   data,
   { loading: models.media },
 );
+
+export const getMediaFile = (url) => http.get(url, { responseType: 'blob' });
+
+export const renderPreview = (url, data = null) => {
+  const config = { responseType: 'text', rawResponse: true, includeHeaders: true };
+  return data ? http.post(url, data, config) : http.get(url, config);
+};
 
 export const deleteMedia = (id) => http.delete(
   `/api/media/${id}`,

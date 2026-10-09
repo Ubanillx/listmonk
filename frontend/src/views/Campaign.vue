@@ -303,7 +303,7 @@
 
       <b-tab-item :label="$t('campaigns.content')" icon="text" :disabled="isNew" value="content">
         <editor v-if="data.id" v-model="form.content" :id="data.id" :title="data.name" :disabled="!canEdit"
-          :templates="templates" :content-types="contentTypes" :auto-track-links="form.autoTrackLinks"
+          :templates="templates" :content-types="contentTypes" :auto-track-links="form.autoTrackLinks" :media="form.media" ref="contentEditor"
           @template-media="onTemplateMedia" @template-attachments="onTemplateAttachments"
           @media-selected="onMediaSelect" />
 
@@ -463,7 +463,7 @@
 
     <campaign-preview v-if="isPreviewingArchive" @close="onToggleArchivePreview" type="campaign" :id="data.id"
       :archive-meta="form.archiveMetaStr" :title="data.title" :content-type="data.contentType"
-      :template-id="form.archiveTemplateId" is-post is-archive />
+      :template-id="form.archiveTemplateId" :media="archivePreviewMedia" is-post is-archive />
   </section>
 </template>
 
@@ -821,7 +821,8 @@ export default Vue.extend({
       });
     },
 
-    sendTest() {
+    async sendTest() {
+      if (this.$refs.contentEditor && !(await this.$refs.contentEditor.prepareContent())) return false;
       const data = {
         id: this.data.id,
         name: this.form.name,
@@ -896,6 +897,7 @@ export default Vue.extend({
     },
 
     async updateCampaign(typ) {
+      if (this.$refs.contentEditor && !(await this.$refs.contentEditor.prepareContent())) return false;
       const data = {
         archive_slug: this.form.archiveSlug,
         name: this.form.name,
@@ -943,34 +945,32 @@ export default Vue.extend({
         delete data.smtp_pool_id;
         delete data.reply_mailbox_id;
       }
-      return new Promise((resolve) => {
-        this.$api.updateCampaign(this.data.id, data).then((d) => {
-          this.data = d;
-          if (d.messenger) {
-            this.form.messenger = d.messenger.startsWith('email-') ? 'email' : d.messenger;
-          }
-          this.form.archiveSlug = d.archiveSlug;
-          this.form.attribsStr = d.attribs ? JSON.stringify(d.attribs, null, 4) : '{}';
+      return this.$api.updateCampaign(this.data.id, data).then((d) => {
+        this.data = d;
+        if (d.messenger) {
+          this.form.messenger = d.messenger.startsWith('email-') ? 'email' : d.messenger;
+        }
+        this.form.archiveSlug = d.archiveSlug;
+        this.form.attribsStr = d.attribs ? JSON.stringify(d.attribs, null, 4) : '{}';
 
-          // The server may snapshot media when a visual template is imported
-          // (and clears the transient template_id). Sync the returned
-          // campaign state back into the form so a second save does not keep
-          // submitting the source template/media IDs or create orphan copies.
-          if (Array.isArray(d.media)) {
-            this.form.media = d.media.map((item) => ({
-              ...item,
-              ...(item.id || item.filename?.startsWith('❌ ') ? {} : { filename: `❌ ${item.filename}` }),
-            }));
-            this.isAttachFieldVisible = this.form.media.length > 0;
-          }
-          this.form.content.templateId = d.templateId || null;
-          this.form.content.body = d.body;
-          this.form.content.bodySource = d.bodySource;
+        // The server may snapshot media when a visual template is imported
+        // (and clears the transient template_id). Sync the returned
+        // campaign state back into the form so a second save does not keep
+        // submitting the source template/media IDs or create orphan copies.
+        if (Array.isArray(d.media)) {
+          this.form.media = d.media.map((item) => ({
+            ...item,
+            ...(item.id || item.filename?.startsWith('❌ ') ? {} : { filename: `❌ ${item.filename}` }),
+          }));
+          this.isAttachFieldVisible = this.form.media.length > 0;
+        }
+        this.form.content.templateId = d.templateId || null;
+        this.form.content.body = d.body;
+        this.form.content.bodySource = d.bodySource;
 
-          this.$utils.toast(this.$t(typMsg, { name: d.name }));
-          resolve();
-        });
-      });
+        this.$utils.toast(this.$t(typMsg, { name: d.name }));
+        return true;
+      }).catch(() => false);
     },
 
     onUpdateCampaignArchive() {
@@ -1014,7 +1014,8 @@ export default Vue.extend({
         null,
         () => {
           // First save the campaign.
-          this.updateCampaign().then(() => {
+          this.updateCampaign().then((saved) => {
+            if (!saved) return;
             // Then start/schedule it.
             let status = '';
             if (this.canStart) {
@@ -1128,6 +1129,10 @@ export default Vue.extend({
   },
 
   computed: {
+    archivePreviewMedia() {
+      const template = this.templates.find((item) => item.id === this.form.archiveTemplateId);
+      return [...this.form.media, ...(template?.media || [])];
+    },
     ...mapState(['serverConfig', 'loading', 'customer_lists', 'templates', 'workspace', 'profile']),
 
     canManage() {

@@ -110,7 +110,7 @@
       </div>
     </b-modal>
     <campaign-preview v-if="previewItem" is-post type="template" :title="previewItem.name"
-      :template-type="previewItem.type" :body="form.body" :name-fallback="fallbackPayload" @close="onTogglePreview" />
+      :template-type="previewItem.type" :body="form.body" :name-fallback="fallbackPayload" :media="form.media" @close="onTogglePreview" />
   </section>
 </template>
 

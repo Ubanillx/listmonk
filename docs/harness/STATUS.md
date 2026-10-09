@@ -2,6 +2,8 @@
 
 快照日期：2026-10-09
 
+- 活动富文本图片上传与预览修复（2026-10-09）：TinyMCE 5 本地上传、粘贴/拖入及图片编辑生成的图片复用媒体上传 API，上传成功后关联活动媒体；预览、保存、格式转换、测试发送及启动/排期等待上传并同步正文，失败保留图片且阻止后续请求。共用预览组件改为登录/工作区请求获取渲染内容，仅读取已关联或明确选中的媒体，以 ID/文件名匹配后在隔离 `srcdoc` 中嵌入 data URL，避免沙箱图片请求丢失登录 Cookie；未关联私有图片不触发父页面鉴权读取，正文保存和实际 CID/MIME 发送策略不变，纯文本保持转义。验证：前端 lint/生产构建、隔离 Cypress 图片 5/5（直接上传、粘贴、慢上传保存、刷新、真实图片加载、本地 SMTP 两张 CID 内嵌图片、媒体库可见、上传失败阻止/重试、纯文本、未关联私有图片及未保存预览），活动配置与客户列表回归各 1/1，manager/email Go 测试、三语言 JSON 及 diff 检查通过。开发前端资源已重建，后端已重启，9173 返回 200，无待升级；启动仅有此前记录的事务模板 3 `RootURL` 编译错误。来源：`frontend/src/components/{RichtextEditor,Editor,CampaignPreview}.vue`、`frontend/src/api/index.js`、`frontend/src/views/{Campaign,Campaigns,TemplateForm,Templates}.vue`、`frontend/cypress/e2e/campaign-inline-images.cy.js`、`i18n/{en,zh-CN,zh-TW}.json`。
+
 - 营销活动客户列表类型标识（2026-10-09）：活动列表的列名统一为“客户列表”，同时展示接口返回的私域列表与公海受众，名称旁分别标记“私有”和“公海”；同一公海的多组织分配按公海 ID 合并，链接分别进入私域客户和公海联系人页面，已删除私域列表保留历史名称且不生成无效链接。复用现有三语言文案，不改变 API 或权限。验证：前端 lint/生产构建、隔离 Cypress 1/1（私域、公海、多分配去重、混合受众、缺失名称、历史列表、空受众、390px 布局）、桌面截图及 diff 检查通过；开发后端已重启，9173 返回 200、无待升级，启动仅有此前已记录的事务模板 3 `RootURL` 编译错误。来源：`frontend/src/views/Campaigns.vue`、`frontend/src/assets/styles/views/_campaign.scss`、`frontend/cypress/e2e/campaign-audience-labels.cy.js`。
 
 - 公海多邮箱导入（2026-10-08）：统一 CSV/XLSX 公海导入在解析层拆分 `email` 单元格中的分号、逗号、换行、斜线、竖线及备注文本；每个地址复用源行的客户编号、姓名、分配部门和回信邮箱。保留无法解析的完整片段，让核心校验按原始行号报告 `invalid_email`；扩展后联系人总数仍受 100000 上限约束，结果标签按联系人记录数显示。含“部门”和“分配部门”的模板自动优先后者。验证：全量 Go 测试、CSV/XLSX 解析与展开上限回归、前端 lint/生产构建、隔离 Cypress 多邮箱导入 1/1（实际创建、字段复用、重复重导入、坏地址、黑名单和结果总数标签）、三语言 JSON/键集、文档链接及 diff 检查通过。开发后端已重启，9173 返回 200、无待升级；仅保留此前已记录的事务模板 3 `RootURL` 编译错误。来源：`cmd/pools.go`、`cmd/pool_import_test.go`、`frontend/src/views/Import.vue`、`i18n/{en,zh-CN,zh-TW}.json`、`frontend/cypress/e2e/pool-multi-email-import.cy.js`。

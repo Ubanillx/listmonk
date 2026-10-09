@@ -199,6 +199,7 @@
     "campaigns.editor.sourceCode": "Source code",
     "campaigns.editor.insertHTML": "Insert HTML",
     "campaigns.editor.imageNone": "None",
+    "campaigns.editor.imageUploadFailed": "The image could not be uploaded. Retry before previewing, saving, or sending.",
     "campaigns.editor.imageFloatLeft": "Float left",
     "campaigns.editor.imageFloatRight": "Float right",
     "campaigns.contentHelp": "Content here",

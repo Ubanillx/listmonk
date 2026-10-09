@@ -81,6 +81,9 @@ When `customer_list_ids` contains exactly one first-level public-pool list
 CSV sheet or XLSX worksheet must provide customer code, name, email, and
 allocation department. The Chinese headers in the supplied workbook—`客户编号`
 (`客户编码` is also accepted), `姓名`, `邮箱`, and `分配部门`—are recognized;
+the name column is required, but its values may be empty or whitespace-only and
+are stored as empty strings. Customer code, email, and allocation department
+values remain required in both subscribe and blocklist modes.
 An optional `reply_to` column (aliases `回信邮箱`, `回件邮箱`, `回复邮箱`, `reply-to`, `reply_email`) supplies the customer-specific Reply-To address; other extra columns are ignored. The allocation department must match an
 active organization name in the system; an unknown or archived department is
 reported as an invalid row and is not written to the pool. A valid department

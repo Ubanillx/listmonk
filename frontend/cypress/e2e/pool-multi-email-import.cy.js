@@ -16,10 +16,11 @@ describe('Public pool multi-email import', () => {
     cy.get('[data-cy=import-tab-pool]').click();
     const fileContent = '客户编号,姓名,邮箱,部门,分配部门,回信邮箱\n'
       + 'C-001,Contact,"one@example.com;two@example.com\r\none@example.com",Source department,Multi email department,replies@example.com\n'
-      + 'C-002,Second,"bad,email@example.com;three@example.com",Source department,Multi email department,second-reply@example.com\n';
+      + 'C-002,   ,"bad,email@example.com;three@example.com",Source department,Multi email department,second-reply@example.com\n';
     const upload = () => cy.get('input[type=file]').attachFile({ fileContent, fileName: 'multi-email.csv', mimeType: 'text/csv' });
     upload();
     cy.get('.preview-table').should('be.visible');
+    cy.contains('.help', 'The name column is required; its values may be blank.').should('be.visible');
     cy.get('[data-cy=import-map-allocation-department]').should('have.value', '分配部门');
     cy.get('.customer_list-selector input').type('Multi email pool');
     cy.contains('.customer_list-selector .autocomplete a', 'Multi email pool').click();
@@ -39,7 +40,7 @@ describe('Public pool multi-email import', () => {
         });
       });
       expect(body.data.results.find((row) => row.email === 'three@example.com')).to.include({
-        customer_code: 'C-002', name: 'Second', allocation_department: 'Multi email department', reply_to: 'second-reply@example.com',
+        customer_code: 'C-002', name: '', allocation_department: 'Multi email department', reply_to: 'second-reply@example.com',
       });
     });
     upload();

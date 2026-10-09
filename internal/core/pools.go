@@ -836,11 +836,6 @@ func (c *Core) ImportPoolContacts(poolID, userID int, rows []models.PoolContactI
 			issue.Reason = "customer_code_required"
 			addIssue(issue)
 			continue
-		case name == "":
-			result.Invalid++
-			issue.Reason = "name_required"
-			addIssue(issue)
-			continue
 		case email == "":
 			result.Invalid++
 			issue.Reason = "email_required"

@@ -89,7 +89,7 @@
               </b-field>
             </div>
             <div class="column">
-              <b-field :label="$t('import.mapNameField')" :message="poolImport ? $t('import.poolRequiredFieldHelp') : ''">
+              <b-field :label="$t('import.mapNameField')" :message="poolImport ? $t('import.poolNameFieldHelp') : ''">
                 <b-select v-model="form.fieldMap.name" expanded>
                   <option value="">{{ $t('globals.terms.none') }}</option>
                   <option v-for="col in preview.columns" :key="`name-${col.value}`" :value="col.value">

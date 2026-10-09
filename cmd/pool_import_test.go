@@ -237,7 +237,7 @@ func TestParsePoolContactImportFileExpandsEmails(t *testing.T) {
 		{"客户编号", "姓名", "邮箱", "部门", "分配部门", "回信邮箱"},
 		{"C-001", "Contact", "one@example.com;two@example.com\r\n|three@example.com", "Source department", "Sales", "reply@example.com"},
 		{},
-		{"C-002", "Second", "lucas,alves@example.com;valid@example.com", "Source department", "Sales", "second-reply@example.com"},
+		{"C-002", " \t ", "lucas,alves@example.com;valid@example.com", "Source department", "Sales", "second-reply@example.com"},
 	}
 	var csvContent bytes.Buffer
 	writer := csv.NewWriter(&csvContent)
@@ -281,7 +281,7 @@ func TestParsePoolContactImportFileExpandsEmails(t *testing.T) {
 				if strings.HasSuffix(tc.filename, ".xlsx") {
 					wantSourceRow = 4
 				}
-				if i >= 3 && (row.Row != wantSourceRow || row.CustomerCode != "C-002" || row.Name != "Second" || row.ReplyTo != "second-reply@example.com") {
+				if i >= 3 && (row.Row != wantSourceRow || row.CustomerCode != "C-002" || row.Name != "" || row.ReplyTo != "second-reply@example.com") {
 					t.Fatalf("second source row's fields were not reused: %#v", row)
 				}
 			}

@@ -12,6 +12,71 @@ func TestNormalizePoolAllocationDepartment(t *testing.T) {
 	}
 }
 
+func TestPoolImportAllowsEmptyNames(t *testing.T) {
+	for _, mode := range []struct {
+		name      string
+		blocklist bool
+		status    string
+	}{
+		{"subscribe", false, "active"},
+		{"blocklist", true, "blocklisted"},
+	} {
+		t.Run(mode.name, func(t *testing.T) {
+			env := newPoolRecipientsTestEnvWithDDL(t, poolRecipientsTestDDL+`
+				ALTER TABLE pool_contacts ADD COLUMN allocation_department TEXT NOT NULL DEFAULT '';
+				CREATE TABLE pool_merge_conflicts (
+					pool_id INTEGER, contact_id BIGINT, customer_code TEXT,
+					existing_snapshot JSONB, incoming_snapshot JSONB, created_by_user_id INTEGER
+				);`)
+			org := env.seedOrganization("Import department")
+			pool := env.seedPool("Empty names")
+			allocation := env.seedAllocation(pool, org)
+			rows := []models.PoolContactImportRow{
+				{Row: 2, CustomerCode: "EMPTY", Email: "empty@example.com", AllocationDepartment: "Import department"},
+				{Row: 3, CustomerCode: "EMPTY", Name: " \t ", Email: "EMPTY@example.com", AllocationDepartment: "Import department"},
+				{Row: 4, CustomerCode: "SPACE", Name: " \t ", Email: "space@example.com", AllocationDepartment: "Import department"},
+				{Row: 5, Email: "code@example.com", AllocationDepartment: "Import department"},
+				{Row: 6, CustomerCode: "BAD-EMAIL", Email: "invalid", AllocationDepartment: "Import department"},
+				{Row: 7, CustomerCode: "BAD-DEPT", Email: "department@example.com", AllocationDepartment: "Unknown department"},
+			}
+			result, err := env.core.ImportPoolContacts(pool, 1, rows, mode.blocklist)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Total != 6 || result.Created != 2 || result.Valid != 2 || result.Invalid != 3 || result.Duplicates != 1 {
+				t.Fatalf("unexpected import result: %+v", result)
+			}
+			for i, reason := range []string{"customer_code_required", "invalid_email", "allocation_department_not_found"} {
+				if len(result.Issues) != 3 || result.Issues[i].Row != i+5 || result.Issues[i].Reason != reason {
+					t.Fatalf("unexpected validation issues: %+v", result.Issues)
+				}
+			}
+			if got := env.countRows(`SELECT COUNT(*) FROM pool_contacts WHERE name='' AND status=$1`, mode.status); got != 2 {
+				t.Fatalf("contacts with empty names = %d, want 2", got)
+			}
+			if got := env.countRows(`SELECT COUNT(*) FROM org_pool_allocation_members WHERE allocation_id=$1`, allocation); got != 2 {
+				t.Fatalf("allocated contacts = %d, want 2", got)
+			}
+			result, err = env.core.ImportPoolContacts(pool, 1, rows[:3], mode.blocklist)
+			if err != nil || result.Created != 0 || result.Existing != 2 || result.Invalid != 0 || result.Duplicates != 1 {
+				t.Fatalf("reimport with empty names: %+v, %v", result, err)
+			}
+			if mode.blocklist && result.Blocklisted != 2 {
+				t.Fatalf("blocklisted contacts = %d, want 2", result.Blocklisted)
+			}
+			// An empty name remains part of the identity, rather than matching any name.
+			rows[0].Name = "Named contact"
+			result, err = env.core.ImportPoolContacts(pool, 1, rows[:1], mode.blocklist)
+			if err != nil || result.Created != 1 || result.Conflicts != 1 || result.Existing != 0 {
+				t.Fatalf("same code with a different name: %+v, %v", result, err)
+			}
+			if got := env.countRows(`SELECT COUNT(*) FROM pool_contacts WHERE name=''`); got != 2 {
+				t.Fatalf("original empty names changed: %d contacts, want 2", got)
+			}
+		})
+	}
+}
+
 func TestPoolBlocklistImportPreservesSuppressionAndRecipientBoundaries(t *testing.T) {
 	env := newPoolRecipientsTestEnvWithDDL(t, poolRecipientsTestDDL+`
 		ALTER TABLE pool_contacts ADD COLUMN allocation_department TEXT NOT NULL DEFAULT '';

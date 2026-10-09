@@ -12,6 +12,8 @@
 
 ## 公海客户回信地址与活动优先级（v6.55.0）
 
+公海 CSV/XLSX 导入仍需映射姓名列，但姓名内容允许为空或仅含空白，规范化后保存为空字符串。普通导入与黑名单导入遵守同一规则；客户编号、邮箱、分配部门仍必填，姓名仍参与身份比较和重复记录判定。来源：`cmd/pools.go::parsePoolContactImportRows`、`internal/core/pools.go::ImportPoolContacts`、`internal/core/pools_import_test.go`。
+
 统一导入支持可选 `reply_to`/“回信邮箱”，该字段必须是单个邮箱地址；公海导入的 `email` 单元格可以包含多个地址，解析器会提取地址并为每个地址复用同一行的客户编号、姓名、分配部门和回信邮箱。四列旧模板仍可导入。同身份重导入更新或清空地址而不重复创建。组织邮箱配置需 `mailboxes:manage` 与组织管理边界，联系人导入需 `pools:master_manage`。导入地址只控制 Reply-To，不创建邮箱、不保存凭据、不授予收信能力。
 
 迁移 `internal/migrations/v6.55.0.go` 保留历史路由地址，重复运行不覆盖已有来源；`schema.sql`、安装示例、创建/更新/克隆及前端请求同步支持优先级。来源：`models/{pools,campaigns}.go`、`internal/core/{pools,pool_reply_routes,pools_tx}.go`、`queries/campaigns.sql`、`cmd/{pools,campaigns,manager_store,install}.go`、`internal/manager/manager.go`、`frontend/src/views/{Import,Customers,PoolContactForm,Campaign}.vue`。

@@ -76,6 +76,9 @@ Key endpoints:
   sheet or XLSX worksheet must map `customer_code`, `name`, `email` and
   `allocation_department`. Chinese template headers `客户编号`/`客户编码`,
   `姓名`, `邮箱`, `分配部门` are recognized; optional `回信邮箱`/`reply_to` is supported and other columns are ignored.
+  The name column is required, but name values may be empty or whitespace-only;
+  they are stored as empty strings. This applies to both normal and blocklist
+  imports. Customer code, email, and allocation department values remain required.
   Requires `pools:master_manage`. `分配部门` must match an
   active `organizations.name`; unknown or archived departments are rejected
   row-by-row and are not written. A valid value is stored on the pool contact

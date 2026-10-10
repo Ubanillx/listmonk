@@ -2251,7 +2251,10 @@
 <h4 id="post-apiimportcustomers">POST /api/import/customers<a class="headerlink" href="#post-apiimportcustomers" title="Permanent link">&para;</a></h4>
 <p>Send a CSV / XLSX (optionally ZIP compressed CSV) file to import customers. Use a multipart form POST. The selected list type determines the import branch.</p>
 <p>CSV files use commas. Supported fields are email, name, and customer_code.
-Subscription imports require customer_code. Only these supported fields are imported.</p>
+Subscription imports require the customer_code column, but its values may be
+empty or whitespace-only. New customers store an empty code; reimporting an
+existing private customer with an empty code preserves its existing code.
+Only these supported fields are imported.</p>
 <p>The admin private-customer import form always overwrites existing customer
 information and subscription status. It defaults to confirmed subscriptions.
 The status selector is shown only when at least one selected private-customer
@@ -2264,9 +2267,11 @@ the defaults or optional overwrite parameters for direct API requests.</p>
 CSV sheet or XLSX worksheet must provide customer code, name, email, and
 allocation department. The Chinese headers in the supplied workbook—<code>客户编号</code>
 (<code>客户编码</code> is also accepted), <code>姓名</code>, <code>邮箱</code>, and <code>分配部门</code>—are recognized;
-the name column is required, but its values may be empty or whitespace-only and
-are stored as empty strings. Customer code, email, and allocation department
-values remain required in both subscribe and blocklist modes.
+the customer code and name columns are required, but their values may be empty
+or whitespace-only and are stored as empty strings. Email and allocation
+department values remain required in both subscribe and blocklist modes.
+Empty codes remain part of the full contact identity used for deduplication;
+distinct contacts with empty codes do not generate customer-code conflicts.
 An optional <code>reply_to</code> column (aliases <code>回信邮箱</code>, <code>回件邮箱</code>, <code>回复邮箱</code>, <code>reply-to</code>, <code>reply_email</code>) supplies the customer-specific Reply-To address; other extra columns are ignored. The allocation department must match an
 active organization name in the system; an unknown or archived department is
 reported as an invalid row and is not written to the pool. A valid department

@@ -406,6 +406,8 @@
       
         
       
+        
+      
     
     
     
@@ -718,6 +720,34 @@
     
   
     Business permissions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../exports/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Excel exports
   
 
     
@@ -2994,7 +3024,7 @@ organization delivery permissions are stored separately.</p>
 <tr>
 <td style="text-align: left;">GET</td>
 <td style="text-align: left;"><a href="#get-apicustomer-listscustomer_list_idpool-contactsexport">/api/customer-lists/{customer_list_id}/pool-contacts/export</a></td>
-<td style="text-align: left;">Export pool contacts as CSV.</td>
+<td style="text-align: left;">Export pool contacts as Excel.</td>
 </tr>
 <tr>
 <td style="text-align: left;">GET</td>
@@ -3590,7 +3620,7 @@ boundaries, and transaction behavior match single-list deletion above.</p>
 </code></pre></div>
 <hr />
 <h4 id="get-apicustomer-listscustomer_list_idpool-contactsexport">GET /api/customer-lists/{customer_list_id}/pool-contacts/export<a class="headerlink" href="#get-apicustomer-listscustomer_list_idpool-contactsexport" title="Permanent link">&para;</a></h4>
-<p>Stream the filtered pool contacts as CSV, in the same order as the listing and independent of pagination. Non-platform-administrators may only export pools granted to the active organization and always receive masked e-mail addresses.</p>
+<p>Download the filtered pool contacts as Excel, in the same order as the listing and independent of pagination. Non-platform-administrators may only export pools granted to the active organization and always receive masked e-mail addresses. <code>lang</code> or <code>X-Listmonk-Language</code> selects workbook headings and statuses.</p>
 <blockquote>
 <p><strong>Note:</strong> Requires the <code>pools:export</code> permission and the <code>customer_lists:read</code> API-key scope. Accepts the same <code>search</code>, <code>customer_code</code>, <code>order_by</code>, and <code>order</code> filters as the listing.</p>
 </blockquote>
@@ -3632,9 +3662,9 @@ boundaries, and transaction behavior match single-list deletion above.</p>
 </tbody>
 </table>
 <h5 id="example-request_7">Example Request<a class="headerlink" href="#example-request_7" title="Permanent link">&para;</a></h5>
-<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s2">"api_user:token"</span><span class="w"> </span>-X<span class="w"> </span>GET<span class="w"> </span><span class="s1">'http://localhost:9000/api/customer-lists/5/pool-contacts/export?search=A100'</span><span class="w"> </span>-o<span class="w"> </span>pool-contacts.csv
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s2">"api_user:token"</span><span class="w"> </span>-X<span class="w"> </span>GET<span class="w"> </span><span class="s1">'http://localhost:9000/api/customer-lists/5/pool-contacts/export?search=A100&amp;lang=en'</span><span class="w"> </span>-o<span class="w"> </span>pool-contacts.xlsx
 </code></pre></div>
-<p>The response is <code>text/csv</code> with the columns <code>customer_code</code>, <code>name</code>, <code>email</code>, <code>allocation_department</code>, <code>status</code>, <code>created_at</code>, <code>updated_at</code>.</p>
+<p>The response is an XLSX attachment with translated columns for customer code, name, email, reply-to email, allocation department, customer status, allocation status, removal reason and UTC creation/update time. Customer status and removal from the current allocation are separate fields. See <a href="../../exports/">Excel exports</a>.</p>
 <hr />
 <h4 id="get-apicustomer-listscustomer_list_idorg-pool-allocations">GET /api/customer-lists/{customer_list_id}/org-pool-allocations<a class="headerlink" href="#get-apicustomer-listscustomer_list_idorg-pool-allocations" title="Permanent link">&para;</a></h4>
 <p>Retrieve the organization allocations bound to a <code>pool</code> customer_list. This is a compatibility alias of <code>GET /api/pools/:id/allocations</code>; see <a href="../pools/">Public pools</a>.</p>

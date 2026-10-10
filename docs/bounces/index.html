@@ -408,6 +408,8 @@
       
         
       
+        
+      
     
     
     
@@ -704,10 +706,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#exporting-bounces" class="md-nav__link">
+  <a href="#reading-bounce-data" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Exporting bounces
+        Reading bounce data
       
     </span>
   </a>
@@ -906,6 +908,34 @@
     
   
     Business permissions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../exports/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Excel exports
   
 
     
@@ -1984,10 +2014,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#exporting-bounces" class="md-nav__link">
+  <a href="#reading-bounce-data" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Exporting bounces
+        Reading bounce data
       
     </span>
   </a>
@@ -2237,8 +2267,8 @@
 </li>
 <li>You can optionally <a href="https://docs.aws.amazon.com/ses/latest/dg/monitor-sending-activity-using-notifications-email.html#monitor-sending-activity-using-notifications-email-disabling">disable email feedback forwarding</a>.</li>
 </ol>
-<h2 id="exporting-bounces">Exporting bounces<a class="headerlink" href="#exporting-bounces" title="Permanent link">&para;</a></h2>
-<p>Bounces can be exported via the JSON API:
+<h2 id="reading-bounce-data">Reading bounce data<a class="headerlink" href="#reading-bounce-data" title="Permanent link">&para;</a></h2>
+<p>Bounce records can be retrieved through the JSON list API (this is not a downloadable report):
 <div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'username:passsword'</span><span class="w"> </span><span class="s1">'http://localhost:9000/api/bounces'</span>
 </code></pre></div></p>
 <p>Or by querying the database directly:

@@ -406,6 +406,8 @@
       
         
       
+        
+      
     
     
     
@@ -718,6 +720,34 @@
     
   
     Business permissions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../exports/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Excel exports
   
 
     
@@ -3721,7 +3751,7 @@ authentication and request conventions.</p>
 <tr>
 <td>GET</td>
 <td><a href="#get-apicustomersexport">/api/customers/export</a></td>
-<td>Export all customers as a CSV stream.</td>
+<td>Export customers as an Excel workbook.</td>
 </tr>
 <tr>
 <td>GET</td>
@@ -4062,7 +4092,7 @@ authentication and request conventions.</p>
 </blockquote>
 <hr />
 <h4 id="get-apicustomerscustomer_idexport">GET /api/customers/{customer_id}/export<a class="headerlink" href="#get-apicustomerscustomer_idexport" title="Permanent link">&para;</a></h4>
-<p>Export a specific customer data that gives profile, customer_list subscriptions, campaign views and link clicks information. Names of private customer_lists are replaced with "Private customer_list".</p>
+<p>Download <code>customer-data.xlsx</code> containing separate profile, subscription, campaign-open and link-click worksheets. Only categories enabled in <code>privacy.exportable</code> are included. Private list names use a translated generic label. The export retains the caller's ownership, workspace and sensitive-field restrictions. Pass <code>lang</code> or <code>X-Listmonk-Language</code> to select translated headers; see <a href="../../exports/">Excel exports</a>.</p>
 <h5 id="parameters_2">Parameters<a class="headerlink" href="#parameters_2" title="Permanent link">&para;</a></h5>
 <table>
 <thead>
@@ -4083,41 +4113,14 @@ authentication and request conventions.</p>
 </tbody>
 </table>
 <h5 id="example-request_3">Example Request<a class="headerlink" href="#example-request_3" title="Permanent link">&para;</a></h5>
-<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span><span class="s1">'http://localhost:9000/api/customers/1/export'</span>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span><span class="s1">'http://localhost:9000/api/customers/1/export?lang=en'</span><span class="w"> </span>-o<span class="w"> </span>customer-data.xlsx
 </code></pre></div>
 <h5 id="example-response_3">Example Response<a class="headerlink" href="#example-response_3" title="Permanent link">&para;</a></h5>
-<div class="highlight"><pre><span></span><code><span class="p">{</span>
-<span class="w">  </span><span class="nt">"profile"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">    </span><span class="p">{</span>
-<span class="w">      </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">"uuid"</span><span class="p">:</span><span class="w"> </span><span class="s2">"c2cc0b31-b485-4d72-8ce8-b47081beadec"</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">"email"</span><span class="p">:</span><span class="w"> </span><span class="s2">"john@example.com"</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"John Doe"</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">"attribs"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="nt">"city"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Bengaluru"</span><span class="p">,</span>
-<span class="w">        </span><span class="nt">"good"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
-<span class="w">        </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"known"</span>
-<span class="w">      </span><span class="p">},</span>
-<span class="w">      </span><span class="nt">"status"</span><span class="p">:</span><span class="w"> </span><span class="s2">"enabled"</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">"created_at"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2024-07-29T11:01:31.478677+05:30"</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">"updated_at"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2024-07-29T11:01:31.478677+05:30"</span>
-<span class="w">    </span><span class="p">}</span>
-<span class="w">  </span><span class="p">],</span>
-<span class="w">  </span><span class="nt">"subscriptions"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">    </span><span class="p">{</span>
-<span class="w">      </span><span class="nt">"subscription_status"</span><span class="p">:</span><span class="w"> </span><span class="s2">"unconfirmed"</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Private customer_list"</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"private"</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">"created_at"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2024-07-29T11:01:31.478677+05:30"</span>
-<span class="w">    </span><span class="p">}</span>
-<span class="w">  </span><span class="p">],</span>
-<span class="w">  </span><span class="nt">"campaign_views"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-<span class="w">  </span><span class="nt">"link_clicks"</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span>
-<span class="p">}</span>
-</code></pre></div>
+<p>A binary XLSX attachment with content type
+<code>application/vnd.openxmlformats-officedocument.spreadsheetml.sheet</code>.</p>
 <hr />
 <h4 id="get-apicustomersexport">GET /api/customers/export<a class="headerlink" href="#get-apicustomersexport" title="Permanent link">&para;</a></h4>
-<p>Export customers as a gzipped CSV stream (<code>Content-Type: text/csv</code>, attachment <code>customers.csv</code>). The exported columns are <code>uuid</code>, <code>email</code>, <code>name</code>, <code>customer_code</code>, <code>attributes</code>, <code>status</code>, <code>created_at</code> and <code>updated_at</code>.</p>
+<p>Download <code>customers.xlsx</code>. Columns start with customer code, name, permitted email, customer status and UTC creation/update times. Permitted custom fields use their configured labels in separate columns; remaining attributes and UUID follow. Headers and statuses use <code>lang</code> / <code>X-Listmonk-Language</code>, with application-language and English translation fallback. The response uses the XLSX content type above. See <a href="../../exports/">Excel exports</a> for formatting, cell limits and continuation sheets.</p>
 <h5 id="query-parameters_1">Query parameters<a class="headerlink" href="#query-parameters_1" title="Permanent link">&para;</a></h5>
 <table>
 <thead>
@@ -4153,18 +4156,22 @@ authentication and request conventions.</p>
 <td style="text-align: left;"></td>
 <td style="text-align: left;">Match customer code, name or e-mail address.</td>
 </tr>
+<tr>
+<td style="text-align: left;">lang</td>
+<td style="text-align: left;">string</td>
+<td style="text-align: left;"></td>
+<td style="text-align: left;">Installed language code for workbook headers and status labels.</td>
+</tr>
 </tbody>
 </table>
 <p>Without <code>id</code>, all customers the caller manages in the active workspace are exported.</p>
 <h5 id="example-request_4">Example Request<a class="headerlink" href="#example-request_4" title="Permanent link">&para;</a></h5>
-<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span><span class="s1">'http://localhost:9000/api/customers/export?subscription_status=confirmed'</span>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span><span class="s1">'http://localhost:9000/api/customers/export?customer_list_id=1&amp;subscription_status=confirmed&amp;lang=en'</span><span class="w"> </span>-o<span class="w"> </span>customers.xlsx
 </code></pre></div>
 <h5 id="example-response_4">Example Response<a class="headerlink" href="#example-response_4" title="Permanent link">&para;</a></h5>
-<div class="highlight"><pre><span></span><code>uuid,email,name,customer_code,attributes,status,created_at,updated_at
-ea06b2e7-4b08-4697-bcfc-2a5c6dde8f1c,john@example.com,John Doe,CUST-001,"{""city"":""Bengaluru""}",enabled,2024-07-29 11:01:31.478677 +0530 IST,2024-07-29 11:01:31.478677 +0530 IST
-</code></pre></div>
+<p>A binary Excel workbook with frozen headers and filterable data tables.</p>
 <blockquote>
-<p><strong>Note:</strong> Requires the <code>customers:export</code> grant (not required for organization managers) as well as <code>customers:get_all</code> or <code>customers:get</code>. When the export is scoped to customer lists with e-mail masking enabled and the caller cannot manage those lists, e-mail addresses are masked. When the request targets individual customers through <code>id</code>, every id is additionally checked with <code>requireExportableWorkspaceCustomer</code> → <code>RequireManageResource</code>, so a caller with read-only rights receives HTTP 403 when passing <code>id</code>. The retired <code>query</code> SQL parameter returns HTTP 400.</p>
+<p><strong>Note:</strong> Requires <code>customers:export</code> and <code>customers:get_all</code> or <code>customers:get</code>, including for organization managers. Without <code>customers:sensitive_read</code>, UUID and attributes are omitted; email is masked for masked-list exports and otherwise omitted. Every selected <code>id</code> is additionally checked with <code>requireExportableWorkspaceCustomer</code> → <code>RequireManageResource</code>; read-only callers cannot export another owner's records. The retired <code>query</code> SQL parameter returns HTTP 400.</p>
 </blockquote>
 <hr />
 <h4 id="get-apicustomerscustomer_idbounces">GET /api/customers/{customer_id}/bounces<a class="headerlink" href="#get-apicustomerscustomer_idbounces" title="Permanent link">&para;</a></h4>

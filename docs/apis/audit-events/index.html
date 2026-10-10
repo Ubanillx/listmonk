@@ -406,6 +406,8 @@
       
         
       
+        
+      
     
     
     
@@ -718,6 +720,34 @@
     
   
     Business permissions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../exports/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Excel exports
   
 
     
@@ -2109,7 +2139,7 @@ described in the <a href="../apis/">API introduction</a>.</p>
 <tr>
 <td style="text-align: left;">GET</td>
 <td style="text-align: left;"><a href="#get-apiaudit-eventsexport">/api/audit-events/export</a></td>
-<td style="text-align: left;">Export matching audit events as a CSV stream.</td>
+<td style="text-align: left;">Export matching audit events as Excel.</td>
 </tr>
 <tr>
 <td style="text-align: left;">GET</td>
@@ -2313,13 +2343,13 @@ id DESC</code>). The response is the standard paginated envelope: <code>data.res
 </code></pre></div>
 <hr />
 <h4 id="get-apiaudit-eventsexport">GET /api/audit-events/export<a class="headerlink" href="#get-apiaudit-eventsexport" title="Permanent link">&para;</a></h4>
-<p>Streams a CSV export of the workspace's audit events. Unlike the list
+<p>Downloads an Excel workbook of the workspace's audit events. Unlike the list
 endpoint, the export ignores <code>page</code> and <code>per_page</code> and writes every matching
 row in one response, newest first. The <code>action</code>, <code>result</code>, <code>object_type</code>, and
 <code>object_id</code> filters of the list endpoint apply to both export scopes.</p>
-<p>The response has <code>Content-Type: text/csv; charset=utf-8</code>, a
+<p>The response has <code>Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet</code>, a
 <code>Content-Disposition</code> attachment filename of
-<code>audit-events-&lt;scope&gt;-&lt;YYYYMMDD-HHMMSS&gt;.csv</code>, <code>Cache-Control: no-store</code>, and
+<code>audit-events-&lt;scope&gt;-&lt;YYYYMMDD-HHMMSS&gt;.xlsx</code>, <code>Cache-Control: no-store</code>, and
 <code>X-Content-Type-Options: nosniff</code>.</p>
 <h5 id="query-parameters_1">Query parameters<a class="headerlink" href="#query-parameters_1" title="Permanent link">&para;</a></h5>
 <table>
@@ -2368,28 +2398,31 @@ row in one response, newest first. The <code>action</code>, <code>result</code>,
 <td style="text-align: left;">No</td>
 <td style="text-align: left;">Exact match on the object ID.</td>
 </tr>
+<tr>
+<td style="text-align: left;">lang</td>
+<td style="text-align: left;">string</td>
+<td style="text-align: left;">No</td>
+<td style="text-align: left;">Installed language code for workbook headings and labels; alternatively use <code>X-Listmonk-Language</code>.</td>
+</tr>
 </tbody>
 </table>
 <p>Selected IDs are still filtered by the active workspace, so an event ID from
 another workspace is not exported. The export itself is recorded in the audit
 log as the action <code>audit.exported</code> with the object type <code>audit_event</code>.</p>
-<p>The CSV header row is:</p>
-<div class="highlight"><pre><span></span><code>id,occurred_at,organization_id,actor_type,actor_user_id,actor_token_id,action,object_type,object_id,result,reason_code,request_id,metadata,ip,user_agent
-</code></pre></div>
-<p><code>occurred_at</code> is written in UTC (<code>RFC3339Nano</code>), <code>metadata</code> is the stored JSON
-object (<code>{}</code> when empty), and the numeric actor fields are empty strings when
-they are <code>0</code>.</p>
+<p>Readable columns come first: UTC time, action, actor name/username, object
+type/name, result and reason. Stable event/workspace/actor IDs, original action,
+object and reason codes, request ID, readable JSON metadata, IP and user agent
+follow for investigation. Actor identity snapshots are preferred when present;
+current account names are used as a fallback. Missing actor IDs are blank.
+See <a href="../../exports/">Excel exports</a> for workbook formatting and language behavior.</p>
 <h5 id="example-request_1">Example Request<a class="headerlink" href="#example-request_1" title="Permanent link">&para;</a></h5>
 <div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-u<span class="w"> </span><span class="s1">'api_username:access_token'</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>-H<span class="w"> </span><span class="s1">'X-Listmonk-Organization-ID: 1'</span><span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>-o<span class="w"> </span>audit-events.csv<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span><span class="s1">'http://localhost:9000/api/audit-events/export?scope=all&amp;action=campaign.status_changed'</span>
+<span class="w">  </span>-o<span class="w"> </span>audit-events.xlsx<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="s1">'http://localhost:9000/api/audit-events/export?scope=all&amp;action=campaign.status_changed&amp;lang=en'</span>
 </code></pre></div>
 <h5 id="example-response_1">Example Response<a class="headerlink" href="#example-response_1" title="Permanent link">&para;</a></h5>
-<p>A <code>text/csv</code> stream, for example:</p>
-<div class="highlight"><pre><span></span><code>id,occurred_at,organization_id,actor_type,actor_user_id,actor_token_id,action,object_type,object_id,result,reason_code,request_id,metadata,ip,user_agent
-104,2026-03-23T06:30:00.000000Z,1,user,2,,campaign.status_changed,campaign,7,success,,0f6f6f0e-1f2d-4a9c-8a5f-3f2c2a7a1b9d,"{""http_method"":""PUT"",""http_status"":200,""route"":""/api/campaigns/:id/status""}",203.0.113.10,"curl/8.4.0"
-</code></pre></div>
+<p>A binary XLSX attachment.</p>
 <hr />
 <h4 id="get-apiaudit-eventsid">GET /api/audit-events/{id}<a class="headerlink" href="#get-apiaudit-eventsid" title="Permanent link">&para;</a></h4>
 <p>Returns a single audit event. The lookup is restricted to the active

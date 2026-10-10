@@ -406,6 +406,8 @@
       
         
       
+        
+      
     
     
     
@@ -718,6 +720,34 @@
     
   
     Business permissions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../exports/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Excel exports
   
 
     
@@ -2281,7 +2311,10 @@ envelope.</p>
   <code>POST /subscription/:campUUID/:subUUID</code> — the subscription preferences /
   unsubscribe page linked as <code>{{ UnsubscribeURL }}</code> in campaigns.</li>
 <li><code>POST /subscription/export/:subUUID</code> and <code>POST /subscription/wipe/:subUUID</code> —
-  customer self-service data export and erasure, gated by the privacy settings.</li>
+  customer self-service data export and erasure, gated by the privacy settings.
+  Export sends <code>customer-data.xlsx</code> to the customer's own address, with separate
+  sheets for the configured export categories and translated headers (<code>lang</code> or
+  application language). See <a href="../../exports/">Excel exports</a>.</li>
 <li><code>GET /link/:linkUUID/:campUUID/:subUUID</code> — link click tracking; <code>subUUID</code> may
   identify a regular customer or a public-pool recipient in that campaign. It
   records the click (unless tracking is disabled globally) and redirects to the

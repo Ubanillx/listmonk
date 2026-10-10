@@ -406,6 +406,8 @@
       
         
       
+        
+      
     
     
     
@@ -718,6 +720,34 @@
     
   
     Business permissions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../exports/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Excel exports
   
 
     
@@ -2578,6 +2608,17 @@
         
       </ul>
     </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-apiimport-templatesmembers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/import-templates/members
+      
+    </span>
+  </a>
   
 </li>
         
@@ -4779,6 +4820,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#get-apiimport-templatesmembers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/import-templates/members
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -6243,6 +6295,13 @@ as an audit record. Requires platform administrator or
 <span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
 <span class="p">}</span>
 </code></pre></div>
+<h4 id="get-apiimport-templatesmembers">GET /api/import-templates/members<a class="headerlink" href="#get-apiimport-templatesmembers" title="Permanent link">&para;</a></h4>
+<p><code>GET /api/import-templates/members?lang=zh-CN</code> returns an empty Excel workbook
+with translated account and role headings and a separate instructions sheet.
+Downloading requires authentication and contains no organization or member
+data. Fill the first sheet with registered usernames/emails and <code>member</code> or
+<code>manager</code> roles (blank defaults to <code>member</code>). The normal organization membership
+and management checks apply when submitting the file. See <a href="../../exports/">Excel exports</a>.</p>
 
 
 

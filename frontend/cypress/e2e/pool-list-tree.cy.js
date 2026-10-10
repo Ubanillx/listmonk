@@ -2,9 +2,20 @@
 /* global cy, expect */
 
 const list = (id, name, type, extra = {}) => ({
-  id, name, type, optin: 'single', status: 'active', tags: [], visibility: type === 'pool' ? 'global' : 'organization',
-  owner_user_id: 1, owner_username: 'admin', customer_count: 3, customer_statuses: {},
-  created_at: '2026-09-28T08:00:00Z', updated_at: '2026-09-28T08:00:00Z', ...extra,
+  id,
+  name,
+  type,
+  optin: 'single',
+  status: 'active',
+  tags: [],
+  visibility: type === 'pool' ? 'global' : 'organization',
+  owner_user_id: 1,
+  owner_username: 'admin',
+  customer_count: 3,
+  customer_statuses: {},
+  created_at: '2026-09-28T08:00:00Z',
+  updated_at: '2026-09-28T08:00:00Z',
+  ...extra,
 });
 
 const north = list(12, 'North allocation', 'org_pool_allocation', { pool_parent_id: 10, organization_id: 1, organization_name: 'North' });
@@ -16,7 +27,11 @@ function mockLists(results = rows) {
   cy.intercept('GET', '/api/customer-lists*', (req) => {
     if (req.query.type_group === 'pool') {
       expect(req.query.per_page).to.equal('all');
-      req.reply({ data: { results, total: results.length, page: 1, per_page: results.length } });
+      req.reply({
+        data: {
+          results, total: results.length, page: 1, per_page: results.length,
+        },
+      });
     } else req.continue();
   }).as('poolLists');
 }
@@ -89,9 +104,27 @@ describe('Public pool list hierarchy', () => {
     cy.get('.pagination-link.is-current').should('contain', '1');
   });
 
+  it('labels a public-pool import action correctly and opens the pool import flow', () => {
+    let poolID;
+    cy.loginAndVisit('/admin/pool-lists');
+    cy.request('POST', '/api/customer-lists', { name: 'Primary pool', type: 'pool', optin: 'single' })
+      .then(({ body }) => { poolID = body.data.id; });
+    cy.visit('/admin/pool-lists');
+    cy.contains('tbody tr', 'Primary pool').find('[data-cy=btn-import]')
+      .should('have.attr', 'aria-label', 'Import public-pool customers').click();
+    cy.then(() => cy.url().should('include', `/admin/customers/import?customer_list_id=${poolID}`));
+    cy.get('[data-cy=import-tab-pool]').should('have.attr', 'aria-selected', 'true');
+    cy.get('.import-list-setup').should('contain', 'Primary pool');
+    cy.screenshot('pool-list-import-target');
+  });
+
   it('shows a retry after load failure and renders the recovered hierarchy', () => {
-    cy.intercept({ method: 'GET', url: '/api/customer-lists*', query: { type_group: 'pool' }, times: 1 },
-      { statusCode: 500, body: { message: 'Temporary test failure' } });
+    cy.intercept(
+      {
+        method: 'GET', url: '/api/customer-lists*', query: { type_group: 'pool' }, times: 1,
+      },
+      { statusCode: 500, body: { message: 'Temporary test failure' } },
+    );
     cy.loginAndVisit('/admin/pool-lists');
     cy.get('[role=alert]').should('contain', 'Unable to load public pool lists');
     mockLists();

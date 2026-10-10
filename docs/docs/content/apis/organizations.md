@@ -18,6 +18,15 @@ personal API key surface: personal keys are restricted to the business prefixes 
 
 Two authorization levels appear throughout this page:
 
+The admin UI's organization-management selector uses only the caller's active
+memberships from `/api/organizations/me`. Ordinary users must also be managers of
+those organizations; platform operators may select any of their own memberships.
+On initial load it selects the active workspace when eligible, otherwise the first
+eligible membership. Refresh preserves a still-eligible explicit selection. The
+platform tab retains its separate all-organization list and row-level management
+entry: selecting a non-member organization there shows a separate target label,
+without adding it to the membership selector or changing the active workspace.
+
 - **Workspace endpoints** resolve the active organization and require an active
   membership (or a platform administrator) — `cmd/organizations.go:192`.
 - **Platform endpoints** additionally require the built-in Super Admin or a role

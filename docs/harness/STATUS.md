@@ -1,6 +1,10 @@
 # 工作状态
 
-快照日期：2026-10-09
+快照日期：2026-10-10
+
+- 公海列表导入入口文案（2026-10-10）：`CustomerLists.vue` 行内导入按钮按列表类型显示公海/私域导入提示，并补充同文案的无障碍名称；原跳转保留列表 ID，导入页按该列表类型自动切到公海导入并预选目标公海。验证：隔离 Cypress `pool-list-tree.cy.js` 4/4 通过，新增真实公海的入口跳转/模式/预选回归；源码/测试 ESLint、生产构建与文档检查通过，全量 lint 仅既有地图 warning。开发后端已重启，9173 返回 200、无待升级，日志仅有既有事务模板 3 的 `RootURL` 编译错误。来源：`frontend/src/views/{CustomerLists,Import}.vue`、`frontend/cypress/e2e/pool-list-tree.cy.js`。
+
+- 管理组织选择范围（2026-10-10）：下拉候选改用本人活动组织成员目录，普通用户保留经理身份要求；首次进入优先当前活动工作区，无可管理当前组织时回退到首个候选。有效手动选择在刷新后保留，成员资格失效时回退，不自动转为平台目标。平台管理行内入口继续支持非成员组织，目标独立显示，不混入成员下拉框、不切换工作区。验证：隔离 Cypress 7/7 通过，覆盖默认值、刷新/重载、非成员排除、成员资格失效、空成员目录、平台行内入口及普通经理；桌面/390px 截图复查通过，源码/测试 ESLint 与文档检查通过（全量源码 lint 仅既有地图 warning）。生产前端已重建，开发后端已重启，9173 返回 200、无待升级；日志仍有既有事务模板 3 的 `RootURL` 编译错误。浏览器权限策略拒绝 8181 实际页面验证，未继续访问该页面。来源：`frontend/src/views/organizations/ManageOrganizations.vue`、`frontend/cypress/e2e/workspace-directory.cy.js`。
 
 - 发送错误原因与导出（2026-10-09）：v6.60.0 新增失败事件表，与累计错误数同语句写入。活动列表可打开客户/原因汇总，按分类和客户筛选，Excel 跨页导出包含客户编码/姓名/邮箱、分类/状态码/原文、错误次数与首次/最近时间，并附原因汇总工作表。沿用活动所有者、收件人及对应客户查看/导出/敏感授权；Core 重验工作区与转移边界，历史缺失明细单独提示。全量 Go 测试、真实 PostgreSQL 汇总/筛选/分页/跨页 Excel/失败写入回滚/授权/脱敏/转移边界/幂等迁移、管理器专项 race、ESLint（仅既有 warning）、Cypress 桌面/手机统计和下载、文档检查通过。前端生产资产已重建，后端已重启应用 v6.60.0，数据库确认事件表存在，9173 返回 200；仍有既有事务模板 3 的 `RootURL` 编译错误，未部署线上。来源：`cmd/{campaign_send_errors,campaign_send_error_report_test,manager_store}.go`、`internal/core/campaign_send_errors.go`、`internal/manager/{send_failure,send_failure_test}.go`、`internal/migrations/v6.60.0{,_test}.go`、`frontend/src/components/CampaignSendErrors.vue`、`frontend/cypress/e2e/campaign-send-errors.cy.js`。
 

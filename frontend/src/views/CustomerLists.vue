@@ -253,8 +253,8 @@
 
           <router-link v-if="canImportList(props.row)"
             :to="{ name: 'import', query: { customer_list_id: props.row.id } }"
-            data-cy="btn-import">
-            <b-tooltip :label="$t('import.title')" type="is-dark">
+            data-cy="btn-import" :aria-label="$t(props.row.type === 'pool' ? 'import.poolTitle' : 'import.title')">
+            <b-tooltip :label="$t(props.row.type === 'pool' ? 'import.poolTitle' : 'import.title')" type="is-dark">
               <b-icon icon="file-upload-outline" size="is-small" />
             </b-tooltip>
           </router-link>

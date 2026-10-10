@@ -14,8 +14,14 @@ describe('Organization directory recovery', () => {
     cy.request('POST', '/api/roles/users', {
       name: 'Directory manager', permissions: ['campaigns:get', 'campaigns:manage'],
     }).then(({ body }) => cy.request('POST', '/api/users', {
-      username: 'directory-manager', name: 'Directory manager', email: 'directory-manager@example.com',
-      type: 'user', status: 'enabled', password_login: true, password: 'directory-manager-test', user_role_id: body.data.id,
+      username: 'directory-manager',
+      name: 'Directory manager',
+      email: 'directory-manager@example.com',
+      type: 'user',
+      status: 'enabled',
+      password_login: true,
+      password: 'directory-manager-test',
+      user_role_id: body.data.id,
     })).then(({ body }) => { managerID = body.data.id; });
     cy.request('/api/profile').then(({ body }) => cy.request('POST', '/api/organizations', {
       name: 'Joined directory team', manager_user_id: body.data.id,
@@ -48,7 +54,7 @@ describe('Organization directory recovery', () => {
       expect(body.data.map((row) => row.id)).to.include(joinedID).and.not.include(otherID);
     });
     cy.visit('/admin/organizations/manage');
-    cy.get('.section-mini select option').should('have.length', 2);
+    cy.get('.section-mini select option').should('have.length', 1).and('contain', 'Joined directory team');
     assertAdminDirectory();
     cy.get('[data-cy=btn-refresh]').click();
     assertAdminDirectory();
@@ -77,8 +83,10 @@ describe('Organization directory recovery', () => {
   });
 
   it('retries a failed startup directory without mounting forms from partial state', () => {
-    cy.intercept({ method: 'GET', url: directoryURL, times: 1 },
-      { statusCode: 503, body: { message: 'Temporary directory outage' } });
+    cy.intercept(
+      { method: 'GET', url: directoryURL, times: 1 },
+      { statusCode: 503, body: { message: 'Temporary directory outage' } },
+    );
     cy.visit('/admin/campaigns/new');
     cy.get('[data-cy=workspace-initialization-error]').should('be.visible');
     cy.get('[data-cy=campaign-smtp-source]').should('not.exist');
@@ -91,8 +99,10 @@ describe('Organization directory recovery', () => {
   });
 
   it('retains the selected workspace when its validation temporarily fails', () => {
-    cy.intercept({ method: 'GET', url: '/api/workspace', times: 1 },
-      { statusCode: 503, body: { message: 'Temporary workspace outage' } });
+    cy.intercept(
+      { method: 'GET', url: '/api/workspace', times: 1 },
+      { statusCode: 503, body: { message: 'Temporary workspace outage' } },
+    );
     cy.visit('/admin/campaigns/new');
     cy.get('[data-cy=workspace-initialization-error]').should('be.visible');
     cy.get('[data-cy=campaign-smtp-source]').should('not.exist');
@@ -118,8 +128,10 @@ describe('Organization directory recovery', () => {
     assertAdminDirectory();
 
     cy.intercept({ method: 'GET', url: '/api/organizations/me', times: 1 }, { body: { data: [] } });
-    cy.intercept({ method: 'GET', url: directoryURL, times: 1 },
-      { statusCode: 503, body: { message: 'Temporary partial directory outage' } }).as('failedDirectory');
+    cy.intercept(
+      { method: 'GET', url: directoryURL, times: 1 },
+      { statusCode: 503, body: { message: 'Temporary partial directory outage' } },
+    ).as('failedDirectory');
     cy.get('[data-cy=btn-refresh]').click();
     cy.wait('@failedDirectory');
     cy.get('.org-table').should('contain', 'Joined directory team');
@@ -132,12 +144,69 @@ describe('Organization directory recovery', () => {
     assertAdminDirectory();
   });
 
+  it('defaults to the active membership, preserves explicit selection and keeps platform management separate', () => {
+    let activeID;
+    cy.request('/api/profile').then(({ body }) => cy.request('POST', '/api/organizations', {
+      name: 'Z active directory team', manager_user_id: body.data.id,
+    })).then(({ body }) => {
+      activeID = body.data.id;
+      cy.window().then((win) => win.localStorage.setItem('listmonk.workspace.organizationId', String(activeID)));
+      cy.setCookie('listmonk_workspace_organization_id', String(activeID));
+    });
+    cy.visit('/admin/organizations/manage');
+    cy.then(() => cy.get('.section-mini select').should('have.value', String(activeID)));
+    cy.get('.section-mini select option').should('have.length', 2).and('not.contain', 'Other directory team');
+    cy.get('[data-cy=btn-refresh]').click();
+    cy.then(() => cy.get('.section-mini select').should('have.value', String(activeID)));
+    cy.reload();
+    cy.then(() => cy.get('.section-mini select').should('have.value', String(activeID)));
+    cy.then(() => cy.get('.section-mini select').select(String(joinedID)));
+    cy.get('[data-cy=btn-refresh]').click();
+    cy.get('.section-mini select').should('have.value', String(joinedID));
+    cy.get('.b-tabs nav a').contains('Platform').click();
+    cy.contains('tr', 'Other directory team').contains('button', 'Manage').click();
+    cy.get('[data-cy=platform-managed-organization]').should('contain', 'Other directory team');
+    cy.get('.section-mini select option').should('not.contain', 'Other directory team');
+    cy.contains('.b-tabs nav a', 'Members').click();
+    cy.get('.section-mini select').select(String(joinedID));
+    cy.get('[data-cy=platform-managed-organization]').should('not.exist');
+    cy.viewport(390, 844);
+    cy.screenshot('organization-management-membership-selector-mobile');
+    cy.viewport(1280, 900);
+    cy.screenshot('organization-management-membership-selector-desktop');
+
+    cy.then(() => cy.get('.section-mini select').select(String(activeID)));
+    cy.request('/api/organizations/me').then(({ body }) => {
+      cy.intercept('GET', '/api/organizations/me', { body: { data: body.data.filter((row) => row.id !== activeID) } });
+    });
+    cy.get('[data-cy=btn-refresh]').click();
+    cy.get('.section-mini select').should('have.value', String(joinedID));
+    cy.get('.section-mini select option').should('have.length', 1);
+    cy.get('[data-cy=platform-managed-organization]').should('not.exist');
+  });
+
+  it('shows no membership selector when a platform admin has not joined any organization', () => {
+    cy.intercept('GET', '/api/organizations/me', { body: { data: [] } });
+    cy.visit('/admin/organizations/manage');
+    cy.get('.b-tabs nav a').contains('Platform').should('be.visible');
+    cy.get('.section-mini select').should('not.exist');
+    cy.contains('tr', 'Other directory team').contains('button', 'Manage').click();
+    cy.get('[data-cy=platform-managed-organization]').should('contain', 'Other directory team');
+    cy.get('.section-mini select').should('not.exist');
+  });
+
   it('limits ordinary managers to their memberships on direct load and reload', () => {
     cy.clearCookies();
     cy.request('/admin/login').then(({ body }) => cy.request({
-      method: 'POST', url: '/admin/login', form: true,
-      body: { username: 'directory-manager', password: 'directory-manager-test',
-        nonce: /name="nonce" value="([^"]+)"/.exec(body)[1], next: '/admin' },
+      method: 'POST',
+      url: '/admin/login',
+      form: true,
+      body: {
+        username: 'directory-manager',
+        password: 'directory-manager-test',
+        nonce: /name="nonce" value="([^"]+)"/.exec(body)[1],
+        next: '/admin',
+      },
     }));
     cy.visit('/admin/organizations/manage');
     cy.location('pathname').should('eq', '/admin/organizations/manage');

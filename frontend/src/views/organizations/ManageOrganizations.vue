@@ -7,12 +7,17 @@
     </header>
 
     <b-field v-if="manageableOrganizations.length" :label="$t('organizations.manageSelectLabel')" label-position="on-border" class="section-mini mb-5">
-      <b-select v-model.number="selectedOrganizationID" expanded>
+      <b-select v-model.number="membershipOrganizationID" expanded>
+        <option v-if="!membershipOrganizationID" :value="null" disabled>{{ $t('pool.selectOrganizationPlaceholder') }}</option>
         <option v-for="organization in manageableOrganizations" :key="organization.id" :value="organization.id">
           {{ organization.name }}
         </option>
       </b-select>
     </b-field>
+
+    <b-notification v-if="selectedPlatformOrganization" type="is-light" :closable="false" data-cy="platform-managed-organization">
+      {{ $t('organizations.manageSelectLabel') }}: {{ selectedPlatformOrganization.name }}
+    </b-notification>
 
     <b-notification v-if="!selectedOrganizationID && !canManageAllOrganizations" type="is-light" :closable="false">
       {{ $t('organizations.manageNotAdmin') }}
@@ -357,6 +362,7 @@ export default Vue.extend({
       roleRevision: 0,
       activeTab: 0,
       selectedOrganizationID: null,
+      platformOrganizationID: null,
       members: [],
       invites: [],
       replyForwardRules: [],
@@ -389,10 +395,24 @@ export default Vue.extend({
     },
 
     manageableOrganizations() {
-      if (this.canManageAllOrganizations) {
-        return this.platformOrganizations.filter((organization) => organization.status === 'active');
-      }
-      return this.organizations.filter((organization) => organization.myRole === 'manager');
+      return this.organizations.filter((organization) => this.canManageAllOrganizations || organization.myRole === 'manager');
+    },
+
+    membershipOrganizationID: {
+      get() {
+        return this.manageableOrganizations.some((organization) => Number(organization.id) === Number(this.selectedOrganizationID))
+          ? this.selectedOrganizationID : null;
+      },
+      set(id) {
+        this.platformOrganizationID = null;
+        this.selectedOrganizationID = id;
+      },
+    },
+
+    selectedPlatformOrganization() {
+      if (!this.canManageAllOrganizations || this.membershipOrganizationID
+        || Number(this.platformOrganizationID) !== Number(this.selectedOrganizationID)) return null;
+      return this.platformOrganizations.find((organization) => Number(organization.id) === Number(this.selectedOrganizationID)) || null;
     },
 
     activeMembers() {
@@ -403,7 +423,7 @@ export default Vue.extend({
     // edit the selected organization's unified reply mailbox from this screen.
     selectedOrganization() {
       const id = Number(this.selectedOrganizationID) || 0;
-      const lists = [...(this.manageableOrganizations || []), ...(this.organizations || [])];
+      const lists = [...(this.manageableOrganizations || []), ...(this.platformOrganizations || [])];
       return lists.find((organization) => Number(organization.id) === id) || null;
     },
 
@@ -479,10 +499,16 @@ export default Vue.extend({
 
     ensureSelectedOrganization() {
       const selectedID = Number(this.selectedOrganizationID) || 0;
-      if (this.manageableOrganizations.some((organization) => organization.id === selectedID)) {
+      if (this.manageableOrganizations.some((organization) => Number(organization.id) === selectedID)) {
         return;
       }
-      this.selectedOrganizationID = (this.manageableOrganizations[0] || {}).id || null;
+      if (this.selectedPlatformOrganization && this.selectedPlatformOrganization.status === 'active') return;
+      this.platformOrganizationID = null;
+      const activeOrganizationID = Number(this.$store.state.workspace.organizationId) || 0;
+      const activeOrganization = this.manageableOrganizations.find(
+        (organization) => Number(organization.id) === activeOrganizationID,
+      );
+      this.selectedOrganizationID = (activeOrganization || this.manageableOrganizations[0] || {}).id || null;
     },
 
     async refreshSelectedOrganization() {
@@ -563,6 +589,7 @@ export default Vue.extend({
     },
 
     selectOrganization(organization) {
+      this.platformOrganizationID = organization.id;
       this.selectedOrganizationID = organization.id;
       this.activeTab = 0;
     },

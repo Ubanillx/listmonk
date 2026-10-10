@@ -115,6 +115,8 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 
 ### 角色动作细分权限（v6.38.0）
 
+“管理组织”的下拉候选只来自 `/api/organizations/me` 返回的本人活动成员组织；普通用户还须是该组织经理，平台组织操作员也不能把未加入的组织放入此下拉框。首次进入优先选中当前活动工作区（须在候选范围内），否则选第一个可管理的成员组织，无候选则不显示下拉框。页面刷新保留仍有效的手动选择。平台管理页签的全平台组织列表及行内“管理”入口继续使用独立的平台授权；通过行内入口选中的非成员组织单独标明，不进入成员下拉候选，也不改变当前活动工作区。来源：`frontend/src/views/organizations/ManageOrganizations.vue`、`frontend/cypress/e2e/workspace-directory.cy.js`。
+
 用户角色中的权限是全局功能门，不替代工作区、资源所有者、组织成员或 API Key scope 校验。业务动作按以下独立权限管理：`customers:delete`、`customers:blocklist`、`customers:membership_manage`、`customers:export`、`customers:sensitive_read`；`pools:get`、`pools:manage`、`pools:export`（2026-09-17 起，v6.45.0 回填最高管理员，见“一级公海与组织公海分配”一节）；`campaigns:send`、`campaigns:test`、`campaigns:schedule`、`campaigns:control`、`campaigns:recipients`；`bounces:delete`、`bounces:blocklist`；`users:tokens`；以及 `organizations:platform_manage`。`tx:send` 仍使用原权限 ID，但在角色界面归入事务消息组。
 
 私域客户高级 SQL 查询已下线：`GET /api/customers` 和导出仅接受参数化的普通 `search`（匹配客户编码、姓名、邮箱）、列表和订阅状态过滤；传旧 `query` 参数返回 400。原 `/api/customers/query/*` 路由撤销，普通“选择全部结果”操作改走 `/api/customers/bulk/*`，仍执行工作区、资源管理和对应的删除、拉黑或列表成员权限校验。`customers:sql_query` 不再出现在权限清单或授权判断中；角色编辑会过滤历史保存的失效权限。服务端入口在 `cmd/customers.go`，导出实现位于 `internal/core/workspace_customer_export.go`。

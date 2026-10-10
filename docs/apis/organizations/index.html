@@ -4825,6 +4825,13 @@ eligible membership. Refresh preserves a still-eligible explicit selection. The
 platform tab retains its separate all-organization list and row-level management
 entry: selecting a non-member organization there shows a separate target label,
 without adding it to the membership selector or changing the active workspace.</p>
+<p>The management page keeps its selected tab in the <code>tab</code> URL query parameter:
+<code>members</code>, <code>invites</code>, <code>pending</code>, <code>reply-mailboxes</code>, <code>reply-forwarding</code>, <code>smtp</code>, or
+<code>platform</code>. Reloads and browser history restore that tab; an unknown or unavailable
+tab falls back to the first visible tab. Tab changes refresh the displayed data
+while preserving the selected management target and unsaved mailbox/SMTP edits.
+Successful changes refresh the affected lists, unified reply-mailbox choices, and
+SMTP pool counts automatically.</p>
 <ul>
 <li><strong>Workspace endpoints</strong> resolve the active organization and require an active
   membership (or a platform administrator) — <code>cmd/organizations.go:192</code>.</li>

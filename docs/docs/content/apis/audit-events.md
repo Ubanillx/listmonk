@@ -12,7 +12,7 @@ described in the [API introduction](apis.md).
 | Method | Endpoint                                                  | Description                                              |
 | :----- | :-------------------------------------------------------- | :------------------------------------------------------- |
 | GET    | [/api/audit-events](#get-apiaudit-events)                 | List audit events in the active workspace.               |
-| GET    | [/api/audit-events/export](#get-apiaudit-eventsexport)    | Export matching audit events as a CSV stream.            |
+| GET    | [/api/audit-events/export](#get-apiaudit-eventsexport)    | Export matching audit events as Excel.            |
 | GET    | [/api/audit-events/{id}](#get-apiaudit-eventsid)          | Retrieve a single audit event.                           |
 
 All three endpoints require the `audit:get` permission; platform administrators
@@ -130,14 +130,14 @@ ______________________________________________________________________
 
 #### GET /api/audit-events/export
 
-Streams a CSV export of the workspace's audit events. Unlike the list
+Downloads an Excel workbook of the workspace's audit events. Unlike the list
 endpoint, the export ignores `page` and `per_page` and writes every matching
 row in one response, newest first. The `action`, `result`, `object_type`, and
 `object_id` filters of the list endpoint apply to both export scopes.
 
-The response has `Content-Type: text/csv; charset=utf-8`, a
+The response has `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, a
 `Content-Disposition` attachment filename of
-`audit-events-<scope>-<YYYYMMDD-HHMMSS>.csv`, `Cache-Control: no-store`, and
+`audit-events-<scope>-<YYYYMMDD-HHMMSS>.xlsx`, `Cache-Control: no-store`, and
 `X-Content-Type-Options: nosniff`.
 
 ##### Query parameters
@@ -150,38 +150,31 @@ The response has `Content-Type: text/csv; charset=utf-8`, a
 | result      | string           | No       | Exact match on the result.                                                                                                                                                      |
 | object_type | string           | No       | Exact match on the object type.                                                                                                                                                 |
 | object_id   | string           | No       | Exact match on the object ID.                                                                                                                                                   |
+| lang        | string           | No       | Installed language code for workbook headings and labels; alternatively use `X-Listmonk-Language`.                                                                                |
 
 Selected IDs are still filtered by the active workspace, so an event ID from
 another workspace is not exported. The export itself is recorded in the audit
 log as the action `audit.exported` with the object type `audit_event`.
 
-The CSV header row is:
-
-```
-id,occurred_at,organization_id,actor_type,actor_user_id,actor_token_id,action,object_type,object_id,result,reason_code,request_id,metadata,ip,user_agent
-```
-
-`occurred_at` is written in UTC (`RFC3339Nano`), `metadata` is the stored JSON
-object (`{}` when empty), and the numeric actor fields are empty strings when
-they are `0`.
+Readable columns come first: UTC time, action, actor name/username, object
+type/name, result and reason. Stable event/workspace/actor IDs, original action,
+object and reason codes, request ID, readable JSON metadata, IP and user agent
+follow for investigation. Actor identity snapshots are preferred when present;
+current account names are used as a fallback. Missing actor IDs are blank.
+See [Excel exports](../exports.md) for workbook formatting and language behavior.
 
 ##### Example Request
 
 ```shell
 curl -u 'api_username:access_token' \
   -H 'X-Listmonk-Organization-ID: 1' \
-  -o audit-events.csv \
-  'http://localhost:9000/api/audit-events/export?scope=all&action=campaign.status_changed'
+  -o audit-events.xlsx \
+  'http://localhost:9000/api/audit-events/export?scope=all&action=campaign.status_changed&lang=en'
 ```
 
 ##### Example Response
 
-A `text/csv` stream, for example:
-
-```csv
-id,occurred_at,organization_id,actor_type,actor_user_id,actor_token_id,action,object_type,object_id,result,reason_code,request_id,metadata,ip,user_agent
-104,2026-03-23T06:30:00.000000Z,1,user,2,,campaign.status_changed,campaign,7,success,,0f6f6f0e-1f2d-4a9c-8a5f-3f2c2a7a1b9d,"{""http_method"":""PUT"",""http_status"":200,""route"":""/api/campaigns/:id/status""}",203.0.113.10,"curl/8.4.0"
-```
+A binary XLSX attachment.
 
 ______________________________________________________________________
 

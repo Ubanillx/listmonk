@@ -25,7 +25,7 @@ Permission names and dependencies are documented in
 
 ## Customer reply routing (v6.55.0)
 
-Contact APIs, the aggregate pool view, first-level and allocation contact tables, and CSV exports include `reply_to`. It is an internal routing address and is not masked; recipient `email` remains masked for non-platform administrators. `order_by=reply_to` is supported. Single-contact creation accepts optional `reply_to` with the same email validation as import.
+Contact APIs, the aggregate pool view, first-level and allocation contact tables, and Excel exports include `reply_to`. It is an internal routing address and is not masked; recipient `email` remains masked for non-platform administrators. `order_by=reply_to` is supported. Single-contact creation accepts optional `reply_to` with the same email validation as import.
 
 Campaign `pool_reply_priority` defaults to `contact_first`; `organization_first` reverses the two sources. The first available address is used for each customer. An organization mailbox must be active; AI-enabled mailboxes also require connection verification. Customer addresses do not require mailbox registration for sending. A recipient without either address blocks preview/send. The snapshot links the matching available mailbox in the target organization. Automatic reply synchronization additionally requires AI receiving credentials, successful connection verification, and enabled global AI settings.
 
@@ -40,7 +40,7 @@ Masked recipient addresses use `*` characters, for example
 `liuxin@gmail.com` becomes `liu***@gmail.com`. The first three local-part
 characters remain visible for longer addresses; local parts of three characters
 or fewer are fully masked. Each hidden character is replaced with one `*`.
-The list APIs, aggregate pool view and CSV exports use the same format.
+The list APIs and aggregate pool view use the same email masking; Excel exports preserve it.
 
 First-level `pool` rows use the platform-wide `global` scope. A `org_pool_allocation`
 row uses the selected organization's scope and exposes that organization's
@@ -51,9 +51,9 @@ Key endpoints:
 
 - `GET /api/pools/contacts?search=...&status=active|removed&pool_id=6&allocation_department=...&page=1&per_page=20&order_by=pool_name&order=asc` — page through all first-level public-pool memberships visible in the active workspace. Each row includes `pool_id` and `pool_name`; a contact in two pools appears twice so its source list stays clear. Search, status, exact source-pool ID, exact trimmed allocation department, sorting, count and pagination apply across the combined result. Omit `allocation_department` for all departments; send it as an empty value to select contacts without one. Platform administrators see every pool; organization users see only their own allocation memberships with masked e-mails. Requires `pools:get`.
 - `GET /api/pools/contacts/filters` — return the distinct visible `pool_id`, `pool_name`, `allocation_department` combinations for the aggregate view's dropdowns, independent of the current result page. An empty department denotes unassigned. Requires `pools:get` and obeys the same organization boundary.
-- `GET /api/pools/contacts/export` — export the same combined result as CSV, including source pool ID and name. Accepts the same search, status, pool ID and department filters. Repeat `contact=<pool_id>:<contact_id>` to export only selected memberships within that authorized, filtered result (maximum 1000 selections). Malformed selections return 400. Requires `pools:export`; organization e-mails remain masked.
+- `GET /api/pools/contacts/export` — export the same combined result as Excel, including source pool name and ID. Accepts the same search, status, pool ID and department filters. Repeat `contact=<pool_id>:<contact_id>` to export only selected memberships within that authorized, filtered result (maximum 1000 selections). Malformed selections return 400. Requires `pools:export`; organization e-mails remain masked. `lang` / `X-Listmonk-Language` selects translated headings and labels.
 - `GET /api/pools/:id/contacts?search=...&status=active|removed&page=1&per_page=20&order_by=created_at&order=desc` — page through first-level or pool-allocation contacts by imported code, name, or e-mail. The equivalent `GET /api/customer-lists/:id/pool-contacts` route also accepts an `org_pool_allocation` list ID. `status=active` shows unremoved contacts; `status=removed` shows unresolved organization removals or exclusions. In a first-level pool, platform administrators see all organizations' exceptions once per contact, with `excluded`, `exclusion_reason`, `exception_organization_name`, and `exception_allocation_id` (when a membership can be restored). Non-platform-administrators see only their current organization's allocation and receive masked e-mail addresses. Unassigned contacts remain active. Allocation-list reads stay scoped to that allocation. Omitting `status` preserves the legacy all-contacts response. The legacy `customer_code` filter remains a fallback alias of `search`. Requires `pools:get`; non-platform-administrators must have the pool granted to the active organization.
-- `GET /api/pools/:id/contacts/export` (alias `GET /api/customer-lists/:id/pool-contacts/export`) — stream the same filtered rows as CSV with masked e-mails. Repeat `contact=0:<contact_id>` to narrow the authorized result to selected contacts. Selection validation matches the aggregate export. Requires `pools:export`.
+- `GET /api/pools/:id/contacts/export` (alias `GET /api/customer-lists/:id/pool-contacts/export`) — download the same filtered rows as Excel with masked e-mails. Repeat `contact=0:<contact_id>` to narrow the authorized result to selected contacts. Selection validation matches the aggregate export. Requires `pools:export`. Workbook formatting and the separate customer/allocation status fields are described in [Excel exports](../exports.md).
 - `POST /api/pools/:id/contacts` — single-contact compatibility route
   (requires `pools:master_manage`); the product import entry is the unified customer
   import endpoint below.
@@ -133,7 +133,7 @@ scoped and do not physically delete
 the first-level pool contact.
 
 Pool contacts are not part of the legacy customer export surface, and they never
-appear in `/api/customers` results. Their dedicated CSV export requires
+appear in `/api/customers` results. Their dedicated Excel export requires
 `pools:export`. Non-highest administrators cannot obtain a pool contact's real
 email through list, detail, CSV, or API-key responses.
 

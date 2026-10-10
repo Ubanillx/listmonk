@@ -13,7 +13,7 @@
 | HTTP/API | `cmd/` | Echo 路由、认证接入、请求校验和响应。 |
 | 领域与持久化 | `internal/core/`、`models/`、`queries/`、`schema.sql` | 业务操作、工作区授权、SQL 查询和事务写入。 |
 | 后台能力 | `internal/manager/`、`internal/messenger/`、`internal/bounce/`、`internal/replyai/`、`internal/subimporter/` | 调度发送、SMTP/Postback、退信、AI 回信分类和批量导入。 |
-| 直接导出 | `cmd/customers.go`、`cmd/audit.go`、`internal/core/` | 直接流式返回客户 CSV、客户资料 JSON 和审计 CSV，不创建导出任务或持久化文件。 |
+| 直接导出 | `cmd/customers.go`、`cmd/audit.go`、`internal/core/` | 统一返回客户、客户资料、公海、审计与活动失败明细 Excel，参见 cmd/excel_exports.go 和 docs/docs/content/exports.md，不创建导出任务或持久化文件。 |
 | Web 客户端 | `frontend/`、`frontend/email-builder/` | Vue 2 管理端与 React/TypeScript 邮件编辑器。 |
 | 运行与交付 | `dev/`、`deploy/`、`.github/`、`Jenkinsfile` | 本地 Compose、离线包、CI 和 systemd/GoReleaser 发布。 |
 
@@ -64,7 +64,7 @@
 - 公海联系人新增统一通过 `POST /api/import/customers`：请求只允许一个一级 `pool` 列表，后端在首个 CSV/XLSX 工作表解析 `customer_code`、`name`、`email`、`allocation_department` 四个字段，额外模板列丢弃；`allocation_department` 必须匹配启用中的 `organizations.name`，未知或已归档组织的行记为无效并跳过写入；合法值才写入 `pool_contacts`，且不触发组织创建。若对应一级公海已有该组织公海分配，导入事务同时写入 `org_pool_allocation_members`；`CreateOrgPoolAllocation` 对先前导入的联系人执行同样的部门回填。该同步分支由 `poolImportMu` 串行化并在事务内按完整规范化记录幂等，编码相同但比较字段不同则写冲突审计。
 - 公海主数据（一级池、联系人、导入、清邮、删除）需 `pools:master_manage`；分配创建与成员操作需 `pools:manage`，普通调用者限当前组织且创建前已有投放授权。跨组织创建与授权修改另需 `pools:delivery_manage`。HTTP 与 Core 锁定事务共同校验组织活动、成员与授权。独立组织目录只给 ID/名称，不授予组织管理。来源：`cmd/{pools,business_permissions}.go`、`internal/core/pools.go`。
 - 数据库唯一约束保证每个 `(pool_id, organization_id)` 只有一个已绑定公海分配，因此同一组织内的公海联系人只有唯一归属和回件邮箱来源；若产品放开重叠归属，受众解析必须要求显式公海分配选择，不能静默猜测回件邮箱。一级公海活动可保存草稿但缺少有效归属/邮箱时不得预览或发送。回件邮箱作为公司内部地址明文保留和展示，不进入客户联系方式脱敏策略。
-- 公海联系人的查看面收进客户视图：`frontend/src/views/Customers.vue` 增加公海列表模式（`isPoolList` 依据被过滤列表的 `type` 判定）并用「所有客户 / 公海客户」tab 切换；公海侧复用普通客户表形态——`b-table` 复选框、`page`/`per_page`/`total` 服务端分页（`a.pg`）、`order_by`/`order` 排序、工具栏导出与批量分配/移除/恢复/清邮、行操作与新建联系人（`PoolContactForm.vue`）；`GET /api/customer-lists/:id/pool-contacts` 返回 `PageResults{results,total,page,per_page}`，搜索匹配客户编码/姓名/邮箱，导出走 `GET .../pool-contacts/export`（CSV，非平台管理员邮箱脱敏）。`frontend/src/views/PoolContacts.vue` 与其独立路由已删除，`/customers/pool-lists/:customerListID` 仅作重定向。前后端数据边界未变：仍是独立存储 + 安全 DTO（非平台管理员姓名可见、邮箱脱敏），未把 `pool_contacts` 合并进 `/api/customers` 结果。
+- 公海联系人的查看面收进客户视图：`frontend/src/views/Customers.vue` 增加公海列表模式（`isPoolList` 依据被过滤列表的 `type` 判定）并用「所有客户 / 公海客户」tab 切换；公海侧复用普通客户表形态——`b-table` 复选框、`page`/`per_page`/`total` 服务端分页（`a.pg`）、`order_by`/`order` 排序、工具栏导出与批量分配/移除/恢复/清邮、行操作与新建联系人（`PoolContactForm.vue`）；`GET /api/customer-lists/:id/pool-contacts` 返回 `PageResults{results,total,page,per_page}`，搜索匹配客户编码/姓名/邮箱，导出走 `GET .../pool-contacts/export`（Excel，非平台管理员邮箱脱敏）。`frontend/src/views/PoolContacts.vue` 与其独立路由已删除，`/customers/pool-lists/:customerListID` 仅作重定向。前后端数据边界未变：仍是独立存储 + 安全 DTO（非平台管理员姓名可见、邮箱脱敏），未把 `pool_contacts` 合并进 `/api/customers` 结果。
 
 ## 退信邮箱检测（2026-09-08）
 

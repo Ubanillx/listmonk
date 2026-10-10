@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -177,7 +176,7 @@ func (a *App) requestMaskedLists(c echo.Context, access models.WorkspaceAccess, 
 	return a.core.MaskedCustomerListIDs(ids)
 }
 
-// exportMasked decides whether a CSV export should mask e-mail addresses. It
+// exportMasked decides whether an Excel export should mask e-mail addresses. It
 // applies when the selected lists enable masking and the caller lacks the
 // sensitive-data permission. Ownership and list maintenance do not bypass it.
 func (a *App) exportMasked(c echo.Context, access models.WorkspaceAccess, CustomerListIDs []int) (bool, error) {
@@ -281,11 +280,6 @@ func (a *App) ExportCustomers(c echo.Context) error {
 		return err
 	}
 
-	var (
-		hdr = c.Response().Header()
-		wr  = csv.NewWriter(c.Response())
-	)
-
 	// The sensitive-data grant controls export fields independently of ownership.
 	// Selected masked lists use masked email; other exports hide it entirely.
 	maskExport, err := a.exportMasked(c, access, CustomerListIDs)
@@ -293,14 +287,27 @@ func (a *App) ExportCustomers(c echo.Context) error {
 		return err
 	}
 
-	hdr.Set(echo.HeaderContentType, echo.MIMEOctetStream)
-	hdr.Set("Content-type", "text/csv")
-	hdr.Set(echo.HeaderContentDisposition, "attachment; filename="+"customers.csv")
-	hdr.Set("Content-Transfer-Encoding", "binary")
-	hdr.Set("Cache-Control", "no-cache")
-	wr.Write([]string{"uuid", "email", "name", "customer_code", "attributes", "status", "created_at", "updated_at"})
+	book, err := a.newExportWorkbook(c)
+	if err != nil {
+		return err
+	}
+	defer book.file.Close()
+	user := auth.GetUser(c)
+	sensitive := user.HasPerm(auth.PermCustomersSensitiveRead)
+	var fields []models.CustomFieldDefinition
+	if sensitive {
+		settings, err := a.core.GetSettings()
+		if err != nil {
+			return err
+		}
+		fields = settings.CustomFields
+	}
+	layout := newCustomerExportLayout(book, fields, sensitive, sensitive || maskExport)
+	sheet, err := book.addSheet("exports.customers", layout.columns)
+	if err != nil {
+		return err
+	}
 
-loop:
 	// Iterate in batches until there are no more customers to export.
 	for {
 		out, err := exp()
@@ -312,28 +319,25 @@ loop:
 		}
 
 		for _, r := range out {
-			email := r.Email
-			user := auth.GetUser(c)
-			if !user.HasPerm(auth.PermCustomersSensitiveRead) {
+			if !sensitive {
 				if maskExport {
-					email = maskEmail(email)
+					r.Email = maskEmail(r.Email)
 				} else {
-					email = ""
+					r.Email = ""
 				}
 				r.UUID, r.Attribs = "", "{}"
 			}
-			if err = wr.Write([]string{r.UUID, email, r.Name, r.CustomerCode, r.Attribs, r.Status,
-				r.CreatedAt.Time.String(), r.UpdatedAt.Time.String()}); err != nil {
-				a.log.Printf("error streaming CSV export: %v", err)
-				break loop
+			values, err := layout.row(book, r)
+			if err != nil {
+				return err
+			}
+			if err := sheet.addRow(values...); err != nil {
+				return err
 			}
 		}
-
-		// Flush CSV to stream after each batch.
-		wr.Flush()
 	}
 
-	return nil
+	return book.download(c, "customers.xlsx")
 }
 
 // CreateCustomer handles the creation of a new customer.
@@ -817,7 +821,7 @@ func (a *App) DeleteCustomerBounces(c echo.Context) error {
 
 // ExportCustomerData pulls the customer's profile,
 // customer_list subscriptions, campaign views and clicks and produces
-// a JSON report. This is a privacy feature and depends on the
+// an Excel workbook. This is a privacy feature and depends on the
 // configuration in a.Constants.Privacy.
 func (a *App) ExportCustomerData(c echo.Context) error {
 	access, err := a.workspaceAccess(c)
@@ -834,7 +838,7 @@ func (a *App) ExportCustomerData(c echo.Context) error {
 	if _, err := a.requireExportableWorkspaceCustomer(c, access, id); err != nil {
 		return err
 	}
-	data, _, err := a.exportWorkspaceCustomerData(access, id, a.cfg.Privacy.Exportable)
+	data, err := a.exportWorkspaceCustomerData(access, id, a.cfg.Privacy.Exportable)
 	if err != nil {
 		a.log.Printf("error exporting customer data: %s", err)
 		return echo.NewHTTPError(http.StatusInternalServerError,
@@ -849,15 +853,19 @@ func (a *App) ExportCustomerData(c echo.Context) error {
 			}
 		}
 	}
-	b, err := json.MarshalIndent(data, "", "  ")
+	book, err := a.newExportWorkbook(c)
 	if err != nil {
 		return err
 	}
-
-	// Set headers to force the browser to prompt for download.
-	c.Response().Header().Set("Cache-Control", "no-cache")
-	c.Response().Header().Set("Content-Disposition", `attachment; filename="data.json"`)
-	return c.Blob(http.StatusOK, "application/json", b)
+	defer book.file.Close()
+	settings, err := a.core.GetSettings()
+	if err != nil {
+		return err
+	}
+	if err := writeCustomerDataWorkbook(book, data, settings.CustomFields); err != nil {
+		return err
+	}
+	return book.download(c, "customer-data.xlsx")
 }
 
 // exportWorkspaceCustomerData is the authenticated counterpart to the
@@ -865,41 +873,29 @@ func (a *App) ExportCustomerData(c echo.Context) error {
 // workspace-aware Core query so an organization manager (who may inspect a
 // member's record) cannot export that member's personal audience, while an
 // owner or platform administrator can still export the rows they manage.
-func (a *App) exportWorkspaceCustomerData(access models.WorkspaceAccess, id int, exportables map[string]bool) (models.CustomerExportProfile, []byte, error) {
+func (a *App) exportWorkspaceCustomerData(access models.WorkspaceAccess, id int, exportables map[string]bool) (models.CustomerExportProfile, error) {
 	data, err := a.core.GetWorkspaceCustomerProfileForExport(access, id)
 	if err != nil {
-		return data, nil, err
+		return data, err
 	}
 
 	filterCustomerExportables(&data, exportables)
-	b, err := json.MarshalIndent(data, "", "  ")
-	if err != nil {
-		a.log.Printf("error marshalling customer export data: %v", err)
-		return data, nil, err
-	}
-	return data, b, nil
+	return data, nil
 }
 
 // exportCustomerData collates the data of a customer including profile,
 // subscriptions, campaign_views, link_clicks (if they're enabled in the config)
-// and returns a formatted, indented JSON payload. Either takes a numeric id
+// for workbook formatting. Either takes a numeric id
 // and an empty subUUID or takes 0 and a string subUUID.
-func (a *App) exportCustomerData(id int, subUUID string, exportables map[string]bool) (models.CustomerExportProfile, []byte, error) {
+func (a *App) exportCustomerData(id int, subUUID string, exportables map[string]bool) (models.CustomerExportProfile, error) {
 	data, err := a.core.GetCustomerProfileForExport(id, subUUID)
 	if err != nil {
-		return data, nil, err
+		return data, err
 	}
 
 	filterCustomerExportables(&data, exportables)
 
-	// Marshal the data into an indented payload.
-	b, err := json.MarshalIndent(data, "", "  ")
-	if err != nil {
-		a.log.Printf("error marshalling customer export data: %v", err)
-		return data, nil, err
-	}
-
-	return data, b, nil
+	return data, nil
 }
 
 func filterCustomerExportables(data *models.CustomerExportProfile, exportables map[string]bool) {
@@ -1035,7 +1031,7 @@ func (a *App) workspaceCustomerListIDsForRequest(c echo.Context, access models.W
 }
 
 // workspaceExportCustomerListIDsForRequest intentionally does not use the
-// organization-manager inspection exception. CSV export is sensitive data and
+// organization-manager inspection exception. Excel export is sensitive data and
 // therefore remains subject to the caller's pre-existing customer_list grants as well
 // as the owner boundary enforced by the export query.
 func (a *App) workspaceExportCustomerListIDsForRequest(c echo.Context, access models.WorkspaceAccess, param string, qp url.Values) ([]int, error) {

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"encoding/csv"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,6 +17,7 @@ import (
 	"github.com/knadh/listmonk/internal/auth"
 	"github.com/labstack/echo/v4"
 	_ "github.com/lib/pq"
+	"github.com/xuri/excelize/v2"
 )
 
 const auditHandlerTestTable = `
@@ -135,7 +136,7 @@ func TestAuditHandlersKeepPersonalWorkspaceIsolatedPostgresIntegration(t *testin
 	}
 }
 
-func TestAuditExportStreamsSelectedAndFilteredFullCSVPostgresIntegration(t *testing.T) {
+func TestAuditExportSelectedAndFilteredFullExcelPostgresIntegration(t *testing.T) {
 	db := openAuditHandlerTestDB(t)
 	if _, err := db.Exec(`INSERT INTO audit_events
 		(organization_id, actor_type, action, object_type, object_id)
@@ -145,7 +146,7 @@ func TestAuditExportStreamsSelectedAndFilteredFullCSVPostgresIntegration(t *test
 		t.Fatal(err)
 	}
 
-	a := &App{db: db, log: log.New(io.Discard, "", 0)}
+	a := &App{db: db, log: log.New(io.Discard, "", 0), i18n: exportTestLanguage(t, "en")}
 	e := echo.New()
 	user := auth.User{Base: auth.Base{ID: 11}, UserRoleID: auth.SuperAdminRoleID}
 	newContext := func(path string) (echo.Context, *httptest.ResponseRecorder) {
@@ -162,11 +163,16 @@ func TestAuditExportStreamsSelectedAndFilteredFullCSVPostgresIntegration(t *test
 	if err := a.ExportAuditEvents(c); err != nil {
 		t.Fatal(err)
 	}
-	selected, err := csv.NewReader(strings.NewReader(rec.Body.String())).ReadAll()
+	selectedBook, err := excelize.OpenReader(bytes.NewReader(rec.Body.Bytes()))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(selected) != 2 || selected[1][6] != "personal.event" || selected[1][2] != "0" {
+	defer selectedBook.Close()
+	selected, err := selectedBook.GetRows(selectedBook.GetSheetName(0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(selected) != 2 || selected[1][13] != "personal.event" || selected[1][9] != "0" {
 		t.Fatalf("selected export rows = %#v", selected)
 	}
 	if got := rec.Header().Get(echo.HeaderContentDisposition); !strings.Contains(got, "attachment") || !strings.Contains(got, "audit-events-selected") {
@@ -177,11 +183,16 @@ func TestAuditExportStreamsSelectedAndFilteredFullCSVPostgresIntegration(t *test
 	if err := a.ExportAuditEvents(c); err != nil {
 		t.Fatal(err)
 	}
-	full, err := csv.NewReader(strings.NewReader(rec.Body.String())).ReadAll()
+	fullBook, err := excelize.OpenReader(bytes.NewReader(rec.Body.Bytes()))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(full) != 3 || full[1][6] != "personal.event" || full[2][6] != "personal.event" {
+	defer fullBook.Close()
+	full, err := fullBook.GetRows(fullBook.GetSheetName(0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(full) != 3 || full[1][13] != "personal.event" || full[2][13] != "personal.event" {
 		t.Fatalf("filtered full export rows = %#v", full)
 	}
 }

@@ -193,6 +193,7 @@ export default Vue.extend({
     async exportEvents(scope) {
       const params = {
         scope,
+        lang: this.$i18n.locale,
         action: this.filters.action,
         result: this.filters.result,
       };
@@ -205,7 +206,7 @@ export default Vue.extend({
         const url = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `audit-events-${scope}-${new Date().toISOString().slice(0, 10)}.csv`;
+        link.download = `audit-events-${scope}-${new Date().toISOString().slice(0, 10)}.xlsx`;
         document.body.appendChild(link);
         link.click();
         link.remove();

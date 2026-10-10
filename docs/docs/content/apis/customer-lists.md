@@ -31,7 +31,7 @@ organization delivery permissions are stored separately.
 | GET | [/api/public/customer-lists](#get-apipubliccustomer-lists) | Retrieve public customer_lists. |
 | GET | [/api/customer-lists/{customer_list_id}](#get-apicustomer-listscustomer_list_id) | Retrieve a specific customer_list. |
 | GET | [/api/customer-lists/{customer_list_id}/pool-contacts](#get-apicustomer-listscustomer_list_idpool-contacts) | Retrieve a page of pool contacts. |
-| GET | [/api/customer-lists/{customer_list_id}/pool-contacts/export](#get-apicustomer-listscustomer_list_idpool-contactsexport) | Export pool contacts as CSV. |
+| GET | [/api/customer-lists/{customer_list_id}/pool-contacts/export](#get-apicustomer-listscustomer_list_idpool-contactsexport) | Export pool contacts as Excel. |
 | GET | [/api/customer-lists/{customer_list_id}/org-pool-allocations](#get-apicustomer-listscustomer_list_idorg-pool-allocations) | Retrieve organization allocations of a pool customer_list. |
 | POST | [/api/customer-lists](#post-apicustomer-lists) | Create a new customer_list. |
 | POST | [/api/customer-lists/{customer_list_id}/pool-contacts](#post-apicustomer-listscustomer_list_idpool-contacts) | Add a contact to a pool customer_list. |
@@ -418,7 +418,7 @@ ______________________________________________________________________
 
 #### GET /api/customer-lists/{customer_list_id}/pool-contacts/export
 
-Stream the filtered pool contacts as CSV, in the same order as the listing and independent of pagination. Non-platform-administrators may only export pools granted to the active organization and always receive masked e-mail addresses.
+Download the filtered pool contacts as Excel, in the same order as the listing and independent of pagination. Non-platform-administrators may only export pools granted to the active organization and always receive masked e-mail addresses. `lang` or `X-Listmonk-Language` selects workbook headings and statuses.
 
 > **Note:** Requires the `pools:export` permission and the `customer_lists:read` API-key scope. Accepts the same `search`, `customer_code`, `order_by`, and `order` filters as the listing.
 
@@ -434,10 +434,10 @@ Stream the filtered pool contacts as CSV, in the same order as the listing and i
 ##### Example Request
 
 ```shell
-curl -u "api_user:token" -X GET 'http://localhost:9000/api/customer-lists/5/pool-contacts/export?search=A100' -o pool-contacts.csv
+curl -u "api_user:token" -X GET 'http://localhost:9000/api/customer-lists/5/pool-contacts/export?search=A100&lang=en' -o pool-contacts.xlsx
 ```
 
-The response is `text/csv` with the columns `customer_code`, `name`, `email`, `allocation_department`, `status`, `created_at`, `updated_at`.
+The response is an XLSX attachment with translated columns for customer code, name, email, reply-to email, allocation department, customer status, allocation status, removal reason and UTC creation/update time. Customer status and removal from the current allocation are separate fields. See [Excel exports](../exports.md).
 
 ______________________________________________________________________
 

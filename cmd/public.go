@@ -688,7 +688,7 @@ func (a *App) RegisterCampaignView(c echo.Context) error {
 }
 
 // SelfExportCustomerData pulls the customer's profile, customer_list subscriptions,
-// campaign views and clicks and produces a JSON report that is then e-mailed
+// campaign views and clicks and produces an Excel workbook that is then e-mailed
 // to the customer. This is a privacy feature and the data that's exported
 // is dependent on the configuration.
 func (a *App) SelfExportCustomerData(c echo.Context) error {
@@ -704,11 +704,30 @@ func (a *App) SelfExportCustomerData(c echo.Context) error {
 	// customer_list subscriptions, campaign views, and link clicks. Names of
 	// private customer_lists are replaced with "Private customer_list".
 	subUUID := c.Param("subUUID")
-	data, b, err := a.exportCustomerData(0, subUUID, a.cfg.Privacy.Exportable)
+	data, err := a.exportCustomerData(0, subUUID, a.cfg.Privacy.Exportable)
 	if err != nil {
 		a.log.Printf("error exporting customer data: %s", err)
 		return c.Render(http.StatusInternalServerError, tplMessage,
 			makeMsgTpl(a.i18n.T("public.errorTitle"), "", a.i18n.Ts("public.errorProcessingRequest")))
+	}
+	book, err := a.newExportWorkbook(c)
+	if err != nil {
+		return err
+	}
+	defer book.file.Close()
+	settings, err := a.core.GetSettings()
+	if err != nil {
+		return err
+	}
+	if err := writeCustomerDataWorkbook(book, data, settings.CustomFields); err != nil {
+		return err
+	}
+	if err := book.finish(); err != nil {
+		return err
+	}
+	attachment, err := book.file.WriteToBuffer()
+	if err != nil {
+		return err
 	}
 
 	// Prepare the attachment e-mail.
@@ -721,8 +740,8 @@ func (a *App) SelfExportCustomerData(c echo.Context) error {
 
 	subject, body := utils.GetTplSubject(a.i18n.Ts("email.data.title"), msg.Bytes())
 
-	// E-mail the data as a JSON attachment to the customer.
-	const fname = "data.json"
+	// E-mail the workbook to the verified customer's own address.
+	const fname = "customer-data.xlsx"
 	if err := a.emailMsgr.Push(models.Message{
 		From:    a.emailMsgr.DefaultFromEmail(),
 		To:      []string{data.Email},
@@ -731,8 +750,8 @@ func (a *App) SelfExportCustomerData(c echo.Context) error {
 		Attachments: []models.Attachment{
 			{
 				Name:    fname,
-				Content: b,
-				Header:  manager.MakeAttachmentHeader(fname, "base64", "application/json"),
+				Content: attachment.Bytes(),
+				Header:  manager.MakeAttachmentHeader(fname, "base64", excelContentType),
 			},
 		},
 	}); err != nil {

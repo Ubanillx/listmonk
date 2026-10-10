@@ -66,6 +66,7 @@
 import Vue from 'vue';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
+import importTemplateHeader from '../utils/importTemplateHeaders';
 
 const columns = ['account', 'role'];
 
@@ -105,11 +106,7 @@ export default Vue.extend({
 
   methods: {
     downloadTemplate() {
-      const worksheet = XLSX.utils.aoa_to_sheet([columns]);
-      worksheet['!cols'] = [{ wch: 32 }, { wch: 16 }];
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Members');
-      XLSX.writeFile(workbook, 'organization-members-import-template.xlsx');
+      document.location.href = `/api/import-templates/members?lang=${encodeURIComponent(this.$i18n.locale)}`;
     },
 
     clearFile() {
@@ -143,7 +140,7 @@ export default Vue.extend({
     },
 
     normalizeHeader(value) {
-      return String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+      return importTemplateHeader(value, [...columns, 'username', 'email'], (key) => this.$tc(key, 1));
     },
 
     stringValue(value) {
@@ -152,8 +149,8 @@ export default Vue.extend({
 
     normalizeRole(value) {
       const role = String(value || '').trim().toLowerCase();
-      if (role === '管理员' || role === '组织管理员') return 'manager';
-      if (role === '成员' || role === '普通成员') return 'member';
+      if (['管理员', '组织管理员', '管理員', '組織管理員', 'admin', this.$t('organizations.roleManager').toLowerCase()].includes(role)) return 'manager';
+      if (['成员', '普通成员', '成員', '普通成員', this.$t('organizations.roleMember').toLowerCase()].includes(role)) return 'member';
       return role || 'member';
     },
 

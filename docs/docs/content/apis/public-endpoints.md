@@ -274,6 +274,9 @@ envelope.
   unsubscribe page linked as `{{ UnsubscribeURL }}` in campaigns.
 - `POST /subscription/export/:subUUID` and `POST /subscription/wipe/:subUUID` —
   customer self-service data export and erasure, gated by the privacy settings.
+  Export sends `customer-data.xlsx` to the customer's own address, with separate
+  sheets for the configured export categories and translated headers (`lang` or
+  application language). See [Excel exports](../exports.md).
 - `GET /link/:linkUUID/:campUUID/:subUUID` — link click tracking; `subUUID` may
   identify a regular customer or a public-pool recipient in that campaign. It
   records the click (unless tracking is disabled globally) and redirects to the

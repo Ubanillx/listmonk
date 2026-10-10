@@ -1301,7 +1301,7 @@ func (c *Core) GetWorkspaceCustomerProfileForExport(access models.WorkspaceAcces
 	}
 	stmt := fmt.Sprintf(`
 		WITH prof AS (
-			SELECT s.id, s.uuid, s.email, s.name, s.attribs, s.status,
+			SELECT s.id, s.uuid, s.email, s.name, s.customer_code, s.attribs, s.status,
 				s.created_at, s.updated_at, s.organization_id, s.owner_user_id
 			FROM customers s
 			WHERE s.id = $%d AND (%s)

@@ -155,3 +155,14 @@ explicit enable endpoint to resume a disabled mailbox.
 Receiving configuration and connection testing use IMAP with the saved host, port, TLS setting and folder. AI scans preserve a UID/UIDVALIDITY cursor and process successive batches of at most 200 unseen messages; they do not mark messages read or delete them. Disabling a mailbox retains `ai_enabled` and credentials for re-enabling.
 
 Private campaigns with mixed public-pool/private audiences retain `reply_mailbox_id` for their private recipients. Pool recipients keep independent Reply-To snapshots. Private campaign start/schedule and delivery reject a disabled or changed mailbox while retaining sent route history. AI source resolution requires a sent delivery in the actual mailbox, resolves shared mailboxes through the delivered customer, and ignores ambiguous sources. Platform-admin-created organization mailboxes may scan without the administrator joining the organization, provided the organization is active.
+
+#### GET /api/import-templates/users
+
+`GET /api/import-templates/users?lang=zh-CN` returns an empty Excel workbook
+with translated headings and a separate instructions sheet. Its first sheet
+has username, display name, password, email, user role, customer-list role and
+status columns. Downloading contains no stored user data and only requires
+authentication. Submitting the filled template still requires `users:manage`;
+role assignment restrictions remain in effect. Legacy machine headings and
+the active-language/English/Simplified Chinese/Traditional Chinese headings
+are accepted by the admin UI. See [Excel exports](../exports.md).

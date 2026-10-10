@@ -20,7 +20,7 @@
 
 角色配置以私域客户与列表、公海客户与列表、营销活动、模板与素材、发信与回信邮箱五组呈现 20 项业务权限，不设计预设角色。`frontend/src/utils/businessPermissions.js` 只负责显示分组，服务端仍持久化原权限 ID；旧角色的部分授权不会因打开、保存而扩展。名称、映射、依赖和升级语义见 [业务权限说明](docs/content/business-permissions.md)。
 
-新增 `customer_lists:delete`、`pools:master_manage`、`pools:delivery_manage`、`assets:share`、`mailboxes:use`、`mailboxes:manage`。组织身份和所有权决定数据范围，不能绕过查看、导出、统计或私域敏感信息权限；列表、明细、写入响应、CSV、JSON 和收件人报告一致脱敏，省略的编辑字段保留原值。全局模板也要求查看/维护权限，改变共享范围另需共享权限。发信与回信邮箱使用和配置分别授权，配置仍保留所有者/组织边界。
+新增 `customer_lists:delete`、`pools:master_manage`、`pools:delivery_manage`、`assets:share`、`mailboxes:use`、`mailboxes:manage`。组织身份和所有权决定数据范围，不能绕过查看、导出、统计或私域敏感信息权限；列表、明细、写入响应、Excel、API JSON 和收件人报告一致脱敏，省略的编辑字段保留原值。全局模板也要求查看/维护权限，改变共享范围另需共享权限。发信与回信邮箱使用和配置分别授权，配置仍保留所有者/组织边界。
 
 公海主数据授权以 `WorkspaceAccess.PoolMaster` 表达，只为平台归属、非待转移的一级 `pool` 扩大范围；工作区解析、查询、单行检查和事务锁统一传递，不能提升私域或其它资源能力，委派维护者的联系人 DTO 仍脱敏。组织分配需 `pools:manage`，本组织创建分配先检查已有投放授权，跨组织创建还需 `pools:delivery_manage`。`GET /api/pools/organizations` 只向投放授权管理者提供活动组织 ID/名称，不授予组织管理或成员身份。
 
@@ -103,7 +103,7 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 4. **资源边界**：每行带有 `organization_id`、`owner_user_id`、原始所有者、可见性和转移状态。`internal/core/workspace.go` 分别判断 `read`、`use`、`copy`、`manage` 和敏感数据访问，不能以“可读”推导出“可发送、导出或修改”。
 5. **事务重验**：写入在事务内按稳定顺序锁定组织与资源，重验组织状态、成员资格、所有权和待转移状态，消除“检查后状态变化”的越权窗口。
 
-可见性为 `private`、`organization`、`global`。普通客户列表可在组织工作区内以 `organization` 共享列表元数据（包括名称和统计），个人工作区只允许 `private`；客户记录始终是所有者私有，普通列表不能全局共享，媒体不能全局公开。组织成员可以读取组织共享列表，组织经理可审查同组织成员资源及待转移资源，但只能写自己的资源，不能使用他人的私有发送资源。共享列表的可读性不赋予客户明细、导入、批量修改或活动发送权限：这些操作仍按列表权限、当前工作区和客户/列表所有者重新校验，一级公海走独立的跨工作区投放/导入授权。客户 CSV、单客户资料和审计日志均为直接 HTTP 导出，仍执行工作区、所有权和脱敏边界，不建立持久化导出任务。归档组织禁止普通写入及导出；仅平台管理员可执行受限的清理/转移流程。前端的 `$can*` 仅隐藏不允许的操作，Go 服务是唯一权威。
+可见性为 `private`、`organization`、`global`。普通客户列表可在组织工作区内以 `organization` 共享列表元数据（包括名称和统计），个人工作区只允许 `private`；客户记录始终是所有者私有，普通列表不能全局共享，媒体不能全局公开。组织成员可以读取组织共享列表，组织经理可审查同组织成员资源及待转移资源，但只能写自己的资源，不能使用他人的私有发送资源。共享列表的可读性不赋予客户明细、导入、批量修改或活动发送权限：这些操作仍按列表权限、当前工作区和客户/列表所有者重新校验，一级公海走独立的跨工作区投放/导入授权。客户 Excel、单客户资料和审计日志均为直接 HTTP 导出，仍执行工作区、所有权和脱敏边界，不建立持久化导出任务。归档组织禁止普通写入及导出；仅平台管理员可执行受限的清理/转移流程。前端的 `$can*` 仅隐藏不允许的操作，Go 服务是唯一权威。
 
 管理端路由自 2026-09-27 起用 `meta.permission` 显式声明页面所需权限（`frontend/src/router/index.js`：`/settings*` 需要 `settings:get`/`settings:maintain`、`/settings/audit` 需要 `audit:get`、`/users*` 需要 `users:get`/`roles:get`），`frontend/src/main.js` 的全局守卫在 `profile` 就绪后统一判定（`profileReady` 承诺消除“首次导航早于 profile 请求”的竞态，管理员管理页沿用同一机制），未授权直达会进入 `/admin/403` 说明页而不是渲染只能产生 403 的空壳；该守卫与 `$can*` 一样只属于体验层，服务端依旧逐请求校验（见本条与 `docs/harness/UI_UX_AUDIT.md`）。
 
@@ -159,13 +159,13 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 
 ### 直接数据导出
 
-客户列表的 `GET /api/customers/export` 直接流式返回 CSV；单客户资料的 `GET /api/customers/:id/export` 直接返回 JSON；审计日志的 `GET /api/audit-events/export` 直接返回当前工作区 CSV。客户/黑名单及单客户资料导出由 `customers:export` 控制（平台管理员和组织管理员仍按工作区规则处理），并继续执行客户所有权、工作区、列表权限及邮箱脱敏边界。公开订阅者自助资料导出保持独立。系统不创建导出任务或持久化文件，不运行导出 worker，也没有导出中心。
+所有业务下载统一返回 Excel `.xlsx`：私域/黑名单、公海单列表及汇总、单客户资料、审计日志和活动发送失败明细；公开订阅者自助资料通过邮件发送同格式附件。`cmd/excel_exports.go` 负责请求级语言、样式、流式工作表、Excel 行数续表和直接响应，`cmd/excel_customer_exports.go` 拆分客户资料及自定义属性。管理端传 `lang`；API 可用 `X-Listmonk-Language`，省略时使用应用语言，缺译回退英语，绝不修改全局 translator。标识符按文本、时间按 Excel 日期并标明 UTC，冻结表头、列宽、换行、隔行底色及筛选统一处理。生成完成后才提交 HTTP 头，临时文件随请求清理，不建立持久任务或导出 worker。客户导出仍由 `customers:export` 和现有工作区/所有权/脱敏边界约束；普通 API JSON、媒体及导入格式不受影响。用户/成员模板由已认证的 `GET /api/import-templates/:kind` 返回空表和填写说明，不读取资源数据、不授予导入权限。完整契约与字段见 [Excel 导出说明](docs/content/exports.md)。
 
 ### 业务审计日志（v6.32.0）
 
 `audit_events` 是低频、可检索的业务操作日志，与 `campaign_recipients`、`campaign_views`、`link_clicks`、`bounces` 和回信队列表中的业务事实分工：打开/点击等高频事实继续写专用表，不复制到审计表；活动发送器只记录开始、结束、暂停、取消、延迟和启动失败等生命周期事件。`cmd/audit.go` 的认证 API 中间件按稳定动作名记录活动、客户/名单、导入、退信、模板、SMTP、回复邮箱/转发、事务邮件及导出等操作，并保存工作区、用户/API Key、结果、原因码、请求 ID、IP、User-Agent 和小型非敏感元数据。模板、活动、媒体、客户列表、用户和角色等低频写操作会额外保存截断后的 `object_details` 摘要，认证操作者保存可读的 `actor_details`；审计查询在保留 `actor_user_id` 的历史记录上关联 `users` 返回当前用户名/名称。登录成功在建立会话前绑定用户，失败登录只保存尝试的用户名；媒体移动记录保存文件名及源/目标目录摘要。这些快照和关联字段用于审计页面展示，不替代稳定 ID。密码、令牌、邮件正文、附件和完整收件人集合不得进入元数据。
 
-`audit:get` 只允许查看当前工作区的审计记录；`organization_id = 0` 明确表示个人空间，组织历史保留原组织 ID，不能因组织删除而落入个人查询。`GET /api/audit-events` 支持动作、结果、对象和服务端分页筛选，单页最多 100 条；`GET /api/audit-events/:id` 同样执行工作区边界。`GET /api/audit-events/export` 复用相同的工作区和筛选边界，支持当前页勾选 ID 的选择导出，以及忽略分页限制的全量 CSV 流式导出；选择导出最多接受 1000 个 ID，导出动作本身也写入审计日志。后台活动发送器、退信 webhook、回信转发器和回信 AI 处理器使用 `system`/`webhook` 操作者类型补写自动动作，失败结果使用固定原因码而不记录底层错误正文。审计写入是业务提交后的独立 best-effort 写入，写入失败只进入运行日志，不改变原业务请求结果；后续需要强一致的核心事务可复用 `internal/audit.Writer.RecordTx`。
+`audit:get` 只允许查看当前工作区的审计记录；`organization_id = 0` 明确表示个人空间，组织历史保留原组织 ID，不能因组织删除而落入个人查询。`GET /api/audit-events` 支持动作、结果、对象和服务端分页筛选，单页最多 100 条；`GET /api/audit-events/:id` 同样执行工作区边界。`GET /api/audit-events/export` 复用相同的工作区和筛选边界，支持当前页勾选 ID 的选择导出，以及忽略分页限制的全量 Excel 导出；选择导出最多接受 1000 个 ID，导出动作本身也写入审计日志。后台活动发送器、退信 webhook、回信转发器和回信 AI 处理器使用 `system`/`webhook` 操作者类型补写自动动作，失败结果使用固定原因码而不记录底层错误正文。审计写入是业务提交后的独立 best-effort 写入，写入失败只进入运行日志，不改变原业务请求结果；后续需要强一致的核心事务可复用 `internal/audit.Writer.RecordTx`。
 
 第二阶段将同一模型扩展到三组业务边界：公共订阅/退订/Opt-in 与客户自助导出/擦除使用 `customer` 操作者并在可解析时绑定客户 UUID 和所属工作区；公海联系人、媒体、自定义字段记录安全对象 ID 和批量结果摘要；用户、角色、组织、API Key、2FA、登录/登出、密码重置和 OIDC 记录成功、失败或拒绝结果。业务函数通过 Echo context 提供对象、组织、动作、原因码和白名单元数据，避免把请求体、邮箱、凭据或 token 原文交给通用中间件；公共未认证路由也挂载审计中间件，但只有明确登记的低频写操作才产生事件。
 
@@ -176,7 +176,7 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 - 普通客户批量导入仅支持邮箱、姓名、客户编码映射；CSV（包括 ZIP 内 CSV）固定逗号分隔，XLSX 保持支持。导入 API 不再接受属性映射，也不再读取 `delim` 参数。覆盖用户信息仅更新姓名与客户编码，保留已有属性。选择一级公海列表时，同一入口切换到公海专用导入分支，不走普通客户写入流程。
 
 - `customers.customer_code`（v6.21.0 迁移新增）：客户编码，不唯一。管理端新增/编辑（`cmd/customers.go`）校验必填；批量订阅导入（`internal/subimporter`）要求映射客户编码列，但内容允许为空，新客户保存空串，重导入空值保留已有编码。公开订阅入口可选。列允许空串并带普通索引。
-- `customer_lists.mask_emails`（v6.21.0 迁移新增）：客户列表级“打码邮箱”开关。无敏感数据访问权的查看者，在当前查看客户列表开启打码时看到打码邮箱；客户列表未开启或无上下文时维持原置空行为。打码覆盖客户列表/详情、API 响应及范围 CSV 导出，搜索仍按完整邮箱匹配。CSV 导出额外输出 `customer_code` 列。
+- `customer_lists.mask_emails`（v6.21.0 迁移新增）：客户列表级“打码邮箱”开关。无敏感数据访问权的查看者，在当前查看客户列表开启打码时看到打码邮箱；客户列表未开启或无上下文时维持原置空行为。打码覆盖客户列表/详情、API 响应及范围 Excel 导出，搜索仍按完整邮箱匹配。Excel 导出输出 `customer_code` 列。
 
 ### 一级公海与组织公海分配（已实施）
 
@@ -188,7 +188,7 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 - 一级公海文件导入、联系人创建/删除与清除邮箱由 `pools:master_manage` 控制，包括统一导入与普通列表导入一级公海。组织分配成员导入、分配、移除和恢复由 `pools:manage` 控制，不能更改主数据或投放授权。公海管理窗口只负责目标组织、投放授权和分配创建/绑定；主数据在独立客户页面维护。
 - 公海分配仅保存一级公海联系人到组织的分配关系（不再保存回件邮箱），不复制联系人主数据。组织在公海分配手动移除联系人时，一级公海保留该联系人并显示该组织的逻辑剔除标记；该组织后续选择一级公海投放时也必须过滤该标记，其他组织不受影响。
 - 公海和公海分配的客户计数及查看入口使用 `pool_members`/`org_pool_allocation_members` 专用查询；管理端不会把 `pool_contacts` 伪装成普通 `customers`，也不会让普通客户批量操作或导出路径接触公海数据。一级列表对组织用户只返回本组织已分配的安全 DTO，最高管理员可查看一级/二级完整记录；组织公海分配显示本组织的逻辑移除状态和原因，一级公海总表汇总各组织的移除记录，并向最高管理员展示对应组织、原因和可恢复的分配 ID。
-- 公海联系人复用 `frontend/src/views/Customers.vue`，旧的 `PoolContacts.vue` 已删除。`/admin/pool` 展示所有可见一级公海的联系人并显示所属列表；`/admin/pool-lists/:id/contacts` 展示单个公海或组织公海分配的联系人。两种视图复用客户表格布局、服务端分页与排序、搜索、状态筛选和独立 CSV 导出；汇总页支持按来源公海执行已授权的跨公海批量操作，单列表按权限提供管理操作。数据仍保存在独立的 `pool_contacts` 中，普通客户批量操作与导出不接触公海数据。“归档无效联系人”只清除邮箱并标记 archived；一级公海联系人的永久删除要求 `pools:master_manage`，经 `DELETE /api/pools/:id/contacts/:contact_id` 执行，分配列表 ID 被拒绝。
+- 公海联系人复用 `frontend/src/views/Customers.vue`，旧的 `PoolContacts.vue` 已删除。`/admin/pool` 展示所有可见一级公海的联系人并显示所属列表；`/admin/pool-lists/:id/contacts` 展示单个公海或组织公海分配的联系人。两种视图复用客户表格布局、服务端分页与排序、搜索、状态筛选和独立 Excel 导出；汇总页支持按来源公海执行已授权的跨公海批量操作，单列表按权限提供管理操作。数据仍保存在独立的 `pool_contacts` 中，普通客户批量操作与导出不接触公海数据。“归档无效联系人”只清除邮箱并标记 archived；一级公海联系人的永久删除要求 `pools:master_manage`，经 `DELETE /api/pools/:id/contacts/:contact_id` 执行，分配列表 ID 被拒绝。
 - 当前管理端导航以“客户”为一级折叠菜单，二级顺序为“公海客户”、“公海客户列表”、“私域客户”、“私域客户列表”、“导入”、“退信”，表单保留在其后。`/admin/pool-lists` 仅展示一级 `pool` 与 `org_pool_allocation`，一级公海创建及公海分配管理入口均在此页；`/admin/customer-lists` 仅展示普通 `private`/`public` 列表，创建表单不提供 `pool` 类型。前端用 `GET /api/customer-lists?type_group=pool|private` 分组；`cmd/customer_list_filters.go` 统一解析分组，`queryReadableWorkspaceLists` 对跨工作区追加的已授权公海应用同一组搜索、类型、状态、订阅方式及标签条件，并在权限过滤后统一排序、分页，保证总数与列表一致。查询式批量删除复用该可见结果，再与可管理 ID 取交集；前端同时传递 `type_group` 与 `status`，防止跨页面或跨归档状态删除。不带参数的既有 API 行为不变。公海汇总页 `/admin/pool` 与公海单列表页 `/admin/pool-lists/:id/contacts` 都高亮“公海客户”；私域客户和私域列表使用各自路由。旧 `/admin/pool/:id` 重定向至汇总页，旧 `/admin/customers/pool-lists/:id` 重定向至公海单列表页。
 - 列表类型是资源边界：`private` 与 `public` 可互相转换；一级 `pool` 和 `org_pool_allocation` 必须保留创建时的类型。`internal/core/workspace_resource_writes.go` 在持有列表行锁的更新事务内核验旧类型和请求类型，禁止通用 `PUT /api/customer-lists/:id` 将普通列表转成公海或公海分配，也禁止反向转换；公海分配只能走专用拆分事务。
 - 一级公海和组织公海分配的客户视图使用下拉筛选「正常客户」与「已移除客户」，分别按 `status=active` 和 `status=removed` 请求；一级公海的已移除客户按联系人 ID 汇总所有组织未恢复的移除/剔除记录，未分配客户仍属正常，组织用户的一级公海视图只在本组织范围内分类。移除成员不会混入正常客户列表，已移除客户保留恢复分配入口；不带 `status` 的旧 API 请求仍返回全部联系人。
@@ -198,7 +198,7 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 - 分配与主数据维护独立：恢复、分配、移除和分配成员导入要求 `pools:manage`，普通调用者只操作本组织分配；联系人新增、清邮、删除与统一导入要求 `pools:master_manage`。组织经理也需明确授权。统一回信邮箱配置要求 `mailboxes:manage` 与组织经理/平台组织管理范围，分配级配置端点已删除。历史脚本断言须按功能授权解释，不能由 manager 身份推导写权限。
 - 公海客户导航固定进入 `/admin/pool` 汇总页；`GET /api/pools/contacts` 与导出接口在服务端按一级公海成员关系跨列表搜索、状态、来源 `pool_id` 和精确分配部门过滤，再统一排序和分页，每行返回来源 `pool_id`/`pool_name`。`GET /api/pools/contacts/filters` 按同一组织边界返回可选公海/部门组合，不依赖当前页数据。同一联系人属于两个公海时显示两行，不合并来源；平台管理员可看全部公海，组织用户只看本组织分配内的成员且邮箱继续脱敏。点击“所属公海列表”进入 `/admin/pool-lists/:id/contacts` 单列表管理页，并保持“公海客户”导航高亮；公海客户列表计数和导入结果也指向该路由。旧 `/admin/pool/:id` 入口重定向汇总页，旧 `/admin/customers/pool-lists/:id` 和指向公海列表的通用客户列表路由重定向至单列表管理页。
 - 投放授权管理者使用独立组织目录选择跨组织目标，查看分配并授予/撤销投放授权；普通分配管理者固定当前组织。创建请求不切换工作区、不新增成员关系。分配不能经通用列表表单创建，也不存在二级合并一级流程。弹窗不配置邮箱；组织经理或平台组织操作员配置邮箱时另需 `mailboxes:manage`。
-- 活动只允许选择一级公海作为受众，服务端按活动范围解析组织公海分配。创建、保存与测试发送均通过 `splitCampaignAudienceIDs` 区分公海和私域列表：公海走投放授权/组织分配，不能按普通列表要求属于当前工作区或拥有主数据维护权限；私域仍执行工作区与列表权限校验。测试发送取已保存的不可变 `pool_scope`，请求不能扩大或缩小范围；全组织活动仍拒绝私域及显式分配列表。测试收件人仍由 `GetManagedWorkspaceCustomersByEmails` 限制为当前工作区可管理的客户，不启动公海批量投递。v6.55.0 新增 `pool_contacts.reply_to` 与 `campaigns.pool_reply_priority`：默认 `contact_first`（客户回信邮箱 → 组织统一回信邮箱），可选 `organization_first`（组织 → 客户），逐客户使用第一个可用地址；组织地址必须 active，AI 模式还需通过收件连接验证，普通地址无需收件凭据。公海受众不使用活动级或个人回信邮箱。回信地址是内部路由地址，在公海、分配和 CSV 中展示；客户收件地址继续脱敏。
+- 活动只允许选择一级公海作为受众，服务端按活动范围解析组织公海分配。创建、保存与测试发送均通过 `splitCampaignAudienceIDs` 区分公海和私域列表：公海走投放授权/组织分配，不能按普通列表要求属于当前工作区或拥有主数据维护权限；私域仍执行工作区与列表权限校验。测试发送取已保存的不可变 `pool_scope`，请求不能扩大或缩小范围；全组织活动仍拒绝私域及显式分配列表。测试收件人仍由 `GetManagedWorkspaceCustomersByEmails` 限制为当前工作区可管理的客户，不启动公海批量投递。v6.55.0 新增 `pool_contacts.reply_to` 与 `campaigns.pool_reply_priority`：默认 `contact_first`（客户回信邮箱 → 组织统一回信邮箱），可选 `organization_first`（组织 → 客户），逐客户使用第一个可用地址；组织地址必须 active，AI 模式还需通过收件连接验证，普通地址无需收件凭据。公海受众不使用活动级或个人回信邮箱。回信地址是内部路由地址，在公海、分配和 Excel 中展示；客户收件地址继续脱敏。
 - 公海受众在预览/发送被阻断时，错误信息必须可自查：`ValidatePoolCampaignAudience`（`internal/core/pools.go`）先按当前配置刷新路由，再逐条列出未解析受众的完整解析链 `pool list "<公海列表>" -> organization allocation "<组织公海分配>" (organization "<组织>")` 与首个失败条件（无目标组织 / 该组织未绑定公海分配 / 组织未配置统一回件邮箱 / 该邮箱已停用或 AI 收件连接未验证），并以 `Fix: ` 给出可照做步骤（先在“客户列表 → 公海管理”绑定该组织的公海分配（如需要），再由该组织经理在“管理组织 → 组织回信邮箱”保存一个可用回信地址作为组织统一回件邮箱，AI 收件连接须验证，最后重试预览/发送）；活动编辑页对未解析受众只读展示同一结论，不提供任何回信配置操作。该诊断只报告，不改变解析规则：公海收件人的 Reply-To 始终取投递快照中按活动优先级解析的客户回信邮箱或组织回退地址（`internal/manager/manager.go` 仅对公海收件人使用 `campaign_pool_recipients.reply_mailbox_id`），仅公海受众隐藏活动级邮箱；混选公海与私域时保留该字段，私域逐收件人保存实际回信地址，公海仍使用独立快照。
 - 公海投递快照使用 `campaign_pool_recipients` 与联系人内部 ID 去重；公海退订、退信和回复 AI 事件写入 `org_pool_allocation_exclusions` 的组织维度逻辑状态，并在 `bounces`/`reply_ai_events` 保留来源池、公海分配和组织字段，禁止改变一级主数据或其他组织分配。收件人判定（活跃公海联系人 × 有效二级分配 × 本组织未剔除）只在 `internal/core/pools.go` 的 `poolRecipientMembershipSQL` 定义一次，一级解析、二级解析与快照写入共用同一片段，因此三条路径不可能给出不同收件人集合。快照刷新采用 `DO UPDATE` 并清理本组织范围内、已不再可投递且尚未交给投递的 `pending`/`deferred` 行；已 `queued`/`sent`/`cancelled` 的行属于投递历史，不重写也不删除，退队路径另按 `org_pool_allocation_exclusions` 重查剔除。
 - 邮件打开像素与点击链接的公开 URL 可以携带普通客户或公海联系人的 UUID；`resolve_campaign_tracking_recipient` 必须先验证活动收件人快照，点击还要验证链接属于活动。`campaign_views`/`link_clicks` 用互斥的 `customer_id`、`pool_contact_id` 保存事件，匿名聚合模式继续写两者均为空的事件。公海成功投递写 `campaign_pool_recipients.sent_at`，迁移 v6.46.0 将旧 `sent` 行的 `updated_at` 作为近似历史时间回填。活动和工作区报表的发送分母、唯一打开与点击人数均纳入公海；收件人明细还要求 `campaigns:recipients`、普通客户查看权限及公海行的 `pools:get`，非平台管理员只能看到本组织公海行，邮箱必须脱敏且不得返回公海 UUID。
@@ -248,7 +248,7 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 - 与发送快照相关的既有投影同步放宽：`campaign_send_counts`、`has-campaign-recipients`、`queue-campaign-pool-customers` 对 `all_organizations` 活动不再要求池行所属组织等于活动组织，因此未发送计数、完成判定与调度器读取的收件人集合在两条部署路径下一致。
 - 迁移 `internal/migrations/v6.44.0.go`（`cmd/upgrade.go` 注册）幂等新增 `campaigns.pool_scope`/`pool_next_org_index`、`campaign_pool_recipients` 的四个发件快照列、`campaign_pool_org_orders`、`org_pool_smtp_cursors`，并以新谓词重建 `campaign_send_counts`；对全新 `schema.sql` 库为 no-op。
 
-公海客户汇总页与单公海列表共用 `frontend/src/views/Customers.vue` 的勾选和批量操作：跨公海分配按来源公海分别选择目标分配，组织移除/恢复按当前组织的公海分配解析，归档请求携带各行来源公海 ID；永久删除仅对平台管理员开放，并按联系人 ID 去重（同一联系人可以属于多个公海）。公海 CSV 的重复 `contact` 参数只缩小已授权查询结果，汇总导出按 `(pool_id, contact_id)` 匹配，单列表导出使用 `0:<contact_id>`；省略参数保持全量筛选导出，非平台管理员仍返回脱敏 DTO。私域与公海的工具栏、弹窗和确认文案使用语言键。
+公海客户汇总页与单公海列表共用 `frontend/src/views/Customers.vue` 的勾选和批量操作：跨公海分配按来源公海分别选择目标分配，组织移除/恢复按当前组织的公海分配解析，归档请求携带各行来源公海 ID；永久删除仅对平台管理员开放，并按联系人 ID 去重（同一联系人可以属于多个公海）。公海 Excel 的重复 `contact` 参数只缩小已授权查询结果，汇总导出按 `(pool_id, contact_id)` 匹配，单列表导出使用 `0:<contact_id>`；省略参数保持全量筛选导出，非平台管理员仍返回脱敏 DTO。私域与公海的工具栏、弹窗和确认文案使用语言键。
 
 营销活动配置页 `frontend/src/views/Campaign.vue` 按基本信息、收件客户、发件与回信、发送安排分组，桌面双栏、窄屏顺序堆叠。详细规则和标签/发送渠道/邮件头使用可展开区域，测试发送只在活动保存后出现。公海回信优先级的界面名称为“列表回信邮箱 → 组织回信邮箱”及其反向顺序；列表来源仍逐条读取导入记录的 `reply_to`，`contact_first` / `organization_first` 和后端路由契约保持兼容。条件回信控件使用独立组件 key，防止受众切换时沿用旧邮箱值。
 

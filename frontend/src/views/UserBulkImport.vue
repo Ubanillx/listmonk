@@ -86,6 +86,7 @@
 import Vue from 'vue';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
+import importTemplateHeader from '../utils/importTemplateHeaders';
 
 const columns = ['username', 'name', 'password', 'email', 'user_role', 'customer_list_role', 'status'];
 const requiredColumns = ['username', 'password', 'email', 'user_role'];
@@ -116,13 +117,7 @@ export default Vue.extend({
 
   methods: {
     downloadTemplate() {
-      const worksheet = XLSX.utils.aoa_to_sheet([columns]);
-      worksheet['!cols'] = [
-        { wch: 24 }, { wch: 24 }, { wch: 24 }, { wch: 32 }, { wch: 24 }, { wch: 24 }, { wch: 12 },
-      ];
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Users');
-      XLSX.writeFile(workbook, 'users-import-template.xlsx');
+      document.location.href = `/api/import-templates/users?lang=${encodeURIComponent(this.$i18n.locale)}`;
     },
 
     clearFile() {
@@ -159,7 +154,7 @@ export default Vue.extend({
     },
 
     normalizeHeader(value) {
-      return String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+      return importTemplateHeader(value, columns, (key) => this.$tc(key, 1));
     },
 
     stringValue(value) {

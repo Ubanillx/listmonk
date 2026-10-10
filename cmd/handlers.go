@@ -109,6 +109,7 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.GET("/api/health", a.HealthCheck)
 		g.GET("/api/config", a.GetServerConfig)
 		g.GET("/api/lang/:lang", a.GetI18nLang)
+		g.GET("/api/import-templates/:kind", a.DownloadImportTemplate)
 		g.GET("/api/dashboard/charts", a.GetDashboardCharts)
 		g.GET("/api/dashboard/counts", a.GetDashboardCounts)
 
@@ -163,8 +164,7 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.POST("/api/customers/bulk/delete", a.DeleteCustomersByFilter)
 		g.PUT("/api/customers/bulk/blocklist", a.BlocklistCustomersByFilter)
 		g.PUT("/api/customers/bulk/customer-lists", a.ManageCustomerListMembershipsByFilter)
-		g.GET("/api/customers/export",
-			middleware.GzipWithConfig(middleware.GzipConfig{Level: 9})(a.ExportCustomers))
+		g.GET("/api/customers/export", a.ExportCustomers)
 
 		g.GET("/api/import/customers", apiKeyScope(a.GetImportCustomers, apiKeyScopeCustomersImport))
 		g.GET("/api/import/customers/logs", apiKeyScope(a.GetImportCustomerStats, apiKeyScopeCustomersImport))

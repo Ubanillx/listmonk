@@ -13,7 +13,7 @@ authentication and request conventions.
 | GET    | [/api/customers/{customer_id}](#get-apicustomerscustomer_id)                    | Retrieve a specific customer.                |
 | GET    | [/api/customers/{customer_id}/activity](#get-apicustomerscustomer_idactivity)             | Retrieve a specific customer's activity.         |
 | GET    | [/api/customers/{customer_id}/export](#get-apicustomerscustomer_idexport)       | Export a specific customer.                  |
-| GET    | [/api/customers/export](#get-apicustomersexport)                                          | Export all customers as a CSV stream.            |
+| GET    | [/api/customers/export](#get-apicustomersexport)                                          | Export customers as an Excel workbook.            |
 | GET    | [/api/customers/{customer_id}/bounces](#get-apicustomerscustomer_idbounces)     | Retrieve a  customer bounce records.         |
 | POST   | [/api/customers](#post-apicustomers)                                                | Create a new customer.                       |
 | POST   | [/api/customers/{customer_id}/optin](#post-apicustomerscustomer_idoptin)        | Sends optin confirmation email to customers. |
@@ -253,7 +253,7 @@ ______________________________________________________________________
 
 #### GET /api/customers/{customer_id}/export
 
-Export a specific customer data that gives profile, customer_list subscriptions, campaign views and link clicks information. Names of private customer_lists are replaced with "Private customer_list".
+Download `customer-data.xlsx` containing separate profile, subscription, campaign-open and link-click worksheets. Only categories enabled in `privacy.exportable` are included. Private list names use a translated generic label. The export retains the caller's ownership, workspace and sensitive-field restrictions. Pass `lang` or `X-Listmonk-Language` to select translated headers; see [Excel exports](../exports.md).
 
 ##### Parameters
 
@@ -264,46 +264,18 @@ Export a specific customer data that gives profile, customer_list subscriptions,
 ##### Example Request
 
 ```shell
-curl -u 'api_username:access_token' 'http://localhost:9000/api/customers/1/export'
+curl -u 'api_username:access_token' 'http://localhost:9000/api/customers/1/export?lang=en' -o customer-data.xlsx
 ```
 
 ##### Example Response
 
-```json
-{
-  "profile": [
-    {
-      "id": 1,
-      "uuid": "c2cc0b31-b485-4d72-8ce8-b47081beadec",
-      "email": "john@example.com",
-      "name": "John Doe",
-      "attribs": {
-        "city": "Bengaluru",
-        "good": true,
-        "type": "known"
-      },
-      "status": "enabled",
-      "created_at": "2024-07-29T11:01:31.478677+05:30",
-      "updated_at": "2024-07-29T11:01:31.478677+05:30"
-    }
-  ],
-  "subscriptions": [
-    {
-      "subscription_status": "unconfirmed",
-      "name": "Private customer_list",
-      "type": "private",
-      "created_at": "2024-07-29T11:01:31.478677+05:30"
-    }
-  ],
-  "campaign_views": [],
-  "link_clicks": []
-}
-```
+A binary XLSX attachment with content type
+`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`.
 ______________________________________________________________________
 
 #### GET /api/customers/export
 
-Export customers as a gzipped CSV stream (`Content-Type: text/csv`, attachment `customers.csv`). The exported columns are `uuid`, `email`, `name`, `customer_code`, `attributes`, `status`, `created_at` and `updated_at`.
+Download `customers.xlsx`. Columns start with customer code, name, permitted email, customer status and UTC creation/update times. Permitted custom fields use their configured labels in separate columns; remaining attributes and UUID follow. Headers and statuses use `lang` / `X-Listmonk-Language`, with application-language and English translation fallback. The response uses the XLSX content type above. See [Excel exports](../exports.md) for formatting, cell limits and continuation sheets.
 
 ##### Query parameters
 
@@ -313,23 +285,21 @@ Export customers as a gzipped CSV stream (`Content-Type: text/csv`, attachment `
 | customer_list_id    | int[]  |          | ID of customer_lists to filter by. Repeat in the query for multiple values. |
 | subscription_status | string |          | Subscription status to filter by.                                     |
 | search              | string |          | Match customer code, name or e-mail address.                          |
+| lang                | string |          | Installed language code for workbook headers and status labels.       |
 
 Without `id`, all customers the caller manages in the active workspace are exported.
 
 ##### Example Request
 
 ```shell
-curl -u 'api_username:access_token' 'http://localhost:9000/api/customers/export?subscription_status=confirmed'
+curl -u 'api_username:access_token' 'http://localhost:9000/api/customers/export?customer_list_id=1&subscription_status=confirmed&lang=en' -o customers.xlsx
 ```
 
 ##### Example Response
 
-```csv
-uuid,email,name,customer_code,attributes,status,created_at,updated_at
-ea06b2e7-4b08-4697-bcfc-2a5c6dde8f1c,john@example.com,John Doe,CUST-001,"{""city"":""Bengaluru""}",enabled,2024-07-29 11:01:31.478677 +0530 IST,2024-07-29 11:01:31.478677 +0530 IST
-```
+A binary Excel workbook with frozen headers and filterable data tables.
 
-> **Note:** Requires the `customers:export` grant (not required for organization managers) as well as `customers:get_all` or `customers:get`. When the export is scoped to customer lists with e-mail masking enabled and the caller cannot manage those lists, e-mail addresses are masked. When the request targets individual customers through `id`, every id is additionally checked with `requireExportableWorkspaceCustomer` → `RequireManageResource`, so a caller with read-only rights receives HTTP 403 when passing `id`. The retired `query` SQL parameter returns HTTP 400.
+> **Note:** Requires `customers:export` and `customers:get_all` or `customers:get`, including for organization managers. Without `customers:sensitive_read`, UUID and attributes are omitted; email is masked for masked-list exports and otherwise omitted. Every selected `id` is additionally checked with `requireExportableWorkspaceCustomer` → `RequireManageResource`; read-only callers cannot export another owner's records. The retired `query` SQL parameter returns HTTP 400.
 
 ______________________________________________________________________
 

@@ -3,10 +3,8 @@ package main
 import (
 	"context"
 	"database/sql"
-	"encoding/csv"
 	"encoding/json"
 	"fmt"
-	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -756,29 +754,29 @@ func (a *App) ExportAuditEvents(c echo.Context) error {
 	whereSQL, args := auditEventWhere(c, access.OrganizationID)
 	if scope == "selected" {
 		args = append(args, pq.Array(ids))
-		whereSQL += fmt.Sprintf(" AND id = ANY($%d)", len(args))
+		whereSQL += fmt.Sprintf(" AND audit_events.id = ANY($%d)", len(args))
 	}
-	query := `SELECT id, occurred_at, COALESCE(organization_id, 0) AS organization_id,
+	query := `SELECT audit_events.id, audit_events.occurred_at, COALESCE(organization_id, 0) AS organization_id,
 		actor_type, COALESCE(actor_user_id, 0) AS actor_user_id,
 		COALESCE(actor_token_id, 0) AS actor_token_id, action, object_type,
 		object_id, result, reason_code, request_id, metadata,
-		COALESCE(ip::TEXT, '') AS ip, user_agent
-		FROM audit_events WHERE ` + whereSQL + ` ORDER BY occurred_at DESC, id DESC`
+		COALESCE(ip::TEXT, '') AS ip, user_agent,
+		COALESCE(audit_actor.username, '') AS actor_username, COALESCE(audit_actor.name, '') AS actor_name
+		FROM audit_events LEFT JOIN users audit_actor ON audit_actor.id = audit_events.actor_user_id
+		WHERE ` + whereSQL + ` ORDER BY occurred_at DESC, audit_events.id DESC`
 	rows, err := a.db.QueryxContext(c.Request().Context(), query, args...)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 
-	filename := fmt.Sprintf("audit-events-%s-%s.csv", scope, time.Now().UTC().Format("20060102-150405"))
-	hdr := c.Response().Header()
-	hdr.Set(echo.HeaderContentType, "text/csv; charset=utf-8")
-	hdr.Set(echo.HeaderContentDisposition, mime.FormatMediaType("attachment", map[string]string{"filename": filename}))
-	hdr.Set("Cache-Control", "no-store")
-	hdr.Set("X-Content-Type-Options", "nosniff")
-
-	writer := csv.NewWriter(c.Response())
-	if err := writer.Write(auditCSVHeader()); err != nil {
+	book, err := a.newExportWorkbook(c)
+	if err != nil {
+		return err
+	}
+	defer book.file.Close()
+	sheet, err := book.addSheet("audit.title", auditExportColumns(book))
+	if err != nil {
 		return err
 	}
 	for rows.Next() {
@@ -786,15 +784,15 @@ func (a *App) ExportAuditEvents(c echo.Context) error {
 		if err := rows.StructScan(&row); err != nil {
 			return fmt.Errorf("scan audit export row: %w", err)
 		}
-		if err := writer.Write(auditCSVRecord(row)); err != nil {
+		if err := sheet.addRow(auditExportRecord(book, row)...); err != nil {
 			return fmt.Errorf("write audit export row: %w", err)
 		}
 	}
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("read audit export rows: %w", err)
 	}
-	writer.Flush()
-	return writer.Error()
+	filename := fmt.Sprintf("audit-events-%s-%s.xlsx", scope, time.Now().UTC().Format("20060102-150405"))
+	return book.download(c, filename)
 }
 
 func auditEventWhere(c echo.Context, organizationID int) (string, []any) {
@@ -840,35 +838,55 @@ func auditExportIDs(c echo.Context) ([]int64, error) {
 	return ids, nil
 }
 
-func auditCSVHeader() []string {
-	return []string{"id", "occurred_at", "organization_id", "actor_type", "actor_user_id", "actor_token_id", "action", "object_type", "object_id", "result", "reason_code", "request_id", "metadata", "ip", "user_agent"}
-}
-
-func auditCSVRecord(row auditEventRow) []string {
-	metadata := string(row.Metadata)
-	if metadata == "" {
-		metadata = "{}"
-	}
-	return []string{
-		strconv.FormatInt(row.ID, 10),
-		row.OccurredAt.UTC().Format(time.RFC3339Nano),
-		strconv.FormatInt(row.OrganizationID, 10),
-		row.ActorType,
-		auditCSVInt(row.ActorUserID),
-		auditCSVInt(row.ActorTokenID),
-		row.Action,
-		row.ObjectType,
-		row.ObjectID,
-		row.Result,
-		row.ReasonCode,
-		row.RequestID,
-		metadata,
-		row.IP,
-		row.UserAgent,
+func auditExportColumns(b *exportWorkbook) []exportColumn {
+	return []exportColumn{
+		b.column("exports.occurredAtUTC", 23, "date"), b.column("audit.action", 32, ""),
+		b.column("exports.actorName", 24, ""), b.column("users.username", 24, ""),
+		b.column("exports.objectType", 22, ""), b.column("exports.objectName", 36, ""),
+		b.column("audit.result", 16, ""), b.column("audit.reason", 32, ""),
+		b.column("exports.eventID", 18, ""), b.column("exports.organizationID", 18, ""),
+		b.column("exports.actorType", 20, ""), b.column("exports.actorUserID", 18, ""), b.column("exports.actorTokenID", 18, ""),
+		b.column("exports.actionCode", 36, ""), b.column("exports.objectTypeCode", 24, ""), b.column("exports.objectID", 24, ""),
+		b.column("exports.reasonCode", 28, ""), b.column("audit.requestId", 38, ""),
+		b.column("audit.metadata", 60, ""), b.column("audit.ip", 24, ""), b.column("audit.userAgent", 48, ""),
 	}
 }
 
-func auditCSVInt(value int) string {
+func auditExportRecord(b *exportWorkbook, row auditEventRow) []any {
+	metadata := make(map[string]any)
+	decoder := json.NewDecoder(strings.NewReader(string(row.Metadata)))
+	decoder.UseNumber()
+	_ = decoder.Decode(&metadata)
+	actorName, username := row.ActorName, row.ActorUsername
+	if actor, ok := metadata["actor_details"].(map[string]any); ok {
+		// Prefer the identity snapshot taken at the time of the event.
+		if value, ok := actor["name"].(string); ok && value != "" {
+			actorName = value
+		}
+		if value, ok := actor["username"].(string); ok && value != "" {
+			username = value
+		}
+	}
+	objectName := ""
+	if object, ok := metadata["object_details"].(map[string]any); ok {
+		for _, key := range []string{"name", "customer_code", "subject", "username"} {
+			if value, ok := object[key].(string); ok && value != "" {
+				objectName = value
+				break
+			}
+		}
+	}
+	objectType := b.translated("exports.objects."+row.ObjectType, row.ObjectType)
+	return []any{
+		row.OccurredAt, b.translated("audit.actions."+row.Action, row.Action), actorName, username,
+		objectType, objectName, b.translated("audit."+row.Result, row.Result), b.translated("audit.reasons."+row.ReasonCode, row.ReasonCode),
+		strconv.FormatInt(row.ID, 10), strconv.FormatInt(row.OrganizationID, 10),
+		b.translated("exports.actors."+row.ActorType, row.ActorType), exportOptionalID(row.ActorUserID), exportOptionalID(row.ActorTokenID),
+		row.Action, row.ObjectType, row.ObjectID, row.ReasonCode, row.RequestID, exportJSONValue(metadata), row.IP, row.UserAgent,
+	}
+}
+
+func exportOptionalID(value int) string {
 	if value == 0 {
 		return ""
 	}

@@ -51,7 +51,7 @@ http.interceptors.response.use((resp) => {
     store.commit('setLoading', { model: resp.config.loading, status: false });
   }
 
-  // Binary downloads (for example audit CSV exports) must bypass the normal
+  // Binary downloads (for example Excel exports) must bypass the normal
   // { data: ... } API envelope and camel-case conversion.
   if (resp.config.responseType === 'blob' || resp.config.rawResponse) {
     if (resp.config.includeHeaders) return { body: resp.data, contentType: resp.headers['content-type'] };

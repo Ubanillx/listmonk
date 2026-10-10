@@ -520,7 +520,7 @@ UPDATE customer_list_memberships SET status='unsubscribed', updated_at=NOW()
 -- privacy
 -- name: export-customer-data
 WITH prof AS (
-    SELECT id, uuid, email, name, attribs, status, created_at, updated_at FROM customers WHERE
+    SELECT id, uuid, email, name, customer_code, attribs, status, created_at, updated_at FROM customers WHERE
     CASE
         WHEN $1 > 0 THEN id = $1
         ELSE id IN (

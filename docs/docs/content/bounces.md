@@ -128,9 +128,9 @@ If using SES as your SMTP provider, automatic bounce processing is the recommend
     - Complaint: `complaint@simulator.amazonses.com`
 11. You can optionally [disable email feedback forwarding](https://docs.aws.amazon.com/ses/latest/dg/monitor-sending-activity-using-notifications-email.html#monitor-sending-activity-using-notifications-email-disabling).
 
-## Exporting bounces
+## Reading bounce data
 
-Bounces can be exported via the JSON API:
+Bounce records can be retrieved through the JSON list API (this is not a downloadable report):
 ```shell
 curl -u 'username:passsword' 'http://localhost:9000/api/bounces'
 ```

@@ -671,6 +671,8 @@ export default Vue.extend({
         const path = this.isPoolRoute
           ? '/api/pools/contacts/export'
           : `/api/customer-lists/${id}/pool-contacts/export`;
+        q.set('lang', this.$i18n.locale);
+        q.set('organization_id', this.workspace.organizationId || 0);
         document.location.href = `${path}?${q.toString()}`;
       });
     },
@@ -1073,6 +1075,8 @@ export default Vue.extend({
           this.bulk.checked.forEach((customer) => q.append('id', customer.id));
         }
 
+        q.set('lang', this.$i18n.locale);
+        q.set('organization_id', this.workspace.organizationId || 0);
         document.location.href = `${uris.exportCustomers}?${q.toString()}`;
       });
     },

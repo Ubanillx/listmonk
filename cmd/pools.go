@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/knadh/listmonk/internal/auth"
@@ -427,13 +428,18 @@ func (a *App) ExportAllPoolContacts(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	hdr := c.Response().Header()
-	hdr.Set(echo.HeaderContentType, "text/csv")
-	hdr.Set(echo.HeaderContentDisposition, "attachment; filename=pool-contacts.csv")
-	hdr.Set("Cache-Control", "no-cache")
-	wr := csv.NewWriter(c.Response())
-	if err := wr.Write([]string{"pool_id", "pool_name", "customer_code", "name", "email", "reply_to", "allocation_department", "status", "created_at", "updated_at"}); err != nil {
+	book, err := a.newExportWorkbook(c)
+	if err != nil {
 		return err
+	}
+	defer book.file.Close()
+	sheet, err := book.addSheet("exports.poolContacts", poolExportColumns(book, true))
+	if err != nil {
+		return err
+	}
+	search := c.QueryParam("search")
+	if search == "" {
+		search = c.QueryParam("customer_code")
 	}
 	batch := a.cfg.DBBatchSize
 	if batch <= 0 {
@@ -441,14 +447,16 @@ func (a *App) ExportAllPoolContacts(c echo.Context) error {
 	}
 	for offset := 0; ; offset += batch {
 		rows, _, err := a.core.QueryAllPoolContacts(access.OrganizationID, user.IsPlatformAdmin(),
-			c.QueryParam("status"), c.QueryParam("search"), poolID, department,
+			c.QueryParam("status"), search, poolID, department,
 			c.QueryParam("order_by"), c.QueryParam("order"), offset, batch, canManagePoolMaster(user))
 		if err != nil {
 			return err
 		}
 		count := 0
-		write := func(poolID int64, poolName, code, name, email, replyTo, department, status, createdAt, updatedAt string) error {
-			return wr.Write([]string{strconv.FormatInt(poolID, 10), poolName, code, name, email, replyTo, department, status, createdAt, updatedAt})
+		write := func(poolID int64, poolName, code, name, email, replyTo, department, status string, createdAt, updatedAt time.Time, excluded bool, reason string) error {
+			values := append([]any{poolName}, poolExportValues(book, code, name, email, replyTo, department, status, createdAt, updatedAt, excluded, reason)...)
+			values = append(values, strconv.FormatInt(poolID, 10))
+			return sheet.addRow(values...)
 		}
 		switch page := rows.(type) {
 		case []models.PoolContact:
@@ -457,7 +465,7 @@ func (a *App) ExportAllPoolContacts(c echo.Context) error {
 				if !poolExportIncludes(selected, row.PoolID, row.ID) {
 					continue
 				}
-				if err := write(row.PoolID, row.PoolName, row.CustomerCode, row.Name, row.Email, row.ReplyTo, row.AllocationDepartment, row.Status, row.CreatedAt.String(), row.UpdatedAt.String()); err != nil {
+				if err := write(row.PoolID, row.PoolName, row.CustomerCode, row.Name, row.Email, row.ReplyTo, row.AllocationDepartment, row.Status, row.CreatedAt, row.UpdatedAt, row.Excluded, row.ExclusionReason); err != nil {
 					return err
 				}
 			}
@@ -467,23 +475,42 @@ func (a *App) ExportAllPoolContacts(c echo.Context) error {
 				if !poolExportIncludes(selected, row.PoolID, row.ID) {
 					continue
 				}
-				if err := write(row.PoolID, row.PoolName, row.CustomerCode, row.Name, row.Email, row.ReplyTo, row.AllocationDepartment, row.Status, row.CreatedAt.String(), row.UpdatedAt.String()); err != nil {
+				if err := write(row.PoolID, row.PoolName, row.CustomerCode, row.Name, row.Email, row.ReplyTo, row.AllocationDepartment, row.Status, row.CreatedAt, row.UpdatedAt, row.Excluded, row.ExclusionReason); err != nil {
 					return err
 				}
 			}
-		}
-		wr.Flush()
-		if err := wr.Error(); err != nil {
-			return err
 		}
 		if count < batch {
 			break
 		}
 	}
-	return nil
+	return book.download(c, "pool-contacts.xlsx")
 }
 
-// ExportPoolContacts streams the filtered pool contacts as CSV. Non-platform
+func poolExportColumns(book *exportWorkbook, aggregate bool) []exportColumn {
+	columns := []exportColumn{}
+	if aggregate {
+		columns = append(columns, book.column("exports.poolName", 30, ""))
+	}
+	columns = append(columns, book.column("customers.customerCode", 24, ""), book.column("globals.fields.name", 24, ""),
+		book.column("customers.email", 36, ""), book.column("exports.replyTo", 36, ""), book.column("exports.department", 26, ""),
+		book.column("exports.customerStatus", 18, ""), book.column("exports.allocationStatus", 26, ""), book.column("exports.exclusionReason", 40, ""),
+		book.column("exports.createdAtUTC", 23, "date"), book.column("exports.updatedAtUTC", 23, "date"))
+	if aggregate {
+		columns = append(columns, book.column("exports.poolID", 18, ""))
+	}
+	return columns
+}
+
+func poolExportValues(book *exportWorkbook, code, name, email, replyTo, department, status string, createdAt, updatedAt time.Time, excluded bool, reason string) []any {
+	allocationStatus := book.lang.T("pool.statusNormal")
+	if excluded {
+		allocationStatus = book.lang.T("pool.statusRemoved")
+	}
+	return []any{code, name, email, replyTo, department, book.status(status), allocationStatus, reason, createdAt, updatedAt}
+}
+
+// ExportPoolContacts streams the filtered pool contacts as Excel. Non-platform
 // administrators only reach pools granted to their workspace organization and
 // always receive masked e-mail addresses.
 func (a *App) ExportPoolContacts(c echo.Context) error {
@@ -512,15 +539,13 @@ func (a *App) ExportPoolContacts(c echo.Context) error {
 		return err
 	}
 
-	hdr := c.Response().Header()
-	hdr.Set(echo.HeaderContentType, echo.MIMEOctetStream)
-	hdr.Set("Content-type", "text/csv")
-	hdr.Set(echo.HeaderContentDisposition, "attachment; filename=pool-contacts.csv")
-	hdr.Set("Content-Transfer-Encoding", "binary")
-	hdr.Set("Cache-Control", "no-cache")
-
-	wr := csv.NewWriter(c.Response())
-	if err := wr.Write([]string{"customer_code", "name", "email", "reply_to", "allocation_department", "status", "created_at", "updated_at"}); err != nil {
+	book, err := a.newExportWorkbook(c)
+	if err != nil {
+		return err
+	}
+	defer book.file.Close()
+	sheet, err := book.addSheet("exports.poolContacts", poolExportColumns(book, false))
+	if err != nil {
 		return err
 	}
 
@@ -541,10 +566,8 @@ func (a *App) ExportPoolContacts(c echo.Context) error {
 				if !poolExportIncludes(selected, 0, r.ID) {
 					continue
 				}
-				if err := wr.Write([]string{r.CustomerCode, r.Name, r.Email, r.ReplyTo, r.AllocationDepartment, r.Status, r.CreatedAt.String(), r.UpdatedAt.String()}); err != nil {
-					a.log.Printf("error streaming pool contact export: %v", err)
-					wr.Flush()
-					return nil
+				if err := sheet.addRow(poolExportValues(book, r.CustomerCode, r.Name, r.Email, r.ReplyTo, r.AllocationDepartment, r.Status, r.CreatedAt, r.UpdatedAt, r.Excluded, r.ExclusionReason)...); err != nil {
+					return err
 				}
 			}
 		case []models.SafePoolContact:
@@ -553,19 +576,16 @@ func (a *App) ExportPoolContacts(c echo.Context) error {
 				if !poolExportIncludes(selected, 0, r.ID) {
 					continue
 				}
-				if err := wr.Write([]string{r.CustomerCode, r.Name, r.Email, r.ReplyTo, r.AllocationDepartment, r.Status, r.CreatedAt.String(), r.UpdatedAt.String()}); err != nil {
-					a.log.Printf("error streaming pool contact export: %v", err)
-					wr.Flush()
-					return nil
+				if err := sheet.addRow(poolExportValues(book, r.CustomerCode, r.Name, r.Email, r.ReplyTo, r.AllocationDepartment, r.Status, r.CreatedAt, r.UpdatedAt, r.Excluded, r.ExclusionReason)...); err != nil {
+					return err
 				}
 			}
 		}
-		wr.Flush()
 		if count < batch {
 			break
 		}
 	}
-	return nil
+	return book.download(c, "pool-contacts.xlsx")
 }
 
 func (a *App) GetOrgPoolAllocations(c echo.Context) error {

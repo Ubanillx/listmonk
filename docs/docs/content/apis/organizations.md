@@ -1290,3 +1290,12 @@ curl -u 'api_username:access_token' -X DELETE 'http://localhost:9000/api/organiz
   "data": true
 }
 ```
+
+#### GET /api/import-templates/members
+
+`GET /api/import-templates/members?lang=zh-CN` returns an empty Excel workbook
+with translated account and role headings and a separate instructions sheet.
+Downloading requires authentication and contains no organization or member
+data. Fill the first sheet with registered usernames/emails and `member` or
+`manager` roles (blank defaults to `member`). The normal organization membership
+and management checks apply when submitting the file. See [Excel exports](../exports.md).

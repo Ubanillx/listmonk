@@ -1,3 +1,5 @@
+import * as XLSX from 'xlsx';
+
 const apiUrl = Cypress.env('apiUrl');
 
 describe('Customers', () => {
@@ -46,8 +48,18 @@ describe('Customers', () => {
 
     // customerCustomerListIDs[] and ids[] are unused for now as Cypress doesn't support encoding of arrays in `qs`.
     cases.forEach((c) => {
-      cy.request({ url: `${apiUrl}/api/customers/export`, qs: { search: c.search, customer_list_id: c.customerCustomerListIDs, id: c.ids } }).then((resp) => {
-        cy.expect(resp.body.trim().split('\n')).to.have.lengthOf(c.length);
+      cy.request({
+        url: `${apiUrl}/api/customers/export`,
+        qs: {
+          search: c.search, customer_list_id: c.customerCustomerListIDs, id: c.ids, lang: 'en',
+        },
+        encoding: 'binary',
+      }).then((resp) => {
+        expect(resp.headers['content-type']).to.eq('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        const workbook = XLSX.read(resp.body, { type: 'binary' });
+        const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 });
+        expect(rows).to.have.lengthOf(c.length);
+        expect(rows[0][0]).to.eq('Customer code');
       });
     });
   });
@@ -173,8 +185,12 @@ describe('Customers', () => {
     cy.get('[data-cy=search]').clear().type('CUST-EDIT-0{enter}');
     cy.get('tbody tr').should('have.length', 1);
     cy.get('tbody tr').should('contain', 'CUST-EDIT-0');
-    cy.request({ url: `${apiUrl}/api/customers/export`, qs: { search: 'CUST-EDIT-0' } })
-      .its('body').should('contain', 'CUST-EDIT-0');
+    cy.request({ url: `${apiUrl}/api/customers/export`, qs: { search: 'CUST-EDIT-0' }, encoding: 'binary' }).then(({ body }) => {
+      const workbook = XLSX.read(body, { type: 'binary' });
+      const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 });
+      expect(rows).to.have.length(2);
+      expect(rows[1][0]).to.eq('CUST-EDIT-0');
+    });
     cy.get('[data-cy=search]').clear().type('{enter}');
     cy.get('tbody tr').should('have.length', 2);
   });

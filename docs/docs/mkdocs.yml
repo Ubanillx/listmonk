@@ -55,6 +55,7 @@ nav:
     - "Integrating with external systems": external-integration.md
     - "User roles and permissions": roles-and-permissions.md
     - "Business permissions": business-permissions.md
+    - "Excel exports": exports.md
     - "OIDC SSO": oidc.md
   - "API":
     - "Introduction": apis/apis.md

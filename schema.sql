@@ -171,6 +171,7 @@ CREATE TABLE campaigns (
     -- Progress and stats.
     to_send            INT NOT NULL DEFAULT 0,
     sent               INT NOT NULL DEFAULT 0,
+    send_errors        INT NOT NULL DEFAULT 0 CHECK (send_errors >= 0),
     max_customer_id  INT NOT NULL DEFAULT 0,
     last_customer_id INT NOT NULL DEFAULT 0,
 
@@ -1246,6 +1247,21 @@ CREATE INDEX idx_audit_events_request ON audit_events(request_id) WHERE request_
 --     campaign has no valid snapshot rows at all, which is the state of a draft
 --     that has not been expanded yet.
 DROP VIEW IF EXISTS campaign_send_counts CASCADE;
+CREATE TABLE campaign_send_errors (
+    id BIGSERIAL PRIMARY KEY,
+    campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+    campaign_owner_user_id INTEGER,
+    campaign_organization_id INTEGER,
+    recipient_type TEXT NOT NULL CHECK(recipient_type IN ('private','pool')),
+    recipient_id BIGINT NOT NULL CHECK(recipient_id > 0),
+    recipient_organization_id INTEGER NOT NULL DEFAULT 0,
+    customer_code TEXT NOT NULL DEFAULT '', name TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '',
+    stage TEXT NOT NULL CHECK(stage IN ('render','send')),
+    category TEXT NOT NULL, smtp_code INTEGER NOT NULL DEFAULT 0, error TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX campaign_send_errors_campaign_idx ON campaign_send_errors(campaign_id,created_at,id);
+
 CREATE VIEW campaign_send_counts AS
 SELECT
     c.id AS campaign_id,

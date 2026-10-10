@@ -95,6 +95,7 @@ type CampaignStats struct {
 	Status       string    `db:"status" json:"status"`
 	ToSend       int       `db:"to_send" json:"to_send"`
 	Sent         int       `db:"sent" json:"sent"`
+	SendErrors   int       `db:"send_errors" json:"send_errors"`
 	Unsent       int       `db:"unsent_count" json:"unsent_count"`
 	Started      null.Time `db:"started_at" json:"started_at"`
 	UpdatedAt    null.Time `db:"updated_at" json:"updated_at"`

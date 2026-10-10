@@ -347,6 +347,24 @@ func (s *store) NextCustomers(campID, limit int) ([]models.CampaignCustomer, err
 	return out, nil
 }
 
+// RecordCampaignSendError increments independently of recipient state so retries,
+// successful later deliveries, pauses and restarts retain the failure history.
+func (s *store) RecordCampaignSendError(campID int) error {
+	_, err := s.db.Exec(`UPDATE campaigns SET send_errors=send_errors+1, updated_at=NOW() WHERE id=$1`, campID)
+	return err
+}
+
+func (s *store) RecordCampaignSendFailure(f models.CampaignSendFailure) error {
+	_, err := s.db.Exec(`WITH recorded AS (
+		INSERT INTO campaign_send_errors(campaign_id,campaign_owner_user_id,campaign_organization_id,
+			recipient_type,recipient_id,recipient_organization_id,customer_code,name,email,stage,category,smtp_code,error)
+		SELECT c.id,$12,$13,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11 FROM campaigns c WHERE c.id=$1
+		RETURNING campaign_id
+	) UPDATE campaigns SET send_errors=send_errors+1,updated_at=NOW() WHERE id IN (SELECT campaign_id FROM recorded)`,
+		f.CampaignID, f.RecipientType, f.RecipientID, f.RecipientOrganizationID, f.CustomerCode, f.Name, f.Email, f.Stage, f.Category, f.SMTPCode, f.Error, f.CampaignOwnerUserID, f.CampaignOrganizationID)
+	return err
+}
+
 func (s *store) MarkPoolCampaignMessageSent(campID int, contactID int64) error {
 	_, err := s.db.Exec(`UPDATE campaign_pool_recipients SET status=$3::campaign_recipient_status, sent_at=NOW(), updated_at=NOW() WHERE campaign_id=$1 AND pool_contact_id=$2`, campID, contactID, models.CampaignRecipientStatusSent)
 	if err != nil {

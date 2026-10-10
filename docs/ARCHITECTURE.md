@@ -1,5 +1,19 @@
 # Listmonk 工程架构与运行指南
 
+## 活动发送错误统计（v6.59.0）
+
+`campaigns.send_errors` 保存活动累计失败次数，发送 worker 与收件人渲染失败通过 `CampaignSendErrorStore` 调用 `cmd/manager_store.go::RecordCampaignSendError`，数据库原子递增，普通与公海收件人共用同一活动统计。每日额度耗尽、主动停止和服务关闭不计入；SMTP/回信路由不可用及普通发送失败计入。重试失败重复计数，成功重试、暂停续发及重启不清零；不是当前失败收件人数，也不是退信数。渲染失败归还 pending 并参与单次运行的错误暂停阈值。列表、详情及运行统计 API 返回 `send_errors`；`Campaigns.vue` 使用运行统计轮询展示，暂停后重新读取持久化总数。迁移 `internal/migrations/v6.59.0.go` 为旧活动置零，不从日志或 pending 状态猜测历史错误；新建/克隆活动从零开始。
+
+额度延期仍由活动每日上限（包括 queued 额度预占）或 SMTP 每日额度触发，在服务器本地时区次日 `daily_resume_time` 恢复；SMTP 额度耗尽只输出延期日志，不再打印 `error sending`。普通发送错误达到 `MaxSendErrors` 时暂停，阈值只计算本轮运行。来源：`internal/manager/{manager,pipe,send_errors_test}.go`、`cmd/campaign_send_errors_test.go`、`models/{campaigns,templates}.go`、`queries/campaigns.sql`、`frontend/cypress/e2e/campaign-send-errors.cy.js`。
+
+### 错误原因与客户汇总（v6.60.0）
+
+生产 Store 实现 `CampaignSendErrorDetailStore`，`RecordCampaignSendFailure` 在同一 SQL 语句中新增 `campaign_send_errors` 失败事件与递增 `send_errors`；旧 count-only Store 仍有兼容回退。事件保存发送时的客户编码、姓名、邮箱、私域/公海 ID、目标组织、阶段、错误分类、SMTP 状态码、错误原文与时间；凭据模式、NUL/control 字符过滤，原文限 4000 字符。事件绑定当时活动所有者与工作区，普通用户不得通过活动转移读取前所有者快照，私域客户转移也隐藏旧明细；删除客户后保留原活动历史，删除活动级联清理错误事件。
+
+`GET /api/campaigns/:id/send-errors` 按客户快照、错误原文、阶段和分类汇总重复失败，提供分类次数、分页和姓名/客户编码搜索；敏感信息授权后才能按邮箱或错误原文搜索。`/send-errors/export` 按相同筛选导出全部汇总行的 Excel，附错误原因汇总工作表与历史缺明细次数；表头/分类跟随当前语言，原文与客户字符串作为文本写入。两端要求活动所有者/平台管理边界、原列表授权、`campaigns:get_analytics`、`campaigns:recipients` 和对应私域/公海查看权限；导出另需匹配源类型的客户导出权限。个人 Key 需 `campaigns:recipients`，私域明细另需 `customers:read`，公海另需 `customer_lists:read`。非平台公海以及无私域敏感权限的邮箱脱敏，错误原文置空，保留分类/状态码；不依赖个体追踪开关。Core 查询再次验证当前活动范围、归档/转移状态与私域客户范围。
+
+管理端从活动错误次数打开 `CampaignSendErrors.vue`，支持分类/搜索、跨页统计与 Excel 导出；关闭或工作区切换使旧请求失效。历史 `send_errors` 未保存的明细以缺失计数提示，不从日志推测。来源：`cmd/{campaign_send_errors,campaign_send_error_report_test,manager_store}.go`、`internal/core/campaign_send_errors.go`、`internal/manager/{send_failure,send_failure_test}.go`、`internal/migrations/v6.60.0{,_test}.go`。
+
 ## 业务权限分组与独立动作门（v6.56.0）
 
 列表删除支持可选 `delete_customers=true`，管理端先确认列表，再选择仅删列表或同时删除对应客户。默认保留客户；同时删除仅作用于本次所选列表独占、当前操作者可维护且非待转移的客户，其他列表（包括归档及已退订成员）仍在使用的客户与无关孤立客户保留。私域另需 `customers:delete`；公海沿用 `pools:master_manage`，共享其他一级公海或存续组织分配的主数据保留，分配删除不得清除主数据；个人 API Key 另需 `customers:write`。Core 在组织锁后先锁客户再锁列表，与成员写入顺序一致；锁内重查关联和共享关系，客户/列表同事务删除，有新关联竞态返回冲突而不倒序加锁。审计记录选择及实际客户删除数。来源：`cmd/customer_lists.go`、`internal/core/{list_customer_deletion,workspace_mutations}.go`、`frontend/src/views/CustomerLists.vue`。

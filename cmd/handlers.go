@@ -229,6 +229,8 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.GET("/api/campaigns/:id/report/timeseries", apiKeyScope(hasID(a.GetCampaignReportSeries), apiKeyScopeCampaignsAnalytics))
 		g.GET("/api/campaigns/:id/report/links", apiKeyScope(hasID(a.GetCampaignReportLinks), apiKeyScopeCampaignsAnalytics))
 		g.GET("/api/campaigns/:id/report/recipients", apiKeyScope(hasID(a.GetCampaignReportRecipients), apiKeyScopeCampaignsRecipients))
+		g.GET("/api/campaigns/:id/send-errors", apiKeyScope(hasID(a.GetCampaignSendErrors), apiKeyScopeCampaignsRecipients))
+		g.GET("/api/campaigns/:id/send-errors/export", apiKeyScope(hasID(a.ExportCampaignSendErrors), apiKeyScopeCampaignsRecipients))
 		g.GET("/api/campaigns/:id/preview", apiKeyScope(hasID(a.PreviewCampaign), apiKeyScopeCampaignsRead))
 		g.POST("/api/campaigns/:id/preview/archive", apiKeyScope(hasID(a.PreviewCampaignArchive), apiKeyScopeCampaignsRead))
 		g.POST("/api/campaigns/:id/preview", apiKeyScope(hasID(a.PreviewCampaign), apiKeyScopeCampaignsRead))

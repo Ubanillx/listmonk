@@ -1,5 +1,9 @@
 # 业务逻辑
 
+- **发送错误明细（v6.60.0）**：每次失败事件与活动总错误数同语句保存，事件快照按客户、具体错误、分类、阶段汇总，重试不覆盖。查询/Excel 导出都要求活动 owner 边界、列表授权与收件人/客户查看能力；导出按私域/公海源类型分别检查导出授权。敏感权限控制邮箱/错误原文和相关搜索；公海非平台始终脱敏。普通用户不能读取转移活动前所有者快照或已转移私域客户的错误明细，删除活动清理事件。额度/主动停止不生成事件，缺历史明细的次数单独提示，追踪关闭也能诊断发送失败。来源：`cmd/campaign_send_errors.go`、`internal/core/campaign_send_errors.go`、`cmd/campaign_send_error_report_test.go`、`internal/manager/send_failure.go`。
+
+- **活动发送错误**：`send_errors` 原子累计普通与公海收件人的失败尝试（包含渲染与发送前路由错误），重试失败重复累计，重试成功、暂停续发及重启保留；每日额度延期和主动停止/关闭不计入。错误不是失败收件人数或退信数，旧活动升级默认零且不猜测历史。渲染失败归还 pending 并参与本轮 `MaxSendErrors` 暂停阈值；无阈值时仍计数。列表及实时统计使用同一持久化字段。来源：`cmd/manager_store.go::RecordCampaignSendError`、`internal/manager/{manager,pipe,send_errors_test}.go`、`internal/migrations/v6.59.0.go`。
+
 - **活动暂停/继续**：手动状态变更与停止信号必须作为同一个生命周期操作执行，后台仅可从 running 完成、自动暂停或额度延迟；额度延迟及普通/公海收件人状态更新同事务。手动停止优先于旧管道的自动错误/SMTP 原因，旧管道不能把快速恢复的活动标为完成或再次暂停。已经进入 SMTP 的投递可完成并记 sent，未发送 queued 清理成 pending，恢复保留启动时间、历史 sent 和每日使用量，并重新验证当前发件条件；素材继续使用远程链接。来源：`cmd/campaigns.go::UpdateCampaignStatus`、`cmd/manager_store.go::{UpdateRunningCampaignStatus,DeferCampaign}`、`internal/manager/{manager,pipe,pause_test}.go`、`cmd/{campaign_pause_test,email_media_resume_test}.go`。
 
 - **客户列表删除与客户清理**：单个及批量（ID/筛选结果）删除列表默认保留客户。显式 `delete_customers=true` 只删除全部成员关系均在本次所删列表内的可维护客户，客户还属于其他列表（含归档、已退订）则保留；不清理无关孤立客户，不删除他人/其他工作区或待转移客户。公海同样保护其他一级公海及存续组织分配的共享联系人，分配删除不得清除主数据。私域另需客户删除权限，公海沿用主数据权限，个人 Key 另需客户写入 scope。先确认列表，再弹窗选取消/仅删列表/同时删除；两步中关闭或取消均不写入。Core 先锁客户再锁列表，重查共享关系及新增关联竞态，删除同事务，审计保存选项及实际删除数。来源：`cmd/customer_lists.go::{DeleteList,DeleteLists,requireListCustomerDeletion}`、`internal/core/list_customer_deletion.go`、`frontend/src/views/CustomerLists.vue`。

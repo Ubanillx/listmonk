@@ -98,6 +98,32 @@ type PoolRecipientStore interface {
 	ResetPoolCampaignQueuedRecipients(campID int, toStatus string) error
 }
 
+// CampaignSendErrorStore persists failure attempts independently of successful
+// deliveries and the per-run pause threshold. Optional for legacy integrations.
+type CampaignSendErrorStore interface {
+	RecordCampaignSendError(campaignID int) error
+}
+
+// CampaignSendErrorDetailStore writes recipient diagnostics and the cumulative
+// counter atomically. The count-only fallback supports older integrations.
+type CampaignSendErrorDetailStore interface {
+	RecordCampaignSendFailure(models.CampaignSendFailure) error
+}
+
+func (m *Manager) recordCampaignSendError(c *models.Campaign, customer models.Customer, poolID int64, organizationID int, stage string, cause error) {
+	if s, ok := m.store.(CampaignSendErrorDetailStore); ok {
+		if err := s.RecordCampaignSendFailure(makeCampaignSendFailure(c, customer, poolID, organizationID, stage, cause)); err != nil {
+			m.log.Printf("error recording campaign send failure (%s): %v", c.Name, err)
+		}
+		return
+	}
+	if s, ok := m.store.(CampaignSendErrorStore); ok {
+		if err := s.RecordCampaignSendError(c.ID); err != nil {
+			m.log.Printf("error recording campaign send error (%s): %v", c.Name, err)
+		}
+	}
+}
+
 // CampaignOptinListStore resolves the UUIDs of the double-opt-in lists
 // attached to a campaign. It is optional so lightweight integrations retain
 // the historical empty opt-in URL behavior.
@@ -1210,8 +1236,14 @@ func (m *Manager) worker() {
 			} else if err == nil {
 				err = m.pushMessage(out)
 			}
-			if err != nil && !errors.Is(err, email.ErrSendCancelled) && !errors.Is(err, ErrManagerClosed) {
+			if err != nil && !errors.Is(err, email.ErrSendCancelled) && !errors.Is(err, ErrManagerClosed) && !errors.Is(err, email.ErrSMTPQuotaExceeded) {
 				m.log.Printf("error sending message in campaign %s: customer %d: %v", msg.Campaign.Name, msg.Customer.ID, err)
+				// Quota exhaustion is scheduling control, not a failed delivery.
+				// Record before releasing the pipe's wait group so cleanup cannot
+				// finish ahead of the durable statistics update.
+				if msg.pipe != nil {
+					m.recordCampaignSendError(msg.Campaign, msg.Customer, msg.PoolContactID, int(msg.PoolOrganizationID), "send", err)
+				}
 			}
 
 			// Increment the send rate or the error counter if there was an error.

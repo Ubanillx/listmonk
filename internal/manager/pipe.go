@@ -192,6 +192,19 @@ func (p *pipe) NextCustomers() (bool, error) {
 		msg, err := p.newMessage(s)
 		if err != nil {
 			p.m.log.Printf("error rendering message (%s) (%s): %v", p.camp.Name, s.Email, err)
+			p.m.recordCampaignSendError(p.camp, s.Customer, s.PoolContactID, int(s.PoolOrganizationID), "render", err)
+			var resetErr error
+			if s.PoolContactID > 0 {
+				if ps, ok := p.m.store.(PoolRecipientStore); ok {
+					resetErr = ps.MarkPoolCampaignRecipientStatus(p.camp.ID, s.PoolContactID, models.CampaignRecipientStatusPending)
+				}
+			} else {
+				resetErr = p.m.store.MarkCampaignRecipientStatus(p.camp.ID, s.ID, models.CampaignRecipientStatusPending)
+			}
+			if resetErr != nil {
+				p.m.log.Printf("error resetting campaign recipient (%s:%d): %v", p.camp.Name, s.ID, resetErr)
+			}
+			p.OnError()
 			continue
 		}
 		// Stop may race with rendering. The message has already incremented the
@@ -222,12 +235,12 @@ func (p *pipe) NextCustomers() (bool, error) {
 // OnError keeps track of the number of errors that occur while sending messages
 // and pauses the campaign if the error threshold is met.
 func (p *pipe) OnError() {
+	count := p.errors.Add(1)
 	if p.m.cfg.MaxSendErrors < 1 {
 		return
 	}
 
 	// If the error threshold is met, pause the campaign.
-	count := p.errors.Add(1)
 	if int(count) < p.m.cfg.MaxSendErrors {
 		return
 	}

@@ -1,5 +1,23 @@
 # API / Campaigns
 
+## Send errors and automatic deferral
+
+Campaign list/detail responses and `GET /api/campaigns/running/stats` include the read-only integer `send_errors`. The admin campaign list displays this cumulative number of failed attempts. Rendering failures, delivery failures and unavailable delivery/reply routes encountered by workers are counted for both private and public-pool recipients. Repeated failed retries add to the count; successful retries, pause/resume and server restarts retain it. It is separate from unsent recipients and bounces. New and cloned campaigns start at zero. Existing campaigns default to zero on upgrade because historical failures were not stored.
+
+Daily campaign or SMTP quotas defer remaining sends until the next day's `daily_resume_time`, in the server's local timezone. Quota deferrals and intentional cancellation/shutdown do not increment `send_errors`. Ordinary send/render errors meeting the configured maximum error threshold pause the campaign instead; this threshold applies to the current run, independently of the cumulative count. Repair the delivery configuration and resume a paused campaign to retry unsent recipients.
+
+### Error reasons, customer statistics and Excel export
+
+Since v6.60.0, each failed attempt stores a recipient snapshot and diagnostic atomically with the campaign counter. Click a campaign's send error count to open the report. Repeated failures with the same customer snapshot, stage, category and diagnostic are grouped. The report works even when individual tracking is disabled.
+
+`GET /api/campaigns/{id}/send-errors` accepts `page`, `per_page` (default 20, maximum 50), optional `category`, and optional `search` (up to 500 characters). Search matches customer code/name; email and error-text search additionally require sensitive access. Categories are `smtp_auth`, `smtp_rejected`, `smtp_temporary`, `timeout`, `network`, `smtp_unavailable`, `reply_unavailable`, `render`, and `other`.
+
+The normal `data` envelope contains `results`, `total` (grouped row count), `page`, `per_page`, `reasons` (category/count pairs), `recorded_errors` (matching failed attempts), `historical_errors` (all historical count-only failures without details), and `can_export`. Rows contain `recipient_type` (`private`/`pool`), `recipient_id`, `organization_id`, `customer_code`, `name`, `email`, `stage` (`render`/`send`), `category`, `smtp_code` (zero when unavailable), `error`, `count`, `first_at` and `last_at`. Customer data reflects the failed attempt rather than later edits. A successful retry retains these statistics.
+
+`GET /api/campaigns/{id}/send-errors/export` accepts the same category/search filters and optional `lang`. It returns an `.xlsx` workbook with every matching grouped row, independently of pagination, plus a reason summary sheet. Customer values and raw diagnostics are literal text, including values beginning with formula characters. Historical failures without details are labeled separately; the upgrade does not invent recipients or reasons for them.
+
+Both endpoints require the campaign owner/administrative boundary, existing list access, `campaigns:get_analytics`, `campaigns:recipients`, and read permission for the corresponding customer source. Export additionally requires `customers:export` for included private rows and `pools:export` for included pool rows. Organization sharing and manager inspection do not grant access to another owner's error identities. Personal API keys need `campaigns:recipients` plus `customers:read` for private data or `customer_lists:read` for pool data. Without private sensitive-read access, emails are masked and raw diagnostics are omitted; pool emails and diagnostics are similarly protected for non-platform users. Category and SMTP status remain visible. Transferred private customers and a transferred campaign's former-owner snapshots are excluded from ordinary users' results.
+
 ### Images in the admin rich text editor
 
 Upload a local image in the image dialog, or paste/drag it into the editor. Local images are uploaded to the current workspace's media library and associated with the campaign automatically. Preview, save, test sending and starting/scheduling wait for uploads to finish; failed uploads keep the image in the editor and require a successful retry before continuing. Uploading requires media maintenance permission. Images selected from the media library reuse the existing media record. Referenced campaign images are sent as inline MIME parts so email recipients do not need access to the private media library.

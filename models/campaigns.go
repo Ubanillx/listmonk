@@ -82,6 +82,7 @@ type Campaign struct {
 	SMTPRateLimit     int             `db:"smtp_rate_limit" json:"smtp_rate_limit"`
 	NextResumeAt      null.Time       `db:"next_resume_at" json:"next_resume_at"`
 	UnsentCount       int             `db:"unsent_count" json:"unsent_count"`
+	SendErrors        int             `db:"send_errors" json:"send_errors"`
 	Tags              pq.StringArray  `db:"tags" json:"tags"`
 	Headers           Headers         `db:"headers" json:"headers"`
 	Attribs           JSON            `db:"attribs" json:"attribs"`

@@ -411,7 +411,7 @@ LEFT JOIN templates ON (templates.id = (CASE WHEN $2=0 THEN campaigns.template_i
 WHERE campaigns.id = $1;
 
 -- name: get-campaign-status
-SELECT id, status, to_send, sent,
+SELECT id, status, to_send, sent, send_errors,
     -- Same single definition as every other projection; the completed-state check
     -- reads the same effective recipient set the sender uses.
     COALESCE((SELECT sc.unsent_count FROM campaign_send_counts sc WHERE sc.campaign_id = campaigns.id), 0) AS unsent_count,

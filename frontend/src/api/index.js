@@ -591,6 +591,9 @@ export const getCampaign = async (id) => http.get(`/api/campaigns/${id}`, {
 
 export const getCampaignStats = async () => http.get('/api/campaigns/running/stats', {});
 
+export const getCampaignSendErrors = async (id, params = {}) => http.get(`/api/campaigns/${id}/send-errors`, { params });
+export const exportCampaignSendErrors = async (id, params = {}) => http.get(`/api/campaigns/${id}/send-errors/export`, { params, responseType: 'blob' });
+
 export const createCampaign = async (data) => http.post(
   '/api/campaigns',
   data,

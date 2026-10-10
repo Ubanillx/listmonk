@@ -171,6 +171,14 @@
             <label for="#">{{ $t('campaigns.unsent') }}</label>
             <span>{{ $utils.formatNumber(props.row.unsentCount) }}</span>
           </p>
+          <p class="campaign-send-errors" :class="{ 'has-text-danger': stats.sendErrors > 0 }" :title="$t('campaigns.sendErrorsHelp')">
+            <label for="#">{{ $t('campaigns.sendErrors') }}</label>
+            <span>
+              <a v-if="$canReadCampaignSendErrors(props.row)" href="#" @click.prevent="sendErrorCampaign = props.row"
+                :aria-label="$t('campaigns.sendErrorDetails')">{{ $utils.formatNumber(stats.sendErrors || 0) }}</a>
+              <template v-else>{{ $utils.formatNumber(stats.sendErrors || 0) }}</template>
+            </span>
+          </p>
           <p>
             <label for="#">{{ $t('globals.terms.bounces') }}</label>
             <span>
@@ -292,6 +300,8 @@
     <campaign-preview v-if="previewItem" type="campaign" :id="previewItem.id" :title="previewItem.name" :media="previewItem.media || []"
       @close="closePreview" />
 
+    <campaign-send-errors v-if="sendErrorCampaign" :campaign="sendErrorCampaign" @close="sendErrorCampaign = null" />
+
     <b-modal scroll="keep" :aria-modal="true" :active.sync="isCloneFormVisible" :width="520">
       <div class="modal-card content" style="width: auto">
         <header class="modal-card-head"><h4>{{ $t('campaigns.copyTitle') }}</h4></header>
@@ -323,12 +333,14 @@
 import Vue from 'vue';
 import { mapState } from 'vuex';
 import CampaignPreview from '../components/CampaignPreview.vue';
+import CampaignSendErrors from '../components/CampaignSendErrors.vue';
 import CopyText from '../components/CopyText.vue';
 import EmptyPlaceholder from '../components/EmptyPlaceholder.vue';
 
 export default Vue.extend({
   components: {
     CampaignPreview,
+    CampaignSendErrors,
     EmptyPlaceholder,
     CopyText,
   },
@@ -336,6 +348,7 @@ export default Vue.extend({
   data() {
     return {
       previewItem: null,
+      sendErrorCampaign: null,
       isCloneFormVisible: false,
       cloneItem: null,
       cloneForm: {

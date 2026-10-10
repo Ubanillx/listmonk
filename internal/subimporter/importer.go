@@ -1147,12 +1147,7 @@ func (s *Session) enqueueRow(cols []string, keyMap map[string]int, line int) err
 
 	sub.Name = getMappedValue(cols, keyMap, "name")
 
-	// Customer code is a required business identifier when importing new
-	// subscriptions; blocklist imports only need the e-mail address.
 	sub.CustomerCode = getMappedValue(cols, keyMap, "customer_code")
-	if s.opt.Mode == ModeSubscribe && sub.CustomerCode == "" {
-		return errors.New("customer code not found in row")
-	}
 
 	var err error
 	sub, err = s.im.ValidateFields(sub)

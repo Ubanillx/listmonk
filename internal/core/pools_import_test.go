@@ -43,19 +43,19 @@ func TestPoolImportAllowsEmptyNames(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if result.Total != 6 || result.Created != 2 || result.Valid != 2 || result.Invalid != 3 || result.Duplicates != 1 {
+			if result.Total != 6 || result.Created != 3 || result.Valid != 3 || result.Invalid != 2 || result.Duplicates != 1 {
 				t.Fatalf("unexpected import result: %+v", result)
 			}
-			for i, reason := range []string{"customer_code_required", "invalid_email", "allocation_department_not_found"} {
-				if len(result.Issues) != 3 || result.Issues[i].Row != i+5 || result.Issues[i].Reason != reason {
+			for i, reason := range []string{"invalid_email", "allocation_department_not_found"} {
+				if len(result.Issues) != 2 || result.Issues[i].Row != i+6 || result.Issues[i].Reason != reason {
 					t.Fatalf("unexpected validation issues: %+v", result.Issues)
 				}
 			}
-			if got := env.countRows(`SELECT COUNT(*) FROM pool_contacts WHERE name='' AND status=$1`, mode.status); got != 2 {
-				t.Fatalf("contacts with empty names = %d, want 2", got)
+			if got := env.countRows(`SELECT COUNT(*) FROM pool_contacts WHERE name='' AND status=$1`, mode.status); got != 3 {
+				t.Fatalf("contacts with empty names = %d, want 3", got)
 			}
-			if got := env.countRows(`SELECT COUNT(*) FROM org_pool_allocation_members WHERE allocation_id=$1`, allocation); got != 2 {
-				t.Fatalf("allocated contacts = %d, want 2", got)
+			if got := env.countRows(`SELECT COUNT(*) FROM org_pool_allocation_members WHERE allocation_id=$1`, allocation); got != 3 {
+				t.Fatalf("allocated contacts = %d, want 3", got)
 			}
 			result, err = env.core.ImportPoolContacts(pool, 1, rows[:3], mode.blocklist)
 			if err != nil || result.Created != 0 || result.Existing != 2 || result.Invalid != 0 || result.Duplicates != 1 {
@@ -70,8 +70,53 @@ func TestPoolImportAllowsEmptyNames(t *testing.T) {
 			if err != nil || result.Created != 1 || result.Conflicts != 1 || result.Existing != 0 {
 				t.Fatalf("same code with a different name: %+v, %v", result, err)
 			}
-			if got := env.countRows(`SELECT COUNT(*) FROM pool_contacts WHERE name=''`); got != 2 {
-				t.Fatalf("original empty names changed: %d contacts, want 2", got)
+			if got := env.countRows(`SELECT COUNT(*) FROM pool_contacts WHERE name=''`); got != 3 {
+				t.Fatalf("original empty names changed: %d contacts, want 3", got)
+			}
+		})
+	}
+}
+
+func TestPoolImportAllowsEmptyCustomerCodes(t *testing.T) {
+	for _, blocklist := range []bool{false, true} {
+		t.Run(map[bool]string{false: "subscribe", true: "blocklist"}[blocklist], func(t *testing.T) {
+			env := newPoolRecipientsTestEnvWithDDL(t, poolRecipientsTestDDL+`
+				ALTER TABLE pool_contacts ADD COLUMN allocation_department TEXT NOT NULL DEFAULT '';
+				CREATE TABLE pool_merge_conflicts (
+					pool_id INTEGER, contact_id BIGINT, customer_code TEXT,
+					existing_snapshot JSONB, incoming_snapshot JSONB, created_by_user_id INTEGER
+				);`)
+			org := env.seedOrganization("Import department")
+			pool := env.seedPool("Empty codes")
+			allocation := env.seedAllocation(pool, org)
+			rows := []models.PoolContactImportRow{
+				{Row: 2, Email: "one@example.com", AllocationDepartment: "Import department"},
+				{Row: 3, CustomerCode: " \t ", Email: "ONE@example.com", AllocationDepartment: "Import department"},
+				{Row: 4, Email: "two@example.com", AllocationDepartment: "Import department"},
+			}
+			result, err := env.core.ImportPoolContacts(pool, 1, rows, blocklist)
+			if err != nil || result.Created != 2 || result.Invalid != 0 || result.Duplicates != 1 || result.Conflicts != 0 {
+				t.Fatalf("empty code import: %+v, %v", result, err)
+			}
+			if got := env.countRows(`SELECT COUNT(*) FROM pool_contacts WHERE customer_code=''`); got != 2 {
+				t.Fatalf("contacts with empty codes = %d, want 2", got)
+			}
+			if got := env.countRows(`SELECT COUNT(*) FROM org_pool_allocation_members WHERE allocation_id=$1`, allocation); got != 2 {
+				t.Fatalf("allocated contacts = %d, want 2", got)
+			}
+			rows[0].ReplyTo = "reply@example.com"
+			result, err = env.core.ImportPoolContacts(pool, 1, rows[:1], blocklist)
+			if err != nil || result.Created != 0 || result.Existing != 1 || result.Conflicts != 0 {
+				t.Fatalf("empty code reimport: %+v, %v", result, err)
+			}
+			if got := env.countRows(`SELECT COUNT(*) FROM pool_contacts WHERE email='one@example.com' AND reply_to='reply@example.com'`); got != 1 {
+				t.Fatal("reimport did not update reply email")
+			}
+			if got := env.countRows(`SELECT COUNT(*) FROM pool_merge_conflicts`); got != 0 {
+				t.Fatalf("empty codes generated %d conflicts", got)
+			}
+			if blocklist && env.countRows(`SELECT COUNT(*) FROM pool_contacts WHERE status='blocklisted'`) != 2 {
+				t.Fatal("empty code contacts were not blocklisted")
 			}
 		})
 	}

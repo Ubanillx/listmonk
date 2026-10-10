@@ -28,7 +28,7 @@
 
 ## 公海客户回信地址与活动优先级（v6.55.0）
 
-公海 CSV/XLSX 导入仍需映射姓名列，但姓名内容允许为空或仅含空白，规范化后保存为空字符串。普通导入与黑名单导入遵守同一规则；客户编号、邮箱、分配部门仍必填，姓名仍参与身份比较和重复记录判定。来源：`cmd/pools.go::parsePoolContactImportRows`、`internal/core/pools.go::ImportPoolContacts`、`internal/core/pools_import_test.go`。
+公海 CSV/XLSX 导入仍需映射客户编码与姓名列，但两列内容允许为空或仅含空白，规范化后保存为空字符串。普通导入与黑名单导入遵守同一规则；邮箱、分配部门内容仍必填，客户编码和姓名仍参与身份比较和重复记录判定。不同身份的空编码客户不产生编码冲突记录。来源：`cmd/pools.go::parsePoolContactImportRows`、`internal/core/pools.go::ImportPoolContacts`、`internal/core/pools_import_test.go`。
 
 统一导入支持可选 `reply_to`/“回信邮箱”，该字段必须是单个邮箱地址；公海导入的 `email` 单元格可以包含多个地址，解析器会提取地址并为每个地址复用同一行的客户编号、姓名、分配部门和回信邮箱。四列旧模板仍可导入。同身份重导入更新或清空地址而不重复创建。组织邮箱配置需 `mailboxes:manage` 与组织管理边界，联系人导入需 `pools:master_manage`。导入地址只控制 Reply-To，不创建邮箱、不保存凭据、不授予收信能力。
 
@@ -175,7 +175,7 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 
 - 普通客户批量导入仅支持邮箱、姓名、客户编码映射；CSV（包括 ZIP 内 CSV）固定逗号分隔，XLSX 保持支持。导入 API 不再接受属性映射，也不再读取 `delim` 参数。覆盖用户信息仅更新姓名与客户编码，保留已有属性。选择一级公海列表时，同一入口切换到公海专用导入分支，不走普通客户写入流程。
 
-- `customers.customer_code`（v6.21.0 迁移新增）：客户编码，必填但不唯一。仅管理端新增/编辑（`cmd/customers.go`）与导入路径（`internal/subimporter`）校验必填；公开订阅入口可选。列允许空串并带普通索引。
+- `customers.customer_code`（v6.21.0 迁移新增）：客户编码，不唯一。管理端新增/编辑（`cmd/customers.go`）校验必填；批量订阅导入（`internal/subimporter`）要求映射客户编码列，但内容允许为空，新客户保存空串，重导入空值保留已有编码。公开订阅入口可选。列允许空串并带普通索引。
 - `customer_lists.mask_emails`（v6.21.0 迁移新增）：客户列表级“打码邮箱”开关。无敏感数据访问权的查看者，在当前查看客户列表开启打码时看到打码邮箱；客户列表未开启或无上下文时维持原置空行为。打码覆盖客户列表/详情、API 响应及范围 CSV 导出，搜索仍按完整邮箱匹配。CSV 导出额外输出 `customer_code` 列。
 
 ### 一级公海与组织公海分配（已实施）

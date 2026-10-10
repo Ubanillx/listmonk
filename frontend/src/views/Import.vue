@@ -103,7 +103,7 @@
           <div v-if="form.mode === 'subscribe' || poolImport" class="columns">
             <div class="column is-4">
               <b-field :label="$t('import.mapCustomerCodeField')"
-                :message="poolImport ? $t('import.poolRequiredFieldHelp') : $t('import.mapCustomerCodeFieldHelp')">
+                :message="$t('import.mapCustomerCodeFieldHelp')">
                 <b-select v-model="form.fieldMap.customer_code" expanded required>
                   <option value="">{{ $t('globals.terms.none') }}</option>
                   <option v-for="col in preview.columns" :key="`customer_code-${col.value}`" :value="col.value">

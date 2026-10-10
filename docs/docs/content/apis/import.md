@@ -66,7 +66,10 @@ ______________________________________________________________________
 Send a CSV / XLSX (optionally ZIP compressed CSV) file to import customers. Use a multipart form POST. The selected list type determines the import branch.
 
 CSV files use commas. Supported fields are email, name, and customer_code.
-Subscription imports require customer_code. Only these supported fields are imported.
+Subscription imports require the customer_code column, but its values may be
+empty or whitespace-only. New customers store an empty code; reimporting an
+existing private customer with an empty code preserves its existing code.
+Only these supported fields are imported.
 
 The admin private-customer import form always overwrites existing customer
 information and subscription status. It defaults to confirmed subscriptions.
@@ -81,9 +84,11 @@ When `customer_list_ids` contains exactly one first-level public-pool list
 CSV sheet or XLSX worksheet must provide customer code, name, email, and
 allocation department. The Chinese headers in the supplied workbook—`客户编号`
 (`客户编码` is also accepted), `姓名`, `邮箱`, and `分配部门`—are recognized;
-the name column is required, but its values may be empty or whitespace-only and
-are stored as empty strings. Customer code, email, and allocation department
-values remain required in both subscribe and blocklist modes.
+the customer code and name columns are required, but their values may be empty
+or whitespace-only and are stored as empty strings. Email and allocation
+department values remain required in both subscribe and blocklist modes.
+Empty codes remain part of the full contact identity used for deduplication;
+distinct contacts with empty codes do not generate customer-code conflicts.
 An optional `reply_to` column (aliases `回信邮箱`, `回件邮箱`, `回复邮箱`, `reply-to`, `reply_email`) supplies the customer-specific Reply-To address; other extra columns are ignored. The allocation department must match an
 active organization name in the system; an unknown or archived department is
 reported as an invalid row and is not written to the pool. A valid department

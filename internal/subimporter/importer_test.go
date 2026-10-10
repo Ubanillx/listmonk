@@ -12,6 +12,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	"github.com/xuri/excelize/v2"
 )
 
 func TestResolveMappingsSupportsUnicodeHeaders(t *testing.T) {
@@ -61,6 +63,62 @@ func TestCSVImportIgnoresRemovedAttributesColumn(t *testing.T) {
 	}
 	if len(row.Attribs) != 0 {
 		t.Fatalf("removed attributes column was imported: %+v", row.Attribs)
+	}
+}
+
+func TestImportAllowsEmptyCustomerCodes(t *testing.T) {
+	for _, format := range []string{"csv", "xlsx"} {
+		for _, mode := range []string{ModeSubscribe, ModeBlocklist} {
+			t.Run(format+"/"+mode, func(t *testing.T) {
+				s := &Session{
+					im:       &Importer{stop: make(chan bool, 1), status: Status{Status: StatusImporting}},
+					log:      log.New(io.Discard, "", 0),
+					subQueue: make(chan SubReq, 3),
+					opt:      SessionOpt{Mode: mode},
+				}
+				path := filepath.Join(t.TempDir(), "customers."+format)
+				if format == "csv" {
+					if err := os.WriteFile(path, []byte("email,name,customer_code\nblank@example.com,Blank,\nspace@example.com,Space, \t \ncoded@example.com,Coded,000123\n"), 0600); err != nil {
+						t.Fatal(err)
+					}
+					if err := s.LoadCSV(path); err != nil {
+						t.Fatal(err)
+					}
+				} else {
+					xl := excelize.NewFile()
+					defer xl.Close()
+					for i, row := range [][]interface{}{
+						{"email", "name", "customer_code"},
+						{"blank@example.com", "Blank", ""},
+						{"space@example.com", "Space", " \t "},
+						{"coded@example.com", "Coded", "000123"},
+					} {
+						if err := xl.SetSheetRow("Sheet1", fmt.Sprintf("A%d", i+1), &row); err != nil {
+							t.Fatal(err)
+						}
+					}
+					if err := xl.SaveAs(path); err != nil {
+						t.Fatal(err)
+					}
+					if err := s.LoadXLSX(path); err != nil {
+						t.Fatal(err)
+					}
+				}
+				for i, email := range []string{"blank@example.com", "space@example.com", "coded@example.com"} {
+					row, ok := <-s.subQueue
+					wantCode := ""
+					if i == 2 {
+						wantCode = "000123"
+					}
+					if !ok || row.Email != email || row.CustomerCode != wantCode {
+						t.Fatalf("row %d = %+v, want email %q and code %q", i, row, email, wantCode)
+					}
+				}
+				if _, ok := <-s.subQueue; ok {
+					t.Fatal("unexpected extra row")
+				}
+			})
+		}
 	}
 }
 

@@ -831,11 +831,6 @@ func (c *Core) ImportPoolContacts(poolID, userID int, rows []models.PoolContactI
 		department := strings.TrimSpace(row.AllocationDepartment)
 		issue := models.PoolContactImportIssue{Row: row.Row, CustomerCode: code, AllocationDepartment: department}
 		switch {
-		case code == "":
-			result.Invalid++
-			issue.Reason = "customer_code_required"
-			addIssue(issue)
-			continue
 		case email == "":
 			result.Invalid++
 			issue.Reason = "email_required"
@@ -900,7 +895,7 @@ func (c *Core) ImportPoolContacts(poolID, userID int, rows []models.PoolContactI
 			return result, err
 		} else {
 			var existingID int64
-			codeErr := tx.Get(&existingID, `SELECT id FROM pool_contacts WHERE customer_code=$1 ORDER BY id LIMIT 1`, code)
+			codeErr := tx.Get(&existingID, `SELECT id FROM pool_contacts WHERE customer_code=$1 AND customer_code<>'' ORDER BY id LIMIT 1`, code)
 			hasConflict := codeErr == nil
 			if codeErr != nil && codeErr != sql.ErrNoRows {
 				return result, codeErr

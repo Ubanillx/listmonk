@@ -24,7 +24,7 @@
     </b-notification>
 
     <b-tabs v-if="selectedOrganizationID || canManageAllOrganizations" type="is-boxed" :animated="false" v-model="activeTab">
-      <b-tab-item v-if="selectedOrganizationID" :label="$t('organizations.tabMembers')" icon="account-group-outline">
+      <b-tab-item v-if="selectedOrganizationID" value="members" :label="$t('organizations.tabMembers')" icon="account-group-outline">
         <section class="wrap">
           <form class="columns is-multiline" @submit.prevent="addMember">
             <div class="column is-6">
@@ -70,7 +70,7 @@
         </section>
       </b-tab-item>
 
-      <b-tab-item v-if="selectedOrganizationID" :label="$t('organizations.tabInvites')" icon="key-outline">
+      <b-tab-item v-if="selectedOrganizationID" value="invites" :label="$t('organizations.tabInvites')" icon="key-outline">
         <section class="wrap">
           <form class="columns is-multiline" @submit.prevent="createInvite">
             <div class="column is-4">
@@ -117,7 +117,7 @@
         </section>
       </b-tab-item>
 
-      <b-tab-item v-if="selectedOrganizationID" :label="$t('organizations.tabPending')" icon="swap-horizontal">
+      <b-tab-item v-if="selectedOrganizationID" value="pending" :label="$t('organizations.tabPending')" icon="swap-horizontal">
         <section class="wrap">
           <p class="has-text-grey mb-4">{{ $t('organizations.pendingHelp') }}</p>
           <div class="columns is-vcentered">
@@ -140,7 +140,7 @@
         </section>
       </b-tab-item>
 
-      <b-tab-item v-if="selectedOrganizationID && $can('mailboxes:manage')" :label="$t('organizations.tabReplyMailboxes')" icon="email-multiple-outline">
+      <b-tab-item v-if="selectedOrganizationID && $can('mailboxes:manage')" value="reply-mailboxes" :label="$t('organizations.tabReplyMailboxes')" icon="email-multiple-outline">
         <section class="wrap">
           <section class="mb-6" data-cy="org-unified-reply-mailbox">
             <h2 class="title is-5">{{ $t('organizations.unifiedReplyMailbox') }}</h2>
@@ -171,11 +171,12 @@
               {{ $t('organizations.unifiedReplyMailboxReadOnly') }}
             </p>
           </section>
-          <reply-mailbox-settings :organization-id="Number(selectedOrganizationID)" />
+          <reply-mailbox-settings ref="replyMailboxSettings" :key="selectedOrganizationID"
+            :organization-id="Number(selectedOrganizationID)" @changed="onReplyMailboxesChanged" />
         </section>
       </b-tab-item>
 
-      <b-tab-item v-if="selectedOrganizationID && $can('mailboxes:manage')" :label="$t('organizations.tabReplyForward')" icon="email-arrow-left-outline">
+      <b-tab-item v-if="selectedOrganizationID && $can('mailboxes:manage')" value="reply-forwarding" :label="$t('organizations.tabReplyForward')" icon="email-arrow-left-outline">
         <section class="wrap">
           <p class="has-text-grey mb-4">{{ $t('organizations.replyForwardHelp') }}</p>
           <div class="table-scroll">
@@ -192,6 +193,7 @@
             </b-table-column>
             <b-table-column v-slot="props" :label="$t('organizations.columnActions')" numeric>
               <b-button size="is-small" type="is-text" :icon-left="props.row.status === 'active' ? 'pause-circle-outline' : 'play-circle-outline'"
+                :loading="updatingReplyForwardRuleID === props.row.id" :disabled="updatingReplyForwardRuleID !== null"
                 @click="toggleReplyForwardRule(props.row)">
                 {{ props.row.status === 'active' ? $t('organizations.replyForwardToggle') : $t('organizations.replyForwardResume') }}
               </b-button>
@@ -202,7 +204,7 @@
         </section>
       </b-tab-item>
 
-      <b-tab-item v-if="selectedOrganizationID && $can('mailboxes:manage')" :label="$t('organizations.smtpTitle')" icon="email-fast-outline">
+      <b-tab-item v-if="selectedOrganizationID && $can('mailboxes:manage')" value="smtp" :label="$t('organizations.smtpTitle')" icon="email-fast-outline">
         <section class="wrap smtp-pool-wrap" data-cy="organization-smtp">
           <div class="columns is-variable is-5 smtp-pool-layout">
             <div class="column is-3">
@@ -250,7 +252,7 @@
               <div v-if="selectedSMTPPoolID" class="smtp-pool-editor">
                 <personal-s-m-t-p-settings ref="smtpSettings" :key="`${selectedOrganizationID}-${selectedSMTPPoolID}`"
                   :organization-id="Number(selectedOrganizationID)" :smtp-pool-id="Number(selectedSMTPPoolID)"
-                  :organization-pool-name="selectedSMTPPool ? selectedSMTPPool.name : ''" />
+                  :organization-pool-name="selectedSMTPPool ? selectedSMTPPool.name : ''" @changed="onSMTPChanged" />
               </div>
               <div v-else class="notification is-light smtp-pool-first-step">
                 <b-icon icon="arrow-left" />
@@ -261,7 +263,7 @@
         </section>
       </b-tab-item>
 
-      <b-tab-item v-if="canManageAllOrganizations" :label="$t('organizations.tabPlatform')" icon="shield-crown-outline">
+      <b-tab-item v-if="canManageAllOrganizations" value="platform" :label="$t('organizations.tabPlatform')" icon="shield-crown-outline">
         <section class="mb-6">
           <h2 class="title is-5">{{ $t('organizations.creationRequests') }}</h2>
           <div class="table-scroll">
@@ -360,7 +362,10 @@ export default Vue.extend({
     return {
       isLoading: false,
       roleRevision: 0,
-      activeTab: 0,
+      refreshingDirectory: false,
+      selectedDataRevision: 0,
+      tabRefreshRevision: 0,
+      updatingReplyForwardRuleID: null,
       selectedOrganizationID: null,
       platformOrganizationID: null,
       members: [],
@@ -388,6 +393,25 @@ export default Vue.extend({
   computed: {
     ...mapState(['profile']),
     ...mapState({ organizations: (state) => state.organizationMemberships }),
+
+    availableTabs() {
+      const tabs = this.selectedOrganizationID ? ['members', 'invites', 'pending'] : [];
+      if (this.selectedOrganizationID && this.$can('mailboxes:manage')) {
+        tabs.push('reply-mailboxes', 'reply-forwarding', 'smtp');
+      }
+      if (this.canManageAllOrganizations) tabs.push('platform');
+      return tabs;
+    },
+
+    activeTab: {
+      get() {
+        return this.availableTabs.includes(this.$route.query.tab) ? this.$route.query.tab : this.availableTabs[0];
+      },
+      set(tab) {
+        if (!this.availableTabs.includes(tab) || tab === this.$route.query.tab) return;
+        this.$router.push({ query: { ...this.$route.query, tab } });
+      },
+    },
 
     canManageAllOrganizations() {
       return this.profile.userRole && (Number(this.profile.userRole.id) === 1
@@ -467,16 +491,29 @@ export default Vue.extend({
   },
 
   watch: {
-    selectedOrganizationID() {
+    '$route.query.tab': function onTabQueryChange() {
+      if (this.refreshingDirectory) return;
+      this.normalizeTabQuery();
+      this.refreshActiveTab();
+    },
+
+    selectedOrganizationID(id, previousID) {
       this.newInviteCode = '';
+      this.members = [];
+      this.invites = [];
+      this.replyForwardRules = [];
+      this.organizationReplyMailboxes = [];
+      this.unifiedReplyMailboxID = null;
       this.smtpPools = [];
       this.selectedSMTPPoolID = null;
-      this.refreshSelectedOrganization();
+      if (!this.refreshingDirectory || previousID) this.refreshSelectedOrganization();
     },
   },
 
   methods: {
     async refresh() {
+      if (this.refreshingDirectory) return;
+      this.refreshingDirectory = true;
       this.isLoading = true;
       try {
         await this.$api.refreshOrganizationDirectory();
@@ -490,11 +527,66 @@ export default Vue.extend({
         }
         this.ensureSelectedOrganization();
         await this.refreshSelectedOrganization();
+        this.normalizeTabQuery();
+        this.refreshActiveEditor();
       } catch (err) {
         if (!this.$store.state.organizationDirectoryError) throw err;
       } finally {
+        this.refreshingDirectory = false;
         this.isLoading = false;
       }
+    },
+
+    normalizeTabQuery() {
+      if (this.activeTab && this.activeTab !== this.$route.query.tab) {
+        this.$router.replace({ query: { ...this.$route.query, tab: this.activeTab } });
+      }
+    },
+
+    refreshActiveEditor() {
+      let settings;
+      if (this.activeTab === 'smtp') settings = this.$refs.smtpSettings;
+      if (this.activeTab === 'reply-mailboxes') settings = this.$refs.replyMailboxSettings;
+      if (settings && !settings.isDirty()) settings.load();
+    },
+
+    async refreshActiveTab() {
+      const organizationID = this.selectedOrganizationID;
+      const tab = this.activeTab;
+      this.tabRefreshRevision += 1;
+      const revision = this.tabRefreshRevision;
+      const current = () => revision === this.tabRefreshRevision
+        && organizationID === this.selectedOrganizationID && tab === this.activeTab;
+      if (tab === 'platform') {
+        const [requests, organizations] = await Promise.all([this.$api.getOrganizationRequests(), this.$api.getOrganizations(true)]);
+        if (!current()) return;
+        this.requests = requests;
+        this.platformOrganizations = organizations;
+      } else if (organizationID) {
+        if (tab === 'members' || tab === 'pending') {
+          const members = await this.$api.getOrganizationMembers(organizationID);
+          if (current()) this.members = members;
+        } else if (tab === 'invites') {
+          const invites = await this.$api.getOrganizationInvites(organizationID);
+          if (current()) this.invites = invites;
+        } else if (tab === 'reply-forwarding') {
+          const rules = await this.$api.getReplyForwardRules(organizationID);
+          if (current()) this.replyForwardRules = rules;
+        } else if (tab === 'reply-mailboxes') {
+          await this.loadUnifiedReplyMailbox();
+        } else if (tab === 'smtp') {
+          await this.loadSMTPPools();
+        }
+        if (current()) this.refreshActiveEditor();
+      }
+    },
+
+    onReplyMailboxesChanged(organizationID) {
+      if (Number(organizationID) === Number(this.selectedOrganizationID)) this.refresh();
+    },
+
+    onSMTPChanged(organizationID) {
+      if (Number(organizationID) === Number(this.selectedOrganizationID)) this.loadSMTPPools();
     },
 
     ensureSelectedOrganization() {
@@ -512,6 +604,9 @@ export default Vue.extend({
     },
 
     async refreshSelectedOrganization() {
+      const organizationID = this.selectedOrganizationID;
+      this.selectedDataRevision += 1;
+      const revision = this.selectedDataRevision;
       if (!this.selectedOrganizationID) {
         this.members = [];
         this.invites = [];
@@ -521,29 +616,41 @@ export default Vue.extend({
         this.unifiedReplyMailboxID = null;
         this.smtpPools = [];
         this.selectedSMTPPoolID = null;
+        this.normalizeTabQuery();
         return;
       }
       this.isLoading = true;
       try {
-        const [members, invites] = await Promise.all([
-          this.$api.getOrganizationMembers(this.selectedOrganizationID),
-          this.$api.getOrganizationInvites(this.selectedOrganizationID),
+        const canManageMailboxes = this.$can('mailboxes:manage');
+        const [members, invites, rules, pools, mailboxes] = await Promise.all([
+          this.$api.getOrganizationMembers(organizationID),
+          this.$api.getOrganizationInvites(organizationID),
+          canManageMailboxes ? this.$api.getReplyForwardRules(organizationID) : [],
+          canManageMailboxes ? this.$api.getOrganizationSMTPPools(organizationID) : [],
+          canManageMailboxes ? this.$api.getReplyMailboxes(Number(organizationID)) : [],
         ]);
+        if (revision !== this.selectedDataRevision || organizationID !== this.selectedOrganizationID) return;
         this.members = members;
         this.invites = invites;
-        if (this.$can('mailboxes:manage')) {
-          this.replyForwardRules = await this.$api.getReplyForwardRules(this.selectedOrganizationID);
-          await this.loadSMTPPools();
-        }
+        this.replyForwardRules = rules;
+        this.applySMTPPools(pools);
+        this.organizationReplyMailboxes = mailboxes || [];
+        this.syncUnifiedReplyMailbox();
         this.transferTargetUserID = null;
-        if (this.$can('mailboxes:manage')) await this.loadUnifiedReplyMailbox();
+        this.normalizeTabQuery();
       } finally {
-        this.isLoading = false;
+        if (revision === this.selectedDataRevision) this.isLoading = false;
       }
     },
 
     async loadSMTPPools() {
-      const pools = await this.$api.getOrganizationSMTPPools(this.selectedOrganizationID);
+      const organizationID = this.selectedOrganizationID;
+      const pools = await this.$api.getOrganizationSMTPPools(organizationID);
+      if (organizationID !== this.selectedOrganizationID) return;
+      this.applySMTPPools(pools);
+    },
+
+    applySMTPPools(pools) {
       this.smtpPools = pools || [];
       if (!this.smtpPools.some((pool) => Number(pool.id) === Number(this.selectedSMTPPoolID))) {
         this.selectedSMTPPoolID = this.smtpPools.length ? this.smtpPools[0].id : null;
@@ -591,13 +698,13 @@ export default Vue.extend({
     selectOrganization(organization) {
       this.platformOrganizationID = organization.id;
       this.selectedOrganizationID = organization.id;
-      this.activeTab = 0;
+      this.activeTab = 'members';
     },
 
     async addMember() {
       await this.$api.addOrganizationMember(this.memberForm, this.selectedOrganizationID);
       this.memberForm = { account: '', role: 'member' };
-      await this.refreshSelectedOrganization();
+      await this.refresh();
     },
 
     confirmMemberRoleChange(member, role) {
@@ -657,13 +764,17 @@ export default Vue.extend({
     // The pool audience reply route resolves to the organization's single
     // unified reply mailbox, so the value is loaded from the organization
     // payload and refreshed after saving.
-    async loadUnifiedReplyMailbox() {
+    syncUnifiedReplyMailbox() {
       const organization = this.selectedOrganization;
       const mailboxID = organization && (organization.replyMailboxId || organization.reply_mailbox_id);
       this.unifiedReplyMailboxID = mailboxID ? Number(mailboxID) : null;
-      const mailboxes = await this.$api
-        .getReplyMailboxes(Number(this.selectedOrganizationID))
-        .catch(() => []);
+    },
+
+    async loadUnifiedReplyMailbox() {
+      const organizationID = this.selectedOrganizationID;
+      const mailboxes = await this.$api.getReplyMailboxes(Number(organizationID));
+      if (organizationID !== this.selectedOrganizationID) return;
+      this.syncUnifiedReplyMailbox();
       this.organizationReplyMailboxes = Array.isArray(mailboxes) ? mailboxes : [];
     },
 
@@ -682,9 +793,17 @@ export default Vue.extend({
     },
 
     async toggleReplyForwardRule(rule) {
+      if (this.updatingReplyForwardRuleID !== null) return;
+      const organizationID = this.selectedOrganizationID;
       const status = rule.status === 'active' ? 'disabled' : 'active';
-      await this.$api.updateReplyForwardRule(rule.id, { status }, this.selectedOrganizationID);
-      this.replyForwardRules = await this.$api.getReplyForwardRules(this.selectedOrganizationID);
+      this.updatingReplyForwardRuleID = rule.id;
+      try {
+        await this.$api.updateReplyForwardRule(rule.id, { status }, organizationID);
+        const rules = await this.$api.getReplyForwardRules(organizationID);
+        if (organizationID === this.selectedOrganizationID) this.replyForwardRules = rules;
+      } finally {
+        this.updatingReplyForwardRuleID = null;
+      }
     },
 
     transferPendingResources() {

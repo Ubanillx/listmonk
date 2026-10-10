@@ -2,6 +2,8 @@
 
 快照日期：2026-10-10
 
+- 组织管理页签与 CRUD 刷新（2026-10-10）：七个页签使用稳定 `tab` 查询参数，刷新、直达、浏览器历史恢复选中；未知/无权限页签回退。`App.vue::routeViewKey` 在组织管理页排除 `tab`，切换时保留管理目标与草稿，并主动读取当前数据。邮箱保存/测试/启停/删除通知父页刷新统一邮箱选项，SMTP 保存/删除通知刷新池计数；慢请求不得覆盖已开始编辑的草稿或新组织列表，回信转发提交时显示忙碌状态。验证：新增隔离 Cypress `organization-management-tabs.cy.js` 7/7、`workspace-directory.cy.js` 7/7、`reply-mailbox-config.cy.js` 4/4；源码与测试 ESLint（仅既有地图 warning）、生产构建、文档及 diff 检查通过。8181 实际浏览器已验证刷新与后退保持客户回信转发页签；生产前端已重建，开发后端已重启，9173 返回 200、无待升级，日志仍有既有事务模板 3 `RootURL` 编译错误。来源：`frontend/src/App.vue`、`frontend/src/views/organizations/ManageOrganizations.vue`、`frontend/src/components/{ReplyMailboxSettings,PersonalSMTPSettings}.vue`。
+
 - 公海列表导入入口文案（2026-10-10）：`CustomerLists.vue` 行内导入按钮按列表类型显示公海/私域导入提示，并补充同文案的无障碍名称；原跳转保留列表 ID，导入页按该列表类型自动切到公海导入并预选目标公海。验证：隔离 Cypress `pool-list-tree.cy.js` 4/4 通过，新增真实公海的入口跳转/模式/预选回归；源码/测试 ESLint、生产构建与文档检查通过，全量 lint 仅既有地图 warning。开发后端已重启，9173 返回 200、无待升级，日志仅有既有事务模板 3 的 `RootURL` 编译错误。来源：`frontend/src/views/{CustomerLists,Import}.vue`、`frontend/cypress/e2e/pool-list-tree.cy.js`。
 
 - 管理组织选择范围（2026-10-10）：下拉候选改用本人活动组织成员目录，普通用户保留经理身份要求；首次进入优先当前活动工作区，无可管理当前组织时回退到首个候选。有效手动选择在刷新后保留，成员资格失效时回退，不自动转为平台目标。平台管理行内入口继续支持非成员组织，目标独立显示，不混入成员下拉框、不切换工作区。验证：隔离 Cypress 7/7 通过，覆盖默认值、刷新/重载、非成员排除、成员资格失效、空成员目录、平台行内入口及普通经理；桌面/390px 截图复查通过，源码/测试 ESLint 与文档检查通过（全量源码 lint 仅既有地图 warning）。生产前端已重建，开发后端已重启，9173 返回 200、无待升级；日志仍有既有事务模板 3 的 `RootURL` 编译错误。浏览器权限策略拒绝 8181 实际页面验证，未继续访问该页面。来源：`frontend/src/views/organizations/ManageOrganizations.vue`、`frontend/cypress/e2e/workspace-directory.cy.js`。

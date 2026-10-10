@@ -124,7 +124,7 @@
           </div>
         </div>
 
-        <router-view :key="$route.fullPath" />
+        <router-view :key="routeViewKey" />
       </div>
     </div>
 
@@ -268,6 +268,13 @@ export default Vue.extend({
   },
 
   computed: {
+    routeViewKey() {
+      if (this.$route.name !== 'organizationManage') return this.$route.fullPath;
+      // Changing management tabs must preserve the selected organization and drafts.
+      const query = { ...this.$route.query };
+      delete query.tab;
+      return this.$router.resolve({ path: this.$route.path, query, hash: this.$route.hash }).route.fullPath;
+    },
     ...mapState(['serverConfig', 'profile', 'workspace', 'organizations', 'organizationDirectoryError']),
 
     // The personal workspace is only available to platform administrators and

@@ -193,6 +193,7 @@ export default Vue.extend({
       testing: null,
       loading: false,
       savedSnapshot: '',
+      loadRevision: 0,
     };
   },
 
@@ -211,7 +212,11 @@ export default Vue.extend({
 
     load() {
       this.loading = true;
-      (this.organizationId ? this.$api.getOrganizationSMTP(this.organizationId, this.smtpPoolId) : this.$api.getPersonalSMTP()).then((data) => {
+      this.loadRevision += 1;
+      const revision = this.loadRevision;
+      const snapshot = this.snapshot();
+      return (this.organizationId ? this.$api.getOrganizationSMTP(this.organizationId, this.smtpPoolId) : this.$api.getPersonalSMTP()).then((data) => {
+        if (revision !== this.loadRevision || snapshot !== this.snapshot()) return;
         const rows = Array.isArray(data) ? data : data.smtp;
         this.servers = (rows || []).map((row) => ({
           ...blankServer(),
@@ -219,7 +224,7 @@ export default Vue.extend({
         }));
         this.markClean();
       }).finally(() => {
-        this.loading = false;
+        if (revision === this.loadRevision) this.loading = false;
       });
     },
 
@@ -228,6 +233,7 @@ export default Vue.extend({
     },
 
     removeServer(index) {
+      const organizationID = this.organizationId;
       this.$utils.confirm(null, () => {
         const server = this.servers[index];
         if (!server.id) {
@@ -238,6 +244,7 @@ export default Vue.extend({
           this.servers.splice(index, 1);
           const baseline = this.savedSnapshot ? JSON.parse(this.savedSnapshot) : [];
           this.savedSnapshot = JSON.stringify(baseline.filter((row) => Number(row.id) !== Number(server.id)));
+          this.$emit('changed', organizationID);
           if (data && data.runningCampaigns) {
             this.$utils.toast(this.$t('settings.personalSMTP.runningWarning'), 'is-warning');
           }
@@ -266,6 +273,7 @@ export default Vue.extend({
 
     save() {
       this.saving = true;
+      const organizationID = this.organizationId;
       (this.organizationId
         ? this.$api.updateOrganizationSMTP({ smtp: this.servers.map(this.wireServer) }, this.organizationId, this.smtpPoolId)
         : this.$api.updatePersonalSMTP({ smtp: this.servers.map(this.wireServer) })).then((data) => {
@@ -275,6 +283,7 @@ export default Vue.extend({
           ...row,
         }));
         this.markClean();
+        this.$emit('changed', organizationID);
         this.$utils.toast(this.$t('globals.messages.updated', { name: this.$t(this.organizationId ? 'organizations.smtpTitle' : 'settings.personalSMTP.title') }));
         if (data && data.runningCampaigns) {
           this.$utils.toast(this.$t('settings.personalSMTP.runningWarning'), 'is-warning');

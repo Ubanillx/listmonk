@@ -27,6 +27,14 @@ platform tab retains its separate all-organization list and row-level management
 entry: selecting a non-member organization there shows a separate target label,
 without adding it to the membership selector or changing the active workspace.
 
+The management page keeps its selected tab in the `tab` URL query parameter:
+`members`, `invites`, `pending`, `reply-mailboxes`, `reply-forwarding`, `smtp`, or
+`platform`. Reloads and browser history restore that tab; an unknown or unavailable
+tab falls back to the first visible tab. Tab changes refresh the displayed data
+while preserving the selected management target and unsaved mailbox/SMTP edits.
+Successful changes refresh the affected lists, unified reply-mailbox choices, and
+SMTP pool counts automatically.
+
 - **Workspace endpoints** resolve the active organization and require an active
   membership (or a platform administrator) — `cmd/organizations.go:192`.
 - **Platform endpoints** additionally require the built-in Super Admin or a role

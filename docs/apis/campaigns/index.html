@@ -1793,6 +1793,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#post-apicampaignscampaign_idclone" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/campaigns/{campaign_id}/clone
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#post-apicampaignscampaign_idtest" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3360,6 +3371,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#post-apicampaignscampaign_idclone" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /api/campaigns/{campaign_id}/clone
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#post-apicampaignscampaign_idtest" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3783,6 +3805,11 @@
 <td style="text-align: left;">POST</td>
 <td style="text-align: left;"><a href="#post-apicampaigns">/api/campaigns</a></td>
 <td style="text-align: left;">Create a new campaign.</td>
+</tr>
+<tr>
+<td style="text-align: left;">POST</td>
+<td style="text-align: left;"><a href="#post-apicampaignscampaign_idclone">/api/campaigns/{campaign_id}/clone</a></td>
+<td style="text-align: left;">Clone a campaign into a new draft.</td>
 </tr>
 <tr>
 <td style="text-align: left;">POST</td>
@@ -4620,6 +4647,12 @@ This is a test e-mail campaign. Your second name is Doe and you are from Bengalu
 <span class="w">    </span><span class="p">}</span>
 <span class="p">}</span>
 </code></pre></div>
+<hr />
+<h4 id="post-apicampaignscampaign_idclone">POST /api/campaigns/{campaign_id}/clone<a class="headerlink" href="#post-apicampaignscampaign_idclone" title="Permanent link">&para;</a></h4>
+<p>Create a private draft from an authorized source campaign. Accepts an optional <code>name</code> and <code>target_organization_id</code>; omit the target to stay in the current workspace, or use <code>0</code> for personal space. Returns HTTP 201 with the new campaign in the usual <code>data</code> envelope. The source must be copyable and the destination workspace writable.</p>
+<p>Cloning within the same workspace reuses the selected <code>template_id</code> when the new campaign owner can use that template for sending. It does not add a <code>(copy)</code> template or duplicate template-only media. Personal-space reuse also requires the source and destination owner to match. Later template edits affect all campaigns referencing it, just as when several newly created campaigns select the same template.</p>
+<p>Copies into another workspace, and manager/administrator copies that depend on another owner's private template, retain an independent private template and its media in the destination. Administrative inspection rights alone never authorize retaining a private template reference for a different owner. Campaign-owned media is independently copied and its body references rewritten in either case. Visual campaigns without a saved template reference continue to copy their body and campaign media only.</p>
+<p>Recipients, sending lists, delivery identity, schedule and sending history are not copied; the new draft starts with zero send counters. Existing copied templates are not automatically merged or deleted.</p>
 <hr />
 <h4 id="post-apicampaignscampaign_idtest">POST /api/campaigns/{campaign_id}/test<a class="headerlink" href="#post-apicampaignscampaign_idtest" title="Permanent link">&para;</a></h4>
 <p>Test campaign with arbitrary customers.</p>

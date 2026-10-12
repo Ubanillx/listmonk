@@ -86,12 +86,19 @@ upload path is configured instead, that external directory must be persisted
 and backed up by the server operator; the Jenkins migration only handles the
 historical relative `uploads` path.
 
-Create these Jenkins credentials before enabling deployment:
+Before enabling deployment, place the SSH private key at
+`/var/lib/jenkins/.ssh/listmonk_deploy_ed25519` on the selected Jenkins agent.
+The Jenkins service account must be able to read it. The pipeline writes the
+server's pinned ED25519 public host key from `Jenkinsfile` into a temporary
+`known_hosts` file for each run. The Jenkins credentials named
+`listmonk-root-ssh` and `listmonk-root-known-hosts` are not used by the current
+pipeline.
 
-- `listmonk-root-ssh`: an **SSH Username with private key** credential for
-  the `root` account on the deployment server.
-- `listmonk-root-known-hosts`: a **Secret file** containing the deployment
-  server's verified `known_hosts` entry.
+If the deployment server is rebuilt or its SSH host keys rotate, verify
+`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub -E sha256` through the
+provider's console before updating the public key in `Jenkinsfile`. Keep
+`StrictHostKeyChecking=yes`; deleting the temporary `known_hosts` file or
+disabling verification does not establish the server's identity.
 
 The pipeline deliberately does not use a stored server password. When using
 `root`, no sudo setup is required. If you later switch to a dedicated deploy

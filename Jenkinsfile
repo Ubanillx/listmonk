@@ -219,7 +219,7 @@ cleanup_known_hosts() {
   rm -f "$known_hosts_file"
 }
 trap cleanup_known_hosts EXIT
-printf '%s\\n' '83.229.120.50 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHcOJwCgq2+3MNtmbJw6SqmyOLKhgW96pY+PwnUQON/f' > "$known_hosts_file"
+printf '%s\\n' '83.229.120.50 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIWP6cjZVPI8XCj/uBKUo64ndizNgZ+1bobN4BsnezyN' > "$known_hosts_file"
 
 ssh_options=(
   -i "$deployment_key"

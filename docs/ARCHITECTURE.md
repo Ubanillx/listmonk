@@ -328,7 +328,7 @@ Go 测试放在实现附近的 `*_test.go`；修改工作区、权限、导入�
 
 - 根目录 `docker-compose.yml` 是常规 Compose 部署：应用启动时幂等安装、执行迁移，再开始服务；所有密钥使用运行环境变量或 `LISTMONK_*_FILE`，不可提交真实配置。
 - `deploy/package_bundle.sh` 先执行 `make dist`，打包官方镜像、本地镜像、PostgreSQL 镜像与 Compose 脚本。将生成包复制到目标机后，依次运行包内 `scripts/load-images.sh`，配置 `env/runtime.env`，再运行 `start-online.sh` 或 `start-local.sh`；`stop.sh` 用于停止。
-- `Jenkinsfile` 执行 `make test` 和 `make dist`，归档二进制、前端压缩包及 SHA-256，再通过 SSH 和 systemd 进行可回滚部署。Jenkins 发布将 filesystem 媒体固定保存在 `<DEPLOY_DIR>/uploads`（版本目录之外），每个版本的 `uploads` 都链接到该目录；首次修复发布会从旧 `current/uploads` 迁移历史文件。`listmonk@.service` 是强化隔离的模板，`listmonk-simple.service` 兼容旧系统。
+- `Jenkinsfile` 执行 `make test` 和 `make dist`，归档二进制、前端压缩包及 SHA-256，再通过 SSH 和 systemd 进行可回滚部署。部署使用 agent 上的 `/var/lib/jenkins/.ssh/listmonk_deploy_ed25519` 私钥，并将 Jenkinsfile 固定的 ED25519 主机公钥写入临时 `known_hosts`，保持严格主机校验；服务器重装或主机密钥轮换须先从服务商控制台独立核对新指纹，再更新固定公钥。Jenkins 发布将 filesystem 媒体固定保存在 `<DEPLOY_DIR>/uploads`（版本目录之外），每个版本的 `uploads` 都链接到该目录；首次修复发布会从旧 `current/uploads` 迁移历史文件。`listmonk@.service` 是强化隔离的模板，`listmonk-simple.service` 兼容旧系统。
 - GitHub Actions 的 PR build-sanity 执行 `make dist`；`docs-sanity` 在 PR 的每次 push（`docs/**` 或 `scripts/check_docs.py` 变化时触发）执行 `python scripts/check_docs.py`（校验 nav 可达性、页内锚点与相对链接）和 `mkdocs build --strict --clean`；标签 `v*` 使用 GoReleaser 发布多架构二进制与 Docker 镜像，nightly 工作流发布每日快照。
 
 ## 文档同步规则（强制）

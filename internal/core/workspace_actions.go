@@ -55,6 +55,7 @@ func (c *Core) CloneCampaignForWorkspaceWithSource(sourceID int, sourceAccess, t
 		return models.Campaign{}, err
 	}
 	var sourceTemplate *models.Template
+	var reuseTemplate bool
 	if source.TemplateID.Valid && source.TemplateID.Int > 0 {
 		tplScope, err := c.lockCloneResourceScope(tx, resourceTemplates, int(source.TemplateID.Int), lockedOrganizations)
 		if err != nil {
@@ -71,6 +72,7 @@ func (c *Core) CloneCampaignForWorkspaceWithSource(sourceID int, sourceAccess, t
 			return models.Campaign{}, err
 		}
 		sourceTemplate = &tpl
+		reuseTemplate = c.canReuseCampaignTemplate(sourceScope, tplScope, target)
 	}
 
 	associations, err := c.lockCampaignCloneMedia(tx, sourceID, source.TemplateID)
@@ -94,22 +96,26 @@ func (c *Core) CloneCampaignForWorkspaceWithSource(sourceID int, sourceAccess, t
 	}
 	targetScope := ApplyWorkspaceScope(target, models.ResourceVisibilityPrivate)
 	headers := cloneCampaignHeaders(source.Headers)
-	mediaCopies, err := c.cloneMediaAssociations(tx, associations, targetScope)
+	mediaToCopy := associations
+	if reuseTemplate {
+		// The retained template keeps its own media graph; only campaign media
+		// needs an independent copy and rewritten body references.
+		mediaToCopy.Template = nil
+	}
+	mediaCopies, err := c.cloneMediaAssociations(tx, mediaToCopy, targetScope)
 	if err != nil {
 		return models.Campaign{}, err
 	}
 	// The canonical media URL contains the source row ID. Rewrite both the
 	// campaign body and its optional visual-editor source to point at the
-	// independent copies created above. A cloned campaign also receives a
-	// private template snapshot below, so rewrite that template's body before
-	// inserting it; otherwise its HTML would continue pointing at the source
-	// media IDs and could break as soon as the source resource is removed.
+	// independent copies created above. Rewrite the template only when creating
+	// a private snapshot; a reused template and its media remain unchanged.
 	sourceNames := mediaAssociationSourceNames(associations, mediaCopies)
 	source.Body = string(rewriteMediaReferences([]byte(source.Body), mediaCopies, sourceNames))
 	if source.BodySource.Valid {
 		source.BodySource.String = string(rewriteMediaReferences([]byte(source.BodySource.String), mediaCopies, sourceNames))
 	}
-	if sourceTemplate != nil {
+	if sourceTemplate != nil && !reuseTemplate {
 		sourceTemplate.Body = string(rewriteMediaReferences([]byte(sourceTemplate.Body), mediaCopies, sourceNames))
 		if sourceTemplate.BodySource.Valid {
 			sourceTemplate.BodySource.String = string(rewriteMediaReferences([]byte(sourceTemplate.BodySource.String), mediaCopies, sourceNames))
@@ -119,11 +125,13 @@ func (c *Core) CloneCampaignForWorkspaceWithSource(sourceID int, sourceAccess, t
 		source.AltBody.String = string(rewriteMediaReferences([]byte(source.AltBody.String), mediaCopies, sourceNames))
 	}
 
-	// A campaign clone always gets an independent template snapshot. This also
-	// makes a private/shared source template and all inline media independent of
-	// later edits or deletion of the source.
+	// Same-workspace clones retain a usable template reference instead of
+	// adding a template to the library on every clone. Cross-workspace copies
+	// and manager copies of a member's private template still need a snapshot.
 	newTemplateID := null.Int{}
-	if sourceTemplate != nil {
+	if reuseTemplate {
+		newTemplateID = source.TemplateID
+	} else if sourceTemplate != nil {
 		var templateID int
 		if err := tx.Get(&templateID, `
 			INSERT INTO templates (
@@ -197,6 +205,22 @@ func (c *Core) CloneCampaignForWorkspaceWithSource(sourceID int, sourceAccess, t
 	// here would re-open a race in which the destination membership or
 	// organization state changes between commit and response serialization.
 	return c.GetWorkspaceCampaign(target, newID)
+}
+
+func (c *Core) canReuseCampaignTemplate(source, template models.ResourceScope, target models.WorkspaceAccess) bool {
+	targetScope := ApplyWorkspaceScope(target, models.ResourceVisibilityPrivate)
+	if source.OrganizationID != targetScope.OrganizationID {
+		return false
+	}
+	if !source.OrganizationID.Valid && source.OwnerUserID != targetScope.OwnerUserID {
+		return false
+	}
+	// Sending validates the new campaign owner's scope, not administrative
+	// inspection privileges. Never retain another owner's private dependency
+	// merely because the caller is a platform administrator.
+	target.PlatformAdmin = false
+	target.Personal = !target.IsOrganization()
+	return c.CanUseResource(target, template)
 }
 
 type mediaAssociation struct {

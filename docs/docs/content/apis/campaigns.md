@@ -50,6 +50,7 @@ The admin form calls the imported source **List reply mailbox** and compares it 
 | GET    | [/api/campaigns/{campaign_id}/report/links](#get-apicampaignscampaign_idreportlinks) | Retrieve link analytics for a campaign.   |
 | GET    | [/api/campaigns/{campaign_id}/report/recipients](#get-apicampaignscampaign_idreportrecipients) | Retrieve recipient-level analytics for a campaign. |
 | POST   | [/api/campaigns](#post-apicampaigns)                                        | Create a new campaign.                    |
+| POST   | [/api/campaigns/{campaign_id}/clone](#post-apicampaignscampaign_idclone)    | Clone a campaign into a new draft.         |
 | POST   | [/api/campaigns/{campaign_id}/test](#post-apicampaignscampaign_idtest)      | Test campaign with arbitrary customers. |
 | PUT    | [/api/campaigns/{campaign_id}](#put-apicampaignscampaign_id)                | Update a campaign.                        |
 | PUT    | [/api/campaigns/{campaign_id}/status](#put-apicampaignscampaign_idstatus)   | Change status of a campaign.              |
@@ -644,6 +645,18 @@ curl -u "api_user:token" 'http://localhost:9000/api/campaigns' -X POST -H 'Conte
 ```
 
 ______________________________________________________________________
+
+#### POST /api/campaigns/{campaign_id}/clone
+
+Create a private draft from an authorized source campaign. Accepts an optional `name` and `target_organization_id`; omit the target to stay in the current workspace, or use `0` for personal space. Returns HTTP 201 with the new campaign in the usual `data` envelope. The source must be copyable and the destination workspace writable.
+
+Cloning within the same workspace reuses the selected `template_id` when the new campaign owner can use that template for sending. It does not add a `(copy)` template or duplicate template-only media. Personal-space reuse also requires the source and destination owner to match. Later template edits affect all campaigns referencing it, just as when several newly created campaigns select the same template.
+
+Copies into another workspace, and manager/administrator copies that depend on another owner's private template, retain an independent private template and its media in the destination. Administrative inspection rights alone never authorize retaining a private template reference for a different owner. Campaign-owned media is independently copied and its body references rewritten in either case. Visual campaigns without a saved template reference continue to copy their body and campaign media only.
+
+Recipients, sending lists, delivery identity, schedule and sending history are not copied; the new draft starts with zero send counters. Existing copied templates are not automatically merged or deleted.
+
+____________________________________________________________________________________________________________________________________
 
 #### POST /api/campaigns/{campaign_id}/test
 

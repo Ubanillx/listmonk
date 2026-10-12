@@ -1,5 +1,7 @@
 # 业务逻辑
 
+- **活动克隆模板引用（2026-10-12）**：同空间且目标所有者可以正常发送使用原模板时，复用 `template_id` 与模板素材，不因克隆活动而增加模板库记录；个人空间要求活动所有者不变。跨空间及他人私有模板依赖仍独立复制，平台管理员巡查权限不得当作模板复用授权。活动自身素材保持独立复制，组织/资源/素材图与目录权限继续在锁内重验；可视化无模板引用规则不变。已有模板副本不自动清理，复用后的模板编辑影响所有引用它的活动。来源：`internal/core/workspace_actions.go::{CloneCampaignForWorkspaceWithSource,canReuseCampaignTemplate}`、`cmd/campaign_clone_test.go`。
+
 - **发送错误明细（v6.60.0）**：每次失败事件与活动总错误数同语句保存，事件快照按客户、具体错误、分类、阶段汇总，重试不覆盖。查询/Excel 导出都要求活动 owner 边界、列表授权与收件人/客户查看能力；导出按私域/公海源类型分别检查导出授权。敏感权限控制邮箱/错误原文和相关搜索；公海非平台始终脱敏。普通用户不能读取转移活动前所有者快照或已转移私域客户的错误明细，删除活动清理事件。额度/主动停止不生成事件，缺历史明细的次数单独提示，追踪关闭也能诊断发送失败。来源：`cmd/campaign_send_errors.go`、`internal/core/campaign_send_errors.go`、`cmd/campaign_send_error_report_test.go`、`internal/manager/send_failure.go`。
 
 - **活动发送错误**：`send_errors` 原子累计普通与公海收件人的失败尝试（包含渲染与发送前路由错误），重试失败重复累计，重试成功、暂停续发及重启保留；每日额度延期和主动停止/关闭不计入。错误不是失败收件人数或退信数，旧活动升级默认零且不猜测历史。渲染失败归还 pending 并参与本轮 `MaxSendErrors` 暂停阈值；无阈值时仍计数。列表及实时统计使用同一持久化字段。来源：`cmd/manager_store.go::RecordCampaignSendError`、`internal/manager/{manager,pipe,send_errors_test}.go`、`internal/migrations/v6.59.0.go`。

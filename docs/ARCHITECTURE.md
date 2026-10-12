@@ -1,5 +1,11 @@
 # Listmonk 工程架构与运行指南
 
+## 活动克隆与模板引用（2026-10-12）
+
+`internal/core/workspace_actions.go::CloneCampaignForWorkspaceWithSource` 在事务锁内重验活动、模板、素材与组织权限。同空间克隆时，若新活动所有者按普通发送权限可以使用原模板，则保留原 `template_id`，不新增模板或仅属于模板的素材副本；活动自己的素材仍独立复制并重写正文引用。个人空间还要求原活动与新活动所有者一致，平台管理员的巡查权限不作为模板复用的发送授权。
+
+跨空间克隆、组织经理或平台管理员复制其他所有者的私有模板依赖时，保留原独立快照路径：新模板与模板素材归属目标所有者/空间，保持私有并重写引用。可视化活动没有持久 `template_id`，继续复制活动正文与素材。复用模板意味着之后修改模板会同时影响引用它的活动，与普通新建活动选用同一模板一致；已有 `(copy)` 模板不自动合并或删除。回归：`cmd/campaign_clone_test.go::TestCampaignCloneTemplateReference`、`internal/core/workspace_actions_test.go::TestCanReuseCampaignTemplate`、`frontend/cypress/e2e/campaign-clone-template.cy.js`。
+
 ## 活动发送错误统计（v6.59.0）
 
 `campaigns.send_errors` 保存活动累计失败次数，发送 worker 与收件人渲染失败通过 `CampaignSendErrorStore` 调用 `cmd/manager_store.go::RecordCampaignSendError`，数据库原子递增，普通与公海收件人共用同一活动统计。每日额度耗尽、主动停止和服务关闭不计入；SMTP/回信路由不可用及普通发送失败计入。重试失败重复计数，成功重试、暂停续发及重启不清零；不是当前失败收件人数，也不是退信数。渲染失败归还 pending 并参与单次运行的错误暂停阈值。列表、详情及运行统计 API 返回 `send_errors`；`Campaigns.vue` 使用运行统计轮询展示，暂停后重新读取持久化总数。迁移 `internal/migrations/v6.59.0.go` 为旧活动置零，不从日志或 pending 状态猜测历史错误；新建/克隆活动从零开始。

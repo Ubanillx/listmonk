@@ -1,6 +1,8 @@
 # 工作状态
 
-快照日期：2026-10-10
+快照日期：2026-10-12
+
+- 活动克隆不再无条件复制模板（2026-10-12）：同空间且目标所有者可发送使用原模板时复用 `template_id`，不复制仅属于模板的素材；活动自身素材继续独立复制并重写正文。跨空间及经理/平台管理员复制他人私有模板依赖仍走独立快照，普通使用权限而非巡查权限决定是否复用；可视化活动无持久模板引用规则保留。已有模板副本不自动清理。来源：`internal/core/workspace_actions.go::{CloneCampaignForWorkspaceWithSource,canReuseCampaignTemplate}`、`cmd/campaign_clone_test.go`、`frontend/cypress/e2e/campaign-clone-template.cy.js`。验证：14 个真实 PostgreSQL 克隆场景、13 个复用策略边界及原活动复制权限测试通过；覆盖重复克隆、模板编辑跟随、模板/活动共用素材、双向跨空间、素材引用与称呼规则、非法/待转移/归档依赖回滚。`go test -p 1 ./... -count=1`、相关 `go vet`、隔离 Cypress 2/2、前端生产构建、源码与新增测试 ESLint、文档及 diff 检查通过；开发后端已同步重启，9173 返回 200、无待升级，日志仍有既有事务模板 3 的 `RootURL` 编译错误。主机 race 检查因 `CGO_ENABLED=0` 未运行。
 
 - 客户编码允许空值导入（2026-10-10）：私域及公海 CSV/XLSX 导入保留客户编码列映射要求，但空值与纯空白不再拒绝。私域重导入空值保留已有编码；公海继续按完整身份去重，空编码不产生编码冲突，黑名单和组织分配规则保留。来源：`internal/subimporter/importer.go::enqueueRow`、`internal/core/pools.go::ImportPoolContacts`、`frontend/src/views/Import.vue`。验证：`go test -p 1 ./...`、真实 PostgreSQL 导入专项、前端 lint/生产构建、隔离 Cypress `import-empty-codes.cy.js` 2/2 与 `pool-multi-email-import.cy.js` 1/1、文档及 diff 检查通过。回归覆盖 CSV/XLSX、空白规范化、前导零、重复导入、回信更新及黑名单；并行全量测试曾因其他包生成临时导出文件影响 ZIP 残留检查，串行复跑通过。开发后端已重启，9173 返回 200、无待升级；日志仍有既有事务模板 3 的 `RootURL` 编译错误。
 

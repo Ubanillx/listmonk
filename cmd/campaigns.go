@@ -435,8 +435,9 @@ func (a *App) CreateCampaign(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{out})
 }
 
-// CloneCampaign performs a server-side snapshot copy. The frontend only
-// selects a target; it never supplies customer_lists, sender settings, or media rows.
+// CloneCampaign creates a server-side draft, retaining a usable template in the
+// same workspace. The frontend only selects a target; it never supplies
+// customer_lists, sender settings, or media rows.
 func (a *App) CloneCampaign(c echo.Context) error {
 	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCampaignsManage, auth.PermCampaignsManageAll); err != nil {
 		return err

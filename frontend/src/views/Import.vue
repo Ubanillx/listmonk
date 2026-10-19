@@ -219,43 +219,154 @@
         <pre class="csv-example" v-text="poolImport ? form.poolExample : form.example" />
       </div>
 
-      <article v-if="poolImport && poolImportResult"
-        :class="['message', poolImportResult.invalid ? 'is-warning' : 'is-success', 'import-pool-result']"
-        data-cy="pool-import-result">
-        <div class="message-header">
-          <p>{{ $t('import.poolResultTitle') }}</p>
-          <button type="button" class="delete" :aria-label="$t('globals.buttons.close')"
-            @click="poolImportResult = null" />
+      <section v-if="poolImport && poolImportResult" class="import-result" data-cy="pool-import-result">
+        <header class="import-result-header">
+          <div>
+            <h3 class="title is-5">{{ $t('import.poolResultTitle') }}</h3>
+          </div>
+        </header>
+
+        <div class="import-result-metrics">
+          <div class="import-result-metric metric-neutral" data-cy="pool-result-total">
+            <b-icon icon="account-group-outline" />
+            <span>{{ $t('import.poolResultTotalLabel') }}</span>
+            <strong>{{ formatCount(poolImportResult.total) }}</strong>
+          </div>
+          <div class="import-result-metric metric-success">
+            <b-icon icon="check-circle-outline" />
+            <span>{{ $t('import.poolResultCreatedLabel') }}</span>
+            <strong>{{ formatCount(poolImportResult.created) }}</strong>
+          </div>
+          <div class="import-result-metric metric-info">
+            <b-icon icon="account-check-outline" />
+            <span>{{ $t('import.poolResultExistingLabel') }}</span>
+            <strong>{{ formatCount(poolImportResult.existing) }}</strong>
+          </div>
+          <button type="button" class="import-result-metric metric-warning"
+            :aria-label="$t('import.poolResultFilterConflicts')"
+            :aria-pressed="issueFilter === 'conflict'"
+            @click="setIssueFilter('conflict')">
+            <b-icon icon="alert-outline" />
+            <span>{{ $t('import.poolResultConflictsLabel') }}</span>
+            <strong>{{ formatCount(poolImportResult.conflicts) }}</strong>
+          </button>
+          <button type="button" class="import-result-metric metric-danger"
+            :aria-label="$t('import.poolResultFilterInvalid')"
+            :aria-pressed="issueFilter === 'invalid'"
+            @click="setIssueFilter('invalid')">
+            <b-icon icon="close-circle-outline" />
+            <span>{{ $t('import.poolResultInvalidLabel') }}</span>
+            <strong>{{ formatCount(poolImportResult.invalid) }}</strong>
+          </button>
+          <button type="button" class="import-result-metric metric-neutral"
+            :aria-label="$t('import.poolResultFilterDuplicate')"
+            :aria-pressed="issueFilter === 'duplicate'"
+            @click="setIssueFilter('duplicate')">
+            <b-icon icon="content-copy" />
+            <span>{{ $t('import.poolResultDuplicatesLabel') }}</span>
+            <strong>{{ formatCount(poolImportResult.duplicates) }}</strong>
+          </button>
         </div>
-        <div class="message-body">
-          <div class="tags">
-            <b-tag data-cy="pool-result-total">{{ $t('import.poolResultTotal', { count: poolImportResult.total || 0 }) }}</b-tag>
-            <b-tag type="is-success">{{ $t('import.poolResultCreated', { count: poolImportResult.created || 0 }) }}</b-tag>
-            <b-tag type="is-info">{{ $t('import.poolResultExisting', { count: poolImportResult.existing || 0 }) }}</b-tag>
-            <b-tag v-if="poolImportResult.blocklisted" type="is-danger" data-cy="pool-result-blocklisted">
-              {{ $t('import.poolResultBlocklisted', { count: poolImportResult.blocklisted }) }}
-            </b-tag>
-            <b-tag type="is-warning">{{ $t('import.poolResultConflicts', { count: poolImportResult.conflicts || 0 }) }}</b-tag>
-            <b-tag type="is-danger">{{ $t('import.poolResultInvalid', { count: poolImportResult.invalid || 0 }) }}</b-tag>
-            <b-tag>{{ $t('import.poolResultDuplicates', { count: poolImportResult.duplicates || 0 }) }}</b-tag>
-          </div>
-          <div v-if="poolImportResult.issues && poolImportResult.issues.length" class="content">
-            <strong>{{ $t('import.poolResultIssues') }}</strong>
-            <ul>
-              <li v-for="issue in poolImportResult.issues.slice(0, 50)" :key="`${issue.row}-${issue.reason}`">
-                {{ $t('import.poolResultIssue', { row: issue.row, code: issue.customerCode || '-', reason: poolIssueReason(issue.reason, issue.allocationDepartment) }) }}
-              </li>
-            </ul>
-          </div>
-          <p class="help">{{ $t('import.poolResultLocationHelp') }}</p>
-          <div class="buttons">
-            <b-button type="is-primary" icon-left="account-group-outline" data-cy="view-pool-contacts"
-              @click="viewImportedPool">
-              {{ $t('import.poolResultViewPool') }}
+        <p v-if="poolImportResult.blocklisted" class="import-blocklist-result" data-cy="pool-result-blocklisted">
+          <b-tag type="is-danger">{{ $t('import.poolResultBlocklisted', { count: poolImportResult.blocklisted }) }}</b-tag>
+        </p>
+
+        <section class="import-issues" aria-labelledby="import-issues-title">
+          <div class="import-issues-heading" :class="{ 'has-no-issues': !poolImportIssues.length }">
+            <div class="import-issues-title">
+              <b-icon :icon="poolImportIssues.length ? 'alert-circle-outline' : 'check-circle-outline'"
+                :type="poolImportIssues.length ? 'is-danger' : 'is-success'" />
+              <div>
+                <h4 id="import-issues-title" class="title is-6">{{ $t('import.poolResultIssues') }}</h4>
+                <p class="help">{{ $t('import.poolResultIssuesHelp') }}</p>
+              </div>
+            </div>
+            <b-button type="is-primary" outlined icon-left="file-download-outline"
+              :disabled="!poolImportIssues.length" data-cy="export-pool-import-issues"
+              @click="exportPoolImportIssues">
+              {{ $t('import.poolResultExport') }}
             </b-button>
           </div>
+          <p class="help import-issue-total">{{ $t('import.poolResultIssueCount', { count: poolImportIssues.length }) }}</p>
+
+          <div class="import-issue-toolbar">
+            <b-field :label="$t('import.poolResultErrorType')" class="issue-filter">
+              <b-select v-model="issueFilter" expanded data-cy="pool-issue-filter">
+                <option value="all">{{ $t('import.poolResultAllTypes') }}</option>
+                <option value="invalid">{{ $t('import.poolResultInvalidLabel') }}</option>
+                <option value="conflict">{{ $t('import.poolResultConflictsLabel') }}</option>
+                <option value="duplicate">{{ $t('import.poolResultDuplicatesLabel') }}</option>
+              </b-select>
+            </b-field>
+            <b-field :label="$t('import.poolResultSearch')" class="issue-search">
+              <b-input v-model.trim="issueSearch" icon="magnify" :placeholder="$t('import.poolResultSearchHelp')"
+                data-cy="pool-issue-search" />
+            </b-field>
+            <p class="issue-range" data-cy="pool-issue-range">
+              {{ $t('import.poolResultRange', { from: issueRange.from, to: issueRange.to, count: issueRange.total }) }}
+            </p>
+          </div>
+
+          <div v-if="!filteredPoolIssues.length" class="import-issues-empty">
+            {{ $t(poolImportIssues.length ? 'import.poolResultNoIssues' : 'import.poolResultNoErrors') }}
+          </div>
+          <div v-else class="import-issues-table-wrap">
+            <b-table :data="pagedPoolIssues" :mobile-cards="false" :paginated="false" striped hoverable>
+              <b-table-column field="row" :label="$t('import.poolResultRow')" width="70" v-slot="props">
+                {{ props.row.row }}
+              </b-table-column>
+              <b-table-column field="customer_code" :label="$t('import.poolResultCustomerCode')" width="140" v-slot="props">
+                <span class="issue-code">{{ props.row.customerCode || '-' }}</span>
+              </b-table-column>
+              <b-table-column field="allocation_department" :label="$t('import.poolResultDepartment')" width="160" v-slot="props">
+                {{ props.row.allocationDepartment || '-' }}
+              </b-table-column>
+              <b-table-column field="reason" :label="$t('import.poolResultErrorType')" width="130" v-slot="props">
+                <b-tag :type="issueTagType(props.row.reason)" size="is-small">
+                  {{ issueTypeLabel(props.row.reason) }}
+                </b-tag>
+              </b-table-column>
+              <b-table-column field="reason_detail" :label="$t('import.poolResultReason')" v-slot="props">
+                {{ poolIssueReason(props.row.reason, props.row.allocationDepartment) }}
+              </b-table-column>
+              <b-table-column field="actions" :label="$t('import.poolResultAction')" width="100" centered v-slot="props">
+                <button type="button" class="button is-text is-small" data-cy="view-pool-issue" @click="showPoolIssue(props.row)">
+                  {{ $t('import.poolResultViewDetails') }}
+                </button>
+              </b-table-column>
+            </b-table>
+          </div>
+
+          <app-pagination v-if="filteredPoolIssues.length" :total="filteredPoolIssues.length"
+            :current="issuePage" :per-page="issuePageSize" @change="issuePage = $event"
+            @per-page-change="changeIssuePageSize" />
+        </section>
+
+        <div class="import-result-actions">
+          <p class="help">{{ $t('import.poolResultLocationHelp') }}</p>
+          <b-button type="is-primary" icon-left="account-group-outline" data-cy="view-pool-contacts"
+            @click="viewImportedPool">
+            {{ $t('import.poolResultViewPool') }}
+          </b-button>
         </div>
-      </article>
+      </section>
+
+      <b-modal :active.sync="issueDetailVisible" :width="560" aria-modal>
+        <section v-if="selectedPoolIssue" class="box import-issue-detail" role="dialog"
+          aria-labelledby="import-issue-detail-title">
+          <h3 id="import-issue-detail-title" class="title is-5">{{ $t('import.poolResultDetailTitle') }}</h3>
+          <dl>
+            <div><dt>{{ $t('import.poolResultRow') }}</dt><dd>{{ selectedPoolIssue.row }}</dd></div>
+            <div><dt>{{ $t('import.poolResultCustomerCode') }}</dt><dd>{{ selectedPoolIssue.customerCode || '-' }}</dd></div>
+            <div><dt>{{ $t('import.poolResultDepartment') }}</dt><dd>{{ selectedPoolIssue.allocationDepartment || '-' }}</dd></div>
+            <div><dt>{{ $t('import.poolResultErrorType') }}</dt><dd>{{ issueTypeLabel(selectedPoolIssue.reason) }}</dd></div>
+            <div><dt>{{ $t('import.poolResultReason') }}</dt><dd>{{ poolIssueReason(selectedPoolIssue.reason, selectedPoolIssue.allocationDepartment) }}</dd></div>
+          </dl>
+          <div class="buttons is-right">
+            <b-button @click="issueDetailVisible = false">{{ $t('globals.buttons.close') }}</b-button>
+          </div>
+        </section>
+      </b-modal>
     </section><!-- upload //-->
 
     <section v-if="isRunning() || isDone()" class="wrap status box has-text-centered">
@@ -297,6 +408,7 @@ import CustomerListSelector from '../components/CustomerListSelector.vue';
 import PoolManager from '../components/PoolManager.vue';
 import LogView from '../components/LogView.vue';
 import CustomerListForm from './CustomerListForm.vue';
+import AppPagination from '../components/AppPagination.vue';
 import { isOwnedActiveWorkspaceCustomerList } from '../utils/workspace';
 
 export default Vue.extend({
@@ -305,6 +417,7 @@ export default Vue.extend({
     CustomerListForm,
     LogView,
     PoolManager,
+    AppPagination,
   },
 
   props: {
@@ -351,6 +464,12 @@ export default Vue.extend({
       logs: [],
       pollID: null,
       poolImportResult: null,
+      issueFilter: 'all',
+      issueSearch: '',
+      issuePage: 1,
+      issuePageSize: 20,
+      issueDetailVisible: false,
+      selectedPoolIssue: null,
     };
   },
 
@@ -379,6 +498,9 @@ export default Vue.extend({
       }
       this.previewFromFile();
     },
+
+    issueFilter() { this.issuePage = 1; },
+    issueSearch() { this.issuePage = 1; },
 
     poolImport(value) {
       if (value) {
@@ -783,10 +905,26 @@ export default Vue.extend({
       // Post.
       this.$api.importCustomers(params).then((result) => {
         if (result && result.target === 'pool') {
-          this.poolImportResult = result;
+          this.poolImportResult = {
+            ...result,
+            issues: (result.issues || []).map((issue) => ({
+              ...issue,
+              customerCode: issue.customerCode || issue.customer_code || '',
+              allocationDepartment: issue.allocationDepartment || issue.allocation_department || '',
+            })),
+          };
+          this.issueFilter = 'all';
+          this.issueSearch = '';
+          this.issuePage = 1;
+          this.issueDetailVisible = false;
+          this.selectedPoolIssue = null;
           this.isProcessing = false;
           this.form.file = null;
           this.clearPreview();
+          this.$nextTick(() => {
+            const resultSection = this.$el.querySelector('.import-result');
+            if (resultSection) resultSection.scrollIntoView({ block: 'start' });
+          });
           const written = Number(result.created || 0) + Number(result.existing || 0);
           let toastKey = 'import.poolImportComplete';
           if (result.invalid) {
@@ -835,8 +973,73 @@ export default Vue.extend({
         allocation_department_not_found: this.$t('import.poolIssueDepartmentNotFound', { department: department || '-' }),
         invalid_email: this.$t('import.poolIssueInvalidEmail'),
         invalid_reply_to: this.$t('import.poolIssueInvalidReplyTo'),
+        customer_code_conflict: this.$t('import.poolIssueCustomerCodeConflict'),
+        duplicate_row: this.$t('import.poolIssueDuplicateRow'),
       };
       return labels[reason] || reason;
+    },
+
+    issueType(reason) {
+      if (reason === 'customer_code_conflict') return 'conflict';
+      if (reason === 'duplicate_row') return 'duplicate';
+      return 'invalid';
+    },
+
+    issueTypeLabel(reason) {
+      return this.$t({
+        invalid: 'import.poolResultInvalidLabel',
+        conflict: 'import.poolResultConflictsLabel',
+        duplicate: 'import.poolResultDuplicatesLabel',
+      }[this.issueType(reason)]);
+    },
+
+    issueTagType(reason) {
+      return { invalid: 'is-danger', conflict: 'is-warning', duplicate: 'is-info' }[this.issueType(reason)];
+    },
+
+    setIssueFilter(filter) {
+      this.issueFilter = filter;
+      this.issuePage = 1;
+      this.$nextTick(() => {
+        const section = this.$el.querySelector('.import-issues');
+        if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    },
+
+    changeIssuePageSize(value) {
+      this.issuePageSize = value;
+      this.issuePage = 1;
+    },
+
+    formatCount(value) {
+      return new Intl.NumberFormat(this.$i18n.locale).format(Number(value) || 0);
+    },
+
+    showPoolIssue(issue) {
+      this.selectedPoolIssue = issue;
+      this.issueDetailVisible = true;
+    },
+
+    exportPoolImportIssues() {
+      if (!this.poolImportIssues.length) return;
+      const rows = [
+        [this.$t('import.poolResultRow'), this.$t('import.poolResultCustomerCode'),
+          this.$t('import.poolResultDepartment'), this.$t('import.poolResultErrorType'),
+          this.$t('import.poolResultReason')],
+        ...this.poolImportIssues.map((issue) => [
+          String(issue.row),
+          issue.customerCode || '',
+          issue.allocationDepartment || '',
+          this.issueTypeLabel(issue.reason),
+          this.poolIssueReason(issue.reason, issue.allocationDepartment),
+        ]),
+      ];
+      const sheet = XLSX.utils.aoa_to_sheet(rows);
+      sheet['!cols'] = [{ wch: 12 }, { wch: 22 }, { wch: 24 }, { wch: 18 }, { wch: 48 }];
+      sheet['!autofilter'] = { ref: sheet['!ref'] };
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, sheet, 'Import errors');
+      XLSX.writeFile(workbook, 'customer-import-errors.xlsx');
     },
 
     viewImportedPool() {
@@ -857,6 +1060,32 @@ export default Vue.extend({
 
     selectedPoolLists() {
       return this.form.customer_lists.filter((list) => list.type === 'pool');
+    },
+
+    poolImportIssues() {
+      return (this.poolImportResult && this.poolImportResult.issues) || [];
+    },
+
+    filteredPoolIssues() {
+      const query = this.issueSearch.toLocaleLowerCase();
+      return this.poolImportIssues.filter((issue) => {
+        const matchesType = this.issueFilter === 'all' || this.issueType(issue.reason) === this.issueFilter;
+        if (!matchesType || !query) return matchesType;
+        const searchable = [issue.row, issue.customerCode, issue.allocationDepartment,
+          this.poolIssueReason(issue.reason, issue.allocationDepartment)].join(' ').toLocaleLowerCase();
+        return searchable.includes(query);
+      });
+    },
+
+    pagedPoolIssues() {
+      const start = (this.issuePage - 1) * this.issuePageSize;
+      return this.filteredPoolIssues.slice(start, start + this.issuePageSize);
+    },
+
+    issueRange() {
+      const total = this.filteredPoolIssues.length;
+      const from = total ? (this.issuePage - 1) * this.issuePageSize + 1 : 0;
+      return { from, to: Math.min(total, this.issuePage * this.issuePageSize), total };
     },
 
     showSubscriptionStatus() {
@@ -997,5 +1226,160 @@ export default Vue.extend({
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.import-result {
+  margin-top: var(--lm-space-8);
+  scroll-margin-top: 80px;
+  overflow: hidden;
+  border: 1px solid var(--lm-color-border);
+  border-radius: var(--lm-radius-md);
+  background: var(--lm-color-surface);
+}
+
+.import-result-header,
+.import-issues-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--lm-space-4);
+}
+
+.import-result-header {
+  padding: var(--lm-space-6);
+  background: var(--lm-color-surface-subtle);
+  border-bottom: 1px solid var(--lm-color-border);
+}
+
+.import-result-header .title,
+.import-issues-heading .title { margin-bottom: var(--lm-space-1); }
+.import-result-header .help { max-width: 820px; margin: 0; }
+
+.import-result-metrics {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--lm-space-3);
+  padding: var(--lm-space-4) var(--lm-space-6);
+}
+
+.import-result-metric {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 88px;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--lm-space-2);
+  padding: var(--lm-space-3) var(--lm-space-4);
+  border: 1px solid var(--lm-color-border);
+  border-radius: var(--lm-radius-md);
+  background: var(--lm-color-surface-subtle);
+  color: var(--lm-color-text);
+  text-align: left;
+}
+
+.import-result-metric > .icon { position: absolute; right: var(--lm-space-3); top: var(--lm-space-3); color: inherit; }
+.import-result-metric > span:not(.icon) { padding-right: var(--lm-space-6); }
+
+button.import-result-metric {
+  width: 100%;
+  cursor: pointer;
+  font: inherit;
+}
+
+.import-result-metric > span:not(.icon) { color: var(--lm-color-text-muted); font-size: var(--lm-font-size-toolbar); }
+.import-result-metric strong { color: var(--lm-color-text); font-size: 24px; line-height: 1.15; }
+button.import-result-metric:focus-visible,
+button.import-result-metric:hover,
+button.import-result-metric[aria-pressed="true"] { box-shadow: var(--lm-focus-ring); outline: none; }
+.metric-success { border-color: var(--lm-color-success); color: var(--lm-color-success); }
+.metric-success strong { color: var(--lm-color-success); }
+.metric-info { border-color: var(--lm-color-primary); color: var(--lm-color-primary); background: var(--lm-color-primary-soft); }
+.metric-info strong { color: var(--lm-color-primary); }
+.metric-warning { border-color: var(--lm-color-warning); color: var(--lm-color-warning); }
+.metric-warning strong { color: var(--lm-color-warning); }
+.metric-danger { border-color: var(--lm-color-danger); color: var(--lm-color-danger); }
+.metric-danger strong { color: var(--lm-color-danger); }
+.metric-success { background: color-mix(in srgb, var(--lm-color-success) 5%, var(--lm-color-surface)); }
+.metric-warning { background: color-mix(in srgb, var(--lm-color-warning) 5%, var(--lm-color-surface)); }
+.metric-danger { background: color-mix(in srgb, var(--lm-color-danger) 5%, var(--lm-color-surface)); }
+.import-blocklist-result { padding: 0 var(--lm-space-6) var(--lm-space-4); }
+
+.import-issues { padding: var(--lm-space-6); border-top: 1px solid var(--lm-color-border); scroll-margin-top: 80px; }
+.import-issues-heading {
+  margin: calc(-1 * var(--lm-space-6)) calc(-1 * var(--lm-space-6)) var(--lm-space-4);
+  padding: var(--lm-space-4) var(--lm-space-6);
+  background: color-mix(in srgb, var(--lm-color-danger) 4%, var(--lm-color-surface));
+}
+.import-issues-title { display: flex; align-items: center; gap: var(--lm-space-3); }
+.import-issues-heading.has-no-issues { background: color-mix(in srgb, var(--lm-color-success) 4%, var(--lm-color-surface)); }
+.import-issues-heading :deep(.button.is-primary.is-outlined) { color: var(--lm-color-primary); border-color: var(--lm-color-primary); }
+.import-issues-heading :deep(.button.is-primary.is-outlined:disabled) { opacity: 0.5; }
+.import-issues-heading :deep(.button.is-primary.is-outlined:hover) { background: var(--lm-color-primary-soft); }
+.import-issue-total { margin-bottom: var(--lm-space-3); color: var(--lm-color-text-muted); }
+
+.import-issue-toolbar {
+  display: grid;
+  grid-template-columns: minmax(160px, 240px) minmax(240px, 1fr) auto;
+  align-items: end;
+  gap: var(--lm-space-4);
+  margin-bottom: var(--lm-space-3);
+}
+
+.issue-range { margin: 0 0 10px; color: var(--lm-color-text-muted); white-space: nowrap; }
+.import-issue-toolbar .field { margin-bottom: 0; }
+.import-issues-table-wrap { width: 100%; overflow-x: auto; }
+.import-issues-table-wrap :deep(table) { table-layout: fixed; width: 100%; }
+.import-issues-table-wrap :deep(th) {
+  background: var(--lm-color-surface-subtle);
+  color: var(--lm-color-text);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.issue-code { font-variant-numeric: tabular-nums; }
+.import-issues-table-wrap :deep(td) { overflow-wrap: anywhere; }
+.import-issues-table-wrap :deep(.button.is-text) { white-space: nowrap; color: var(--lm-color-primary); text-decoration: none; }
+.import-issues-table-wrap :deep(.tag) { border-radius: var(--lm-radius-sm); font-weight: 400; }
+.import-issues-table-wrap :deep(.tag.is-danger) { color: var(--lm-color-danger); background: color-mix(in srgb, var(--lm-color-danger) 8%, var(--lm-color-surface)); }
+.import-issues-table-wrap :deep(.tag.is-warning) { color: var(--lm-color-warning); background: color-mix(in srgb, var(--lm-color-warning) 8%, var(--lm-color-surface)); }
+.import-issues-table-wrap :deep(.tag.is-info) { color: var(--lm-color-primary); background: var(--lm-color-primary-soft); }
+.import-issues-empty {
+  padding: var(--lm-space-8) var(--lm-space-4);
+  border: 1px dashed var(--lm-color-border-strong);
+  border-radius: var(--lm-radius-md);
+  color: var(--lm-color-text-muted);
+  text-align: center;
+}
+.import-result-actions { padding: 0 var(--lm-space-6) var(--lm-space-6); }
+.import-result-actions .help { margin-bottom: var(--lm-space-3); }
+.import-issue-detail { margin: var(--lm-space-6); background: var(--lm-color-surface); }
+.import-issue-detail dl { margin: var(--lm-space-6) 0; }
+.import-issue-detail dl > div {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) 2fr;
+  gap: var(--lm-space-4);
+  padding: var(--lm-space-3) 0;
+  border-bottom: 1px solid var(--lm-color-border);
+}
+.import-issue-detail dt { color: var(--lm-color-text-muted); }
+.import-issue-detail dd { margin: 0; overflow-wrap: anywhere; }
+
+@media (max-width: 1024px) {
+  .import-result-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .import-issue-toolbar { grid-template-columns: minmax(160px, 220px) minmax(200px, 1fr); }
+  .issue-range { grid-column: 1 / -1; margin: 0; }
+}
+
+@media (max-width: 768px) {
+  .import-result-header,
+  .import-issues-heading { align-items: stretch; flex-direction: column; }
+  .import-result-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: var(--lm-space-4); }
+  .import-result-header,
+  .import-issues { padding: var(--lm-space-4); }
+  .import-issues-heading { margin: calc(-1 * var(--lm-space-4)) calc(-1 * var(--lm-space-4)) var(--lm-space-4); padding: var(--lm-space-4); }
+  .import-issue-toolbar { grid-template-columns: minmax(0, 1fr); }
+  .issue-range { white-space: normal; }
+  .import-issues-table-wrap :deep(table) { min-width: 860px; }
+  .import-result-actions { padding: 0 var(--lm-space-4) var(--lm-space-4); }
 }
 </style>

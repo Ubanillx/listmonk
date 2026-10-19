@@ -927,9 +927,7 @@ func (c *Core) ImportPoolContacts(poolID, userID int, rows []models.PoolContactI
 	seen := make(map[string]struct{}, len(rows))
 	blockedEmails := make(map[string]struct{})
 	addIssue := func(issue models.PoolContactImportIssue) {
-		if len(result.Issues) < 200 {
-			result.Issues = append(result.Issues, issue)
-		}
+		result.Issues = append(result.Issues, issue)
 	}
 	for _, row := range rows {
 		code := strings.TrimSpace(row.CustomerCode)
@@ -974,6 +972,8 @@ func (c *Core) ImportPoolContacts(poolID, userID int, rows []models.PoolContactI
 		key := code + "\x00" + strings.ToLower(email) + "\x00" + name + "\x00" + department + "\x00" + strings.ToLower(replyTo)
 		if _, ok := seen[key]; ok {
 			result.Duplicates++
+			issue.Reason = "duplicate_row"
+			addIssue(issue)
 			continue
 		}
 		seen[key] = struct{}{}
@@ -1014,6 +1014,9 @@ func (c *Core) ImportPoolContacts(poolID, userID int, rows []models.PoolContactI
 			}
 			result.Created++
 			if hasConflict {
+				conflictIssue := issue
+				conflictIssue.Reason = "customer_code_conflict"
+				addIssue(conflictIssue)
 				if _, err = tx.Exec(`INSERT INTO pool_merge_conflicts(pool_id,contact_id,customer_code,existing_snapshot,incoming_snapshot,created_by_user_id)
 					VALUES($1,$2,$3,
 						(SELECT jsonb_build_object('email',email,'name',name,'allocation_department',allocation_department) FROM pool_contacts WHERE id=$2),

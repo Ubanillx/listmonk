@@ -81,6 +81,14 @@ Key endpoints:
   normal and blocklist imports. Email and allocation department values remain
   required. Full contact identity still determines duplicates; distinct contacts
   with empty codes do not generate customer-code conflicts.
+  The synchronous result contains every issue (not just the first 200), with
+  source `row`, `customer_code`, `allocation_department` and `reason`.
+  `customer_code_conflict` means a new contact was still created; `duplicate_row`
+  means the identical file row was skipped. Other reasons describe validation
+  failures. No email values are returned in this issue DTO. The admin result
+  supports type/search filtering, pagination, individual details and exporting
+  **all** issues to `customer-import-errors.xlsx`, regardless of the active filter
+  or page. Exported customer values are text, and headings follow the UI language.
   Requires `pools:master_manage`. `分配部门` must match an
   active `organizations.name`; unknown or archived departments are rejected
   row-by-row and are not written. A valid value is stored on the pool contact

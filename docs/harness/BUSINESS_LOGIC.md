@@ -1,5 +1,7 @@
 # 业务逻辑
 
+- **公海客户导入异常报告**：统一导入结果完整保留所有行级校验错误、文件内重复行和客户编号冲突（不截断前 200 条）；前端可按异常类别筛选、搜索、分页查看行号/客户编号/分配部门/原因并打开单条详情。Excel 报告导出全部异常，不受当前页面筛选/页码影响；导入响应和报告均不含邮箱，避免泄漏上传文件中的敏感联系信息。来源：`internal/core/pools.go::ImportPoolContacts`、`models/pools.go::PoolContactImportResult`、`frontend/src/views/Import.vue`、`frontend/cypress/e2e/pool-multi-email-import.cy.js`。
+
 - **公海客户编辑**：`pools:master_manage` 和 `pools:contacts_edit` 可编辑一级公海共享联系人的全部字段，`pools:contacts_name_edit` 只能编辑名称；列表页和 `/admin/pool` 汇总页按权限显示编辑入口，组织分配列表可作为只读上下文传入一级公海 ID。`PUT /api/customer-lists/:id/pool-contacts/:contact_id`（及 `/api/pools/:id/contacts/:contact_id`）在事务内重验列表成员关系、当前组织分配范围、邮箱/回信地址和启用组织分配部门；名称-only 请求服务端保留所有其他字段。部门变更只补齐新组织分配，不删除既有分配历史。重新填写邮箱会把 archived 联系人恢复 active，blocklisted 状态不被覆盖。非平台管理员响应仍使用安全 DTO 脱敏邮箱；编辑时回传脱敏邮箱按“未修改”处理，避免覆盖真实地址。
 - **活动克隆模板引用（2026-10-12）**：同空间且目标所有者可以正常发送使用原模板时，复用 `template_id` 与模板素材，不因克隆活动而增加模板库记录；个人空间要求活动所有者不变。跨空间及他人私有模板依赖仍独立复制，平台管理员巡查权限不得当作模板复用授权。活动自身素材保持独立复制，组织/资源/素材图与目录权限继续在锁内重验；可视化无模板引用规则不变。已有模板副本不自动清理，复用后的模板编辑影响所有引用它的活动。来源：`internal/core/workspace_actions.go::{CloneCampaignForWorkspaceWithSource,canReuseCampaignTemplate}`、`cmd/campaign_clone_test.go`。
 

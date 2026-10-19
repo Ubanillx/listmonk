@@ -1,0 +1,122 @@
+// Keep compact toolbar text independent of Bulma's rem-based is-small scale.
+.app-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--lm-space-3) var(--lm-space-4);
+  min-width: 0;
+  font-size: var(--lm-font-size-toolbar);
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--lm-color-text-muted);
+
+  .pagination-size,
+  .pagination-jump,
+  .pagination-jump label {
+    display: flex;
+    align-items: center;
+    gap: var(--lm-space-2);
+    margin: 0;
+    font-size: inherit;
+    font-weight: inherit;
+    white-space: nowrap;
+  }
+
+  .select,
+  .control,
+  .select select,
+  .input,
+  .button,
+  .pagination {
+    font-family: inherit;
+    font-size: var(--lm-font-size-toolbar);
+  }
+
+  .select,
+  .select select,
+  .input,
+  .button,
+  .pagination-link,
+  .pagination-previous,
+  .pagination-next {
+    height: var(--lm-control-height-sm);
+    min-height: var(--lm-control-height-sm);
+    border-radius: var(--lm-radius-md);
+  }
+
+  .select select,
+  .input,
+  .button,
+  .pagination-link,
+  .pagination-previous,
+  .pagination-next {
+    border: 1px solid var(--lm-color-border-strong);
+    background: var(--lm-color-surface);
+    color: var(--lm-neutral-700);
+    box-shadow: none;
+    font-weight: 400;
+    line-height: 1.5;
+    font-variant-numeric: tabular-nums;
+
+    &:focus-visible {
+      border-color: var(--lm-color-primary);
+      box-shadow: var(--lm-focus-ring);
+    }
+  }
+
+  .select select { min-width: 68px; padding: 0 var(--lm-space-8) 0 var(--lm-space-3); }
+  .select:not(.is-multiple):not(.is-loading)::after { border-color: var(--lm-color-text-muted); }
+  .pagination-jump input { width: 56px; padding: 0 var(--lm-space-2); text-align: center; }
+  .pagination-jump .button.is-small { padding: 0 var(--lm-space-3); border-radius: var(--lm-radius-md); }
+  .pagination-page-count { font-variant-numeric: tabular-nums; }
+
+  .pagination {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: var(--lm-space-1);
+    margin: 0;
+  }
+
+  .pagination-list { gap: var(--lm-space-1); }
+  .pagination-link,
+  .pagination-previous,
+  .pagination-next,
+  .pagination-ellipsis {
+    min-width: var(--lm-control-height-sm);
+    margin: 0;
+    padding: 0 var(--lm-space-2);
+    font-size: inherit;
+  }
+
+  .pagination-link.is-current {
+    border-color: var(--lm-color-primary);
+    background: var(--lm-color-primary-soft);
+    color: var(--lm-color-primary);
+    font-weight: 600;
+  }
+
+  .pagination-previous[disabled],
+  .pagination-next[disabled] {
+    border-color: var(--lm-color-border);
+    background: var(--lm-color-surface-subtle);
+    color: var(--lm-color-text-muted);
+    opacity: 0.5;
+  }
+
+  .button:hover,
+  .pagination-link:not(.is-current):hover {
+    border-color: var(--lm-color-primary);
+    background: var(--lm-color-primary-soft);
+    color: var(--lm-color-primary);
+  }
+}
+
+@media screen and (max-width: 768px) {
+  .app-pagination {
+    justify-content: flex-start;
+    gap: var(--lm-space-3);
+
+    .pagination { flex-wrap: wrap; }
+  }
+}

@@ -2,6 +2,8 @@
 
 快照日期：2026-10-19
 
+- 公海客户导入异常明细与 Excel 报告（2026-10-19）：导入结果完整返回行级校验异常、文件重复行及客户编号冲突；管理端按类型筛选、搜索、分页查看和展开详情，并可将全部异常导出 Excel。响应和报告保持邮箱隐私边界。验证：Go 全套 657 项通过；独立 PostgreSQL 公海导入测试 8 项通过，覆盖超过 200 条不截断；隔离 Cypress 导入/分页/公海列表 9/9 通过，检查 Excel 全量行、文本安全、简中表头、桌面/手机溢出和无异常空态；文档、差异检查通过。来源：`internal/core/pools.go::ImportPoolContacts`、`internal/core/pools_import_test.go`、`frontend/src/views/Import.vue`、`frontend/cypress/e2e/pool-multi-email-import.cy.js`。
+
 - 公海编辑权限翻译修正（2026-10-19）：角色表单实际读取 `users.businessPermission.*` / `users.businessHelp.*`，此前只补了底层 `users.permission.*`，导致新增两项显示原始键名。现补齐 `poolContactEdit`、`poolContactNameEdit` 的简中、繁中及英文分组名称和说明；增加三种语言的全部业务分组翻译完整性断言及角色弹窗中文显示断言，保持权限 ID 与授权逻辑不变。验证：隔离 Cypress 8/8（含三语完整性、中文弹窗显示、部分授权保存及权限入口），截图复查通过；生产构建、文档及 diff 检查通过，后端同步重启，8181/9173 均返回 200。来源：`i18n/{en,zh-CN,zh-TW}.json`、`frontend/cypress/e2e/business-permissions.cy.js`。
 
 - 公海客户细粒度编辑权限（2026-10-19）：新增 `pools:contacts_edit`（全部字段）和 `pools:contacts_name_edit`（仅名称）。主数据管理员保持全部编辑兼容；新权限不授予创建、删除、导入或清邮。HTTP 与 Core 均按权限模式和当前组织分配范围重验，名称-only 服务端保留其他字段；角色页和中英文权限说明已同步。来源：`permissions.json`、`internal/auth/models.go`、`cmd/pools.go`、`internal/core/pools.go`、`frontend/src/{utils/businessPermissions.js,views/{Customers,PoolContactForm,RoleForm}.vue}`。

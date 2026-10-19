@@ -46,8 +46,11 @@ func TestPoolImportAllowsEmptyNames(t *testing.T) {
 			if result.Total != 6 || result.Created != 3 || result.Valid != 3 || result.Invalid != 2 || result.Duplicates != 1 {
 				t.Fatalf("unexpected import result: %+v", result)
 			}
+			if len(result.Issues) != 3 || result.Issues[0].Row != 3 || result.Issues[0].Reason != "duplicate_row" {
+				t.Fatalf("duplicate issue missing: %+v", result.Issues)
+			}
 			for i, reason := range []string{"invalid_email", "allocation_department_not_found"} {
-				if len(result.Issues) != 2 || result.Issues[i].Row != i+6 || result.Issues[i].Reason != reason {
+				if result.Issues[i+1].Row != i+6 || result.Issues[i+1].Reason != reason {
 					t.Fatalf("unexpected validation issues: %+v", result.Issues)
 				}
 			}
@@ -70,10 +73,40 @@ func TestPoolImportAllowsEmptyNames(t *testing.T) {
 			if err != nil || result.Created != 1 || result.Conflicts != 1 || result.Existing != 0 {
 				t.Fatalf("same code with a different name: %+v, %v", result, err)
 			}
+			if len(result.Issues) != 1 || result.Issues[0].Row != 2 || result.Issues[0].Reason != "customer_code_conflict" {
+				t.Fatalf("customer-code conflict issue missing: %+v", result.Issues)
+			}
 			if got := env.countRows(`SELECT COUNT(*) FROM pool_contacts WHERE name=''`); got != 3 {
 				t.Fatalf("original empty names changed: %d contacts, want 3", got)
 			}
 		})
+	}
+}
+
+func TestPoolImportReturnsAllIssues(t *testing.T) {
+	env := newPoolRecipientsTestEnvWithDDL(t, poolRecipientsTestDDL+`
+		ALTER TABLE pool_contacts ADD COLUMN allocation_department TEXT NOT NULL DEFAULT '';
+		CREATE TABLE pool_merge_conflicts (
+			pool_id INTEGER, contact_id BIGINT, customer_code TEXT,
+			existing_snapshot JSONB, incoming_snapshot JSONB, created_by_user_id INTEGER
+		);`)
+	env.seedOrganization("Import department")
+	pool := env.seedPool("Many invalid rows")
+	rows := make([]models.PoolContactImportRow, 250)
+	for i := range rows {
+		rows[i] = models.PoolContactImportRow{
+			Row: i + 2, CustomerCode: "BAD", Email: "invalid", AllocationDepartment: "Import department",
+		}
+	}
+	result, err := env.core.ImportPoolContacts(pool, 1, rows, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Invalid != len(rows) || len(result.Issues) != len(rows) {
+		t.Fatalf("issues were truncated: invalid=%d issues=%d want=%d", result.Invalid, len(result.Issues), len(rows))
+	}
+	if result.Issues[0].Row != 2 || result.Issues[len(result.Issues)-1].Row != 251 {
+		t.Fatalf("unexpected issue range: first=%+v last=%+v", result.Issues[0], result.Issues[len(result.Issues)-1])
 	}
 }
 

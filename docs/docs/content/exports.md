@@ -18,12 +18,13 @@ preserved. Language selection affects one request and never changes global setti
 | Single-customer data | `GET /api/customers/:id/export` | Separate profile, subscriptions, campaign opens and link-click sheets, restricted by `privacy.exportable`. |
 | Public-pool customers | `GET /api/pools/:id/contacts/export`, alias `/api/customer-lists/:id/pool-contacts/export` | Customer code, name, masked/permitted email, reply-to email, department, customer status, current-scope allocation status, removal reason and timestamps. |
 | Combined public pools | `GET /api/pools/contacts/export` | The same contact fields, plus source pool name and ID. Memberships in different pools remain separate rows. |
+| Public-pool import issues | Customer import result → Export error report Excel | Source row, customer code, allocation department, issue type and reason. Includes all issues, not only the filtered page; no email values. Generated locally from the current import result as `customer-import-errors.xlsx`, with UI-language headings, readable widths and auto-filters. |
 | Audit events | `GET /api/audit-events/export` | Time, readable action/actor/object/result/reason first; stable IDs, original action/object/reason codes, request ID, metadata, IP and user agent follow. |
 | Campaign send failures | `GET /api/campaigns/:id/send-errors/export` | Customer identity, reason, failure stage, SMTP code, diagnostics, attempt count, first/last failure time, recipient source and tracing IDs; a separate reason-summary sheet includes historical errors without details. |
 | Subscriber self-service | `POST /subscription/export/:subUUID` | The same category-based customer workbook, emailed as `customer-data.xlsx` to the customer's own address. |
 | User/member import templates | `GET /api/import-templates/users` or `/api/import-templates/members` | An empty first sheet with translated headers and a separate instructions sheet with required/optional fields and accepted values. These contain no stored user or organization data. |
 
-Every workbook uses readable widths, wrapped text, a styled frozen header and
+Server-generated workbooks use readable widths, wrapped text, a styled frozen header and
 alternating row shading. Non-empty data sheets have Excel table filters.
 Times are real Excel dates displayed as `yyyy-mm-dd hh:mm:ss`; UTC is explicit
 in each time-column heading. Customer codes and identifiers remain text to
@@ -37,7 +38,7 @@ email, while other exports omit the email column. Public-pool email remains
 masked for anyone other than a platform administrator. Campaign diagnostics
 that can contain sensitive recipient data remain hidden where required.
 
-Large exports use batched/streamed source queries. A sheet reaching Excel's
+Large server exports use batched/streamed source queries. A sheet reaching Excel's
 1,048,576-row limit continues in another sheet with the same headings. A value
 exceeding the 32,767-character cell limit produces an error instead of silently
 losing content. The server completes the workbook before starting the download;
@@ -51,7 +52,7 @@ Traditional Chinese aliases are recognized; legacy machine headings such as
 `username` and `user_role` continue to work. Importing still requires the normal
 user/organization permissions. Upload formats remain CSV and XLSX.
 
-Downloads return `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`,
+Server downloads return `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`,
 `Content-Disposition: attachment`, `Cache-Control: no-store` and
 `X-Content-Type-Options: nosniff`. Integrations previously reading export CSV/JSON
 must now read XLSX. Ordinary API list/detail endpoints still return JSON.

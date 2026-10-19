@@ -34,7 +34,7 @@
 
 ## 公海客户回信地址与活动优先级（v6.55.0）
 
-公海 CSV/XLSX 导入仍需映射客户编码与姓名列，但两列内容允许为空或仅含空白，规范化后保存为空字符串。普通导入与黑名单导入遵守同一规则；邮箱、分配部门内容仍必填，客户编码和姓名仍参与身份比较和重复记录判定。不同身份的空编码客户不产生编码冲突记录。来源：`cmd/pools.go::parsePoolContactImportRows`、`internal/core/pools.go::ImportPoolContacts`、`internal/core/pools_import_test.go`。
+公海 CSV/XLSX 导入仍需映射客户编码与姓名列，但两列内容允许为空或仅含空白，规范化后保存为空字符串。普通导入与黑名单导入遵守同一规则；邮箱、分配部门内容仍必填，客户编码和姓名仍参与身份比较和重复记录判定。不同身份的空编码客户不产生编码冲突记录。同步返回所有逐行校验失败、文件内重复行及客户编码冲突；异常 DTO 只含源行号、客户编号、分配部门和原因，不返回邮箱。管理端按类型过滤/搜索、分页查看明细并导出 Excel 错误报告。来源：`cmd/pools.go::parsePoolContactImportRows`、`internal/core/pools.go::ImportPoolContacts`、`internal/core/pools_import_test.go`、`frontend/src/views/Import.vue`。
 
 统一导入支持可选 `reply_to`/“回信邮箱”，该字段必须是单个邮箱地址；公海导入的 `email` 单元格可以包含多个地址，解析器会提取地址并为每个地址复用同一行的客户编号、姓名、分配部门和回信邮箱。四列旧模板仍可导入。同身份重导入更新或清空地址而不重复创建。组织邮箱配置需 `mailboxes:manage` 与组织管理边界，联系人导入需 `pools:master_manage`。导入地址只控制 Reply-To，不创建邮箱、不保存凭据、不授予收信能力。
 

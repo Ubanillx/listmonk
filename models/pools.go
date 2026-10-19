@@ -70,6 +70,9 @@ type PoolContactFilterOption struct {
 }
 
 type OrgPoolAllocation struct {
+	State             string   `db:"state" json:"state"`
+	Description       string   `db:"description" json:"description"`
+	Version           int64    `db:"version" json:"version"`
 	ID                int64    `db:"id" json:"id"`
 	ListID            int      `db:"list_id" json:"list_id"`
 	ListName          string   `db:"list_name" json:"list_name,omitempty"`

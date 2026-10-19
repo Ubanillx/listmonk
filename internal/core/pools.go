@@ -7,6 +7,7 @@ import (
 	"net/mail"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/gofrs/uuid/v5"
 	"github.com/jmoiron/sqlx"
@@ -37,7 +38,7 @@ func (c *Core) QueryOrgPoolAllocations(poolID int, organizationID int64, platfor
 	if err := c.ensurePool(poolID); err != nil {
 		return nil, err
 	}
-	q := `SELECT s.id,s.list_id,COALESCE(l.name,'') AS list_name,s.pool_id,s.organization_id,COALESCE(o.name,'') AS organization_name,o.reply_mailbox_id,COALESCE(r.email,'') AS reply_mailbox_email FROM org_pool_allocations s JOIN customer_lists l ON l.id=s.list_id JOIN organizations o ON o.id=s.organization_id LEFT JOIN reply_mailboxes r ON r.id=o.reply_mailbox_id WHERE s.pool_id=$1`
+	q := `SELECT s.id,s.list_id,s.state,s.description,s.version,COALESCE(l.name,'') AS list_name,s.pool_id,s.organization_id,COALESCE(o.name,'') AS organization_name,o.reply_mailbox_id,COALESCE(r.email,'') AS reply_mailbox_email FROM org_pool_allocations s JOIN customer_lists l ON l.id=s.list_id JOIN organizations o ON o.id=s.organization_id LEFT JOIN reply_mailboxes r ON r.id=o.reply_mailbox_id WHERE s.pool_id=$1`
 	args := []any{poolID}
 	if !platformAdmin {
 		q += ` AND s.organization_id=$2`
@@ -79,7 +80,7 @@ func (c *Core) QueryPoolManagementTarget(poolID, organizationID int) (models.Poo
 
 	var allocation models.OrgPoolAllocation
 	err = c.db.Get(&allocation, `
-		SELECT s.id,s.list_id,COALESCE(l.name,'') AS list_name,s.pool_id,s.organization_id,
+		SELECT s.id,s.list_id,s.state,s.description,s.version,COALESCE(l.name,'') AS list_name,s.pool_id,s.organization_id,
 			COALESCE(o.name,'') AS organization_name,o.reply_mailbox_id,
 			COALESCE(r.email,'') AS reply_mailbox_email
 		FROM org_pool_allocations s
@@ -1074,16 +1075,15 @@ func (c *Core) ImportPoolContacts(poolID, userID int, rows []models.PoolContactI
 }
 
 // CreateOrgPoolAllocation splits a first-level pool into one organization-owned
-// pool allocation. The list, delivery grant and allocation are created in one
-// transaction, so a standalone pool allocation can never be staged for a
-// later binding.
+// pool allocation. The list and allocation are created in one transaction.
+// Delivery authorization remains independent, including for platform operators.
 //
 // replyMailboxID is retained only for callers that predate the organization's
 // unified reply mailbox. An allocation no longer carries a mailbox of its own,
 // so the parameter is deliberately ignored; every public-pool audience resolves
 // the organization's unified reply mailbox instead.
 func (c *Core) CreateOrgPoolAllocation(poolID int, organizationID int64, name string, replyMailboxID *int, userID int, platformAdmin bool) (models.OrgPoolAllocation, error) {
-	if poolID <= 0 || organizationID <= 0 || strings.TrimSpace(name) == "" {
+	if poolID <= 0 || organizationID <= 0 || strings.TrimSpace(name) == "" || utf8.RuneCountInString(strings.TrimSpace(name)) > 200 {
 		return models.OrgPoolAllocation{}, echo.NewHTTPError(http.StatusBadRequest, "pool, organization and pool allocation name are required")
 	}
 
@@ -1099,7 +1099,7 @@ func (c *Core) CreateOrgPoolAllocation(poolID int, organizationID int64, name st
 	var out models.OrgPoolAllocation
 	err = c.withWorkspaceCreation(target, func(tx *sqlx.Tx) error {
 		var poolType string
-		if err := tx.Get(&poolType, `SELECT type::text FROM customer_lists WHERE id=$1 FOR UPDATE`, poolID); err != nil {
+		if err := tx.Get(&poolType, `SELECT type::text FROM customer_lists WHERE id=$1 AND status='active' AND transfer_pending_at IS NULL FOR UPDATE`, poolID); err != nil {
 			if err == sql.ErrNoRows {
 				return echo.NewHTTPError(http.StatusNotFound, "pool not found")
 			}
@@ -1134,11 +1134,6 @@ func (c *Core) CreateOrgPoolAllocation(poolID int, organizationID int64, name st
 		}
 		if _, err := tx.Exec(`UPDATE customer_lists SET pool_parent_id=$1 WHERE id=$2`, poolID, listID); err != nil {
 			return err
-		}
-		if platformAdmin {
-			if _, err := tx.Exec(`INSERT INTO pool_organization_permissions(pool_id,organization_id,granted_by_user_id) VALUES($1,$2,$3) ON CONFLICT(pool_id,organization_id) DO UPDATE SET granted_by_user_id=EXCLUDED.granted_by_user_id`, poolID, organizationID, userID); err != nil {
-				return err
-			}
 		}
 		if err := tx.Get(&out, `INSERT INTO org_pool_allocations(list_id,pool_id,organization_id,created_by_user_id)
 			VALUES($1,$2,$3,$4)
@@ -1202,7 +1197,7 @@ func (c *Core) ImportOrgPoolAllocationMembers(allocationID int64, rows []models.
 	}
 	defer tx.Rollback()
 	var poolID int
-	if err = tx.Get(&poolID, `SELECT s.pool_id FROM org_pool_allocations s JOIN customer_lists l ON l.id=s.pool_id WHERE s.id=$1 AND l.type='pool'`, allocationID); err != nil {
+	if err = tx.Get(&poolID, `SELECT s.pool_id FROM org_pool_allocations s JOIN customer_lists l ON l.id=s.pool_id JOIN organizations o ON o.id=s.organization_id WHERE s.id=$1 AND l.type='pool' AND l.status='active' AND o.status='active' AND s.state='active' FOR SHARE OF s`, allocationID); err != nil {
 		if err == sql.ErrNoRows {
 			return result, echo.NewHTTPError(http.StatusNotFound, "pool allocation not found")
 		}
@@ -1769,7 +1764,7 @@ const poolRecipientMembershipSQL = `
 	JOIN pool_contacts pc ON pc.id=sm.contact_id
 	LEFT JOIN reply_mailboxes rm ON rm.id=o.reply_mailbox_id AND rm.status='active' AND (NOT rm.ai_enabled OR rm.verified_at IS NOT NULL)
 	LEFT JOIN org_pool_allocation_exclusions ex ON ex.pool_id=s.pool_id AND ex.organization_id=s.organization_id AND ex.contact_id=pc.id AND ex.restored_at IS NULL
-	WHERE s.pool_id=$1 AND s.organization_id=$2 AND ($3::BIGINT IS NULL OR s.id=$3::BIGINT) AND ex.contact_id IS NULL AND pc.status='active'`
+	WHERE s.state='active' AND o.status='active' AND EXISTS(SELECT 1 FROM pool_organization_permissions grant_row WHERE grant_row.pool_id=s.pool_id AND grant_row.organization_id=s.organization_id) AND s.pool_id=$1 AND s.organization_id=$2 AND ($3::BIGINT IS NULL OR s.id=$3::BIGINT) AND ex.contact_id IS NULL AND pc.status='active'`
 
 // poolRecipientSelectSQL reads the deliverable members of one pool audience. It
 // is the read half of the shared rule and is deduplicated by the pool contact's
@@ -1865,7 +1860,7 @@ const poolRecipientAllOrgMembershipSQL = `
 	LEFT JOIN reply_mailboxes rm ON rm.id=o.reply_mailbox_id AND rm.status='active' AND (NOT rm.ai_enabled OR rm.verified_at IS NOT NULL)
 	LEFT JOIN org_pool_allocation_exclusions ex ON ex.pool_id=s.pool_id AND ex.organization_id=s.organization_id AND ex.contact_id=pc.id AND ex.restored_at IS NULL
 	LEFT JOIN campaign_pool_org_orders oo ON oo.campaign_id=$2 AND oo.organization_id=s.organization_id
-	WHERE ex.contact_id IS NULL AND pc.status='active'`
+	WHERE s.state='active' AND ex.contact_id IS NULL AND pc.status='active'`
 
 // poolRecipientAllOrgSelectSQL reads the deduplicated, all-organization
 // deliverable contact IDs of one first-level pool for a platform-level

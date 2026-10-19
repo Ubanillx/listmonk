@@ -19,7 +19,7 @@ archived view. They do not switch workspace or change customer access permission
 Pool browsing, organization allocation management, master-data maintenance,
 delivery authorization, and export are separate role permissions. Delegated
 master maintainers can access first-level platform pools while receiving masked
-contact DTOs; allocation-list reads remain limited to their organization.
+contact DTOs. Ordinary allocation-list reads remain organization-scoped; the dedicated cross-organization management capability exposes scoped allocation metadata and, with separate read permission, masked management rows.
 Permission names and dependencies are documented in
 [业务权限说明](../business-permissions.md).
 
@@ -63,11 +63,11 @@ Key endpoints:
   requires `pools:master_manage`; organization allocation list IDs are
   rejected. Pool membership, allocation membership and pool campaign recipient
   rows follow their foreign-key deletion rules.
-- `POST /api/pools/allocations` — create and bind an organization allocation; requires `pools:manage`. Ordinary members may act in their current organization only when a delivery grant already exists. With `pools:delivery_manage`, the caller may select another active organization and create its delivery grant in the same transaction. Allocations have no reply mailbox; the organization fallback is configured separately with `mailboxes:manage` and organization-management authorization.
-- `GET /api/pools/organizations` — list active organization IDs and names for the delivery authorization picker; requires `pools:delivery_manage`, without granting membership or organization management.
+- `POST /api/pools/allocations` — create and bind an organization allocation; requires `pools:manage` in the active organization or `pools:allocation_platform_manage` across organizations (highest administrators retain their exemption). Ordinary members need an existing delivery grant; cross-organization operators can stage an ungranted allocation. Creation never creates a delivery grant, even for highest administrators. Allocations have no reply mailbox; the organization fallback is configured separately with `mailboxes:manage` and organization-management authorization.
+- `GET /api/pools/organizations` — list active organization IDs and names for the delivery authorization picker; requires `pools:delivery_manage`. With `purpose=allocations`, requires `pools:allocation_platform_manage` instead. Neither grants membership or organization management.
 - `POST|DELETE /api/pools/permissions` — grant/revoke a pool's organization delivery authorization; requires `pools:delivery_manage` and a `pool_id`/`organization_id` JSON body. Allocation management alone cannot grant or restore delivery access.
 - `DELETE /api/pools/:id/contacts/:contact_id/email` — archive an invalid contact by clearing its email; requires `pools:master_manage`.
-- `POST|DELETE|PUT /api/pools/allocations/members` — assign, logically remove, or restore a contact. Requires `pools:manage`; a non-platform-administrator is restricted to its own organization's allocation.
+- `POST|DELETE|PUT /api/pools/allocations/members` — assign, logically remove, or restore a contact. Uses the same allocation action/scope/lifecycle transaction as the new batch management API below. Removing requires a reason. Cross-organization access requires `pools:allocation_platform_manage`; ordinary `pools:manage` stays within the active organization.
 - `POST /api/pools/allocations/:id/import-members` — legacy compatibility route;
   it is not the management UI's import path. Requires `pools:manage` and the
   caller's organization boundary.
@@ -101,7 +101,7 @@ Key endpoints:
   form on the right. Allocation names are prefilled and editable; switching
   organizations retains each draft, and creating refreshes both columns.
   Selecting a target does not switch the active workspace. Allocation managers
-  without delivery administration see only their active organization. On narrow screens the columns stack.
+  without the explicit cross-organization allocation capability see only their active organization. On narrow screens the columns stack.
 - The unified import also accepts `mode=blocklist` with the same four required columns and optional reply email. Matching email addresses within the selected pool are marked
   `blocklisted`; new contacts are created in that state. The contact state
   suppresses delivery across its organization allocations and any other pools
@@ -118,7 +118,7 @@ Key endpoints:
   `pools:contacts_name_edit` permits only `name`; `pools:master_manage`
   retains full edit compatibility but still controls create/delete/import/archive.
   Non-platform callers must have the pool allocated to the active organization.
-- `GET /api/pools/:id/management-target?organization_id=...` — allocation state for an explicit organization; requires `pools:manage` or `pools:delivery_manage`. Allocation-only callers must target their active organization.
+- `GET /api/pools/:id/management-target?organization_id=...` — allocation state for an explicit organization; requires `pools:manage`, `pools:allocation_platform_manage` or `pools:delivery_manage`. Ordinary allocation-only callers must target their active organization; explicit cross-organization operators may choose an active target without switching workspace.
 - `POST /api/campaigns/:id/pools` — attach a first-level public-pool audience to a campaign draft. Organization allocation list IDs are rejected; the selected first-level pool is resolved to the applicable allocation when the campaign is sent.
 
 Preview and send operations reject unresolved pool audiences (missing the
@@ -208,3 +208,22 @@ model separate and applies the same masked DTO policy as the API.
 Allocation-only operators work inside their organization; delivery administrators
 may select other targets, and master maintainers may maintain first-level pools.
 These capabilities remain independent in direct API calls.
+
+## Allocation management API (v6.61.0)
+
+The `:id` below is `org_pool_allocations.id`, **not** the allocation list ID. These session/service endpoints do not extend the personal API key prefix allowlist (`/api/pools/*` remains unavailable to personal keys).
+
+| Method and endpoint | Contract |
+| --- | --- |
+| `GET /api/pools/allocations/:id/manage` | Minimal allocation detail: source/list/organization IDs and names, `state`, `description`, `version`, `updated_at`, `delivery_allowed`. Requires allocation management scope. |
+| `PUT /api/pools/allocations/:id/manage` | JSON `action=update|disable|enable|detach|rebind`, `expected_version`; update accepts `name` (1..200 characters), `description` (max 1000); detach requires nonblank `reason` (max 1000) and exact `confirm_organization`. Unknown fields are rejected. Stale versions return 409. |
+| `GET /api/pools/allocations/:id/impact` | `{unfinished_campaigns: number}` in the data envelope; metadata-only impact count, no campaign/customer details. Detach rechecks references under the source lock. |
+| `GET /api/pools/allocations/:id/manage-members` | Additional `pools:get`. Query `status=active|removed|candidates`, `search` by name/code, `page` (default 1), `per_page` (default 20, max 100). Returns `results,total,page,per_page`; dedicated safe DTO always masks recipient email. Delegated candidates must match the target allocation department. |
+| `POST /api/pools/allocations/:id/manage-members` | JSON `action=assign|remove|restore`, `contact_ids` (1..100), `reason` (required for remove). Entire batch rolls back on invalid source/scope/state; assign cannot silently restore removed contacts. |
+| `GET /api/pools/allocations/:id/events` | Additional `audit:get`; same pagination. Target allocation events only, actor name/time/action/safe metadata. Does not expose all-organization audit logs. |
+
+Lifecycle: `active -> disabled -> active`; only cross-organization managers can detach or rebind. Detach is logical and rejects unfinished campaign references; rebind preserves identifiers/history and returns `disabled`. Disabled/detached allocations reject member mutations. No operation here edits shared contacts, deletes customers, clears blocklists, changes delivery grants or configures mailboxes. Mutations validate active organization, source/list, pending transfers and membership again inside the transaction; management mutations and their audit event commit atomically.
+
+The workbench uses `manage_pool` (source pool list ID), `manage_org` and `manage_tab` URL parameters. Its customer, metadata and history tabs are independent of ordinary master-data editing. Queued recipients are checked again at claim and immediately before SMTP; disabling/removing/revoking excludes them from future delivery but cannot recall SMTP already in flight. Explicit all-organization campaign policy remains separate from an ordinary organization's delivery grant.
+
+Upgrade changes: v6.61.0 adds lifecycle/version fields with existing rows active and does not grant the new permission. The old combination of allocation plus delivery permissions no longer implies cross-organization allocation management. Generic allocation-list update/archive/delete is rejected; use the lifecycle API instead.

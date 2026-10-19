@@ -89,6 +89,7 @@ const (
 	// the active workspace organization's own pool allocations.
 	PermPoolsGet                    = "pools:get"
 	PermPoolsManage                 = "pools:manage"
+	PermPoolsAllocationPlatform     = "pools:allocation_platform_manage"
 	PermPoolsMasterManage           = "pools:master_manage"
 	PermPoolsContactsEdit           = "pools:contacts_edit"
 	PermPoolsContactsNameEdit       = "pools:contacts_name_edit"

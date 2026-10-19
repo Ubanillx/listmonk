@@ -1,5 +1,19 @@
 # Listmonk 工程架构与运行指南
 
+## 组织公海分配工作台（v6.61.0）
+
+公海子行的“管理分配”和父行的分配入口打开 `PoolAllocationWorkbench.vue`，采用用户选定图三的居中双栏布局。左侧目标组织不切换当前工作区，右侧有客户分配、分配信息和操作记录；查询参数 `manage_pool`（一级公海列表 ID）、`manage_org`、`manage_tab` 支持刷新恢复。保留原公海父子树、筛选与分组分页。普通列表更新/归档/删除路径拒绝分配类型。
+
+页签 URL 同步不重建外层页面或工作台。各页签在当前目标内保存筛选、页码/条数、选择和内容滚动位置；已加载数据直接恢复，首次/失败加载仅显示页签内 loading。重复点击当前页签不发请求，切换使旧页签未完成响应失效；CRUD 成功后使缓存失效并在当前/下次访问时局部重查，不删除未保存表单。切换组织清理页签缓存，避免跨目标数据复用。工作台使用稳定视口高度、正文独立滚动，切页签不使外框上下跳动。
+
+`cmd/pool_allocation_management.go` 和 `internal/core/pool_allocation_management.go` 独立派生/验证分配能力。最高管理员或显式 `pools:allocation_platform_manage` 可跨组织操作，不复用组织管理、主数据或投放权限；普通 `pools:manage` 限当前组织及有效成员。无 `pools:get` 只提供管理元数据，不返回成员行和数量；成员专用 DTO 始终脱敏，候选范围按目标组织分配部门收敛，最高管理员可选整个来源池。记录另需 `audit:get`，仅查询目标分配相关事件。个人 API Key 的独立前缀 allowlist 未开放 `/api/pools/*`，新接口不可凭角色绕过此限制。
+
+迁移 `v6.61.0` 为分配加入 `active/disabled/detached`、备注、乐观版本及更新时间，旧数据默认 active，不自动授予新权限。改名/启停/解除/恢复使用 `expected_version`；解除要求原因、精确组织名且无未结束活动引用，逻辑解除保留成员、排除、投递和审计历史。恢复绑定沿用 ID 并返回 disabled，需再次显式启用。成员批量操作上限 100、事务全成全败，移除/恢复只改变目标组织关系，不修改联系人邮箱、部门或黑名单，不改变投放授权。新管理写入和审计 `RecordTx` 同事务。
+
+所有变更在组织、来源/分配列表、分配锁内重验状态、转移和成员范围。活动保存与分配变更共用来源列表锁，解除引用检查不允许并发新建引用穿透；已排队公海收件人在 claim 和 SMTP 前再次检查分配/组织/来源/成员/黑名单/排除与普通组织投放授权。独立的 `campaigns:public_pool_send` 全组织策略仍不借用普通组织授权，但同样不能绕过分配停用或成员移除；已经进入 SMTP 的投递不可撤回。
+
+兼容性：原 `pools:manage` + `pools:delivery_manage` 组合不再推导跨组织分配能力，管理员需明确授予新权限。投放-only 入口保留原授权面板。接口契约见 [Public pools](docs/content/apis/pools.md)，交互和验收记录见 [设计规范](harness/designs/2026-10-19-org-pool-allocation/INTERACTION_SPEC.md)。
+
 ## 活动克隆与模板引用（2026-10-12）
 
 `internal/core/workspace_actions.go::CloneCampaignForWorkspaceWithSource` 在事务锁内重验活动、模板、素材与组织权限。同空间克隆时，若新活动所有者按普通发送权限可以使用原模板，则保留原 `template_id`，不新增模板或仅属于模板的素材副本；活动自己的素材仍独立复制并重写正文引用。个人空间还要求原活动与新活动所有者一致，平台管理员的巡查权限不作为模板复用的发送授权。
@@ -30,7 +44,7 @@
 
 新增 `customer_lists:delete`、`pools:master_manage`、`pools:delivery_manage`、`assets:share`、`mailboxes:use`、`mailboxes:manage`。组织身份和所有权决定数据范围，不能绕过查看、导出、统计或私域敏感信息权限；列表、明细、写入响应、Excel、API JSON 和收件人报告一致脱敏，省略的编辑字段保留原值。全局模板也要求查看/维护权限，改变共享范围另需共享权限。发信与回信邮箱使用和配置分别授权，配置仍保留所有者/组织边界。
 
-公海主数据授权以 `WorkspaceAccess.PoolMaster` 表达，只为平台归属、非待转移的一级 `pool` 扩大范围；工作区解析、查询、单行检查和事务锁统一传递，不能提升私域或其它资源能力，委派维护者的联系人 DTO 仍脱敏。组织分配需 `pools:manage`，本组织创建分配先检查已有投放授权，跨组织创建还需 `pools:delivery_manage`。`GET /api/pools/organizations` 只向投放授权管理者提供活动组织 ID/名称，不授予组织管理或成员身份。
+公海主数据授权以 `WorkspaceAccess.PoolMaster` 表达，只为平台归属、非待转移的一级 `pool` 扩大范围；工作区解析、查询、单行检查和事务锁统一传递，不能提升私域或其它资源能力，委派维护者的联系人 DTO 仍脱敏。组织分配的本组织管理需 `pools:manage`，跨组织管理独立使用 `pools:allocation_platform_manage`；本组织创建先检查已有投放授权，跨组织管理者可预建未授权分配，但任何创建都不自动写入投放授权。`GET /api/pools/organizations?purpose=allocations` 供跨组织分配管理者使用；默认目录仍需 `pools:delivery_manage`。两种目录只含活动组织 ID/名称，不授予组织管理或成员身份。
 
 迁移 `v6.56.0` 保留旧角色的列表删除、模板/素材共享、邮箱自助能力及已有组织管理员的分配能力；重复执行不增加重复授权，不自动授予公海平台级权限。回归：`cmd/business_permissions_test.go`、`cmd/org_pool_allocation_permissions_test.go`、`internal/migrations/v6.56.0_test.go`、`frontend/cypress/e2e/business-permissions.cy.js`。
 
@@ -202,7 +216,7 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 - 列表类型是资源边界：`private` 与 `public` 可互相转换；一级 `pool` 和 `org_pool_allocation` 必须保留创建时的类型。`internal/core/workspace_resource_writes.go` 在持有列表行锁的更新事务内核验旧类型和请求类型，禁止通用 `PUT /api/customer-lists/:id` 将普通列表转成公海或公海分配，也禁止反向转换；公海分配只能走专用拆分事务。
 - 一级公海和组织公海分配的客户视图使用下拉筛选「正常客户」与「已移除客户」，分别按 `status=active` 和 `status=removed` 请求；一级公海的已移除客户按联系人 ID 汇总所有组织未恢复的移除/剔除记录，未分配客户仍属正常，组织用户的一级公海视图只在本组织范围内分类。移除成员不会混入正常客户列表，已移除客户保留恢复分配入口；不带 `status` 的旧 API 请求仍返回全部联系人。
 - 历史二级成员导入 API 仍保留兼容路由，但不再是管理端主入口，且其写操作与联系人维护都由服务端限制为最高管理员；统一客户导入接口是新增公海数据的唯一产品入口。组织统一回件邮箱由组织经理在组织工作区设置，或由具备 `organizations:platform_manage` 的平台组织操作员在管理组织页面选定目标组织后设置（`PUT /api/organizations/:id/reply-mailbox`）。
-- 每个“一级公海 × 组织”至多绑定一个分配。`CreateOrgPoolAllocation` 要求 `pools:manage`；普通成员可在当前组织已有投放授权下创建分配，组织身份不自动授予动作权限。跨组织创建还需 `pools:delivery_manage`，该路径可在事务内创建授权；普通分配管理不得借创建新增或恢复授权。Core 锁定目标组织后重验活动状态、成员与授权。创建分配不携带回信邮箱。
+- 每个“一级公海 × 组织”至多绑定一个分配。`CreateOrgPoolAllocation` 要求本组织 `pools:manage` 或跨组织 `pools:allocation_platform_manage`；普通成员可在当前组织已有投放授权下创建分配，组织身份不自动授予动作权限。跨组织管理者可预建未授权分配，任何路径都不在创建事务中新增或恢复投放授权。Core 锁定目标组织后重验活动状态、成员与授权。创建分配不携带回信邮箱。
 - 公海权限自 v6.56.0 分为查看 `pools:get`、组织分配 `pools:manage`、主数据维护 `pools:master_manage`、联系人全部编辑 `pools:contacts_edit`、联系人名称编辑 `pools:contacts_name_edit`、投放授权 `pools:delivery_manage` 和导出 `pools:export`，互不隐含。普通查看/导出/联系人编辑限本组织分配；主数据权限只扩大平台一级池范围，委派者仍使用脱敏 DTO。授权管理不授予客户数据或组织成员身份。最高管理员保留功能豁免，迁移不向普通角色授予主数据或投放授权。
 - 分配与主数据维护独立：恢复、分配、移除和分配成员导入要求 `pools:manage`，普通调用者只操作本组织分配；联系人新增、清邮、删除与统一导入要求 `pools:master_manage`。组织经理也需明确授权。统一回信邮箱配置要求 `mailboxes:manage` 与组织经理/平台组织管理范围，分配级配置端点已删除。历史脚本断言须按功能授权解释，不能由 manager 身份推导写权限。
 - 公海客户导航固定进入 `/admin/pool` 汇总页；`GET /api/pools/contacts` 与导出接口在服务端按一级公海成员关系跨列表搜索、状态、来源 `pool_id` 和精确分配部门过滤，再统一排序和分页，每行返回来源 `pool_id`/`pool_name`。`GET /api/pools/contacts/filters` 按同一组织边界返回可选公海/部门组合，不依赖当前页数据。同一联系人属于两个公海时显示两行，不合并来源；平台管理员可看全部公海，组织用户只看本组织分配内的成员且邮箱继续脱敏。点击“所属公海列表”进入 `/admin/pool-lists/:id/contacts` 单列表管理页，并保持“公海客户”导航高亮；公海客户列表计数和导入结果也指向该路由。旧 `/admin/pool/:id` 入口重定向汇总页，旧 `/admin/customers/pool-lists/:id` 和指向公海列表的通用客户列表路由重定向至单列表管理页。
@@ -220,7 +234,7 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 
 管理端入口 `frontend/index.html` 的 favicon、custom.css 和 custom.js 使用 `/admin/` 绝对路径，避免嵌套组织页刷新时将回退 HTML 当脚本加载。组织营销配置位于 `frontend/src/views/organizations/ManageOrganizations.vue` 的独立 SMTP 标签，复用带组织 owner 参数的 `PersonalSMTPSettings.vue`。
 
-组织管理页使用 `tab=members|invites|pending|reply-mailboxes|reply-forwarding|smtp|platform` URL 查询参数保存页签，刷新、直达及浏览器前进/后退恢复选中；未知或无权限的页签回退到首个可见页签。`App.vue::routeViewKey` 仅在该页面排除 `tab`，切换页签不重建页面、不丢失管理目标与未保存草稿。切换页签主动读取对应数据，成员/邀请码/转发及平台 CRUD 成功后刷新列表；邮箱子组件的 `changed` 事件刷新统一邮箱选项，SMTP 子组件事件刷新池数量。干净的邮箱/SMTP 编辑器同步读取，未保存编辑保留；组织切换清空旧列表并校验异步响应目标。来源：`frontend/src/views/organizations/ManageOrganizations.vue`、`frontend/src/components/{ReplyMailboxSettings,PersonalSMTPSettings}.vue`、`frontend/cypress/e2e/organization-management-tabs.cy.js`。
+组织管理页使用 `tab=members|invites|pending|reply-mailboxes|reply-forwarding|smtp|platform` URL 查询参数保存页签，刷新、直达及浏览器前进/后退恢复选中；未知或无权限的页签回退到首个可见页签。`App.vue::routeViewKey` 在组织管理页排除 `tab`，在公海列表/详情页排除内部 `manage_pool`、`manage_org`、`manage_tab`（其他查询、路径和工作区变化仍保持原重建边界），切换页签不重建页面、不丢失管理目标与未保存草稿。切换页签主动读取对应数据，成员/邀请码/转发及平台 CRUD 成功后刷新列表；邮箱子组件的 `changed` 事件刷新统一邮箱选项，SMTP 子组件事件刷新池数量。干净的邮箱/SMTP 编辑器同步读取，未保存编辑保留；组织切换清空旧列表并校验异步响应目标。来源：`frontend/src/views/organizations/ManageOrganizations.vue`、`frontend/src/components/{ReplyMailboxSettings,PersonalSMTPSettings}.vue`、`frontend/cypress/e2e/organization-management-tabs.cy.js`。
 
 个人/组织 SMTP 测试由 `PersonalSMTPSettings.vue::testServer` 接收 API 的成功或失败：发送期间显示 loading 并禁用重复测试，完成后在对应 SMTP 卡片内持续显示结果并弹出提示；SMTP 服务端错误原文优先，断网等无响应错误使用请求错误信息。两类测试 API 均关闭全局 toast，由组件统一反馈，避免个人测试失败无提示及组织测试重复提示。测试仍使用当前配置且不保存，结果字段不计入待保存配置。回归：`frontend/cypress/e2e/personal-smtp-test.cy.js`。
 

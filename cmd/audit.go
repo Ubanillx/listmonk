@@ -218,6 +218,8 @@ var auditRoutes = map[string]auditRouteSpec{
 	"DELETE /api/org-pool-allocations/members":                       {"org_pool_allocation.members_changed", "org_pool_allocation", ""},
 	"PUT /api/org-pool-allocations/members":                          {"org_pool_allocation.members_changed", "org_pool_allocation", ""},
 	"POST /api/pools/allocations":                                    {"org_pool_allocation.created", "org_pool_allocation", ""},
+	"PUT /api/pools/allocations/:id/manage":                          {"org_pool_allocation.changed", "org_pool_allocation", "id"},
+	"POST /api/pools/allocations/:id/manage-members":                 {"org_pool_allocation.members_changed", "org_pool_allocation", "id"},
 	"POST /api/pools/allocations/members":                            {"org_pool_allocation.members_changed", "org_pool_allocation", ""},
 	"POST /api/pools/allocations/:id/import-members":                 {"org_pool_allocation.members_imported", "org_pool_allocation", "id"},
 	"DELETE /api/pools/allocations/members":                          {"org_pool_allocation.members_changed", "org_pool_allocation", ""},
@@ -400,6 +402,9 @@ func (j *auditJSON) UnmarshalJSON(data []byte) error {
 func (a *App) auditMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		err := next(c)
+		if err == nil && c.Get("allocation_audit_recorded") == true {
+			return nil
+		}
 		spec, ok := auditRouteSpecForContext(c)
 		if !ok || a.audit == nil {
 			return err

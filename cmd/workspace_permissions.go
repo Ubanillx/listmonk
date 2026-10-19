@@ -577,6 +577,9 @@ func (a *App) queryReadableWorkspaceLists(c echo.Context, access models.Workspac
 	if query.group != customerListGroupPrivate &&
 		(query.typ == "" || query.typ == models.CustomerListTypePool || query.typ == models.CustomerListTypeOrgPoolAllocation) {
 		poolLists, poolErr := a.core.QueryAuthorizedPoolLists(access)
+		if canManagePoolAllocationsAcrossOrganizations(auth.GetUser(c)) {
+			poolLists, poolErr = a.core.QueryAuthorizedPoolLists(models.WorkspaceAccess{Workspace: models.Workspace{PlatformAdmin: true}})
+		}
 		if poolErr != nil {
 			return nil, 0, poolErr
 		}
@@ -596,7 +599,7 @@ func (a *App) queryReadableWorkspaceLists(c echo.Context, access models.Workspac
 		// list metadata is added; contact details stay behind the separate
 		// pool-contact policy, and the permission is re-checked when the
 		// campaign is created, updated, scheduled or started.
-		if permUser := auth.GetUser(c); permUser.HasPerm(auth.PermCampaignsPublicPoolSend) || canManagePoolMaster(permUser) || canManagePoolDelivery(permUser) {
+		if permUser := auth.GetUser(c); permUser.HasPerm(auth.PermCampaignsPublicPoolSend) || canManagePoolMaster(permUser) || canManagePoolDelivery(permUser) || canManagePoolAllocationsAcrossOrganizations(permUser) {
 			platformPools, err := a.core.QueryPlatformPublicPoolLists()
 			if err != nil {
 				return nil, 0, err
@@ -617,12 +620,19 @@ func (a *App) queryReadableWorkspaceLists(c echo.Context, access models.Workspac
 		permitted[id] = struct{}{}
 	}
 	filtered := make([]models.CustomerList, 0, len(all))
+	if err := a.core.EnrichAllocationListStates(all); err != nil {
+		return nil, 0, err
+	}
 	for _, customer_list := range all {
 		if !query.group.matches(customer_list) {
 			continue
 		}
 		if customer_list.Type == models.CustomerListTypePool || customer_list.Type == models.CustomerListTypeOrgPoolAllocation {
-			if !hasLegacyPermission(user, auth.PermPoolsGet, auth.PermPoolsMasterManage, auth.PermPoolsManage, auth.PermPoolsDeliveryManage,
+			if !user.HasPerm(auth.PermPoolsGet) {
+				customer_list.CustomerCount = 0
+				customer_list.CustomerCounts = nil
+			}
+			if !hasLegacyPermission(user, auth.PermPoolsGet, auth.PermPoolsMasterManage, auth.PermPoolsManage, auth.PermPoolsDeliveryManage, auth.PermPoolsAllocationPlatform,
 				auth.PermCampaignsManage, auth.PermCampaignsManageAll, auth.PermCampaignsPublicPoolSend) {
 				continue
 			}

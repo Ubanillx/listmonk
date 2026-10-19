@@ -1430,6 +1430,15 @@ WITH picked AS (
       AND c.status='running'
       AND pc.status='active'
       AND ex.contact_id IS NULL
+      AND EXISTS(SELECT 1 FROM org_pool_allocations av
+          JOIN organizations ao ON ao.id=av.organization_id AND ao.status='active'
+          JOIN customer_lists al ON al.id=av.list_id AND al.status='active' AND al.transfer_pending_at IS NULL
+          JOIN customer_lists ap ON ap.id=av.pool_id AND ap.status='active' AND ap.transfer_pending_at IS NULL
+          JOIN pool_members avm ON avm.pool_id=av.pool_id AND avm.contact_id=cpr.pool_contact_id
+          JOIN org_pool_allocation_members am ON am.allocation_id=av.id AND am.contact_id=cpr.pool_contact_id AND am.status='active'
+          WHERE av.id=cpr.allocation_id AND av.pool_id=cpr.pool_id AND av.organization_id=cpr.organization_id AND av.state='active')
+      AND (EXISTS(SELECT 1 FROM campaigns ac WHERE ac.id=cpr.campaign_id AND ac.pool_scope='all_organizations')
+          OR EXISTS(SELECT 1 FROM pool_organization_permissions ag WHERE ag.pool_id=cpr.pool_id AND ag.organization_id=cpr.organization_id))
       AND (cpr.organization_id IS NOT DISTINCT FROM c.organization_id)
     ORDER BY cpr.pool_contact_id
     FOR UPDATE OF cpr SKIP LOCKED

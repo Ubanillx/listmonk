@@ -115,7 +115,7 @@ describe('Public pool list hierarchy', () => {
     cy.then(() => cy.url().should('include', `/admin/customers/import?customer_list_id=${poolID}`));
     cy.get('[data-cy=import-tab-pool]').should('have.attr', 'aria-selected', 'true');
     cy.get('.import-list-setup').should('contain', 'Primary pool');
-    cy.screenshot('pool-list-import-target');
+    cy.screenshot('pool-list-import-target', { capture: 'viewport' });
   });
 
   it('shows a retry after load failure and renders the recovered hierarchy', () => {

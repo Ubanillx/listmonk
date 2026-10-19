@@ -269,10 +269,15 @@ export default Vue.extend({
 
   computed: {
     routeViewKey() {
-      if (this.$route.name !== 'organizationManage') return this.$route.fullPath;
-      // Changing management tabs must preserve the selected organization and drafts.
+      const localQuery = {
+        organizationManage: ['tab'],
+        poolLists: ['manage_pool', 'manage_org', 'manage_tab'],
+        poolList: ['manage_pool', 'manage_org', 'manage_tab'],
+      }[this.$route.name] || [];
+      if (!localQuery.length) return this.$route.fullPath;
+      // Local management navigation must not remount the view and discard its modal/drafts.
       const query = { ...this.$route.query };
-      delete query.tab;
+      localQuery.forEach((key) => { delete query[key]; });
       return this.$router.resolve({ path: this.$route.path, query, hash: this.$route.hash }).route.fullPath;
     },
     ...mapState(['serverConfig', 'profile', 'workspace', 'organizations', 'organizationDirectoryError']),

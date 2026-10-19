@@ -119,6 +119,7 @@ CREATE TABLE pool_members (
 );
 
 CREATE TABLE org_pool_allocations (
+    state TEXT NOT NULL DEFAULT 'active',
     id                 BIGSERIAL PRIMARY KEY,
     list_id            INTEGER,
     pool_id            INTEGER REFERENCES customer_lists(id) ON DELETE CASCADE,
@@ -321,6 +322,7 @@ func seedAllocationListName(poolID int, organizationID int64) string {
 func (env *poolRecipientsTestEnv) seedAllocation(poolID int, organizationID int64) int64 {
 	env.t.Helper()
 	listID := env.id(`INSERT INTO customer_lists(name,type,status) VALUES($1,'private','active') RETURNING id`, seedAllocationListName(poolID, organizationID))
+	env.exec(`INSERT INTO pool_organization_permissions(pool_id,organization_id) VALUES($1,$2) ON CONFLICT DO NOTHING`, poolID, organizationID)
 	return env.id(`INSERT INTO org_pool_allocations(list_id,pool_id,organization_id,created_by_user_id) VALUES($1,$2,$3,1) RETURNING id`, listID, poolID, organizationID)
 }
 

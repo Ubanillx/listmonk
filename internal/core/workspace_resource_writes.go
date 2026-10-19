@@ -296,6 +296,9 @@ func (c *Core) UpdateListInWorkspace(access models.WorkspaceAccess, id int, l mo
 		if !canUpdateCustomerListType(currentType, l.Type) {
 			return echo.NewHTTPError(http.StatusBadRequest, "public pool list type cannot be changed")
 		}
+		if currentType == models.CustomerListTypeOrgPoolAllocation {
+			return echo.NewHTTPError(http.StatusBadRequest, "use the dedicated allocation management API")
+		}
 		if l.Type == models.CustomerListTypePool {
 			visibility = models.ResourceVisibilityGlobal
 		} else if visibility != "" {
@@ -341,11 +344,25 @@ func (c *Core) DeleteListsInWorkspace(access models.WorkspaceAccess, ids []int) 
 		return nil
 	}
 	return c.withWorkspaceResourceMutation(access, resourceLists, ids, func(tx *sqlx.Tx) error {
+		if err := rejectAllocationListDeletion(tx, ids); err != nil {
+			return err
+		}
 		if _, err := tx.Stmtx(c.q.DeleteLists).Exec(pq.Array(ids), "", true, pq.Array(nil)); err != nil {
 			return workspaceQueryError("deleting customer_lists", err)
 		}
 		return nil
 	})
+}
+
+func rejectAllocationListDeletion(tx *sqlx.Tx, ids []int) error {
+	var exists bool
+	if err := tx.Get(&exists, `SELECT EXISTS(SELECT 1 FROM customer_lists WHERE id=ANY($1) AND type='org_pool_allocation')`, pq.Array(ids)); err != nil {
+		return err
+	}
+	if exists {
+		return echo.NewHTTPError(http.StatusBadRequest, "unbind allocations without deleting their history")
+	}
+	return nil
 }
 
 // SetWorkspaceResourceVisibility is the write-safe counterpart to

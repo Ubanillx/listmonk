@@ -16,6 +16,7 @@ export const businessPermissionGroups = [
     permissions: [
       { id: 'poolRead', permissions: ['pools:get'] },
       { id: 'poolAllocation', permissions: ['pools:manage'] },
+      { id: 'poolAllocationPlatform', permissions: ['pools:allocation_platform_manage'] },
       { id: 'poolMaster', permissions: ['pools:master_manage'] },
       { id: 'poolContactEdit', permissions: ['pools:contacts_edit'] },
       { id: 'poolContactNameEdit', permissions: ['pools:contacts_name_edit'] },

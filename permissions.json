@@ -29,6 +29,7 @@
         [
             "pools:get",
             "pools:manage",
+            "pools:allocation_platform_manage",
             "pools:master_manage",
             "pools:contacts_edit",
             "pools:contacts_name_edit",

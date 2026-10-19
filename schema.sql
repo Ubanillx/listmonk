@@ -1043,6 +1043,10 @@ CREATE TABLE pool_members (
 
 CREATE TABLE org_pool_allocations (
     id BIGSERIAL PRIMARY KEY,
+    state TEXT NOT NULL DEFAULT 'active' CHECK (state IN ('active','disabled','detached')),
+    description TEXT NOT NULL DEFAULT '',
+    version BIGINT NOT NULL DEFAULT 1,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     list_id INTEGER NOT NULL UNIQUE REFERENCES customer_lists(id) ON DELETE CASCADE,
     pool_id INTEGER NULL REFERENCES customer_lists(id) ON DELETE CASCADE,
     organization_id BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,

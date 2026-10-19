@@ -245,7 +245,13 @@ export const getOrgPoolAllocations = (id) => http.get(`/api/customer-lists/${id}
 export const getPoolManagementTarget = (id, organizationID) => http.get(`/api/pools/${id}/management-target`, {
   params: { organization_id: organizationID },
 });
-export const getPoolOrganizations = () => http.get('/api/pools/organizations');
+export const getPoolOrganizations = (params = {}) => http.get('/api/pools/organizations', { params });
+export const getAllocationManagement = (id) => http.get(`/api/pools/allocations/${id}/manage`);
+export const changeAllocationManagement = (id, data) => http.put(`/api/pools/allocations/${id}/manage`, data);
+export const getAllocationImpact = (id) => http.get(`/api/pools/allocations/${id}/impact`);
+export const getAllocationMembers = (id, params) => http.get(`/api/pools/allocations/${id}/manage-members`, { params });
+export const changeAllocationMembers = (id, data) => http.post(`/api/pools/allocations/${id}/manage-members`, data);
+export const getAllocationEvents = (id, params) => http.get(`/api/pools/allocations/${id}/events`, { params });
 export const getPoolImportConflicts = (id) => http.get(`/api/pools/${id}/import-conflicts`);
 export const createPoolContact = (id, data) => http.post(`/api/customer-lists/${id}/pool-contacts`, data);
 export const updatePoolContact = (listID, contactID, data) => http.put(`/api/customer-lists/${listID}/pool-contacts/${contactID}`, data);

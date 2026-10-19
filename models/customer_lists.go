@@ -30,6 +30,7 @@ type CustomerList struct {
 	Description        string         `db:"description" json:"description"`
 	MaskEmails         bool           `db:"mask_emails" json:"mask_emails"`
 	PoolParentID       null.Int       `db:"pool_parent_id" json:"pool_parent_id,omitempty"`
+	AllocationState    string         `db:"-" json:"allocation_state,omitempty"`
 	PoolReplyMailboxID null.Int       `db:"pool_reply_mailbox_id" json:"pool_reply_mailbox_id,omitempty"`
 	// PoolDeliveryAllowed marks a first-level/pool-allocation public-pool list that
 	// the active organization may select for campaign delivery. It is a

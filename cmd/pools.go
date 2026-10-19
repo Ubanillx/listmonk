@@ -589,7 +589,7 @@ func (a *App) ExportPoolContacts(c echo.Context) error {
 }
 
 func (a *App) GetOrgPoolAllocations(c echo.Context) error {
-	if err := requireLegacyPermission(auth.GetUser(c), auth.PermPoolsGet, auth.PermPoolsManage, auth.PermPoolsDeliveryManage); err != nil {
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermPoolsGet, auth.PermPoolsManage, auth.PermPoolsDeliveryManage, auth.PermPoolsAllocationPlatform); err != nil {
 		return err
 	}
 	access, err := a.workspaceAccess(c)
@@ -606,7 +606,7 @@ func (a *App) GetOrgPoolAllocations(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	rows, err := a.core.QueryOrgPoolAllocations(poolID, int64(access.OrganizationID), canManagePoolDelivery(auth.GetUser(c)))
+	rows, err := a.core.QueryOrgPoolAllocations(poolID, int64(access.OrganizationID), canManagePoolDelivery(auth.GetUser(c)) || canManagePoolAllocationsAcrossOrganizations(auth.GetUser(c)))
 	if err != nil {
 		return err
 	}
@@ -618,7 +618,7 @@ func (a *App) GetOrgPoolAllocations(c echo.Context) error {
 // a highest administrator can select any active organization here while
 // remaining in the current workspace.
 func (a *App) GetPoolManagementTarget(c echo.Context) error {
-	if err := requireLegacyPermission(auth.GetUser(c), auth.PermPoolsManage, auth.PermPoolsDeliveryManage); err != nil {
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermPoolsManage, auth.PermPoolsDeliveryManage, auth.PermPoolsAllocationPlatform); err != nil {
 		return err
 	}
 	poolID := getID(c)
@@ -626,7 +626,7 @@ func (a *App) GetPoolManagementTarget(c echo.Context) error {
 	if err != nil || organizationID <= 0 {
 		return echo.NewHTTPError(http.StatusBadRequest, "organization_id is required")
 	}
-	if !canManagePoolDelivery(auth.GetUser(c)) {
+	if !canManagePoolDelivery(auth.GetUser(c)) && !canManagePoolAllocationsAcrossOrganizations(auth.GetUser(c)) {
 		access, err := a.workspaceAccess(c)
 		if err != nil {
 			return err
@@ -649,7 +649,11 @@ func requirePoolAdministrator(c echo.Context) error {
 // Only a delivery administrator can inspect the platform organization picker.
 // It returns names and IDs and grants no membership or organization management.
 func (a *App) GetPoolOrganizations(c echo.Context) error {
-	if err := requireLegacyPermission(auth.GetUser(c), auth.PermPoolsDeliveryManage); err != nil {
+	permission := auth.PermPoolsDeliveryManage
+	if c.QueryParam("purpose") == "allocations" {
+		permission = auth.PermPoolsAllocationPlatform
+	}
+	if err := requireLegacyPermission(auth.GetUser(c), permission); err != nil {
 		return err
 	}
 	var rows []struct {
@@ -948,8 +952,8 @@ type orgPoolAllocationRequest struct {
 
 // CreateOrgPoolAllocation splits a first-level public pool into a new organization
 // pool allocation and binds both in a single transaction. Authorization is
-// two-tiered: allocation management requires pools:manage; a caller with
-// delivery administration can choose any active organization. Other callers
+// two-tiered: ordinary management requires pools:manage; the independent
+// cross-organization allocation capability can choose any active organization. Other callers
 // must use their own organization and an existing delivery grant. Core locks
 // the target organization and rechecks its state and membership.
 func (a *App) CreateOrgPoolAllocation(c echo.Context) error {
@@ -959,10 +963,10 @@ func (a *App) CreateOrgPoolAllocation(c echo.Context) error {
 	}
 	u := auth.GetUser(c)
 	platformAdmin := u.IsPlatformAdmin()
-	if err := requireLegacyPermission(u, auth.PermPoolsManage); err != nil {
+	if err := requireLegacyPermission(u, auth.PermPoolsManage, auth.PermPoolsAllocationPlatform); err != nil {
 		return err
 	}
-	platformAdmin = platformAdmin || canManagePoolDelivery(u)
+	platformAdmin = canManagePoolAllocationsAcrossOrganizations(u)
 	if req.ReplyMailboxID != nil {
 		return echo.NewHTTPError(http.StatusForbidden, "reply mailbox must be configured in the organization workspace")
 	}
@@ -1084,7 +1088,7 @@ func (a *App) AssignPoolContact(c echo.Context) error {
 	}
 	setAuditObjectID(c, strconv.FormatInt(req.ContactID, 10))
 	setAuditMetadata(c, map[string]any{"allocation_id": req.AllocationID})
-	if err := a.core.AssignPoolContact(req.AllocationID, req.ContactID); err != nil {
+	if err := a.changeLegacyAllocationMember(c, req, "assign"); err != nil {
 		return err
 	}
 	return c.JSON(http.StatusOK, okResp{true})
@@ -1254,8 +1258,7 @@ func (a *App) RemovePoolContact(c echo.Context) error {
 	}
 	setAuditObjectID(c, strconv.FormatInt(req.ContactID, 10))
 	setAuditMetadata(c, map[string]any{"allocation_id": req.AllocationID})
-	u := auth.GetUser(c)
-	if err := a.core.RemovePoolContact(req.AllocationID, req.ContactID, u.ID, req.Reason); err != nil {
+	if err := a.changeLegacyAllocationMember(c, req, "remove"); err != nil {
 		return err
 	}
 	return c.JSON(http.StatusOK, okResp{true})
@@ -1275,7 +1278,7 @@ func (a *App) RestorePoolContact(c echo.Context) error {
 	}
 	setAuditObjectID(c, strconv.FormatInt(req.ContactID, 10))
 	setAuditMetadata(c, map[string]any{"allocation_id": req.AllocationID})
-	if err := a.core.RestorePoolContact(req.AllocationID, req.ContactID); err != nil {
+	if err := a.changeLegacyAllocationMember(c, req, "restore"); err != nil {
 		return err
 	}
 	return c.JSON(http.StatusOK, okResp{true})

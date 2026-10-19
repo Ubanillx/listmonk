@@ -42,7 +42,7 @@
               {{ $t('pool.viewAllocationContacts') }}
             </router-link>
           </div>
-          <div v-else-if="$can('pools:manage')" data-cy="org-pool-allocation-create">
+          <div v-else-if="canCreateAllocation" data-cy="org-pool-allocation-create">
             <p class="help pool-bindings__hint">{{ $t('pool.bindingHelp') }}</p>
             <b-field :label="$t('pool.createNameLabel')" label-position="on-border">
               <b-input v-model.trim="allocationName" maxlength="200" :disabled="creatingAllocation"
@@ -94,7 +94,12 @@ export default Vue.extend({
     ...mapState(['profile', 'organizations', 'workspace']),
 
     isPlatformAdmin() {
-      return this.$can('pools:delivery_manage');
+      return this.$can('pools:delivery_manage', 'pools:allocation_platform_manage');
+    },
+
+    canCreateAllocation() {
+      return this.$can('pools:allocation_platform_manage')
+        || (this.$can('pools:manage') && this.organizationID === Number(this.workspace.organizationId));
     },
 
     availableOrganizations() {
@@ -166,7 +171,8 @@ export default Vue.extend({
     loadAllocations() {
       this.loadingAllocations = true;
       this.loadError = false;
-      const organizations = this.isPlatformAdmin ? this.$api.getPoolOrganizations() : Promise.resolve([]);
+      const purpose = this.$can('pools:allocation_platform_manage') ? { purpose: 'allocations' } : {};
+      const organizations = this.isPlatformAdmin ? this.$api.getPoolOrganizations(purpose) : Promise.resolve([]);
       return Promise.all([this.$api.getOrgPoolAllocations(this.pool.id), organizations]).then(([rows, targets]) => {
         this.poolOrganizations = targets;
         this.allocations = Array.isArray(rows) ? rows : [];

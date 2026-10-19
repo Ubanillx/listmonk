@@ -41,7 +41,7 @@ func (c *Core) withPoolTx(fn func(*sqlx.Tx) error) error {
 // ensurePoolTx is the transaction-aware form of ensurePool.
 func (c *Core) ensurePoolTx(tx *sqlx.Tx, poolID int) error {
 	var typ string
-	if err := tx.Get(&typ, `SELECT type::text FROM customer_lists WHERE id=$1`, poolID); err != nil {
+	if err := tx.Get(&typ, `SELECT type::text FROM customer_lists WHERE id=$1 FOR SHARE`, poolID); err != nil {
 		if err == sql.ErrNoRows {
 			return echo.NewHTTPError(http.StatusNotFound, "pool not found")
 		}
@@ -160,7 +160,7 @@ func (c *Core) attachPoolToCampaignTx(tx *sqlx.Tx, campaignID, poolID int, alloc
 		return echo.NewHTTPError(http.StatusBadRequest, "organization is required for pool audiences")
 	}
 	var permitted bool
-	if err := tx.Get(&permitted, `SELECT EXISTS(SELECT 1 FROM pool_organization_permissions WHERE pool_id=$1 AND organization_id=$2) OR EXISTS(SELECT 1 FROM org_pool_allocations WHERE pool_id=$1 AND organization_id=$2)`, poolID, organizationID); err != nil {
+	if err := tx.Get(&permitted, `SELECT EXISTS(SELECT 1 FROM pool_organization_permissions WHERE pool_id=$1 AND organization_id=$2) AND EXISTS(SELECT 1 FROM org_pool_allocations WHERE pool_id=$1 AND organization_id=$2 AND state='active')`, poolID, organizationID); err != nil {
 		return err
 	}
 	if !permitted {

@@ -175,7 +175,7 @@ func requireOrgPoolAllocationRejection(t *testing.T, err error, wantCode int) {
 }
 
 // requireOrgPoolAllocationCreated asserts that one split created the pool allocation,
-// its parent binding and the delivery grant together, and returns the allocation ID.
+// its parent binding without implicitly changing delivery authorization, and returns the allocation ID.
 func requireOrgPoolAllocationCreated(t *testing.T, db *sqlx.DB, poolID int, orgID int64) int64 {
 	t.Helper()
 
@@ -200,9 +200,6 @@ func requireOrgPoolAllocationCreated(t *testing.T, db *sqlx.DB, poolID int, orgI
 	}
 	if list.OrganizationID == nil || *list.OrganizationID != orgID {
 		t.Fatalf("pool allocation organization = %v, want %d", list.OrganizationID, orgID)
-	}
-	if n := countRows(t, db, `SELECT COUNT(*) FROM pool_organization_permissions WHERE pool_id = $1 AND organization_id = $2`, poolID, orgID); n != 1 {
-		t.Fatalf("delivery grant rows = %d, want 1", n)
 	}
 	return allocation.ID
 }
@@ -260,6 +257,7 @@ func TestCreateOrgPoolAllocationAuthorization(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			grantsBefore := countRows(t, db, `SELECT COUNT(*) FROM pool_organization_permissions WHERE pool_id=$1 AND organization_id=$2`, poolID, test.targetOrg)
 			c, rec := newOrgPoolAllocationTestContext(t, e, test.user, test.workspaceOrg, poolID, test.targetOrg, fmt.Sprintf("Pool allocation %d", i))
 			err := a.CreateOrgPoolAllocation(c)
 
@@ -276,6 +274,9 @@ func TestCreateOrgPoolAllocationAuthorization(t *testing.T) {
 				t.Fatalf("response status = %d, want %d", rec.Code, http.StatusOK)
 			}
 			allocationID := requireOrgPoolAllocationCreated(t, db, poolID, test.targetOrg)
+			if n := countRows(t, db, `SELECT COUNT(*) FROM pool_organization_permissions WHERE pool_id=$1 AND organization_id=$2`, poolID, test.targetOrg); n != grantsBefore {
+				t.Fatalf("creation changed delivery grants: %d -> %d", grantsBefore, n)
+			}
 
 			var payload struct {
 				Data models.OrgPoolAllocation `json:"data"`

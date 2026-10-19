@@ -56,9 +56,16 @@ func canManagePoolDelivery(user auth.User) bool {
 	return user.HasPerm(auth.PermPoolsDeliveryManage)
 }
 
+func canManagePoolAllocationsAcrossOrganizations(user auth.User) bool {
+	return user.HasPerm(auth.PermPoolsAllocationPlatform)
+}
+
 // Pool master data and ordinary lists use different action permissions.
 // The Core ownership check still runs separately, including in the write tx.
 func requireCustomerListAction(user auth.User, listType string, deleting bool) error {
+	if listType == models.CustomerListTypeOrgPoolAllocation {
+		return echo.NewHTTPError(400, "use the dedicated allocation management API")
+	}
 	if listType == models.CustomerListTypePool {
 		return requireLegacyPermission(user, auth.PermPoolsMasterManage)
 	}

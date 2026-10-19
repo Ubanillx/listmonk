@@ -607,7 +607,7 @@ func (s *store) nextPoolCustomers(campID int, st campaignSendState, limit int) (
 				AND ex.restored_at IS NULL
 			WHERE cpr.campaign_id = $1 AND cpr.organization_id = $2
 				AND cpr.status = ANY($3::campaign_recipient_status[])
-				AND pc.status = 'active' AND ex.contact_id IS NULL
+				AND pc.status = 'active' AND ex.contact_id IS NULL AND `+core.PoolRecipientAvailableSQL+`
 			ORDER BY cpr.pool_contact_id
 			FOR UPDATE OF cpr SKIP LOCKED
 			LIMIT 1`, campID, orgID, pq.Array(statuses)); err != nil {

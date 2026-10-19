@@ -81,7 +81,7 @@ describe('Business permission groups', () => {
 
   it('keeps new high impact permissions unchecked by default', () => {
     cy.get('[data-cy="btn-new"]').click();
-    ['poolMaster', 'poolDelivery', 'campaignPublicPool', 'campaignPrivateSendErrors', 'mailboxManage', 'assetShare'].forEach((id) => {
+    ['poolMaster', 'poolDelivery', 'poolAllocationPlatform', 'campaignPublicPool', 'campaignPrivateSendErrors', 'mailboxManage', 'assetShare'].forEach((id) => {
       cy.get(`[data-cy="permission-${id}"] input`).should('not.be.checked');
     });
   });

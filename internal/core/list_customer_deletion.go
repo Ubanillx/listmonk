@@ -58,6 +58,9 @@ func (c *Core) DeleteListsWithCustomersInWorkspace(access models.WorkspaceAccess
 		}
 		return nil
 	}, func(tx *sqlx.Tx) error {
+		if err := rejectAllocationListDeletion(tx, ids); err != nil {
+			return err
+		}
 		// A new customer might have joined before the list locks were taken.
 		// Reject that race instead of taking customer locks in the reverse order.
 		for i, query := range []struct {

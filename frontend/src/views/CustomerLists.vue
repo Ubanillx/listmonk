@@ -205,8 +205,9 @@
 
       <b-table-column v-slot="props" field="customer_counts" :label="$t('globals.fields.status')"
         header-class="cy-customer-statuses" width="12%">
-        <b-tag v-if="isPoolGroup" :type="props.row.status === 'active' ? 'is-success' : 'is-light'" class="is-light">
-          {{ $t(props.row.status === 'active' ? 'customer_lists.active' : 'customer_lists.archived') }}
+        <b-tag v-if="isPoolGroup" :type="props.row.status === 'active' && (!props.row.allocationState || props.row.allocationState === 'active') ? 'is-success' : 'is-light'"
+          class="is-light">
+          {{ $t(props.row.allocationState ? `allocation.state.${props.row.allocationState}` : (props.row.status === 'active' ? 'customer_lists.active' : 'customer_lists.archived')) }}
         </b-tag>
         <div v-else class="fields stats">
           <router-link v-for="(count, status) in canViewListCustomers(props.row) ? filterStatuses(props.row) : {}" :key="status"
@@ -250,6 +251,11 @@
               <b-icon icon="database-cog-outline" size="is-small" />
             </b-tooltip>
           </a>
+
+          <b-button v-if="canManageAllocation(props.row)" type="is-text" size="is-small"
+            data-cy="btn-manage-allocation" @click="showPoolManager(props.row)">
+            {{ $t('allocation.manage') }}
+          </b-button>
 
           <router-link v-if="canImportList(props.row)"
             :to="{ name: 'import', query: { customer_list_id: props.row.id } }"
@@ -320,11 +326,15 @@
       <customer-list-form :data="curItem" :is-editing="isEditing" :list-group="listGroup" @finished="formFinished" />
     </b-modal>
 
-    <b-modal scroll="keep" :aria-modal="true" :active.sync="isPoolVisible" :width="960">
-      <div class="modal-card pool-manager-modal" data-cy="pool-manager-modal">
+    <b-modal scroll="keep" :aria-modal="true" :active.sync="isPoolVisible" :width="useAllocationWorkbench ? 1180 : 960" :can-cancel="false" trap-focus
+      has-modal-card custom-content-class="allocation-workbench-container" @after-leave="restorePoolFocus">
+      <pool-allocation-workbench v-if="isPoolVisible && useAllocationWorkbench" ref="allocationWorkbench"
+        :pool="poolItem" :initial-organization-id="poolOrganizationID" @close="closePoolManager" @changed="getLists"
+        @keydown.esc.native.stop.prevent="$refs.allocationWorkbench.requestClose()" />
+      <div v-else class="modal-card pool-manager-modal" data-cy="pool-manager-modal">
         <header class="modal-card-head"><h4>{{ poolItem && poolItem.name }} · {{ $t('customer_lists.poolManageTitle') }}</h4></header>
         <section class="modal-card-body"><pool-manager v-if="poolItem" :pool="poolItem" /></section>
-        <footer class="modal-card-foot"><b-button @click="isPoolVisible = false">{{ $t('globals.buttons.close') }}</b-button></footer>
+        <footer class="modal-card-foot"><b-button @click="closePoolManager">{{ $t('globals.buttons.close') }}</b-button></footer>
       </div>
     </b-modal>
 
@@ -339,6 +349,7 @@ import Vue from 'vue';
 import { mapState } from 'vuex';
 import EmptyPlaceholder from '../components/EmptyPlaceholder.vue';
 import PoolManager from '../components/PoolManager.vue';
+import PoolAllocationWorkbench from '../components/PoolAllocationWorkbench.vue';
 import CustomerListForm from './CustomerListForm.vue';
 import { isOwnedActiveWorkspaceCustomerList } from '../utils/workspace';
 import buildPoolListGroups from '../utils/poolListTree';
@@ -348,6 +359,7 @@ export default Vue.extend({
     CustomerListForm,
     EmptyPlaceholder,
     PoolManager,
+    PoolAllocationWorkbench,
   },
 
   data() {
@@ -357,6 +369,7 @@ export default Vue.extend({
       isEditing: false,
       isFormVisible: false,
       isPoolVisible: false,
+      poolOrganizationID: 0,
       poolItem: null,
       customer_lists: [],
       poolFilters: { organizationId: '', type: '' },
@@ -436,6 +449,11 @@ export default Vue.extend({
     },
 
     showEditForm(customerList) {
+      if (customerList.type === 'org_pool_allocation') {
+        if (this.canManageAllocation(customerList)) this.showPoolManager(customerList);
+        else if (this.canViewListCustomers(customerList)) this.$router.push(this.customerListCustomersRoute(customerList));
+        return;
+      }
       this.curItem = customerList;
       this.isFormVisible = true;
       this.isEditing = true;
@@ -449,8 +467,30 @@ export default Vue.extend({
     },
 
     showPoolManager(customerList) {
-      this.poolItem = customerList;
+      this.poolTrigger = document.activeElement;
+      this.poolOrganizationID = customerList.type === 'org_pool_allocation' ? Number(customerList.organizationId) : 0;
+      this.poolItem = customerList.type === 'org_pool_allocation'
+        ? this.customer_lists.results.find((row) => row.id === Number(customerList.poolParentId)) : customerList;
+      if (!this.poolItem) return;
       this.isPoolVisible = true;
+    },
+
+    closePoolManager() {
+      this.isPoolVisible = false;
+      const query = { ...this.$route.query };
+      delete query.manage_pool; delete query.manage_org; delete query.manage_tab;
+      this.$router.replace({ query }).catch(() => {});
+    },
+
+    restorePoolFocus() {
+      if (this.poolTrigger && this.poolTrigger.isConnected) this.poolTrigger.focus();
+      this.poolTrigger = null;
+    },
+
+    canManageAllocation(row) {
+      return row.type === 'org_pool_allocation' && this.useAllocationWorkbench
+        && (this.$can('pools:allocation_platform_manage') || Number(row.organizationId) === Number(this.workspace.organizationId))
+        && this.customer_lists.results.some((parent) => parent.id === Number(row.poolParentId));
     },
 
     formFinished() {
@@ -498,6 +538,10 @@ export default Vue.extend({
         type_group: this.listGroup,
       }).then((resp) => {
         this.customer_lists = resp;
+        if (this.isPoolGroup && !this.isPoolVisible && this.$route.query.manage_pool) {
+          const target = resp.results.find((row) => row.type === 'pool' && row.id === Number(this.$route.query.manage_pool));
+          if (target && this.canManagePool) this.showPoolManager(target);
+        }
         if (this.isPoolGroup) {
           this.queryParams.page = Math.min(this.queryParams.page, Math.max(1, Math.ceil(this.poolGroups.length / this.poolPageSize)));
         }
@@ -757,7 +801,11 @@ export default Vue.extend({
     // Highest administrators manage any organization's pool; organization
     // admins manage the one they are currently in.
     canManagePool() {
-      return this.$can('pools:delivery_manage') || (this.$can('pools:manage') && this.workspace.organizationId > 0);
+      return this.$can('pools:delivery_manage', 'pools:allocation_platform_manage') || (this.$can('pools:manage') && this.workspace.organizationId > 0);
+    },
+
+    useAllocationWorkbench() {
+      return this.$can('pools:allocation_platform_manage') || (this.$can('pools:manage') && this.workspace.organizationId > 0);
     },
 
     numSelectedLists() {
@@ -792,3 +840,7 @@ export default Vue.extend({
   },
 });
 </script>
+
+<style lang="scss">
+.allocation-workbench-container { width: calc(100% - 32px); }
+</style>

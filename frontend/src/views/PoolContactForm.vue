@@ -12,7 +12,7 @@
         </b-field>
 
         <b-field :label="$t('pool.tableCustomerCode')">
-          <b-input v-model.trim="form.customer_code" data-cy="pool-form-customer-code" />
+          <b-input v-model.trim="form.customer_code" :disabled="isEditing && nameOnly" data-cy="pool-form-customer-code" />
         </b-field>
 
         <b-field :label="$t('pool.tableName')">
@@ -20,23 +20,24 @@
         </b-field>
 
         <b-field :label="$t('pool.tableEmail')" required>
-          <b-input v-model.trim="form.email" type="email" data-cy="pool-form-email" />
+          <b-input v-model.trim="form.email" type="email" :disabled="isEditing && nameOnly" data-cy="pool-form-email" />
         </b-field>
 
         <b-field :label="$t('pool.tableReplyTo')" :message="$t('import.mapReplyToFieldHelp')">
-          <b-input v-model.trim="form.reply_to" type="email" data-cy="pool-form-reply-to" />
+          <b-input v-model.trim="form.reply_to" type="email" :disabled="isEditing && nameOnly" data-cy="pool-form-reply-to" />
         </b-field>
 
         <b-field :label="$t('pool.tableDepartment')"
           :message="$t('pool.formDepartmentHelp')">
-          <b-input v-model.trim="form.allocation_department" data-cy="pool-form-department" />
+          <b-input v-model.trim="form.allocation_department" :disabled="isEditing && nameOnly" data-cy="pool-form-department" />
         </b-field>
       </section>
       <footer class="modal-card-foot has-text-right">
         <b-button @click="$parent.close()">
           {{ $t('globals.buttons.cancel') }}
         </b-button>
-        <b-button native-type="submit" type="is-primary" :loading="loading" :disabled="!form.email || !targetPoolID"
+        <b-button native-type="submit" type="is-primary" :loading="loading"
+          :disabled="!targetPoolID || (!nameOnly && !form.email)"
           data-cy="btn-save-pool-contact">
           {{ $t('globals.buttons.save') }}
         </b-button>
@@ -56,6 +57,7 @@ export default Vue.extend({
     poolLists: { type: Array, default: () => [] },
     contact: { type: Object, default: null },
     isEditing: { type: Boolean, default: false },
+    nameOnly: { type: Boolean, default: false },
   },
 
   data() {
@@ -112,7 +114,7 @@ export default Vue.extend({
 
   methods: {
     onSubmit() {
-      if (!this.targetPoolID || !this.form.email) {
+      if (!this.targetPoolID || (!this.nameOnly && !this.form.email)) {
         return;
       }
       this.loading = true;

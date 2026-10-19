@@ -1,4 +1,25 @@
+import { businessPermissionGroups } from '../../src/utils/businessPermissions';
+
 // All API calls are intercepted. This suite never resets or mutates a database.
+describe('Business permission translations', () => {
+  ['en', 'zh-CN', 'zh-TW'].forEach((locale) => {
+    it(`translates every business bundle label and help text in ${locale}`, () => {
+      cy.readFile(`../i18n/${locale}.json`).then((lang) => {
+        businessPermissionGroups.forEach((group) => {
+          expect(lang[`users.businessGroup.${group.group}`]).to.be.a('string').and.not.equal('');
+          group.permissions.forEach(({ id }) => {
+            ['businessPermission', 'businessHelp'].forEach((prefix) => {
+              const key = `users.${prefix}.${id}`;
+              expect(lang[key], key).to.be.a('string').and.not.equal('');
+              expect(lang[key], key).not.to.equal(key);
+            });
+          });
+        });
+      });
+    });
+  });
+});
+
 describe('Business permission groups', () => {
   const role = { id: 8, name: '部分授权测试', permissions: ['customers:get'] };
 
@@ -16,9 +37,8 @@ describe('Business permission groups', () => {
         cy.intercept('GET', '/api/workspace', { data: { personal: true, organization_id: 0 } });
         cy.intercept('GET', '/api/roles/users', { data: [role] });
         cy.intercept('GET', '/api/customer-lists*', { data: { results: [], total: 0 } });
-        cy.visit('/admin/users/roles/users', {
-          onBeforeLoad(win) { win.localStorage.clear(); },
-        });
+        cy.clearLocalStorage();
+        cy.loginAndVisit('/admin/users/roles/users');
       });
     });
   });
@@ -28,6 +48,10 @@ describe('Business permission groups', () => {
     cy.contains('查看私域客户与列表').should('be.visible');
     cy.contains('部分已授权').should('be.visible');
     cy.contains('维护公海主数据').should('be.visible');
+    cy.get('[data-cy="permission-poolContactEdit"]').should('contain.text', '编辑公海客户全部字段');
+    cy.get('[data-cy="permission-poolContactNameEdit"]').should('contain.text', '仅编辑公海客户名称');
+    cy.get('.modal.is-active').should('not.contain.text', 'users.businessPermission.')
+      .and('not.contain.text', 'users.businessHelp.');
     cy.contains('配置发信与回信邮箱').scrollIntoView().should('be.visible');
     cy.intercept('PUT', '/api/roles/users/8', (req) => {
       expect(req.body.permissions).to.deep.equal(['customers:get']);
@@ -81,7 +105,8 @@ describe('Delegated pool master controls', () => {
         } });
         cy.intercept('GET', '/api/workspace', { data: { personal: true, organization_id: 0 } });
         cy.intercept('GET', '/api/customer-lists*', { data: { results: [pool], total: 1, page: 1, per_page: 20 } });
-        cy.visit('/admin/pool-lists', { onBeforeLoad(win) { win.localStorage.clear(); } });
+        cy.clearLocalStorage();
+        cy.loginAndVisit('/admin/pool-lists');
       });
     });
   };

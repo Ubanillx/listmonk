@@ -182,7 +182,7 @@
 
         <b-table-column v-slot="props" cell-class="actions" align="right">
           <div>
-            <a v-if="canMaintainPoolMaster && (isFirstLevelPool || isPoolRoute)" href="#"
+            <a v-if="canEditPoolContacts && (isFirstLevelPool || isPoolRoute)" href="#"
               @click.prevent="showPoolContactForm(props.row)" data-cy="btn-edit-pool-contact"
               :aria-label="$t('globals.buttons.edit')">
               <b-tooltip :label="$t('globals.buttons.edit')" type="is-dark">
@@ -363,7 +363,8 @@
     <b-modal scroll="keep" :aria-modal="true" :active.sync="isPoolFormVisible" :width="600" class="has-overflow"
       @close="poolEditingContact = null">
       <pool-contact-form :pool-list-id="queryParams.customerListID || 0" :pool-lists="isPoolRoute ? firstLevelPoolLists : []"
-        :contact="poolEditingContact" :is-editing="!!poolEditingContact" @finished="loadPoolContacts" />
+        :contact="poolEditingContact" :is-editing="!!poolEditingContact" :name-only="poolEditNameOnly"
+        @finished="loadPoolContacts" />
     </b-modal>
 
     <!-- Remove pool contacts from this organization, with a shared reason -->
@@ -1286,6 +1287,18 @@ export default Vue.extend({
 
     canMaintainPoolMaster() {
       return this.$can('pools:master_manage');
+    },
+
+    canEditPoolContactsFull() {
+      return this.$can('pools:master_manage') || this.$can('pools:contacts_edit');
+    },
+
+    canEditPoolContacts() {
+      return this.canEditPoolContactsFull || this.$can('pools:contacts_name_edit');
+    },
+
+    poolEditNameOnly() {
+      return !this.canEditPoolContactsFull && this.$can('pools:contacts_name_edit');
     },
 
     canSelectPoolContacts() {

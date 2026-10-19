@@ -89,6 +89,8 @@ const (
 	PermPoolsGet                    = "pools:get"
 	PermPoolsManage                 = "pools:manage"
 	PermPoolsMasterManage           = "pools:master_manage"
+	PermPoolsContactsEdit           = "pools:contacts_edit"
+	PermPoolsContactsNameEdit       = "pools:contacts_name_edit"
 	PermPoolsDeliveryManage         = "pools:delivery_manage"
 	PermPoolsExport                 = "pools:export"
 	PermBouncesGet                  = "bounces:get"

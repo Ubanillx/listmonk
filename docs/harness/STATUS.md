@@ -2,7 +2,11 @@
 
 快照日期：2026-10-19
 
-- 公海客户编辑入口（2026-10-19）：公海客户表在公海主数据维护权限下显示编辑按钮，复用联系人表单编辑客户编码、姓名、邮箱、回信邮箱和分配部门；新增 `PUT /api/customer-lists/:id/pool-contacts/:contact_id`（及 `/api/pools/:id/contacts/:contact_id`）事务更新接口，按一级公海成员关系与工作区权限重验，部门变更会补齐对应组织分配。邮箱重新填写会将已归档联系人恢复为正常状态，原有分配历史不被删除。验证：Go `internal/core`/`cmd` 398 项通过，前端 lint/生产构建通过（仅既有地图 warning），开发后端已重启并返回 200、无待升级；浏览器已确认 `/admin/pool` 三行均出现编辑入口并能打开预填表单，尚未提交真实修改回归。来源：`cmd/pools.go`、`internal/core/pools.go`、`frontend/src/views/{Customers,PoolContactForm}.vue`。
+- 公海编辑权限翻译修正（2026-10-19）：角色表单实际读取 `users.businessPermission.*` / `users.businessHelp.*`，此前只补了底层 `users.permission.*`，导致新增两项显示原始键名。现补齐 `poolContactEdit`、`poolContactNameEdit` 的简中、繁中及英文分组名称和说明；增加三种语言的全部业务分组翻译完整性断言及角色弹窗中文显示断言，保持权限 ID 与授权逻辑不变。验证：隔离 Cypress 8/8（含三语完整性、中文弹窗显示、部分授权保存及权限入口），截图复查通过；生产构建、文档及 diff 检查通过，后端同步重启，8181/9173 均返回 200。来源：`i18n/{en,zh-CN,zh-TW}.json`、`frontend/cypress/e2e/business-permissions.cy.js`。
+
+- 公海客户细粒度编辑权限（2026-10-19）：新增 `pools:contacts_edit`（全部字段）和 `pools:contacts_name_edit`（仅名称）。主数据管理员保持全部编辑兼容；新权限不授予创建、删除、导入或清邮。HTTP 与 Core 均按权限模式和当前组织分配范围重验，名称-only 服务端保留其他字段；角色页和中英文权限说明已同步。来源：`permissions.json`、`internal/auth/models.go`、`cmd/pools.go`、`internal/core/pools.go`、`frontend/src/{utils/businessPermissions.js,views/{Customers,PoolContactForm,RoleForm}.vue}`。
+
+- 公海客户编辑入口（2026-10-19）：公海客户表按公海主数据或细粒度编辑权限显示编辑按钮，复用联系人表单编辑客户编码、姓名、邮箱、回信邮箱和分配部门；新增 `PUT /api/customer-lists/:id/pool-contacts/:contact_id`（及 `/api/pools/:id/contacts/:contact_id`）事务更新接口，按一级公海成员关系与工作区权限重验，部门变更会补齐对应组织分配。邮箱重新填写会将已归档联系人恢复为正常状态，原有分配历史不被删除。验证：Go `internal/core`/`cmd` 398 项通过，前端 lint/生产构建通过（仅既有地图 warning），开发后端已重启并返回 200、无待升级；浏览器已确认 `/admin/pool` 三行均出现编辑入口并能打开预填表单，尚未提交真实修改回归。来源：`cmd/pools.go`、`internal/core/pools.go`、`frontend/src/views/{Customers,PoolContactForm}.vue`。
 
 - Jenkins 主机密钥变更修复（2026-10-12）：构建 82 的部署 SSH 在主机校验阶段退出，旧 ED25519 指纹 `SHA256:bGtB2mCQCFb3XNRDNl75Fn8T+V8duFaFyEC+rTwMgvw` 与 Jenkins 从 `83.229.120.50` 收到的 `SHA256:e+ABNW93OhaVuhFew2TzHkrYYWFGX/e4BmgbIO6H8zg` 不一致；RSA/ECDSA 主机密钥也已变更。通过 Jenkins 原有部署私钥连接目标，核对服务器本机 `/etc/ssh/ssh_host_ed25519_key.pub` 指纹及原有 `/opt/listmonk` 发布、配置和运行中的服务；`Jenkinsfile` 固定 ED25519 公钥已更新，部署文档已校正实际密钥配置。构建 83 成功并报告 `Deployment is healthy`，远程 `current` 指向 `jenkins-83-6a5770f6`，systemd 服务 active，远程本机 `/admin/login` 健康检查通过；`git diff --check`、文档检查与本地 9173 健康检查通过。来源：`Jenkinsfile`、`deploy/README.md`。
 

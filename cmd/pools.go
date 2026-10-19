@@ -686,6 +686,26 @@ func (a *App) requirePoolPermission(c echo.Context, perm string) (models.Workspa
 	return access, nil
 }
 
+// requirePoolContactEditPermission separates shared-contact field editing from
+// pool master administration. Master administrators retain full edit access;
+// delegated roles can be granted either all fields or the name-only subset.
+func (a *App) requirePoolContactEditPermission(c echo.Context) (models.WorkspaceAccess, bool, error) {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return access, false, err
+	}
+	u := auth.GetUser(c)
+	full := u.IsPlatformAdmin() || u.HasPerm(auth.PermPoolsMasterManage) || u.HasPerm(auth.PermPoolsContactsEdit)
+	nameOnly := !full && u.HasPerm(auth.PermPoolsContactsNameEdit)
+	if !full && !nameOnly {
+		return access, false, echo.NewHTTPError(http.StatusForbidden, "permission denied: public pool contact edit")
+	}
+	if err := requireWritableWorkspace(access); err != nil {
+		return access, false, err
+	}
+	return access, nameOnly, nil
+}
+
 // requirePoolAllocationScope restricts a non-platform-admin caller to the pool
 // allocations owned by the active workspace organization.
 func (a *App) requirePoolAllocationScope(c echo.Context, access models.WorkspaceAccess, allocationID int64) error {
@@ -817,7 +837,7 @@ func (a *App) CreatePoolContact(c echo.Context) error {
 // accepted for convenience but always resolve to the first-level pool before
 // authorization and mutation.
 func (a *App) UpdatePoolContact(c echo.Context) error {
-	access, err := a.requirePoolPermission(c, auth.PermPoolsMasterManage)
+	access, nameOnly, err := a.requirePoolContactEditPermission(c)
 	if err != nil {
 		return err
 	}
@@ -829,18 +849,28 @@ func (a *App) UpdatePoolContact(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if _, err := a.core.RequireManageResource(access, resourceLists, poolID); err != nil {
+	u := auth.GetUser(c)
+	if u.IsPlatformAdmin() || u.HasPerm(auth.PermPoolsMasterManage) {
+		if _, err := a.core.RequireManageResource(access, resourceLists, poolID); err != nil {
+			return err
+		}
+	} else if err := a.core.AuthorizePoolListAccess(listID, int64(access.OrganizationID)); err != nil {
 		return err
 	}
 	contactID, err := strconv.ParseInt(c.Param("contact_id"), 10, 64)
 	if err != nil || contactID <= 0 {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid contact id")
 	}
+	if !u.IsPlatformAdmin() && !u.HasPerm(auth.PermPoolsMasterManage) {
+		if err := a.core.AuthorizePoolContactEdit(poolID, int64(access.OrganizationID), contactID); err != nil {
+			return err
+		}
+	}
 	var p models.PoolContact
 	if err := c.Bind(&p); err != nil {
 		return err
 	}
-	out, err := a.core.UpdatePoolContact(poolID, contactID, p)
+	out, err := a.core.UpdatePoolContact(poolID, contactID, p, nameOnly)
 	if err != nil {
 		return err
 	}

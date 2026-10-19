@@ -41,6 +41,18 @@ func TestBusinessPermissionsDoNotInheritMaintenance(t *testing.T) {
 	}
 }
 
+func TestPoolContactEditPermissionsDoNotGrantMasterActions(t *testing.T) {
+	for _, permission := range []string{auth.PermPoolsContactsEdit, auth.PermPoolsContactsNameEdit} {
+		user := permissionTestUser(permission)
+		if canManagePoolMaster(user) {
+			t.Fatalf("%s unexpectedly grants pool master administration", permission)
+		}
+		if requireCustomerListAction(user, models.CustomerListTypePool, false) == nil {
+			t.Fatalf("%s unexpectedly grants pool master list mutation", permission)
+		}
+	}
+}
+
 func TestSensitiveCustomerPermissionAlsoAppliesToOwnersAndManagers(t *testing.T) {
 	a := &App{}
 	for _, role := range []string{"member", "manager"} {

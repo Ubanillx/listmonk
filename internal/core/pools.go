@@ -414,6 +414,23 @@ func (c *Core) AuthorizePoolListAccess(listID int, organizationID int64) error {
 	return nil
 }
 
+// AuthorizePoolContactEdit requires an actual organization allocation member,
+// not merely a delivery grant that makes the pool visible in navigation.
+func (c *Core) AuthorizePoolContactEdit(poolID int, organizationID, contactID int64) error {
+	var allowed bool
+	if err := c.db.Get(&allowed, `SELECT EXISTS(
+		SELECT 1 FROM org_pool_allocation_members sm
+		JOIN org_pool_allocations ps ON ps.id=sm.allocation_id
+		WHERE ps.pool_id=$1 AND ps.organization_id=$2 AND sm.contact_id=$3
+	)`, poolID, organizationID, contactID); err != nil {
+		return err
+	}
+	if !allowed {
+		return echo.NewHTTPError(http.StatusForbidden, "public pool contact is outside the active organization")
+	}
+	return nil
+}
+
 // QueryPoolContacts returns one server-paginated page of the contacts of a
 // first-level pool or one of its organization allocations, together with the
 // total number of rows matching the same filters. Complete records are returned
@@ -784,7 +801,10 @@ func (c *Core) CreatePoolContact(poolID int, p models.PoolContact) (models.PoolC
 // UpdatePoolContact changes the shared master record for a public-pool contact.
 // The pool membership is checked in the same transaction so a contact cannot
 // be edited through an unrelated list (or after it has been removed).
-func (c *Core) UpdatePoolContact(poolID int, contactID int64, p models.PoolContact) (models.PoolContact, error) {
+// Name-only editors are deliberately constrained here, rather than only in
+// the UI, so a crafted request cannot change the contact's identity or routing.
+func (c *Core) UpdatePoolContact(poolID int, contactID int64, p models.PoolContact, nameOnlyArg ...bool) (models.PoolContact, error) {
+	nameOnly := len(nameOnlyArg) > 0 && nameOnlyArg[0]
 	if err := c.ensurePool(poolID); err != nil {
 		return models.PoolContact{}, err
 	}
@@ -802,14 +822,24 @@ func (c *Core) UpdatePoolContact(poolID int, contactID int64, p models.PoolConta
 	}
 	defer tx.Rollback()
 	var current struct {
-		ID    int64  `db:"id"`
-		Email string `db:"email"`
+		ID                   int64  `db:"id"`
+		CustomerCode         string `db:"customer_code"`
+		Email                string `db:"email"`
+		ReplyTo              string `db:"reply_to"`
+		Name                 string `db:"name"`
+		AllocationDepartment string `db:"allocation_department"`
 	}
-	if err = tx.Get(&current, `SELECT pc.id,pc.email FROM pool_contacts pc JOIN pool_members pm ON pm.contact_id=pc.id WHERE pm.pool_id=$1 AND pc.id=$2 FOR UPDATE`, poolID, contactID); err != nil {
+	if err = tx.Get(&current, `SELECT pc.id,pc.customer_code,pc.email,pc.reply_to,pc.name,pc.allocation_department FROM pool_contacts pc JOIN pool_members pm ON pm.contact_id=pc.id WHERE pm.pool_id=$1 AND pc.id=$2 FOR UPDATE`, poolID, contactID); err != nil {
 		if err == sql.ErrNoRows {
 			return models.PoolContact{}, echo.NewHTTPError(http.StatusNotFound, "pool contact not found")
 		}
 		return models.PoolContact{}, err
+	}
+	if nameOnly {
+		p.CustomerCode = current.CustomerCode
+		p.Email = current.Email
+		p.ReplyTo = current.ReplyTo
+		p.AllocationDepartment = current.AllocationDepartment
 	}
 	// Delegated master maintainers receive masked addresses in list responses;
 	// treating a masked value as unchanged prevents an edit from corrupting the
@@ -817,15 +847,17 @@ func (c *Core) UpdatePoolContact(poolID int, contactID int64, p models.PoolConta
 	if strings.Contains(p.Email, "*") {
 		p.Email = current.Email
 	}
-	if p.Email == "" {
+	if p.Email == "" && !nameOnly {
 		return models.PoolContact{}, echo.NewHTTPError(http.StatusBadRequest, "email is required")
 	}
-	parsed, err := mail.ParseAddress(p.Email)
-	if err != nil || !strings.EqualFold(parsed.Address, p.Email) || !strings.Contains(parsed.Address, "@") {
-		return models.PoolContact{}, echo.NewHTTPError(http.StatusBadRequest, "invalid email")
+	if p.Email != "" {
+		parsed, parseErr := mail.ParseAddress(p.Email)
+		if parseErr != nil || !strings.EqualFold(parsed.Address, p.Email) || !strings.Contains(parsed.Address, "@") {
+			return models.PoolContact{}, echo.NewHTTPError(http.StatusBadRequest, "invalid email")
+		}
 	}
 	var exists bool
-	if p.AllocationDepartment != "" {
+	if p.AllocationDepartment != "" && !nameOnly {
 		if err = tx.Get(&exists, `SELECT EXISTS(SELECT 1 FROM organizations WHERE status=$1 AND LOWER(name)=LOWER($2))`, models.OrganizationStatusActive, p.AllocationDepartment); err != nil {
 			return models.PoolContact{}, err
 		}
@@ -833,12 +865,12 @@ func (c *Core) UpdatePoolContact(poolID int, contactID int64, p models.PoolConta
 			return models.PoolContact{}, echo.NewHTTPError(http.StatusBadRequest, "allocation department does not exist")
 		}
 	}
-	if _, err = tx.Exec(`UPDATE pool_contacts SET customer_code=$1,email=$2,name=$3,allocation_department=$4,reply_to=$5,status=CASE WHEN status='archived' THEN 'active' ELSE status END,updated_at=NOW() WHERE id=$6`, p.CustomerCode, p.Email, p.Name, p.AllocationDepartment, p.ReplyTo, contactID); err != nil {
+	if _, err = tx.Exec(`UPDATE pool_contacts SET customer_code=$1,email=$2,name=$3,allocation_department=$4,reply_to=$5,status=CASE WHEN status='archived' AND $2<>'' THEN 'active' ELSE status END,updated_at=NOW() WHERE id=$6`, p.CustomerCode, p.Email, p.Name, p.AllocationDepartment, p.ReplyTo, contactID); err != nil {
 		return models.PoolContact{}, err
 	}
 	// Keep the existing allocation history, while making a newly selected
 	// organization immediately receive the contact when its allocation exists.
-	if p.AllocationDepartment != "" {
+	if p.AllocationDepartment != "" && !nameOnly {
 		if _, err = tx.Exec(`
 			INSERT INTO org_pool_allocation_members(allocation_id,contact_id,status)
 			SELECT ps.id,$2,'active'

@@ -17,6 +17,8 @@ export const businessPermissionGroups = [
       { id: 'poolRead', permissions: ['pools:get'] },
       { id: 'poolAllocation', permissions: ['pools:manage'] },
       { id: 'poolMaster', permissions: ['pools:master_manage'] },
+      { id: 'poolContactEdit', permissions: ['pools:contacts_edit'] },
+      { id: 'poolContactNameEdit', permissions: ['pools:contacts_name_edit'] },
       { id: 'poolDelivery', permissions: ['pools:delivery_manage'] },
       { id: 'poolExport', permissions: ['pools:export'] },
     ],

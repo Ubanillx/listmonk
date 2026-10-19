@@ -1,6 +1,6 @@
 # 业务逻辑
 
-- **公海客户编辑**：只有 `pools:master_manage` 可编辑一级公海共享联系人；列表页和 `/admin/pool` 汇总页显示编辑入口，组织分配列表可作为只读上下文传入一级公海 ID。`PUT /api/customer-lists/:id/pool-contacts/:contact_id`（及 `/api/pools/:id/contacts/:contact_id`）在事务内重验列表成员关系、工作区资源维护权限、邮箱/回信地址和启用组织分配部门；部门变更只补齐新组织分配，不删除既有分配历史。重新填写邮箱会把 archived 联系人恢复 active，blocklisted 状态不被覆盖。非平台管理员响应仍使用安全 DTO 脱敏邮箱；编辑时回传脱敏邮箱按“未修改”处理，避免覆盖真实地址。
+- **公海客户编辑**：`pools:master_manage` 和 `pools:contacts_edit` 可编辑一级公海共享联系人的全部字段，`pools:contacts_name_edit` 只能编辑名称；列表页和 `/admin/pool` 汇总页按权限显示编辑入口，组织分配列表可作为只读上下文传入一级公海 ID。`PUT /api/customer-lists/:id/pool-contacts/:contact_id`（及 `/api/pools/:id/contacts/:contact_id`）在事务内重验列表成员关系、当前组织分配范围、邮箱/回信地址和启用组织分配部门；名称-only 请求服务端保留所有其他字段。部门变更只补齐新组织分配，不删除既有分配历史。重新填写邮箱会把 archived 联系人恢复 active，blocklisted 状态不被覆盖。非平台管理员响应仍使用安全 DTO 脱敏邮箱；编辑时回传脱敏邮箱按“未修改”处理，避免覆盖真实地址。
 - **活动克隆模板引用（2026-10-12）**：同空间且目标所有者可以正常发送使用原模板时，复用 `template_id` 与模板素材，不因克隆活动而增加模板库记录；个人空间要求活动所有者不变。跨空间及他人私有模板依赖仍独立复制，平台管理员巡查权限不得当作模板复用授权。活动自身素材保持独立复制，组织/资源/素材图与目录权限继续在锁内重验；可视化无模板引用规则不变。已有模板副本不自动清理，复用后的模板编辑影响所有引用它的活动。来源：`internal/core/workspace_actions.go::{CloneCampaignForWorkspaceWithSource,canReuseCampaignTemplate}`、`cmd/campaign_clone_test.go`。
 
 - **发送错误明细（v6.60.0）**：每次失败事件与活动总错误数同语句保存，事件快照按客户、具体错误、分类、阶段汇总，重试不覆盖。查询/Excel 导出都要求活动 owner 边界、列表授权与收件人/客户查看能力；导出按私域/公海源类型分别检查导出授权。敏感权限控制邮箱/错误原文和相关搜索；公海非平台始终脱敏。普通用户不能读取转移活动前所有者快照或已转移私域客户的错误明细，删除活动清理事件。额度/主动停止不生成事件，缺历史明细的次数单独提示，追踪关闭也能诊断发送失败。来源：`cmd/campaign_send_errors.go`、`internal/core/campaign_send_errors.go`、`cmd/campaign_send_error_report_test.go`、`internal/manager/send_failure.go`。

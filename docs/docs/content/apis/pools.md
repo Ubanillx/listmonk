@@ -104,6 +104,12 @@ Key endpoints:
 - `POST /api/pools/import` — legacy ordinary-list-to-pool compatibility route;
   requires `pools:master_manage`, plus the source list's owner/workspace boundary;
   new product flows use the unified customer import endpoint.
+- `PUT /api/customer-lists/:id/pool-contacts/:contact_id` (or
+  `PUT /api/pools/:id/contacts/:contact_id`) — edit a shared public-pool
+  contact. `pools:contacts_edit` permits all contact fields, while
+  `pools:contacts_name_edit` permits only `name`; `pools:master_manage`
+  retains full edit compatibility but still controls create/delete/import/archive.
+  Non-platform callers must have the pool allocated to the active organization.
 - `GET /api/pools/:id/management-target?organization_id=...` — allocation state for an explicit organization; requires `pools:manage` or `pools:delivery_manage`. Allocation-only callers must target their active organization.
 - `POST /api/campaigns/:id/pools` — attach a first-level public-pool audience to a campaign draft. Organization allocation list IDs are rejected; the selected first-level pool is resolved to the applicable allocation when the campaign is sent.
 

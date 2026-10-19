@@ -30,6 +30,8 @@
             "pools:get",
             "pools:manage",
             "pools:master_manage",
+            "pools:contacts_edit",
+            "pools:contacts_name_edit",
             "pools:delivery_manage",
             "pools:export"
         ]

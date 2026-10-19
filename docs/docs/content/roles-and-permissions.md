@@ -64,6 +64,8 @@ A user role is a collection of user related permissions. User roles are attached
 | pools       | pools:get             | Browse and search public-pool contacts. Non-platform-administrators only see pools granted to the active organization, with masked e-mail addresses. |
 |             | pools:manage          | Create allocations for already-authorized pools and assign, remove, or restore allocation members in the active organization. Other organizations additionally require delivery administration |
 |             | pools:master_manage   | Create/edit/delete first-level pools, import/create/delete pool contacts, and archive invalid emails. Delegated maintainers still receive masked DTOs |
+|             | pools:contacts_edit  | Edit all public-pool contact fields (code, name, e-mail, reply-to, and allocation department); does not grant pool administration |
+|             | pools:contacts_name_edit | Edit public-pool contact names only; all other fields are retained by the server |
 |             | pools:delivery_manage | Grant/revoke organization pool delivery authorization and select another target organization; does not grant contact plaintext or allocation maintenance |
 |             | pools:export          | Export public-pool contacts. Non-platform-administrators only export pools granted to the active organization, with masked e-mail addresses. |
 | transactional | tx:send             | Send transactional messages to customers |

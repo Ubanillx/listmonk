@@ -192,7 +192,7 @@ export default Vue.extend({
         'campaigns:schedule', 'campaigns:control', 'campaigns:recipients', 'bounces:delete',
         'bounces:blocklist', 'users:tokens', 'pools:manage', 'pools:export',
         'organizations:platform_manage',
-        'customer_lists:delete', 'pools:master_manage', 'pools:delivery_manage',
+        'customer_lists:delete', 'pools:master_manage', 'pools:contacts_edit', 'pools:delivery_manage',
         'assets:share', 'mailboxes:manage', 'campaigns:public_pool_send',
       ].includes(permission);
     },
@@ -360,6 +360,8 @@ export default Vue.extend({
         'campaigns:public_pool_send',
         'customer_lists:delete',
         'pools:master_manage',
+        'pools:contacts_edit',
+        'pools:contacts_name_edit',
         'pools:delivery_manage',
         'assets:share',
         'mailboxes:manage',

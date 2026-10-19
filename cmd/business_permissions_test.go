@@ -19,7 +19,8 @@ func TestBusinessPermissionsDoNotInheritMaintenance(t *testing.T) {
 	broad := permissionTestUser(auth.PermCustomersManage, auth.PermListManageAll, auth.PermPoolsManage,
 		auth.PermTemplatesManage, auth.PermMediaManage, auth.PermCampaignsManageAll)
 	for _, permission := range []string{auth.PermListDelete, auth.PermPoolsMasterManage, auth.PermPoolsDeliveryManage,
-		auth.PermAssetsShare, auth.PermMailboxesUse, auth.PermMailboxesManage, auth.PermCustomersSensitiveRead} {
+		auth.PermAssetsShare, auth.PermMailboxesUse, auth.PermMailboxesManage, auth.PermCustomersSensitiveRead,
+		auth.PermCampaignsPrivateSendErrorDetails} {
 		t.Run(permission, func(t *testing.T) {
 			if requireLegacyPermission(broad, permission) == nil {
 				t.Fatalf("maintenance unexpectedly grants %s", permission)

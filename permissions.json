@@ -57,6 +57,7 @@
             "campaigns:schedule",
             "campaigns:control",
             "campaigns:recipients",
+            "campaigns:private_send_error_details",
             "campaigns:public_pool_send"
         ]
     },

@@ -9,12 +9,16 @@ import store from './store';
 import * as api from './api';
 import Utils from './utils';
 import { installA11y } from './a11y';
+import AppPagination from './components/AppPagination.vue';
+import PaginatedTable from './components/PaginatedTable';
 
 // Internationalisation.
 Vue.use(VueI18n);
 const i18n = new VueI18n();
 
 Vue.use(Buefy, {});
+Vue.component('AppPagination', AppPagination);
+Vue.component('PaginatedTable', PaginatedTable);
 Vue.config.productionTip = false;
 
 // Return null until the authenticated profile has been loaded. This keeps the

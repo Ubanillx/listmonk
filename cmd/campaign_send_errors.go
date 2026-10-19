@@ -26,6 +26,7 @@ func (a *App) campaignSendErrorRequest(c echo.Context) (models.WorkspaceAccess, 
 	f.IncludePrivate = hasLegacyPermission(user, auth.PermCustomersGetAll, auth.PermCustomersGet) && requireAPIKeyScope(c, apiKeyScopeCustomersRead) == nil
 	f.IncludePool = hasLegacyPermission(user, auth.PermPoolsGet) && requireAPIKeyScope(c, apiKeyScopeListsRead) == nil
 	f.SensitivePrivate = user.IsPlatformAdmin() || user.HasPerm(auth.PermCustomersSensitiveRead)
+	f.PrivateDiagnostics = user.IsPlatformAdmin() || user.HasPerm(auth.PermCampaignsPrivateSendErrorDetails)
 	f.SensitivePool = user.IsPlatformAdmin()
 	if !f.IncludePrivate && !f.IncludePool {
 		return access, f, echo.NewHTTPError(http.StatusForbidden, "customer read permission required")
@@ -39,7 +40,8 @@ func (a *App) campaignSendErrorRequest(c echo.Context) (models.WorkspaceAccess, 
 func redactCampaignSendErrorRow(row *models.CampaignSendErrorRow, f models.CampaignSendErrorFilters) {
 	if (row.RecipientType == "pool" && !f.SensitivePool) || (row.RecipientType == "private" && !f.SensitivePrivate) {
 		row.Email = maskEmail(row.Email)
-		// Raw diagnostics may embed recipient addresses or account data.
+	}
+	if (row.RecipientType == "pool" && !f.SensitivePool) || (row.RecipientType == "private" && !f.PrivateDiagnostics) {
 		row.Error = ""
 	}
 }
@@ -112,7 +114,7 @@ func (a *App) ExportCampaignSendErrors(c echo.Context) error {
 			smtpCode = row.SMTPCode
 		}
 		message := row.Error
-		if message == "" && ((row.RecipientType == "pool" && !f.SensitivePool) || (row.RecipientType == "private" && !f.SensitivePrivate)) {
+		if message == "" && ((row.RecipientType == "pool" && !f.SensitivePool) || (row.RecipientType == "private" && !f.PrivateDiagnostics)) {
 			message = book.lang.T("campaigns.sendErrorMasked")
 		}
 		return sheet.addRow(row.CustomerCode, row.Name, row.Email,

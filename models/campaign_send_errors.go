@@ -45,12 +45,13 @@ type CampaignSendErrorReason struct {
 }
 
 type CampaignSendErrorFilters struct {
-	Search           string
-	Category         string
-	IncludePrivate   bool
-	IncludePool      bool
-	SensitivePrivate bool
-	SensitivePool    bool
+	Search             string
+	Category           string
+	IncludePrivate     bool
+	IncludePool        bool
+	SensitivePrivate   bool
+	PrivateDiagnostics bool
+	SensitivePool      bool
 }
 
 type CampaignSendErrorReport struct {

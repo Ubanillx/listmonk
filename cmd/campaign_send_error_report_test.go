@@ -160,7 +160,7 @@ func readSendErrorWorkbook(t *testing.T, data []byte) ([][]string, [][]string) {
 
 func TestCampaignSendErrorReportGroupsFiltersAndExportsAllPages(t *testing.T) {
 	a, s, id, ids := newSendErrorReportFixture(t)
-	u := sendErrorReportUser(auth.PermCustomersSensitiveRead, auth.PermCustomersExport, auth.PermPoolsExport)
+	u := sendErrorReportUser(auth.PermCustomersSensitiveRead, auth.PermCampaignsPrivateSendErrorDetails, auth.PermCustomersExport, auth.PermPoolsExport)
 	r := readSendErrorReport(t, a, u, id, "")
 	if r.Total != 24 || len(r.Results) != 20 || r.RecordedErrors != 26 || r.HistoricalErrors != 2 || !r.CanExport {
 		t.Fatalf("wrong grouped totals: %+v", r)
@@ -228,27 +228,60 @@ func TestCampaignSendErrorReportEnforcesOwnershipMaskingAndExportGrants(t *testi
 	u := sendErrorReportUser()
 	r := readSendErrorReport(t, a, u, id, "?category=smtp_rejected")
 	if r.CanExport || len(r.Results) != 1 || r.Results[0].Error != "" || strings.Contains(r.Results[0].Email, "recipient0@example.test") {
-		t.Fatalf("masked view exposed diagnostics: %+v", r)
+		t.Fatalf("private diagnostic was visible without its grant: %+v", r)
 	}
 	if r := readSendErrorReport(t, a, u, id, "?search=recipient0@example.test"); r.Total != 0 {
-		t.Fatal("search exposed masked recipient")
+		t.Fatal("search exposed a diagnostic without its grant")
 	}
-	c, _ := sendErrorReportContext(u, id, "", true)
-	requireOrgPoolAllocationRejection(t, a.ExportCampaignSendErrors(c), http.StatusForbidden)
+	if r := readSendErrorReport(t, a, u, id, "?search=recipient1@example.test"); r.Total != 0 {
+		t.Fatal("search exposed a private email absent from the visible diagnostic")
+	}
+	u = sendErrorReportUser(auth.PermCampaignsPrivateSendErrorDetails)
+	if r := readSendErrorReport(t, a, u, id, "?category=smtp_rejected"); len(r.Results) != 1 || r.Results[0].Error != "550 5.1.1 rejected recipient0@example.test" || strings.Contains(r.Results[0].Email, "recipient0@example.test") {
+		t.Fatalf("private diagnostic grant changed email redaction: %+v", r)
+	}
+	if r := readSendErrorReport(t, a, u, id, "?category=smtp_auth"); len(r.Results) != 1 || r.Results[0].Error != "" || strings.Contains(r.Results[0].Email, "pool-secret") {
+		t.Fatalf("private diagnostic grant exposed pool diagnostics: %+v", r)
+	}
+	if r := readSendErrorReport(t, a, u, id, "?search=pool-secret@example.test"); r.Total != 0 {
+		t.Fatal("search exposed a restricted pool diagnostic")
+	}
 	u = sendErrorReportUser(auth.PermCustomersExport)
+	c, rec := sendErrorReportContext(u, id, "?category=smtp_rejected", true)
+	if err := a.ExportCampaignSendErrors(c); err != nil {
+		t.Fatalf("private-only export with export permission rejected: %v", err)
+	}
+	rows, _ := readSendErrorWorkbook(t, rec.Body.Bytes())
+	if len(rows) != 2 || strings.Contains(rows[1][6], "550 5.1.1 rejected") {
+		t.Fatalf("export exposed diagnostic without its grant: %v", rows)
+	}
+	u = sendErrorReportUser(auth.PermCustomersExport, auth.PermCampaignsPrivateSendErrorDetails)
+	c, rec = sendErrorReportContext(u, id, "?category=smtp_rejected", true)
+	if err := a.ExportCampaignSendErrors(c); err != nil {
+		t.Fatalf("private diagnostic export with grant rejected: %v", err)
+	}
+	rows, _ = readSendErrorWorkbook(t, rec.Body.Bytes())
+	foundDiagnostic := false
+	for _, row := range rows[1:] {
+		if row[0] == "C-00" {
+			foundDiagnostic = strings.Contains(row[6], "550 5.1.1 rejected")
+			if strings.Contains(row[2], "recipient0@example.test") {
+				t.Fatalf("export exposed private email without sensitive-read: %v", row)
+			}
+		}
+	}
+	if !foundDiagnostic {
+		t.Fatal("private export hid error diagnostic without sensitive-read")
+	}
 	c, _ = sendErrorReportContext(u, id, "", true)
 	requireOrgPoolAllocationRejection(t, a.ExportCampaignSendErrors(c), http.StatusForbidden)
-	c, _ = sendErrorReportContext(u, id, "?category=smtp_rejected", true)
-	if err := a.ExportCampaignSendErrors(c); err != nil {
-		t.Fatalf("private-only filtered export rejected: %v", err)
-	}
 	// An organization manager may inspect a shared campaign but not its identities.
 	u.ID = 2
 	c, _ = sendErrorReportContext(u, id, "", false)
 	if err := a.GetCampaignSendErrors(c); err == nil {
 		t.Fatal("manager inspected another owner's failure identities")
 	}
-	u = sendErrorReportUser(auth.PermCustomersSensitiveRead)
+	u = sendErrorReportUser(auth.PermCustomersSensitiveRead, auth.PermCampaignsPrivateSendErrorDetails)
 	c, _ = sendErrorReportContext(u, id, "", false)
 	c.Set(auth.IntegrationTokenHTTPCtxKey, auth.IntegrationToken{Kind: auth.IntegrationTokenKindPersonal, WorkspaceOrganizationID: null.Int{Int: 101, Valid: true}, Scopes: pq.StringArray{apiKeyScopeCampaignsRecipients}})
 	requireOrgPoolAllocationRejection(t, a.GetCampaignSendErrors(c), http.StatusForbidden)
@@ -264,5 +297,48 @@ func TestCampaignSendErrorReportEnforcesOwnershipMaskingAndExportGrants(t *testi
 	u.ID = 2
 	if r := readSendErrorReport(t, a, u, id, ""); r.Total != 0 {
 		t.Fatal("campaign transfer exposed previous owner's snapshots")
+	}
+}
+
+func TestCampaignSendErrorReportPrivateDiagnosticPermissionIsIndependent(t *testing.T) {
+	a, _, id, _ := newSendErrorReportFixture(t)
+	for _, tc := range []struct {
+		name        string
+		diagnostics bool
+		email       bool
+	}{
+		{name: "neither"},
+		{name: "sensitive only", email: true},
+		{name: "diagnostics only", diagnostics: true},
+		{name: "both", diagnostics: true, email: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			perms := []string{auth.PermCustomersExport}
+			if tc.diagnostics {
+				perms = append(perms, auth.PermCampaignsPrivateSendErrorDetails)
+			}
+			if tc.email {
+				perms = append(perms, auth.PermCustomersSensitiveRead)
+			}
+			u := sendErrorReportUser(perms...)
+			r := readSendErrorReport(t, a, u, id, "?category=smtp_rejected")
+			if len(r.Results) != 1 || r.RecordedErrors != 2 || r.Results[0].SMTPCode != 550 || (r.Results[0].Error != "") != tc.diagnostics {
+				t.Fatalf("diagnostic permission changed classification/count or returned wrong visibility: %+v", r)
+			}
+			if strings.Contains(r.Results[0].Email, "recipient0@example.test") != tc.email {
+				t.Fatalf("diagnostic permission changed email visibility: %+v", r.Results[0])
+			}
+			if r := readSendErrorReport(t, a, u, id, "?search=rejected"); (r.Total == 1) != tc.diagnostics {
+				t.Fatalf("diagnostic search bypassed its permission: %+v", r)
+			}
+			c, rec := sendErrorReportContext(u, id, "?category=smtp_rejected", true)
+			if err := a.ExportCampaignSendErrors(c); err != nil {
+				t.Fatal(err)
+			}
+			rows, _ := readSendErrorWorkbook(t, rec.Body.Bytes())
+			if len(rows) != 2 || strings.Contains(rows[1][6], "550 5.1.1 rejected") != tc.diagnostics || strings.Contains(rows[1][2], "recipient0@example.test") != tc.email {
+				t.Fatalf("export did not enforce independent diagnostic and email permissions: %v", rows)
+			}
+		})
 	}
 }

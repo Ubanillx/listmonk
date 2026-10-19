@@ -14,9 +14,11 @@
 
 ### 错误原因与客户汇总（v6.60.0）
 
+发送错误弹窗沿用 `AppPagination.vue` 的统一条数/页码控件，通过 `PaginatedTable.js` 与 `TablePagination.vue` 适配 Buefy 表格并保留列注册、工具栏和分页事件；组件在 `main.js` 注册。
+
 生产 Store 实现 `CampaignSendErrorDetailStore`，`RecordCampaignSendFailure` 在同一 SQL 语句中新增 `campaign_send_errors` 失败事件与递增 `send_errors`；旧 count-only Store 仍有兼容回退。事件保存发送时的客户编码、姓名、邮箱、私域/公海 ID、目标组织、阶段、错误分类、SMTP 状态码、错误原文与时间；凭据模式、NUL/control 字符过滤，原文限 4000 字符。事件绑定当时活动所有者与工作区，普通用户不得通过活动转移读取前所有者快照，私域客户转移也隐藏旧明细；删除客户后保留原活动历史，删除活动级联清理错误事件。
 
-`GET /api/campaigns/:id/send-errors` 按客户快照、错误原文、阶段和分类汇总重复失败，提供分类次数、分页和姓名/客户编码搜索；敏感信息授权后才能按邮箱或错误原文搜索。`/send-errors/export` 按相同筛选导出全部汇总行的 Excel，附错误原因汇总工作表与历史缺明细次数；表头/分类跟随当前语言，原文与客户字符串作为文本写入。两端要求活动所有者/平台管理边界、原列表授权、`campaigns:get_analytics`、`campaigns:recipients` 和对应私域/公海查看权限；导出另需匹配源类型的客户导出权限。个人 Key 需 `campaigns:recipients`，私域明细另需 `customers:read`，公海另需 `customer_lists:read`。非平台公海以及无私域敏感权限的邮箱脱敏，错误原文置空，保留分类/状态码；不依赖个体追踪开关。Core 查询再次验证当前活动范围、归档/转移状态与私域客户范围。
+`GET /api/campaigns/:id/send-errors` 按客户快照、错误原文、阶段和分类汇总重复失败，提供分类次数、分页和姓名/客户编码搜索；私域详细诊断的显示、搜索和导出由独立 `campaigns:private_send_error_details` 控制，缺少该权限仍可见分类、状态码与次数。该权限不解锁邮箱，按私域邮箱字段搜索仍需 `customers:sensitive_read`。`/send-errors/export` 按相同筛选导出全部汇总行的 Excel，附错误原因汇总工作表与历史缺明细次数；表头/分类跟随当前语言，原文与客户字符串作为文本写入。两端要求活动所有者/平台管理边界、原列表授权、`campaigns:get_analytics`、`campaigns:recipients` 和对应私域/公海查看权限；导出另需匹配源类型的客户导出权限。个人 Key 需 `campaigns:recipients`，私域明细另需 `customers:read`，公海另需 `customer_lists:read`。无诊断权限时私域详细原文置空，非平台公海邮箱脱敏且错误原文置空，保留分类/状态码；不依赖个体追踪开关。Core 查询再次验证当前活动范围、归档/转移状态与私域客户范围。
 
 管理端从活动错误次数打开 `CampaignSendErrors.vue`，支持分类/搜索、跨页统计与 Excel 导出；关闭或工作区切换使旧请求失效。历史 `send_errors` 未保存的明细以缺失计数提示，不从日志推测。来源：`cmd/{campaign_send_errors,campaign_send_error_report_test,manager_store}.go`、`internal/core/campaign_send_errors.go`、`internal/manager/{send_failure,send_failure_test}.go`、`internal/migrations/v6.60.0{,_test}.go`。
 
@@ -24,7 +26,7 @@
 
 列表删除支持可选 `delete_customers=true`，管理端先确认列表，再选择仅删列表或同时删除对应客户。默认保留客户；同时删除仅作用于本次所选列表独占、当前操作者可维护且非待转移的客户，其他列表（包括归档及已退订成员）仍在使用的客户与无关孤立客户保留。私域另需 `customers:delete`；公海沿用 `pools:master_manage`，共享其他一级公海或存续组织分配的主数据保留，分配删除不得清除主数据；个人 API Key 另需 `customers:write`。Core 在组织锁后先锁客户再锁列表，与成员写入顺序一致；锁内重查关联和共享关系，客户/列表同事务删除，有新关联竞态返回冲突而不倒序加锁。审计记录选择及实际客户删除数。来源：`cmd/customer_lists.go`、`internal/core/{list_customer_deletion,workspace_mutations}.go`、`frontend/src/views/CustomerLists.vue`。
 
-角色配置以私域客户与列表、公海客户与列表、营销活动、模板与素材、发信与回信邮箱五组呈现 20 项业务权限，不设计预设角色。`frontend/src/utils/businessPermissions.js` 只负责显示分组，服务端仍持久化原权限 ID；旧角色的部分授权不会因打开、保存而扩展。名称、映射、依赖和升级语义见 [业务权限说明](docs/content/business-permissions.md)。
+角色配置以私域客户与列表、公海客户与列表、营销活动、模板与素材、发信与回信邮箱五组呈现业务权限，不设计预设角色。`frontend/src/utils/businessPermissions.js` 只负责显示分组，服务端仍持久化原权限 ID；旧角色的部分授权不会因打开、保存而扩展。名称、映射、依赖和升级语义见 [业务权限说明](docs/content/business-permissions.md)。
 
 新增 `customer_lists:delete`、`pools:master_manage`、`pools:delivery_manage`、`assets:share`、`mailboxes:use`、`mailboxes:manage`。组织身份和所有权决定数据范围，不能绕过查看、导出、统计或私域敏感信息权限；列表、明细、写入响应、Excel、API JSON 和收件人报告一致脱敏，省略的编辑字段保留原值。全局模板也要求查看/维护权限，改变共享范围另需共享权限。发信与回信邮箱使用和配置分别授权，配置仍保留所有者/组织边界。
 

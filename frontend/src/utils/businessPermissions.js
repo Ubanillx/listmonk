@@ -27,6 +27,7 @@ export const businessPermissionGroups = [
     group: 'campaigns',
     permissions: [
       { id: 'campaignRead', permissions: ['campaigns:get', 'campaigns:get_all', 'campaigns:get_analytics', 'campaigns:recipients'] },
+      { id: 'campaignPrivateSendErrors', permissions: ['campaigns:private_send_error_details'] },
       { id: 'campaignMaintain', permissions: ['campaigns:manage', 'campaigns:manage_all', 'campaigns:test'] },
       { id: 'campaignSend', permissions: ['campaigns:send', 'campaigns:schedule'] },
       { id: 'campaignControl', permissions: ['campaigns:control'] },

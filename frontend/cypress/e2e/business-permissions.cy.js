@@ -81,9 +81,22 @@ describe('Business permission groups', () => {
 
   it('keeps new high impact permissions unchecked by default', () => {
     cy.get('[data-cy="btn-new"]').click();
-    ['poolMaster', 'poolDelivery', 'campaignPublicPool', 'mailboxManage', 'assetShare'].forEach((id) => {
+    ['poolMaster', 'poolDelivery', 'campaignPublicPool', 'campaignPrivateSendErrors', 'mailboxManage', 'assetShare'].forEach((id) => {
       cy.get(`[data-cy="permission-${id}"] input`).should('not.be.checked');
     });
+  });
+
+  it('grants private sending diagnostics without granting sensitive customer data', () => {
+    cy.contains('a', role.name).click();
+    cy.get('[data-cy="permission-campaignPrivateSendErrors"]').scrollIntoView()
+      .should('contain.text', '查看私域发送错误详情').click();
+    cy.intercept('PUT', '/api/roles/users/8', (req) => {
+      expect(req.body.permissions).to.have.members(['customers:get', 'campaigns:private_send_error_details']);
+      expect(req.body.permissions).not.to.include('customers:sensitive_read');
+      req.reply({ data: { ...role, permissions: req.body.permissions } });
+    }).as('saveDiagnostics');
+    cy.get('[data-cy="btn-save"]').click();
+    cy.wait('@saveDiagnostics');
   });
 });
 

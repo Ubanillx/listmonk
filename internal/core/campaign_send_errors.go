@@ -12,9 +12,9 @@ import (
 // A shared/manager campaign read does not grant recipient-detail access; moved
 // private customers are excluded even if a historical snapshot still exists.
 func campaignSendErrorCTE(access models.WorkspaceAccess, id int, f models.CampaignSendErrorFilters) (string, []any) {
-	scope, scopeArgs := workspaceSensitiveCustomerPredicate(access, "c", 10)
+	scope, scopeArgs := workspaceSensitiveCustomerPredicate(access, "c", 11)
 	args := []any{id, strings.TrimSpace(f.Search), f.Category, f.IncludePrivate, f.IncludePool,
-		access.OrganizationID, access.PlatformAdmin, f.SensitivePrivate, f.SensitivePool}
+		access.OrganizationID, access.PlatformAdmin, f.SensitivePrivate, f.SensitivePool, f.PrivateDiagnostics}
 	args = append(args, scopeArgs...)
 	sql := fmt.Sprintf(`WITH scoped_campaign AS (
 		SELECT c.* FROM campaigns c WHERE c.id=$1 AND (%s) AND c.transfer_pending_at IS NULL
@@ -22,7 +22,7 @@ func campaignSendErrorCTE(access models.WorkspaceAccess, id int, f models.Campai
 	), visible AS (
 		SELECT e.recipient_type,e.recipient_id,e.recipient_organization_id,e.customer_code,e.name,e.email,
 			e.stage,e.category,e.smtp_code,e.created_at,
-			CASE WHEN (e.recipient_type='private' AND $8::BOOL) OR (e.recipient_type='pool' AND $9::BOOL) THEN e.error ELSE '' END AS error
+			CASE WHEN (e.recipient_type='private' AND $10::BOOL) OR (e.recipient_type='pool' AND $9::BOOL) THEN e.error ELSE '' END AS error
 		FROM campaign_send_errors e JOIN scoped_campaign c ON c.id=e.campaign_id
 		LEFT JOIN customers cu ON e.recipient_type='private' AND cu.id=e.recipient_id
 		WHERE ($7::BOOL OR (e.campaign_owner_user_id IS NOT DISTINCT FROM c.owner_user_id
@@ -33,8 +33,8 @@ func campaignSendErrorCTE(access models.WorkspaceAccess, id int, f models.Campai
 	), filtered AS (
 		SELECT * FROM visible WHERE ($3::TEXT='' OR category=$3)
 		AND ($2::TEXT='' OR name ILIKE '%%'||$2||'%%' OR customer_code ILIKE '%%'||$2||'%%'
-			OR (((recipient_type='private' AND $8::BOOL) OR (recipient_type='pool' AND $9::BOOL))
-				AND (email ILIKE '%%'||$2||'%%' OR error ILIKE '%%'||$2||'%%')))
+			OR (((recipient_type='private' AND $8::BOOL) OR (recipient_type='pool' AND $9::BOOL)) AND email ILIKE '%%'||$2||'%%')
+			OR (((recipient_type='private' AND $10::BOOL) OR (recipient_type='pool' AND $9::BOOL)) AND error ILIKE '%%'||$2||'%%'))
 	), grouped AS (
 		SELECT recipient_type,recipient_id,recipient_organization_id,customer_code,name,email,stage,category,smtp_code,error,
 			COUNT(*)::INT AS count,MIN(created_at) AS first_at,MAX(created_at) AS last_at

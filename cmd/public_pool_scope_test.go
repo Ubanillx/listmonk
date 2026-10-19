@@ -83,3 +83,24 @@ func TestPermissionsManifestCoversPublicPoolSend(t *testing.T) {
 		t.Fatalf("permissions.json does not list %q", auth.PermCampaignsPublicPoolSend)
 	}
 }
+
+func TestPermissionsManifestCoversPrivateCampaignSendErrorDetails(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("..", "permissions.json"))
+	if err != nil {
+		t.Fatalf("read permissions.json: %v", err)
+	}
+	var groups []struct {
+		Permissions []string `json:"permissions"`
+	}
+	if err := json.Unmarshal(body, &groups); err != nil {
+		t.Fatalf("parse permissions.json: %v", err)
+	}
+	for _, group := range groups {
+		for _, permission := range group.Permissions {
+			if permission == auth.PermCampaignsPrivateSendErrorDetails {
+				return
+			}
+		}
+	}
+	t.Fatalf("permissions.json does not list %q", auth.PermCampaignsPrivateSendErrorDetails)
+}

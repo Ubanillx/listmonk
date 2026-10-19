@@ -35,8 +35,14 @@ Selected records and search filters keep the same authorization and workspace
 boundaries as their source pages. Private email, UUID and attributes require
 `customers:sensitive_read`; without it, masked-list exports can retain masked
 email, while other exports omit the email column. Public-pool email remains
-masked for anyone other than a platform administrator. Campaign diagnostics
-that can contain sensitive recipient data remain hidden where required.
+masked for anyone other than a platform administrator. Private-recipient campaign
+diagnostics require `campaigns:private_send_error_details` for viewing, search,
+and inclusion in authorized exports; `customers:sensitive_read` does not grant
+diagnostic access. Without diagnostic permission, reason categories, SMTP codes
+and counts remain available. This permission is not granted to existing roles
+automatically. The email column remains masked without `customers:sensitive_read`.
+Public-pool diagnostics remain hidden for anyone other than a platform
+administrator.
 
 Large server exports use batched/streamed source queries. A sheet reaching Excel's
 1,048,576-row limit continues in another sheet with the same headings. A value

@@ -813,6 +813,45 @@ func (a *App) CreatePoolContact(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{out})
 }
 
+// UpdatePoolContact edits the shared master record. Allocation-list URLs are
+// accepted for convenience but always resolve to the first-level pool before
+// authorization and mutation.
+func (a *App) UpdatePoolContact(c echo.Context) error {
+	access, err := a.requirePoolPermission(c, auth.PermPoolsMasterManage)
+	if err != nil {
+		return err
+	}
+	listID, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid pool id")
+	}
+	poolID, _, err := a.core.ResolvePoolListPoolID(listID)
+	if err != nil {
+		return err
+	}
+	if _, err := a.core.RequireManageResource(access, resourceLists, poolID); err != nil {
+		return err
+	}
+	contactID, err := strconv.ParseInt(c.Param("contact_id"), 10, 64)
+	if err != nil || contactID <= 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid contact id")
+	}
+	var p models.PoolContact
+	if err := c.Bind(&p); err != nil {
+		return err
+	}
+	out, err := a.core.UpdatePoolContact(poolID, contactID, p)
+	if err != nil {
+		return err
+	}
+	setAuditObjectID(c, strconv.FormatInt(contactID, 10))
+	setAuditMetadata(c, map[string]any{"pool_id": poolID})
+	if !auth.GetUser(c).IsPlatformAdmin() {
+		return c.JSON(http.StatusOK, okResp{out.Safe()})
+	}
+	return c.JSON(http.StatusOK, okResp{out})
+}
+
 func (a *App) ClearPoolContactEmail(c echo.Context) error {
 	access, err := a.requirePoolPermission(c, auth.PermPoolsMasterManage)
 	if err != nil {

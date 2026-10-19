@@ -781,6 +781,82 @@ func (c *Core) CreatePoolContact(poolID int, p models.PoolContact) (models.PoolC
 	return p, nil
 }
 
+// UpdatePoolContact changes the shared master record for a public-pool contact.
+// The pool membership is checked in the same transaction so a contact cannot
+// be edited through an unrelated list (or after it has been removed).
+func (c *Core) UpdatePoolContact(poolID int, contactID int64, p models.PoolContact) (models.PoolContact, error) {
+	if err := c.ensurePool(poolID); err != nil {
+		return models.PoolContact{}, err
+	}
+	p.CustomerCode = strings.TrimSpace(p.CustomerCode)
+	p.Email = strings.TrimSpace(p.Email)
+	p.Name = strings.TrimSpace(p.Name)
+	p.AllocationDepartment = strings.TrimSpace(p.AllocationDepartment)
+	p.ReplyTo = strings.TrimSpace(p.ReplyTo)
+	if err := validatePoolReplyTo(p.ReplyTo); err != nil {
+		return models.PoolContact{}, err
+	}
+	tx, err := c.db.Beginx()
+	if err != nil {
+		return models.PoolContact{}, err
+	}
+	defer tx.Rollback()
+	var current struct {
+		ID    int64  `db:"id"`
+		Email string `db:"email"`
+	}
+	if err = tx.Get(&current, `SELECT pc.id,pc.email FROM pool_contacts pc JOIN pool_members pm ON pm.contact_id=pc.id WHERE pm.pool_id=$1 AND pc.id=$2 FOR UPDATE`, poolID, contactID); err != nil {
+		if err == sql.ErrNoRows {
+			return models.PoolContact{}, echo.NewHTTPError(http.StatusNotFound, "pool contact not found")
+		}
+		return models.PoolContact{}, err
+	}
+	// Delegated master maintainers receive masked addresses in list responses;
+	// treating a masked value as unchanged prevents an edit from corrupting the
+	// shared plaintext address.
+	if strings.Contains(p.Email, "*") {
+		p.Email = current.Email
+	}
+	if p.Email == "" {
+		return models.PoolContact{}, echo.NewHTTPError(http.StatusBadRequest, "email is required")
+	}
+	parsed, err := mail.ParseAddress(p.Email)
+	if err != nil || !strings.EqualFold(parsed.Address, p.Email) || !strings.Contains(parsed.Address, "@") {
+		return models.PoolContact{}, echo.NewHTTPError(http.StatusBadRequest, "invalid email")
+	}
+	var exists bool
+	if p.AllocationDepartment != "" {
+		if err = tx.Get(&exists, `SELECT EXISTS(SELECT 1 FROM organizations WHERE status=$1 AND LOWER(name)=LOWER($2))`, models.OrganizationStatusActive, p.AllocationDepartment); err != nil {
+			return models.PoolContact{}, err
+		}
+		if !exists {
+			return models.PoolContact{}, echo.NewHTTPError(http.StatusBadRequest, "allocation department does not exist")
+		}
+	}
+	if _, err = tx.Exec(`UPDATE pool_contacts SET customer_code=$1,email=$2,name=$3,allocation_department=$4,reply_to=$5,status=CASE WHEN status='archived' THEN 'active' ELSE status END,updated_at=NOW() WHERE id=$6`, p.CustomerCode, p.Email, p.Name, p.AllocationDepartment, p.ReplyTo, contactID); err != nil {
+		return models.PoolContact{}, err
+	}
+	// Keep the existing allocation history, while making a newly selected
+	// organization immediately receive the contact when its allocation exists.
+	if p.AllocationDepartment != "" {
+		if _, err = tx.Exec(`
+			INSERT INTO org_pool_allocation_members(allocation_id,contact_id,status)
+			SELECT ps.id,$2,'active'
+			FROM org_pool_allocations ps JOIN organizations o ON o.id=ps.organization_id
+			WHERE ps.pool_id=$1 AND o.status=$3 AND LOWER(TRIM(o.name))=LOWER(TRIM($4))
+			ON CONFLICT (allocation_id,contact_id) DO NOTHING`, poolID, contactID, models.OrganizationStatusActive, p.AllocationDepartment); err != nil {
+			return models.PoolContact{}, err
+		}
+	}
+	if err = tx.Commit(); err != nil {
+		return models.PoolContact{}, err
+	}
+	if err = c.db.Get(&p, `SELECT id,uuid,customer_code,email,reply_to,name,allocation_department,attribs,status,created_at,updated_at FROM pool_contacts WHERE id=$1`, contactID); err != nil {
+		return models.PoolContact{}, err
+	}
+	return p, nil
+}
+
 // ImportPoolContacts imports the business fields used by the unified
 // public-pool import. Additional source columns are intentionally ignored by
 // the HTTP parser. A contact is reused when all imported identity fields

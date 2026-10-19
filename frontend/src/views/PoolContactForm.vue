@@ -2,11 +2,11 @@
   <form class="pool-contact-form" @submit.prevent="onSubmit">
     <div class="modal-card" style="width: auto;">
       <header class="modal-card-head">
-        <p class="modal-card-title">{{ $t('pool.formTitle') }}</p>
+        <p class="modal-card-title">{{ isEditing ? $t('globals.buttons.edit') : $t('pool.formTitle') }}</p>
       </header>
       <section class="modal-card-body">
         <b-field v-if="poolLists.length" :label="$t('pool.tablePoolList')" required>
-          <b-select v-model="selectedPoolID" expanded data-cy="pool-form-list">
+          <b-select v-model="selectedPoolID" expanded :disabled="isEditing" data-cy="pool-form-list">
             <option v-for="list in poolLists" :key="list.id" :value="list.id">{{ list.name }}</option>
           </b-select>
         </b-field>
@@ -54,6 +54,8 @@ export default Vue.extend({
   props: {
     poolListID: { type: Number, default: 0 },
     poolLists: { type: Array, default: () => [] },
+    contact: { type: Object, default: null },
+    isEditing: { type: Boolean, default: false },
   },
 
   data() {
@@ -77,6 +79,30 @@ export default Vue.extend({
   },
 
   watch: {
+    contact: {
+      immediate: true,
+      handler(contact) {
+        if (!contact) {
+          this.form = {
+            customer_code: '',
+            name: '',
+            email: '',
+            reply_to: '',
+            allocation_department: '',
+          };
+          this.selectedPoolID = this.poolLists.length ? this.poolLists[0].id : this.poolListID;
+          return;
+        }
+        this.form = {
+          customer_code: contact.customerCode || contact.customer_code || '',
+          name: contact.name || '',
+          email: contact.email || '',
+          reply_to: contact.replyTo || contact.reply_to || '',
+          allocation_department: contact.allocationDepartment || contact.allocation_department || '',
+        };
+        this.selectedPoolID = Number(contact.poolId || contact.pool_id || this.selectedPoolID || 0);
+      },
+    },
     poolLists(lists) {
       if (!this.selectedPoolID && lists.length) {
         this.selectedPoolID = lists[0].id;
@@ -90,8 +116,13 @@ export default Vue.extend({
         return;
       }
       this.loading = true;
-      this.$api.createPoolContact(this.targetPoolID, this.form).then(() => {
-        this.$utils.toast(this.$t('pool.toastContactCreated'));
+      const request = this.isEditing
+        ? this.$api.updatePoolContact(this.targetPoolID, this.contact.id, this.form)
+        : this.$api.createPoolContact(this.targetPoolID, this.form);
+      request.then(() => {
+        this.$utils.toast(this.$t(this.isEditing ? 'globals.messages.updated' : 'pool.toastContactCreated', {
+          name: this.form.name || this.form.email,
+        }));
         this.$emit('finished');
         this.$parent.close();
       }).finally(() => {

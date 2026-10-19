@@ -1,6 +1,8 @@
 # 工作状态
 
-快照日期：2026-10-12
+快照日期：2026-10-19
+
+- 公海客户编辑入口（2026-10-19）：公海客户表在公海主数据维护权限下显示编辑按钮，复用联系人表单编辑客户编码、姓名、邮箱、回信邮箱和分配部门；新增 `PUT /api/customer-lists/:id/pool-contacts/:contact_id`（及 `/api/pools/:id/contacts/:contact_id`）事务更新接口，按一级公海成员关系与工作区权限重验，部门变更会补齐对应组织分配。邮箱重新填写会将已归档联系人恢复为正常状态，原有分配历史不被删除。验证：Go `internal/core`/`cmd` 398 项通过，前端 lint/生产构建通过（仅既有地图 warning），开发后端已重启并返回 200、无待升级；浏览器已确认 `/admin/pool` 三行均出现编辑入口并能打开预填表单，尚未提交真实修改回归。来源：`cmd/pools.go`、`internal/core/pools.go`、`frontend/src/views/{Customers,PoolContactForm}.vue`。
 
 - Jenkins 主机密钥变更修复（2026-10-12）：构建 82 的部署 SSH 在主机校验阶段退出，旧 ED25519 指纹 `SHA256:bGtB2mCQCFb3XNRDNl75Fn8T+V8duFaFyEC+rTwMgvw` 与 Jenkins 从 `83.229.120.50` 收到的 `SHA256:e+ABNW93OhaVuhFew2TzHkrYYWFGX/e4BmgbIO6H8zg` 不一致；RSA/ECDSA 主机密钥也已变更。通过 Jenkins 原有部署私钥连接目标，核对服务器本机 `/etc/ssh/ssh_host_ed25519_key.pub` 指纹及原有 `/opt/listmonk` 发布、配置和运行中的服务；`Jenkinsfile` 固定 ED25519 公钥已更新，部署文档已校正实际密钥配置。构建 83 成功并报告 `Deployment is healthy`，远程 `current` 指向 `jenkins-83-6a5770f6`，systemd 服务 active，远程本机 `/admin/login` 健康检查通过；`git diff --check`、文档检查与本地 9173 健康检查通过。来源：`Jenkinsfile`、`deploy/README.md`。
 

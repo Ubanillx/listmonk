@@ -25,7 +25,7 @@
         </b-field>
         <b-field v-else-if="isPoolList && (isFirstLevelPool || isPoolRoute) && canMaintainPoolMaster
           && (!isPoolRoute || firstLevelPoolLists.length > 0)" expanded>
-          <b-button expanded type="is-primary" icon-left="plus" @click="isPoolFormVisible = true" data-cy="btn-new-pool-contact"
+          <b-button expanded type="is-primary" icon-left="plus" @click="showPoolContactForm()" data-cy="btn-new-pool-contact"
             class="btn-new">
             {{ $t('globals.buttons.new') }}
           </b-button>
@@ -182,6 +182,13 @@
 
         <b-table-column v-slot="props" cell-class="actions" align="right">
           <div>
+            <a v-if="canMaintainPoolMaster && (isFirstLevelPool || isPoolRoute)" href="#"
+              @click.prevent="showPoolContactForm(props.row)" data-cy="btn-edit-pool-contact"
+              :aria-label="$t('globals.buttons.edit')">
+              <b-tooltip :label="$t('globals.buttons.edit')" type="is-dark">
+                <b-icon icon="pencil-outline" size="is-small" />
+              </b-tooltip>
+            </a>
             <a v-if="canManagePoolContacts && isFirstLevelPool && !isPoolRoute" href="#" @click.prevent="showPoolAssignForm(props.row)"
               data-cy="btn-assign-pool-contact" :aria-label="$t('pool.actionAssign')">
               <b-tooltip :label="$t('pool.actionAssign')" type="is-dark">
@@ -353,9 +360,10 @@
     </b-modal>
 
     <!-- New public-pool contact modal -->
-    <b-modal scroll="keep" :aria-modal="true" :active.sync="isPoolFormVisible" :width="600" class="has-overflow">
+    <b-modal scroll="keep" :aria-modal="true" :active.sync="isPoolFormVisible" :width="600" class="has-overflow"
+      @close="poolEditingContact = null">
       <pool-contact-form :pool-list-id="queryParams.customerListID || 0" :pool-lists="isPoolRoute ? firstLevelPoolLists : []"
-        @finished="loadPoolContacts" />
+        :contact="poolEditingContact" :is-editing="!!poolEditingContact" @finished="loadPoolContacts" />
     </b-modal>
 
     <!-- Remove pool contacts from this organization, with a shared reason -->
@@ -462,6 +470,7 @@ export default Vue.extend({
       isPoolRemovalVisible: false,
       isPoolAssignVisible: false,
       isPoolFormVisible: false,
+      poolEditingContact: null,
 
       // Whether the filtered list is resolved yet: 'ready' | 'pending' |
       // 'error'. Only a resolved, non-pool list may render the ordinary
@@ -582,6 +591,11 @@ export default Vue.extend({
       }).finally(() => {
         this.poolLoading = false;
       });
+    },
+
+    showPoolContactForm(contact = null) {
+      this.poolEditingContact = contact;
+      this.isPoolFormVisible = true;
     },
 
     loadPoolFilters() {

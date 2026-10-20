@@ -25,7 +25,7 @@ func newCustomerExportLayout(b *exportWorkbook, fields []models.CustomFieldDefin
 		layout.columns = append(layout.columns, b.column("customers.email", 36, ""))
 	}
 	layout.columns = append(layout.columns, b.column("exports.customerStatus", 18, ""),
-		b.column("exports.createdAtUTC", 23, "date"), b.column("exports.updatedAtUTC", 23, "date"))
+		b.timeColumn("exports.createdAt", 23), b.timeColumn("exports.updatedAt", 23))
 	if sensitive {
 		for _, field := range fields {
 			label := field.Label
@@ -174,7 +174,7 @@ func writeCustomerDataWorkbook(b *exportWorkbook, data models.CustomerExportProf
 	}{
 		{"exports.subscriptions", data.Subscriptions, []string{"name", "type", "subscription_status", "created_at"}, []exportColumn{
 			b.column("exports.listName", 32, ""), b.column("globals.fields.type", 20, ""),
-			b.column("exports.subscriptionStatus", 24, ""), b.column("exports.createdAtUTC", 23, "date"),
+			b.column("exports.subscriptionStatus", 24, ""), b.timeColumn("exports.createdAt", 23),
 		}},
 		{"exports.campaignViews", data.CampaignViews, []string{"campaign", "views"}, []exportColumn{
 			b.column("campaigns.subject", 60, ""), b.column("exports.openCount", 18, "number"),

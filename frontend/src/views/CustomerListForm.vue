@@ -93,9 +93,9 @@
 
 <script>
 import Vue from 'vue';
-import dayjs from 'dayjs';
 import { mapState } from 'vuex';
 import CopyText from '../components/CopyText.vue';
+import { today } from '../time';
 
 export default Vue.extend({
   name: 'CustomerListForm',
@@ -115,7 +115,7 @@ export default Vue.extend({
     return {
       // Binds form input values.
       form: {
-        name: dayjs().format('YYYY-MM-DD'),
+        name: today(),
         type: this.listGroup === 'pool' ? 'pool' : 'private',
         optin: 'single',
         status: 'active',

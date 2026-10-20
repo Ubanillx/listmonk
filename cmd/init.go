@@ -50,6 +50,7 @@ import (
 	"github.com/knadh/listmonk/internal/notifs"
 	"github.com/knadh/listmonk/internal/replyai"
 	"github.com/knadh/listmonk/internal/subimporter"
+	apptz "github.com/knadh/listmonk/internal/tz"
 	"github.com/knadh/listmonk/models"
 	"github.com/knadh/stuffbin"
 	"github.com/labstack/echo/v4"
@@ -94,8 +95,12 @@ type Config struct {
 	EnablePublicArchive           bool     `koanf:"enable_public_archive"`
 	EnablePublicArchiveRSSContent bool     `koanf:"enable_public_archive_rss_content"`
 	Lang                          string   `koanf:"lang"`
-	DBBatchSize                   int      `koanf:"batch_size"`
-	Privacy                       struct {
+	// Timezone is the resolved application time zone as an IANA name. The
+	// deployment (TZ) decides it unless app.timezone overrides it, and it is
+	// exported to the admin UI so browsers render the same wall clock.
+	Timezone    string `koanf:"timezone"`
+	DBBatchSize int    `koanf:"batch_size"`
+	Privacy     struct {
 		IndividualTracking bool            `koanf:"individual_tracking"`
 		DisableTracking    bool            `koanf:"disable_tracking"`
 		GeoIPDatabase      string          `koanf:"geoip_database"`
@@ -334,9 +339,18 @@ func initDB() *sqlx.DB {
 		lo.Fatalf("error loading db config: %v", err)
 	}
 
-	lo.Printf("connecting to db: %s:%d/%s", c.Host, c.Port, c.DBName)
-	db, err := sqlx.Connect("postgres",
-		fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s %s", c.Host, c.Port, c.User, c.Password, c.DBName, c.SSLMode, c.Params))
+	// Every connection runs its session in the application time zone, so that
+	// date_trunc/::DATE, NOW() and materialized-view calendar buckets produce the
+	// same days the UI and the campaign daily quotas use. The explicit
+	// TimeZone parameter is only appended when the operator's extra DSN params
+	// do not already pin one.
+	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s %s", c.Host, c.Port, c.User, c.Password, c.DBName, c.SSLMode, c.Params)
+	if !strings.Contains(strings.ToLower(c.Params), "timezone=") {
+		dsn += " timezone=" + apptz.Name()
+	}
+
+	lo.Printf("connecting to db: %s:%d/%s (session time zone %s)", c.Host, c.Port, c.DBName, apptz.Name())
+	db, err := sqlx.Connect("postgres", dsn)
 	if err != nil {
 		lo.Fatalf("error connecting to DB: %v", err)
 	}
@@ -485,6 +499,7 @@ func initConstConfig(ko *koanf.Koanf) *Config {
 	}
 
 	c.Lang = ko.String("app.lang")
+	c.Timezone = apptz.Name()
 	c.Privacy.Exportable = koanfmaps.StringSliceToLookupMap(ko.Strings("privacy.exportable"))
 	c.MediaUpload.Provider = ko.String("upload.provider")
 	c.MediaUpload.Extensions = ko.Strings("upload.extensions")
@@ -1246,7 +1261,7 @@ func initTplFuncs(i *i18n.I18n, u *UrlConfig) template.FuncMap {
 			if layout == "" {
 				layout = time.ANSIC
 			}
-			return time.Now().Format(layout)
+			return apptz.Now().Format(layout)
 		},
 		"L": func() *i18n.I18n {
 			return i

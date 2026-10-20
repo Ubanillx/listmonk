@@ -2,6 +2,8 @@
 
 快照日期：2026-10-20
 
+- **全链路统一时区（2026-10-20）**：新增 `internal/tz` 作为唯一时区来源，按“部署（TZ/主机）→ `app.timezone` 覆盖 → `Asia/Shanghai` 兜底”解析并设置 `time.Local`；数据库连接固定会话 `timezone`，`/api/config` 暴露 `timezone`/`timezone_offset`，前端 `time.js` 让 dayjs 默认时区、日期选择器、报表范围、邀请到期与导出文件名统一按部署时区；Excel 导出时间不再强转 UTC，表头改为带时区名的 `%s` 文案；Compose（根目录与 bundle）与 `env.runtime.example` 默认 `TZ=Asia/Shanghai`。验证：`go build ./...`、`go test ./internal/tz/... ./internal/schedule/... ./internal/manager/...`、前端 `yarn lint`（仅既有地图 warning）。来源：`internal/tz/tz.go`、`cmd/{main.go,init.go,admin.go,audit.go,excel_exports.go,excel_customer_exports.go,campaign_send_errors.go,pools.go}`、`frontend/src/{time.js,utils.js,main.js}`、`docs/docs/content/configuration.md`。
+
 - **活动编辑器占位符光标插入（2026-10-20）**：邮件模板参考中的客户占位符改为可点击按钮，保留 HTML/Markdown/富文本/纯文本当前光标或选区，支持连续插入、选区替换、撤销/重做与键盘激活；富文本插入会复制光标/选区所在的行内格式，备用纯文本和可视化编辑器当前文字字段也能插入。只读活动禁用按钮。验证：隔离 Cypress `campaign-placeholders.cy.js` 7/7，覆盖四种文本编辑模式、备用正文、可视化字段、保存刷新和只读；Context7 CodeMirror/TinyMCE 插入/选区文档核对、前端 lint/生产构建、文档及 diff 检查通过。来源：`frontend/src/{views/Campaign.vue,components/{Editor,CodeEditor,RichtextEditor,VisualEditor}.vue,utils/insertInputText.js}`、`frontend/cypress/e2e/campaign-placeholders.cy.js`。
 
 - 富文本剪贴板图文混排（2026-10-20）：新增剪贴板图片导入模块，支持 HTML 内嵌图片、HTML/文字加图片文件、Word/WPS RTF PNG/JPEG 及浏览器可读取的网页图片；按原位置恢复被 TinyMCE 5 Word 过滤移除的图片，自动调用媒体上传并关联，保存/预览等待解析与上传。无法读取的图片显示提示并阻止保存，上传失败可重试，保留纯文本粘贴、撤销/重做与既有缩放行为。验证：隔离 Cypress 剪贴板 6/6、原有上传 5/5、图片编辑 2/2，共 13/13；覆盖图文顺序、媒体记录、刷新、快速保存、RTF、外链下载、缺失字节阻断、403 重试、媒体复制及纯文本模式。中文页面真实 Ctrl+V 已确认 PNG 自动替换为媒体库 URL 且图片正常显示。前端 lint/生产构建、文档与 diff 检查通过。来源：`frontend/src/utils/clipboardImages.js`、`frontend/src/components/RichtextEditor.vue`、`frontend/cypress/e2e/campaign-clipboard-images.cy.js`。

@@ -354,6 +354,7 @@ import { mapState } from 'vuex';
 import CopyText from '../../components/CopyText.vue';
 import ReplyMailboxSettings from '../../components/ReplyMailboxSettings.vue';
 import PersonalSMTPSettings from '../../components/PersonalSMTPSettings.vue';
+import { wallClockISO } from '../../time';
 
 export default Vue.extend({
   components: { CopyText, ReplyMailboxSettings, PersonalSMTPSettings },
@@ -744,7 +745,8 @@ export default Vue.extend({
     },
 
     async createInvite() {
-      const expiresAt = this.inviteForm.expiresAt ? new Date(this.inviteForm.expiresAt).toISOString() : '';
+      // The datetime-local field carries the deployment's wall clock.
+      const expiresAt = wallClockISO(this.inviteForm.expiresAt);
       const maxUses = this.inviteForm.maxUses > 0 ? this.inviteForm.maxUses : null;
       const invite = await this.$api.createOrganizationInvite({
         name: this.inviteForm.name,

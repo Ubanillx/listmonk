@@ -247,7 +247,7 @@
                   <div class="campaign-schedule-control" data-cy="btn-send-later">
                     <b-switch v-model="form.sendLater" :disabled="!canEdit">{{ $t('campaigns.sendLater') }}</b-switch>
                     <b-field v-if="form.sendLater" class="campaign-send-at-field" data-cy="send_at"
-                      :message="form.sendAtDate ? $utils.duration(Date(), form.sendAtDate) : ''">
+                      :message="form.sendAtDate ? $utils.duration($utils.currentDate(), form.sendAtDate) : ''">
                       <b-datetimepicker v-model="form.sendAtDate" :disabled="!canEdit" required editable mobile-native
                         position="is-top-right" :placeholder="$t('campaigns.dateAndTime')" icon="calendar-clock"
                         :timepicker="{ hourFormat: '24' }" :datetime-formatter="formatDateTime"
@@ -488,7 +488,6 @@
 </template>
 
 <script>
-import dayjs from 'dayjs';
 import htmlToPlainText from 'textversionjs';
 import Vue from 'vue';
 import { mapState } from 'vuex';
@@ -704,7 +703,8 @@ export default Vue.extend({
     },
 
     formatResumeTime(value) {
-      return `${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}`;
+      const d = this.$utils.getDate(value);
+      return d ? d.format('HH:mm') : '';
     },
 
     normalizeSMTPDailyFields(limit, resumeTime) {
@@ -1345,8 +1345,9 @@ export default Vue.extend({
       get() {
         const match = /^(\d{1,2}):(\d{2})$/.exec(this.form.dailyResumeTime || '');
         if (!match || Number(match[1]) > 23 || Number(match[2]) > 59) return null;
-        // Only local clock fields are used; the API stores a server-time HH:mm value.
-        return new Date(2000, 0, 1, Number(match[1]), Number(match[2]));
+        // Only the deployment's clock fields are used; the API stores a
+        // server-time HH:mm value that no browser zone may shift.
+        return this.$utils.wallClockToDate(2000, 0, 1, Number(match[1]), Number(match[2]));
       },
       set(value) {
         this.form.dailyResumeTime = value ? this.formatResumeTime(value) : '';
@@ -1444,7 +1445,7 @@ export default Vue.extend({
     'data.sendAt': function () {
       if (this.data.sendAt !== null) {
         this.form.sendLater = true;
-        this.form.sendAtDate = dayjs(this.data.sendAt).toDate();
+        this.form.sendAtDate = this.$utils.getDate(this.data.sendAt).toDate();
       } else {
         this.form.sendLater = false;
         this.form.sendAtDate = null;

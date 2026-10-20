@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/knadh/listmonk/internal/i18n"
+	apptz "github.com/knadh/listmonk/internal/tz"
 	"github.com/knadh/listmonk/models"
 	"github.com/knadh/stuffbin"
 	"github.com/labstack/echo/v4"
@@ -48,14 +49,28 @@ func openExportTestWorkbook(t *testing.T, book *exportWorkbook) *excelize.File {
 	return file
 }
 
+// useExportTestZone pins the deployment time zone for a test and restores the
+// previous one, so an export can assert the wall clock it writes.
+func useExportTestZone(t *testing.T, name string) *time.Location {
+	t.Helper()
+	original := time.Local
+	loc := apptz.Init(name)
+	t.Cleanup(func() {
+		time.Local = original
+		apptz.Init(original.String())
+	})
+	return loc
+}
+
 func TestExcelExportPreservesIdentifiersLiteralTextDatesAndSheetOverflow(t *testing.T) {
+	useExportTestZone(t, "Asia/Shanghai")
 	book, err := newExportWorkbook(context.Background(), exportTestLanguage(t, "zh-CN"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer book.file.Close()
 	sheet, err := book.addSheet("exports.customers", []exportColumn{
-		book.column("customers.customerCode", 24, ""), book.column("globals.fields.name", 30, ""), book.column("exports.createdAtUTC", 23, "date"),
+		book.column("customers.customerCode", 24, ""), book.column("globals.fields.name", 30, ""), book.timeColumn("exports.createdAt", 23),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -83,8 +98,13 @@ func TestExcelExportPreservesIdentifiersLiteralTextDatesAndSheetOverflow(t *test
 		}
 	}
 	rows, err := file.GetRows("私域客户")
-	if err != nil || len(rows) != 3 || rows[0][0] != book.lang.T("customers.customerCode") || rows[1][0] != "00001234567890123456" || rows[1][2] != "2026-10-09 12:30:00" {
+	// The workbook shows the deployment's wall clock (Asia/Shanghai) and names
+	// the zone in the header.
+	if err != nil || len(rows) != 3 || rows[0][0] != book.lang.T("customers.customerCode") || rows[1][0] != "00001234567890123456" || rows[1][2] != "2026-10-09 20:30:00" {
 		t.Fatalf("workbook values = %#v, %v", rows, err)
+	}
+	if header := rows[0][2]; !strings.Contains(header, "Asia/Shanghai") {
+		t.Fatalf("date header %q does not name the time zone", header)
 	}
 	if formula, err := file.GetCellFormula("私域客户", "B2"); err != nil || formula != "" {
 		t.Fatalf("user text became a formula: %q, %v", formula, err)
@@ -95,6 +115,7 @@ func TestExcelExportPreservesIdentifiersLiteralTextDatesAndSheetOverflow(t *test
 }
 
 func TestExcelPrivacyCategoriesAndRedactionRemainSeparate(t *testing.T) {
+	useExportTestZone(t, "Asia/Shanghai")
 	for _, code := range []string{"en", "zh-CN", "zh-TW"} {
 		t.Run(code, func(t *testing.T) {
 			book, err := newExportWorkbook(context.Background(), exportTestLanguage(t, code))
@@ -132,7 +153,8 @@ func TestExcelPrivacyCategoriesAndRedactionRemainSeparate(t *testing.T) {
 				}
 			}
 			rows, _ := file.GetRows(book.lang.T("exports.profile"))
-			if rows[1][0] != "000123" || rows[1][3] != "2026-10-09 12:30:00" {
+			// 20:30 +08:00 is the deployment's wall clock for the stored instant.
+			if rows[1][0] != "000123" || rows[1][3] != "2026-10-09 20:30:00" {
 				t.Fatalf("profile values = %v", rows)
 			}
 		})

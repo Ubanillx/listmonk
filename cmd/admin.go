@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/knadh/listmonk/internal/captcha"
+	apptz "github.com/knadh/listmonk/internal/tz"
 	"github.com/labstack/echo/v4"
 	null "gopkg.in/volatiletech/null.v6"
 )
@@ -27,26 +28,33 @@ type serverConfig struct {
 		DisableTracking    bool `json:"disable_tracking"`
 		IndividualTracking bool `json:"individual_tracking"`
 	} `json:"privacy"`
-	MediaProvider string          `json:"media_provider"`
-	Messengers    []string        `json:"messengers"`
-	Langs         []i18nLang      `json:"langs"`
-	Lang          string          `json:"lang"`
-	Permissions   json.RawMessage `json:"permissions"`
-	Update        *AppUpdate      `json:"update"`
-	NeedsRestart  bool            `json:"needs_restart"`
-	HasLegacyUser bool            `json:"has_legacy_user"`
-	Version       string          `json:"version"`
+	MediaProvider string   `json:"media_provider"`
+	Messengers    []string `json:"messengers"`
+	// Timezone is the server's IANA zone and TimezoneOffset its current UTC
+	// offset. The admin UI formats every timestamp in these, so a browser in a
+	// different zone still shows the deployment's wall clock.
+	Timezone       string          `json:"timezone"`
+	TimezoneOffset string          `json:"timezone_offset"`
+	Langs          []i18nLang      `json:"langs"`
+	Lang           string          `json:"lang"`
+	Permissions    json.RawMessage `json:"permissions"`
+	Update         *AppUpdate      `json:"update"`
+	NeedsRestart   bool            `json:"needs_restart"`
+	HasLegacyUser  bool            `json:"has_legacy_user"`
+	Version        string          `json:"version"`
 }
 
 // GetServerConfig returns general server config.
 func (a *App) GetServerConfig(c echo.Context) error {
 	out := serverConfig{
-		SiteName:      a.cfg.SiteName,
-		RootURL:       a.urlCfg.RootURL,
-		FromEmail:     a.cfg.FromEmail,
-		Lang:          a.cfg.Lang,
-		Permissions:   a.cfg.PermissionsRaw,
-		HasLegacyUser: a.cfg.HasLegacyUser,
+		SiteName:       a.cfg.SiteName,
+		RootURL:        a.urlCfg.RootURL,
+		FromEmail:      a.cfg.FromEmail,
+		Lang:           a.cfg.Lang,
+		Timezone:       a.cfg.Timezone,
+		TimezoneOffset: apptz.OffsetLabel(),
+		Permissions:    a.cfg.PermissionsRaw,
+		HasLegacyUser:  a.cfg.HasLegacyUser,
 		Privacy: struct {
 			DisableTracking    bool `json:"disable_tracking"`
 			IndividualTracking bool `json:"individual_tracking"`

@@ -89,6 +89,7 @@ import Vue from 'vue';
 import { mapState } from 'vuex';
 import { colors } from '../constants';
 import Chart from '../components/Chart.vue';
+import { now, parse, zone } from '../time';
 
 const chartColorRed = '#ee7d5b';
 const chartColors = [
@@ -172,13 +173,13 @@ export default Vue.extend({
   methods: {
     onFromDateChange() {
       if (this.form.from > this.form.to) {
-        this.form.to = dayjs(this.form.from).add(7, 'day').toDate();
+        this.form.to = parse(this.form.from).add(7, 'day').toDate();
       }
     },
 
     onToDateChange() {
       if (this.form.from > this.form.to) {
-        this.form.from = dayjs(this.form.to).add(-7, 'day').toDate();
+        this.form.from = parse(this.form.to).add(-7, 'day').toDate();
       }
     },
 
@@ -325,10 +326,14 @@ export default Vue.extend({
   },
 
   created() {
-    const now = dayjs().set('hour', 23).set('minute', 59).set('seconds', 0);
-    const weekAgo = now.subtract(7, 'day').set('hour', 0).set('minute', 0);
-    const from = this.$route.query.from ? dayjs.unix(this.$route.query.from) : weekAgo;
-    const to = this.$route.query.to ? dayjs.unix(this.$route.query.to) : now;
+    // Day boundaries are the deployment's; the route carries Unix seconds, so
+    // they are absolute and only need re-rendering in the server zone.
+    const to = this.$route.query.to
+      ? dayjs.unix(Number(this.$route.query.to)).tz(zone())
+      : now().hour(23).minute(59).second(0);
+    const from = this.$route.query.from
+      ? dayjs.unix(Number(this.$route.query.from)).tz(zone())
+      : to.subtract(7, 'day').hour(0).minute(0).second(0);
     this.form.from = from.toDate();
     this.form.to = to.toDate();
   },

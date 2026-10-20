@@ -1,5 +1,16 @@
 # Listmonk 工程架构与运行指南
 
+## 全链路统一时区（2026-10-20）
+
+全系统只有一个时钟，来源是部署：容器/主机的 `TZ`（Compose 默认 `Asia/Shanghai`，可用 `TZ=Etc/UTC` 覆盖）。`app.timezone`（`LISTMONK_app__timezone`）只在同一镜像需要按实例区分时覆盖；两者都缺失时回退 `Asia/Shanghai`，不再默认 UTC。`internal/tz` 是唯一解析入口：`Init` 在读取配置后、连接数据库前执行，设置 `time.Local`、写入 `TZ`，并提供 `Now/In/Location/Name/OffsetLabel`；`cmd/main.go` 匿名导入 `time/tzdata`，精简镜像无需安装 tzdata 也能解析时区名。
+
+- 数据库会话：`cmd/init.go::initDB` 在 DSN 追加 `timezone=<apptz.Name()>`（`db.params` 已显式指定 `timezone=` 时不覆盖），使 `NOW()`、`created_at::DATE`、仪表盘物化视图与活动/供应商每日额度使用同一日历日。
+- 后端：日志、模板 `Date` 函数（`cmd/init.go`、`internal/manager/manager.go`）、审计导出文件名改用 `apptz.Now()`。
+- Excel 导出：单元格时间按部署时区写入（`exportSheet.addRow`、`exportTimestamp`），表头由 `exports.createdAt/updatedAt/occurredAt/firstError/lastError` 的 `%s` 占位符填入时区名；`i18n/{en,zh-CN,zh-TW}.json` 的 `*UTC` 键已更名。
+- 接口：`/api/config` 返回 `timezone` 与 `timezone_offset`，前端 `frontend/src/time.js` 据此对 dayjs 设置 `tz.setDefault`，`utils.js` 的 `niceDate/parseDateTime/duration`、活动发送时间/每日恢复时间选择器、分析报表与维护页日期范围、邀请到期时间（`wallClockISO`）、审计下载文件名和 API Key 到期月份全部按部署时区解析与展示，浏览器时区不再产生影响。
+
+回归入口：`internal/tz/tz_test.go`、`go test ./internal/schedule/... ./internal/manager/...`、`frontend/cypress/e2e/excel-exports.cy.js`。
+
 ## 活动编辑器占位符插入（2026-10-20）
 
 活动内容页通过 `Campaign.vue` 将客户占位符渲染为可聚焦按钮，点击时调用共享 `Editor.vue::insertText`，不把内容追加到正文末尾。CodeMirror 通过 `EditorState.replaceSelection` 写入 HTML/Markdown 并进入自己的历史栈；TinyMCE 在保存的选区上使用 `insertContent`，按当前行内祖先复制 `strong`、链接、颜色等标签；纯文本及可视化编辑器分别保留最近的原生文本字段选区。按钮的 `mousedown` 阻止焦点丢失，插入后各编辑器恢复焦点，备用纯文本正文也由同一插入辅助函数处理。只读活动由 `canEdit` 禁用按钮。回归入口：`frontend/cypress/e2e/campaign-placeholders.cy.js`。

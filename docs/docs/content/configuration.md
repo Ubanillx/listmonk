@@ -91,6 +91,7 @@ installation may hold values that differ from the defaults below.
 | Key | Type | Default | Required | Description |
 | --- | --- | --- | --- | --- |
 | `address` | string | none, the packaged sample uses `localhost:9000` | yes | Listen address of the web server, eg: `0.0.0.0:9000`. The database has no such setting, so it must come from the config file or an environment variable. |
+| `timezone` | string | `""` (follows the deployment, then `Asia/Shanghai`) | no | IANA time zone of the whole server, eg: `Asia/Shanghai`. Leave it empty to use the deployment's zone: the process time zone, which is the `TZ` environment variable in Docker and `/etc/localtime` (or `/etc/timezone`) for a bare binary. See [Time zone](#time-zone) below. |
 | `root_url` | string | `http://localhost:9000` | no | Public URL of the instance, without a trailing slash. Used to build tracking, unsubscribe and opt-in URLs, the OIDC redirect URL and the `Secure` flag of the session cookie. |
 | `site_name` | string | `Mailing customer_list` | no | Instance name shown in the admin UI and on the public pages. |
 | `logo_url` | string | `""` | no | Logo image shown on the public pages. |
@@ -476,12 +477,40 @@ For the [service file](https://github.com/knadh/listmonk/blob/master/listmonk%40
 
 ## Time zone
 
-To change listmonk's time zone (logs, etc.) edit `docker-compose.yml`:
+The server has exactly one clock, and the deployment decides it. Set `TZ` to any
+name from the [tz database](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)
+in `docker-compose.yml`:
+
 ```
 environment:
-    - TZ=Etc/UTC
+    - TZ=Asia/Shanghai
 ```
-with any Timezone listed [here](https://en.wikipedia.org/wiki/CustomerList_of_tz_database_time_zones). Then run `sudo docker-compose stop ; sudo docker-compose up` after making changes.
+
+Then run `sudo docker-compose stop ; sudo docker-compose up`. The bundled
+`docker-compose.yml` and `deploy/docker-compose.bundle.yml` default to
+`Asia/Shanghai`; set `TZ=Etc/UTC` to keep UTC instead.
+
+That single zone drives all of the following, so no component keeps its own:
+
+- The server clock: logs, the `Date` template function in system and campaign
+  templates, and daily quota `daily_resume_time` windows.
+- Database sessions: every connection sets `timezone` to the same zone, so
+  `NOW()`, `created_at::DATE` and the dashboard materialized views bucket days
+  by the deployment's calendar day. This covers sessions opened by listmonk only.
+  Server-side defaults and database logs still follow PostgreSQL's own `timezone`
+  setting, so give the database container the same `TZ` (the bundled Compose
+  files do) or run `ALTER DATABASE <db> SET timezone = 'Asia/Shanghai';`.
+- The admin UI: `/api/config` reports `timezone`, and every timestamp, date
+  picker and report range is rendered and parsed in it. A browser in another
+  zone no longer shifts a scheduled send or a report boundary.
+- Excel exports: timestamps are written on the deployment's clock, and their
+  column headers name the zone.
+
+`app.timezone` (or `LISTMONK_app__timezone`) overrides the deployment zone when
+a single instance has to differ from the container or host. When neither is
+available (for example a bare binary on a minimal image), the server falls back
+to `Asia/Shanghai` instead of UTC. The embedded tz database means no external
+tzdata package is required.
 
 ## SMTP
 

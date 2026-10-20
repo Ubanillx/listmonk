@@ -148,9 +148,9 @@
 </template>
 
 <script>
-import dayjs from 'dayjs';
 import Vue from 'vue';
 import { mapState } from 'vuex';
+import { now, parse } from '../time';
 
 export default Vue.extend({
   components: {
@@ -163,8 +163,10 @@ export default Vue.extend({
       customerType: 'orphan',
       analyticsType: 'all',
       subscriptionType: 'optin',
-      analyticsDate: dayjs().subtract(7, 'day').toDate(),
-      subscriptionDate: dayjs().subtract(7, 'day').toDate(),
+      // Defaults are "seven days ago on the deployment's clock", and the
+      // picker returns that same wall-clock instant (see $utils.parseDateTime).
+      analyticsDate: now().subtract(7, 'day').toDate(),
+      subscriptionDate: now().subtract(7, 'day').toDate(),
       dbSettings: {
         vacuum: false,
         vacuum_cron_interval: '0 2 * * *',
@@ -209,7 +211,7 @@ export default Vue.extend({
 
     deleteSubscriptions() {
       // Spell out the retention window that is about to be purged.
-      const days = dayjs().startOf('day').diff(dayjs(this.subscriptionDate).startOf('day'), 'day');
+      const days = now().startOf('day').diff(parse(this.subscriptionDate).startOf('day'), 'day');
       this.pendingAction = 'unconfirmed';
 
       this.$utils.confirm(

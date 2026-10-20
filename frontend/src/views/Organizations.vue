@@ -444,6 +444,7 @@
 import Vue from 'vue';
 import { mapState } from 'vuex';
 import CopyText from '../components/CopyText.vue';
+import { wallClockISO } from '../time';
 import OrganizationMemberBulkImport from './OrganizationMemberBulkImport.vue';
 
 export default Vue.extend({
@@ -643,8 +644,9 @@ export default Vue.extend({
     },
 
     async createInvite() {
-      const expiresAt = this.inviteForm.expiresAt
-        ? new Date(this.inviteForm.expiresAt).toISOString() : '';
+      // The datetime-local field carries the deployment's wall clock, so it is
+      // converted here instead of in the browser's zone.
+      const expiresAt = wallClockISO(this.inviteForm.expiresAt);
       const maxUses = this.inviteForm.maxUses > 0 ? this.inviteForm.maxUses : null;
       const invite = await this.$api.createOrganizationInvite({
         name: this.inviteForm.name,

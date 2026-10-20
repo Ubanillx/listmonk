@@ -6,6 +6,7 @@ import dayjs from 'dayjs';
 import dayDuration from 'dayjs/plugin/duration';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import updateLocale from 'dayjs/plugin/updateLocale';
+import { parse, now } from './time';
 
 dayjs.extend(updateLocale);
 dayjs.extend(relativeTime);
@@ -51,7 +52,13 @@ export default class Utils {
     }
   }
 
-  getDate = (d) => dayjs(d);
+  // All dates are read in the deployment's time zone (see ./time), never in the
+  // browser's, so every user sees the same wall clock.
+  getDate = (d) => parse(d);
+
+  // currentDate is "now" on the deployment's clock, for templates that need a
+  // reference point instead of the browser's time.
+  currentDate = () => now();
 
   // Format dates consistently for the active language. The Chinese display
   // follows the local year-month-day order and never includes a weekday.
@@ -60,7 +67,7 @@ export default class Utils {
       return '';
     }
 
-    const d = dayjs(stamp);
+    const d = parse(stamp);
     if (this.i18n.locale.startsWith('zh')) {
       return d.format(showTime ? 'YYYY年MM月DD日 HH:mm' : 'YYYY年MM月DD日');
     }
@@ -74,10 +81,13 @@ export default class Utils {
     return out;
   };
 
+  // parseDateTime turns a picker's wall clock text back into an absolute
+  // instant. The typed digits describe the deployment's clock, not the
+  // browser's: a 09:00 resume time means 09:00 where the server runs.
   parseDateTime = (value) => {
     const chinese = /^(\d{4})年(\d{1,2})月(\d{1,2})日(?:\s+(\d{1,2}):(\d{2}))?$/.exec(value);
     if (chinese) {
-      return new Date(
+      return this.wallClockToDate(
         Number(chinese[1]),
         Number(chinese[2]) - 1,
         Number(chinese[3]),
@@ -85,12 +95,30 @@ export default class Utils {
         Number(chinese[5] || 0),
       );
     }
-    return new Date(value);
+    // A human-typed date (or a clear) keeps the deployment-clock semantics;
+    // anything unparseable yields null so the picker can reject it.
+    const parsed = parse(value || now());
+    return parsed.isValid() ? parsed.toDate() : null;
   };
 
+  // wallClockToDate builds a Date for the given deployment-zone clock fields.
+  // Month is zero based, matching the Date constructor.
+  wallClockToDate = (year, month, day, hour, minute, second) => now()
+    .year(year)
+    .month(month)
+    .date(day)
+    .hour(hour || 0)
+    .minute(minute || 0)
+    .second(second || 0)
+    .millisecond(0)
+    .toDate();
+
   duration = (start, end) => {
-    const a = dayjs(start);
-    const b = dayjs(end);
+    const a = parse(start);
+    const b = parse(end);
+    if (!a.isValid() || !b.isValid()) {
+      return '';
+    }
     const d = dayjs.duration(Math.abs(b.diff(a)));
 
     const parts = [

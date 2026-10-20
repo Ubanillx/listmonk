@@ -19,6 +19,7 @@ import (
 	"github.com/knadh/listmonk/internal/i18n"
 	"github.com/knadh/listmonk/internal/messenger/email"
 	"github.com/knadh/listmonk/internal/notifs"
+	apptz "github.com/knadh/listmonk/internal/tz"
 	"github.com/knadh/listmonk/models"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
@@ -1391,7 +1392,7 @@ func (m *Manager) makeGnericFuncMap() template.FuncMap {
 			if layout == "" {
 				layout = time.ANSIC
 			}
-			return time.Now().Format(layout)
+			return apptz.Now().Format(layout)
 		},
 		"L": func() *i18n.I18n {
 			return m.i18n

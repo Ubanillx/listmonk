@@ -98,7 +98,7 @@ func (a *App) ExportCampaignSendErrors(c echo.Context) error {
 		book.column("customers.customerCode", 24, ""), book.column("globals.fields.name", 24, ""), book.column("customers.email", 36, ""),
 		book.column("campaigns.sendErrorReason", 32, ""), book.column("exports.sendStage", 24, ""), book.column("exports.smtpCode", 16, "number"),
 		book.column("campaigns.sendErrorMessage", 70, ""), book.column("campaigns.sendErrors", 18, "number"),
-		book.column("exports.firstErrorUTC", 23, "date"), book.column("exports.lastErrorUTC", 23, "date"),
+		book.timeColumn("exports.firstError", 23), book.timeColumn("exports.lastError", 23),
 		book.column("exports.recipientType", 24, ""), book.column("exports.recipientID", 18, ""),
 		book.column("exports.organizationID", 18, ""), book.column("exports.campaignID", 18, ""), book.column("exports.reasonCode", 24, ""),
 	})

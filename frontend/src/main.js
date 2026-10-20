@@ -11,6 +11,7 @@ import Utils from './utils';
 import { installA11y } from './a11y';
 import AppPagination from './components/AppPagination.vue';
 import PaginatedTable from './components/PaginatedTable';
+import { configureTimezone } from './time';
 
 // Internationalisation.
 Vue.use(VueI18n);
@@ -124,6 +125,11 @@ async function initConfig(app) {
     api.getUserProfile(),
     api.getServerConfig(),
   ]);
+
+  // Adopt the deployment's time zone before anything renders a date: every
+  // timestamp, picker and calendar boundary in the admin UI uses it, whatever
+  // zone the browser is in.
+  configureTimezone(cfg);
 
   // Load language before resolving workspaces so startup failures can show a
   // localized retry instead of leaving a blank page or a permanent spinner.

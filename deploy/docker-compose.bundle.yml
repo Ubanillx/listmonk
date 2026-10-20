@@ -26,7 +26,7 @@ services:
       LISTMONK_db__max_open: 25
       LISTMONK_db__max_idle: 25
       LISTMONK_db__max_lifetime: 300s
-      TZ: ${TZ:-Etc/UTC}
+      TZ: ${TZ:-Asia/Shanghai}
       LISTMONK_ADMIN_USER: ${LISTMONK_ADMIN_USER:-}
       LISTMONK_ADMIN_PASSWORD: ${LISTMONK_ADMIN_PASSWORD:-}
     volumes:
@@ -41,6 +41,7 @@ services:
     networks:
       - listmonk
     environment:
+      TZ: ${TZ:-Asia/Shanghai}
       POSTGRES_USER: ${POSTGRES_USER:-lmkp_A7vN3qY8}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-Db_T9x4Qm7Lp2Rs8Vk}
       POSTGRES_DB: ${POSTGRES_DB:-lmkd_A7vN3qY8}

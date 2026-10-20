@@ -5,6 +5,9 @@
 # port, use port 80 (this will require running with elevated permissions).
 address = "0.0.0.0:9173"
 
+# Follow the container's TZ (Asia/Shanghai, set in docker-compose.yml).
+timezone = ""
+
 # Database.
 [db]
 host = "db"

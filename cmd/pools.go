@@ -495,7 +495,7 @@ func poolExportColumns(book *exportWorkbook, aggregate bool) []exportColumn {
 	columns = append(columns, book.column("customers.customerCode", 24, ""), book.column("globals.fields.name", 24, ""),
 		book.column("customers.email", 36, ""), book.column("exports.replyTo", 36, ""), book.column("exports.department", 26, ""),
 		book.column("exports.customerStatus", 18, ""), book.column("exports.allocationStatus", 26, ""), book.column("exports.exclusionReason", 40, ""),
-		book.column("exports.createdAtUTC", 23, "date"), book.column("exports.updatedAtUTC", 23, "date"))
+		book.timeColumn("exports.createdAt", 23), book.timeColumn("exports.updatedAt", 23))
 	if aggregate {
 		columns = append(columns, book.column("exports.poolID", 18, ""))
 	}

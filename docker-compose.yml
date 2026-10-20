@@ -35,7 +35,7 @@ services:
       LISTMONK_db__max_open: 25
       LISTMONK_db__max_idle: 25
       LISTMONK_db__max_lifetime: 300s
-      TZ: Etc/UTC
+      TZ: ${TZ:-Asia/Shanghai}                                 # Deployment time zone: logs, quota day boundaries and every admin UI timestamp. Override with TZ=... (eg: Etc/UTC).
       LISTMONK_ADMIN_USER: ${LISTMONK_ADMIN_USER:-}           # If these (optional) are set during the first `docker compose up`, then the Super Admin user is automatically created.
       LISTMONK_ADMIN_PASSWORD: ${LISTMONK_ADMIN_PASSWORD:-}   # Otherwise, the user can be setup on the web app after the first visit to http://localhost:39100
     volumes:
@@ -53,6 +53,7 @@ services:
       - listmonk
     environment:
       <<: *db-credentials
+      TZ: ${TZ:-Asia/Shanghai}                                 # Keep PostgreSQL's own log timestamps and default session zone on the deployment clock.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U listmonk"]
       interval: 10s

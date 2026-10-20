@@ -72,13 +72,18 @@ describe('Excel exports and translated import templates', () => {
       expect(request.query.lang).to.eq('en');
       expect(response.headers['content-type']).to.eq(contentType);
     });
-    const filename = `audit-events-all-${new Date().toISOString().slice(0, 10)}.xlsx`;
-    cy.readFile(`cypress/downloads/${filename}`, 'binary').then((body) => {
-      const workbook = XLSX.read(body, { type: 'binary' });
-      const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 });
-      expect(rows.length).to.be.greaterThan(1);
-      expect(rows[0][1]).to.eq('Action');
-      expect(rows[0][13]).to.eq('Action code');
+    // The download is named with the deployment's calendar day, not UTC's, so
+    // read /api/config and format "today" in that zone.
+    cy.request('/api/config').then(({ body }) => {
+      const tz = (body.data && body.data.timezone) || 'Asia/Shanghai';
+      const day = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
+      cy.readFile(`cypress/downloads/audit-events-all-${day}.xlsx`, 'binary').then((body) => {
+        const workbook = XLSX.read(body, { type: 'binary' });
+        const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 });
+        expect(rows.length).to.be.greaterThan(1);
+        expect(rows[0][1]).to.eq('Action');
+        expect(rows[0][13]).to.eq('Action code');
+      });
     });
     cy.screenshot('excel-audit-export');
   });

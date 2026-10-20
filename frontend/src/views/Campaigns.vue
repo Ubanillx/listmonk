@@ -72,7 +72,7 @@
             <span class="is-size-7 has-text-grey scheduled">
               <b-icon icon="alarm" size="is-small" />
               <span v-if="!isDone(props.row) && !isRunning(props.row)">
-                {{ $utils.duration(new Date(), props.row.sendAt, true) }}
+                {{ $utils.duration($utils.currentDate(), props.row.sendAt, true) }}
                 <br />
               </span>
               {{ $utils.niceDate(props.row.sendAt, true) }}

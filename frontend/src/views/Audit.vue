@@ -151,6 +151,7 @@
 import Vue from 'vue';
 import { mapState } from 'vuex';
 import EmptyPlaceholder from '../components/EmptyPlaceholder.vue';
+import { today } from '../time';
 
 export default Vue.extend({
   components: { EmptyPlaceholder },
@@ -211,7 +212,8 @@ export default Vue.extend({
         const url = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `audit-events-${scope}-${new Date().toISOString().slice(0, 10)}.xlsx`;
+        // Name the file with the deployment's calendar day, not UTC's.
+        link.download = `audit-events-${scope}-${today()}.xlsx`;
         document.body.appendChild(link);
         link.click();
         link.remove();

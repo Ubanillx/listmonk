@@ -270,10 +270,10 @@
 </template>
 
 <script>
-import dayjs from 'dayjs';
 import Vue from 'vue';
 import { mapState } from 'vuex';
 import Chart from './Chart.vue';
+import { now, parse } from '../time';
 
 const chartColors = {
   views: '#0055d4',
@@ -516,10 +516,10 @@ export default Vue.extend({
       const from = this.campaign.startedAt || this.campaign.createdAt;
       const to = this.campaign.status === 'finished' && this.campaign.updatedAt
         ? this.campaign.updatedAt
-        : new Date();
+        : now().toDate();
 
-      this.filters.from = dayjs(from).toDate();
-      this.filters.to = dayjs(to).toDate();
+      this.filters.from = parse(from).toDate();
+      this.filters.to = parse(to).toDate();
       this.filters.search = '';
       this.filters.opened = 'all';
       this.filters.clicked = 'all';

@@ -13,6 +13,7 @@ import (
 	"unicode/utf16"
 
 	"github.com/knadh/listmonk/internal/i18n"
+	apptz "github.com/knadh/listmonk/internal/tz"
 	"github.com/labstack/echo/v4"
 	"github.com/xuri/excelize/v2"
 )
@@ -123,6 +124,16 @@ func (b *exportWorkbook) column(key string, width float64, kind string) exportCo
 	return exportColumn{label: b.lang.T(key), width: width, kind: kind}
 }
 
+// timeColumn builds a date column whose label names the time zone the values
+// are written in, so a downloaded workbook is never ambiguous.
+func (b *exportWorkbook) timeColumn(key string, width float64) exportColumn {
+	label := b.lang.T(key)
+	if strings.Contains(label, "%s") {
+		label = fmt.Sprintf(label, apptz.Name())
+	}
+	return exportColumn{label: label, width: width, kind: "date"}
+}
+
 func (b *exportWorkbook) addSheet(key string, columns []exportColumn) (*exportSheet, error) {
 	if len(columns) == 0 || len(columns) > excelize.MaxColumns {
 		return nil, fmt.Errorf("invalid export column count: %d", len(columns))
@@ -225,7 +236,9 @@ func (s *exportSheet) addRow(values ...any) error {
 			if stamp.IsZero() {
 				value = nil
 			} else {
-				value = stamp.UTC()
+				// Render in the deployment's zone: the workbook is read next to
+				// the admin UI and the campaign/quota calendars, not in UTC.
+				value = stamp.In(apptz.Location())
 			}
 		}
 		if text, ok := value.(string); ok {
@@ -315,7 +328,7 @@ func exportJSONValue(value any) any {
 func exportTimestamp(value any) any {
 	if text, ok := value.(string); ok {
 		if stamp, err := time.Parse(time.RFC3339Nano, text); err == nil {
-			return stamp.UTC()
+			return stamp.In(apptz.Location())
 		}
 	}
 	return value

@@ -13,6 +13,7 @@ import (
 	"github.com/gofrs/uuid/v5"
 	auditlog "github.com/knadh/listmonk/internal/audit"
 	"github.com/knadh/listmonk/internal/auth"
+	apptz "github.com/knadh/listmonk/internal/tz"
 	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
 	"github.com/lib/pq"
@@ -796,7 +797,9 @@ func (a *App) ExportAuditEvents(c echo.Context) error {
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("read audit export rows: %w", err)
 	}
-	filename := fmt.Sprintf("audit-events-%s-%s.xlsx", scope, time.Now().UTC().Format("20060102-150405"))
+	// The download name carries the deployment's wall-clock date, matching the
+	// timestamps written inside the workbook.
+	filename := fmt.Sprintf("audit-events-%s-%s.xlsx", scope, apptz.Now().Format("20060102-150405"))
 	return book.download(c, filename)
 }
 
@@ -845,7 +848,7 @@ func auditExportIDs(c echo.Context) ([]int64, error) {
 
 func auditExportColumns(b *exportWorkbook) []exportColumn {
 	return []exportColumn{
-		b.column("exports.occurredAtUTC", 23, "date"), b.column("audit.action", 32, ""),
+		b.timeColumn("exports.occurredAt", 23), b.column("audit.action", 32, ""),
 		b.column("exports.actorName", 24, ""), b.column("users.username", 24, ""),
 		b.column("exports.objectType", 22, ""), b.column("exports.objectName", 36, ""),
 		b.column("audit.result", 16, ""), b.column("audit.reason", 32, ""),

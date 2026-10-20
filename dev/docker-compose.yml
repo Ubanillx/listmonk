@@ -22,6 +22,7 @@ services:
     networks:
       - listmonk-dev
     environment:
+      - TZ=${LISTMONK_DEV_TZ:-Asia/Shanghai}
       - POSTGRES_PASSWORD=P9vL2xT7nQ4mK8sR
       - POSTGRES_USER=lmkdev_M7q2Xr8N
       - POSTGRES_DB=lmkdev_M7q2Xr8N
@@ -62,6 +63,7 @@ services:
     ports:
       - "9173:9173"
     environment:
+      - TZ=${LISTMONK_DEV_TZ:-Asia/Shanghai}
       - GOPROXY=${GOPROXY:-https://goproxy.cn,direct}
       - GOSUMDB=${GOSUMDB:-sum.golang.google.cn}
       - npm_config_registry=${NPM_CONFIG_REGISTRY:-https://registry.npmmirror.com}

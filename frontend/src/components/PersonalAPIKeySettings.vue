@@ -118,6 +118,7 @@
 <script>
 import Vue from 'vue';
 import CopyText from './CopyText.vue';
+import { now, parse } from '../time';
 
 function emptyForm(defaultExpiry) {
   return {
@@ -148,11 +149,13 @@ export default Vue.extend({
   },
   computed: {
     expiryMonths() {
+      // Months are the deployment's calendar months; the API validates them
+      // against its own clock in /api/api-keys.
       const months = [];
-      const start = new Date();
+      const start = now();
       for (let offset = 1; offset <= 24; offset += 1) {
-        const date = new Date(start.getFullYear(), start.getMonth() + offset, 1);
-        const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        const date = start.add(offset, 'month').startOf('month');
+        const value = date.format('YYYY-MM');
         months.push({ value, label: value });
       }
       return months;
@@ -270,8 +273,10 @@ export default Vue.extend({
     expiryMonth(value) { return value ? String(value).slice(0, 7) : ''; },
     formatDate(value) {
       if (!value) return this.$t('apiKeys.never');
-      const date = new Date(value);
-      return Number.isNaN(date.getTime()) ? String(value) : this.$utils.niceDate(date, true);
+      // Display in the deployment's zone; validity below stays an absolute
+      // instant comparison.
+      const date = parse(value);
+      return date && date.isValid() ? this.$utils.niceDate(date, true) : String(value);
     },
     isActive(key) {
       if (key.revokedAt || key.revoked_at) return false;

@@ -5,6 +5,13 @@
 # port, use port 80 (this will require running with elevated permissions).
 address = "localhost:9000"
 
+# Time zone of the deployment (IANA name, eg: "Asia/Shanghai", "Europe/Berlin").
+# Leave it empty to follow the process time zone (the TZ environment variable,
+# or the host's /etc/localtime when running the binary directly). The whole
+# server uses one zone: database sessions, quota day boundaries, logs, exports
+# and the admin UI. When nothing is configured, Asia/Shanghai is used.
+timezone = ""
+
 # Database.
 [db]
 host = "localhost"

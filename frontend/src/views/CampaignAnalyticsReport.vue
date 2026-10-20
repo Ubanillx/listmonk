@@ -372,6 +372,7 @@ import dayjs from 'dayjs';
 import Vue from 'vue';
 import { mapState } from 'vuex';
 import Chart from '../components/Chart.vue';
+import { now, parse, zone } from '../time';
 
 const chartColors = {
   views: '#0055d4',
@@ -613,22 +614,24 @@ export default Vue.extend({
 
   methods: {
     defaultDateRange(campaigns = []) {
-      const now = dayjs().set('hour', 23).set('minute', 59).set('seconds', 0);
+      // The end of the deployment's calendar day, so "today" matches the
+      // server's reports and quota windows.
+      const end = now().hour(23).minute(59).second(0);
       const createdAt = campaigns
         .map((campaign) => campaign.createdAt || campaign.created_at)
         .filter(Boolean)
-        .map((value) => dayjs(value))
-        .filter((value) => value.isValid())
+        .map((value) => parse(value))
+        .filter((value) => value && value.isValid())
         .reduce((earliest, value) => (
           !earliest || value.isBefore(earliest) ? value : earliest
         ), null);
 
       if (createdAt) {
-        return { from: createdAt.toDate(), to: now.toDate() };
+        return { from: createdAt.toDate(), to: end.toDate() };
       }
 
-      const weekAgo = now.subtract(7, 'day').set('hour', 0).set('minute', 0);
-      return { from: weekAgo.toDate(), to: now.toDate() };
+      const weekAgo = end.subtract(7, 'day').hour(0).minute(0).second(0);
+      return { from: weekAgo.toDate(), to: end.toDate() };
     },
 
     applyCampaignDateDefaults() {
@@ -649,8 +652,10 @@ export default Vue.extend({
       const hasRouteDateRange = Boolean(this.$route.query.from || this.$route.query.to);
       this.dateRangeTouched = hasRouteDateRange;
       const defaults = this.defaultDateRange();
-      this.filters.from = this.$route.query.from ? dayjs.unix(this.$route.query.from).toDate() : defaults.from;
-      this.filters.to = this.$route.query.to ? dayjs.unix(this.$route.query.to).toDate() : defaults.to;
+      this.filters.from = this.$route.query.from
+        ? dayjs.unix(Number(this.$route.query.from)).tz(zone()).toDate() : defaults.from;
+      this.filters.to = this.$route.query.to
+        ? dayjs.unix(Number(this.$route.query.to)).tz(zone()).toDate() : defaults.to;
       this.resetInteractiveFilters();
 
       const ids = this.$utils.parseQueryIDs(this.$route.query.id).filter((id) => !Number.isNaN(id));
@@ -690,14 +695,14 @@ export default Vue.extend({
     onFromDateChange() {
       this.dateRangeTouched = true;
       if (this.filters.from > this.filters.to) {
-        this.filters.to = dayjs(this.filters.from).add(7, 'day').toDate();
+        this.filters.to = parse(this.filters.from).add(7, 'day').toDate();
       }
     },
 
     onToDateChange() {
       this.dateRangeTouched = true;
       if (this.filters.from > this.filters.to) {
-        this.filters.from = dayjs(this.filters.to).add(-7, 'day').toDate();
+        this.filters.from = parse(this.filters.to).add(-7, 'day').toDate();
       }
     },
 
@@ -971,6 +976,9 @@ export default Vue.extend({
 
 .campaign-scope-tag {
   max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .campaign-selector-actions {

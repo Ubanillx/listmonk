@@ -11,6 +11,9 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	// Embed the IANA database so a minimal container image can still resolve
+	// the deployment time zone.
+	_ "time/tzdata"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/knadh/koanf/providers/env"
@@ -28,6 +31,7 @@ import (
 	"github.com/knadh/listmonk/internal/messenger/email"
 	"github.com/knadh/listmonk/internal/replyai"
 	"github.com/knadh/listmonk/internal/subimporter"
+	apptz "github.com/knadh/listmonk/internal/tz"
 	"github.com/knadh/listmonk/models"
 	"github.com/knadh/paginator"
 	"github.com/knadh/stuffbin"
@@ -155,6 +159,11 @@ func initApp() {
 	}), nil); err != nil {
 		lo.Fatalf("error loading config from env: %v", err)
 	}
+
+	// Resolve the one time zone used by the server, its database sessions and
+	// the admin UI. The deployment's zone (TZ) is authoritative; app.timezone
+	// only overrides it explicitly and Asia/Shanghai is the final default.
+	apptz.Init(ko.String("app.timezone"))
 
 	// Connect to the database.
 	db = initDB()

@@ -1,5 +1,15 @@
 # Listmonk 工程架构与运行指南
 
+## BestEDM 发件服务账号与报表（2026-10-20）
+
+`internal/bestedm` 是固定 HTTPS 上游的只读适配器，使用 HTTP Basic Auth 查询账号、服务、统计、失败地址 XML 和日志 JSON；20 秒超时、4 MB 响应上限、禁用重定向、识别 HTTP 200 的 XML 业务错误，不猜测非法 XML/JSON 示例。`cmd/delivery_provider.go` 负责平台管理员边界、参数组合校验、安全配置 DTO、直接 Excel 导出；报表只有真实数据源，`mode` 等样例参数会被参数校验拒绝，失败即返回错误，不用空数据或零值兜底。个人 Key 的独立前缀 allowlist 不包含这些路由。
+
+配置使用现有 `settings` 的保留行 `integration.bestedm`，不加入 `models.Settings`，避免通用设置读取暴露账号密码。通用按键写入拒绝该行，专用保存以数据库事务锁和 `expected_updated_at` 校验并发；测试读取已保存凭据，结果以原 JSON 比较更新，避免旧请求覆盖新配置，失败安全文本也持久化。凭据沿用既有 SMTP 设置的数据库机密保护，不回传密码；新增账号配置无需 schema 迁移或应用重启。更新、测试及导出登记业务审计，失败测试覆盖审计结果，不记录邮箱/凭据。
+
+`frontend/src/views/DeliveryProvider.vue` 提供总览、发送分析、投递日志、账号设置；发送分析把批次统计与失败地址左右联动展示；`frontend/src/utils/providerBatches.js` 按批次分组，以组内最新统计日期倒序排列，组内记录也按日期倒序，分页按整组计数，分组标题和记录均可触发右侧筛选；批次下拉从日期查询结果去重生成，不将统计记录 ID 当发送任务 ID。页签写入 URL，`App.vue::routeViewKey` 排除 `tab`，切换页签保留草稿并使在途响应失效。页面和菜单只对平台管理员开放，所有数据是平台范围，不随组织切换，也不自动关联或改写 Listmonk 活动统计。查询日期使用上次成功应用的范围，批次选择同步指标和失败明细；日期刷新失效旧明细，快速切换批次用请求序号屏蔽过期响应。邮箱本地搜索与后端 Excel 的 `search` 条件一致（大小写不敏感），不透传上游；原始 API 默认保留重复记录，页面与导出通过 `group_by=email` 调用 `cmd/delivery_provider_failures.go::summarizeProviderFailures` 合并邮箱，返回总次数及全部分类/说明的分项次数，不将返回记录数推断成 SMTP 尝试次数；查日志只预填邮箱与候选日期，仍需显式查询。旧 `tab=failures` 链接兼容打开发送分析。API 查询连接与实际 SMTP 投递状态分开；SMTP 无效地址的日期级局限在页面和文档明确展示。
+
+契约：[发件服务](docs/content/delivery-provider.md)、[API](docs/content/apis/delivery-provider.md)。验证：`internal/bestedm/client_test.go`、`cmd/delivery_provider_test.go`、`frontend/cypress/e2e/delivery-provider.cy.js`。
+
 ## 全链路统一时区（2026-10-20）
 
 全系统只有一个时钟，来源是部署：容器/主机的 `TZ`（Compose 默认 `Asia/Shanghai`，可用 `TZ=Etc/UTC` 覆盖）。`app.timezone`（`LISTMONK_app__timezone`）只在同一镜像需要按实例区分时覆盖；两者都缺失时回退 `Asia/Shanghai`，不再默认 UTC。`internal/tz` 是唯一解析入口：`Init` 在读取配置后、连接数据库前执行，设置 `time.Local`、写入 `TZ`，并提供 `Now/In/Location/Name/OffsetLabel`；`cmd/main.go` 匿名导入 `time/tzdata`，精简镜像无需安装 tzdata 也能解析时区名。

@@ -49,6 +49,7 @@ nav:
     - "Templating": templating.md
     - "Querying and segmenting customers": querying-and-segmentation.md
     - "Bounce processing": bounces.md
+    - "Delivery provider reports": delivery-provider.md
     - "Messengers": "messengers.md"
     - "Archives": "archives.md"
     - "Internationalization": "i18n.md"
@@ -74,6 +75,7 @@ nav:
     - "Audit events": apis/audit-events.md
     - "Transactional": apis/transactional.md
     - "Bounces": apis/bounces.md
+    - "Delivery provider reports": apis/delivery-provider.md
     - "Settings": apis/settings.md
     - "System": apis/system.md
     - "Public endpoints": apis/public-endpoints.md

@@ -1,5 +1,7 @@
 # 业务逻辑
 
+- **BestEDM 平台报表（2026-10-20）**：服务商账号只供平台管理员读取/配置，工作区或普通设置权限不扩大授权。先保存凭据再测试，空密码仅在账号不变时保留；版本冲突/旧测试不能覆盖新凭据，密码和原始上游错误不进入 API 响应或审计。页面与接口只有真实数据源，请求失败即报错，不回退样例或零值。数据按上游返回汇总、缺字段显示未知；发送分析中批次候选从日期统计去重，下拉选择和点击行同步查询已应用范围；批次按组内最新统计日期倒序、组内记录倒序，分页不拆组。邮箱搜索与 Excel 同口径；页面与导出使用 `group_by=email` 对当前范围忽略邮箱大小写、去除首尾空白后汇总，保留每类错误说明及次数，不跨范围累计，也不把记录出现次数当成 SMTP 尝试次数；原始接口默认保留逐条记录。旧响应不得覆盖新批次。SMTP 无效地址按日期归属，发送任务/统计记录 ID 不混用，不自动关联 Listmonk 活动或改写发送状态。来源：`cmd/delivery_provider.go`、`internal/bestedm/client.go`、`frontend/src/views/DeliveryProvider.vue`。
+
 - **EML/MSG 正文导入（2026-10-20）**：用户确认替换后，本地解析 EML 或 Outlook MSG，优先 HTML、其次纯文本；只上传正文引用且唯一匹配的内嵌图片，重复 CID 不重复上传，普通附件/邮件头不导入。校验全部引用后才开始上传，全部成功后才替换正文、切换编辑格式并关联媒体；取消、解析或上传失败不得覆盖原草稿，部分成功上传的素材保留在媒体库且明确提示。导入中阻止保存/预览，只读活动不可导入，不自动保存或发送。来源：`frontend/src/components/{Editor,EmlImport}.vue`、`frontend/src/utils/{importEml,emlParser.worker,msgParser,msgParser.worker}.js`。
 
 - **活动编辑器占位符插入**：活动内容页的客户占位符按钮只能写入当前可编辑正文的光标/选区；插入替换选区并把光标放在占位符末尾，重复点击继续写入同一位置，撤销/重做由各编辑器原生历史栈处理。富文本按当前行内标签保留格式，备用纯文本和可视化文字字段分别使用自己的选区；只读活动禁用插入。来源：`frontend/src/views/Campaign.vue::onInsertPlaceholder`、`frontend/src/components/{Editor,RichtextEditor,CodeEditor,VisualEditor}.vue`、`frontend/src/utils/insertInputText.js`。

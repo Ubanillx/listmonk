@@ -738,6 +738,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Time zone">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#systemd-deployments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Systemd deployments
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -870,6 +887,8 @@
   
     
     
+      
+        
       
         
       
@@ -1039,6 +1058,34 @@
     
   
     Bounce processing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../delivery-provider/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Delivery provider reports
   
 
     
@@ -1291,6 +1338,8 @@
   
     
     
+      
+        
       
         
       
@@ -1810,6 +1859,34 @@
     
   
     Bounces
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../apis/delivery-provider/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Delivery provider reports
   
 
     
@@ -2569,6 +2646,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Time zone">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#systemd-deployments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Systemd deployments
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -4206,6 +4300,21 @@ a single instance has to differ from the container or host. When neither is
 available (for example a bare binary on a minimal image), the server falls back
 to <code>Asia/Shanghai</code> instead of UTC. The embedded tz database means no external
 tzdata package is required.</p>
+<h3 id="systemd-deployments">Systemd deployments<a class="headerlink" href="#systemd-deployments" title="Permanent link">&para;</a></h3>
+<p>A service that starts listmonk from its own unit must set <code>TZ</code> explicitly. The
+Jenkins pipeline writes it from its <code>APP_TIMEZONE</code> parameter (default
+<code>Asia/Shanghai</code>):</p>
+<div class="highlight"><pre><span></span><code>Environment=TZ=Asia/Shanghai
+</code></pre></div>
+<p>Without it the process inherits whatever zone the host has. A host running on
+UTC then reads <code>daily_resume_time</code> on the UTC clock, so a campaign configured
+for <code>09:00</code> in Shanghai is deferred to the next <code>17:00</code> local and the admin UI
+shows that shifted time. Restart the service after adding the variable.</p>
+<p>The <code>v6.62.0</code> upgrade repairs campaigns that were already deferred under a
+mismatched clock by moving <code>next_resume_at</code> to the next occurrence of the
+campaign's own <code>daily_resume_time</code> on the deployment zone. The migration only
+touches rows whose stored wall clock disagrees with the campaign, so running it
+again changes nothing.</p>
 <h2 id="smtp">SMTP<a class="headerlink" href="#smtp" title="Permanent link">&para;</a></h2>
 <h3 id="retries">Retries<a class="headerlink" href="#retries" title="Permanent link">&para;</a></h3>
 <p>The <code>Settings -&gt; SMTP -&gt; Retries</code> denotes the number of times a message that fails at the moment of sending is retried silently using different connections from the SMTP pool. The messages that fail even after retries are the ones that are logged as errors and ignored.</p>

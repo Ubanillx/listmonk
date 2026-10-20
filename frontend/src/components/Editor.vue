@@ -2,9 +2,9 @@
   <!-- Two-way Data-Binding -->
   <section class="editor" @focusin="$emit('focus')">
     <div class="columns">
-      <div class="column is-three-quarters is-inline-flex">
+      <div class="column is-inline-flex editor-options">
         <b-field :label="$t('campaigns.format')" label-position="on-border" class="mr-4 mb-0">
-          <b-select v-model="contentTypeSel" :disabled="disabled" name="content_type">
+          <b-select v-model="contentTypeSel" :disabled="disabled || isImportingEml" name="content_type">
             <option v-for="(name, f) in contentTypes" :key="f" name="format" :value="f" :data-cy="`check-${f}`">
               {{ name }}
             </option>
@@ -49,7 +49,9 @@
           </b-field>
         </div>
       </div>
-      <div class="column is- has-text-right">
+      <div class="column is-narrow has-text-right editor-actions">
+        <eml-import v-if="self.contentType !== 'visual'" :disabled="disabled"
+                    @busy="isImportingEml = $event" @imported="onEmlImported" />
         <b-button @click="onTogglePreview" type="is-primary" icon-left="file-find-outline" data-cy="btn-preview"
           aria-keyshortcuts="F9">
           <span class="has-kbd">{{ $t('campaigns.preview') }} <span class="kbd">F9</span></span>
@@ -58,7 +60,7 @@
     </div>
 
     <!-- wsywig //-->
-    <richtext-editor v-if="self.contentType === 'richtext'" :disabled="disabled" v-model="self.body"
+    <richtext-editor v-if="self.contentType === 'richtext'" :disabled="disabled || isImportingEml" v-model="self.body"
       @media-selected="onMediaSelect" @focus="$emit('focus')" ref="richtextEditor" />
 
     <!-- visual editor //-->
@@ -70,15 +72,15 @@
 
     <!-- raw html editor //-->
     <code-editor lang="html" v-if="self.contentType === 'html'" v-model="self.body" key="editor-html"
-      :disabled="disabled" ref="codeEditor" />
+      :disabled="disabled || isImportingEml" ref="codeEditor" />
 
     <!-- markdown editor //-->
     <code-editor lang="markdown" v-if="self.contentType === 'markdown'" v-model="self.body" key="editor-markdown"
-      :disabled="disabled" ref="codeEditor" />
+      :disabled="disabled || isImportingEml" ref="codeEditor" />
 
     <!-- plain text //-->
     <b-input v-if="self.contentType === 'plain'" v-model="self.body" type="textarea" name="content" ref="plainEditor"
-      class="plain-editor" :disabled="disabled" />
+      class="plain-editor" :disabled="disabled || isImportingEml" />
 
     <!-- campaign preview //-->
     <campaign-preview v-if="isPreviewing" is-post @close="onTogglePreview" type="campaign" :id="id" :title="title"
@@ -98,11 +100,13 @@ import RichtextEditor from './RichtextEditor.vue';
 import markdownToVisualBlock from './editor';
 import CodeEditor from './CodeEditor.vue';
 import insertInputText from '../utils/insertInputText';
+import EmlImport from './EmlImport.vue';
 
 const turndown = new TurndownService();
 
 export default {
   components: {
+    EmlImport,
     CampaignPreview,
     'code-editor': CodeEditor,
     'visual-editor': VisualEditor,
@@ -135,6 +139,7 @@ export default {
   data() {
     return {
       isPreviewing: false,
+      isImportingEml: false,
       isVisualTplSelector: false,
       isVisualTplDisabled: false,
       contentTypeSel: this.$props.value.contentType,
@@ -144,6 +149,16 @@ export default {
   },
 
   methods: {
+    async onEmlImported({ body, contentType, media }) {
+      if (this.disabled) return;
+      this.self.contentType = contentType;
+      this.contentTypeSel = contentType;
+      // TinyMCE flushes its old value on teardown. Apply the new body after it unmounts.
+      await this.$nextTick();
+      this.self.body = body;
+      this.self.bodySource = null;
+      media.forEach(this.onMediaSelect);
+    },
     insertText(text) {
       if (this.disabled) return false;
       const editor = this.$refs.richtextEditor || this.$refs.codeEditor || this.$refs.visualEditor;
@@ -260,6 +275,7 @@ export default {
     },
 
     async prepareContent() {
+      if (this.isImportingEml) return false;
       if (this.$refs.richtextEditor) return this.$refs.richtextEditor.prepareContent();
       return true;
     },
@@ -452,3 +468,18 @@ export default {
 };
 
 </script>
+
+<style scoped>
+.editor-options {
+  flex-wrap: wrap;
+  gap: 0.5rem 0;
+  min-width: 0;
+}
+.editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+</style>

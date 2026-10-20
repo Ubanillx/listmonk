@@ -1,5 +1,7 @@
 # 业务逻辑
 
+- **EML 正文导入（2026-10-20）**：用户确认替换后，本地解析 EML，优先 HTML、其次纯文本；只上传正文引用且唯一匹配的内嵌图片，重复 CID 不重复上传，普通附件/邮件头不导入。校验全部引用后才开始上传，全部成功后才替换正文、切换编辑格式并关联媒体；取消、解析或上传失败不得覆盖原草稿，部分成功上传的素材保留在媒体库且明确提示。导入中阻止保存/预览，只读活动不可导入，不自动保存或发送。来源：`frontend/src/components/{Editor,EmlImport}.vue`、`frontend/src/utils/{importEml,emlParser.worker}.js`。
+
 - **活动编辑器占位符插入**：活动内容页的客户占位符按钮只能写入当前可编辑正文的光标/选区；插入替换选区并把光标放在占位符末尾，重复点击继续写入同一位置，撤销/重做由各编辑器原生历史栈处理。富文本按当前行内标签保留格式，备用纯文本和可视化文字字段分别使用自己的选区；只读活动禁用插入。来源：`frontend/src/views/Campaign.vue::onInsertPlaceholder`、`frontend/src/components/{Editor,RichtextEditor,CodeEditor,VisualEditor}.vue`、`frontend/src/utils/insertInputText.js`。
 
 - **分配页签状态（2026-10-19）**：页签切换与目标选择不切换工作区、不重建外层列表。缓存只在当前工作台/目标有效；切组织清理，写入成功使缓存失效后局部重查，不能用客户端缓存替代后端动作/版本校验。旧页签未完成请求不覆盖当前页签；未保存信息草稿在页签间保留。来源：`frontend/src/App.vue::routeViewKey`、`frontend/src/components/PoolAllocationWorkbench.vue::changeTab/refresh`。

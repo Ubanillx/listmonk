@@ -1,5 +1,16 @@
 # Templating
 
+## Import an EML email body
+
+In a campaign's **Content** tab, choose **Import EML** next to Preview and select a `.eml` file exported from your email client. Confirm replacement of the current body. HTML emails open in rich text mode; text-only emails open in plain text mode. Review the result, then save the campaign explicitly.
+
+- Files must be non-empty and at most 32 MiB. Outlook `.msg` files are not supported; export the original email as `.eml`.
+- Embedded CID images, uniquely matched attachment filenames, and supported embedded data images are uploaded to the media library and inserted in their original positions. Repeated references share one media record. Media upload permissions are required.
+- The subject, recipients and ordinary attachments are not imported. HTTP(S) image links remain remote links; they must still be accessible to recipients.
+- Tables, inline formatting and image dimensions are preserved where supported. Scripts, event handlers, forms, embedded objects, stylesheets and unsafe CSS are removed; check the preview before sending.
+- Parsing happens locally in the browser. The original EML and unused attachments are not uploaded. Only referenced images are uploaded; the imported body is persisted when you save.
+- Cancelling, missing image data, invalid files or failed uploads leave the original draft unchanged. Uploads completed before a later failure remain in the media library. Import is unavailable in the visual builder and on read-only campaigns.
+
 A template is a re-usable HTML design that can be used across campaigns and transactional messages. Most commonly, templates have standard header and footer areas with logos and branding elements, where campaign content is inserted in the middle.
 
 listmonk supports [Go template](https://pkg.go.dev/text/template) expressions that lets you create powerful, dynamic HTML templates. It also integrates 100+ useful [Sprig template functions](https://masterminds.github.io/sprig/).

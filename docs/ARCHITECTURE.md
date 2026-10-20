@@ -180,6 +180,8 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 
 `frontend/src/utils/clipboardImages.js` 补齐 TinyMCE 5 的混合图文粘贴：从 HTML 内嵌图片、剪贴板文件或 Word/WPS RTF 的 PNG/JPEG pict 数据匹配图片位置，通过临时标记跨过 Word 图片标签过滤后恢复图片，再进入现有上传器。多个未知本地图片仅在数量匹配时按顺序映射，避免错误套用单张剪贴板预览；无 HTML 位置的文字加文件在文字后插图。网页图片由浏览器无凭据、无 Referrer、受 CORS 约束下载（每图 15 秒、32 MiB），不增加服务端 URL 代理；同源媒体复制使用原鉴权文件 API 读取后入库并关联。保存等待粘贴解析及上传，无法读取的图片保留失败标记并阻止保存，删除或重新上传后可继续；卸载编辑器中止下载。纯文本粘贴继续沿用原生逻辑。
 
+`EmlImport.vue` 提供非可视化正文的 EML 导入入口，`emlParser.worker.js` 使用 Postal MIME 在浏览器 Worker 内解析原始字节，处理 multipart/alternative、related、Base64、quoted-printable 和字符集。限制原文件 32 MiB、嵌套 20 层、200 个 MIME part、累计头部 256 KiB 和 30 秒解析时间；附加的 message/rfc822 不合并为正文。`importEml.js` 在上传前验证全部内嵌图片引用，按 CID 或唯一附件文件名匹配，重复引用共用一份上传，data URL 同样入库；普通附件不上传，远程 HTTP(S) 图片保留链接。DOMPurify 去除脚本、事件、表单、嵌入对象和样式表，行内 CSS 仅保留排版白名单，图片地址替换后再次净化。不新增后端接口，图片复用 `POST /api/media` 的工作区与权限检查。仅全部图片上传成功才替换正文并关联媒体；过程中禁用编辑、保存和预览，失败保留原正文，已经上传的素材留在媒体库。导入不改变主题、收件人或活动状态，不自动保存。回归入口：`frontend/cypress/e2e/campaign-eml-import.cy.js`。
+
 自 v6.58.0 起，实际邮件投递通过 `internal/manager/linked_media.go::LinkMediaAttachments` 将关联图片的 `src`、背景图及文件 `href` 转换为 `app.root_url` 下的收件人链接，不发送媒体库文件的 CID 或附件 MIME。正文图片保留原位置自动远程加载，未引用的图片以正文图片补充，其他文件追加下载链接；纯文本和已有替代正文补充文件 URL。新发、测试、暂停恢复、延迟续发与事务模板媒体共用此处理；系统客户数据导出与事务 API 的临时原始附件仍遵守原消息契约。外部图片 URL 保留，历史本机 `/uploads/` 与 ID/文件名保护 URL 在已授权的媒体集合内匹配，带 ID 的引用不回退到同名克隆。
 
 已开始且部分投递的历史活动暂停后恢复时，调度器重新加载活动与已关联素材，剩余收件人走上述链接转换，包含旧 `/uploads/`、保护 URL 与 CID 图片引用；无需重新创建活动、修改正文或重置进度。已发送的收件人不重复投递，原始 `started_at` 与已发送记录保留，旧队列中的未发送收件人可继续领取。真实数据库与 SMTP MIME 的完整恢复回归见 `cmd/email_media_resume_test.go::TestStartedCampaignResumesWithRemoteMedia`。

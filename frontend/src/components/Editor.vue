@@ -1,6 +1,6 @@
 <template>
   <!-- Two-way Data-Binding -->
-  <section class="editor">
+  <section class="editor" @focusin="$emit('focus')">
     <div class="columns">
       <div class="column is-three-quarters is-inline-flex">
         <b-field :label="$t('campaigns.format')" label-position="on-border" class="mr-4 mb-0">
@@ -59,22 +59,22 @@
 
     <!-- wsywig //-->
     <richtext-editor v-if="self.contentType === 'richtext'" :disabled="disabled" v-model="self.body"
-      @media-selected="onMediaSelect" ref="richtextEditor" />
+      @media-selected="onMediaSelect" @focus="$emit('focus')" ref="richtextEditor" />
 
     <!-- visual editor //-->
     <!-- visual editor. The email builder has no read-only mode, so a viewer
          without edit rights can still type here; the parent hides the save
          controls, which makes the change unsaveable rather than silent. //-->
     <visual-editor v-if="self.contentType === 'visual'" :source="self.bodySource" @change="onVisualEditorChange"
-      @media-selected="onMediaSelect" height="65vh" ref="visualEditor" />
+      @media-selected="onMediaSelect" @focus="$emit('focus')" height="65vh" ref="visualEditor" />
 
     <!-- raw html editor //-->
     <code-editor lang="html" v-if="self.contentType === 'html'" v-model="self.body" key="editor-html"
-      :disabled="disabled" />
+      :disabled="disabled" ref="codeEditor" />
 
     <!-- markdown editor //-->
     <code-editor lang="markdown" v-if="self.contentType === 'markdown'" v-model="self.body" key="editor-markdown"
-      :disabled="disabled" />
+      :disabled="disabled" ref="codeEditor" />
 
     <!-- plain text //-->
     <b-input v-if="self.contentType === 'plain'" v-model="self.body" type="textarea" name="content" ref="plainEditor"
@@ -97,6 +97,7 @@ import VisualEditor from './VisualEditor.vue';
 import RichtextEditor from './RichtextEditor.vue';
 import markdownToVisualBlock from './editor';
 import CodeEditor from './CodeEditor.vue';
+import insertInputText from '../utils/insertInputText';
 
 const turndown = new TurndownService();
 
@@ -143,6 +144,13 @@ export default {
   },
 
   methods: {
+    insertText(text) {
+      if (this.disabled) return false;
+      const editor = this.$refs.richtextEditor || this.$refs.codeEditor || this.$refs.visualEditor;
+      if (editor) return editor.insertText(text);
+      return insertInputText(this.$refs.plainEditor?.getElement(), text);
+    },
+
     onContentTypeChange(to, from) {
       if (!this.self.body.trim()) {
         this.convertContentType(to, from);

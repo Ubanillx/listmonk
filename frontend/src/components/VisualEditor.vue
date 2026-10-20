@@ -16,6 +16,7 @@
 
 <script>
 import Media from '../views/Media.vue';
+import insertInputText from '../utils/insertInputText';
 
 export default {
   components: {
@@ -30,10 +31,21 @@ export default {
   data() {
     return {
       isMediaVisible: false,
+      textInput: null,
     };
   },
 
   methods: {
+    onEditorFocus(event) {
+      // Keep the last text field when keyboard focus moves to the outer page.
+      this.textInput = typeof event.target.selectionStart === 'number' ? event.target : null;
+      this.$emit('focus');
+    },
+
+    insertText(text) {
+      return insertInputText(this.textInput, text);
+    },
+
     loadScript() {
       return new Promise((resolve, reject) => {
         const iframe = this.$refs.visualEditor;
@@ -152,6 +164,7 @@ export default {
     `;
 
     iframe.onload = () => {
+      iframe.contentDocument.addEventListener('focusin', this.onEditorFocus);
       this.loadScript().then(() => {
         let source = null;
         if (this.$props.source) {
@@ -168,7 +181,8 @@ export default {
     window.addEventListener('message', this.onSidebarMount, false);
   },
 
-  unmounted() {
+  beforeDestroy() {
+    this.$refs.visualEditor.contentDocument?.removeEventListener('focusin', this.onEditorFocus);
     window.removeEventListener('message', this.onSidebarMount, false);
   },
 };

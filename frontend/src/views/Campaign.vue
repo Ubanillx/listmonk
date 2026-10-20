@@ -319,7 +319,7 @@
         <editor v-if="data.id" v-model="form.content" :id="data.id" :title="data.name" :disabled="!canEdit"
           :templates="templates" :content-types="contentTypes" :auto-track-links="form.autoTrackLinks" :media="form.media" ref="contentEditor"
           @template-media="onTemplateMedia" @template-attachments="onTemplateAttachments"
-          @media-selected="onMediaSelect" />
+          @media-selected="onMediaSelect" @focus="isAltBodyFocused = false" />
 
         <div class="columns">
           <div class="column is-6">
@@ -350,9 +350,14 @@
           </div>
           <div class="column has-text-right">
             <span><b-icon icon="code" /> {{ $t('campaigns.templatingRef') }}</span>
-            <div v-if="customFields.length" class="is-size-7 has-text-grey mt-2">
+            <div v-if="customFields.length" class="placeholder-list is-size-7 has-text-grey mt-2">
               {{ $t('customFields.placeholder') }}:
-              <code v-for="field in customFields" :key="field.key" class="ml-2">{{ field.placeholder }}</code>
+              <button v-for="field in customFields" :key="field.key" type="button" class="placeholder-button"
+                :disabled="!canEdit" :title="$t('campaigns.editor.insertPlaceholder')"
+                :aria-label="`${$t('campaigns.editor.insertPlaceholder')}: ${field.placeholder}`"
+                @mousedown.prevent @click="onInsertPlaceholder(field.placeholder)" data-cy="insert-placeholder">
+                <code>{{ field.placeholder }}</code>
+              </button>
             </div>
             <span v-if="canEdit && form.content.contentType !== 'plain'" class="is-size-6 has-text-grey ml-6">
               <a v-if="form.altbody === null" href="#" @click.prevent="onAddAltBody">
@@ -367,7 +372,8 @@
         </div>
 
         <div v-if="canEdit && form.content.contentType !== 'plain'" class="alt-body">
-          <b-input v-if="form.altbody !== null" v-model="form.altbody" type="textarea" :disabled="!canEdit" />
+          <b-input v-if="form.altbody !== null" v-model="form.altbody" type="textarea" :disabled="!canEdit"
+            ref="altBodyEditor" @focus="isAltBodyFocused = true" />
         </div>
       </b-tab-item><!-- content -->
 
@@ -493,6 +499,7 @@ import CopyText from '../components/CopyText.vue';
 import Editor from '../components/Editor.vue';
 import CampaignAudienceTreeSelect from '../components/CampaignAudienceTreeSelect.vue';
 import { isActiveWorkspaceCustomerList } from '../utils/workspace';
+import insertInputText from '../utils/insertInputText';
 import Media from './Media.vue';
 
 export default Vue.extend({
@@ -536,6 +543,7 @@ export default Vue.extend({
       replyMailboxes: [],
       replyMailboxesLoaded: false,
       customFields: [],
+      isAltBodyFocused: false,
 
       data: {},
 
@@ -586,6 +594,15 @@ export default Vue.extend({
   },
 
   methods: {
+    onInsertPlaceholder(text) {
+      if (!this.canEdit) return;
+      const altBody = this.isAltBodyFocused && this.$refs.altBodyEditor?.getElement();
+      const inserted = altBody
+        ? insertInputText(altBody, text)
+        : this.$refs.contentEditor?.insertText(text);
+      if (!inserted) this.$utils.toast(this.$t('campaigns.editor.selectTextField'), 'is-info');
+    },
+
     onSMTPSourceSelection(source) {
       this.form.smtpRateLimit = source === 'organization' ? 100 : 20;
     },
@@ -1517,6 +1534,45 @@ export default Vue.extend({
 </script>
 
 <style scoped>
+.placeholder-list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.placeholder-button {
+  max-width: 100%;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid #dbe4f1;
+  border-radius: 4px;
+  background: #f5f8fc;
+  cursor: pointer;
+}
+
+.placeholder-button code {
+  padding: 0;
+  background: transparent;
+  color: #2454a6;
+  overflow-wrap: anywhere;
+}
+
+.placeholder-button:hover:not(:disabled) {
+  background: #eaf1ff;
+  border-color: #9fb9e7;
+}
+
+.placeholder-button:focus-visible {
+  outline: 2px solid #165dff;
+  outline-offset: 2px;
+}
+
+.placeholder-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 .campaign-toggle-field {
   margin-bottom: 1.25rem;
 }

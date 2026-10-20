@@ -12,7 +12,7 @@ import { javascript } from '@codemirror/lang-javascript';
 import { css } from '@codemirror/lang-css';
 import { html } from '@codemirror/lang-html';
 import {
-  defaultKeymap, history, historyKeymap, indentWithTab,
+  defaultKeymap, history, historyKeymap, indentWithTab, isolateHistory,
 } from '@codemirror/commands';
 import { defaultHighlightStyle, syntaxHighlighting, bracketMatching } from '@codemirror/language';
 import { search, searchKeymap, highlightSelectionMatches } from '@codemirror/search';
@@ -34,6 +34,17 @@ export default {
   },
 
   methods: {
+    insertText(text) {
+      if (this.disabled || !this.editor) return false;
+      this.editor.dispatch({
+        ...this.editor.state.replaceSelection(text),
+        userEvent: 'input',
+        annotations: isolateHistory.of('full'),
+        scrollIntoView: true,
+      });
+      this.editor.focus();
+      return true;
+    },
   },
 
   mounted() {

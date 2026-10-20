@@ -81,11 +81,15 @@ import 'tinymce/plugins/visualblocks';
 import 'tinymce/plugins/visualchars';
 import 'tinymce/plugins/wordcount';
 import 'tinymce/skins/ui/oxide/skin.css';
+// Vite embeds the UI content skin in the editor iframe, including resize handles.
+// eslint-disable-next-line import/no-unresolved
+import contentUiCss from 'tinymce/skins/ui/oxide/content.css?inline';
 import 'tinymce/themes/silver';
 
 import { colors, uris } from '../constants';
 import CodeEditor from './CodeEditor.vue';
 import Media from '../views/Media.vue';
+import clipboardImages from '../utils/clipboardImages';
 
 // Map of listmonk language codes to corresponding TinyMCE language files.
 const LANGS = {
@@ -134,6 +138,43 @@ export default {
   },
 
   methods: {
+    formattedInsertion(text) {
+      const { editor } = this;
+      const inlineTags = new Set([
+        'A', 'B', 'EM', 'I', 'MARK', 'S', 'SMALL', 'SPAN', 'STRIKE', 'STRONG', 'SUB', 'SUP', 'U',
+      ]);
+      let node = editor.selection.getNode();
+      if (node?.nodeType === 3) {
+        const { parentNode } = node;
+        node = parentNode;
+      }
+
+      const ancestors = [];
+      while (node && node !== editor.getBody() && node.nodeType === 1) {
+        if (!inlineTags.has(node.nodeName)) break;
+        ancestors.push(node);
+        node = node.parentNode;
+      }
+
+      let content = editor.dom.encode(text);
+      ancestors.reverse().forEach((ancestor) => {
+        const wrapper = ancestor.cloneNode(false);
+        wrapper.innerHTML = content;
+        content = wrapper.outerHTML;
+      });
+      return content;
+    },
+
+    insertText(text) {
+      if (this.disabled || !this.isReady) return false;
+      this.editor.focus();
+      this.editor.undoManager.transact(() => {
+        this.editor.insertContent(this.formattedInsertion(text));
+      });
+      this.computedValue = this.editor.getContent();
+      return true;
+    },
+
     initRichtextEditor() {
       const { lang } = this.serverConfig;
 
@@ -142,6 +183,11 @@ export default {
         urlconverter_callback: this.onEditorURLConvert,
 
         setup: (editor) => {
+          editor.on('focus', () => this.$emit('focus'));
+          this.clipboardImages = clipboardImages(editor, this.$api.getMediaFile, () => {
+            this.$utils.toast(this.$t('campaigns.editor.clipboardImageFailed'), 'is-danger');
+          });
+
           editor.addShortcut('ctrl+s', this.$t('campaigns.editor.saveContent'), () => {
             this.$events.$emit('campaign.update', {});
           });
@@ -191,6 +237,7 @@ export default {
         skin: false,
         content_css: false,
         content_style: `
+          ${contentUiCss}
           body { font-family: 'Inter', sans-serif; font-size: 15px; }
           img { max-width: 100%; }
           img.img-float-left { float: left; margin: 0 1em 1em 0; }
@@ -203,6 +250,8 @@ export default {
         language_url: LANGS[lang] ? `${uris.static}/tinymce/lang/${LANGS[lang]}.js` : null,
 
         image_advtab: true,
+        object_resizing: true,
+        resize_img_proportional: true,
         automatic_uploads: true,
         paste_data_images: true,
         images_upload_handler: this.uploadImage,
@@ -236,6 +285,7 @@ export default {
     async prepareContent() {
       try {
         if (!this.isReady) throw new Error('Editor is not ready');
+        if (!(await this.clipboardImages.prepare())) throw new Error('Clipboard images are incomplete');
         const results = await this.editor.uploadImages();
         const localImage = this.editor.getBody().querySelector('img[src^="blob:"], img[src^="data:"], img[src^="file:"]');
         if (results.some((result) => !result.status) || localImage) throw new Error('Image upload is incomplete');
@@ -294,6 +344,14 @@ export default {
       const self = this;
 
       ed.windowManager.open = (t, r) => {
+        // Start new images on Upload; existing images keep their editable properties.
+        if (t.body?.type === 'tabpanel' && t.body.tabs.some((tab) => tab.name === 'upload')
+          && t.initialData?.src && !t.initialData.src.value) {
+          const modal = oldEd.apply(this, [t, r]);
+          modal.showTab('upload');
+          return modal;
+        }
+
         const isOK = t.initialData && 'url' in t.initialData && 'anchor' in t.initialData;
 
         // Not the link modal.

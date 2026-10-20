@@ -180,14 +180,17 @@ func setAuditAttemptedUsername(c echo.Context, username string) {
 // raw HTTP paths. The list is kept close to the route registration so adding a
 // new business mutation requires an explicit audit decision.
 var auditRoutes = map[string]auditRouteSpec{
-	"GET /api/audit-events/export":           {"audit.exported", "audit_event", ""},
-	"PUT /api/settings":                      {"settings.updated", "settings", ""},
-	"PUT /api/settings/:key":                 {"settings.updated", "settings", "key"},
-	"POST /api/settings/smtp/test":           {"smtp.tested", "smtp", ""},
-	"POST /api/settings/bounce/mailbox/test": {"bounce_mailbox.tested", "bounce_mailbox", ""},
-	"POST /api/settings/reply-ai/models":     {"reply_ai.models_tested", "reply_ai", ""},
-	"POST /api/settings/reply-ai/test":       {"reply_ai.tested", "reply_ai", ""},
-	"POST /api/admin/reload":                 {"system.reloaded", "system", ""},
+	"PUT /api/delivery-provider/config":        {"delivery_provider.updated", "delivery_provider", ""},
+	"POST /api/delivery-provider/test":         {"delivery_provider.tested", "delivery_provider", ""},
+	"GET /api/delivery-provider/:kind/:format": {"delivery_provider.exported", "delivery_provider", ""},
+	"GET /api/audit-events/export":             {"audit.exported", "audit_event", ""},
+	"PUT /api/settings":                        {"settings.updated", "settings", ""},
+	"PUT /api/settings/:key":                   {"settings.updated", "settings", "key"},
+	"POST /api/settings/smtp/test":             {"smtp.tested", "smtp", ""},
+	"POST /api/settings/bounce/mailbox/test":   {"bounce_mailbox.tested", "bounce_mailbox", ""},
+	"POST /api/settings/reply-ai/models":       {"reply_ai.models_tested", "reply_ai", ""},
+	"POST /api/settings/reply-ai/test":         {"reply_ai.tested", "reply_ai", ""},
+	"POST /api/admin/reload":                   {"system.reloaded", "system", ""},
 
 	"POST /api/customers":                    {"customer.created", "customer", ""},
 	"PUT /api/customers/:id":                 {"customer.updated", "customer", "id"},

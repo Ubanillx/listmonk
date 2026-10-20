@@ -114,6 +114,12 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.GET("/api/dashboard/counts", a.GetDashboardCounts)
 
 		g.GET("/api/settings", pm(a.GetSettings, "settings:get"))
+		g.GET("/api/delivery-provider/config", a.GetDeliveryProviderConfig)
+		g.PUT("/api/delivery-provider/config", a.SaveDeliveryProviderConfig)
+		g.POST("/api/delivery-provider/test", a.TestDeliveryProvider)
+		g.GET("/api/delivery-provider/account", a.GetDeliveryProviderAccount)
+		g.GET("/api/delivery-provider/:kind", a.QueryDeliveryProvider)
+		g.GET("/api/delivery-provider/:kind/:format", a.QueryDeliveryProvider)
 		g.PUT("/api/settings", pm(a.UpdateSettings, "settings:manage"))
 		g.PUT("/api/settings/:key", pm(a.UpdateSettingsByKey, "settings:manage"))
 		g.POST("/api/settings/smtp/test", pm(a.TestSMTPSettings, "settings:manage"))

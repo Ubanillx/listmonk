@@ -392,6 +392,9 @@ func (a *App) UpdateSettings(c echo.Context) error {
 
 // UpdateSettingsByKey updates a single setting key-value in the DB.
 func (a *App) UpdateSettingsByKey(c echo.Context) error {
+	if c.Param("key") == bestEDMSettingsKey {
+		return echo.NewHTTPError(http.StatusForbidden, "use the delivery provider endpoint")
+	}
 	key := c.Param("key")
 	if key == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("globals.messages.invalidData"))

@@ -20,6 +20,7 @@ import (
 	"github.com/knadh/koanf/v2"
 	auditlog "github.com/knadh/listmonk/internal/audit"
 	"github.com/knadh/listmonk/internal/auth"
+	"github.com/knadh/listmonk/internal/bestedm"
 	"github.com/knadh/listmonk/internal/bounce"
 	"github.com/knadh/listmonk/internal/buflog"
 	"github.com/knadh/listmonk/internal/captcha"
@@ -88,7 +89,11 @@ type App struct {
 	// poolImportMu serializes the synchronous public-pool branch of the unified
 	// customer import endpoint. The regular customer importer has its own
 	// admission control; pool imports write directly in one transaction.
-	poolImportMu sync.Mutex
+	poolImportMu  sync.Mutex
+	bestEDMClient bestEDMAPI
+	// bestEDMCreds, when set, replaces the stored provider credentials.
+	// Tests use it to exercise the report routes without a database.
+	bestEDMCreds *bestedm.Credentials
 	sync.Mutex
 }
 

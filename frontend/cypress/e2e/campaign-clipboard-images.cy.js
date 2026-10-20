@@ -88,6 +88,26 @@ describe('Campaign clipboard images', () => {
     });
   });
 
+  it('maps Office relative Attach image references to clipboard files', () => {
+    cy.intercept('POST', '/api/media').as('upload');
+    cy.window().then((win) => {
+      const files = [80, 120, 160, 200].map((width, index) => {
+        const item = image(win, width);
+        return new win.File([item.bytes], `image00${index + 5}(10-20-11-50-52).png`, { type: 'image/png' });
+      });
+      const html = files.map((file, index) => `<p>Text ${index + 1}</p><p><img src="Attach/${file.name}" /></p>`).join('');
+      paste(win, html, files);
+    });
+    cy.wait('@upload').its('response.statusCode').should('eq', 200);
+    cy.wait('@upload').its('response.statusCode').should('eq', 200);
+    cy.wait('@upload').its('response.statusCode').should('eq', 200);
+    cy.wait('@upload').its('response.statusCode').should('eq', 200);
+    editorBody().find('img').should(($images) => {
+      expect(Array.from($images).map((i) => i.naturalWidth)).to.deep.eq([80, 120, 160, 200]);
+      Array.from($images).forEach((i) => expect(i.src).to.contain('/api/media/file/'));
+    });
+  });
+
   it('extracts Word/WPS RTF pictures without losing their positions or a quick save', () => {
     cy.intercept('POST', '/api/media').as('upload');
     cy.intercept('PUT', '/api/campaigns/*').as('save');

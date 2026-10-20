@@ -22,7 +22,12 @@ const filename = (source) => {
   }
 };
 
-const localSource = (source) => !source || /^(?:file:|cid:|webkit-fake-url:)/i.test(source);
+// Office/WPS HTML commonly references embedded pictures as relative Attach/ paths.
+// Those paths only identify clipboard items; they are not fetchable URLs from the
+// campaign page and must be matched with the accompanying file or RTF bytes.
+const localSource = (source) => !source
+  || /^(?:file:|cid:|webkit-fake-url:)/i.test(source)
+  || /^(?:\.\.?[\\/]|attach[\\/])/i.test(source);
 
 // Word/WPS can put image bytes only in RTF. Read PNG/JPEG pict groups, including
 // nested blip metadata, without interpreting RTF fields or accessing local paths.

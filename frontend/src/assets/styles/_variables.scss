@@ -1,3 +1,5 @@
+@use "sass:map";
+
 /* Shared design values. Bulma's utility variables are loaded by style.scss. */
 $body-family: "Inter", "Helvetica Neue", sans-serif;
 $body-size: 14px;
@@ -20,7 +22,7 @@ $menu-item-active-color: $primary;
 $sidebar-box-shadow: none;
 $modal-background-background-color: rgba(16, 24, 40, 0.42);
 
-$colors: map-merge($colors, (
+$colors: map.merge($colors, (
   "turquoise": ($green, $green-invert),
   "green": ($green, $green-invert),
   "success": ($green, $green-invert),

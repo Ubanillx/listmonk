@@ -1,5 +1,7 @@
+@use "sass:color";
+
 /* Import Bulma to set variables */
-@import "../node_modules/bulma/sass/utilities/_all";
+@import "bulma/sass/utilities/all";
 
 @import "styles/variables";
 
@@ -9,7 +11,7 @@
 }
 
 /* Import full Bulma and Buefy */
-@import "bulma";
+@import "bulma/bulma.sass";
 @import "buefy/src/scss/buefy";
 
 /* Custom style overrides */
@@ -1263,7 +1265,7 @@ body.is-noscroll {
     background: $primary;
 
     &:hover, &:active {
-      background: darken($primary, 15%);
+      background: color.adjust($primary, $lightness: -15%);
     }
     &:disabled {
       background: $grey-light;
@@ -1291,10 +1293,10 @@ body.is-noscroll {
   }
 
   &.is-light.is-outlined {
-    background: lighten($primary, 55%);
+    background: color.adjust($primary, $lightness: 55%);
 
     &.is-focused {
-      background: lighten($primary, 55%);
+      background: color.adjust($primary, $lightness: 55%);
     }
 
     &.is-selected {
@@ -1449,20 +1451,20 @@ body.is-noscroll {
     $color: #ed7b00;
     // Darkened from the same hue: the light text on the tinted background only
     // reached ~2.5:1 contrast, below the WCAG AA minimum for body text.
-    color: darken($color, 30%);
-    background: lighten($color, 47);
+    color: color.adjust($color, $lightness: -30%);
+    background: color.adjust($color, $lightness: 47%);
   }
   &.public, &.running, &.list, &.campaign, &.user, &.primary {
     color: $primary;
     background: #e6f7ff;
   }
   &.finished, &.enabled, &.status-confirmed {
-    color: darken($green, 15%);
+    color: color.adjust($green, $lightness: -15%);
     background: #dcfce7;
   }
   &.blocklisted, &.cancelled, &.status-unsubscribed, &.campaign_visual {
     $color: $red;
-    color: darken($color, 25%);
+    color: color.adjust($color, $lightness: -25%);
     background: #fff1f0;
   }
 
@@ -1575,7 +1577,7 @@ section.customer_lists {
         }
 
         &.confirmed {
-          color: darken($green, 15%);
+          color: color.adjust($green, $lightness: -15%);
           background: #f0fdf4;
         }
 
@@ -1585,7 +1587,7 @@ section.customer_lists {
         }
 
         &.unsubscribed, &.blocklisted {
-          color: darken($red, 15%);
+          color: color.adjust($red, $lightness: -15%);
           background: #fff1f0;
         }
       }
@@ -1756,15 +1758,15 @@ section.campaigns {
     .spinner {
       margin-left: 10px;
       .loading-overlay .loading-icon::after {
-        border-bottom-color: lighten(#1890ff, 30%);
-        border-left-color: lighten(#1890ff, 30%);
+        border-bottom-color: color.adjust(#1890ff, $lightness: 30%);
+        border-left-color: color.adjust(#1890ff, $lightness: 30%);
       }
     }
 
     tr.running {
-      background: lighten(#1890ff, 43%);
+      background: color.adjust(#1890ff, $lightness: 43%);
       td {
-        border-bottom: 1px solid lighten(#1890ff, 30%);
+        border-bottom: 1px solid color.adjust(#1890ff, $lightness: 30%);
       }
     }
 
@@ -1918,7 +1920,7 @@ section.analytics {
 
     &.is-drop-target {
       border-color: $primary;
-      background: lighten($primary, 45%);
+      background: color.adjust($primary, $lightness: 45%);
     }
   }
 

@@ -25,7 +25,19 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),
-        bulma: require.resolve('bulma/bulma.sass'),
+      },
+    },
+    css: {
+      preprocessorOptions: {
+        scss: {
+          // Bulma 0.9 and Buefy 0.9 still ship @import-based sources, so the
+          // import deprecation cannot be resolved without a breaking upgrade.
+          // Everything else uses the modern compiler API, and deprecation
+          // warnings coming from node_modules are suppressed via quietDeps.
+          api: 'modern-compiler',
+          quietDeps: true,
+          silenceDeprecations: ['import'],
+        },
       },
     },
     build: {

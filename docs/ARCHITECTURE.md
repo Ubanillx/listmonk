@@ -41,6 +41,12 @@
 
 `frontend/vite.config.js` 的 `listmonk-backend-assets` 在 `transformIndexHtml` 的 `post` 阶段注入 `/admin/custom.css`、`/admin/custom.js` 和 favicon，避免开发 HTML 再次添加 `/admin` 前缀。生产仍由 Go 提供这些资源，并替换 `asset_version`。回归入口：`frontend/cypress/e2e/{pagination,pool-list-tree}.cy.js`。
 
+## 管理端样式编译（2026-10-20）
+
+`frontend/vite.config.js` 的 SCSS 使用 `api: 'modern-compiler'`（Dart Sass 现代编译器 API），并用 `quietDeps: true`、`silenceDeprecations: ['import']` 静音依赖包噪声。Bulma 0.9 与 Buefy 0.9 仍是 `@import` 式源码，迁移到 `@use` 需要破坏性升级，因此这两项无法在本层消除。`src/assets/style.scss` 与 `src/assets/styles/_variables.scss` 自身改用 `@use "sass:color"` / `@use "sass:map"`，不再使用 `darken()`、`lighten()`、`map-merge()` 等全局函数；新增或修改样式时应继续使用模块化函数。
+
+Bulma 入口改用显式路径 `bulma/sass/utilities/all` 与 `bulma/bulma.sass`，不再依赖 `resolve.alias` 的 `bulma` 前缀别名（该别名会错误重写 `bulma/sass/...` 子路径）。迁移前后生产 CSS 逐文件比对一致，属纯构建行为变更。回归：`yarn build` 无 Sass 弃用告警，`yarn lint`。
+
 ## 活动克隆与模板引用（2026-10-12）
 
 `internal/core/workspace_actions.go::CloneCampaignForWorkspaceWithSource` 在事务锁内重验活动、模板、素材与组织权限。同空间克隆时，若新活动所有者按普通发送权限可以使用原模板，则保留原 `template_id`，不新增模板或仅属于模板的素材副本；活动自己的素材仍独立复制并重写正文引用。个人空间还要求原活动与新活动所有者一致，平台管理员的巡查权限不作为模板复用的发送授权。

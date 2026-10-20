@@ -40,7 +40,11 @@ var (
 // The returned name is an IANA name the database and the admin UI can use. It
 // is empty when the host zone cannot be named; callers fall back to Default.
 func Resolve(configured string) (*time.Location, string) {
-	for _, candidate := range []string{configured, envZone(), hostZone()} {
+	return resolveWithHostZone(configured, hostZone())
+}
+
+func resolveWithHostZone(configured, host string) (*time.Location, string) {
+	for _, candidate := range []string{configured, envZone(), host} {
 		if candidate = strings.TrimSpace(candidate); candidate == "" || isLocalAlias(candidate) {
 			continue
 		}

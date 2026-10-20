@@ -52,9 +52,14 @@ func TestResolveFollowsDeploymentZone(t *testing.T) {
 		// passed to the database or the UI as a zone name.
 		t.Setenv("TZ", "CST-8")
 		time.Local = time.FixedZone("CST", 8*3600)
-		_, name := Resolve("")
-		if name != "" {
-			t.Fatalf("Resolve(empty) = %q; want an unnamed host zone", name)
+		loc, name := resolveWithHostZone("", "")
+		if name != "" || loc != time.Local {
+			t.Fatalf("resolveWithHostZone(empty, empty) = %q, %v; want an unnamed host zone", name, loc)
+		}
+
+		loc, name = resolveWithHostZone("", "Europe/Berlin")
+		if name != "Europe/Berlin" || loc.String() != "Europe/Berlin" {
+			t.Fatalf("resolveWithHostZone(empty, Europe/Berlin) = %q, %v; want the named host zone", name, loc)
 		}
 	})
 }
@@ -88,15 +93,15 @@ func TestInitInstallsProcessZone(t *testing.T) {
 // a POSIX-only TZ in a minimal container) from sending an empty zone to
 // PostgreSQL or the admin UI.
 func TestNameFallsBackToADatabaseSafeName(t *testing.T) {
-	original := time.Local
+	mu.Lock()
+	original := name
+	name = ""
+	mu.Unlock()
 	t.Cleanup(func() {
-		time.Local = original
-		Init(original.String())
+		mu.Lock()
+		name = original
+		mu.Unlock()
 	})
-	t.Setenv("TZ", "CST-8")
-	time.Local = time.FixedZone("CST", 8*3600)
-
-	Init("")
 	if got := Name(); got != Default {
 		t.Fatalf("Name() = %q, want %q", got, Default)
 	}

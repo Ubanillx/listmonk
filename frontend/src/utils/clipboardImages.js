@@ -17,10 +17,26 @@ const IMAGE_MIME_BY_EXTENSION = {
 const isImageFile = (file) => Boolean(file)
   && (file.type?.startsWith('image/') || IMAGE_FILE_EXTENSION.test(file.name || ''));
 
-const normalizeImageBlob = (blob) => {
+const detectImageMime = async (blob) => {
+  if (!blob?.slice || !blob.arrayBuffer) return '';
+  const bytes = new Uint8Array(await blob.slice(0, 16).arrayBuffer());
+  if (bytes.length >= 8 && bytes.slice(0, 8).every((value, index) => value === [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a][index])) return 'image/png';
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
+  if (bytes.length >= 6 && new TextDecoder().decode(bytes.slice(0, 6)).startsWith('GIF8')) return 'image/gif';
+  if (bytes.length >= 12 && new TextDecoder().decode(bytes.slice(0, 12), { stream: false }).startsWith('RIFF')
+    && new TextDecoder().decode(bytes.slice(8, 12)).startsWith('WEBP')) return 'image/webp';
+  if (bytes.length >= 2 && bytes[0] === 0x42 && bytes[1] === 0x4d) return 'image/bmp';
+  if (bytes.length >= 12 && new TextDecoder().decode(bytes.slice(4, 12)).includes('ftyp')) {
+    const brand = new TextDecoder().decode(bytes.slice(8, 12));
+    if (brand === 'avif' || brand === 'avis') return 'image/avif';
+  }
+  return '';
+};
+
+const normalizeImageBlob = async (blob) => {
   if (blob.type?.startsWith('image/')) return blob;
   const extension = (blob.name || '').split(/[.?]/).pop()?.toLowerCase();
-  const type = IMAGE_MIME_BY_EXTENSION[extension];
+  const type = IMAGE_MIME_BY_EXTENSION[extension] || await detectImageMime(blob);
   return type ? new Blob([blob], { type }) : blob;
 };
 
@@ -158,10 +174,18 @@ export default function clipboardImages(editor, readMedia, onError) {
       const source = sources[i];
       if (disposed) return false;
       try {
+        let value;
+        if (matches.has(source)) {
+          // eslint-disable-next-line no-await-in-loop
+          const blob = await normalizeImageBlob(matches.get(source));
+          // eslint-disable-next-line no-await-in-loop
+          value = await readDataURL(blob);
+        } else {
+          // eslint-disable-next-line no-await-in-loop
+          value = await resolveSource(source);
+        }
         // eslint-disable-next-line no-await-in-loop
-        resolved.set(source, await (matches.has(source)
-          ? readDataURL(normalizeImageBlob(matches.get(source)))
-          : resolveSource(source)));
+        resolved.set(source, value);
       } catch (error) {
         failed = true;
       }

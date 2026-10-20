@@ -122,6 +122,20 @@ describe('Campaign clipboard images', () => {
     });
   });
 
+  it('detects anonymous Office image blobs from their file signature', () => {
+    cy.intercept('POST', '/api/media').as('upload');
+    cy.window().then((win) => {
+      const item = image(win, 104);
+      const file = new win.File([item.bytes], 'clipboard', { type: 'application/octet-stream' });
+      paste(win, '<p>Before</p><p><img src="Attach/image005.png" /></p><p>After</p>', [file]);
+    });
+    cy.wait('@upload').its('response.statusCode').should('eq', 200);
+    editorBody().find('img').should(($images) => {
+      expect($images[0].src).to.contain('/api/media/file/');
+      expect($images[0].naturalWidth).to.eq(104);
+    });
+  });
+
   it('extracts Word/WPS RTF pictures without losing their positions or a quick save', () => {
     cy.intercept('POST', '/api/media').as('upload');
     cy.intercept('PUT', '/api/campaigns/*').as('save');

@@ -60,8 +60,8 @@
          customers. Buefy's b-table does not forward `data-cy` to the DOM, so
          the pool table is wrapped for tests. -->
     <div v-if="isPoolList" data-cy="pool-contacts-table">
-      <b-table :data="pool.results" :loading="poolLoading" hoverable
-        paginated backend-pagination pagination-position="both" @page-change="onPoolPageChange"
+      <paginated-table :data="pool.results" :loading="poolLoading" hoverable
+        paginated backend-pagination pagination-position="both" @page-change="onPoolPageChange" @per-page-change="onPoolPerPageChange"
         :current-page="pool.page" :per-page="pool.perPage" :total="pool.total"
         :checked-rows.sync="poolBulk.checked" :checkable="canSelectPoolContacts" backend-sorting
         @sort="onPoolSort">
@@ -227,7 +227,7 @@
         <template #empty v-if="!poolLoading">
           <empty-placeholder :label="$t('globals.messages.emptyState')" />
         </template>
-      </b-table>
+      </paginated-table>
     </div>
 
     <!-- The filtered list is still being resolved, or it cannot be read: never
@@ -241,9 +241,9 @@
       {{ $t('globals.messages.notFound', { name: $t('globals.terms.customer_lists') }) }}
     </p>
 
-    <b-table v-else :data="customers.results ?? []" :loading="loading.customers" @check-all="onTableCheck"
+    <paginated-table v-else :data="customers.results ?? []" :loading="loading.customers" @check-all="onTableCheck"
       @check="onTableCheck" :checked-rows.sync="bulk.checked" paginated backend-pagination pagination-position="both"
-      @page-change="onPageChange" :current-page="queryParams.page" :per-page="customers.perPage"
+      @page-change="onPageChange" @per-page-change="onPerPageChange" :current-page="queryParams.page" :per-page="customers.perPage"
       :total="customers.total" hoverable :checkable="canSelectCustomerRows"
       :is-row-checkable="canSelectCustomerRow" backend-sorting @sort="onSort">
       <template #top-left>
@@ -347,7 +347,7 @@
       <template #empty v-if="!loading.customers">
         <empty-placeholder />
       </template>
-    </b-table>
+    </paginated-table>
 
     <!-- Manage customerList modal -->
     <b-modal scroll="keep" :aria-modal="true" :active.sync="isBulkListFormVisible" :width="500" class="has-overflow">
@@ -488,6 +488,7 @@ export default Vue.extend({
 
       // Query params to filter the getCustomers() API call.
       queryParams: {
+        perPage: undefined,
         search: '',
 
         // ID of the customerList the current customer view is filtered by.
@@ -615,6 +616,10 @@ export default Vue.extend({
       }).catch(() => {
         this.poolAllocations = [];
       });
+    },
+
+    onPoolPerPageChange(size) {
+      this.loadPoolContacts({ perPage: size, page: 1 });
     },
 
     onPoolPageChange(page) {
@@ -971,6 +976,11 @@ export default Vue.extend({
       }
     },
 
+    onPerPageChange(size) {
+      this.queryParams.perPage = size;
+      this.onPageChange(1);
+    },
+
     onPageChange(p) {
       this.queryCustomers({ page: p });
     },
@@ -1014,6 +1024,7 @@ export default Vue.extend({
         customer_list_id: this.queryParams.customerListID,
         search: this.queryParams.search,
         page: this.queryParams.page,
+        per_page: this.queryParams.perPage,
         subscription_status: this.queryParams.subStatus,
         order_by: this.queryParams.orderBy,
         order: this.queryParams.order,

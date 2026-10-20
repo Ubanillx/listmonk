@@ -10,6 +10,16 @@ listmonk supports [Go template](https://pkg.go.dev/text/template) expressions th
 ## Campaign templates
 Campaign templates are used in an e-mail campaigns. These template are created and managed on the UI under `Campaigns -> Templates`, and are selected when creating new campaigns.
 
+### Inserting customer placeholders
+
+Place the cursor in the campaign content, then click a customer placeholder below the editor to insert it at that position. Selected text is replaced, and focus returns to the editor so you can continue typing or insert another placeholder. Insertion supports undo, raw HTML, Markdown, rich text, plain text, and the alternate plain text message. In the visual editor, first place the cursor in the text field you want to edit. Placeholder buttons are disabled when the campaign is read-only.
+
+### Pasting text with images
+
+In the rich text editor, use **Ctrl+V** to paste text and images together. Images are uploaded automatically to the current workspace's media library and stay in their original positions among the text. Saving or previewing waits for the images to finish uploading. Uploaded images can also be resized using their corner handles, keeping their proportions by default.
+
+Supported clipboard data includes HTML with embedded images, image files accompanying HTML or text, and PNG/JPEG pictures included in Word/WPS RTF data. When only text and image files are available without HTML positions, the images follow the text. Web images can be imported when their source permits the browser to read them. Protected or inaccessible web images, unsupported Office image formats, and local file references without image data require copying the image data again or uploading the file. The editor reports these failures and prevents saving incomplete images. Plain text paste intentionally omits images.
+
 ## Transactional templates
 Transactional templates are used for sending arbitrary transactional messages using the transactional API. These template are created and managed on the UI under `Campaigns -> Templates`.
 

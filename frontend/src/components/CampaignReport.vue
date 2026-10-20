@@ -212,7 +212,7 @@
           </div>
         </div>
 
-        <b-table
+        <paginated-table
           :data="recipients.results || []"
           :loading="loading.recipients"
           hoverable
@@ -221,6 +221,7 @@
           backend-sorting
           pagination-position="both"
           @page-change="onRecipientPageChange"
+          @per-page-change="onRecipientPerPageChange"
           @sort="onRecipientSort"
           :current-page="recipientQuery.page"
           :per-page="recipients.perPage || recipientQuery.perPage"
@@ -262,7 +263,7 @@
             </a>
             <span v-else>—</span>
           </b-table-column>
-        </b-table>
+        </paginated-table>
       </div>
     </section>
   </section>
@@ -674,6 +675,11 @@ export default Vue.extend({
     applyRecipientFilters() {
       this.recipientQuery.page = 1;
       this.loadRecipients();
+    },
+
+    onRecipientPerPageChange(size) {
+      this.recipientQuery.perPage = size;
+      this.onRecipientPageChange(1);
     },
 
     onRecipientPageChange(page) {

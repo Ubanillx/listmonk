@@ -1,12 +1,17 @@
 # 业务逻辑
 
+- **活动编辑器占位符插入**：活动内容页的客户占位符按钮只能写入当前可编辑正文的光标/选区；插入替换选区并把光标放在占位符末尾，重复点击继续写入同一位置，撤销/重做由各编辑器原生历史栈处理。富文本按当前行内标签保留格式，备用纯文本和可视化文字字段分别使用自己的选区；只读活动禁用插入。来源：`frontend/src/views/Campaign.vue::onInsertPlaceholder`、`frontend/src/components/{Editor,RichtextEditor,CodeEditor,VisualEditor}.vue`、`frontend/src/utils/insertInputText.js`。
+
 - **分配页签状态（2026-10-19）**：页签切换与目标选择不切换工作区、不重建外层列表。缓存只在当前工作台/目标有效；切组织清理，写入成功使缓存失效后局部重查，不能用客户端缓存替代后端动作/版本校验。旧页签未完成请求不覆盖当前页签；未保存信息草稿在页签间保留。来源：`frontend/src/App.vue::routeViewKey`、`frontend/src/components/PoolAllocationWorkbench.vue::changeTab/refresh`。
 
 - **跨组织公海分配（v6.61.0）**：`pools:allocation_platform_manage` 仅扩大分配管理范围，不扩大主数据、投放、查看/导出或组织身份。创建不自动授权；成员移除/恢复仅作用于目标关系，不改黑名单和其他组织。分配启停独立于投放授权，解除保留历史且无未结束引用，恢复绑定返回停用。组织/来源/分配锁、乐观版本、批量事务与原子审计保证写入边界；claim 与 SMTP 前复核分配、成员和授权，已进入 SMTP 不可撤回。普通组织发送要求投放授权，显式全组织发送策略独立但不绕过分配停用。来源：`cmd/pool_allocation_management.go`、`internal/core/pool_allocation_management.go`、`cmd/pool_allocation_management_test.go`、`queries/campaigns.sql`。
 
-- **公海客户导入异常报告**：统一导入结果完整保留所有行级校验错误、文件内重复行和客户编号冲突（不截断前 200 条）；前端可按异常类别筛选、搜索、分页查看行号/客户编号/分配部门/原因并打开单条详情。Excel 报告导出全部异常，不受当前页面筛选/页码影响；导入响应和报告均不含邮箱，避免泄漏上传文件中的敏感联系信息。来源：`internal/core/pools.go::ImportPoolContacts`、`models/pools.go::PoolContactImportResult`、`frontend/src/views/Import.vue`、`frontend/cypress/e2e/pool-multi-email-import.cy.js`。
+- **活动受众改名传播（2026-10-19）**：重命名客户列表必须同时更新两类活动受众快照。私域列表按 `customer_list_id` 关联；公海受众行 `customer_list_id` 为 NULL、按 `pool_id` 关联，历史 SQL 只覆盖前者，导致公海池改名后活动列表页长期显示旧池名。现两条 UPDATE 放在同一个数据修改 CTE 中执行（`p` 追加 `customer_list_id IS NULL` 与 `c` 保持不重叠，避免同一行被两侧各更新一次而整体报错），主查询只读 `l`，因此返回值不再依赖活动引用数量——旧写法 `FROM l, c` 在列表没有任何活动引用时返回 0 行，会被上层当成“列表不存在”。来源：`queries/customer_lists.sql::update-customer-list`、`internal/core/workspace_resource_writes.go::UpdateListInWorkspace`、`internal/core/lists.go::UpdateList`。
 
 - **公海客户编辑**：`pools:master_manage` 和 `pools:contacts_edit` 可编辑一级公海共享联系人的全部字段，`pools:contacts_name_edit` 只能编辑名称；列表页和 `/admin/pool` 汇总页按权限显示编辑入口，组织分配列表可作为只读上下文传入一级公海 ID。`PUT /api/customer-lists/:id/pool-contacts/:contact_id`（及 `/api/pools/:id/contacts/:contact_id`）在事务内重验列表成员关系、当前组织分配范围、邮箱/回信地址和启用组织分配部门；名称-only 请求服务端保留所有其他字段。部门变更只补齐新组织分配，不删除既有分配历史。重新填写邮箱会把 archived 联系人恢复 active，blocklisted 状态不被覆盖。非平台管理员响应仍使用安全 DTO 脱敏邮箱；编辑时回传脱敏邮箱按“未修改”处理，避免覆盖真实地址。
+
+- **公海客户导入异常报告**：统一导入结果完整保留所有行级校验错误、文件内重复行和客户编号冲突（不截断前 200 条）；前端可按异常类别筛选、搜索、分页查看行号/客户编号/分配部门/原因并打开单条详情。Excel 报告导出全部异常，不受当前页面筛选/页码影响；导入响应和报告均不含邮箱，避免泄漏上传文件中的敏感联系信息。来源：`internal/core/pools.go::ImportPoolContacts`、`models/pools.go::PoolContactImportResult`、`frontend/src/views/Import.vue`、`frontend/cypress/e2e/pool-multi-email-import.cy.js`。
+
 - **活动克隆模板引用（2026-10-12）**：同空间且目标所有者可以正常发送使用原模板时，复用 `template_id` 与模板素材，不因克隆活动而增加模板库记录；个人空间要求活动所有者不变。跨空间及他人私有模板依赖仍独立复制，平台管理员巡查权限不得当作模板复用授权。活动自身素材保持独立复制，组织/资源/素材图与目录权限继续在锁内重验；可视化无模板引用规则不变。已有模板副本不自动清理，复用后的模板编辑影响所有引用它的活动。来源：`internal/core/workspace_actions.go::{CloneCampaignForWorkspaceWithSource,canReuseCampaignTemplate}`、`cmd/campaign_clone_test.go`。
 
 - **发送错误明细（v6.60.0）**：每次失败事件与活动总错误数同语句保存，事件快照按客户、具体错误、分类、阶段汇总，重试不覆盖。查询/Excel 导出都要求活动 owner 边界、列表授权与收件人/客户查看能力；导出按私域/公海源类型分别检查导出授权。私域具体诊断由独立 `campaigns:private_send_error_details` 控制显示、搜索和导出；无授权仍能查看分类、状态码和次数，敏感读取权限不替代诊断授权。私域邮箱仍由敏感权限脱敏/搜索门控制。公海非平台用户邮箱和诊断始终脱敏。普通用户不能读取转移活动前所有者快照或已转移私域客户的错误明细，删除活动清理事件。额度/主动停止不生成事件，缺历史明细的次数单独提示，追踪关闭也能诊断发送失败。来源：`cmd/campaign_send_errors.go`、`internal/core/campaign_send_errors.go`、`cmd/campaign_send_error_report_test.go`、`internal/manager/send_failure.go`。

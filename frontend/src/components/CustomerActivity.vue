@@ -35,8 +35,9 @@
       </div>
 
       <div v-if="activity.campaignViews && activity.campaignViews.length > 0">
-        <b-table :data="activity.campaignViews" hoverable default-sort="lastViewedAt" default-sort-direction="desc"
-          paginated :per-page="10" :pagination-simple="false" class="campaign-views-table">
+        <paginated-table :data="activity.campaignViews" hoverable default-sort="lastViewedAt" default-sort-direction="desc"
+          paginated :per-page="paging.views.size" :current-page.sync="paging.views.page"
+          @per-page-change="changePageSize('views', $event)" class="campaign-views-table">
           <b-table-column v-slot="props" field="subject" :label="$tc('globals.terms.campaign', 1)" sortable>
             <div v-if="props.row.uuid">
               <router-link :to="{ name: 'campaign', params: { id: props.row.id } }">
@@ -58,7 +59,7 @@
               {{ $utils.niceDate(props.row.lastViewedAt, true) }}
             </span>
           </b-table-column>
-        </b-table>
+        </paginated-table>
       </div>
       <div v-else class="has-text-centered has-text-grey p-6">
         <p class="mt-2">{{ $t('globals.messages.emptyState') }}</p>
@@ -72,8 +73,9 @@
       </div>
 
       <div v-if="activity.linkClicks && activity.linkClicks.length > 0">
-        <b-table :data="activity.linkClicks" hoverable default-sort="lastClickedAt" default-sort-direction="desc"
-          paginated :per-page="10" :pagination-simple="false" class="link-clicks-table">
+        <paginated-table :data="activity.linkClicks" hoverable default-sort="lastClickedAt" default-sort-direction="desc"
+          paginated :per-page="paging.clicks.size" :current-page.sync="paging.clicks.page"
+          @per-page-change="changePageSize('clicks', $event)" class="link-clicks-table">
           <b-table-column v-slot="props" field="url" :label="$t('globals.terms.url')" cell-class="link-click-url"
             sortable>
             <a :href="props.row.url" target="_blank" rel="noopener noreferrer">
@@ -101,7 +103,7 @@
               {{ $utils.niceDate(props.row.lastClickedAt, true) }}
             </span>
           </b-table-column>
-        </b-table>
+        </paginated-table>
       </div>
       <div v-else class="has-text-centered has-text-grey p-6">
         <p class="mt-2">{{ $t('globals.messages.emptyState') }}</p>
@@ -116,8 +118,9 @@
       </div>
 
       <div v-if="activity.replyAiEvents && activity.replyAiEvents.length > 0">
-        <b-table :data="activity.replyAiEvents" hoverable default-sort="receivedAt" default-sort-direction="desc"
-          paginated :per-page="10" class="reply-ai-events-table">
+        <paginated-table :data="activity.replyAiEvents" hoverable default-sort="receivedAt" default-sort-direction="desc"
+          paginated :per-page="paging.replies.size" :current-page.sync="paging.replies.page"
+          @per-page-change="changePageSize('replies', $event)" class="reply-ai-events-table">
           <b-table-column v-slot="props" field="receivedAt" :label="$t('globals.fields.createdAt')" sortable>
             <span v-if="props.row.receivedAt">
               {{ $utils.niceDate(props.row.receivedAt, true) }}
@@ -153,7 +156,7 @@
           <b-table-column v-slot="props" field="subject" :label="$t('customers.replyAI.subject')">
             <span class="is-size-7 has-text-grey">{{ props.row.subject }}</span>
           </b-table-column>
-        </b-table>
+        </paginated-table>
       </div>
       <div v-else class="has-text-centered has-text-grey p-6">
         <p class="mt-2">{{ $t('globals.messages.emptyState') }}</p>
@@ -176,6 +179,7 @@ export default Vue.extend({
   data() {
     return {
       isLoading: false,
+      paging: { views: { page: 1, size: 10 }, clicks: { page: 1, size: 10 }, replies: { page: 1, size: 10 } },
       activity: {
         campaignViews: [],
         linkClicks: [],
@@ -201,6 +205,10 @@ export default Vue.extend({
   },
 
   methods: {
+    changePageSize(key, size) {
+      this.paging[key] = { page: 1, size };
+    },
+
     getActivity() {
       this.isLoading = true;
       this.$api.getCustomerActivity(this.customerId).then((data) => {

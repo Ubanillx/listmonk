@@ -85,9 +85,9 @@
       </b-collapse>
 
       <!-- Pagination -->
-      <div v-if="media.total > media.perPage" class="pagination-wrapper mt-5">
-        <b-pagination :total="media.total" :current.sync="media.page" :per-page="media.perPage"
-          @change="onPageChange" />
+      <div class="pagination-wrapper mt-5">
+        <app-pagination :total="media.total" :current="queryParams.page" :per-page="media.perPage"
+          @change="onPageChange" @per-page-change="onPerPageChange" />
       </div>
 
       <div v-if="loading.media" class="has-text-centered py-6">
@@ -167,9 +167,9 @@
       </div>
 
       <!-- Pagination -->
-      <div v-if="media.total > media.perPage" class="pagination-wrapper mt-5">
-        <b-pagination :total="media.total" :current.sync="media.page" :per-page="media.perPage"
-          @change="onPageChange" />
+      <div class="pagination-wrapper mt-5">
+        <app-pagination :total="media.total" :current="queryParams.page" :per-page="media.perPage"
+          @change="onPageChange" @per-page-change="onPerPageChange" />
       </div>
     </section>
   </section>
@@ -206,6 +206,7 @@ export default Vue.extend({
       dragOverFolderId: null,
 
       queryParams: {
+        perPage: undefined,
         page: 1,
         query: '',
       },
@@ -220,6 +221,7 @@ export default Vue.extend({
     getMedia() {
       return this.$api.getMedia({
         page: this.queryParams.page,
+        per_page: this.queryParams.perPage,
         query: this.queryParams.query,
         folder_id: this.currentFolderId,
       });
@@ -440,6 +442,11 @@ export default Vue.extend({
         return this.refreshLibrary();
       }
       return null;
+    },
+
+    onPerPageChange(size) {
+      this.queryParams.perPage = size;
+      this.onPageChange(1);
     },
 
     onPageChange(p) {

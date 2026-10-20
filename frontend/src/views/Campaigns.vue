@@ -16,9 +16,9 @@
         </b-field>
       </div>
     </header>
-    <b-table :data="campaigns.results" :loading="loading.campaigns" :row-class="highlightedRow"
+    <paginated-table :data="campaigns.results" :loading="loading.campaigns" :row-class="highlightedRow"
       @check-all="onTableCheck" @check="onTableCheck" :checked-rows.sync="bulk.checked" paginated backend-pagination
-      pagination-position="both" @page-change="onPageChange" :current-page="queryParams.page"
+      pagination-position="both" @page-change="onPageChange" @per-page-change="onPerPageChange" :current-page="queryParams.page"
       :per-page="campaigns.perPage" :total="campaigns.total" hoverable :checkable="canManageCampaigns"
       :is-row-checkable="canManageCampaign" backend-sorting @sort="onSort">
       <template #top-left>
@@ -295,7 +295,7 @@
       <template #empty v-if="!loading.campaigns">
         <empty-placeholder />
       </template>
-    </b-table>
+    </paginated-table>
 
     <campaign-preview v-if="previewItem" type="campaign" :id="previewItem.id" :title="previewItem.name" :media="previewItem.media || []"
       @close="closePreview" />
@@ -356,6 +356,7 @@ export default Vue.extend({
         targetOrganizationID: 0,
       },
       queryParams: {
+        perPage: undefined,
         page: 1,
         query: '',
         orderBy: 'created_at',
@@ -431,6 +432,11 @@ export default Vue.extend({
       return '';
     },
 
+    onPerPageChange(size) {
+      this.queryParams.perPage = size;
+      this.onPageChange(1);
+    },
+
     onPageChange(p) {
       this.queryParams.page = p;
       this.getCampaigns();
@@ -463,6 +469,7 @@ export default Vue.extend({
     getCampaigns() {
       this.$api.getCampaigns({
         page: this.queryParams.page,
+        per_page: this.queryParams.perPage,
         query: this.queryParams.query.replace(/[^\p{L}\p{N}\s]/gu, ' '),
         order_by: this.queryParams.orderBy,
         order: this.queryParams.order,

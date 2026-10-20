@@ -8,10 +8,10 @@
         </h1>
       </div>
     </header>
-    <b-table :data="bounces.results" :hoverable="true" :loading="loading.bounces" default-sort="createdAt" :checkable="canSelectBounces"
+    <paginated-table :data="bounces.results" :hoverable="true" :loading="loading.bounces" default-sort="createdAt" :checkable="canSelectBounces"
       :is-row-checkable="canSelectBounce"
       @check-all="onTableCheck" @check="onTableCheck" :checked-rows.sync="bulk.checked" detailed show-detail-icon
-      paginated backend-pagination pagination-position="both" @page-change="onPageChange"
+      paginated backend-pagination pagination-position="both" @page-change="onPageChange" @per-page-change="onPerPageChange"
       :current-page="queryParams.page" :per-page="bounces.perPage" :total="bounces.total" backend-sorting
       @sort="onSort">
       <template #top-left>
@@ -90,7 +90,7 @@
       <template #empty v-if="!loading.bounces">
         <empty-placeholder />
       </template>
-    </b-table>
+    </paginated-table>
   </section>
 </template>
 
@@ -116,6 +116,7 @@ export default Vue.extend({
 
       // Query params to filter the getCustomers() API call.
       queryParams: {
+        perPage: undefined,
         page: 1,
         orderBy: 'created_at',
         order: 'desc',
@@ -144,6 +145,11 @@ export default Vue.extend({
       this.getBounces();
     },
 
+    onPerPageChange(size) {
+      this.queryParams.perPage = size;
+      this.onPageChange(1);
+    },
+
     onPageChange(p) {
       this.queryParams.page = p;
       this.getBounces();
@@ -167,6 +173,7 @@ export default Vue.extend({
 
       this.$api.getBounces({
         page: this.queryParams.page,
+        per_page: this.queryParams.perPage,
         order_by: this.queryParams.orderBy,
         order: this.queryParams.order,
         campaign_id: this.queryParams.campaign_id,

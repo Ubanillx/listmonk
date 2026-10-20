@@ -1,5 +1,9 @@
 # Listmonk 工程架构与运行指南
 
+## 活动编辑器占位符插入（2026-10-20）
+
+活动内容页通过 `Campaign.vue` 将客户占位符渲染为可聚焦按钮，点击时调用共享 `Editor.vue::insertText`，不把内容追加到正文末尾。CodeMirror 通过 `EditorState.replaceSelection` 写入 HTML/Markdown 并进入自己的历史栈；TinyMCE 在保存的选区上使用 `insertContent`，按当前行内祖先复制 `strong`、链接、颜色等标签；纯文本及可视化编辑器分别保留最近的原生文本字段选区。按钮的 `mousedown` 阻止焦点丢失，插入后各编辑器恢复焦点，备用纯文本正文也由同一插入辅助函数处理。只读活动由 `canEdit` 禁用按钮。回归入口：`frontend/cypress/e2e/campaign-placeholders.cy.js`。
+
 ## 组织公海分配工作台（v6.61.0）
 
 公海子行的“管理分配”和父行的分配入口打开 `PoolAllocationWorkbench.vue`，采用用户选定图三的居中双栏布局。左侧目标组织不切换当前工作区，右侧有客户分配、分配信息和操作记录；查询参数 `manage_pool`（一级公海列表 ID）、`manage_org`、`manage_tab` 支持刷新恢复。保留原公海父子树、筛选与分组分页。普通列表更新/归档/删除路径拒绝分配类型。
@@ -14,6 +18,14 @@
 
 兼容性：原 `pools:manage` + `pools:delivery_manage` 组合不再推导跨组织分配能力，管理员需明确授予新权限。投放-only 入口保留原授权面板。接口契约见 [Public pools](docs/content/apis/pools.md)，交互和验收记录见 [设计规范](harness/designs/2026-10-19-org-pool-allocation/INTERACTION_SPEC.md)。
 
+## 管理端统一分页与运行时资源（2026-10-19）
+
+`frontend/src/components/AppPagination.vue` 提供每页 10/20/50/100 条、页码按钮和输入页码跳转；保留页面已有默认条数（如城市 8、客户活动 10、审计 50）。切换条数通过 `per-page-change` 交给页面处理，回到第一页并保留筛选与排序；服务端列表发送 `per_page`，本地列表调整切片。单页结果仍可调整条数，空结果页数下限为 1；无效页码不发请求。
+
+`PaginatedTable.js` 继承 Buefy 0.9 的表格，只替换内部 `BTablePagination` 为 `TablePagination.vue`，保留列注册、顶部工具栏、选中和分页事件。Buefy 0.9 根入口仅导出插件，`BTable` 必须从 `buefy/dist/esm/table` 导入；升级 Buefy 时需复核这一适配边界。公海列表继续独立按完整父子分组分页，不能对展开行二次切片。
+
+`frontend/vite.config.js` 的 `listmonk-backend-assets` 在 `transformIndexHtml` 的 `post` 阶段注入 `/admin/custom.css`、`/admin/custom.js` 和 favicon，避免开发 HTML 再次添加 `/admin` 前缀。生产仍由 Go 提供这些资源，并替换 `asset_version`。回归入口：`frontend/cypress/e2e/{pagination,pool-list-tree}.cy.js`。
+
 ## 活动克隆与模板引用（2026-10-12）
 
 `internal/core/workspace_actions.go::CloneCampaignForWorkspaceWithSource` 在事务锁内重验活动、模板、素材与组织权限。同空间克隆时，若新活动所有者按普通发送权限可以使用原模板，则保留原 `template_id`，不新增模板或仅属于模板的素材副本；活动自己的素材仍独立复制并重写正文引用。个人空间还要求原活动与新活动所有者一致，平台管理员的巡查权限不作为模板复用的发送授权。
@@ -27,8 +39,6 @@
 额度延期仍由活动每日上限（包括 queued 额度预占）或 SMTP 每日额度触发，在服务器本地时区次日 `daily_resume_time` 恢复；SMTP 额度耗尽只输出延期日志，不再打印 `error sending`。普通发送错误达到 `MaxSendErrors` 时暂停，阈值只计算本轮运行。来源：`internal/manager/{manager,pipe,send_errors_test}.go`、`cmd/campaign_send_errors_test.go`、`models/{campaigns,templates}.go`、`queries/campaigns.sql`、`frontend/cypress/e2e/campaign-send-errors.cy.js`。
 
 ### 错误原因与客户汇总（v6.60.0）
-
-发送错误弹窗沿用 `AppPagination.vue` 的统一条数/页码控件，通过 `PaginatedTable.js` 与 `TablePagination.vue` 适配 Buefy 表格并保留列注册、工具栏和分页事件；组件在 `main.js` 注册。
 
 生产 Store 实现 `CampaignSendErrorDetailStore`，`RecordCampaignSendFailure` 在同一 SQL 语句中新增 `campaign_send_errors` 失败事件与递增 `send_errors`；旧 count-only Store 仍有兼容回退。事件保存发送时的客户编码、姓名、邮箱、私域/公海 ID、目标组织、阶段、错误分类、SMTP 状态码、错误原文与时间；凭据模式、NUL/control 字符过滤，原文限 4000 字符。事件绑定当时活动所有者与工作区，普通用户不得通过活动转移读取前所有者快照，私域客户转移也隐藏旧明细；删除客户后保留原活动历史，删除活动级联清理错误事件。
 
@@ -152,6 +162,8 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 ### 媒体逻辑文件夹（v6.37.0）
 
 活动富文本编辑器的本地图片（图片对话框上传、粘贴、拖入及图片编辑产生的 Blob）通过现有 `POST /api/media` 上传到当前工作区根目录，复用媒体维护权限及默认可见性。`RichtextEditor.vue` 在上传成功后返回带媒体 ID 的保护 URL，并经 `Editor.vue` 的 `media-selected` 事件关联活动媒体；预览、保存、测试发送、启动/排期及格式转换先调用 `prepareContent` 等待上传完成并同步正文，失败时保留图片、阻止后续动作。
+
+`frontend/src/utils/clipboardImages.js` 补齐 TinyMCE 5 的混合图文粘贴：从 HTML 内嵌图片、剪贴板文件或 Word/WPS RTF 的 PNG/JPEG pict 数据匹配图片位置，通过临时标记跨过 Word 图片标签过滤后恢复图片，再进入现有上传器。多个未知本地图片仅在数量匹配时按顺序映射，避免错误套用单张剪贴板预览；无 HTML 位置的文字加文件在文字后插图。网页图片由浏览器无凭据、无 Referrer、受 CORS 约束下载（每图 15 秒、32 MiB），不增加服务端 URL 代理；同源媒体复制使用原鉴权文件 API 读取后入库并关联。保存等待粘贴解析及上传，无法读取的图片保留失败标记并阻止保存，删除或重新上传后可继续；卸载编辑器中止下载。纯文本粘贴继续沿用原生逻辑。
 
 自 v6.58.0 起，实际邮件投递通过 `internal/manager/linked_media.go::LinkMediaAttachments` 将关联图片的 `src`、背景图及文件 `href` 转换为 `app.root_url` 下的收件人链接，不发送媒体库文件的 CID 或附件 MIME。正文图片保留原位置自动远程加载，未引用的图片以正文图片补充，其他文件追加下载链接；纯文本和已有替代正文补充文件 URL。新发、测试、暂停恢复、延迟续发与事务模板媒体共用此处理；系统客户数据导出与事务 API 的临时原始附件仍遵守原消息契约。外部图片 URL 保留，历史本机 `/uploads/` 与 ID/文件名保护 URL 在已授权的媒体集合内匹配，带 ID 的引用不回退到同名克隆。
 

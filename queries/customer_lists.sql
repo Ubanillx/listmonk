@@ -66,6 +66,13 @@ INSERT INTO customer_lists (
 ) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id;
 
 -- name: update-customer-list
+-- A rename must reach both kinds of campaign audience snapshot. Private lists
+-- are linked by customer_list_id; public-pool audiences keep customer_list_id
+-- NULL and are linked by pool_id, so a single predicate over customer_list_id
+-- left every pool campaign showing the pool's name at the time it was attached.
+-- Both data-modifying CTEs run even though the primary query reads only l, which
+-- keeps the returned row count independent of how many campaigns reference the
+-- list (a list with no campaigns is still a successful update).
 WITH l AS (
     UPDATE customer_lists SET
         name=(CASE WHEN $2 != '' THEN $2 ELSE name END),
@@ -81,8 +88,15 @@ WITH l AS (
 ),
 c AS (
     UPDATE campaign_customer_lists SET customer_list_name = l.name FROM l WHERE campaign_customer_lists.customer_list_id = l.id RETURNING 1
+),
+p AS (
+    -- customer_list_id IS NULL keeps the two predicates disjoint: a row that
+    -- somehow carries both keys is updated once (by c) instead of twice, which
+    -- PostgreSQL rejects for the whole statement.
+    UPDATE campaign_customer_lists SET customer_list_name = l.name FROM l
+    WHERE campaign_customer_lists.pool_id = l.id AND campaign_customer_lists.customer_list_id IS NULL RETURNING 1
 )
-SELECT COUNT(*) FROM l, c;
+SELECT COUNT(*) FROM l;
 
 -- name: update-customer-lists-date
 UPDATE customer_lists SET updated_at=NOW() WHERE id = ANY($1);

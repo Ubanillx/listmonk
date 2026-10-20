@@ -4,10 +4,22 @@ import { defineConfig, loadEnv } from 'vite';
 const path = require('path');
 
 // https://vitejs.dev/config/
-export default defineConfig(({ _, mode }) => {
+export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   return {
-    plugins: [vue()],
+    plugins: [vue(), {
+      name: 'listmonk-backend-assets',
+      // Go serves these runtime assets. Inject after Vite's URL rewriting so
+      // the development server does not prepend /admin a second time.
+      transformIndexHtml: {
+        order: 'post',
+        handler: () => [
+          { tag: 'link', attrs: { rel: 'icon', href: '/admin/static/favicon.png?v=asset_version' }, injectTo: 'head' },
+          { tag: 'link', attrs: { rel: 'stylesheet', href: '/admin/custom.css?v=asset_version' }, injectTo: 'head' },
+          { tag: 'script', attrs: { src: '/admin/custom.js?v=asset_version', async: true, defer: true }, injectTo: 'head' },
+        ],
+      },
+    }],
     base: '/admin',
     mode,
     resolve: {
@@ -46,7 +58,7 @@ export default defineConfig(({ _, mode }) => {
         '^/auth/oidc': {
           target: env.LISTMONK_API_URL || 'http://127.0.0.1:9173',
         },
-        '^/(admin\/custom\.(css|js))': {
+        '^/admin/custom[.](css|js)': {
           target: env.LISTMONK_API_URL || 'http://127.0.0.1:9173',
         },
       },

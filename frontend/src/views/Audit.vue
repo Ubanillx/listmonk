@@ -142,8 +142,8 @@
       </template>
     </b-table>
 
-    <b-pagination v-if="total > perPage" :total="total" :current.sync="page" :per-page="perPage"
-      order="is-centered" @change="getEvents" />
+    <app-pagination :total="total" :current.sync="page" :per-page="perPage"
+      @per-page-change="changeSize" @change="getEvents" />
   </section>
 </template>
 
@@ -172,6 +172,11 @@ export default Vue.extend({
   },
 
   methods: {
+    changeSize(size) {
+      this.perPage = size;
+      this.reload();
+    },
+
     getEvents() {
       this.selectedEvents = [];
       this.$api.getAuditEvents({

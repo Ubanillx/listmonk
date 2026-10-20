@@ -88,10 +88,10 @@
       </a>
       <span>{{ $tc('globals.messages.numSelected', numSelectedLists, { num: numSelectedLists }) }}</span>
     </div>
-    <b-table :data="tableRows" :loading="loading.listsFull" @check-all="onTableCheck" @check="onTableCheck"
+    <paginated-table :data="tableRows" :loading="loading.listsFull" @check-all="onTableCheck" @check="onTableCheck"
       :checked-rows.sync="bulk.checked" hoverable :default-sort="isPoolGroup ? 'name' : 'createdAt'"
       :paginated="!isPoolGroup" backend-pagination
-      :pagination-position="isPoolGroup ? 'bottom' : 'both'" @page-change="onPageChange" :current-page="queryParams.page"
+      :pagination-position="isPoolGroup ? 'bottom' : 'both'" @page-change="onPageChange" @per-page-change="onPerPageChange" :current-page="queryParams.page"
       :per-page="isPoolGroup ? poolPageSize : customer_lists.perPage" :total="isPoolGroup ? poolGroups.length : customer_lists.total"
       :checkable="canManageLists" :is-row-checkable="canDeleteList" :row-class="listRowClass"
       custom-row-key="id" :custom-is-checked="(left, right) => left.id === right.id" backend-sorting @sort="onSort">
@@ -282,10 +282,10 @@
         </div>
         <empty-placeholder v-else-if="!poolLoadError" />
       </template>
-    </b-table>
+    </paginated-table>
     <div v-if="isPoolGroup && poolGroups.length" class="pool-list-pagination">
-      <b-pagination :total="poolGroups.length" :per-page="poolPageSize" :current="queryParams.page"
-        order="is-right" @change="onPageChange" />
+      <app-pagination :total="poolGroups.length" :per-page="poolPageSize" :current="queryParams.page"
+        @per-page-change="onPoolPerPageChange" @change="onPageChange" />
     </div>
 
     <!-- Add / edit form modal -->
@@ -382,6 +382,7 @@ export default Vue.extend({
       deletingLists: false,
       deletingAssociatedCustomers: false,
       queryParams: {
+        perPage: undefined,
         page: 1,
         query: '',
         orderBy: 'id',
@@ -398,6 +399,16 @@ export default Vue.extend({
   },
 
   methods: {
+    onPoolPerPageChange(size) {
+      this.poolPageSize = size;
+      this.onPageChange(1);
+    },
+
+    onPerPageChange(size) {
+      this.queryParams.perPage = size;
+      this.onPageChange(1);
+    },
+
     onPageChange(p) {
       this.queryParams.page = p;
       if (this.isPoolGroup) {
@@ -530,7 +541,7 @@ export default Vue.extend({
       this.$api.queryLists({
         // Load the readable pool metadata together so filters and pagination
         // cannot separate a parent from its allocations.
-        ...(this.isPoolGroup ? { per_page: 'all', page: 1 } : { page: this.queryParams.page }),
+        ...(this.isPoolGroup ? { per_page: 'all', page: 1 } : { page: this.queryParams.page, per_page: this.queryParams.perPage }),
         query: this.isPoolGroup ? '' : this.queryParams.query.replace(/[^\p{L}\p{N}\s]/gu, ' '),
         order_by: this.queryParams.orderBy,
         order: this.queryParams.order,

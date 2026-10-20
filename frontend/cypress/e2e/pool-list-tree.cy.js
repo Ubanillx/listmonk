@@ -99,6 +99,12 @@ describe('Public pool list hierarchy', () => {
     cy.get('tbody tr').should('have.length', 2);
     cy.get('tbody tr').eq(0).should('contain', 'Pool 21');
     cy.get('tbody tr').eq(1).should('contain', 'Allocation 21');
+    cy.get('select[data-cy=page-size]').select('10');
+    cy.get('tbody tr').should('have.length', 20).first().should('contain', 'Pool 1');
+    cy.get('[data-cy=page-jump]').clear().type('3{enter}');
+    cy.get('tbody tr').should('have.length', 2).first().should('contain', 'Pool 21');
+    cy.get('select[data-cy=page-size]').select('50');
+    cy.get('tbody tr').should('have.length', 42);
     cy.get('[data-cy=pool-list-organization-filter]').select('1');
     cy.get('tbody tr').should('have.length', 2).and('contain', 'Allocation 1');
     cy.get('.pagination-link.is-current').should('contain', '1');

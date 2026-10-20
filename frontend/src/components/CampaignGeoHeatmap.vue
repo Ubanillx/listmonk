@@ -54,8 +54,8 @@
       <aside class="campaign-geo-cities" data-cy="geo-cities">
         <h5 class="title is-6">{{ $t('analytics.geoCities') }}</h5>
         <p class="help mb-3">{{ $t('analytics.geoCityHint') }}</p>
-        <b-table :data="cities" :paginated="cities.length > 8" :per-page="8" :current-page.sync="cityPage"
-          :loading="loading" narrowed class="campaign-geo-city-table">
+        <paginated-table :data="cities" paginated :per-page="cityPageSize" :current-page.sync="cityPage"
+          :loading="loading" @per-page-change="changeCityPageSize" narrowed class="campaign-geo-city-table">
           <b-table-column field="city" :label="$t('analytics.geoCity')" v-slot="props">
             <b-button v-if="props.row.city" native-type="button" type="is-text" size="is-small"
               :aria-label="$t('analytics.geoViewCity', { city: props.row.city, region: props.row.region || props.row.countryLabel })"
@@ -71,7 +71,7 @@
           <template #empty>
             <p class="has-text-grey p-3">{{ $t('analytics.geoNoCities') }}</p>
           </template>
-        </b-table>
+        </paginated-table>
       </aside>
     </div>
   </section>
@@ -132,6 +132,7 @@ export default {
       selectedCountry: this.country,
       focusedCityKey: null,
       cityPage: 1,
+      cityPageSize: 8,
     };
   },
 
@@ -214,6 +215,11 @@ export default {
   },
 
   methods: {
+    changeCityPageSize(size) {
+      this.cityPageSize = size;
+      this.cityPage = 1;
+    },
+
     formatCount(value) {
       return this.$utils.niceNumber(value || 0);
     },

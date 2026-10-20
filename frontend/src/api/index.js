@@ -147,6 +147,17 @@ export const getHealth = () => http.get(
 
 export const reloadApp = () => http.post('/api/admin/reload');
 
+// Platform delivery provider reports retain the provider's documented keys.
+const providerOptions = { camelCase: false, disableToast: true };
+export const getDeliveryProviderConfig = () => http.get('/api/delivery-provider/config', providerOptions);
+export const saveDeliveryProviderConfig = (data) => http.put('/api/delivery-provider/config', data, providerOptions);
+export const testDeliveryProvider = () => http.post('/api/delivery-provider/test', {}, providerOptions);
+export const getDeliveryProviderAccount = () => http.get('/api/delivery-provider/account', providerOptions);
+export const queryDeliveryProvider = (kind, params) => http.get(`/api/delivery-provider/${kind}`, { ...providerOptions, params });
+export const exportDeliveryProviderFailures = (params) => http.get('/api/delivery-provider/failures/export', {
+  ...providerOptions, params, responseType: 'blob',
+});
+
 // Dashboard
 export const getDashboardCounts = () => http.get(
   '/api/dashboard/counts',

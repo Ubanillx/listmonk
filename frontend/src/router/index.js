@@ -202,6 +202,12 @@ const routes = [
     component: () => import('../views/Settings.vue'),
   },
   {
+    path: '/delivery-provider',
+    name: 'deliveryProvider',
+    meta: { title: 'deliveryProvider.title', permission: 'settings:get', platformAdmin: true },
+    component: () => import('../views/DeliveryProvider.vue'),
+  },
+  {
     path: '/settings/logs',
     name: 'logs',
     meta: { title: 'logs.title', group: 'settings', permission: 'settings:get' },

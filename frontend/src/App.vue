@@ -270,6 +270,7 @@ export default Vue.extend({
   computed: {
     routeViewKey() {
       const localQuery = {
+        deliveryProvider: ['tab'],
         organizationManage: ['tab'],
         poolLists: ['manage_pool', 'manage_org', 'manage_tab'],
         poolList: ['manage_pool', 'manage_org', 'manage_tab'],

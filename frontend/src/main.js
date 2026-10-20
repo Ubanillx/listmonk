@@ -64,6 +64,8 @@ function routePermissionAccess(route) {
     return true;
   }
 
+  if (route.meta.platformAdmin) return false;
+
   const required = Array.isArray(perm) ? perm : [perm];
   return required.some((p) => (profile.userRole.permissions || []).includes(p));
 }

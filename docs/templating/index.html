@@ -550,10 +550,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#import-an-eml-email-body" class="md-nav__link">
+  <a href="#import-an-eml-or-msg-email-body" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Import an EML email body
+        Import an EML or MSG email body
       
     </span>
   </a>
@@ -1969,10 +1969,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#import-an-eml-email-body" class="md-nav__link">
+  <a href="#import-an-eml-or-msg-email-body" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Import an EML email body
+        Import an EML or MSG email body
       
     </span>
   </a>
@@ -2180,14 +2180,14 @@
 
 
 <h1 id="templating">Templating<a class="headerlink" href="#templating" title="Permanent link">&para;</a></h1>
-<h2 id="import-an-eml-email-body">Import an EML email body<a class="headerlink" href="#import-an-eml-email-body" title="Permanent link">&para;</a></h2>
-<p>In a campaign's <strong>Content</strong> tab, choose <strong>Import EML</strong> next to Preview and select a <code>.eml</code> file exported from your email client. Confirm replacement of the current body. HTML emails open in rich text mode; text-only emails open in plain text mode. Review the result, then save the campaign explicitly.</p>
+<h2 id="import-an-eml-or-msg-email-body">Import an EML or MSG email body<a class="headerlink" href="#import-an-eml-or-msg-email-body" title="Permanent link">&para;</a></h2>
+<p>In a campaign's <strong>Content</strong> tab, choose <strong>Import email</strong> next to Preview and select an <code>.eml</code> or Outlook <code>.msg</code> file exported from your email client. Confirm replacement of the current body. HTML emails open in rich text mode; text-only emails open in plain text mode. Review the result, then save the campaign explicitly.</p>
 <ul>
-<li>Files must be non-empty and at most 32 MiB. Outlook <code>.msg</code> files are not supported; export the original email as <code>.eml</code>.</li>
+<li>Files must be non-empty and at most 32 MiB. MSG supports HTML and plain text bodies, including Unicode and legacy code pages. MSG files containing only compressed RTF or encrypted content without an HTML/plain text body cannot be imported; export those messages as HTML EML first.</li>
 <li>Embedded CID images, uniquely matched attachment filenames, and supported embedded data images are uploaded to the media library and inserted in their original positions. Repeated references share one media record. Media upload permissions are required.</li>
 <li>The subject, recipients and ordinary attachments are not imported. HTTP(S) image links remain remote links; they must still be accessible to recipients.</li>
 <li>Tables, inline formatting and image dimensions are preserved where supported. Scripts, event handlers, forms, embedded objects, stylesheets and unsafe CSS are removed; check the preview before sending.</li>
-<li>Parsing happens locally in the browser. The original EML and unused attachments are not uploaded. Only referenced images are uploaded; the imported body is persisted when you save.</li>
+<li>Parsing happens locally in the browser. The original email file and unused attachments are not uploaded. Only referenced images are uploaded; the imported body is persisted when you save.</li>
 <li>Cancelling, missing image data, invalid files or failed uploads leave the original draft unchanged. Uploads completed before a later failure remain in the media library. Import is unavailable in the visual builder and on read-only campaigns.</li>
 </ul>
 <p>A template is a re-usable HTML design that can be used across campaigns and transactional messages. Most commonly, templates have standard header and footer areas with logos and branding elements, where campaign content is inserted in the middle.</p>

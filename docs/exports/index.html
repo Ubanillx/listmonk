@@ -1787,6 +1787,11 @@ preserved. Language selection affects one request and never changes global setti
 <td>The same contact fields, plus source pool name and ID. Memberships in different pools remain separate rows.</td>
 </tr>
 <tr>
+<td>Public-pool import issues</td>
+<td>Customer import result → Export error report Excel</td>
+<td>Source row, customer code, allocation department, issue type and reason. Includes all issues, not only the filtered page; no email values. Generated locally from the current import result as <code>customer-import-errors.xlsx</code>, with UI-language headings, readable widths and auto-filters.</td>
+</tr>
+<tr>
 <td>Audit events</td>
 <td><code>GET /api/audit-events/export</code></td>
 <td>Time, readable action/actor/object/result/reason first; stable IDs, original action/object/reason codes, request ID, metadata, IP and user agent follow.</td>
@@ -1808,7 +1813,7 @@ preserved. Language selection affects one request and never changes global setti
 </tr>
 </tbody>
 </table>
-<p>Every workbook uses readable widths, wrapped text, a styled frozen header and
+<p>Server-generated workbooks use readable widths, wrapped text, a styled frozen header and
 alternating row shading. Non-empty data sheets have Excel table filters.
 Times are real Excel dates displayed as <code>yyyy-mm-dd hh:mm:ss</code>; UTC is explicit
 in each time-column heading. Customer codes and identifiers remain text to
@@ -1818,9 +1823,15 @@ Unknown status/reason codes remain visible as their original values.</p>
 boundaries as their source pages. Private email, UUID and attributes require
 <code>customers:sensitive_read</code>; without it, masked-list exports can retain masked
 email, while other exports omit the email column. Public-pool email remains
-masked for anyone other than a platform administrator. Campaign diagnostics
-that can contain sensitive recipient data remain hidden where required.</p>
-<p>Large exports use batched/streamed source queries. A sheet reaching Excel's
+masked for anyone other than a platform administrator. Private-recipient campaign
+diagnostics require <code>campaigns:private_send_error_details</code> for viewing, search,
+and inclusion in authorized exports; <code>customers:sensitive_read</code> does not grant
+diagnostic access. Without diagnostic permission, reason categories, SMTP codes
+and counts remain available. This permission is not granted to existing roles
+automatically. The email column remains masked without <code>customers:sensitive_read</code>.
+Public-pool diagnostics remain hidden for anyone other than a platform
+administrator.</p>
+<p>Large server exports use batched/streamed source queries. A sheet reaching Excel's
 1,048,576-row limit continues in another sheet with the same headings. A value
 exceeding the 32,767-character cell limit produces an error instead of silently
 losing content. The server completes the workbook before starting the download;
@@ -1832,7 +1843,7 @@ Translated headers in the active language and English, Simplified Chinese and
 Traditional Chinese aliases are recognized; legacy machine headings such as
 <code>username</code> and <code>user_role</code> continue to work. Importing still requires the normal
 user/organization permissions. Upload formats remain CSV and XLSX.</p>
-<p>Downloads return <code>application/vnd.openxmlformats-officedocument.spreadsheetml.sheet</code>,
+<p>Server downloads return <code>application/vnd.openxmlformats-officedocument.spreadsheetml.sheet</code>,
 <code>Content-Disposition: attachment</code>, <code>Cache-Control: no-store</code> and
 <code>X-Content-Type-Options: nosniff</code>. Integrations previously reading export CSV/JSON
 must now read XLSX. Ordinary API list/detail endpoints still return JSON.</p>

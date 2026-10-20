@@ -25,6 +25,9 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),
+        // MsgReader's character decoder uses the browser Buffer implementation.
+        buffer: 'buffer/',
+        string_decoder: 'string_decoder/',
       },
     },
     css: {

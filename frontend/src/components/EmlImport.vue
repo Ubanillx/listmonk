@@ -4,7 +4,7 @@
               data-cy="btn-import-eml" @click="$refs.file.click()">
       {{ $t('campaigns.editor.importEml') }}
     </b-button>
-    <input ref="file" type="file" accept=".eml,message/rfc822" hidden
+    <input ref="file" type="file" accept=".eml,.msg,message/rfc822,application/vnd.ms-outlook" hidden
            data-cy="eml-file" :disabled="disabled || busy" :aria-label="$t('campaigns.editor.importEml')" @change="onFile">
     <p v-if="error" class="help is-danger" role="alert" data-cy="eml-error">{{ error }}</p>
   </span>

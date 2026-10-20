@@ -18,8 +18,8 @@
     </div>
 
     <section class="box campaign-selector-panel">
-      <div class="columns is-variable is-6 is-multiline is-vcentered">
-        <div class="column is-6-desktop">
+      <div class="columns is-variable is-4 is-vcentered">
+        <div class="column is-5-desktop">
           <p class="is-size-7 has-text-weight-semibold has-text-grey campaign-selector-label">
             {{ $t('analytics.selectedCampaigns') }}
           </p>
@@ -46,11 +46,10 @@
           </div>
         </div>
 
-        <div class="column is-6-desktop">
+        <div class="column is-5-desktop">
           <b-field
             :label="$t('analytics.campaignSearch')"
             label-position="on-border"
-            :message="$t('analytics.allCampaignsHint')"
           >
             <b-autocomplete
               v-model="campaignQuery"
@@ -67,16 +66,17 @@
               @select="selectCampaign"
             />
           </b-field>
+        </div>
 
-          <div class="campaign-selector-actions">
-            <b-button
-              type="is-light"
-              :disabled="form.campaigns.length === 0"
-              @click="clearCampaignSelection"
-            >
-              {{ $t('analytics.clearCampaignSelection') }}
-            </b-button>
-          </div>
+        <div class="column is-2-desktop campaign-selector-actions">
+          <b-button
+            type="is-light"
+            :disabled="form.campaigns.length === 0"
+            expanded
+            @click="clearCampaignSelection"
+          >
+            {{ $t('analytics.clearCampaignSelection') }}
+          </b-button>
         </div>
       </div>
     </section>
@@ -399,6 +399,7 @@ export default Vue.extend({
       isSearchLoading: false,
       campaignQuery: '',
       queriedCampaigns: [],
+      dateRangeTouched: false,
       chartVersion: 0,
       geoRefreshToken: 0,
       geoCountry: String(this.$route.query.country || ''),
@@ -610,10 +611,33 @@ export default Vue.extend({
   },
 
   methods: {
-    defaultDateRange() {
+    defaultDateRange(campaigns = []) {
       const now = dayjs().set('hour', 23).set('minute', 59).set('seconds', 0);
+      const createdAt = campaigns
+        .map((campaign) => campaign.createdAt || campaign.created_at)
+        .filter(Boolean)
+        .map((value) => dayjs(value))
+        .filter((value) => value.isValid())
+        .reduce((earliest, value) => (
+          !earliest || value.isBefore(earliest) ? value : earliest
+        ), null);
+
+      if (createdAt) {
+        return { from: createdAt.toDate(), to: now.toDate() };
+      }
+
       const weekAgo = now.subtract(7, 'day').set('hour', 0).set('minute', 0);
       return { from: weekAgo.toDate(), to: now.toDate() };
+    },
+
+    applyCampaignDateDefaults() {
+      if (this.dateRangeTouched) {
+        return;
+      }
+
+      const defaults = this.defaultDateRange(this.form.campaigns);
+      this.filters.from = defaults.from;
+      this.filters.to = defaults.to;
     },
 
     async syncFromRoute() {
@@ -621,6 +645,8 @@ export default Vue.extend({
       this.syncToken = token;
       this.geoCountry = String(this.$route.query.country || '');
 
+      const hasRouteDateRange = Boolean(this.$route.query.from || this.$route.query.to);
+      this.dateRangeTouched = hasRouteDateRange;
       const defaults = this.defaultDateRange();
       this.filters.from = this.$route.query.from ? dayjs.unix(this.$route.query.from).toDate() : defaults.from;
       this.filters.to = this.$route.query.to ? dayjs.unix(this.$route.query.to).toDate() : defaults.to;
@@ -629,6 +655,7 @@ export default Vue.extend({
       const ids = this.$utils.parseQueryIDs(this.$route.query.id).filter((id) => !Number.isNaN(id));
       if (ids.length === 0) {
         this.form.campaigns = [];
+        this.applyCampaignDateDefaults();
         this.refreshReport();
         return;
       }
@@ -644,6 +671,7 @@ export default Vue.extend({
           && this.$canViewCampaignAnalytics(item.value))
         .map((item) => this.normalizeCampaign(item.value));
       this.isSearchLoading = false;
+      this.applyCampaignDateDefaults();
       this.refreshReport();
     },
 
@@ -659,12 +687,14 @@ export default Vue.extend({
     },
 
     onFromDateChange() {
+      this.dateRangeTouched = true;
       if (this.filters.from > this.filters.to) {
         this.filters.to = dayjs(this.filters.from).add(7, 'day').toDate();
       }
     },
 
     onToDateChange() {
+      this.dateRangeTouched = true;
       if (this.filters.from > this.filters.to) {
         this.filters.from = dayjs(this.filters.to).add(-7, 'day').toDate();
       }
@@ -750,15 +780,18 @@ export default Vue.extend({
 
       this.form.campaigns = [...this.form.campaigns, campaign];
       this.campaignQuery = '';
+      this.applyCampaignDateDefaults();
     },
 
     removeCampaign(id) {
       this.form.campaigns = this.form.campaigns.filter((campaign) => campaign.id !== id);
+      this.applyCampaignDateDefaults();
     },
 
     clearCampaignSelection() {
       this.form.campaigns = [];
       this.campaignQuery = '';
+      this.applyCampaignDateDefaults();
     },
 
     baseReportParams() {
@@ -792,6 +825,7 @@ export default Vue.extend({
     },
 
     onSubmit() {
+      this.dateRangeTouched = true;
       const query = {
         from: dayjs(this.filters.from).unix(),
         to: dayjs(this.filters.to).unix(),
@@ -913,19 +947,20 @@ export default Vue.extend({
 
 <style scoped>
 .campaign-selector-panel {
-  margin-bottom: 1.5rem;
+  margin-bottom: 1rem;
+  padding: 1rem 1.25rem;
 }
 
 .campaign-selector-label {
-  margin-bottom: 0.6rem;
+  margin-bottom: 0.35rem;
 }
 
 .campaign-selector-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
-  min-height: 2.75rem;
-  align-items: flex-start;
+  gap: 0.5rem;
+  min-height: 2.25rem;
+  align-items: center;
 }
 
 .campaign-scope-tag {
@@ -934,7 +969,28 @@ export default Vue.extend({
 
 .campaign-selector-actions {
   display: flex;
-  justify-content: flex-end;
+  align-items: flex-end;
+}
+
+.campaign-selector-actions .button {
+  margin-bottom: 0.25rem;
+}
+
+.campaign-selector-panel :deep(.columns) {
+  margin-bottom: 0;
+}
+
+.campaign-selector-panel :deep(.column) {
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+}
+
+.campaign-selector-panel :deep(.field) {
+  margin-bottom: 0;
+}
+
+.campaign-selector-panel :deep(.autocomplete .dropdown-menu) {
+  z-index: 30;
 }
 
 .report-section {

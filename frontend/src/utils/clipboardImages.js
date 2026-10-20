@@ -2,6 +2,27 @@
 // Resolve clipboard bytes first, then protect image positions during its paste cleanup.
 const MAX_IMAGE_BYTES = 32 * 1024 * 1024;
 const SOURCE_ATTRIBUTE = 'data-clipboard-image-source';
+const IMAGE_FILE_EXTENSION = /\.(?:avif|bmp|gif|jpe?g|png|svg|webp)$/i;
+const IMAGE_MIME_BY_EXTENSION = {
+  avif: 'image/avif',
+  bmp: 'image/bmp',
+  gif: 'image/gif',
+  jpeg: 'image/jpeg',
+  jpg: 'image/jpeg',
+  png: 'image/png',
+  svg: 'image/svg+xml',
+  webp: 'image/webp',
+};
+
+const isImageFile = (file) => Boolean(file)
+  && (file.type?.startsWith('image/') || IMAGE_FILE_EXTENSION.test(file.name || ''));
+
+const normalizeImageBlob = (blob) => {
+  if (blob.type?.startsWith('image/')) return blob;
+  const extension = (blob.name || '').split(/[.?]/).pop()?.toLowerCase();
+  const type = IMAGE_MIME_BY_EXTENSION[extension];
+  return type ? new Blob([blob], { type }) : blob;
+};
 
 const readDataURL = (blob) => new Promise((resolve, reject) => {
   if (!blob.size || blob.size > MAX_IMAGE_BYTES) {
@@ -138,7 +159,9 @@ export default function clipboardImages(editor, readMedia, onError) {
       if (disposed) return false;
       try {
         // eslint-disable-next-line no-await-in-loop
-        resolved.set(source, await (matches.has(source) ? readDataURL(matches.get(source)) : resolveSource(source)));
+        resolved.set(source, await (matches.has(source)
+          ? readDataURL(normalizeImageBlob(matches.get(source)))
+          : resolveSource(source)));
       } catch (error) {
         failed = true;
       }
@@ -187,15 +210,15 @@ export default function clipboardImages(editor, readMedia, onError) {
     const html = clipboard.getData('text/html');
     const text = clipboard.getData('text/plain');
     const rtf = clipboard.getData('text/rtf');
-    const files = Array.from(clipboard.files || []).filter((file) => file.type.startsWith('image/'));
-    if (!files.length) {
-      Array.from(clipboard.items || []).forEach((item) => {
-        if (item.kind === 'file' && item.type.startsWith('image/')) {
-          const file = item.getAsFile();
-          if (file) files.push(file);
-        }
-      });
-    }
+    const allFiles = [];
+    const addFile = (file) => {
+      if (file && !allFiles.includes(file)) allFiles.push(file);
+    };
+    Array.from(clipboard.files || []).forEach(addFile);
+    Array.from(clipboard.items || []).forEach((item) => {
+      if (item.kind === 'file') addFile(item.getAsFile());
+    });
+    const files = allFiles.filter(isImageFile);
     const container = document.createElement('template');
     container.innerHTML = html.replace(/<!--\[if !vml\]>([\s\S]*?)<!\[endif\]-->/gi, '$1');
     if (!html && text) {
@@ -208,6 +231,13 @@ export default function clipboardImages(editor, readMedia, onError) {
     images.forEach((image) => {
       if (!image.getAttribute('src') && image.getAttribute('data-src')) image.setAttribute('src', image.getAttribute('data-src'));
     });
+    // Some Office clipboards expose embedded PNG/JPEG files with no useful MIME
+    // type or filename. If every local HTML image has one corresponding file,
+    // retain those files and map them by clipboard order.
+    const localImageCount = images.filter((image) => localSource(image.getAttribute('src') || '')).length;
+    if (!files.length && localImageCount > 0 && allFiles.length === localImageCount) {
+      files.push(...allFiles);
+    }
     if (!images.length && files.length && (html || text)) {
       files.forEach((file, index) => {
         const image = document.createElement('img');

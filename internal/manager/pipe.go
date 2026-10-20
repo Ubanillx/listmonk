@@ -269,6 +269,15 @@ func (p *pipe) deferCampaign(stopQueuedMessages bool) {
 	p.deferMut.Lock()
 	if !p.deferred.Load() {
 		next := schedule.NextDailyResumeAt(p.camp.DailyResumeTime, time.Now())
+		// The stored instant is what the admin UI shows back as the resume
+		// time, so refusing to persist a wall clock the campaign did not
+		// configure keeps a wrong process zone from silently rescheduling it.
+		if !schedule.ResumeTimeMatchesWallClock(next, p.camp.DailyResumeTime, time.Local) {
+			p.deferMut.Unlock()
+			p.m.log.Printf("refusing to defer campaign (%s): computed resume %s does not match configured %s (process zone %s)",
+				p.camp.Name, next.Format(time.RFC3339), p.camp.DailyResumeTime, time.Local)
+			return
+		}
 		err := p.m.WithCampaignStatusChange(func() error {
 			if p.stopped.Load() {
 				return ErrCampaignNotRunning

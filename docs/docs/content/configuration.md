@@ -512,6 +512,27 @@ available (for example a bare binary on a minimal image), the server falls back
 to `Asia/Shanghai` instead of UTC. The embedded tz database means no external
 tzdata package is required.
 
+### Systemd deployments
+
+A service that starts listmonk from its own unit must set `TZ` explicitly. The
+Jenkins pipeline writes it from its `APP_TIMEZONE` parameter (default
+`Asia/Shanghai`):
+
+```
+Environment=TZ=Asia/Shanghai
+```
+
+Without it the process inherits whatever zone the host has. A host running on
+UTC then reads `daily_resume_time` on the UTC clock, so a campaign configured
+for `09:00` in Shanghai is deferred to the next `17:00` local and the admin UI
+shows that shifted time. Restart the service after adding the variable.
+
+The `v6.62.0` upgrade repairs campaigns that were already deferred under a
+mismatched clock by moving `next_resume_at` to the next occurrence of the
+campaign's own `daily_resume_time` on the deployment zone. The migration only
+touches rows whose stored wall clock disagrees with the campaign, so running it
+again changes nothing.
+
 ## SMTP
 
 ### Retries

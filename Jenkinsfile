@@ -64,6 +64,11 @@ pipeline {
       defaultValue: '9173',
       description: 'HTTP port used for the post-deploy health check.'
     )
+    string(
+      name: 'APP_TIMEZONE',
+      defaultValue: 'Asia/Shanghai',
+      description: 'IANA time zone written into the systemd unit as TZ. Every log line, daily quota boundary and admin UI timestamp uses it.'
+    )
   }
 
   stages {
@@ -236,8 +241,8 @@ scp "${ssh_options[@]}" \
   "$binary_archive" "$frontend_archive" "$checksum_file" \
   "$remote:$remote_stage/"
 
-remote_command=$(printf 'DEPLOY_DIR=%q SERVICE_NAME=%q APP_PORT=%q DEPLOY_USER=%q RELEASE_ID=%q REMOTE_STAGE=%q BINARY_NAME=%q FRONTEND_ARCHIVE_NAME=%q bash -s' \
-  "$DEPLOY_DIR" "$SERVICE_NAME" "$APP_PORT" "$DEPLOY_USER" "$RELEASE_ID" "$remote_stage" "$BINARY_NAME" "$FRONTEND_ARCHIVE_NAME")
+remote_command=$(printf 'DEPLOY_DIR=%q SERVICE_NAME=%q APP_PORT=%q APP_TIMEZONE=%q DEPLOY_USER=%q RELEASE_ID=%q REMOTE_STAGE=%q BINARY_NAME=%q FRONTEND_ARCHIVE_NAME=%q bash -s' \
+  "$DEPLOY_DIR" "$SERVICE_NAME" "$APP_PORT" "$APP_TIMEZONE" "$DEPLOY_USER" "$RELEASE_ID" "$remote_stage" "$BINARY_NAME" "$FRONTEND_ARCHIVE_NAME")
 
 ssh "${ssh_options[@]}" "$remote" "$remote_command" <<'REMOTE_SCRIPT'
 #!/usr/bin/env bash
@@ -246,6 +251,7 @@ set -euo pipefail
 deploy_dir="${DEPLOY_DIR:?}"
 service_name="${SERVICE_NAME:?}"
 app_port="${APP_PORT:?}"
+app_timezone="${APP_TIMEZONE:-Asia/Shanghai}"
 deploy_user="${DEPLOY_USER:?}"
 release_id="${RELEASE_ID:?}"
 stage_dir="${REMOTE_STAGE:?}"
@@ -386,6 +392,10 @@ WorkingDirectory=$deploy_dir
 ExecStart=$deploy_dir/current/run-listmonk.sh
 Restart=on-failure
 RestartSec=5
+# Pin the deployment time zone. Without it the process inherits whatever zone
+# the host happens to have, which shifts daily_resume_time and every timestamp
+# the admin UI renders.
+Environment=TZ=$app_timezone
 Environment=LISTMONK_app__address=0.0.0.0:$app_port
 
 [Install]

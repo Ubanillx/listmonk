@@ -2852,6 +2852,13 @@ per instance with environment variables such as <code>LISTMONK_app__batch_size</
 <td>Listen address of the web server, eg: <code>0.0.0.0:9000</code>. The database has no such setting, so it must come from the config file or an environment variable.</td>
 </tr>
 <tr>
+<td><code>timezone</code></td>
+<td>string</td>
+<td><code>""</code> (follows the deployment, then <code>Asia/Shanghai</code>)</td>
+<td>no</td>
+<td>IANA time zone of the whole server, eg: <code>Asia/Shanghai</code>. Leave it empty to use the deployment's zone: the process time zone, which is the <code>TZ</code> environment variable in Docker and <code>/etc/localtime</code> (or <code>/etc/timezone</code>) for a bare binary. See <a href="#time-zone">Time zone</a> below.</td>
+</tr>
+<tr>
 <td><code>root_url</code></td>
 <td>string</td>
 <td><code>http://localhost:9000</code></td>
@@ -4169,11 +4176,36 @@ Container info: <code>sudo docker inspect listmonk_listmonk</code></p>
 <p>Settings -&gt; Logs in admin shows the last 1000 lines of the standard log output but gets erased when listmonk is restarted.</p>
 <p>For the <a href="https://github.com/knadh/listmonk/blob/master/listmonk%40.service">service file</a>, you can use <code>ExecStart=/bin/bash -ce "exec /usr/bin/listmonk --config /etc/listmonk/config.toml --static-dir /etc/listmonk/static &gt;&gt;/etc/listmonk/listmonk.log 2&gt;&amp;1"</code> to create a log file that persists after restarts. <a href="https://github.com/knadh/listmonk/issues/1462#issuecomment-1868501606">More info</a>.</p>
 <h2 id="time-zone">Time zone<a class="headerlink" href="#time-zone" title="Permanent link">&para;</a></h2>
-<p>To change listmonk's time zone (logs, etc.) edit <code>docker-compose.yml</code>:
+<p>The server has exactly one clock, and the deployment decides it. Set <code>TZ</code> to any
+name from the <a href="https://en.wikipedia.org/wiki/List_of_tz_database_time_zones">tz database</a>
+in <code>docker-compose.yml</code>:</p>
 <div class="highlight"><pre><span></span><code>environment:
-    - TZ=Etc/UTC
+    - TZ=Asia/Shanghai
 </code></pre></div>
-with any Timezone listed <a href="https://en.wikipedia.org/wiki/CustomerList_of_tz_database_time_zones">here</a>. Then run <code>sudo docker-compose stop ; sudo docker-compose up</code> after making changes.</p>
+<p>Then run <code>sudo docker-compose stop ; sudo docker-compose up</code>. The bundled
+<code>docker-compose.yml</code> and <code>deploy/docker-compose.bundle.yml</code> default to
+<code>Asia/Shanghai</code>; set <code>TZ=Etc/UTC</code> to keep UTC instead.</p>
+<p>That single zone drives all of the following, so no component keeps its own:</p>
+<ul>
+<li>The server clock: logs, the <code>Date</code> template function in system and campaign
+  templates, and daily quota <code>daily_resume_time</code> windows.</li>
+<li>Database sessions: every connection sets <code>timezone</code> to the same zone, so
+  <code>NOW()</code>, <code>created_at::DATE</code> and the dashboard materialized views bucket days
+  by the deployment's calendar day. This covers sessions opened by listmonk only.
+  Server-side defaults and database logs still follow PostgreSQL's own <code>timezone</code>
+  setting, so give the database container the same <code>TZ</code> (the bundled Compose
+  files do) or run <code>ALTER DATABASE &lt;db&gt; SET timezone = 'Asia/Shanghai';</code>.</li>
+<li>The admin UI: <code>/api/config</code> reports <code>timezone</code>, and every timestamp, date
+  picker and report range is rendered and parsed in it. A browser in another
+  zone no longer shifts a scheduled send or a report boundary.</li>
+<li>Excel exports: timestamps are written on the deployment's clock, and their
+  column headers name the zone.</li>
+</ul>
+<p><code>app.timezone</code> (or <code>LISTMONK_app__timezone</code>) overrides the deployment zone when
+a single instance has to differ from the container or host. When neither is
+available (for example a bare binary on a minimal image), the server falls back
+to <code>Asia/Shanghai</code> instead of UTC. The embedded tz database means no external
+tzdata package is required.</p>
 <h2 id="smtp">SMTP<a class="headerlink" href="#smtp" title="Permanent link">&para;</a></h2>
 <h3 id="retries">Retries<a class="headerlink" href="#retries" title="Permanent link">&para;</a></h3>
 <p>The <code>Settings -&gt; SMTP -&gt; Retries</code> denotes the number of times a message that fails at the moment of sending is retried silently using different connections from the SMTP pool. The messages that fail even after retries are the ones that are logged as errors and ignored.</p>

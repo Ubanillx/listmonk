@@ -26,6 +26,9 @@ export default defineConfig(({ mode }) => {
       alias: {
         '@': path.resolve(__dirname, './src'),
         bulma: require.resolve('bulma/bulma.sass'),
+        // MsgReader's character decoder uses the browser Buffer implementation.
+        buffer: 'buffer/',
+        string_decoder: 'string_decoder/',
       },
     },
     build: {

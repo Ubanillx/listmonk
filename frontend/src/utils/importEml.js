@@ -13,14 +13,17 @@ const sanitizerOptions = {
 };
 
 export const parseEml = async (file) => {
-  if (!/\.eml$/i.test(file.name)) throw new Error('invalid');
+  if (!/\.(?:eml|msg)$/i.test(file.name)) throw new Error('invalid');
   if (!file.size || file.size > MAX_BYTES) throw new Error('size');
   const bytes = await file.arrayBuffer();
-  // Reject arbitrary text files; a mail must have a header block before its body.
+  const isMsg = /\.msg$/i.test(file.name);
+  // Reject arbitrary text files; an EML must have a header block before its body.
   const header = new TextDecoder().decode(bytes.slice(0, 256 * 1024)).split(/\r?\n\r?\n/)[0];
-  if (!/^(?:from|subject|mime-version|content-type|date|to):/im.test(header)) throw new Error('invalid');
+  if (!isMsg && !/^(?:from|subject|mime-version|content-type|date|to):/im.test(header)) throw new Error('invalid');
   return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL('./emlParser.worker.js', import.meta.url), { type: 'module' });
+    const worker = isMsg
+      ? new Worker(new URL('./msgParser.worker.js', import.meta.url), { type: 'module' })
+      : new Worker(new URL('./emlParser.worker.js', import.meta.url), { type: 'module' });
     let timer;
     const finish = (error, result) => {
       clearTimeout(timer);

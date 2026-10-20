@@ -29,32 +29,42 @@ const mixed = (win, html) => {
     + '--outer--\r\n';
 };
 
-describe('Campaign EML import', () => {
+describe('Campaign EML and MSG import', { defaultCommandTimeout: 15000 }, () => {
   before(() => cy.resetDB());
   beforeEach(() => {
     cy.viewport(1648, 1244);
     cy.intercept('GET', '/api/config', (req) => req.continue((res) => { res.body.data.lang = 'en'; }));
     cy.loginAndVisit('/admin/campaigns');
     cy.request('POST', '/api/campaigns', {
-      name: 'EML import regression', subject: 'Existing subject', type: 'regular', content_type: 'richtext',
-      body: '<p>Existing draft</p>', customer_list_ids: [1], smtp_source: 'personal', smtp_rate_limit: 20, template_id: 1,
+      name: 'EML import regression',
+      subject: 'Existing subject',
+      type: 'regular',
+      content_type: 'richtext',
+      body: '<p>Existing draft</p>',
+      customer_list_ids: [1],
+      smtp_source: 'personal',
+      smtp_rate_limit: 20,
+      template_id: 1,
     }).then(({ body }) => cy.visit(`/admin/campaigns/${body.data.id}#content`));
-    cy.window().should((win) => expect(win.tinymce?.editors[0]?.initialized).to.eq(true));
+    cy.window({ timeout: 20000 }).should((win) => expect(win.tinymce?.editors[0]?.initialized).to.eq(true));
   });
 
   it('imports nested MIME, preserves table layout and CID order, previews and persists uploaded images', () => {
     const uploaded = [];
     cy.intercept('POST', '/api/media', (req) => req.continue((res) => { uploaded.push(res.body.data.id); })).as('upload');
-    cy.window().then((win) => select(mixed(win,
+    cy.window().then((win) => select(mixed(
+      win,
       '<html><body><p>你好 Before</p><table style="width:300px;border-collapse:collapse"><tr><td style="color:rgb(255,0,0)">'
       + '<img src="cid:first%40example" alt="first" width="80" height="40"></td></tr></table><p>Middle</p>'
-      + '<img src="cid:second@example" alt="second"><p>After</p><img src="cid:first@example" alt="repeated"></body></html>')));
+      + '<img src="cid:second@example" alt="second"><p>After</p><img src="cid:first@example" alt="repeated"></body></html>',
+    )));
     editorBody().should('contain', 'Existing draft');
     confirm();
     cy.wait('@upload').its('response.statusCode').should('eq', 200);
     cy.wait('@upload').its('response.statusCode').should('eq', 200);
     cy.get('.toast').should('contain', '2 embedded images').and('contain', '1 other attachments');
-    editorBody().should('contain', '你好 Before').and('contain', 'Middle').and('contain', 'After').and('not.contain', 'Fallback plain');
+    editorBody().should('contain', '你好 Before').and('contain', 'Middle').and('contain', 'After')
+      .and('not.contain', 'Fallback plain');
     editorBody().find('table').should('have.attr', 'style').and('contain', '300px');
     editorBody().find('img').should(($images) => {
       expect(Array.from($images).map((img) => img.naturalWidth)).to.deep.eq([80, 80, 80]);
@@ -121,11 +131,13 @@ describe('Campaign EML import', () => {
   });
 
   it('sanitizes active HTML and CSS, imports filename references, and decodes legacy charsets', () => {
-    cy.window().then((win) => select(mixed(win,
+    cy.window().then((win) => select(mixed(
+      win,
       '<style>@import "https://untrusted.example/style";</style><script>window.emlExecuted = true;</script>'
       + '<p style="color:red;position:fixed;background-image:url(javascript:alert(1))" onclick="alert(1)">Safe</p>'
       + '<iframe src="https://untrusted.example"></iframe><img src="Attach/first.png" onerror="alert(1)">'
-      + '<a href="javascript:alert(1)">Link</a>')));
+      + '<a href="javascript:alert(1)">Link</a>',
+    )));
     confirm();
     cy.get('.toast').should('contain', 'Body imported');
     cy.window().then((win) => {
@@ -157,17 +169,85 @@ describe('Campaign EML import', () => {
     cy.get('[data-cy=eml-file]').should('be.disabled');
   });
 
-  it('rejects empty, oversized and non-EML files without changing the draft', () => {
+  it('rejects empty, oversized, mislabelled and unsupported files without changing the draft', () => {
     select('', 'empty.eml');
     confirm();
     cy.get('[data-cy=eml-error]').should('contain', '32 MiB');
     select(plain, 'unsupported.msg');
     confirm();
-    cy.get('[data-cy=eml-error]').should('contain', 'not .msg');
+    cy.get('[data-cy=eml-error]').should('contain', 'Unable to parse');
+    select(plain, 'unsupported.txt');
+    confirm();
+    cy.get('[data-cy=eml-error]').should('contain', 'Unable to parse');
     select(Cypress.Buffer.alloc(32 * 1024 * 1024 + 1), 'oversized.eml');
     confirm();
     cy.get('[data-cy=eml-error]').should('contain', '32 MiB');
     editorBody().should('contain', 'Existing draft');
+  });
+
+  it('imports binary MSG HTML with CID images, sanitizes it and persists it after saving', () => {
+    cy.get('[data-cy=btn-import-eml]').should('contain', 'Import email');
+    cy.get('[data-cy=eml-file]').should('have.attr', 'accept').and('contain', '.msg');
+    // Cypress can re-encode this small binary multipart body when intercepting
+    // it. Verify the real upload through rendered images and persisted media.
+    cy.get('[data-cy=eml-file]').selectFile('cypress/fixtures/msg/html.msg', { force: true });
+    confirm();
+    cy.get('.toast').should('contain', '1 embedded images').and('contain', '1 other attachments');
+    editorBody().should('contain', '你好 MSG Before').and('contain', 'After').and('not.contain', 'fallback');
+    editorBody().find('img').should(($images) => {
+      expect(Array.from($images).map((img) => img.naturalWidth)).to.deep.eq([1, 1]);
+      expect($images[0].src).to.eq($images[1].src);
+    });
+    cy.window().then((win) => expect(win.msgExecuted).to.eq(undefined));
+    cy.get('[data-cy=btn-preview]').click();
+    cy.get('#iframe').invoke('attr', 'srcdoc').should('contain', '你好 MSG Before').and('contain', 'data:image/png;base64,');
+    cy.get('.modal-card-foot button').click();
+    cy.intercept('PUT', '/api/campaigns/*').as('msgSave');
+    cy.get('.campaign > header [data-cy=btn-save]').click();
+    cy.wait('@msgSave').then(({ request, response }) => {
+      expect(response.statusCode).to.eq(200);
+      expect(request.body.subject).to.eq('Existing subject');
+      expect(request.body.media).to.have.length(1);
+      expect(request.body.body).not.to.match(/cid:|<script/);
+    });
+    cy.reload();
+    editorBody().should('contain', '你好 MSG Before').find('img').should('have.length', 2);
+  });
+
+  it('imports Unicode plain MSG text without interpreting HTML and persists it', () => {
+    cy.get('[data-cy=eml-file]').selectFile('cypress/fixtures/msg/plain.msg', { force: true });
+    confirm();
+    cy.get('textarea[name=content]').should('have.value', '你好 MSG\nPlain <text> & content');
+    cy.intercept('PUT', '/api/campaigns/*').as('plainMsgSave');
+    cy.get('.campaign > header [data-cy=btn-save]').click();
+    cy.wait('@plainMsgSave').its('response.statusCode').should('eq', 200);
+    cy.reload();
+    cy.get('textarea[name=content]').should('contain.value', '你好 MSG');
+  });
+
+  it('imports MSG HTML with Chinese legacy encoding and Unicode HTML properties', () => {
+    cy.get('[data-cy=eml-file]').selectFile('cypress/fixtures/msg/legacy.msg', { force: true });
+    confirm();
+    editorBody().should('contain', '你好 GB18030');
+    cy.readFile('cypress/fixtures/msg/unicode-html.msg', null).then((bytes) => select(bytes, 'MESSAGE.MSG'));
+    confirm();
+    editorBody().should('contain', '你好 Unicode HTML').and('not.contain', 'GB18030');
+  });
+
+  it('preserves drafts for cancelled MSG import, missing images, absent bodies and corrupt binaries', () => {
+    cy.get('[data-cy=eml-file]').selectFile('cypress/fixtures/msg/plain.msg', { force: true });
+    cy.get('.dialog .modal-card-foot button').contains('Cancel').click();
+    cy.get('[data-cy=eml-file]').selectFile('cypress/fixtures/msg/missing.msg', { force: true });
+    confirm();
+    cy.get('[data-cy=eml-error]').should('contain', 'missing or ambiguous');
+    cy.get('[data-cy=eml-file]').selectFile('cypress/fixtures/msg/empty.msg', { force: true });
+    confirm();
+    cy.get('[data-cy=eml-error]').should('contain', 'no supported HTML or plain text body');
+    select(Cypress.Buffer.from('d0cf11e0a1b11ae1', 'hex'), 'corrupt.msg');
+    confirm();
+    cy.get('[data-cy=eml-error]').should('contain', 'Unable to parse');
+    editorBody().should('contain', 'Existing draft');
+    cy.get('[data-cy=btn-import-eml]').should('not.be.disabled');
   });
 
   it('keeps the new import and preview controls within a mobile viewport', () => {

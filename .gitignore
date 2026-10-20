@@ -14,7 +14,12 @@ email-builder/dist/
 static/public/static/altcha.umd.js
 .vscode/
 
+# Codex local artifacts and logs
+.codex-artifacts/
+.codex-*.log
+
 config.toml
+dev/config.local.toml
 docker-compose.override.yml
 node_modules
 listmonk

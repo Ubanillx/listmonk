@@ -9,7 +9,13 @@
 - Excel 导出：单元格时间按部署时区写入（`exportSheet.addRow`、`exportTimestamp`），表头由 `exports.createdAt/updatedAt/occurredAt/firstError/lastError` 的 `%s` 占位符填入时区名；`i18n/{en,zh-CN,zh-TW}.json` 的 `*UTC` 键已更名。
 - 接口：`/api/config` 返回 `timezone` 与 `timezone_offset`，前端 `frontend/src/time.js` 据此对 dayjs 设置 `tz.setDefault`，`utils.js` 的 `niceDate/parseDateTime/duration`、活动发送时间/每日恢复时间选择器、分析报表与维护页日期范围、邀请到期时间（`wallClockISO`）、审计下载文件名和 API Key 到期月份全部按部署时区解析与展示，浏览器时区不再产生影响。
 
-回归入口：`internal/tz/tz_test.go`、`go test ./internal/schedule/... ./internal/manager/...`、`frontend/cypress/e2e/excel-exports.cy.js`。
+- 部署单元：Jenkins 流水线的 systemd unit 显式写入 `Environment=TZ=$app_timezone`（参数 `APP_TIMEZONE`，默认 `Asia/Shanghai`）。此前 unit 只有 `LISTMONK_app__address`，进程会继承宿主机时区；宿主机为 UTC 时，写入数据库的 `next_resume_at` 按 UTC 墙钟计算，管理端按上海时区回显成 `daily_resume_time` 加 8 小时（09:00 显示为 17:00）。
+
+**每日续发时间不变量**：`next_resume_at` 是绝对时刻，其在部署时区下的墙钟必须等于活动自身的 `daily_resume_time`。`internal/manager/pipe.go::deferCampaign` 在落库前用 `schedule.ResumeTimeMatchesWallClock` 校验，不一致时拒绝延期并记录日志，避免进程时区再次静默改写续发时间；`daily_resume_time` 为空或无法解析时视为无期望值，保留原有行为。`internal/schedule/daily.go::NextDailyResumeAt` 在夏令时空档会顺延一天，而不是写入与配置不同的小时。
+
+**历史数据修复**：`next_resume_at` 只在延期时写一次，修复代码无法改写已落库的行。`internal/migrations/v6.62.0.go` 把所有 `status='deferred'` 且墙钟与 `daily_resume_time` 不一致的活动重锚到部署时区下下一个该时刻；判定按墙钟比较，已正确的行（包括迁移自身刚修好的行）不会被再次移动，重复执行是幂等的。上线后无需再手工改库，升级即自动修复。
+
+回归入口：`internal/tz/tz_test.go`、`internal/schedule/daily_test.go`、`internal/migrations/v6.62.0_test.go`、`cmd/deploy_timezone_test.go`、`go test ./internal/schedule/... ./internal/manager/...`、`frontend/cypress/e2e/excel-exports.cy.js`。
 
 ## 事务模板共享页脚（2026-10-20）
 

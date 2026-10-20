@@ -117,24 +117,42 @@ builds the admin UI, uses the dedicated `listmonk-cypress` Compose project on
 `127.0.0.1:9273`, and removes its temporary database afterward. Direct
 `yarn cypress run` cannot reset the shared development database.
 
-To exercise the first-level pool, organization allocation, masked contact DTO, and
-internal reply mailbox flow against the running stack, load the deterministic
-fixture and run the PowerShell checks:
+Public-pool coverage is one script with a mode switch; each mode is idempotent
+and cleans up after itself, including when an assertion fails.
+
+| Mode | Scope |
+| --- | --- |
+| `Http` (default) | API contract for the fixture pool: masked contact DTO, allocation scope, member maintenance, campaign preview and the organization's unified reply mailbox. |
+| `Smtp` | Real MailHog delivery for the fixture pool: one message per deduplicated contact, unified reply mailbox on `Reply-To`. |
+| `AllOrg` | Platform-level `all_organizations` campaign: seeds and removes its own two organizations, three member SMTP servers and four contacts. Needs no fixture SQL. |
+| `All` | `Http`, then `Smtp`, then `AllOrg`. |
+
+```powershell
+pwsh -File dev/pools_e2e_verify.ps1              # -Mode Http
+pwsh -File dev/pools_e2e_verify.ps1 -Mode All
+```
+
+`Http` and `Smtp` need the fixture loaded into the running stack:
 
 ```powershell
 Get-Content dev/pools_e2e_seed.sql |
   docker exec -i dev-db-1 psql -v ON_ERROR_STOP=1 -U <db-user> -d <db-name>
-powershell -NoProfile -ExecutionPolicy Bypass -File dev/pools_e2e_verify.ps1
 ```
 
-The fixture uses the `wsqa-pool-*` prefix. It is idempotent and the verifiers
-resolve the fixture IDs by name, so a reused development database does not
+The fixture uses the `wsqa-pool-*` prefix. It is idempotent and the verifier
+resolves the fixture IDs by name, so a reused development database does not
 need fixed sequence values. The verifier restores its test member and removes
 its temporary campaign automatically; contact rows are never physically
 deleted. It also checks the `campaign_pool_recipients`
 snapshot directly through Docker PostgreSQL; set `POOL_QA_DB_CONTAINER`,
 `POOL_QA_DB_USER`, and `POOL_QA_DB_NAME` when the development database uses
 non-default names.
+
+`Http` grants the fixture manager role the configurable `pools:*` permissions
+for the duration of the run and restores the exact previous grant on exit. It
+also gives the probe contact the organization name as `allocation_department`
+(the non-highest assign path requires it) and restores the original value from
+a temporary table inside PostgreSQL, so non-ASCII organization names survive.
 
 The verifier signs in both as the fixture manager and as the highest
 administrator, so both credentials must work: `POOL_QA_PASSWORD` (default
@@ -144,15 +162,17 @@ the assertions, and the run aborts with guidance when either login fails.
 `LISTMONK_QA_BASE_URL` overrides the default base URL, and `POOL_QA_POOL_ID` /
 `POOL_QA_SEGMENT_ID` override the name-based fixture lookup.
 
-To exercise actual account-owned SMTP delivery, run the MailHog verifier after
-the same fixture. It requires the fixture manager to have no personal SMTP
-servers, temporarily creates a `mailhog`-only server, sends the three unique
-pool recipients concurrently, verifies the pool-allocation `Reply-To` header,
-then deletes both the campaign and temporary SMTP server.
+`Smtp` starts the MailHog delivery check after the same fixture. It requires the
+fixture manager to have no personal SMTP servers, temporarily creates a
+`mailhog`-only server, sends the three unique pool recipients concurrently,
+verifies the pool-allocation `Reply-To` header, then deletes both the campaign
+and temporary SMTP server. `POOL_QA_MAILHOG_URL` overrides the MailHog UI base
+URL (default `http://localhost:8265`).
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File dev/pools_smtp_e2e_verify.ps1
-```
+`AllOrg` needs no HTTP session: it seeds the fixture directly through Docker
+PostgreSQL, waits for the scheduler to drain the campaign, reports the
+recipient/cursor rows, and asserts deduplication, single delivery per contact,
+per-organization reply mailbox and sender rotation.
 
 For the browser smoke check, run the opt-in spec from `frontend/` after the
 fixture is loaded:

@@ -350,7 +350,13 @@ type Config struct {
 	ViewTrackURL          string
 	ArchiveURL            string
 	RootURL               string
-	UnsubHeader           bool
+	// SiteName and LogoURL are site-wide branding. Templates shared by
+	// campaigns, archives and transactional messages (the footer block) render
+	// them, so they live in the generic function map rather than the
+	// campaign-only one.
+	SiteName    string
+	LogoURL     string
+	UnsubHeader bool
 
 	// Interval to scan the DB for active campaign checkpoints.
 	ScanInterval time.Duration
@@ -1399,6 +1405,17 @@ func (m *Manager) makeGnericFuncMap() template.FuncMap {
 		},
 		"Safe": func(safeHTML string) template.HTML {
 			return template.HTML(safeHTML)
+		},
+		// Site-wide values. Transactional and archive templates share the same
+		// footer as campaigns, so these must be available without a campaign.
+		"RootURL": func() string {
+			return m.cfg.RootURL
+		},
+		"SiteName": func() string {
+			return m.cfg.SiteName
+		},
+		"LogoURL": func() string {
+			return m.cfg.LogoURL
 		},
 	}
 

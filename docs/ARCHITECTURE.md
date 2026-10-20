@@ -11,6 +11,10 @@
 
 回归入口：`internal/tz/tz_test.go`、`go test ./internal/schedule/... ./internal/manager/...`、`frontend/cypress/e2e/excel-exports.cy.js`。
 
+## 事务模板共享页脚（2026-10-20）
+
+事务模板与归档模板复用活动页脚的 `{{ RootURL }}`、`{{ SiteName }}`、`{{ LogoURL }}`，但这些函数原先只注册在 `Manager.TemplateFuncs`（按活动编译）。已改由 `Manager.makeGnericFuncMap`（`GenericTemplateFuncs`，事务模板编译/渲染路径）提供，`manager.Config` 增加 `SiteName`/`LogoURL`，`cmd/init.go` 从 `UrlConfig` 注入。新增 `internal/manager/template_funcs_test.go` 直接编译/渲染 `sample-tx.tpl` 与 `default-archive.tpl`，防止函数再次被移回活动专用映射。
+
 ## 活动编辑器占位符插入（2026-10-20）
 
 活动内容页通过 `Campaign.vue` 将客户占位符渲染为可聚焦按钮，点击时调用共享 `Editor.vue::insertText`，不把内容追加到正文末尾。CodeMirror 通过 `EditorState.replaceSelection` 写入 HTML/Markdown 并进入自己的历史栈；TinyMCE 在保存的选区上使用 `insertContent`，按当前行内祖先复制 `strong`、链接、颜色等标签；纯文本及可视化编辑器分别保留最近的原生文本字段选区。按钮的 `mousedown` 阻止焦点丢失，插入后各编辑器恢复焦点，备用纯文本正文也由同一插入辅助函数处理。只读活动由 `canEdit` 禁用按钮。回归入口：`frontend/cypress/e2e/campaign-placeholders.cy.js`。

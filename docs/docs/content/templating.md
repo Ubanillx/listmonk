@@ -62,6 +62,13 @@ There are several template functions and expressions that can be used in campaig
 | `{{ MessageURL }}`                   | URL to view the hosted version of an e-mail message.                                                                                                  |
 | `{{ OptinURL }}`                     | URL to the double opt-in confirmation page.                                                                                                           |
 | `{{ Safe "<!-- comment -->" }}`      | Add any HTML code as it is.                                                                                                                           |
+| `{{ RootURL }}`                      | Public root URL of the instance. Available in campaign, archive and transactional templates, for shared footers.                                      |
+| `{{ SiteName }}`                     | Site name. Available in campaign, archive and transactional templates.                                                                                |
+| `{{ LogoURL }}`                      | Configured logo URL. Available in campaign, archive and transactional templates.                                                                      |
+| `{{ ArchiveURL }}`                    | Public campaign archive URL. Available in campaign templates.                                                                                       |
+
+The URL, name and logo functions above work in every template type, including
+transactional templates, so a footer copied between them keeps working.
 
 ### Sprig functions
 listmonk integrates the Sprig library that offers 100+ utility functions for working with strings, numbers, dates etc. that can be used in templating. Refer to the [Sprig documentation](https://masterminds.github.io/sprig/) for the full list of functions.

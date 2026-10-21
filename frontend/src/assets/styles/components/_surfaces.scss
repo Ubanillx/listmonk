@@ -68,13 +68,17 @@
   flex-grow: 0;
 }
 
-.list-delete-choice-container {
+.list-delete-choice-container,
+.provider-blocklist-modal {
   width: calc(100% - var(--lm-space-6));
 
   .modal-card {
     width: 100%;
     margin: 0;
   }
+}
+
+.list-delete-choice-container {
 
   .modal-card-title,
   .modal-card-body {

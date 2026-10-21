@@ -81,7 +81,15 @@
   padding-top: var(--lm-space-2);
 
   ::v-deep .field { min-width: 0; margin-bottom: 0; }
-  .provider-date { flex: 0 1 240px; }
+  .provider-date {
+    flex: 0 1 240px;
+
+    ::v-deep .datepicker,
+    ::v-deep .datepicker .dropdown-trigger,
+    ::v-deep .datepicker .control { width: 100%; }
+    ::v-deep .datepicker .input { min-height: 42px; cursor: pointer; }
+    ::v-deep .datepicker .control .icon.is-right { width: 2.75rem; }
+  }
   .provider-recipient { flex: 1 1 240px; max-width: var(--lm-field-max-width); }
 }
 
@@ -186,6 +194,7 @@
 }
 
 .provider-credentials { margin: var(--lm-space-6) 0; }
+  .provider-account-grid.is-read-only { grid-template-columns: minmax(0, 1fr); }
 .provider-console dl {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr);
@@ -323,6 +332,76 @@
   ::v-deep .tag { font-size: 11.5px; font-weight: 500; }
   ::v-deep .provider-tag-warning { background: #fff3db; color: #93651b; }
   ::v-deep .provider-tag-danger { background: #ffebe8; color: #b45443; }
+}
+// Icon-only row actions keep the address, causes and actions on one line; the
+// label lives in a tooltip and in aria-label for assistive technology.
+.provider-failure-actions {
+  white-space: nowrap;
+  text-align: right;
+
+  > * + * { margin-left: var(--lm-space-2); }
+}
+.provider-blocklist-email { font-weight: 600; overflow-wrap: anywhere; margin-bottom: var(--lm-space-2); }
+.provider-blocklist-targets {
+  margin: var(--lm-space-3) 0;
+  padding: 0;
+  list-style: none;
+
+  li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--lm-space-2);
+    padding: var(--lm-space-2) 0;
+    border-bottom: 1px solid var(--lm-color-border);
+
+    &:last-child { border-bottom: 0; }
+    &.is-skipped { color: var(--lm-color-text-muted); }
+  }
+}
+.provider-blocklist-name { min-width: 0; font-weight: 500; overflow-wrap: anywhere; }
+.provider-blocklist-state { margin-left: auto; font-size: 12px; text-align: right; }
+.provider-blocklist-warning { margin-top: var(--lm-space-3); }
+.provider-blocklist-addresses .provider-blocklist-address { min-width: 0; overflow-wrap: anywhere; }
+
+// Row selection and the batch bar deliberately reuse the existing text-button
+// style; only the scope chooser below introduces a new surface.
+.provider-select-cell {
+  width: 34px;
+  text-align: center;
+
+  input { cursor: pointer; vertical-align: middle; }
+}
+.provider-batch-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--lm-space-3);
+  padding: var(--lm-space-2) var(--lm-space-3);
+  margin-bottom: var(--lm-space-3);
+  border-radius: var(--lm-radius-sm);
+  background: var(--lm-color-primary-soft);
+}
+.provider-batch-count { font-weight: 600; }
+.provider-scope {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lm-space-2);
+  margin: var(--lm-space-3) 0;
+}
+.provider-scope-option {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--lm-space-2);
+  padding: var(--lm-space-2) var(--lm-space-3);
+  border: 1px solid var(--lm-color-border);
+  border-radius: var(--lm-radius-sm);
+  cursor: pointer;
+
+  &.is-active { border-color: var(--lm-color-primary); background: var(--lm-color-primary-soft); }
+  &.is-empty { opacity: 0.55; cursor: not-allowed; }
+  input { margin: 0; }
+  small { color: var(--lm-color-text-muted); }
 }
 .provider-analysis ::v-deep .app-pagination { flex-wrap: wrap; gap: var(--lm-space-3); }
 

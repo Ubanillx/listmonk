@@ -204,7 +204,7 @@ const routes = [
   {
     path: '/delivery-provider',
     name: 'deliveryProvider',
-    meta: { title: 'deliveryProvider.title', permission: 'settings:get', platformAdmin: true },
+    meta: { title: 'deliveryProvider.title', permission: 'delivery_provider:get' },
     component: () => import('../views/DeliveryProvider.vue'),
   },
   {

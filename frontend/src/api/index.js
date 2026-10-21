@@ -157,6 +157,9 @@ export const queryDeliveryProvider = (kind, params) => http.get(`/api/delivery-p
 export const exportDeliveryProviderFailures = (params) => http.get('/api/delivery-provider/failures/export', {
   ...providerOptions, params, responseType: 'blob',
 });
+// Moves one failed address into (or out of) the private and pool blocklists it
+// resolves to. The server re-resolves the address and re-checks permissions.
+export const blocklistDeliveryProviderFailure = (data) => http.put('/api/delivery-provider/failures/blocklist', data, providerOptions);
 
 // Dashboard
 export const getDashboardCounts = () => http.get(
@@ -287,6 +290,9 @@ export const importPoolList = (data) => http.post('/api/pools/import', data);
 // resolves the first-level pool server-side.
 export const clearPoolContactEmail = (listID, contactID) => http.delete(`/api/customer-lists/${listID}/pool-contacts/${contactID}/email`);
 export const deletePoolContact = (listID, contactID) => http.delete(`/api/customer-lists/${listID}/pool-contacts/${contactID}`);
+// Contact-level blocklist shared by every organization allocation of the
+// selected first-level pool contacts.
+export const setPoolContactsBlocklist = (data) => http.put('/api/pools/contacts/blocklist', data);
 
 // Organizations and workspaces.
 export const getCurrentWorkspace = (config = {}) => http.get('/api/workspace', config);

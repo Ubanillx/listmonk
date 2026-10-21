@@ -49,7 +49,7 @@
         :label="$t('globals.terms.analytics')" />
     </b-menu-item><!-- campaigns -->
 
-    <b-menu-item v-if="profile && profile.userRole && Number(profile.userRole.id) === 1"
+    <b-menu-item v-if="$can('delivery_provider:get')"
       :to="{ name: 'deliveryProvider' }" tag="router-link" :active="activeItem.deliveryProvider"
       data-cy="delivery-provider" icon="email-check-outline" :label="$t('deliveryProvider.title')" />
 

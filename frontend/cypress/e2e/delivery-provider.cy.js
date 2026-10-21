@@ -42,6 +42,7 @@ function stubProvider() {
   cy.intercept('GET', url('account'), ok({ data: { results: account, source: 'live', warning: '' } }));
   cy.intercept('GET', url('statistics'), ok({ data: { results: statistics, source: 'live', fetched_at: '2026-10-20T10:00:00Z' } }));
   cy.intercept('GET', url('failures'), ok({ data: { results: failures, source: 'live', fetched_at: '2026-10-20T10:00:00Z' } }));
+  cy.intercept('GET', url('logs'), ok({ data: { results: [], source: 'live', fetched_at: '2026-10-20T10:00:00Z' } }));
   cy.intercept('GET', '/api/delivery-provider/failures/export*', ok(''));
 }
 
@@ -51,6 +52,69 @@ function visitConsole() {
   cy.get('.provider-console').should('be.visible');
   cy.get('[data-cy=provider-total]').should('not.have.text', '—');
 }
+
+describe('Delivery service permission gates', () => {
+  before(() => { cy.resetDB(); });
+  const visitAs = (permissions, roleId = 77, configured = true) => {
+    stubProvider();
+    if (!configured) cy.intercept('GET', url('config'), ok({ data: { configured: false } }));
+    cy.intercept('GET', '/api/config', (req) => req.continue((res) => { res.body.data.lang = 'zh-CN'; }));
+    cy.intercept('GET', '/api/profile', {
+      data: {
+        id: 77,
+        username: 'provider-reader',
+        name: '报表查看人员',
+        user_role: { id: roleId, permissions },
+        customer_list_roles: [],
+      },
+    });
+    cy.clearLocalStorage();
+    cy.loginAndVisit('/admin/delivery-provider');
+  };
+
+  it('hides the menu and rejects a direct URL without an explicit provider grant', () => {
+    let providerRequests = 0;
+    visitAs(['settings:get', 'settings:manage', 'mailboxes:manage', 'organizations:platform_manage', 'workspaces:personal']);
+    cy.intercept('/api/delivery-provider/**', () => { providerRequests += 1; });
+    cy.location('pathname').should('eq', '/admin/403');
+    cy.get('[data-cy=delivery-provider]').should('not.exist');
+    cy.get('.provider-console').should('not.exist');
+    cy.then(() => { expect(providerRequests).to.equal(0); });
+  });
+
+  it('lets a delegated reader open reports, export, view logs and account details but not configure credentials', () => {
+    visitAs(['delivery_provider:get', 'workspaces:personal']);
+    cy.get('[data-cy=delivery-provider]').should('be.visible');
+    cy.get('[data-cy=provider-tab-statistics]').click();
+    cy.get('.provider-failure-table tbody tr').should('have.length', 10);
+    cy.intercept('GET', '/api/delivery-provider/failures/export*').as('readerExport');
+    cy.contains('.provider-console button', '导出 Excel').click();
+    cy.wait('@readerExport').its('request.query.group_by').should('eq', 'email');
+    cy.get('[data-cy=provider-tab-logs]').click();
+    cy.get('input[type=email]').should('be.visible');
+    cy.get('[data-cy=provider-tab-account]').should('contain.text', '账号资料').click();
+    cy.contains('.provider-console', '示例企业').should('be.visible');
+    cy.get('[data-cy=provider-configuration]').should('not.exist');
+    cy.get('[data-cy=provider-connect]').should('not.exist');
+    cy.reload();
+    cy.get('.provider-console').should('be.visible');
+    cy.get('[data-cy=provider-configuration]').should('not.exist');
+  });
+
+  it('explains an unconfigured account without offering configuration to readers', () => {
+    visitAs(['delivery_provider:get', 'workspaces:personal'], 77, false);
+    cy.contains('请联系平台管理员配置发件服务账号').should('be.visible');
+    cy.get('.provider-empty button').should('not.exist');
+  });
+
+  it('preserves the platform administrator configuration access without an explicit grant', () => {
+    visitAs([], 1);
+    cy.get('[data-cy=delivery-provider]').should('be.visible');
+    cy.get('[data-cy=provider-tab-account]').click();
+    cy.get('[data-cy=provider-configuration]').should('be.visible');
+    cy.get('[data-cy=provider-connect]').should('be.visible');
+  });
+});
 
 // The provider answers "no rows" with a successful, empty report. Stub that
 // shape directly so the empty state can be asserted without the live API.
@@ -118,6 +182,126 @@ describe('BestEDM delivery provider console', () => {
     cy.get('.provider-failure-table tbody tr').should('have.length', 1);
   });
 
+  it('allows task-scoped error types to be selected before choosing a batch', () => {
+    visitConsole();
+    cy.intercept('GET', url('failures')).as('failures');
+    cy.get('[data-cy=provider-tab-statistics]').click();
+    cy.wait('@failures');
+
+    ['1', '2', '3'].forEach((type) => {
+      cy.get(`[data-cy=provider-error-type] option[value="${type}"]`).should('not.be.disabled');
+    });
+    cy.get('[data-cy=provider-error-type]').select('1');
+    cy.get('[role=alert]').should('be.visible').and('contain', '批次');
+    cy.get('[data-cy=provider-error-type]').should('have.value', '1');
+
+    cy.get('[data-cy=provider-batch-select]').select('20261015-17463-smtp');
+    cy.wait('@failures').its('request.query').should((query) => {
+      expect(query.type).to.equal('1');
+      expect(query.task_ident).to.equal('20261015-17463-smtp');
+    });
+    cy.get('[role=alert]').should('not.exist');
+  });
+
+  it('matches failed addresses and blocklists them through a confirmation dialog', () => {
+    visitConsole();
+    const matched = {
+      email: 'known@example.com',
+      error_count: 2,
+      errors: [{ error_type: '1', error_type_dec: '邮箱不存在', error_count: 2 }],
+      matches: [
+        {
+          kind: 'private', id: 11, customer_code: 'C1', name: '李雷', status: 'enabled', blocked: false, can_block: true,
+        },
+        {
+          kind: 'pool', id: 22, pool_id: 3, pool_name: '公海A', customer_code: 'P1', name: '韩梅梅', status: 'active', blocked: false, can_block: true,
+        },
+      ],
+    };
+    const unmatched = {
+      email: 'nomatch@example.com',
+      error_count: 1,
+      errors: [{ error_type: '8', error_type_dec: '无效地址', error_count: 1 }],
+      matches: [],
+    };
+    cy.intercept('GET', url('failures'), ok({ data: { results: [matched, unmatched], source: 'live', fetched_at: '2026-10-20T10:00:00Z' } })).as('matchedFailures');
+    cy.intercept('PUT', '/api/delivery-provider/failures/blocklist', ok({ data: { applied: matched.matches, skipped: [], unmatched: [] } })).as('blocklist');
+    cy.get('[data-cy=provider-tab-statistics]').click();
+    cy.wait('@matchedFailures');
+
+    cy.contains('.provider-failure-table tbody tr', 'nomatch@example.com')
+      .find('[data-cy=provider-failure-blocklist]').should('be.disabled');
+    cy.contains('.provider-failure-table tbody tr', 'known@example.com')
+      .find('[data-cy=provider-failure-blocklist]')
+      .should('have.attr', 'aria-label', '加入黑名单')
+      .click();
+
+    cy.get('[data-cy=provider-blocklist-dialog]').should('be.visible').within(() => {
+      cy.contains('known@example.com').should('be.visible');
+      cy.get('.provider-blocklist-targets li').should('have.length', 2)
+        .first().should('contain', '私域')
+        .and('contain', '李雷');
+      cy.contains('.provider-blocklist-targets li', '公海').should('contain', '韩梅梅').and('contain', '公海A');
+      cy.get('.provider-blocklist-targets li').eq(1).should('contain', '将加入黑名单');
+      cy.contains('公海黑名单是共享主数据').should('be.visible');
+      cy.get('[data-cy=provider-blocklist-confirm]').should('contain', '确认加入（2）').click();
+    });
+
+    cy.wait('@blocklist').its('request.body').then((body) => {
+      expect(body.emails).to.deep.equal(['known@example.com']);
+      expect(body.action).to.equal('block');
+      expect(body.scope).to.equal('all');
+    });
+    cy.contains('.provider-failure-table tbody tr', 'known@example.com')
+      .find('[data-cy=provider-failure-blocklist]')
+      .should('have.attr', 'aria-label', '移出黑名单');
+  });
+  it('selects several failures and blocklists only the chosen scope', () => {
+    visitConsole();
+    const rows = [
+      {
+        email: 'private@example.com',
+        error_count: 1,
+        errors: [{ error_type: '1', error_type_dec: '邮箱不存在', error_count: 1 }],
+        matches: [{
+          kind: 'private', id: 1, customer_code: 'C1', name: '甲', status: 'enabled', blocked: false, can_block: true,
+        }],
+      },
+      {
+        email: 'pool@example.com',
+        error_count: 1,
+        errors: [{ error_type: '8', error_type_dec: '无效地址', error_count: 1 }],
+        matches: [{
+          kind: 'pool', id: 2, pool_id: 3, pool_name: '公海A', customer_code: 'P1', name: '乙', status: 'active', blocked: false, can_block: true,
+        }],
+      },
+    ];
+    cy.intercept('GET', url('failures'), ok({ data: { results: rows, source: 'live', fetched_at: '2026-10-20T10:00:00Z' } })).as('batchFailures');
+    cy.intercept('PUT', '/api/delivery-provider/failures/blocklist', ok({ data: { applied: [], skipped: [], unmatched: [] } })).as('batchBlocklist');
+    cy.get('[data-cy=provider-tab-statistics]').click();
+    cy.wait('@batchFailures');
+
+    cy.get('[data-cy=provider-batch-bar]').should('not.exist');
+    cy.get('[data-cy=provider-select-address]').eq(0).check();
+    cy.get('[data-cy=provider-select-address]').eq(1).check();
+    cy.get('[data-cy=provider-batch-bar]').should('contain', '已选 2 个地址');
+    cy.get('[data-cy=provider-batch-block]').click();
+
+    cy.get('[data-cy=provider-blocklist-dialog]').within(() => {
+      cy.contains('批量加入黑名单').should('be.visible');
+      cy.get('.provider-scope-option').should('have.length', 3);
+      cy.get('[data-cy=provider-scope-private]').check();
+      cy.get('[data-cy=provider-blocklist-confirm]').should('contain', '确认加入（1）').click();
+    });
+
+    cy.wait('@batchBlocklist').its('request.body').then((body) => {
+      expect(body.emails).to.have.members(['private@example.com', 'pool@example.com']);
+      expect(body.action).to.equal('block');
+      expect(body.scope).to.equal('private');
+    });
+    cy.get('[data-cy=provider-batch-bar]').should('not.exist');
+  });
+
   it('surfaces provider failures instead of zero totals', () => {
     visitConsole();
     cy.intercept('GET', url('statistics'), { statusCode: 502, body: { message: 'Provider XML is invalid' } }).as('broken');
@@ -169,7 +353,13 @@ describe('BestEDM delivery provider console', () => {
       expect(Math.abs(bottom(left) - bottom(right))).to.be.lessThan(1);
     });
     cy.get('[data-cy=provider-tab-logs]').click();
-    cy.get('.provider-notice').should('have.css', 'border-left-width', '0px');
+    cy.get('.provider-notice').should('not.exist');
+    cy.get('[role=alert]').should('not.exist');
+    cy.intercept('GET', url('logs'), { statusCode: 502, body: { message: '日志查询服务暂不可用' } }).as('logError');
+    cy.get('input[type=email]').type('address@example.com');
+    cy.get('form.provider-filter').submit();
+    cy.wait('@logError');
+    cy.contains('.provider-console [role=alert]', '日志查询服务暂不可用').should('be.visible');
   });
 
   it('shows all error classifications and counts for each unique email', () => {
@@ -192,8 +382,8 @@ describe('BestEDM delivery provider console', () => {
     cy.get('.provider-error-count').should('have.text', '3');
     cy.get('.provider-failure-cause').should('have.length', 2);
     cy.contains('.provider-failure-cause', '邮箱不存在 × 2').should('be.visible');
-    cy.contains('.provider-failure-cause', '连接异常 × 1').should('be.visible');
-    cy.contains('.provider-failure-table button', '查日志').click();
+    cy.contains('.provider-failure-cause', '连接异常').should('be.visible').and('not.contain.text', '× 1');
+    cy.get('.provider-failure-table [data-cy=provider-failure-logs]').click();
     cy.get('input[type=email]').should('have.value', 'repeat@example.com');
   });
 
@@ -221,6 +411,88 @@ describe('BestEDM delivery provider console', () => {
     cy.get('.provider-selection').should('contain', statistics[1].task_ident);
     cy.get('[data-cy=provider-batch-select]').should('have.value', statistics[1].task_ident);
     cy.get('.is-selected-batch').should('have.attr', 'data-batch', statistics[1].task_ident);
+  });
+
+  it('queries logs once using the selected batch earliest date and keeps manual date queries available', () => {
+    visitConsole();
+    cy.intercept('GET', url('statistics'), ok({
+      data: {
+        results: [
+          { ...statistics[1], task_date: '2026-10-20' },
+          { ...statistics[0], task_date: '2026-10-14' },
+          { ...statistics[1], task_date: '2026-10-16' },
+          { ...statistics[1], task_date: '' },
+        ],
+        source: 'live',
+      },
+    }));
+    cy.get('form.provider-filter').submit();
+    cy.get('[data-cy=provider-tab-statistics]').click();
+    cy.contains('.provider-batch-group .provider-batch', statistics[1].task_ident).click();
+    cy.get('[data-cy=provider-selection]').should('contain', statistics[1].task_ident);
+    // A draft filter must not replace the dates of the loaded batch records.
+    cy.get('[data-cy=provider-start]').clear().type('2026-10-01');
+    cy.intercept('GET', url('logs')).as('autoLogs');
+    cy.get('.provider-failure-table [data-cy=provider-failure-logs]').first().click();
+    cy.wait('@autoLogs').its('request.query').should('deep.equal', {
+      date: '2026-10-16', mail_to: 'batch1-recipient01@example.com', task_ident: statistics[1].task_ident,
+    });
+    cy.get('[data-cy=provider-log-date]').should('have.value', '2026-10-16');
+    cy.get('[data-cy=provider-log-batch]').should('have.value', statistics[1].task_ident);
+    cy.contains('.provider-console', '该收件邮箱在所选日期没有投递记录').should('be.visible');
+    cy.get('[data-cy=provider-tab-overview]').click();
+    cy.get('[data-cy=provider-tab-logs]').click();
+    cy.get('@autoLogs.all').should('have.length', 1);
+    cy.get('[data-cy=provider-log-date]').clear().type('2026-10-17');
+    cy.get('[data-cy=provider-log-date]').blur();
+    cy.get('form.provider-filter').submit();
+    cy.wait('@autoLogs').its('request.query.date').should('eq', '2026-10-17');
+    cy.get('@autoLogs.all').should('have.length', 2);
+  });
+
+  it('uses the earliest date across all loaded statistics when no batch is selected', () => {
+    visitConsole();
+    cy.intercept('GET', url('statistics'), ok({
+      data: {
+        results: [
+          { ...statistics[1], task_date: '2026-10-20' },
+          { ...statistics[0], task_date: '2026-10-15' },
+        ],
+        source: 'live',
+      },
+    }));
+    cy.get('form.provider-filter').submit();
+    cy.get('[data-cy=provider-tab-statistics]').click();
+    cy.get('[data-cy=provider-batch-select]').should('have.value', '');
+    cy.intercept('GET', url('logs')).as('dateLogs');
+    cy.get('.provider-failure-table [data-cy=provider-failure-logs]').first().click();
+    cy.wait('@dateLogs').its('request.query').should('deep.equal', {
+      date: '2026-10-15', mail_to: 'batch1-recipient01@example.com',
+    });
+    cy.get('[data-cy=provider-log-date]').should('have.value', '2026-10-15');
+    cy.get('[data-cy=provider-log-batch]').should('have.value', '');
+  });
+
+  it('falls back to the applied range start when batch records have no dates', () => {
+    visitConsole();
+    cy.intercept('GET', url('statistics'), ok({
+      data: {
+        results: [
+          { ...statistics[0], task_date: '' }, { ...statistics[0], task_date: 'unknown' },
+        ],
+        source: 'live',
+      },
+    }));
+    cy.get('[data-cy=provider-start]').clear().type('2026-10-10');
+    cy.get('[data-cy=provider-end]').clear().type('2026-10-20');
+    cy.get('form.provider-filter').submit();
+    cy.get('[data-cy=provider-tab-statistics]').click();
+    cy.contains('.provider-batch-group .provider-batch', statistics[0].task_ident).click();
+    cy.get('[data-cy=provider-selection]').should('contain', statistics[0].task_ident);
+    cy.get('[data-cy=provider-start]').clear().type('2026-10-01');
+    cy.intercept('GET', url('logs')).as('fallbackLogs');
+    cy.get('.provider-failure-table [data-cy=provider-failure-logs]').first().click();
+    cy.wait('@fallbackLogs').its('request.query.date').should('eq', '2026-10-10');
   });
 
   it('keeps controls within a mobile viewport', () => {
@@ -281,7 +553,7 @@ describe('BestEDM delivery provider console', () => {
       });
     });
     cy.get('[data-cy=provider-tab-overview]').click();
-    cy.get('.provider-console input[type=date]').first().should('have.attr', 'aria-label', '开始日期');
+    cy.get('[data-cy=provider-start]').should('have.attr', 'aria-label', '开始日期');
     cy.screenshot('bestedm-report-design-mobile', { capture: 'viewport' });
   });
 
@@ -326,7 +598,7 @@ describe('BestEDM delivery provider console', () => {
     cy.get('[data-cy=provider-total]').should('have.text', '0');
 
     cy.get('[data-cy=provider-tab-logs]').click();
-    cy.get('input[type=date]').clear().type('2026-10-14');
+    cy.get('[data-cy=provider-log-date]').clear().type('2026-10-14');
     cy.get('input[type=email]').type('mari.kekkonen@hongkongimport.fi');
     cy.get('form.provider-filter').submit();
     cy.contains('.provider-console', '该收件邮箱在所选日期没有投递记录').should('be.visible');

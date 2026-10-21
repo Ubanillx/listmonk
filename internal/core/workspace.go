@@ -8,6 +8,7 @@ import (
 
 	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
+	"github.com/lib/pq"
 	null "gopkg.in/volatiletech/null.v6"
 )
 
@@ -553,6 +554,40 @@ func (c *Core) CustomerListManagedWorkspaceResources(access models.WorkspaceAcce
 		return nil, echo.NewHTTPError(http.StatusInternalServerError, pqErrMsg(err))
 	}
 	return ids, nil
+}
+
+// ManagedWorkspaceCustomerIDs filters a candidate set by the caller's mutation
+// boundary in one statement. Bulk actions use it instead of validating each
+// customer individually, which would issue one query per address.
+func (c *Core) ManagedWorkspaceCustomerIDs(access models.WorkspaceAccess, ids []int) ([]int, error) {
+	out := make([]int, 0, len(ids))
+	if len(ids) == 0 || access.Archived {
+		return out, nil
+	}
+	var (
+		stmt string
+		args []any
+	)
+	if access.PlatformAdmin {
+		stmt = `SELECT id FROM customers WHERE id = ANY($1::INT[]) ORDER BY id`
+		args = []any{pq.Array(ids)}
+	} else if access.IsOrganization() {
+		stmt = `SELECT id FROM customers
+			WHERE id = ANY($1::INT[]) AND organization_id = $2 AND owner_user_id = $3
+				AND transfer_pending_at IS NULL
+			ORDER BY id`
+		args = []any{pq.Array(ids), access.OrganizationID, access.UserID}
+	} else {
+		stmt = `SELECT id FROM customers
+			WHERE id = ANY($1::INT[]) AND organization_id IS NULL AND owner_user_id = $2
+				AND transfer_pending_at IS NULL
+			ORDER BY id`
+		args = []any{pq.Array(ids), access.UserID}
+	}
+	if err := c.db.Select(&out, stmt, args...); err != nil {
+		return nil, workspaceQueryError("filtering managed customers", err)
+	}
+	return out, nil
 }
 
 // RequireManagedResources validates a bulk target before a destructive or

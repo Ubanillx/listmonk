@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -249,7 +250,7 @@ func TestDeliveryProviderFailureSearchMatchesExcel(t *testing.T) {
 	}
 }
 
-func TestDeliveryProviderRejectsNonAdmins(t *testing.T) {
+func TestDeliveryProviderRejectsUsersWithoutPermission(t *testing.T) {
 	app := providerTestApp(t, stubBestEDM{})
 	for _, route := range []struct {
 		name   string
@@ -257,16 +258,95 @@ func TestDeliveryProviderRejectsNonAdmins(t *testing.T) {
 		params []string
 	}{
 		{"statistics", app.QueryDeliveryProvider, []string{"kind", "statistics"}},
+		{"failures", app.QueryDeliveryProvider, []string{"kind", "failures"}},
+		{"export", app.QueryDeliveryProvider, []string{"kind", "failures", "format", "export"}},
+		{"logs", app.QueryDeliveryProvider, []string{"kind", "logs"}},
 		{"account", app.GetDeliveryProviderAccount, nil},
 		{"config", app.GetDeliveryProviderConfig, nil},
+		{"save", app.SaveDeliveryProviderConfig, nil},
+		{"test", app.TestDeliveryProvider, nil},
 	} {
 		t.Run(route.name, func(t *testing.T) {
 			c, _ := providerContext(t, "/api/delivery-provider/"+route.name, route.params...)
-			c.Set(auth.UserHTTPCtxKey, auth.User{UserRoleID: 5})
-			if err := route.handle(c); err == nil {
-				t.Fatal("non-platform user could read platform data")
+			c.Set(auth.UserHTTPCtxKey, auth.User{UserRoleID: 5, PermissionsMap: map[string]struct{}{
+				auth.PermSettingsGet: {}, auth.PermSettingsManage: {}, auth.PermOrganizationsPlatformManage: {}, auth.PermMailboxesManage: {},
+			}})
+			if err := route.handle(c); err != auth.ErrPermDenied {
+				t.Fatalf("expected explicit provider permission check, got %v", err)
 			}
 		})
+	}
+}
+
+func TestDeliveryProviderReadPermission(t *testing.T) {
+	app := providerTestApp(t, stubBestEDM{failures: stubFailures()})
+	reader := auth.User{UserRoleID: 5, PermissionsMap: map[string]struct{}{auth.PermDeliveryProviderGet: {}}}
+	for _, user := range []auth.User{reader, {UserRoleID: auth.SuperAdminRoleID}, {}} {
+		c, rec := providerContext(t, "/api/delivery-provider/config")
+		c.Set(auth.UserHTTPCtxKey, user)
+		err := requireBestEDMRead(c)
+		if !user.HasPerm(auth.PermDeliveryProviderGet) {
+			if err != auth.ErrPermDenied {
+				t.Fatalf("missing permission: %v", err)
+			}
+			continue
+		}
+		if err != nil || rec.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("authorized status access denied or cacheable: %v", err)
+		}
+	}
+	for _, route := range []struct{ kind, query, format string }{
+		{"statistics", "date=2026-10-20", ""},
+		{"failures", "date=2026-10-20&type=-1&group_by=email", ""},
+		{"failures", "date=2026-10-20&type=-1&group_by=email", "export"},
+		{"logs", "date=2026-10-20&mail_to=reader@example.com", ""},
+	} {
+		t.Run(route.kind+route.format, func(t *testing.T) {
+			c, rec := providerContext(t, "/api/delivery-provider/"+route.kind+"?"+route.query, "kind", route.kind, "format", route.format)
+			c.Set(auth.UserHTTPCtxKey, reader)
+			if err := app.QueryDeliveryProvider(c); err != nil || rec.Code != http.StatusOK {
+				t.Fatalf("reader could not query: %v, status=%d", err, rec.Code)
+			}
+		})
+	}
+	c, _ := providerContext(t, "/api/delivery-provider/account")
+	c.Set(auth.UserHTTPCtxKey, reader)
+	if err := app.GetDeliveryProviderAccount(c); err != nil {
+		t.Fatalf("reader could not view account: %v", err)
+	}
+	for _, handler := range []func(echo.Context) error{app.SaveDeliveryProviderConfig, app.TestDeliveryProvider} {
+		if err := handler(c); err != auth.ErrPermDenied {
+			t.Fatalf("read permission allowed credential changes or connection tests: %v", err)
+		}
+	}
+}
+
+func TestDeliveryProviderPermissionRegistration(t *testing.T) {
+	body, err := os.ReadFile("../permissions.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var groups []struct {
+		Permissions []string `json:"permissions"`
+	}
+	if err := json.Unmarshal(body, &groups); err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, group := range groups {
+		for _, permission := range group.Permissions {
+			if permission == auth.PermDeliveryProviderGet {
+				count++
+			}
+		}
+	}
+	if count != 1 {
+		t.Fatalf("provider permission registered %d times", count)
+	}
+	for _, path := range []string{"/api/delivery-provider/config", "/api/delivery-provider/account", "/api/delivery-provider/:kind", "/api/delivery-provider/:kind/:format", "/api/delivery-provider/test"} {
+		if isPersonalAPIKeyBusinessPath(path) {
+			t.Fatalf("personal API key can access platform data: %s", path)
+		}
 	}
 }
 

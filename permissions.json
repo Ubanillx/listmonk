@@ -98,6 +98,10 @@
         "permissions": ["mailboxes:use", "mailboxes:manage"]
     },
     {
+        "group": "deliveryProvider",
+        "permissions": ["delivery_provider:get", "delivery_provider:blocklist"]
+    },
+    {
         "group": "users",
         "permissions":
         [

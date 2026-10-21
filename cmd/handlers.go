@@ -118,6 +118,7 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.PUT("/api/delivery-provider/config", a.SaveDeliveryProviderConfig)
 		g.POST("/api/delivery-provider/test", a.TestDeliveryProvider)
 		g.GET("/api/delivery-provider/account", a.GetDeliveryProviderAccount)
+		g.PUT("/api/delivery-provider/failures/blocklist", a.BlocklistProviderFailure)
 		g.GET("/api/delivery-provider/:kind", a.QueryDeliveryProvider)
 		g.GET("/api/delivery-provider/:kind/:format", a.QueryDeliveryProvider)
 		g.PUT("/api/settings", pm(a.UpdateSettings, "settings:manage"))
@@ -224,6 +225,7 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.POST("/api/pools/allocations/:id/import-members", apiKeyScope(a.ImportOrgPoolAllocationMembers, apiKeyScopeListsWrite))
 		g.DELETE("/api/pools/allocations/members", apiKeyScope(a.RemovePoolContact, apiKeyScopeListsWrite))
 		g.PUT("/api/pools/allocations/members", apiKeyScope(a.RestorePoolContact, apiKeyScopeListsWrite))
+		g.PUT("/api/pools/contacts/blocklist", apiKeyScope(a.SetPoolContactsBlocklist, apiKeyScopeListsWrite))
 		g.POST("/api/pools/import", apiKeyScope(a.ImportListIntoPool, apiKeyScopeListsWrite))
 
 		// Read access is resolved in handlers using workspace scope. Do not put

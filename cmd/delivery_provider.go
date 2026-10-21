@@ -22,7 +22,7 @@ import (
 const bestEDMSettingsKey = "integration.bestedm"
 
 // The provider account is platform-wide. It must never be returned through
-// models.Settings or exposed to organization/customer administrators.
+// models.Settings or exposed without an explicit provider permission.
 type bestEDMConfig struct {
 	Username  string `json:"username"`
 	Password  string `json:"password"`
@@ -52,6 +52,14 @@ func requireBestEDMAdmin(c echo.Context) error {
 	c.Response().Header().Set("Cache-Control", "no-store")
 	return nil
 }
+func requireBestEDMRead(c echo.Context) error {
+	u := auth.GetUser(c)
+	if !u.HasPerm(auth.PermDeliveryProviderGet) {
+		return auth.ErrPermDenied
+	}
+	c.Response().Header().Set("Cache-Control", "no-store")
+	return nil
+}
 func (a *App) loadBestEDMConfig(ctx context.Context) (bestEDMConfig, []byte, error) {
 	var raw []byte
 	var config bestEDMConfig
@@ -71,7 +79,7 @@ func bestEDMStatus(config bestEDMConfig) map[string]any {
 	return map[string]any{"username": config.Username, "configured": config.Username != "" && config.Password != "", "has_password": config.Password != "", "updated_at": config.UpdatedAt, "tested_at": config.TestedAt, "test_error": config.TestError, "verified": config.Verified, "provider": "BestEDM"}
 }
 func (a *App) GetDeliveryProviderConfig(c echo.Context) error {
-	if err := requireBestEDMAdmin(c); err != nil {
+	if err := requireBestEDMRead(c); err != nil {
 		return err
 	}
 	config, _, err := a.loadBestEDMConfig(c.Request().Context())
@@ -203,7 +211,7 @@ func providerResponse(c echo.Context, data any, source string, warning string) e
 	return c.JSON(200, okResp{map[string]any{"results": data, "source": source, "fetched_at": apptz.Now().Format(time.RFC3339), "warning": warning}})
 }
 func (a *App) GetDeliveryProviderAccount(c echo.Context) error {
-	if err := requireBestEDMAdmin(c); err != nil {
+	if err := requireBestEDMRead(c); err != nil {
 		return err
 	}
 	// Reports have one data source; a stale sample-mode link must not silently
@@ -310,7 +318,7 @@ func validateBestEDMQuery(kind string, q url.Values) error {
 	return nil
 }
 func (a *App) QueryDeliveryProvider(c echo.Context) error {
-	if err := requireBestEDMAdmin(c); err != nil {
+	if err := requireBestEDMRead(c); err != nil {
 		return err
 	}
 	kind := c.Param("kind")
@@ -372,6 +380,14 @@ func (a *App) QueryDeliveryProvider(c echo.Context) error {
 	var summaries []providerFailureSummary
 	if groupByEmail {
 		summaries = summarizeProviderFailures(rows)
+		// Attach the workspace match per address so one report answers both
+		// "why did it fail" and "which customer is this". Excel export keeps the
+		// report-only contract and does no matching work.
+		if c.Param("format") == "" {
+			if access, accessErr := a.workspaceAccess(c); accessErr == nil {
+				a.providerFailureMatches(c, access, summaries)
+			}
+		}
 	}
 	if c.Param("format") == "export" {
 		if kind != "failures" {

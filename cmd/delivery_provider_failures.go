@@ -14,9 +14,10 @@ type providerFailureCause struct {
 }
 
 type providerFailureSummary struct {
-	Email  string                 `json:"email"`
-	Count  int                    `json:"error_count"`
-	Errors []providerFailureCause `json:"errors"`
+	Email   string                  `json:"email"`
+	Count   int                     `json:"error_count"`
+	Errors  []providerFailureCause  `json:"errors"`
+	Matches []providerFailureTarget `json:"matches"`
 }
 
 // Count returned occurrences, not inferred SMTP attempts. Keep all distinct
@@ -35,7 +36,7 @@ func summarizeProviderFailures(rows []bestedm.Row) []providerFailureSummary {
 		if !exists {
 			index = len(out)
 			addresses[key] = index
-			out = append(out, providerFailureSummary{Email: email, Errors: make([]providerFailureCause, 0)})
+			out = append(out, providerFailureSummary{Email: email, Errors: make([]providerFailureCause, 0), Matches: make([]providerFailureTarget, 0)})
 			causes = append(causes, make(map[[2]string]int))
 		}
 		summary := &out[index]

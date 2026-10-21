@@ -10,7 +10,7 @@
 
 ## 模块地图
 
-BestEDM 报表由 `internal/bestedm` 适配公开协议，`cmd/delivery_provider.go` 实施平台管理员门、保留设置行、并发校验和 Excel 导出；`DeliveryProvider.vue` 只展示真实报表 UI，无样例模式。上游认证和报表与 SMTP 发送器分离，详细契约见权威架构的“BestEDM 发件服务账号与报表”节。
+BestEDM 报表由 `internal/bestedm` 适配公开协议，`cmd/delivery_provider.go` 实施 `delivery_provider:get` 读取门与最高管理员配置/测试门、保留设置行、并发校验和 Excel 导出；`DeliveryProvider.vue` 只展示真实报表 UI，无样例模式。上游认证和报表与 SMTP 发送器分离，详细契约见权威架构的“BestEDM 发件服务账号与报表”节。
 
 发信媒体自 v6.58.0 使用 `cmd/email_media.go` 的持久化文件能力链接与 `internal/manager/linked_media.go` 的正文 URL 转换；无会话路由仅服务已授权发送的精确文件，媒体库保护 URL 沿用原工作区权限。安装/升级表为 `email_media_links`，暂停/重启保留链接；架构与部署条件见权威入口中的发信媒体说明。
 

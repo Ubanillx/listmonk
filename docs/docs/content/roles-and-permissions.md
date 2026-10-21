@@ -2,12 +2,16 @@ listmonk supports (>= v4.0.0) creating systems users with granular permissions t
 
 ## Business permission groups
 
-Since v6.56.0, the role form presents 20 business permissions across private
+Since v6.56.0, the role form presents business permissions across private
 customers/lists, public pools/lists, campaigns, templates/media, and sending/reply
-mailboxes. See [业务权限说明](business-permissions.md) for the display names,
+mailboxes, plus the independent platform-wide delivery service read grant. See [业务权限说明](business-permissions.md) for the display names,
 stable permission IDs, dependencies, and migration behavior. No preset roles are
 introduced. Existing partially granted groups remain partial when saved;
 only explicitly selecting a group grants all of its underlying permissions.
+
+## Delivery service access
+
+`delivery_provider:get` (View delivery service) independently controls menu visibility, direct page access, safe provider status/account details, statistics, failed addresses, logs and Excel export. It exposes platform-wide provider data regardless of active workspace. Ordinary roles are not automatically granted it; settings, mailbox or organization management do not imply it. Built-in platform administrators retain access. `delivery_provider:blocklist` (Blocklist failed addresses) is a separate write grant for the failed-address row action. It never widens data scope: private targets still require `customers:blocklist` and a maintainable workspace customer, and pool targets still require `pools:master_manage`; targets without those permissions are skipped with a reason. Credential updates and saved-account connection tests remain platform-administrator-only. Personal API keys remain outside the route allowlist. See [delivery provider API](apis/delivery-provider.md).
 
 ## Workspaces and resource boundaries
 

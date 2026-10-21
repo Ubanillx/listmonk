@@ -26,8 +26,14 @@
 | 模板与素材 | 查看和使用模板与素材 | `templates:get`、`media:get` |
 | | 维护模板与素材 | `templates:manage`、`media:manage` |
 | | 管理模板与素材共享 | `assets:share` |
+| 发件服务 | 查看发件服务 | `delivery_provider:get` |
+| | 拉黑失败地址 | `delivery_provider:blocklist` |
 | 发信与回信邮箱 | 使用发信与回信邮箱 | `mailboxes:use` |
 | | 配置发信与回信邮箱 | `mailboxes:manage` |
+
+“拉黑失败地址”（`delivery_provider:blocklist`）只控制失败地址行的黑名单动作，不扩大任何客户或公海范围：每个私域目标仍需 `customers:blocklist` 且可维护，每个公海目标仍需 `pools:master_manage`；缺少对应权限的目标会跳过并显示原因。默认不向旧角色授予。
+
+“查看发件服务”是独立的平台级只读权限，允许账号资料、安全配置状态、发送统计、失败邮箱、投递日志和 Excel 导出；不受当前组织工作区限制。菜单与直接路由、后端接口同步校验，无权限返回 403。该权限默认不勾选、不向旧角色自动授予，普通系统设置/邮箱/组织管理权限不隐含授权；账号保存与连接测试仍仅限最高管理员。个人 API Key 的路径 allowlist 未开放发件服务，不因角色授权扩大。
 
 功能权限与数据范围分别检查：所有权、当前工作区、组织成员、转移/归档状态、列表角色和 API Key scopes 仍须满足。最高管理员保留功能权限豁免，归档限制仍生效。列表角色仍可限定具体私域列表，原逐项权限 ID 保持 API 兼容。
 

@@ -195,6 +195,8 @@ export default Vue.extend({
         'customer_lists:delete', 'pools:master_manage', 'pools:contacts_edit', 'pools:delivery_manage',
         'assets:share', 'mailboxes:manage', 'campaigns:public_pool_send',
         'campaigns:private_send_error_details',
+        'delivery_provider:get',
+        'delivery_provider:blocklist',
       ].includes(permission);
     },
 
@@ -368,6 +370,8 @@ export default Vue.extend({
         'pools:delivery_manage',
         'assets:share',
         'mailboxes:manage',
+        'delivery_provider:get',
+        'delivery_provider:blocklist',
       ];
       this.form.permissions = this.serverConfig.permissions.reduce((acc, item) => {
         if (skip.includes(item.group)) {

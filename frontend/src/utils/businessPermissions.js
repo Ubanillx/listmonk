@@ -44,6 +44,13 @@ export const businessPermissionGroups = [
     ],
   },
   {
+    group: 'deliveryProvider',
+    permissions: [
+      { id: 'deliveryProviderRead', permissions: ['delivery_provider:get'] },
+      { id: 'deliveryProviderBlocklist', permissions: ['delivery_provider:blocklist'] },
+    ],
+  },
+  {
     group: 'mailboxes',
     permissions: [
       { id: 'mailboxUse', permissions: ['mailboxes:use'] },

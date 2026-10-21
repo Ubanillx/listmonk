@@ -81,9 +81,21 @@ describe('Business permission groups', () => {
 
   it('keeps new high impact permissions unchecked by default', () => {
     cy.get('[data-cy="btn-new"]').click();
-    ['poolMaster', 'poolDelivery', 'poolAllocationPlatform', 'campaignPublicPool', 'campaignPrivateSendErrors', 'mailboxManage', 'assetShare'].forEach((id) => {
+    ['poolMaster', 'poolDelivery', 'poolAllocationPlatform', 'campaignPublicPool', 'campaignPrivateSendErrors', 'deliveryProviderRead', 'mailboxManage', 'assetShare'].forEach((id) => {
       cy.get(`[data-cy="permission-${id}"] input`).should('not.be.checked');
     });
+  });
+
+  it('grants delivery service visibility independently from settings and mailbox administration', () => {
+    cy.contains('a', role.name).click();
+    cy.get('[data-cy="permission-deliveryProviderRead"]').scrollIntoView()
+      .should('contain.text', '查看发件服务').click();
+    cy.intercept('PUT', '/api/roles/users/8', (req) => {
+      expect(req.body.permissions).to.have.members(['customers:get', 'delivery_provider:get']);
+      req.reply({ data: { ...role, permissions: req.body.permissions } });
+    }).as('saveProviderPermission');
+    cy.get('[data-cy="btn-save"]').click();
+    cy.wait('@saveProviderPermission');
   });
 
   it('grants private sending diagnostics without granting sensitive customer data', () => {

@@ -783,6 +783,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#delivery-service-access" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Delivery service access
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#workspaces-and-resource-boundaries" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1917,6 +1928,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#delivery-service-access" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Delivery service access
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#workspaces-and-resource-boundaries" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2003,12 +2025,14 @@
 
 <p>listmonk supports (&gt;= v4.0.0) creating systems users with granular permissions to various features, including customer_list-specific permissions. Users can login with a username and password, or via an OIDC (OpenID Connect) handshake if an auth provider is connected. Various permissions can be grouped into "user roles", which can be assigned to users. CustomerList-specific permissions can be grouped into "customer_list roles".</p>
 <h2 id="business-permission-groups">Business permission groups<a class="headerlink" href="#business-permission-groups" title="Permanent link">&para;</a></h2>
-<p>Since v6.56.0, the role form presents 20 business permissions across private
+<p>Since v6.56.0, the role form presents business permissions across private
 customers/lists, public pools/lists, campaigns, templates/media, and sending/reply
-mailboxes. See <a href="../business-permissions/">业务权限说明</a> for the display names,
+mailboxes, plus the independent platform-wide delivery service read grant. See <a href="../business-permissions/">业务权限说明</a> for the display names,
 stable permission IDs, dependencies, and migration behavior. No preset roles are
 introduced. Existing partially granted groups remain partial when saved;
 only explicitly selecting a group grants all of its underlying permissions.</p>
+<h2 id="delivery-service-access">Delivery service access<a class="headerlink" href="#delivery-service-access" title="Permanent link">&para;</a></h2>
+<p><code>delivery_provider:get</code> (View delivery service) independently controls menu visibility, direct page access, safe provider status/account details, statistics, failed addresses, logs and Excel export. It exposes platform-wide provider data regardless of active workspace. Ordinary roles are not automatically granted it; settings, mailbox or organization management do not imply it. Built-in platform administrators retain access. <code>delivery_provider:blocklist</code> (Blocklist failed addresses) is a separate write grant for the failed-address row action. It never widens data scope: private targets still require <code>customers:blocklist</code> and a maintainable workspace customer, and pool targets still require <code>pools:master_manage</code>; targets without those permissions are skipped with a reason. Credential updates and saved-account connection tests remain platform-administrator-only. Personal API keys remain outside the route allowlist. See <a href="../apis/delivery-provider/">delivery provider API</a>.</p>
 <h2 id="workspaces-and-resource-boundaries">Workspaces and resource boundaries<a class="headerlink" href="#workspaces-and-resource-boundaries" title="Permanent link">&para;</a></h2>
 <p>Roles are necessary but not sufficient for access. Every authenticated request is
 also limited to the selected personal or organization workspace and the

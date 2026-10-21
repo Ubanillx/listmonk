@@ -113,6 +113,14 @@
                 @click.prevent="restorePoolContacts(null)" data-cy="btn-restore-pool-contacts">
                 <b-icon icon="account-check-outline" size="is-small" /> {{ $t('pool.restoreSelected') }}
               </a>
+              <a v-if="canMaintainPoolMaster && hasBlocklistablePoolContacts" class="a" href="#"
+                @click.prevent="setPoolContactsBlocklist(true)" data-cy="btn-blocklist-pool-contacts">
+                <b-icon icon="account-cancel-outline" size="is-small" /> {{ $t('pool.blocklistSelected') }}
+              </a>
+              <a v-if="canMaintainPoolMaster && hasUnblocklistablePoolContacts" class="a" href="#"
+                @click.prevent="setPoolContactsBlocklist(false)" data-cy="btn-unblocklist-pool-contacts">
+                <b-icon icon="lock-open-outline" size="is-small" /> {{ $t('pool.unblocklistSelected') }}
+              </a>
               <a v-if="canMaintainPoolMaster && hasEmailablePoolContacts" class="a" href="#"
                 @click.prevent="clearPoolContactsEmail" data-cy="btn-clear-pool-emails">
                 <b-icon icon="email-off-outline" size="is-small" /> {{ $t('pool.archiveInvalidSelected') }}
@@ -207,6 +215,14 @@
               :aria-label="$t('pool.actionRestore')">
               <b-tooltip :label="$t('pool.actionRestore')" type="is-dark">
                 <b-icon icon="account-check-outline" size="is-small" />
+              </b-tooltip>
+            </a>
+            <a v-if="canMaintainPoolMaster && props.row.status !== 'archived'" href="#"
+              @click.prevent="togglePoolContactBlocklist(props.row)"
+              :data-cy="props.row.status === 'blocklisted' ? 'btn-unblocklist-pool-contact' : 'btn-blocklist-pool-contact'"
+              :aria-label="props.row.status === 'blocklisted' ? $t('pool.actionUnblocklist') : $t('pool.actionBlocklist')">
+              <b-tooltip :label="props.row.status === 'blocklisted' ? $t('pool.actionUnblocklist') : $t('pool.actionBlocklist')" type="is-dark">
+                <b-icon :icon="props.row.status === 'blocklisted' ? 'lock-open-outline' : 'account-cancel-outline'" size="is-small" />
               </b-tooltip>
             </a>
             <a v-if="canMaintainPoolMaster && props.row.email" href="#" @click.prevent="clearPoolContactEmail(props.row)"
@@ -736,6 +752,25 @@ export default Vue.extend({
       Promise.all(calls).then(() => {
         this.loadPoolContacts();
         this.$utils.toast(this.$t('pool.toastContactsRestored', { num: targets.length }));
+      });
+    },
+
+    togglePoolContactBlocklist(contact) {
+      this.setPoolContactsBlocklist(contact.status !== 'blocklisted', [contact]);
+    },
+
+    setPoolContactsBlocklist(blocked, contacts) {
+      const targets = (contacts || this.poolBulk.checked).filter((contact) => contact.status !== 'archived');
+      if (!targets.length) return;
+      const confirmKey = blocked ? 'pool.confirmBlocklist' : 'pool.confirmUnblocklist';
+      this.$utils.confirm(this.$t(confirmKey, { num: targets.length }), () => {
+        this.$api.setPoolContactsBlocklist({
+          contact_ids: targets.map((contact) => contact.id),
+          blocked,
+        }).then(() => {
+          this.loadPoolContacts();
+          this.$utils.toast(this.$t(blocked ? 'pool.toastBlocklisted' : 'pool.toastUnblocklisted', { num: targets.length }));
+        });
       });
     },
 
@@ -1342,6 +1377,14 @@ export default Vue.extend({
 
     hasEmailablePoolContacts() {
       return this.poolBulk.checked.some((contact) => !!contact.email);
+    },
+
+    hasBlocklistablePoolContacts() {
+      return this.poolBulk.checked.some((contact) => contact.status !== 'blocklisted' && contact.status !== 'archived');
+    },
+
+    hasUnblocklistablePoolContacts() {
+      return this.poolBulk.checked.some((contact) => contact.status === 'blocklisted');
     },
 
     // Row count of whatever this view currently lists: pool contacts or

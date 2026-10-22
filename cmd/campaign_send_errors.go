@@ -16,6 +16,12 @@ func (a *App) campaignSendErrorRequest(c echo.Context) (models.WorkspaceAccess, 
 	if err != nil {
 		return access, f, err
 	}
+	if value := c.QueryParam("organization_id"); value != "" {
+		f.OrganizationID, err = strconv.Atoi(value)
+		if err != nil || f.OrganizationID <= 0 {
+			return access, f, echo.NewHTTPError(http.StatusBadRequest, "invalid organization filter")
+		}
+	}
 	if _, err := a.requireSensitiveWorkspaceCampaign(c, access, getID(c)); err != nil {
 		return access, f, err
 	}

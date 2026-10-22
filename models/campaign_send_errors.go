@@ -47,6 +47,7 @@ type CampaignSendErrorReason struct {
 type CampaignSendErrorFilters struct {
 	Search             string
 	Category           string
+	OrganizationID     int
 	IncludePrivate     bool
 	IncludePool        bool
 	SensitivePrivate   bool
@@ -65,4 +66,39 @@ type CampaignSendErrorReport struct {
 	HasPrivate       bool                      `db:"has_private" json:"-"`
 	HasPool          bool                      `db:"has_pool" json:"-"`
 	CanExport        bool                      `json:"can_export"`
+}
+
+// CampaignFailedRecipient is a current unsent recipient with at least one
+// recorded delivery failure. Historical attempts remain in SendErrorReport.
+type CampaignFailedRecipient struct {
+	RecipientType  string    `db:"recipient_type" json:"recipient_type"`
+	RecipientID    int64     `db:"recipient_id" json:"recipient_id"`
+	OrganizationID int       `db:"recipient_organization_id" json:"organization_id"`
+	CustomerCode   string    `db:"customer_code" json:"customer_code"`
+	Name           string    `db:"name" json:"name"`
+	Email          string    `db:"email" json:"email"`
+	Stage          string    `db:"stage" json:"stage"`
+	Category       string    `db:"category" json:"category"`
+	SMTPCode       int       `db:"smtp_code" json:"smtp_code"`
+	Error          string    `db:"error" json:"error"`
+	Count          int       `db:"count" json:"count"`
+	LastAt         time.Time `db:"last_at" json:"last_at"`
+	Status         string    `db:"status" json:"status"`
+	Retryable      bool      `db:"retryable" json:"retryable"`
+}
+
+type CampaignFailedRecipientReport struct {
+	Results    []CampaignFailedRecipient `json:"results"`
+	Total      int                       `json:"total"`
+	Page       int                       `json:"page"`
+	PerPage    int                       `json:"per_page"`
+	CanExport  bool                      `json:"can_export"`
+	CanRetry   bool                      `json:"can_retry"`
+	HasPrivate bool                      `json:"-"`
+	HasPool    bool                      `json:"-"`
+}
+
+type CampaignRetryRecipient struct {
+	Type string `json:"type"`
+	ID   int64  `json:"id"`
 }

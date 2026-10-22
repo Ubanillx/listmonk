@@ -1,5 +1,9 @@
 # 业务逻辑
 
+- **概览筛选与选中补发 UI**：失败客户查询、分页、导出使用相同已应用的搜索/原因/目标组织条件；未提交的搜索输入不影响导出。勾选仅限当前页、由服务端 `can_retry` 与逐行 `retryable` 同时控制，筛选/翻页/刷新后清空，不把过滤条件当成补发身份或授权。运行中刷新只同步活动状态，不重置编辑器正文。来源：`frontend/src/components/CampaignDeliveryOverview.vue`、`frontend/cypress/e2e/campaign-delivery-overview.cy.js`。
+
+- **失败客户与定向补发（v6.63.0）**：`send_errors` 是失败尝试次数；概览「失败客户」是有失败事件且当前仍未发送的去重收件人数。失败名单按最新事件显示分类/原因，成功发送者退出当前名单但保留历史错误报告。仅暂停活动可选 1–500 名当前可投放的失败客户，整单校验、原子选择，发送管道只领取选中快照；正常额度、SMTP 和公海组织分配规则继续执行。选中耗尽后还有其他未发送者回到暂停，全部完成才结束；普通继续发送清除定向选择。来源：`internal/core/campaign_failed_recipients.go`、`cmd/campaign_failed_recipients.go`、`queries/campaigns.sql`、`cmd/manager_store.go`。
+
 - **BestEDM 平台报表（2026-10-20）**：发件服务菜单、页面与所有只读接口（含账号资料、安全配置状态、日志和 Excel）需独立 `delivery_provider:get`，最高管理员默认可用；账号保存/连接测试仍仅限最高管理员。新权限默认不授予普通角色，工作区或普通设置/邮箱/组织管理权限不扩大授权；个人 API Key 的路径 allowlist 不变。先保存凭据再测试，空密码仅在账号不变时保留；版本冲突/旧测试不能覆盖新凭据，密码和原始上游错误不进入 API 响应或审计。页面与接口只有真实数据源，请求失败即报错，不回退样例或零值。数据按上游返回汇总、缺字段显示未知；发送分析中批次候选从日期统计去重，下拉选择和点击行同步查询已应用范围；批次按组内最新统计日期倒序、组内记录倒序，分页不拆组。邮箱搜索与 Excel 同口径；页面与导出使用 `group_by=email` 对当前范围忽略邮箱大小写、去除首尾空白后汇总，保留每类错误说明及次数，不跨范围累计，也不把记录出现次数当成 SMTP 尝试次数；原始接口默认保留逐条记录。旧响应不得覆盖新批次。“查日志”带上邮箱与当前批次，按该批次最早统计日期查询一次；未选批次时取全部已加载统计最早日期，无有效日期则取已应用范围起日，不使用未提交草稿。统计日期不推断为真实发送日期，仍支持手动改期，不轮询或自动跨日重试。SMTP 无效地址按日期归属，发送任务/统计记录 ID 不混用，不自动关联 Listmonk 活动或改写发送状态。来源：`cmd/delivery_provider.go`、`internal/bestedm/client.go`、`frontend/src/views/DeliveryProvider.vue`。
 
 - **EML/MSG 正文导入（2026-10-20）**：用户确认替换后，本地解析 EML 或 Outlook MSG，优先 HTML、其次纯文本；只上传正文引用且唯一匹配的内嵌图片，重复 CID 不重复上传，普通附件/邮件头不导入。校验全部引用后才开始上传，全部成功后才替换正文、切换编辑格式并关联媒体；取消、解析或上传失败不得覆盖原草稿，部分成功上传的素材保留在媒体库且明确提示。导入中阻止保存/预览，只读活动不可导入，不自动保存或发送。来源：`frontend/src/components/{Editor,EmlImport}.vue`、`frontend/src/utils/{importEml,emlParser.worker,msgParser,msgParser.worker}.js`。

@@ -607,6 +607,7 @@ func (s *store) nextPoolCustomers(campID int, st campaignSendState, limit int) (
 				AND ex.restored_at IS NULL
 			WHERE cpr.campaign_id = $1 AND cpr.organization_id = $2
 				AND cpr.status = ANY($3::campaign_recipient_status[])
+				AND (NOT (SELECT retry_mode FROM campaigns WHERE id=$1) OR cpr.retry_selected)
 				AND pc.status = 'active' AND ex.contact_id IS NULL AND `+core.PoolRecipientAvailableSQL+`
 			ORDER BY cpr.pool_contact_id
 			FOR UPDATE OF cpr SKIP LOCKED
@@ -726,6 +727,50 @@ func (s *store) UpdateCampaignStatus(campID int, status string) error {
 }
 
 func (s *store) UpdateRunningCampaignStatus(campID int, status string) (bool, error) {
+	if status == models.CampaignStatusFinished {
+		tx, err := s.db.Beginx()
+		if err != nil {
+			return false, err
+		}
+		defer tx.Rollback()
+		var retry bool
+		if err := tx.Get(&retry, `SELECT retry_mode FROM campaigns WHERE id=$1 FOR UPDATE`, campID); err != nil {
+			return false, err
+		}
+		if retry {
+			var remaining int
+			if err := tx.Get(&remaining, `SELECT unsent_count FROM campaign_send_counts WHERE campaign_id=$1`, campID); err != nil {
+				return false, err
+			}
+			finalStatus := models.CampaignStatusFinished
+			if remaining > 0 {
+				finalStatus = models.CampaignStatusPaused
+			}
+			res, err := tx.Exec(`UPDATE campaigns SET status=$2::campaign_status,retry_mode=false,updated_at=NOW()
+				WHERE id=$1 AND status='running' AND transfer_pending_at IS NULL
+				AND (organization_id IS NULL OR EXISTS(SELECT 1 FROM organizations o WHERE o.id=campaigns.organization_id AND o.status='active'))`, campID, finalStatus)
+			if err != nil {
+				return false, err
+			}
+			n, err := res.RowsAffected()
+			if err != nil {
+				return false, err
+			}
+			if n == 0 {
+				return false, tx.Commit()
+			}
+			if _, err := tx.Exec(`UPDATE campaign_recipients SET retry_selected=false WHERE campaign_id=$1 AND retry_selected`, campID); err != nil {
+				return false, err
+			}
+			if _, err := tx.Exec(`UPDATE campaign_pool_recipients SET retry_selected=false WHERE campaign_id=$1 AND retry_selected`, campID); err != nil {
+				return false, err
+			}
+			return true, tx.Commit()
+		}
+		if err := tx.Rollback(); err != nil {
+			return false, err
+		}
+	}
 	res, err := s.db.Exec(`UPDATE campaigns SET status=$2::campaign_status, updated_at=NOW()
 		WHERE id=$1 AND status='running' AND transfer_pending_at IS NULL
 		AND (organization_id IS NULL OR EXISTS (SELECT 1 FROM organizations o

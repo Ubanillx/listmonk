@@ -617,6 +617,10 @@ export const getCampaignStats = async () => http.get('/api/campaigns/running/sta
 
 export const getCampaignSendErrors = async (id, params = {}) => http.get(`/api/campaigns/${id}/send-errors`, { params });
 export const exportCampaignSendErrors = async (id, params = {}) => http.get(`/api/campaigns/${id}/send-errors/export`, { params, responseType: 'blob' });
+export const getCampaignDeliveryOverview = async (id) => http.get(`/api/campaigns/${id}/delivery-overview`);
+export const getCampaignFailedRecipients = async (id, params = {}) => http.get(`/api/campaigns/${id}/failed-recipients`, { params });
+export const exportCampaignFailedRecipients = async (id, params = {}) => http.get(`/api/campaigns/${id}/failed-recipients/export`, { params, responseType: 'blob' });
+export const retryCampaignFailedRecipients = async (id, recipients) => http.post(`/api/campaigns/${id}/failed-recipients/retry`, { recipients });
 
 export const createCampaign = async (data) => http.post(
   '/api/campaigns',

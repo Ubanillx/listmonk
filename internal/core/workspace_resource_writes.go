@@ -186,6 +186,17 @@ func (c *Core) UpdateCampaignStatusInWorkspace(access models.WorkspaceAccess, id
 		if err := c.validateCampaignStatusTransition(state.Status, state.SendAt.Valid, status); err != nil {
 			return err
 		}
+		if status == models.CampaignStatusRunning || status == models.CampaignStatusScheduled || status == models.CampaignStatusCancelled {
+			if _, err := tx.Exec(`UPDATE campaigns SET retry_mode=false WHERE id=$1`, id); err != nil {
+				return workspaceQueryError("clearing campaign retry mode", err)
+			}
+			if _, err := tx.Exec(`UPDATE campaign_recipients SET retry_selected=false WHERE campaign_id=$1 AND retry_selected`, id); err != nil {
+				return workspaceQueryError("clearing private retry selection", err)
+			}
+			if _, err := tx.Exec(`UPDATE campaign_pool_recipients SET retry_selected=false WHERE campaign_id=$1 AND retry_selected`, id); err != nil {
+				return workspaceQueryError("clearing pool retry selection", err)
+			}
+		}
 		res, err := tx.Stmtx(c.q.UpdateCampaignStatus).Exec(id, status)
 		if err != nil {
 			return workspaceQueryError("updating campaign status", err)

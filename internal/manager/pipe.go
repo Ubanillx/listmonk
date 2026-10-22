@@ -486,9 +486,18 @@ func (p *pipe) cleanup() {
 
 		// If a running campaign has exhausted customers, it's finished.
 		if changed {
-			c.Status = models.CampaignStatusFinished
-			p.m.log.Printf("campaign (%s) finished", p.camp.Name)
-			p.m.auditCampaign("campaign.finished", c, map[string]any{"status": models.CampaignStatusFinished})
+			current, readErr := p.m.store.GetCampaign(p.camp.ID)
+			if readErr != nil {
+				p.m.log.Printf("error fetching campaign (%s) after settling: %v", p.camp.Name, readErr)
+				return
+			}
+			c = current
+			p.m.log.Printf("campaign (%s) settled to %s", p.camp.Name, c.Status)
+			if c.Status == models.CampaignStatusFinished {
+				p.m.auditCampaign("campaign.finished", c, map[string]any{"status": c.Status})
+			} else {
+				p.m.auditCampaign("campaign.paused", c, map[string]any{"reason": "retry_selection_complete"})
+			}
 			_ = p.m.sendNotif(c, c.Status, "")
 		} else {
 			p.m.log.Printf("finish processing campaign (%s)", p.camp.Name)

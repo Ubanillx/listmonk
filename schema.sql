@@ -172,6 +172,7 @@ CREATE TABLE campaigns (
     to_send            INT NOT NULL DEFAULT 0,
     sent               INT NOT NULL DEFAULT 0,
     send_errors        INT NOT NULL DEFAULT 0 CHECK (send_errors >= 0),
+    retry_mode         BOOLEAN NOT NULL DEFAULT false,
     max_customer_id  INT NOT NULL DEFAULT 0,
     last_customer_id INT NOT NULL DEFAULT 0,
 
@@ -213,6 +214,7 @@ CREATE TABLE campaign_recipients (
     campaign_id    INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE ON UPDATE CASCADE,
     customer_id  INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE ON UPDATE CASCADE,
     status         campaign_recipient_status NOT NULL DEFAULT 'pending',
+    retry_selected BOOLEAN NOT NULL DEFAULT false,
     email_snapshot TEXT,
 	 reply_to_snapshot TEXT,
     name_snapshot  TEXT,
@@ -223,6 +225,7 @@ CREATE TABLE campaign_recipients (
     PRIMARY KEY (campaign_id, customer_id)
 );
 DROP INDEX IF EXISTS idx_camp_recipients_status; CREATE INDEX idx_camp_recipients_status ON campaign_recipients(campaign_id, status, customer_id);
+CREATE INDEX campaign_recipients_retry_idx ON campaign_recipients(campaign_id,customer_id) WHERE retry_selected;
 DROP INDEX IF EXISTS idx_camp_recipients_sub_id; CREATE INDEX idx_camp_recipients_sub_id ON campaign_recipients(customer_id);
 
 DROP TABLE IF EXISTS smtp_daily_usage CASCADE;
@@ -1126,6 +1129,7 @@ CREATE TABLE campaign_pool_recipients (
     organization_id BIGINT REFERENCES organizations(id) ON DELETE SET NULL,
     reply_mailbox_id INTEGER REFERENCES reply_mailboxes(id) ON DELETE SET NULL,
     status campaign_recipient_status NOT NULL DEFAULT 'pending',
+    retry_selected BOOLEAN NOT NULL DEFAULT false,
     email_snapshot TEXT NOT NULL,
     name_snapshot TEXT NOT NULL DEFAULT '',
     -- Immutable send provenance of the SMTP account that this recipient was
@@ -1142,6 +1146,7 @@ CREATE TABLE campaign_pool_recipients (
     PRIMARY KEY (campaign_id, pool_contact_id)
 );
 CREATE INDEX idx_campaign_pool_recipients_sender ON campaign_pool_recipients(sender_smtp_uuid) WHERE sender_smtp_uuid IS NOT NULL;
+CREATE INDEX campaign_pool_recipients_retry_idx ON campaign_pool_recipients(campaign_id,pool_contact_id) WHERE retry_selected;
 
 ALTER TABLE campaign_views ADD COLUMN pool_contact_id BIGINT NULL REFERENCES pool_contacts(id) ON DELETE SET NULL;
 ALTER TABLE campaign_views ADD CONSTRAINT campaign_views_one_recipient CHECK (customer_id IS NULL OR pool_contact_id IS NULL);
@@ -1265,6 +1270,7 @@ CREATE TABLE campaign_send_errors (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX campaign_send_errors_campaign_idx ON campaign_send_errors(campaign_id,created_at,id);
+CREATE INDEX campaign_send_errors_recipient_idx ON campaign_send_errors(campaign_id,recipient_type,recipient_id,created_at DESC,id DESC);
 
 CREATE VIEW campaign_send_counts AS
 SELECT

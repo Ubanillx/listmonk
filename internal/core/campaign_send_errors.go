@@ -20,7 +20,8 @@ func campaignSendErrorCTE(access models.WorkspaceAccess, id int, f models.Campai
 		SELECT c.* FROM campaigns c WHERE c.id=$1 AND (%s) AND c.transfer_pending_at IS NULL
 		AND (c.organization_id IS NULL OR EXISTS(SELECT 1 FROM organizations o WHERE o.id=c.organization_id AND o.status='active'))
 	), visible AS (
-		SELECT e.recipient_type,e.recipient_id,e.recipient_organization_id,e.customer_code,e.name,e.email,
+		SELECT e.id,e.campaign_owner_user_id,e.campaign_organization_id,
+			e.recipient_type,e.recipient_id,e.recipient_organization_id,e.customer_code,e.name,e.email,
 			e.stage,e.category,e.smtp_code,e.created_at,
 			CASE WHEN (e.recipient_type='private' AND $10::BOOL) OR (e.recipient_type='pool' AND $9::BOOL) THEN e.error ELSE '' END AS error
 		FROM campaign_send_errors e JOIN scoped_campaign c ON c.id=e.campaign_id
@@ -29,7 +30,8 @@ func campaignSendErrorCTE(access models.WorkspaceAccess, id int, f models.Campai
 			AND e.campaign_organization_id IS NOT DISTINCT FROM c.organization_id))
 		AND ((e.recipient_type='private' AND $4::BOOL AND ($7::BOOL OR cu.id IS NULL OR
 			(cu.organization_id IS NOT DISTINCT FROM c.organization_id AND cu.owner_user_id=c.owner_user_id AND cu.transfer_pending_at IS NULL)))
-			OR (e.recipient_type='pool' AND $5::BOOL AND ($7::BOOL OR e.recipient_organization_id=$6)))
+			OR (e.recipient_type='pool' AND $5::BOOL AND ($7::BOOL OR e.recipient_organization_id=$6
+				OR (e.recipient_organization_id=0 AND c.organization_id=$6))))
 	), filtered AS (
 		SELECT * FROM visible WHERE ($3::TEXT='' OR category=$3)
 		AND ($2::TEXT='' OR name ILIKE '%%'||$2||'%%' OR customer_code ILIKE '%%'||$2||'%%'

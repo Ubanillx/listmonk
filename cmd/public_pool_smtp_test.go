@@ -138,6 +138,15 @@ func TestPublicPoolSMTPOrganizationsCoverAllSelectedPools(t *testing.T) {
 	if len(rows) != 3 || len(gotOrgs) != 2 {
 		t.Fatalf("allocator skipped a selected pool: recipients=%d organizations=%v", len(rows), gotOrgs)
 	}
+	// A selected retry run must not drain other organizations' pending rows.
+	exec(`UPDATE campaign_pool_recipients SET status='pending',retry_selected=false WHERE campaign_id=$1`, campaign)
+	chosen := rows[0].PoolContactID
+	exec(`UPDATE campaign_pool_recipients SET retry_selected=true WHERE campaign_id=$1 AND pool_contact_id=$2`, campaign, chosen)
+	exec(`UPDATE campaigns SET retry_mode=true WHERE id=$1`, campaign)
+	retryRows, err := s.nextPoolCustomers(campaign, campaignSendState{PoolScope: models.CampaignPoolScopeAllOrganizations, SMTPSource: "organization"}, 3)
+	if err != nil || len(retryRows) != 1 || retryRows[0].PoolContactID != chosen {
+		t.Fatalf("all-organization retry claimed unselected recipients: %+v %v", retryRows, err)
+	}
 }
 
 func TestPublicPoolSMTPOverviewRequiresPermissionToExpandSavedAudience(t *testing.T) {

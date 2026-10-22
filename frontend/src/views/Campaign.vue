@@ -24,7 +24,7 @@
 
       <div class="column is-6">
         <div v-if="canManage" class="buttons">
-          <b-field grouped v-if="isEditing && canEdit">
+          <b-field grouped v-if="isEditing && canEdit && activeTab !== 'overview'">
             <b-field expanded>
               <b-button expanded @click="() => onSubmit('update')" :loading="loading.campaigns" type="is-primary"
                 icon-left="content-save-outline" data-cy="btn-save" aria-keyshortcuts="ctrl+s">
@@ -57,6 +57,12 @@
     <b-loading :active="loading.campaigns" />
 
     <b-tabs type="is-boxed" :animated="false" v-model="activeTab" @input="onTab">
+      <b-tab-item v-if="isEditing && canViewAnalytics" :label="$t('campaigns.deliveryOverview')" icon="chart-bar" value="overview">
+        <section class="wrap">
+          <campaign-delivery-overview :campaign="data" :active="activeTab === 'overview'"
+            @show-config="activeTab = 'campaign'; onTab('campaign')" @retry-started="onRetryStarted" @status-updated="onDeliveryStatus" />
+        </section>
+      </b-tab-item>
       <b-tab-item :label="$tc('globals.terms.campaign')" label-position="on-border" value="campaign"
         icon="rocket-launch-outline">
         <section class="wrap campaign-setup">
@@ -494,6 +500,7 @@ import { mapState } from 'vuex';
 
 import CampaignPreview from '../components/CampaignPreview.vue';
 import CampaignReport from '../components/CampaignReport.vue';
+import CampaignDeliveryOverview from '../components/CampaignDeliveryOverview.vue';
 import CopyText from '../components/CopyText.vue';
 import Editor from '../components/Editor.vue';
 import CampaignAudienceTreeSelect from '../components/CampaignAudienceTreeSelect.vue';
@@ -509,6 +516,7 @@ export default Vue.extend({
     CopyText,
     CampaignPreview,
     CampaignReport,
+    CampaignDeliveryOverview,
   },
 
   data() {
@@ -686,6 +694,17 @@ export default Vue.extend({
 
       // this.$router.replace({ hash: `#${tab}` });
       window.history.replaceState({}, '', `#${tab}`);
+    },
+
+    onRetryStarted() {
+      this.onDeliveryStatus('running');
+    },
+
+    onDeliveryStatus(status) {
+      if (this.data.status !== status) {
+        this.data = { ...this.data, status };
+        this.form.status = status;
+      }
     },
 
     onFillArchiveMeta() {
@@ -1508,6 +1527,7 @@ export default Vue.extend({
         if (this.$route.hash !== '') {
           const tab = this.$route.hash.replace('#', '');
           const availableTabs = new Set(['campaign', 'content', 'attribs', 'analytics', 'archive']);
+          if (this.canViewAnalytics) availableTabs.add('overview');
           this.activeTab = availableTabs.has(tab) ? tab : 'campaign';
         }
       });

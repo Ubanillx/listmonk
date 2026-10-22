@@ -255,6 +255,8 @@ var auditRoutes = map[string]auditRouteSpec{
 	"PUT /api/campaigns/:id/archive": {"campaign.archive_changed", "campaign", "id"},
 	"POST /api/campaigns/:id/test":   {"campaign.test_sent", "campaign", "id"},
 	"POST /api/campaigns/:id/pools":  {"campaign.audience_changed", "campaign", "id"},
+	"GET /api/campaigns/:id/failed-recipients/export": {"campaign.failed_recipients_exported", "campaign", "id"},
+	"POST /api/campaigns/:id/failed-recipients/retry": {"campaign.failed_recipients_retried", "campaign", "id"},
 	"DELETE /api/campaigns/:id":      {"campaign.deleted", "campaign", "id"},
 	"DELETE /api/campaigns":          {"campaign.bulk_deleted", "campaign", ""},
 	"POST /api/tx":                   {"transactional_email.accepted", "transactional_email", ""},

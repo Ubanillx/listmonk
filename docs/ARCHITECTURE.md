@@ -1,5 +1,13 @@
 # Listmonk 工程架构与运行指南
 
+## 活动失败客户定向补发（2026-10-21）
+
+活动编辑页增加可用 `#overview` 重载定位的「营销概览」标签，由 `frontend/src/components/CampaignDeliveryOverview.vue` 读取聚合概览与当前失败客户接口。私域展示进度/受众，公海按目标组织展示进度，组织操作和下拉筛选共用服务端 `organization_id` 条件（分页与导出一致）。聚合查看权限不等于失败客户读取权限；后者继续单独使用 `$canReadCampaignSendErrors` 与服务端权限判定。表头全选仅选中本页当前可补发客户，不包含延期或已排队客户；筛选/翻页清空本页勾选，导出使用已应用条件，补发二次确认后仅提交勾选身份。运行中每 10 秒刷新，离开标签或切换工作区后丢弃旧请求；状态回写不覆盖邮件编辑草稿。界面不虚构接口尚未提供的组织发件就绪状态或来源分配说明。
+
+`campaign_send_errors` 仍是不可改写的失败尝试历史，`send_errors` 仍为累计尝试次数。`internal/core/campaign_failed_recipients.go` 从授权后的历史事件按收件人取最近一次，再与当前 `campaign_recipients` / `campaign_pool_recipients` 快照关联，仅把尚未发送的去重收件人作为「失败客户」；成功重试自动从当前名单退出，历史报告仍可查。`internal/core/campaign_delivery_overview.go` 以 `campaign_send_counts` 与当前失败客户统计给私域、公海（含组织维度）提供聚合概览。接口、字段和权限见 [活动 API](docs/docs/content/apis/campaigns.md)。
+
+v6.63.0 为活动增加 `retry_mode`，为两类收件人快照增加 `retry_selected`。`POST /api/campaigns/:id/failed-recipients/retry` 在工作区与活动锁事务内验证已暂停状态、全部选中身份及当前投放资格，然后原子写入选择并启动；`queries/campaigns.sql` 与全组织公海分配器仅领取选中快照。发送管道仍使用原有 SMTP、额度、暂停/延期及失败记录逻辑。定向补发自然耗尽后，存储层按剩余未发送数决定回到暂停或完成，并清除选择；普通手动继续/排期/取消时清除选择。导出沿用现有 Excel 和敏感字段边界；补发审计只记录活动和人数。
+
 ## BestEDM 发件服务账号与报表（2026-10-20）
 
 `internal/bestedm` 是固定 HTTPS 上游的只读适配器，使用 HTTP Basic Auth 查询账号、服务、统计、失败地址 XML 和日志 JSON；20 秒超时、4 MB 响应上限、禁用重定向、识别 HTTP 200 的 XML 业务错误，不猜测非法 XML/JSON 示例。`cmd/delivery_provider.go` 负责独立 `delivery_provider:get` 读取权限与平台管理员配置边界、参数组合校验、安全配置 DTO、直接 Excel 导出；报表只有真实数据源，`mode` 等样例参数会被参数校验拒绝，失败即返回错误，不用空数据或零值兜底。个人 Key 的独立前缀 allowlist 不包含这些路由。

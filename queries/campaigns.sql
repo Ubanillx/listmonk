@@ -1352,6 +1352,7 @@ WITH picked AS (
     WHERE cr.campaign_id = $1
       AND cr.status = ANY($2::campaign_recipient_status[])
       AND c.status = 'running'
+      AND (NOT c.retry_mode OR cr.retry_selected)
       AND c.owner_user_id IS NOT NULL
       AND c.transfer_pending_at IS NULL
       -- Use EXISTS instead of an outer join here. PostgreSQL rejects FOR
@@ -1428,6 +1429,7 @@ WITH picked AS (
     WHERE cpr.campaign_id=$1
       AND cpr.status = ANY($2::campaign_recipient_status[])
       AND c.status='running'
+      AND (NOT c.retry_mode OR cpr.retry_selected)
       AND pc.status='active'
       AND ex.contact_id IS NULL
       AND EXISTS(SELECT 1 FROM org_pool_allocations av

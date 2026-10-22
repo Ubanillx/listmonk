@@ -1650,10 +1650,12 @@ section.customer_lists {
       max-width: 220px;
     }
 
+    // Keep the native select inside the filter container: a long pool name used
+    // to stretch it past the 220px wrapper and overlap the department filter.
     .pool-status-filter .select,
     .pool-status-filter select {
+      width: 100%;
       max-width: 100%;
-      width: auto;
     }
 
     .pool-facet-filter {

@@ -106,12 +106,6 @@
       </a>
       <span class="a">
         {{ $tc('globals.messages.numSelected', numSelectedLists, { num: numSelectedLists }) }}
-        <span v-if="canSelectAllLists && !bulk.all && customer_lists.total > customer_lists.perPage">
-          &mdash;
-          <a href="#" @click.prevent="onSelectAll" data-cy="select-all-customer_lists">
-            {{ $tc('globals.messages.selectAll', customer_lists.total, { num: customer_lists.total }) }}
-          </a>
-        </span>
       </span>
     </div>
     <paginated-table :data="tableRows" :loading="loading.listsFull" @check-all="onTableCheck" @check="onTableCheck"
@@ -179,6 +173,9 @@
 
       <b-table-column v-slot="props" field="ownerUsername" :label="$t('shared.ownerScope')">
         {{ ownerLabel(props.row) }}
+        <span v-if="!isPoolGroup && isPlatformAdmin" class="is-size-7 has-text-grey">
+          / {{ props.row.organizationName || $t('organizations.personalSpace') }}
+        </span>
         <b-tag size="is-small" class="is-light">{{ visibilityLabel(props.row.visibility, props.row.type) }}</b-tag>
         <b-tag v-if="transferPendingAt(props.row)" size="is-small" type="is-warning" class="is-light">
           {{ $t('shared.transferPending', { date: $utils.niceDate(transferPendingAt(props.row), true) }) }}
@@ -541,6 +538,7 @@ export default Vue.extend({
         order: this.queryParams.order,
         status: this.queryParams.status,
         type_group: this.listGroup,
+        ...(!this.isPoolGroup && this.isPlatformAdmin ? { scope: 'all_owners' } : {}),
       }).then((resp) => {
         this.customer_lists = resp;
         if (this.isPoolGroup && !this.isPoolVisible && this.$route.query.manage_pool) {
@@ -599,11 +597,6 @@ export default Vue.extend({
       }).finally(() => {
         this.deletingLists = false;
       });
-    },
-
-    // Mark all customer_lists in the query as selected.
-    onSelectAll() {
-      this.bulk.all = true;
     },
 
     onTableCheck() {
@@ -783,12 +776,6 @@ export default Vue.extend({
 
     canInspectOrganization() {
       return this.$canInspectOrganization();
-    },
-
-    // Organization managers can inspect member customer_lists but must never bulk
-    // select them. Cross-page selection is therefore platform-admin only.
-    canSelectAllLists() {
-      return !this.isPoolGroup && this.$isPlatformAdmin();
     },
 
     isPlatformAdmin() {

@@ -45,6 +45,15 @@ describe('Customer lists', () => {
       cy.get('[data-cy=btn-save]').click();
       cy.contains('tbody tr', 'Shared Cypress list').find('[data-cy=btn-edit]').click();
       cy.get('select[name=visibility]').should('have.value', 'private');
+      cy.setCookie('listmonk_workspace_organization_id', '0');
+      cy.window().then((win) => win.localStorage.setItem('listmonk.workspace.organizationId', '0'));
+      cy.reload();
+      cy.contains('tbody tr', 'Personal Cypress list').should('exist');
+      cy.contains('tbody tr', 'Shared Cypress list').should('exist');
+      cy.request('/api/customer-lists?type_group=private&status=active').then(({ body }) => {
+        expect(body.data.results.map((list) => list.name)).to.include('Personal Cypress list');
+        expect(body.data.results.map((list) => list.name)).not.to.include('Shared Cypress list');
+      });
     });
   });
 });

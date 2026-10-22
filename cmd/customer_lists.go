@@ -21,12 +21,19 @@ func (a *App) GetLists(c echo.Context) error {
 	if !validGroup {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid customer list type group")
 	}
+	allOwners := c.QueryParam("scope") == "all_owners"
+	if c.QueryParam("scope") != "" && !allOwners {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid customer list scope")
+	}
+	if allOwners && (group != customerListGroupPrivate || !auth.GetUser(c).IsPlatformAdmin() || auth.IsPersonalIntegrationToken(c)) {
+		return echo.NewHTTPError(http.StatusForbidden, "platform administrator private list view required")
+	}
 	// Minimal query simply returns the customer_list of all customer_lists without JOIN customer counts. This is fast.
 	minimal, _ := strconv.ParseBool(c.FormValue("minimal"))
 	if minimal {
 		status := c.FormValue("status")
 		res, _, err := a.queryReadableWorkspaceLists(c, access, customerListQuery{
-			group: group, status: status, orderBy: "name", order: core.SortAsc,
+			group: group, allOwners: allOwners, status: status, orderBy: "name", order: core.SortAsc,
 		})
 		if err != nil {
 			return err
@@ -60,7 +67,7 @@ func (a *App) GetLists(c echo.Context) error {
 		pg = a.pg.NewFromURL(c.Request().URL.Query())
 	)
 	res, total, err := a.queryReadableWorkspaceLists(c, access, customerListQuery{
-		search: query, typ: typ, group: group, optin: optin, status: status,
+		search: query, typ: typ, group: group, allOwners: allOwners, optin: optin, status: status,
 		tags: tags, orderBy: orderBy, order: order, offset: pg.Offset, limit: pg.Limit,
 	})
 	if err != nil {

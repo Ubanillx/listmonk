@@ -25,6 +25,13 @@ creator remains in the owner fields for audit and ownership checks. A
 first-level `pool` is platform-wide (`visibility: global`), while its
 organization delivery permissions are stored separately.
 
+The highest administrator can request `GET /api/customer-lists?type_group=private&scope=all_owners`
+to inspect ordinary `private`/`public` lists across all owners and workspaces.
+This explicit index-only scope is unavailable to other accounts and personal API
+keys; omitted `scope` retains the selected workspace boundary, including for
+list selectors. It does not expand create, import, campaign audience, or bulk
+delete queries. Cross-page select-all is not offered in this administrator view.
+
 | Method | Endpoint                                        | Description               |
 | :----- | :---------------------------------------------- | :------------------------ |
 | GET | [/api/customer-lists](#get-apicustomer-lists) | Retrieve all customer_lists. |
@@ -56,6 +63,7 @@ Retrieve customer_lists.
 | status   | string   |          | Status to filter customer_lists. Options: active, archived. Defaults to showing all customer_lists if not specified. |
 | minimal  | boolean  |          | If true, returns customer_lists without customer counts (faster). Defaults to false.                      |
 | type_group | string | | `pool` returns `pool` and `org_pool_allocation`; `private` returns ordinary `private` and `public` lists. Filtering occurs before pagination. |
+| scope | string | | `all_owners` requires the highest administrator and `type_group=private`; omitting it uses the active workspace. |
 | tag      | []string |          | Tags to filter customer_lists. Repeat in the query for multiple values.                                     |
 | order_by | string   |          | Sort field. Options: name, status, created_at, updated_at.                                         |
 | order    | string   |          | Sorting order. Options: ASC, DESC.                                                                 |

@@ -19,6 +19,7 @@ const (
 type customerListQuery struct {
 	search, typ, optin, status string
 	group                      customerListTypeGroup
+	allOwners                  bool
 	tags                       []string
 	orderBy, order             string
 	offset, limit              int

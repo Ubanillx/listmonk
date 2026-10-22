@@ -148,12 +148,28 @@ func workspaceSort(orderBy, order string, fields map[string]string, fallback str
 
 // QueryWorkspaceLists returns only customer_lists visible in the selected workspace.
 func (c *Core) QueryWorkspaceLists(access models.WorkspaceAccess, search, typ, optin, status string, tags []string, orderBy, order string, offset, limit int) ([]models.CustomerList, int, error) {
+	return c.queryWorkspaceLists(access, false, search, typ, optin, status, tags, orderBy, order, offset, limit)
+}
+
+// QueryPlatformPrivateLists is an explicit platform-wide read-only index. It
+// excludes public-pool resources and does not change workspace-bound selectors.
+func (c *Core) QueryPlatformPrivateLists(access models.WorkspaceAccess, search, typ, optin, status string, tags []string, orderBy, order string, offset, limit int) ([]models.CustomerList, int, error) {
+	if !access.PlatformAdmin {
+		return nil, 0, echo.NewHTTPError(http.StatusForbidden, "platform administrator required")
+	}
+	return c.queryWorkspaceLists(access, true, search, typ, optin, status, tags, orderBy, order, offset, limit)
+}
+
+func (c *Core) queryWorkspaceLists(access models.WorkspaceAccess, allPrivate bool, search, typ, optin, status string, tags []string, orderBy, order string, offset, limit int) ([]models.CustomerList, int, error) {
 	if tags == nil {
 		tags = []string{}
 	}
 	_ = c.refreshCache(matListSubStats, false)
 
 	scope, args := workspaceCustomerListReadPredicate(access, "l", 1)
+	if allPrivate {
+		scope, args = "l.type IN ('private', 'public')", nil
+	}
 	first := len(args) + 1
 	search = strings.TrimSpace(search)
 	stmt := fmt.Sprintf(`

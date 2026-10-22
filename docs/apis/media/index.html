@@ -2448,6 +2448,18 @@ They stop working when the media is deleted/replaced, pending transfer, moved to
 another owner/workspace, or its organization is archived. Folder visibility
 controls new sending authorization; it does not revoke an already delivered link.
 Authenticated library URLs and list APIs retain their existing permissions.</p>
+<p>The Super Admin media page has an explicit read-only platform catalog. Its
+virtual categories are computed from each file's organization and owner;
+original folders, ownership, object names, and campaign references are not
+changed. <code>GET /api/media/categories?scope=all_owners</code> returns
+<code>organization_id</code>, <code>organization_name</code>, <code>owner_user_id</code>, <code>owner_name</code>, and
+<code>media_count</code> for each group. <code>GET /api/media?scope=all_owners</code> accepts optional
+<code>organization_id</code> and <code>owner_user_id</code> (zero means personal/no owner) alongside
+normal search and pagination. Result rows include <code>folder_name</code> and their
+exact-ID file URLs carry the same scope. <code>GET /api/media/{id}</code> and the exact-ID
+file URL accept this scope for read-only access. Only Super Admin sessions or
+legacy administrator credentials can use it; personal API keys cannot. Normal
+list, upload, folder, media-use and sending APIs do not inherit this scope.</p>
 <p>Configure <code>app.root_url</code> with a publicly reachable HTTPS origin, route
 <code>/email-media/</code> through the reverse proxy, and retain the uploaded files. Some
 mail clients require the recipient to allow remote images. System data exports
@@ -2465,6 +2477,11 @@ and raw one-off transactional API attachments retain their original behavior.</p
 <td>GET</td>
 <td><a href="#get-apimediafolders">/api/media/folders</a></td>
 <td>Get visible media folders</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/media/categories?scope=all_owners</code></td>
+<td>Super Admin virtual organization/owner groups</td>
 </tr>
 <tr>
 <td>POST</td>

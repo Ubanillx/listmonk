@@ -3052,6 +3052,12 @@ organization and <code>owner_username</code>/<code>owner_name</code> for the use
 creator remains in the owner fields for audit and ownership checks. A
 first-level <code>pool</code> is platform-wide (<code>visibility: global</code>), while its
 organization delivery permissions are stored separately.</p>
+<p>The highest administrator can request <code>GET /api/customer-lists?type_group=private&amp;scope=all_owners</code>
+to inspect ordinary <code>private</code>/<code>public</code> lists across all owners and workspaces.
+This explicit index-only scope is unavailable to other accounts and personal API
+keys; omitted <code>scope</code> retains the selected workspace boundary, including for
+list selectors. It does not expand create, import, campaign audience, or bulk
+delete queries. Cross-page select-all is not offered in this administrator view.</p>
 <table>
 <thead>
 <tr>
@@ -3163,6 +3169,12 @@ organization delivery permissions are stored separately.</p>
 <td style="text-align: left;">string</td>
 <td style="text-align: left;"></td>
 <td style="text-align: left;"><code>pool</code> returns <code>pool</code> and <code>org_pool_allocation</code>; <code>private</code> returns ordinary <code>private</code> and <code>public</code> lists. Filtering occurs before pagination.</td>
+</tr>
+<tr>
+<td style="text-align: left;">scope</td>
+<td style="text-align: left;">string</td>
+<td style="text-align: left;"></td>
+<td style="text-align: left;"><code>all_owners</code> requires the highest administrator and <code>type_group=private</code>; omitting it uses the active workspace.</td>
 </tr>
 <tr>
 <td style="text-align: left;">tag</td>

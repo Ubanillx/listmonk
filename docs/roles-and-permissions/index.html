@@ -2221,128 +2221,33 @@ does not replace API authorization.</p>
 <td>campaigns:control</td>
 <td>Pause, cancel, unschedule, or archive campaigns</td>
 </tr>
-<tr>
-<td></td>
-<td>campaigns:recipients</td>
-<td>View individual recipient details; requires customer read access, tracking, and the campaign privacy boundary. Public-pool rows additionally require <code>pools:get</code> and follow organization scope and e-mail masking.</td>
-</tr>
-<tr>
-<td>bounces</td>
-<td>bounces:get</td>
-<td>Get email bounce records</td>
-</tr>
-<tr>
-<td></td>
-<td>bounces:manage</td>
-<td>View and process bounced email workflows; destructive actions use their dedicated permissions</td>
-</tr>
-<tr>
-<td></td>
-<td>bounces:delete</td>
-<td>Delete bounce records, including cleanup from a customer detail page</td>
-</tr>
-<tr>
-<td></td>
-<td>bounces:blocklist</td>
-<td>Blocklist customers represented by bounce records</td>
-</tr>
-<tr>
-<td></td>
-<td>webhooks:post_bounce</td>
-<td>Receive bounce notifications via webhook</td>
-</tr>
-<tr>
-<td>media</td>
-<td>media:get</td>
-<td>Get uploaded media files</td>
-</tr>
-<tr>
-<td></td>
-<td>media:manage</td>
-<td>Upload, update, and delete media</td>
-</tr>
-<tr>
-<td>templates</td>
-<td>templates:get</td>
-<td>Get email templates</td>
-</tr>
-<tr>
-<td></td>
-<td>templates:manage</td>
-<td>Create, update, and delete templates</td>
-</tr>
-<tr>
-<td>assets</td>
-<td>assets:share</td>
-<td>Set or remove template/media sharing, including shared folder placement. Maintenance and ownership checks still apply</td>
-</tr>
-<tr>
-<td>mailboxes</td>
-<td>mailboxes:use</td>
-<td>Select available sending/reply mailboxes and use them for authorized campaign or transactional sending</td>
-</tr>
-<tr>
-<td></td>
-<td>mailboxes:manage</td>
-<td>Configure/test/enable/disable/delete sending and reply mailboxes, SMTP pools, and reply forwarding rules within the existing ownership/organization boundary</td>
-</tr>
-<tr>
-<td>users</td>
-<td>users:get</td>
-<td>Get system user accounts</td>
-</tr>
-<tr>
-<td></td>
-<td>users:manage</td>
-<td>Create, update, and delete user accounts <span style="color: #de4a45;"><strong>WARNING:</strong></span><span style="font-size: 0.875em; line-height: 1.3; color:#888;">This permission allows creation of users with any role, including Super Admin. This permission should only be given to Super Admin level accounts</span></td>
-</tr>
-<tr>
-<td></td>
-<td>users:tokens</td>
-<td>Create, list, and revoke API user integration tokens</td>
-</tr>
-<tr>
-<td></td>
-<td>roles:get</td>
-<td>Get user roles and permissions</td>
-</tr>
-<tr>
-<td></td>
-<td>roles:manage</td>
-<td>Create and modify user roles</td>
-</tr>
-<tr>
-<td>settings</td>
-<td>settings:get</td>
-<td>Get system settings and logs, including the live server error stream (<code>GET /api/events</code>). Without this permission the admin UI does not subscribe to the stream; dashboard charts and counts are not affected.</td>
-</tr>
-<tr>
-<td></td>
-<td>settings:manage</td>
-<td>Modify system configuration</td>
-</tr>
-<tr>
-<td></td>
-<td>settings:maintain</td>
-<td>Perform system maintenance tasks</td>
-</tr>
-<tr>
-<td>audit</td>
-<td>audit:get</td>
-<td>View business audit events in the active workspace</td>
-</tr>
-<tr>
-<td>workspaces</td>
-<td>workspaces:personal</td>
-<td>Enter the personal workspace. Without this permission the account can only enter organization workspaces; platform administrators always retain the personal workspace.</td>
-</tr>
-<tr>
-<td>organizations</td>
-<td>organizations:platform_manage</td>
-<td>Manage organization requests, lifecycle, members, invites, forwarding, and restricted transfers. This does not grant ordinary resource access or membership.</td>
-</tr>
 </tbody>
 </table>
+<p>The built-in Super Admin can manage another owner's campaign across workspaces. The admin UI confirms the campaign and owner before changing or saving it. The campaign keeps its original owner, audience, SMTP account, quotas, and audit history; an administrator's action is logged under the administrator. Personal API keys cannot use the cross-owner sending exception. Other roles still require their own workspace, owner, and action permissions.
+|             | campaigns:recipients   | View individual recipient details; requires customer read access, tracking, and the campaign privacy boundary. Public-pool rows additionally require <code>pools:get</code> and follow organization scope and e-mail masking. |
+| bounces     | bounces:get             | Get email bounce records                                                                                                                                                                                                             |
+|             | bounces:manage          | View and process bounced email workflows; destructive actions use their dedicated permissions |
+|             | bounces:delete         | Delete bounce records, including cleanup from a customer detail page |
+|             | bounces:blocklist      | Blocklist customers represented by bounce records |
+|             | webhooks:post_bounce    | Receive bounce notifications via webhook                                                                                                                                                                                             |
+| media       | media:get               | Get uploaded media files                                                                                                                                                                                                             |
+|             | media:manage            | Upload, update, and delete media                                                                                                                                                                                                     |
+| templates   | templates:get           | Get email templates                                                                                                                                                                                                                  |
+|             | templates:manage        | Create, update, and delete templates                                                                                                                                                                                                 |
+| assets      | assets:share            | Set or remove template/media sharing, including shared folder placement. Maintenance and ownership checks still apply |
+| mailboxes   | mailboxes:use           | Select available sending/reply mailboxes and use them for authorized campaign or transactional sending |
+|             | mailboxes:manage        | Configure/test/enable/disable/delete sending and reply mailboxes, SMTP pools, and reply forwarding rules within the existing ownership/organization boundary |
+| users       | users:get               | Get system user accounts                                                                                                                                                                                                             |
+|             | users:manage            | Create, update, and delete user accounts <span style="color: #de4a45;"><strong>WARNING:</strong></span><span style="font-size: 0.875em; line-height: 1.3; color:#888;">This permission allows creation of users with any role, including Super Admin. This permission should only be given to Super Admin level accounts</span>                              |
+|             | users:tokens            | Create, list, and revoke API user integration tokens |
+|             | roles:get               | Get user roles and permissions                                                                                                                                                                                                       |
+|             | roles:manage            | Create and modify user roles                                                                                                                                                                                                         |
+| settings    | settings:get            | Get system settings and logs, including the live server error stream (<code>GET /api/events</code>). Without this permission the admin UI does not subscribe to the stream; dashboard charts and counts are not affected. |
+|             | settings:manage         | Modify system configuration                                                                                                                                                                                                          |
+|             | settings:maintain       | Perform system maintenance tasks                                                                                                                                                                                                     |
+| audit       | audit:get               | View business audit events in the active workspace                                                                                                                                                                                   |
+| workspaces  | workspaces:personal     | Enter the personal workspace. Without this permission the account can only enter organization workspaces; platform administrators always retain the personal workspace. |
+| organizations | organizations:platform_manage | Manage organization requests, lifecycle, members, invites, forwarding, and restricted transfers. This does not grant ordinary resource access or membership. |</p>
 <p>Platform administration permissions (<code>users:*</code>, <code>roles:*</code>, <code>settings:*</code>, and
 <code>organizations:platform_manage</code>) remain broad platform controls and are not
 split into business-role actions. The Super Admin role retains full access.

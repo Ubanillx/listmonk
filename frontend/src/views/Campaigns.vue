@@ -26,7 +26,7 @@
           <div class="column is-6">
             <form @submit.prevent="onSearch">
               <div>
-                <b-field>
+                <b-field addons class="lm-search-field">
                   <b-input v-model="queryParams.query" name="query" expanded
                     :placeholder="$t('campaigns.queryPlaceholder')" icon="magnify" ref="query" />
                   <p class="controls">

@@ -25,9 +25,9 @@
         </b-field>
       </div>
     </header>
-    <div v-if="isPoolGroup" class="pool-list-toolbar" data-cy="pool-list-filters">
+    <div v-if="isPoolGroup" class="pool-list-toolbar list-search-toolbar" data-cy="pool-list-filters">
       <form class="pool-list-filters" @submit.prevent="onSearch">
-        <b-field :label="$t('globals.buttons.search')" class="pool-list-search">
+        <b-field addons :label="$t('globals.buttons.search')" class="pool-list-search lm-search-field">
           <b-input v-model="queryParams.query" name="query" expanded icon="magnify" ref="query" data-cy="query"
             :placeholder="$t('customer_lists.poolSearchPlaceholder')" :aria-label="$t('globals.buttons.search')" />
           <p class="controls">
@@ -58,24 +58,36 @@
           {{ $t('customer_lists.resetFilters') }}
         </b-button>
       </form>
-      <div class="pool-list-tree-heading">
-        <div>
-          <strong>{{ $t('customer_lists.poolHierarchy') }}</strong>
-          <span class="pool-list-result-count" aria-live="polite" data-cy="pool-list-result-count">
-            {{ $t('customer_lists.poolResults', { count: poolMatchingCount, groups: poolGroups.length }) }}
-          </span>
-          <p>{{ $t('customer_lists.poolHierarchyHelp') }}</p>
-        </div>
-        <div class="pool-list-tree-controls">
-          <b-button size="is-small" icon-left="unfold-more-horizontal" :disabled="!poolGroups.length"
-            data-cy="pool-list-expand-all" @click="collapsedPools = []">
-            {{ $t('customer_lists.expandAll') }}
-          </b-button>
-          <b-button size="is-small" icon-left="unfold-less-horizontal" :disabled="!poolGroups.length"
-            data-cy="pool-list-collapse-all" @click="collapseAllPools">
-            {{ $t('customer_lists.collapseAll') }}
-          </b-button>
-        </div>
+    </div>
+    <div v-else class="customer-list-toolbar list-search-toolbar">
+      <form class="customer-list-search-form" @submit.prevent="onSearch">
+        <b-field addons :label="$t('globals.buttons.search')" class="lm-search-field">
+          <b-input v-model="queryParams.query" name="query" expanded icon="magnify" ref="query" data-cy="query"
+            :placeholder="$t('customer_lists.searchPlaceholder')" :aria-label="$t('globals.buttons.search')" />
+          <p class="controls">
+            <b-button native-type="submit" type="is-primary" icon-left="magnify" data-cy="btn-query"
+              :aria-label="$t('globals.buttons.search')" />
+          </p>
+        </b-field>
+      </form>
+    </div>
+    <div v-if="isPoolGroup" class="pool-list-actions">
+      <div>
+        <strong>{{ $t('customer_lists.poolHierarchy') }}</strong>
+        <span class="pool-list-result-count" aria-live="polite" data-cy="pool-list-result-count">
+          {{ $t('customer_lists.poolResults', { count: poolMatchingCount, groups: poolGroups.length }) }}
+        </span>
+        <p>{{ $t('customer_lists.poolHierarchyHelp') }}</p>
+      </div>
+      <div class="pool-list-tree-controls">
+        <b-button size="is-small" icon-left="unfold-more-horizontal" :disabled="!poolGroups.length"
+          data-cy="pool-list-expand-all" @click="collapsedPools = []">
+          {{ $t('customer_lists.expandAll') }}
+        </b-button>
+        <b-button size="is-small" icon-left="unfold-less-horizontal" :disabled="!poolGroups.length"
+          data-cy="pool-list-collapse-all" @click="collapseAllPools">
+          {{ $t('customer_lists.collapseAll') }}
+        </b-button>
       </div>
     </div>
     <div v-if="isPoolGroup && poolLoadError" class="notification is-light" role="alert">
@@ -88,45 +100,27 @@
       </a>
       <span>{{ $tc('globals.messages.numSelected', numSelectedLists, { num: numSelectedLists }) }}</span>
     </div>
+    <div v-if="!isPoolGroup && canManageLists && bulk.checked.length" class="pool-list-bulk customer-list-bulk actions">
+      <a href="#" @click.prevent="deleteLists" data-cy="btn-delete-customer_lists">
+        <b-icon icon="trash-can-outline" size="is-small" /> {{ $t('globals.buttons.delete') }}
+      </a>
+      <span class="a">
+        {{ $tc('globals.messages.numSelected', numSelectedLists, { num: numSelectedLists }) }}
+        <span v-if="canSelectAllLists && !bulk.all && customer_lists.total > customer_lists.perPage">
+          &mdash;
+          <a href="#" @click.prevent="onSelectAll" data-cy="select-all-customer_lists">
+            {{ $tc('globals.messages.selectAll', customer_lists.total, { num: customer_lists.total }) }}
+          </a>
+        </span>
+      </span>
+    </div>
     <paginated-table :data="tableRows" :loading="loading.listsFull" @check-all="onTableCheck" @check="onTableCheck"
       :checked-rows.sync="bulk.checked" hoverable :default-sort="isPoolGroup ? 'name' : 'createdAt'"
       :paginated="!isPoolGroup" backend-pagination
-      :pagination-position="isPoolGroup ? 'bottom' : 'both'" @page-change="onPageChange" @per-page-change="onPerPageChange" :current-page="queryParams.page"
+      pagination-position="bottom" @page-change="onPageChange" @per-page-change="onPerPageChange" :current-page="queryParams.page"
       :per-page="isPoolGroup ? poolPageSize : customer_lists.perPage" :total="isPoolGroup ? poolGroups.length : customer_lists.total"
       :checkable="canManageLists" :is-row-checkable="canDeleteList" :row-class="listRowClass"
       custom-row-key="id" :custom-is-checked="(left, right) => left.id === right.id" backend-sorting @sort="onSort">
-      <template #top-left>
-        <div v-if="!isPoolGroup" class="columns">
-          <div class="column is-6">
-            <form @submit.prevent="onSearch">
-              <b-field>
-                <b-input v-model="queryParams.query" name="query" expanded icon="magnify" ref="query" data-cy="query"
-                  :placeholder="$t(isPoolGroup ? 'customer_lists.poolSearchPlaceholder' : 'customer_lists.searchPlaceholder')"
-                  :aria-label="$t('globals.buttons.search')" />
-                <p class="controls">
-                  <b-button native-type="submit" type="is-primary" icon-left="magnify" data-cy="btn-query"
-                    :aria-label="$t('globals.buttons.search')" />
-                </p>
-              </b-field>
-            </form>
-          </div>
-        </div>
-        <div class="actions" v-if="canManageLists && bulk.checked.length > 0">
-          <a class="a" href="#" @click.prevent="deleteLists" data-cy="btn-delete-customer_lists">
-            <b-icon icon="trash-can-outline" size="is-small" /> {{ $t('globals.buttons.delete') }}
-          </a>
-          <span class="a">
-            {{ $tc('globals.messages.numSelected', numSelectedLists, { num: numSelectedLists }) }}
-            <span v-if="canSelectAllLists && !bulk.all && customer_lists.total > customer_lists.perPage">
-              &mdash;
-              <a href="#" @click.prevent="onSelectAll" data-cy="select-all-customer_lists">
-                {{ $tc('globals.messages.selectAll', customer_lists.total, { num: customer_lists.total }) }}
-              </a>
-            </span>
-          </span>
-        </div>
-      </template>
-
       <b-table-column v-slot="props" field="name" :label="$t('globals.fields.name')" header-class="cy-name" sortable
         :width="isPoolGroup ? '34%' : '25%'" paginated backend-pagination pagination-position="both" :td-attrs="$utils.tdID"
         @page-change="onPageChange">

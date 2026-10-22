@@ -258,7 +258,7 @@
       <div v-else>
         <div class="columns is-multiline recipient-filters">
           <div class="column is-3">
-            <b-field :label="$t('globals.buttons.search')" label-position="on-border">
+            <b-field :label="$t('globals.buttons.search')" label-position="on-border" class="lm-search-field">
               <b-input v-model="filters.search" :placeholder="$t('analytics.recipientSearch')" icon="magnify" />
             </b-field>
           </div>

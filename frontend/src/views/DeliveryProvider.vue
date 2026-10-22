@@ -235,7 +235,7 @@
                 <option v-for="i in 10" :key="i" :value="String(i)">{{ t(`error${i}`) }}</option>
               </b-select>
             </b-field>
-            <b-field :label="t('searchEmail')" class="provider-email-search">
+            <b-field :label="t('searchEmail')" class="provider-email-search lm-search-field">
               <b-input v-model="failureSearch" icon="magnify" :placeholder="t('searchEmail')" maxlength="320"
                 data-cy="provider-failure-search" @input="pages.failures = 1" />
             </b-field>

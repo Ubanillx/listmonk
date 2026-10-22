@@ -1,7 +1,7 @@
 <template>
-  <div>
-    <div class="items mail-servers">
-      <div class="block box" v-for="(item, n) in form.smtp" :key="n">
+  <section class="settings-smtp">
+    <section class="items mail-servers">
+      <section class="block box settings-smtp-block" v-for="(item, n) in form.smtp" :key="n">
         <h2 class="is-size-5 mb-2">{{ $t('settings.smtp.systemTitle') }}</h2>
         <p class="help mb-5">{{ $t('settings.smtp.systemHelp') }}</p>
         <div class="columns">
@@ -157,10 +157,11 @@
             </form><!-- smtp test -->
           </div>
         </div><!-- second container column -->
-      </div><!-- block -->
-    </div><!-- mail-servers -->
+      </section><!-- block -->
+    </section><!-- mail-servers -->
 
-    <div class="block box" v-if="data.smtp_delivery" data-cy="smtp-delivery-settings">
+    <hr v-if="data.smtp_delivery" class="settings-smtp-divider" />
+    <section class="block box settings-smtp-delivery" v-if="data.smtp_delivery" data-cy="smtp-delivery-settings">
       <h2 class="is-size-5 mb-2">{{ $t('settings.smtp.deliveryTitle') }}</h2>
       <p class="help mb-5">{{ $t('settings.smtp.deliveryHelp') }}</p>
       <div class="columns is-multiline">
@@ -207,8 +208,8 @@
           </b-field>
         </div>
       </div>
-    </div>
-  </div>
+    </section>
+  </section>
 </template>
 
 <script>
@@ -336,6 +337,21 @@ export default Vue.extend({
 </script>
 
 <style lang="scss" scoped>
+.settings-smtp-block.box,
+.settings-smtp-delivery.box {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.settings-smtp-divider {
+  margin: 2rem 0;
+  border: 0;
+  border-top: 1px solid var(--lm-color-border);
+}
+
 .smtp-presets {
   display: flex;
   flex-wrap: wrap;

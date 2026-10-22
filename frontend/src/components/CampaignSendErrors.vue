@@ -29,7 +29,7 @@
         </div>
         <form class="send-error-toolbar" @submit.prevent="refresh">
           <div class="send-error-search">
-            <b-field :label="$t('globals.buttons.search')" label-for="send-error-search">
+            <b-field :label="$t('globals.buttons.search')" label-for="send-error-search" class="lm-search-field">
               <b-input id="send-error-search" v-model.trim="search" icon="magnify" :placeholder="$t('campaigns.sendErrorSearch')"
                 maxlength="500" :has-counter="false" />
             </b-field>

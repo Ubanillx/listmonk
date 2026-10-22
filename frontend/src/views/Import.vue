@@ -298,7 +298,7 @@
                 <option value="duplicate">{{ $t('import.poolResultDuplicatesLabel') }}</option>
               </b-select>
             </b-field>
-            <b-field :label="$t('import.poolResultSearch')" class="issue-search">
+            <b-field :label="$t('import.poolResultSearch')" class="issue-search lm-search-field">
               <b-input v-model.trim="issueSearch" icon="magnify" :placeholder="$t('import.poolResultSearchHelp')"
                 data-cy="pool-issue-search" />
             </b-field>

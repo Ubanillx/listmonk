@@ -26,7 +26,7 @@
           <div class="column is-6">
             <form @submit.prevent="getUsers">
               <div>
-                <b-field>
+                <b-field addons class="lm-search-field">
                   <b-input v-model="queryParams.query" name="query" expanded icon="magnify" ref="query"
                     data-cy="query" />
                   <p class="controls">

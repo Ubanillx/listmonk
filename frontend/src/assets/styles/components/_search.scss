@@ -1,0 +1,66 @@
+/* Keep the common text-search control predictable across list pages. */
+.list-search-toolbar {
+  margin-bottom: var(--lm-space-4);
+}
+
+.customer-list-search-form {
+  width: 100%;
+}
+
+.customer-list-toolbar {
+  max-width: var(--lm-field-max-width);
+}
+
+.lm-search-field {
+  --lm-search-button-width: 48px;
+  align-items: stretch;
+  margin-bottom: 0;
+
+  > .control.is-expanded,
+  > .control:first-child {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .input {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .control.has-icons-left {
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+  }
+
+  // The base form rule caps inputs at 560px; search rows should consume the
+  // available grid column so the submit button stays attached to the field.
+  &.field .input {
+    max-width: none;
+  }
+
+  .controls,
+  > .control:last-child:not(.has-icons-left) {
+    flex: 0 0 var(--lm-search-button-width);
+    width: var(--lm-search-button-width);
+  }
+
+  .controls .button,
+  > .control:last-child:not(.has-icons-left) .button {
+    width: var(--lm-search-button-width);
+    min-width: var(--lm-search-button-width);
+    padding-right: 0;
+    padding-left: 0;
+  }
+}
+
+@media screen and (max-width: 768px) {
+  .lm-search-field {
+    width: 100%;
+  }
+
+  .customer-list-search-form {
+    width: 100%;
+  }
+}

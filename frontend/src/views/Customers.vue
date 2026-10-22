@@ -38,7 +38,7 @@
         <div class="column is-8">
           <form @submit.prevent="onSubmit">
             <div>
-              <b-field addons>
+              <b-field addons class="lm-search-field">
                 <b-input @input="onSimpleQueryInput" v-model="queryInput" expanded
                   :placeholder="isPoolList ? $t('pool.searchPlaceholder') : $t('customers.queryPlaceholder')"
                   icon="magnify" ref="query"

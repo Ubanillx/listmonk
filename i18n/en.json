@@ -2303,6 +2303,8 @@
     "campaigns.confirmPause": "Pause this campaign?",
     "campaigns.confirmCancel": "Cancel this campaign? Recipients who have not received it yet will not get it.",
     "campaigns.confirmStart": "Start sending this campaign now?",
+    "campaigns.adminOtherOwnerConfirm": "You are about to {action} campaign \"{name}\" owned by {owner}. This will affect another user's campaign. Continue?",
+    "campaigns.adminBulkDeleteWarning": "This selection may include other users' campaigns. Verify the scope before deleting.",
     "maintenance.dataLabel": "Data",
     "organizations.smtpTitle": "Organization marketing SMTP",
     "organizations.smtpPoolSelect": "Organization sender pool",

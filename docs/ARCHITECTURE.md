@@ -1,4 +1,10 @@
 # Listmonk 工程架构与运行指南
+## 超级管理员代管他人营销活动（2026-10-22）
+
+超级管理员仍通过普通 `/api/campaigns` 列表读取跨工作区活动；他人活动的保存、归档、暂停/取消/恢复、排期/发送、测试发送、补发、克隆和删除在管理端以活动名称与所有者明确弹窗确认，取消不发起写请求。批量删除也警示可能包含他人活动。后端 `campaignAdminOperationAccess` 仅在非个人 Key 的超级管理员对现有活动操作时按活动保存的组织归属校验公海、回信邮箱和受众；普通列表受众必须与活动的所有者和组织完全一致，不能借管理员身份从另一所有者拼接收件人。事务锁和归档工作区限制保持不变。
+
+发送依旧使用活动所有者已有的个人/组织 SMTP 配置和回信邮箱，不转移活动所有权或暴露凭据；`requireCampaignSendOwnership` 允许非个人 Key 的超级管理员代为启动/测试/选中补发，但个人 API Key 不获得跨所有者发送能力。实际可发送性、额度、组织投放和生命周期仍由原有服务端校验决定。浏览器确认是防误触交互，不代替服务端的角色、工作区、受众和 API Key 校验。来源：`cmd/{campaigns,workspace_permissions,reply_mailbox_campaigns,campaign_failed_recipients}.go`、`frontend/src/views/{Campaign,Campaigns}.vue`。
+
 ## 超级管理员全平台媒体分类（2026-10-22）
 
 管理端独立媒体页不再提供工作区/全平台切换：超级管理员进入即看到只读全平台图库，普通用户进入即看到当前个人或组织工作区的可写文件夹图库；活动/模板内的媒体选择弹窗仍始终使用工作区范围。管理员图库采用组织→所有者两列渐进筛选，由 `GET /api/media/categories?scope=all_owners` 生成虚拟分类与计数。选中组织/所有者后，`GET /api/media?scope=all_owners&organization_id=...&owner_user_id=...` 在服务端过滤和分页，文件卡片显示原组织、所有者及直接文件夹名；此分类不创建、移动或修改真实 `media_folders` 和对象文件。工作区图库的上传表单仅在点击上传后以弹窗呈现，不在页面默认展开；图库仅在底部保留一处分页。详情和精确 ID 的受保护文件 URL 只在显式 `scope=all_owners` 且会话身份为超级管理员时走独立只读授权；非管理员、个人 API Key 和默认媒体选择器仍按原工作区/目录权限过滤。全平台视图不提供上传、拖放、删除或作为活动/模板素材选择的能力。来源：`cmd/media.go`、`internal/core/workspace_queries.go::QueryPlatformMedia*`、`frontend/src/views/Media.vue`。

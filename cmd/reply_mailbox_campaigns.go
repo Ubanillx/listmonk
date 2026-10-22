@@ -43,7 +43,8 @@ func (a *App) validateCampaignReplyMailbox(access models.WorkspaceAccess, campai
 	// A personal mailbox is private to its owner. Organization mailboxes are
 	// shared with every member of that organization and only become
 	// manageable for the member who created them.
-	if !mailboxOrg.Valid && ownerID != access.UserID {
+	ownerMailboxForAdmin := access.PlatformAdmin && campaign.OwnerUserID.Valid && ownerID == int(campaign.OwnerUserID.Int)
+	if !mailboxOrg.Valid && ownerID != access.UserID && !ownerMailboxForAdmin {
 		return echo.NewHTTPError(http.StatusForbidden, "reply mailbox is not owned by this account")
 	}
 	if status != models.ReplyMailboxStatusActive {

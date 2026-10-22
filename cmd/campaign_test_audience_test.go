@@ -73,7 +73,7 @@ func TestCampaignTestAudienceUsesPoolDeliveryAccess(t *testing.T) {
 		{name: "request cannot widen saved scope", user: member, campaign: organizationCampaign, lists: []int{otherPool},
 			requestScope: models.CampaignPoolScopeAllOrganizations, wantCode: http.StatusForbidden},
 		{name: "admin cannot attach cross workspace private list", user: admin, campaign: organizationCampaign, lists: []int{otherPrivateList},
-			wantCode: http.StatusForbidden, wantMessage: "a selected customer_list is outside the active workspace"},
+			wantCode: http.StatusForbidden, wantMessage: "campaign audience must belong to its saved owner and workspace"},
 		{name: "mixed pool and local private audience", user: admin, campaign: organizationCampaign, lists: []int{allocatedPool, privateList}},
 		{name: "allocation list rejected", user: admin, campaign: organizationCampaign, lists: []int{allocationList}, wantCode: http.StatusBadRequest,
 			wantMessage: "campaign audiences must use a first-level public pool, not a pool allocation"},

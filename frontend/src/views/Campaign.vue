@@ -44,7 +44,7 @@
               </b-button>
             </b-field>
             <b-field expanded v-if="canUnSchedule">
-              <b-button expanded @click="$utils.confirm(null, unscheduleCampaign)" :loading="loading.campaigns"
+              <b-button expanded @click="confirmCampaignAction($t('campaigns.unSchedule'), unscheduleCampaign)" :loading="loading.campaigns"
                 type="is-primary" icon-left="clock-start" data-cy="btn-unschedule">
                 {{ $t('campaigns.unSchedule') }}
               </b-button>
@@ -549,6 +549,7 @@ export default Vue.extend({
       poolSendStatusRequest: 0,
       replyMailboxes: [],
       replyMailboxesLoaded: false,
+      adminOwnerLists: [],
       customFields: [],
       isAltBodyFocused: false,
 
@@ -608,6 +609,19 @@ export default Vue.extend({
         ? insertInputText(altBody, text)
         : this.$refs.contentEditor?.insertText(text);
       if (!inserted) this.$utils.toast(this.$t('campaigns.editor.selectTextField'), 'is-info');
+    },
+
+    confirmCampaignAction(action, callback, ordinaryMessage = null) {
+      const message = this.isAdminEditingOtherOwner
+        ? this.$t('campaigns.adminOtherOwnerConfirm', {
+          action, name: this.data.name, owner: this.data.ownerName || this.data.ownerUsername || '-',
+        }) : ordinaryMessage;
+      this.$utils.confirm(message, callback, () => {}, this.isAdminEditingOtherOwner ? { type: 'is-warning', focusOn: 'cancel' } : undefined);
+    },
+
+    confirmOtherOwnerSave(action, callback) {
+      if (this.isAdminEditingOtherOwner) this.confirmCampaignAction(action, callback);
+      else callback();
     },
 
     onSMTPSourceSelection(source) {
@@ -800,10 +814,10 @@ export default Vue.extend({
           this.createCampaign();
           break;
         case 'test':
-          this.sendTest();
+          this.confirmOtherOwnerSave(this.$t('campaigns.sendTest'), () => this.sendTest());
           break;
         default:
-          this.updateCampaign();
+          this.confirmOtherOwnerSave(this.$t('globals.buttons.saveChanges'), () => this.updateCampaign());
           break;
       }
     },
@@ -829,6 +843,20 @@ export default Vue.extend({
         }, []);
 
         this.data = data;
+        this.adminOwnerLists = [];
+        if (this.isAdminEditingOtherOwner) {
+          const ownerID = Number(data.ownerUserId || data.owner_user_id);
+          const organizationID = Number(data.organizationId || data.organization_id) || 0;
+          this.$api.queryLists({
+            minimal: true, type_group: 'private', scope: 'all_owners', status: 'active',
+          }).then((page) => {
+            if (this.data.id !== data.id) return;
+            this.adminOwnerLists = (page.results || []).filter((list) => (
+              Number(list.ownerUserId || list.owner_user_id) === ownerID
+              && (Number(list.organizationId || list.organization_id) || 0) === organizationID
+            ));
+          });
+        }
         const normalizedMessenger = data.messenger?.startsWith('email-') ? 'email' : (data.messenger || 'email');
         this.form = {
           ...this.form,
@@ -1050,8 +1078,10 @@ export default Vue.extend({
         archive_slug: this.form.archiveSlug,
       };
 
-      this.$api.updateCampaignArchive(this.data.id, data).then((d) => {
-        this.form.archiveSlug = d.archiveSlug;
+      this.confirmOtherOwnerSave(this.$t('globals.buttons.saveChanges'), () => {
+        this.$api.updateCampaignArchive(this.data.id, data).then((d) => {
+          this.form.archiveSlug = d.archiveSlug;
+        });
       });
     },
 
@@ -1061,8 +1091,8 @@ export default Vue.extend({
         return;
       }
 
-      this.$utils.confirm(
-        null,
+      this.confirmCampaignAction(
+        this.canStart ? this.$t('campaigns.start') : this.$t('campaigns.schedule'),
         () => {
           // First save the campaign.
           this.updateCampaign().then((saved) => {
@@ -1103,7 +1133,9 @@ export default Vue.extend({
       this.smtpSenders = [];
       this.smtpPools = [];
       this.smtpPoolsLoaded = false;
-      const poolsPromise = (this.form.smtpSource === 'organization' && this.workspace.organizationId && !this.isPlatformPoolCampaign)
+      const savedOrganizationID = Number(this.data.organizationId || this.data.organization_id) || 0;
+      const poolsPromise = (this.form.smtpSource === 'organization'
+        && (this.workspace.organizationId || (this.isAdminEditingOtherOwner && savedOrganizationID)) && !this.isPlatformPoolCampaign)
         ? this.$api.getCampaignSMTPPools(this.data.id)
         : Promise.resolve([]);
       return poolsPromise.then((pools) => {
@@ -1204,6 +1236,11 @@ export default Vue.extend({
         : this.$canManageResource(this.data, 'campaigns:manage_all', 'campaigns:manage');
     },
 
+    isAdminEditingOtherOwner() {
+      const ownerID = Number(this.data.ownerUserId || this.data.owner_user_id);
+      return this.isEditing && this.$isPlatformAdmin() && ownerID > 0 && ownerID !== Number(this.profile && this.profile.id);
+    },
+
     canEdit() {
       return this.canManage && (this.isNew
         || this.data.status === 'draft'
@@ -1228,7 +1265,7 @@ export default Vue.extend({
         return this.$can('campaigns:public_pool_send');
       }
       const ownerID = Number(this.data.ownerUserId || this.data.owner_user_id) || 0;
-      return ownerID > 0 && ownerID === Number(this.profile && this.profile.id);
+      return this.isAdminEditingOtherOwner || (ownerID > 0 && ownerID === Number(this.profile && this.profile.id));
     },
 
     canTestCampaign() {
@@ -1239,14 +1276,14 @@ export default Vue.extend({
         return true;
       }
       const ownerID = Number(this.data.ownerUserId || this.data.owner_user_id) || 0;
-      return ownerID > 0 && ownerID === Number(this.profile && this.profile.id);
+      return this.isAdminEditingOtherOwner || (ownerID > 0 && ownerID === Number(this.profile && this.profile.id));
     },
 
     canSchedule() {
       const ownerID = Number(this.data.ownerUserId || this.data.owner_user_id) || 0;
       const sendAuthorized = this.isPlatformPoolCampaign
         ? this.$can('campaigns:public_pool_send')
-        : (this.isNew || (ownerID > 0 && ownerID === Number(this.profile && this.profile.id)));
+        : (this.isNew || this.isAdminEditingOtherOwner || (ownerID > 0 && ownerID === Number(this.profile && this.profile.id)));
       return this.canManage
         && this.$can('campaigns:schedule')
         && (!this.isSMTPMessenger || this.$can('mailboxes:use'))
@@ -1277,10 +1314,10 @@ export default Vue.extend({
     },
 
     availableLists() {
-      if (!this.customer_lists.results) {
-        return [];
-      }
-      return this.customer_lists.results.filter((customerList) => this.canManageList(customerList));
+      const active = (this.customer_lists.results || []).filter((customerList) => this.canManageList(customerList));
+      if (!this.isAdminEditingOtherOwner) return active;
+      const all = [...active.filter((list) => list.type === 'pool'), ...this.adminOwnerLists, ...this.form.customer_lists];
+      return all.filter((list, index) => all.findIndex((candidate) => candidate.id === list.id) === index);
     },
 
     selectedLists() {

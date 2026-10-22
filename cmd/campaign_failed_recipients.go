@@ -61,7 +61,7 @@ func (a *App) GetCampaignFailedRecipients(c echo.Context) error {
 		return err
 	}
 	out.CanRetry = camp.Status == models.CampaignStatusPaused && hasLegacyPermission(user, auth.PermCampaignsSend) &&
-		requireCampaignSendOwnership(user, camp) == nil && requireAPIKeyScope(c, apiKeyScopeCampaignsSend) == nil
+		requireCampaignSendOwnership(c, camp) == nil && requireAPIKeyScope(c, apiKeyScopeCampaignsSend) == nil
 	c.Response().Header().Set("Cache-Control", "no-store")
 	return c.JSON(http.StatusOK, okResp{out})
 }
@@ -143,7 +143,10 @@ func (a *App) RetryCampaignFailedRecipients(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := requireCampaignSendOwnership(user, camp); err != nil {
+	if !auth.IsPersonalIntegrationToken(c) {
+		access = campaignAdminOperationAccess(access, camp)
+	}
+	if err := requireCampaignSendOwnership(c, camp); err != nil {
 		return err
 	}
 	if email.IsMessengerName(camp.Messenger) && camp.PoolScope != models.CampaignPoolScopeAllOrganizations {

@@ -2,6 +2,8 @@
 
 快照日期：2026-10-21
 
+- **超级管理员代管他人营销活动（2026-10-22）**：跨归属活动可在保留原所有者、受众与 SMTP 身份的条件下由超级管理员编辑、保存和执行生命周期操作；前端对他人活动的保存、操作、测试与补发显示包含所有者/活动名的二次确认，批量删除提示跨所有者风险。个人 API Key 不继承跨所有者发送；受众校验只允许活动原所有者及原组织列表。隔离 PostgreSQL 测试覆盖跨组织保存、外来受众拒绝与 Key 发送拒绝；Go 全量和隔离 Cypress 弹窗取消/确认均通过，前端 lint 仅既有地图组件 warning。来源：`cmd/{campaigns,workspace_permissions,reply_mailbox_campaigns,campaign_failed_recipients}.go`、`frontend/src/views/{Campaign,Campaigns}.vue`。
+
 - **超级管理员全平台媒体分类（2026-10-22）**：媒体页增加只读全平台视图，按组织/所有者自动分组，保留原目录名和分页搜索；待转移媒体以原所有者分组，分类计数与筛选一致。普通工作区媒体库、素材选择与目录写入不扩权，个人 API Key 不可读取全平台分类。隔离 PostgreSQL 回归、全量 `go test ./...` 及 Cypress 1/1 通过；前端 lint 仅既有地图组件 warning、生产构建和文档检查通过。本地后端重启后无待升级、9173 返回 200，启动日志无新错误。全量测试还同步更新了跨归属活动受众拒绝的既有断言文案，状态码仍为 403。来源：`cmd/media.go`、`internal/core/workspace_queries.go::QueryPlatformMedia*`、`frontend/src/views/Media.vue`。
 - **媒体页单入口重排（2026-10-22）**：按已选设计稿将超级管理员的独立媒体页改为默认只读全平台，组织→所有者两列筛选与图库并列；普通用户直接进入自己的工作区图库，不显示范围切换。工作区上传改为按需弹窗、移除记忆展开，删除页面顶部重复分页；活动/模板中的素材选择继续按工作区权限过滤。媒体目录 Cypress 2/2、普通工作区文件夹 Cypress 1/1、lint 无错误（仅既有地图告警）、文档与 diff 检查通过；重启后 9173 返回 200、无待升级。来源：`frontend/src/views/Media.vue`、`frontend/cypress/e2e/{media,media-platform-catalog}.cy.js`。
 

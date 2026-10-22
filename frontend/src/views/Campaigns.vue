@@ -216,7 +216,7 @@
           <!-- start / pause / resume / scheduled -->
           <template v-if="canManageCampaign(props.row)">
             <a v-if="canStart(props.row)" href="#"
-              @click.prevent="$utils.confirm($t('campaigns.confirmStart'), () => changeCampaignStatus(props.row, 'running'))"
+              @click.prevent="confirmCampaignOperation(props.row, $t('campaigns.start'), $t('campaigns.confirmStart'), () => changeCampaignStatus(props.row, 'running'))"
               data-cy="btn-start" :aria-label="$t('campaigns.start')">
               <b-tooltip :label="$t('campaigns.start')" type="is-dark">
                 <b-icon icon="rocket-launch-outline" size="is-small" />
@@ -224,7 +224,7 @@
             </a>
 
             <a v-if="canPause(props.row)" href="#"
-              @click.prevent="$utils.confirm($t('campaigns.confirmPause'), () => changeCampaignStatus(props.row, 'paused'))" data-cy="btn-pause"
+              @click.prevent="confirmCampaignOperation(props.row, $t('campaigns.pause'), $t('campaigns.confirmPause'), () => changeCampaignStatus(props.row, 'paused'))" data-cy="btn-pause"
               :aria-label="$t('campaigns.pause')">
               <b-tooltip :label="$t('campaigns.pause')" type="is-dark">
                 <b-icon icon="pause-circle-outline" size="is-small" />
@@ -232,7 +232,7 @@
             </a>
 
             <a v-if="canResume(props.row)" href="#"
-              @click.prevent="$utils.confirm($t('campaigns.confirmStart'), () => changeCampaignStatus(props.row, 'running'))"
+              @click.prevent="confirmCampaignOperation(props.row, $t('campaigns.send'), $t('campaigns.confirmStart'), () => changeCampaignStatus(props.row, 'running'))"
               data-cy="btn-resume" :aria-label="$t('campaigns.send')">
               <b-tooltip :label="$t('campaigns.send')" type="is-dark">
                 <b-icon icon="rocket-launch-outline" size="is-small" />
@@ -240,7 +240,7 @@
             </a>
 
             <a v-if="canSchedule(props.row)" href="#"
-              @click.prevent="$utils.confirm($t('campaigns.confirmSchedule'), () => changeCampaignStatus(props.row, 'scheduled'))"
+              @click.prevent="confirmCampaignOperation(props.row, $t('campaigns.schedule'), $t('campaigns.confirmSchedule'), () => changeCampaignStatus(props.row, 'scheduled'))"
               data-cy="btn-schedule" :aria-label="$t('campaigns.schedule')">
               <b-tooltip :label="$t('campaigns.schedule')" type="is-dark">
                 <b-icon icon="clock-start" size="is-small" />
@@ -254,7 +254,7 @@
             </a>
 
             <a v-if="canCancel(props.row)" href="#"
-              @click.prevent="$utils.confirm($t('campaigns.confirmCancel'), () => changeCampaignStatus(props.row, 'cancelled'), null, { type: 'is-danger' })"
+              @click.prevent="confirmCampaignOperation(props.row, $t('globals.buttons.cancel'), $t('campaigns.confirmCancel'), () => changeCampaignStatus(props.row, 'cancelled'), true)"
               data-cy="btn-cancel" :aria-label="$t('globals.buttons.cancel')">
               <b-tooltip :label="$t('globals.buttons.cancel')" type="is-dark">
                 <b-icon icon="cancel" size="is-small" />
@@ -285,7 +285,7 @@
             </b-tooltip>
           </router-link>
           <a v-if="canManageCampaign(props.row)" href="#"
-            @click.prevent="$utils.confirm($t('campaigns.confirmDelete', { name: props.row.name }), () => deleteCampaign(props.row))"
+            @click.prevent="confirmCampaignOperation(props.row, $t('globals.buttons.delete'), $t('campaigns.confirmDelete', { name: props.row.name }), () => deleteCampaign(props.row), true)"
             data-cy="btn-delete" :aria-label="$t('globals.buttons.delete')">
             <b-icon icon="trash-can-outline" size="is-small" />
           </a>
@@ -524,6 +524,25 @@ export default Vue.extend({
       });
     },
 
+    isAdminOtherOwner(campaign) {
+      const ownerID = Number(campaign.ownerUserId || campaign.owner_user_id);
+      return this.$isPlatformAdmin() && ownerID > 0 && ownerID !== Number(this.profile && this.profile.id);
+    },
+
+    confirmCampaignOperation(campaign, action, ordinaryMessage, callback, danger = false) {
+      const otherOwner = this.isAdminOtherOwner(campaign);
+      const message = otherOwner ? this.$t('campaigns.adminOtherOwnerConfirm', {
+        action, name: campaign.name, owner: this.ownerLabel(campaign),
+      }) : ordinaryMessage;
+      let type;
+      if (danger) type = 'is-danger';
+      else if (otherOwner) type = 'is-warning';
+      this.$utils.confirm(message, callback, () => {}, {
+        type,
+        focusOn: otherOwner ? 'cancel' : undefined,
+      });
+    },
+
     openCloneCampaign(campaign) {
       this.cloneItem = campaign;
       this.cloneForm = {
@@ -543,9 +562,16 @@ export default Vue.extend({
       if (targetOrganizationID !== currentOrganizationID) {
         request.target_organization_id = targetOrganizationID;
       }
-      const campaign = await this.$api.cloneCampaign(this.cloneItem.id, request);
-      this.isCloneFormVisible = false;
-      this.$router.push({ name: 'campaign', params: { id: campaign.id } });
+      const clone = async () => {
+        const campaign = await this.$api.cloneCampaign(this.cloneItem.id, request);
+        this.isCloneFormVisible = false;
+        this.$router.push({ name: 'campaign', params: { id: campaign.id } });
+      };
+      if (this.isAdminOtherOwner(this.cloneItem)) {
+        this.confirmCampaignOperation(this.cloneItem, this.$t('globals.buttons.clone'), null, clone);
+      } else {
+        await clone();
+      }
     },
 
     canManageCampaign(campaign) {
@@ -617,11 +643,14 @@ export default Vue.extend({
           });
       };
 
-      this.$utils.confirm(this.$tc(
+      const confirmation = this.$tc(
         'globals.messages.confirmDelete',
         this.numSelectedCampaigns,
         { num: this.numSelectedCampaigns, name: name.toLowerCase() },
-      ), fn, null, { type: 'is-danger' });
+      );
+      const hasOtherOwners = this.bulk.all ? this.$isPlatformAdmin() : this.bulk.checked.some(this.isAdminOtherOwner);
+      const message = hasOtherOwners ? `${confirmation} ${this.$t('campaigns.adminBulkDeleteWarning')}` : confirmation;
+      this.$utils.confirm(message, fn, null, { type: 'is-danger', focusOn: 'cancel' });
     },
   },
 

@@ -193,7 +193,7 @@ export default {
     };
   },
   computed: {
-    ...mapState(['workspace']),
+    ...mapState(['workspace', 'profile']),
     workspaceId() { return Number(this.workspace.organizationId) || 0; },
     canReadFailures() { return this.$canReadCampaignSendErrors(this.campaign); },
     selectableKeys() { return this.report.results.filter(this.canSelect).map(this.rowKey); },
@@ -304,9 +304,16 @@ export default {
       const keys = [...this.selectedKeys];
       const request = this.listRequest;
       if (!this.report.canRetry || !keys.length) return;
-      this.$utils.confirm(this.$t('campaigns.deliveryRetryConfirm', { count: keys.length }), () => {
+      const ownerID = Number(this.campaign.ownerUserId || this.campaign.owner_user_id);
+      const otherOwner = this.$isPlatformAdmin() && ownerID > 0 && ownerID !== Number(this.profile && this.profile.id);
+      const message = otherOwner ? this.$t('campaigns.adminOtherOwnerConfirm', {
+        action: this.$t('campaigns.deliveryRetry', { count: keys.length }),
+        name: this.campaign.name,
+        owner: this.campaign.ownerName || this.campaign.ownerUsername || '-',
+      }) : this.$t('campaigns.deliveryRetryConfirm', { count: keys.length });
+      this.$utils.confirm(message, () => {
         if (this.active && request === this.listRequest) this.retry(keys);
-      });
+      }, () => {}, otherOwner ? { type: 'is-warning', focusOn: 'cancel' } : undefined);
     },
     async retry(keys) {
       if (this.retrying) return;

@@ -82,6 +82,8 @@ A user role is a collection of user related permissions. User roles are attached
 |             | campaigns:test         | Send campaign test messages; campaign management, ownership, SMTP, and API scope checks still apply |
 |             | campaigns:schedule    | Schedule campaign delivery; campaign management, ownership, SMTP, and API scope checks still apply |
 |             | campaigns:control     | Pause, cancel, unschedule, or archive campaigns |
+
+The built-in Super Admin can manage another owner's campaign across workspaces. The admin UI confirms the campaign and owner before changing or saving it. The campaign keeps its original owner, audience, SMTP account, quotas, and audit history; an administrator's action is logged under the administrator. Personal API keys cannot use the cross-owner sending exception. Other roles still require their own workspace, owner, and action permissions.
 |             | campaigns:recipients   | View individual recipient details; requires customer read access, tracking, and the campaign privacy boundary. Public-pool rows additionally require `pools:get` and follow organization scope and e-mail masking. |
 | bounces     | bounces:get             | Get email bounce records                                                                                                                                                                                                             |
 |             | bounces:manage          | View and process bounced email workflows; destructive actions use their dedicated permissions |

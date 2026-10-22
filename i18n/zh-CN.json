@@ -2303,6 +2303,8 @@
     "campaigns.confirmPause": "暂停此活动？",
     "campaigns.confirmCancel": "取消此活动？尚未收到邮件的收件人将不再收到。",
     "campaigns.confirmStart": "立即开始发送此活动？",
+    "campaigns.adminOtherOwnerConfirm": "即将对 {owner} 的营销活动“{name}”执行“{action}”。这会影响他人的活动，确认继续吗？",
+    "campaigns.adminBulkDeleteWarning": "所选范围可能包含其他人的营销活动，请核对后再删除。",
     "maintenance.dataLabel": "数据",
     "organizations.smtpTitle": "组织营销 SMTP",
     "organizations.smtpPoolSelect": "组织发件池",

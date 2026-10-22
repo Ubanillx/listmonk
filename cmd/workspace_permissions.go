@@ -502,6 +502,38 @@ func (a *App) requireManagedWorkspaceCampaign(c echo.Context, access models.Work
 	return scope, nil
 }
 
+// Existing campaign edits must use the saved audience's workspace, not the
+// administrator's currently selected workspace. Other users retain the usual
+// active-workspace rule; personal keys cannot acquire cross-owner access.
+func campaignAdminOperationAccess(access models.WorkspaceAccess, camp models.Campaign) models.WorkspaceAccess {
+	if !access.PlatformAdmin {
+		return access
+	}
+	access.OrganizationID = 0
+	access.Personal = true
+	if camp.OrganizationID.Valid {
+		access.OrganizationID = int(camp.OrganizationID.Int)
+		access.Personal = false
+	}
+	return access
+}
+
+func (a *App) requireCampaignAudienceListsForMutation(c echo.Context, access models.WorkspaceAccess, camp models.Campaign, ids []int) error {
+	if !access.PlatformAdmin || auth.IsPersonalIntegrationToken(c) {
+		return a.requireWorkspaceCustomerListIDsForRequest(c, access, ids, true)
+	}
+	for _, id := range ids {
+		scope, err := a.requireManagedWorkspaceList(c, access, id)
+		if err != nil {
+			return err
+		}
+		if scope.OrganizationID != camp.OrganizationID || scope.OwnerUserID != camp.OwnerUserID || scope.TransferPendingAt.Valid || scope.OrganizationArchived {
+			return echo.NewHTTPError(http.StatusForbidden, "campaign audience must belong to its saved owner and workspace")
+		}
+	}
+	return nil
+}
+
 // requireSensitiveWorkspaceCampaign protects recipient identities. Aggregate
 // analytics can be inspected by organization managers, but recipient details
 // remain available only to the campaign owner with the pre-existing analytics
@@ -566,7 +598,11 @@ func (a *App) requireCampaignAnalytics(c echo.Context, access models.WorkspaceAc
 // Workspace predicates run in Core first, so customer_list-role IDs can only narrow a
 // caller's active workspace and can never grant access across an organization.
 func (a *App) queryReadableWorkspaceLists(c echo.Context, access models.WorkspaceAccess, query customerListQuery) ([]models.CustomerList, int, error) {
-	all, _, err := a.core.QueryWorkspaceLists(access, query.search, query.typ, query.optin, query.status, query.tags, query.orderBy, query.order, 0, 0)
+	queryLists := a.core.QueryWorkspaceLists
+	if query.allOwners {
+		queryLists = a.core.QueryPlatformPrivateLists
+	}
+	all, _, err := queryLists(access, query.search, query.typ, query.optin, query.status, query.tags, query.orderBy, query.order, 0, 0)
 	if err != nil {
 		return nil, 0, err
 	}

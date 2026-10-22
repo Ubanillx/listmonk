@@ -508,6 +508,9 @@ func (a *App) UpdateCampaign(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	if !auth.IsPersonalIntegrationToken(c) {
+		access = campaignAdminOperationAccess(access, cm)
+	}
 
 	if !canEditCampaign(cm.Status) {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("campaigns.cantUpdate"))
@@ -552,7 +555,7 @@ func (a *App) UpdateCampaign(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusBadRequest, "an all-organization public pool campaign requires a first-level public pool audience")
 		}
 	}
-	if err := a.requireWorkspaceCustomerListIDsForRequest(c, access, regularListIDs, true); err != nil {
+	if err := a.requireCampaignAudienceListsForMutation(c, access, cm, regularListIDs); err != nil {
 		return err
 	}
 	if err := a.requireUsableCampaignResources(c, access, o); err != nil {
@@ -668,6 +671,9 @@ func (a *App) UpdateCampaignStatus(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	if !auth.IsPersonalIntegrationToken(c) {
+		access = campaignAdminOperationAccess(access, current)
+	}
 	user := auth.GetUser(c)
 	if permission := campaignStatusPermission(req.Status); permission != "" {
 		if err := requireLegacyPermission(user, permission); err != nil {
@@ -678,7 +684,7 @@ func (a *App) UpdateCampaignStatus(c echo.Context) error {
 		if err := requireAPIKeyScope(c, apiKeyScopeCampaignsSend); err != nil {
 			return err
 		}
-		if err := requireCampaignSendOwnership(user, current); err != nil {
+		if err := requireCampaignSendOwnership(c, current); err != nil {
 			return err
 		}
 	}
@@ -968,6 +974,9 @@ func (a *App) TestCampaign(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	if !auth.IsPersonalIntegrationToken(c) {
+		access = campaignAdminOperationAccess(access, saved)
+	}
 	req.PoolScope = saved.PoolScope
 	// The test form historically omitted messenger when it used the campaign's
 	// saved value. Resolve that value before validation and SMTP checks; an
@@ -998,7 +1007,7 @@ func (a *App) TestCampaign(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusBadRequest, "an all-organization public pool campaign requires a first-level public pool audience")
 		}
 	}
-	if err := a.requireWorkspaceCustomerListIDsForRequest(c, access, regularListIDs, true); err != nil {
+	if err := a.requireCampaignAudienceListsForMutation(c, access, saved, regularListIDs); err != nil {
 		return err
 	}
 	if err := a.requireUsableCampaignResources(c, access, req); err != nil {
@@ -1030,11 +1039,7 @@ func (a *App) TestCampaign(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	// Platform administrators have global management visibility, but must not
-	// initiate delivery on behalf of another account. The campaign owner must
-	// explicitly perform both scheduling/running and test sends so the message
-	// can only resolve that owner's personal SMTP pool.
-	if err := requireCampaignSendOwnership(auth.GetUser(c), camp); err != nil {
+	if err := requireCampaignSendOwnership(c, camp); err != nil {
 		return err
 	}
 	if req.SMTPSource != "" {
@@ -1118,23 +1123,21 @@ func (a *App) TestCampaign(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{true})
 }
 
-// requireCampaignSendOwnership prevents a platform administrator's global
-// read/manage access from becoming an ability to send through another user's
-// personal SMTP credentials. It is intentionally applied to every messenger,
-// not only e-mail, because a campaign send is an account-owned operation.
-//
-// The exception is a platform-level public-pool campaign: its delivery never
-// touches the owner's personal SMTP (it rotates the target organizations'
-// member SMTP pools), so a caller holding campaigns:public_pool_send may
-// start or schedule it. The permission holder stays auditable through the
-// campaign audit trail.
-func requireCampaignSendOwnership(user auth.User, camp models.Campaign) error {
+// A highest administrator may act for another campaign owner from an interactive
+// account, while personal API keys remain bound to their creator's workspace.
+// Delivery still resolves the saved campaign owner's SMTP and is audited as
+// the administrator's action, not by changing ownership.
+func requireCampaignSendOwnership(c echo.Context, camp models.Campaign) error {
+	user := auth.GetUser(c)
 	if strings.HasPrefix(camp.Messenger, "email") {
 		if err := requireLegacyPermission(user, auth.PermMailboxesUse); err != nil {
 			return err
 		}
 	}
 	if camp.PoolScope == models.CampaignPoolScopeAllOrganizations && user.HasPerm(auth.PermCampaignsPublicPoolSend) {
+		return nil
+	}
+	if user.IsPlatformAdmin() && !auth.IsPersonalIntegrationToken(c) {
 		return nil
 	}
 	if !camp.OwnerUserID.Valid || camp.OwnerUserID.Int != user.ID {

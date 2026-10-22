@@ -284,11 +284,39 @@ func (a *App) GetAllMedia(c echo.Context) error {
 	if err := requireLegacyPermission(user, auth.PermMediaGet); err != nil {
 		return err
 	}
+	platformCatalog, err := requirePlatformMediaCatalog(c)
+	if err != nil {
+		return err
+	}
 	var (
 		query = c.FormValue("query")
 
 		pg = a.pg.NewFromURL(c.Request().URL.Query())
 	)
+	if platformCatalog {
+		organizationID, err := mediaCategoryFilter(c.QueryParam("organization_id"))
+		if err != nil {
+			return err
+		}
+		ownerID, err := mediaCategoryFilter(c.QueryParam("owner_user_id"))
+		if err != nil {
+			return err
+		}
+		res, total, err := a.core.QueryPlatformMedia(access, a.cfg.MediaUpload.Provider, query, organizationID, ownerID, pg.Offset, pg.Limit)
+		if err != nil {
+			return err
+		}
+		for i := range res {
+			a.setWorkspaceMediaURLs(&res[i])
+			res[i].URL += "?scope=all_owners"
+			if res[i].ThumbURL.Valid {
+				res[i].ThumbURL.String += "?scope=all_owners"
+			}
+		}
+		return c.JSON(http.StatusOK, okResp{models.PageResults{
+			Results: res, Total: total, Page: pg.Page, PerPage: pg.PerPage,
+		}})
+	}
 	folderID, err := parseMediaFolderFilter(c.QueryParam("folder_id"))
 	if err != nil {
 		return err
@@ -323,8 +351,27 @@ func (a *App) GetMedia(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	platformCatalog, err := requirePlatformMediaCatalog(c)
+	if err != nil {
+		return err
+	}
 	// Fetch the media item from the DB.
 	id := getID(c)
+	if platformCatalog {
+		if err := requireLegacyPermission(auth.GetUser(c), auth.PermMediaGet); err != nil {
+			return err
+		}
+		out, err := a.core.GetPlatformMediaByID(access, a.cfg.MediaUpload.Provider, id)
+		if err != nil {
+			return err
+		}
+		a.setWorkspaceMediaURLs(&out)
+		out.URL += "?scope=all_owners"
+		if out.ThumbURL.Valid {
+			out.ThumbURL.String += "?scope=all_owners"
+		}
+		return c.JSON(http.StatusOK, okResp{out})
+	}
 	if _, err := a.requireReadableWorkspaceResource(c, access, resourceMedia, id, auth.PermMediaGet); err != nil {
 		return err
 	}
@@ -438,6 +485,24 @@ func (a *App) serveWorkspaceOrPublicMediaByID(c echo.Context, id int, rawFilenam
 	if requested == "" || requested == "." || requested == "/" {
 		return echo.NewHTTPError(http.StatusBadRequest, "missing media file path")
 	}
+	platformCatalog, err := requirePlatformMediaCatalog(c)
+	if err != nil {
+		return err
+	}
+	if platformCatalog {
+		if err := requireLegacyPermission(auth.GetUser(c), auth.PermMediaGet); err != nil {
+			return err
+		}
+		access, err := a.workspaceAccess(c)
+		if err != nil {
+			return err
+		}
+		out, err := a.core.GetPlatformMediaByID(access, a.cfg.MediaUpload.Provider, id)
+		if err != nil || (requested != out.Filename && requested != out.Thumb) {
+			return echo.NewHTTPError(http.StatusNotFound, "media file not found")
+		}
+		return a.streamMediaBlob(c, requested)
+	}
 
 	// Authenticated browser/API requests are checked against the exact media
 	// row. The active workspace cookie/header is still required for private and
@@ -471,6 +536,52 @@ func (a *App) serveWorkspaceOrPublicMediaByID(c echo.Context, id int, rawFilenam
 		return echo.NewHTTPError(http.StatusNotFound, "media file not found")
 	}
 	return a.streamMediaBlob(c, requested)
+}
+
+func requirePlatformMediaCatalog(c echo.Context) (bool, error) {
+	scope := c.QueryParam("scope")
+	if scope == "" {
+		return false, nil
+	}
+	if scope != "all_owners" {
+		return false, echo.NewHTTPError(http.StatusBadRequest, "invalid media scope")
+	}
+	if _, ok := c.Get(auth.UserHTTPCtxKey).(auth.User); !ok || !auth.GetUser(c).IsPlatformAdmin() || auth.IsPersonalIntegrationToken(c) {
+		return false, echo.NewHTTPError(http.StatusForbidden, "platform administrator required")
+	}
+	return true, nil
+}
+
+func mediaCategoryFilter(raw string) (int, error) {
+	if raw == "" {
+		return -1, nil
+	}
+	id, err := strconv.Atoi(raw)
+	if err != nil || id < 0 {
+		return 0, echo.NewHTTPError(http.StatusBadRequest, "invalid media category")
+	}
+	return id, nil
+}
+
+func (a *App) GetPlatformMediaCategories(c echo.Context) error {
+	if _, err := requirePlatformMediaCatalog(c); err != nil {
+		return err
+	}
+	if c.QueryParam("scope") != "all_owners" {
+		return echo.NewHTTPError(http.StatusBadRequest, "platform media scope required")
+	}
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermMediaGet); err != nil {
+		return err
+	}
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
+	categories, err := a.core.QueryPlatformMediaCategories(access, a.cfg.MediaUpload.Provider)
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, okResp{categories})
 }
 
 func mediaFilename(raw string) string {

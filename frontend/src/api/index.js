@@ -751,6 +751,14 @@ export const getMediaFolders = () => http.get(
   { loading: models.media },
 );
 
+export const getPlatformMediaCategories = () => http.get('/api/media/categories', {
+  params: { scope: 'all_owners' },
+});
+
+export const queryPlatformMedia = (params) => http.get('/api/media', {
+  params: { ...params, scope: 'all_owners' }, loading: models.media,
+});
+
 export const getMedia = async (params) => http.get(
   '/api/media',
   { params, loading: models.media, store: models.media },

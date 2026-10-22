@@ -21,6 +21,19 @@ another owner/workspace, or its organization is archived. Folder visibility
 controls new sending authorization; it does not revoke an already delivered link.
 Authenticated library URLs and list APIs retain their existing permissions.
 
+The Super Admin media page has an explicit read-only platform catalog. Its
+virtual categories are computed from each file's organization and owner;
+original folders, ownership, object names, and campaign references are not
+changed. `GET /api/media/categories?scope=all_owners` returns
+`organization_id`, `organization_name`, `owner_user_id`, `owner_name`, and
+`media_count` for each group. `GET /api/media?scope=all_owners` accepts optional
+`organization_id` and `owner_user_id` (zero means personal/no owner) alongside
+normal search and pagination. Result rows include `folder_name` and their
+exact-ID file URLs carry the same scope. `GET /api/media/{id}` and the exact-ID
+file URL accept this scope for read-only access. Only Super Admin sessions or
+legacy administrator credentials can use it; personal API keys cannot. Normal
+list, upload, folder, media-use and sending APIs do not inherit this scope.
+
 Configure `app.root_url` with a publicly reachable HTTPS origin, route
 `/email-media/` through the reverse proxy, and retain the uploaded files. Some
 mail clients require the recipient to allow remote images. System data exports
@@ -29,6 +42,7 @@ and raw one-off transactional API attachments retain their original behavior.
 Method | Endpoint                                             | Description
 -------|------------------------------------------------------|---------------------------------
 GET    | [/api/media/folders](#get-apimediafolders)           | Get visible media folders
+GET    | `/api/media/categories?scope=all_owners`             | Super Admin virtual organization/owner groups
 POST   | [/api/media/folders](#post-apimediafolders)          | Create a media folder
 PUT    | [/api/media/folders/{folder_id}](#put-apimediafoldersfolder_id) | Rename a media folder
 PUT    | [/api/media/folders/{folder_id}/move](#put-apimediafoldersfolder_idmove) | Move a media folder

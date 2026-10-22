@@ -23,8 +23,19 @@ type Media struct {
 	Meta             models.JSON `db:"meta" json:"meta"`
 	URL              string      `json:"url"`
 	FolderVisibility string      `db:"folder_visibility" json:"-"`
+	FolderName       string      `db:"folder_name" json:"folder_name,omitempty"`
 
 	Total int `db:"total" json:"-"`
+}
+
+// OwnerCategory is a virtual grouping for the platform media inventory.
+// It does not create folders or change the underlying media workspace.
+type OwnerCategory struct {
+	OrganizationID   int    `db:"organization_id" json:"organization_id"`
+	OrganizationName string `db:"organization_name" json:"organization_name"`
+	OwnerUserID      int    `db:"owner_user_id" json:"owner_user_id"`
+	OwnerName        string `db:"owner_name" json:"owner_name"`
+	MediaCount       int    `db:"media_count" json:"media_count"`
 }
 
 // MediaFolder is a logical folder in the media library. Folders are stored in

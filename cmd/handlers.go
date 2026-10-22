@@ -272,6 +272,7 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.DELETE("/api/campaigns/:id", apiKeyScope(hasID(a.DeleteCampaign), apiKeyScopeCampaignsWrite))
 
 		g.GET("/api/media/folders", apiKeyScope(a.GetMediaFolders, apiKeyScopeMediaRead))
+		g.GET("/api/media/categories", a.GetPlatformMediaCategories)
 		g.POST("/api/media/folders", apiKeyScope(a.CreateMediaFolder, apiKeyScopeMediaWrite))
 		g.PUT("/api/media/folders/:id", apiKeyScope(hasID(a.RenameMediaFolder), apiKeyScopeMediaWrite))
 		g.PUT("/api/media/folders/:id/move", apiKeyScope(hasID(a.MoveMediaFolder), apiKeyScopeMediaWrite))

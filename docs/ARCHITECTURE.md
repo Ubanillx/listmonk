@@ -1,4 +1,8 @@
 # Listmonk 工程架构与运行指南
+## 超级管理员全平台媒体分类（2026-10-22）
+
+管理端独立媒体页不再提供工作区/全平台切换：超级管理员进入即看到只读全平台图库，普通用户进入即看到当前个人或组织工作区的可写文件夹图库；活动/模板内的媒体选择弹窗仍始终使用工作区范围。管理员图库采用组织→所有者两列渐进筛选，由 `GET /api/media/categories?scope=all_owners` 生成虚拟分类与计数。选中组织/所有者后，`GET /api/media?scope=all_owners&organization_id=...&owner_user_id=...` 在服务端过滤和分页，文件卡片显示原组织、所有者及直接文件夹名；此分类不创建、移动或修改真实 `media_folders` 和对象文件。工作区图库的上传表单仅在点击上传后以弹窗呈现，不在页面默认展开；图库仅在底部保留一处分页。详情和精确 ID 的受保护文件 URL 只在显式 `scope=all_owners` 且会话身份为超级管理员时走独立只读授权；非管理员、个人 API Key 和默认媒体选择器仍按原工作区/目录权限过滤。全平台视图不提供上传、拖放、删除或作为活动/模板素材选择的能力。来源：`cmd/media.go`、`internal/core/workspace_queries.go::QueryPlatformMedia*`、`frontend/src/views/Media.vue`。
+
 
 ## 活动失败客户定向补发（2026-10-21）
 

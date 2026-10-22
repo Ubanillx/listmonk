@@ -731,6 +731,86 @@ func (c *Core) QueryWorkspaceMedia(access models.WorkspaceAccess, provider strin
 	return out, total, nil
 }
 
+// QueryPlatformMedia is a read-only catalog, separate from the workspace
+// selector used by uploads, campaign attachments and ordinary media browsing.
+func (c *Core) QueryPlatformMedia(access models.WorkspaceAccess, provider, search string, organizationID, ownerID, offset, limit int) ([]media.Media, int, error) {
+	if !access.PlatformAdmin {
+		return nil, 0, echo.NewHTTPError(http.StatusForbidden, "platform administrator required")
+	}
+	search = strings.TrimSpace(search)
+	if search != "" {
+		search = "%" + search + "%"
+	}
+	var out []media.Media
+	if err := c.db.Select(&out, `SELECT COUNT(*) OVER() AS total, m.*,
+		COALESCE(mf.visibility, '') AS folder_visibility, COALESCE(mf.name, '') AS folder_name,
+		COALESCE(u.username, '') AS owner_username, COALESCE(u.name, '') AS owner_name,
+		COALESCE(o.name, '') AS organization_name
+		FROM media m
+		LEFT JOIN media_folders mf ON mf.id=m.folder_id
+		LEFT JOIN users u ON u.id=COALESCE(m.owner_user_id,m.original_owner_user_id)
+		LEFT JOIN organizations o ON o.id=m.organization_id
+		WHERE m.provider=$1 AND ($2='' OR m.filename ILIKE $2)
+			AND ($3 < 0 OR COALESCE(m.organization_id,0)=$3)
+			AND ($4 < 0 OR COALESCE(m.owner_user_id,m.original_owner_user_id,0)=$4)
+		ORDER BY m.created_at DESC, m.id DESC
+		OFFSET $5 LIMIT (CASE WHEN $6 < 1 THEN NULL ELSE $6 END)`,
+		provider, search, organizationID, ownerID, offset, limit); err != nil {
+		return nil, 0, workspaceQueryError("fetching platform media", err)
+	}
+	for i := range out {
+		if out[i].FolderVisibility != "" {
+			out[i].Visibility = out[i].FolderVisibility
+		}
+	}
+	total := 0
+	if len(out) > 0 {
+		total = out[0].Total
+	}
+	return out, total, nil
+}
+
+func (c *Core) QueryPlatformMediaCategories(access models.WorkspaceAccess, provider string) ([]media.OwnerCategory, error) {
+	if !access.PlatformAdmin {
+		return nil, echo.NewHTTPError(http.StatusForbidden, "platform administrator required")
+	}
+	var out []media.OwnerCategory
+	if err := c.db.Select(&out, `SELECT COALESCE(m.organization_id,0) AS organization_id,
+		COALESCE(o.name,'') AS organization_name, COALESCE(m.owner_user_id,m.original_owner_user_id,0) AS owner_user_id,
+		COALESCE(NULLIF(u.name,''),u.username,'') AS owner_name, COUNT(*) AS media_count
+		FROM media m LEFT JOIN organizations o ON o.id=m.organization_id
+		LEFT JOIN users u ON u.id=COALESCE(m.owner_user_id,m.original_owner_user_id)
+		WHERE m.provider=$1
+		GROUP BY m.organization_id,o.name,COALESCE(m.owner_user_id,m.original_owner_user_id,0),u.name,u.username
+		ORDER BY COALESCE(o.name,''),COALESCE(u.name,u.username,''),COALESCE(m.owner_user_id,m.original_owner_user_id,0)`, provider); err != nil {
+		return nil, workspaceQueryError("fetching platform media categories", err)
+	}
+	return out, nil
+}
+
+func (c *Core) GetPlatformMediaByID(access models.WorkspaceAccess, provider string, id int) (media.Media, error) {
+	if !access.PlatformAdmin {
+		return media.Media{}, echo.NewHTTPError(http.StatusForbidden, "platform administrator required")
+	}
+	var out media.Media
+	if err := c.db.Get(&out, `SELECT m.*, COALESCE(mf.visibility,'') AS folder_visibility,
+		COALESCE(mf.name,'') AS folder_name, COALESCE(u.username,'') AS owner_username,
+		COALESCE(u.name,'') AS owner_name, COALESCE(o.name,'') AS organization_name
+		FROM media m LEFT JOIN media_folders mf ON mf.id=m.folder_id
+		LEFT JOIN users u ON u.id=COALESCE(m.owner_user_id,m.original_owner_user_id)
+		LEFT JOIN organizations o ON o.id=m.organization_id
+		WHERE m.id=$1 AND m.provider=$2`, id, provider); err != nil {
+		if err == sql.ErrNoRows {
+			return media.Media{}, ErrNotFound
+		}
+		return media.Media{}, workspaceQueryError("fetching platform media", err)
+	}
+	if out.FolderVisibility != "" {
+		out.Visibility = out.FolderVisibility
+	}
+	return out, nil
+}
+
 // GetWorkspaceMediaByID resolves one exact media row through the active
 // workspace. Besides a directly visible media record, an image may be readable
 // because it is attached to a readable template or campaign. That derived

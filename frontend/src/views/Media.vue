@@ -1,16 +1,43 @@
 <template>
-  <section class="media-files">
-    <h1 class="title is-4">
-      {{ $t('media.title') }}
-      <span v-if="media.total > 0">({{ media.total }})</span>
-      <span class="has-text-grey-light"> / {{ serverConfig.media_provider }}</span>
-    </h1>
+  <section class="media-files" :class="{ 'is-platform-catalog': adminView }">
+    <header class="media-page-header">
+      <h1 class="title is-4 mb-2">{{ $t('media.title') }}</h1>
+      <p v-if="adminView" class="has-text-grey mb-0">{{ $t('media.catalogHelp') }}</p>
+    </header>
 
     <b-loading :active="isProcessing || loading.media" :is-full-page="false" />
 
-    <section class="wrap gallery mt-6">
-      <div class="columns is-vcentered mb-4">
-        <div class="column">
+    <section class="media-surface gallery mt-5">
+      <div class="media-layout">
+        <aside v-if="adminView" class="media-category-column" :aria-label="$t('media.organizations')" data-cy="media-organizations">
+          <h2>{{ $t('media.organizations') }}</h2>
+          <button type="button" class="media-category-option" :class="{ 'is-active': categoryOrganizationID === null }"
+            @click="selectOrganization(null)">
+            <b-icon icon="earth" size="is-small" />
+            <span>{{ $t('media.allOrganizations') }}</span><span class="media-category-count">{{ platformMediaCount }}</span>
+          </button>
+          <button v-for="group in categoryGroups" :key="group.id" type="button" class="media-category-option"
+            :class="{ 'is-active': categoryOrganizationID === group.id }" @click="selectOrganization(group.id)">
+            <b-icon :icon="group.id ? 'office-building-outline' : 'account-outline'" size="is-small" />
+            <span>{{ group.name }}</span><span class="media-category-count">{{ group.count }}</span>
+          </button>
+        </aside>
+        <aside v-if="adminView" class="media-category-column" :aria-label="$t('media.owners')" data-cy="media-owners">
+          <h2>{{ $t('media.owners') }}</h2>
+          <button type="button" class="media-category-option" :class="{ 'is-active': categoryOwnerID === null }"
+            @click="selectOwner(null)">
+            <b-icon icon="account-group-outline" size="is-small" />
+            <span>{{ $t('media.allOwners') }}</span><span class="media-category-count">{{ visibleOwnerCount }}</span>
+          </button>
+          <button v-for="owner in visibleOwners" :key="owner.id" type="button" class="media-category-option"
+            :class="{ 'is-active': categoryOwnerID === owner.id }" @click="selectOwner(owner.id)">
+            <b-icon icon="account-outline" size="is-small" />
+            <span>{{ owner.name }}</span><span class="media-category-count">{{ owner.count }}</span>
+          </button>
+        </aside>
+        <div class="media-main">
+      <div class="media-toolbar mb-4">
+        <div class="media-search">
           <form @submit.prevent="onQueryMedia" class="search">
             <div>
               <b-field addons class="lm-search-field">
@@ -24,7 +51,7 @@
             </div>
           </form>
         </div>
-        <div v-if="canWriteCurrentFolder" class="column is-narrow">
+        <div v-if="canWriteCurrentFolder" class="media-toolbar-actions">
           <div class="buttons">
             <b-button @click="onCreateFolder" icon-left="folder-plus-outline" data-cy="btn-create-folder">
               {{ $t('media.createFolder') }}
@@ -36,7 +63,17 @@
         </div>
       </div>
 
-      <nav class="breadcrumb media-breadcrumb" :aria-label="$t('media.title')">
+      <div v-if="adminView" class="media-catalog-context" data-cy="media-catalog-context">
+        <nav class="breadcrumb mb-0" :aria-label="$t('media.title')">
+          <ul>
+            <li><span>{{ $t('media.platform') }}</span></li>
+            <li v-if="categoryOrganizationID !== null"><span>{{ selectedOrganizationName }}</span></li>
+            <li v-if="categoryOwnerID !== null" class="is-active"><span>{{ selectedOwnerName }}</span></li>
+          </ul>
+        </nav>
+        <span>{{ $t('media.fileCount', { count: shownMedia.total }) }} <b-tag size="is-small" type="is-light">{{ $t('media.readOnly') }}</b-tag></span>
+      </div>
+      <nav v-else class="breadcrumb media-breadcrumb" :aria-label="$t('media.title')">
         <ul>
           <li :class="{ 'is-active': currentFolderId === 0, 'drop-target': dragOverFolderId === 0 }"
             @dragover.prevent="onDragOverFolder(0)" @dragleave="onDragLeaveFolder(0)"
@@ -54,46 +91,11 @@
           </li>
         </ul>
       </nav>
-      <p class="media-folder-help has-text-grey is-size-7 mb-4">{{ $t('media.folderHelp') }}</p>
-
-      <b-collapse v-if="canWriteCurrentFolder" v-model="showUploadForm" animation="">
-        <form @submit.prevent="onSubmit" class="mb-6" data-cy="upload">
-          <div>
-            <b-field :label="$t('media.upload')">
-              <b-upload v-model="form.files" drag-drop multiple expanded>
-                <div class="has-text-centered section">
-                  <p>
-                    <b-icon icon="file-upload-outline" size="is-large" />
-                  </p>
-                  <p>{{ $t('media.uploadHelp') }}</p>
-                </div>
-              </b-upload>
-            </b-field>
-            <div class="tags" v-if="form.files.length > 0">
-              <b-tag v-for="(f, i) in form.files" :key="i" size="is-medium" closable @close="removeUploadFile(i)">
-                {{ f.name }}
-              </b-tag>
-            </div>
-            <div class="buttons">
-              <b-button native-type="submit" type="is-primary" icon-left="file-upload-outline"
-                :disabled="form.files.length === 0" :loading="isProcessing">
-                {{ $tc('media.upload') }}
-              </b-button>
-            </div>
-          </div>
-        </form>
-      </b-collapse>
-
-      <!-- Pagination -->
-      <div class="pagination-wrapper mt-5">
-        <app-pagination :total="media.total" :current="queryParams.page" :per-page="media.perPage"
-          @change="onPageChange" @per-page-change="onPerPageChange" />
-      </div>
 
       <div v-if="loading.media" class="has-text-centered py-6">
         <b-loading :active="loading.media" />
       </div>
-      <div v-else-if="(visibleFolders.length > 0) || (media.results && media.results.length > 0)" class="media-browser-content">
+      <div v-else-if="(visibleFolders.length > 0) || (shownMedia.results && shownMedia.results.length > 0)" class="media-browser-content">
         <div v-if="visibleFolders.length > 0" class="folder-grid">
           <div v-for="folder in visibleFolders" :key="`folder-${folder.id}`" class="folder-item"
             :class="{ 'is-drop-target': dragOverFolderId === folder.id }"
@@ -126,8 +128,8 @@
           </div>
         </div>
 
-        <div v-if="media.results && media.results.length > 0" class="grid">
-          <div v-for="item in media.results" :key="item.id" class="item" :draggable="canManageMedia(item)"
+        <div v-if="shownMedia.results && shownMedia.results.length > 0" class="grid">
+          <div v-for="item in shownMedia.results" :key="item.id" class="item" :draggable="canManageMedia(item)"
             @dragstart="onDragStart('media', item.id, $event)" @dragend="onDragEnd">
             <div class="thumb">
               <a @click="(e) => onMediaSelect(item, e)" :href="item.url" target="_blank" rel="noopener noreferer"
@@ -152,6 +154,10 @@
               <p class="filename" :title="item.filename">{{ item.filename }}</p>
               <p class="date">{{ $utils.niceDate(item.createdAt, false) }}</p>
               <p v-if="item.ownerName || item.ownerUsername" class="date">{{ ownerLabel(item) }}</p>
+              <p v-if="adminView" class="date">
+                {{ item.organizationName || $t('organizations.personalSpace') }}
+                <span v-if="item.folderName"> / {{ item.folderName }}</span>
+              </p>
               <b-tag v-if="transferPendingAt(item)" size="is-small" type="is-warning" class="is-light">
                 {{ $t('shared.transferPending', { date: $utils.niceDate(transferPendingAt(item), true) }) }}
               </b-tag>
@@ -163,15 +169,40 @@
       <!-- Empty State -->
       <div v-else-if="!loading.media">
         <empty-placeholder
-          :label="queryParams.query ? $t('globals.messages.emptyState') : $t('media.folderEmpty')" />
+          :label="adminView || queryParams.query ? $t('globals.messages.emptyState') : $t('media.folderEmpty')" />
       </div>
 
       <!-- Pagination -->
       <div class="pagination-wrapper mt-5">
-        <app-pagination :total="media.total" :current="queryParams.page" :per-page="media.perPage"
+        <app-pagination :total="shownMedia.total" :current="queryParams.page" :per-page="shownMedia.perPage"
           @change="onPageChange" @per-page-change="onPerPageChange" />
       </div>
+        </div>
+      </div>
     </section>
+    <b-modal :active.sync="showUploadForm" :aria-modal="true" :width="560" scroll="keep" trap-focus>
+      <form class="media-upload-dialog" @submit.prevent="onSubmit" data-cy="upload">
+        <h2 class="title is-5">{{ $t('media.upload') }}</h2>
+        <b-field :label="$t('media.upload')">
+          <b-upload v-model="form.files" drag-drop multiple expanded>
+            <div class="has-text-centered section">
+              <b-icon icon="file-upload-outline" size="is-large" />
+              <p>{{ $t('media.uploadHelp') }}</p>
+            </div>
+          </b-upload>
+        </b-field>
+        <div v-if="form.files.length > 0" class="tags">
+          <b-tag v-for="(f, i) in form.files" :key="i" size="is-medium" closable @close="removeUploadFile(i)">{{ f.name }}</b-tag>
+        </div>
+        <div class="buttons is-right mt-5">
+          <b-button @click="showUploadForm = false">{{ $t('globals.buttons.cancel') }}</b-button>
+          <b-button native-type="submit" type="is-primary" icon-left="file-upload-outline"
+            :disabled="form.files.length === 0" :loading="isProcessing">
+            {{ $t('media.upload') }}
+          </b-button>
+        </div>
+      </form>
+    </b-modal>
   </section>
 </template>
 
@@ -202,6 +233,10 @@ export default Vue.extend({
       uploaded: 0,
       showUploadForm: false,
       folders: [],
+      adminMedia: { results: [], total: 0, perPage: 20 },
+      categories: [],
+      categoryOrganizationID: null,
+      categoryOwnerID: null,
       currentFolderId: 0,
       dragOverFolderId: null,
 
@@ -219,6 +254,15 @@ export default Vue.extend({
     },
 
     getMedia() {
+      if (this.adminView) {
+        return this.$api.queryPlatformMedia({
+          page: this.queryParams.page,
+          per_page: this.queryParams.perPage,
+          query: this.queryParams.query,
+          ...(this.categoryOrganizationID !== null ? { organization_id: this.categoryOrganizationID } : {}),
+          ...(this.categoryOwnerID !== null ? { owner_user_id: this.categoryOwnerID } : {}),
+        }).then((page) => { this.adminMedia = page; });
+      }
       return this.$api.getMedia({
         page: this.queryParams.page,
         per_page: this.queryParams.perPage,
@@ -238,7 +282,28 @@ export default Vue.extend({
     },
 
     refreshLibrary() {
+      if (this.adminView) {
+        return this.$api.getPlatformMediaCategories().then((categories) => {
+          this.categories = Array.isArray(categories) ? categories : [];
+          return this.getMedia();
+        });
+      }
       return this.loadFolders().then(() => this.getMedia());
+    },
+
+    selectOrganization(organizationID) {
+      if (this.categoryOrganizationID === organizationID) return;
+      this.categoryOrganizationID = organizationID;
+      this.categoryOwnerID = null;
+      this.queryParams.page = 1;
+      this.getMedia();
+    },
+
+    selectOwner(ownerID) {
+      if (this.categoryOwnerID === ownerID) return;
+      this.categoryOwnerID = ownerID;
+      this.queryParams.page = 1;
+      this.getMedia();
     },
 
     openFolder(id) {
@@ -253,7 +318,6 @@ export default Vue.extend({
 
     onToggleForm() {
       this.showUploadForm = !this.showUploadForm;
-      this.$utils.setPref('media.upload', this.showUploadForm);
     },
 
     onQueryMedia() {
@@ -411,13 +475,12 @@ export default Vue.extend({
         : [];
       if (files.length > 0) {
         this.form.files = files;
-        this.showUploadForm = true;
         this.uploadFiles(files, targetID);
       }
     },
 
     canManageMedia(item) {
-      return this.$canManageResource(item, 'media:manage');
+      return !this.adminView && this.$canManageResource(item, 'media:manage');
     },
 
     folderParentID(folder) {
@@ -438,6 +501,7 @@ export default Vue.extend({
         this.toUpload = 0;
         this.uploaded = 0;
         this.form.files = [];
+        this.showUploadForm = false;
 
         return this.refreshLibrary();
       }
@@ -456,15 +520,68 @@ export default Vue.extend({
   },
 
   computed: {
-    ...mapState(['loading', 'media', 'serverConfig', 'workspace']),
+    ...mapState(['loading', 'media', 'workspace']),
+
+    adminView() {
+      return !this.isModal && this.$isPlatformAdmin();
+    },
 
     canWriteCurrentFolder() {
-      return this.canManageMediaLibrary && (this.currentFolderId === 0
+      return !this.adminView && this.canManageMediaLibrary && (this.currentFolderId === 0
         || (this.folderByID[this.currentFolderId] && this.folderByID[this.currentFolderId].writable));
     },
 
     canManageMediaLibrary() {
       return this.$canCreateWorkspaceResource('media:manage');
+    },
+
+    shownMedia() {
+      return this.adminView ? this.adminMedia : this.media;
+    },
+
+    categoryGroups() {
+      const groups = new Map();
+      this.categories.forEach((row) => {
+        const id = Number(row.organizationId) || 0;
+        if (!groups.has(id)) {
+          groups.set(id, {
+            id, name: row.organizationName || this.$t('organizations.personalSpace'), count: 0, owners: [],
+          });
+        }
+        const group = groups.get(id);
+        group.count += row.mediaCount;
+        group.owners.push({ id: Number(row.ownerUserId) || 0, name: row.ownerName || '-', count: row.mediaCount });
+      });
+      return [...groups.values()];
+    },
+
+    platformMediaCount() {
+      return this.categoryGroups.reduce((total, group) => total + group.count, 0);
+    },
+
+    visibleOwners() {
+      const owners = new Map();
+      this.categoryGroups.filter((group) => this.categoryOrganizationID === null || group.id === this.categoryOrganizationID)
+        .forEach((group) => group.owners.forEach((owner) => {
+          const current = owners.get(owner.id);
+          if (current) current.count += owner.count;
+          else owners.set(owner.id, { ...owner });
+        }));
+      return [...owners.values()].sort((a, b) => a.name.localeCompare(b.name));
+    },
+
+    visibleOwnerCount() {
+      return this.visibleOwners.reduce((total, owner) => total + owner.count, 0);
+    },
+
+    selectedOrganizationName() {
+      const group = this.categoryGroups.find((entry) => entry.id === this.categoryOrganizationID);
+      return group ? group.name : '';
+    },
+
+    selectedOwnerName() {
+      const owner = this.visibleOwners.find((entry) => entry.id === this.categoryOwnerID);
+      return owner ? owner.name : '';
     },
 
     folderByID() {
@@ -476,6 +593,7 @@ export default Vue.extend({
     },
 
     visibleFolders() {
+      if (this.adminView) return [];
       return this.folders.filter((folder) => this.folderParentID(folder) === this.currentFolderId);
     },
 
@@ -513,10 +631,38 @@ export default Vue.extend({
 
   mounted() {
     this.refreshLibrary();
-
-    if (this.$utils.getPref('media.upload')) {
-      this.showUploadForm = true;
-    }
   },
 });
 </script>
+
+<style scoped>
+.media-page-header { margin-bottom: 1.25rem; }
+.media-surface { max-width: none; border: 1px solid var(--lm-color-border); border-radius: var(--lm-radius-md); background: #fff; }
+.media-layout { display: grid; grid-template-columns: minmax(0, 1fr); min-height: 540px; }
+.is-platform-catalog .media-layout { grid-template-columns: 190px 190px minmax(0, 1fr); }
+.media-category-column { padding: 1rem 0.65rem; border-right: 1px solid var(--lm-color-border); }
+.media-category-column h2 { margin: 0 0 0.75rem 0.65rem; font-size: 0.95rem; font-weight: 700; }
+.media-category-option { display: flex; align-items: center; gap: 0.5rem; width: 100%; min-height: 40px; padding: 0.45rem 0.6rem; border: 0; border-radius: 6px; background: transparent; color: #35445d; text-align: left; cursor: pointer; }
+.media-category-option:hover, .media-category-option:focus-visible { background: #f1f5fb; }
+.media-category-option.is-active { background: #eaf2ff; color: #1260d7; font-weight: 600; }
+.media-category-option > span:nth-child(2) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.media-category-count { margin-left: auto; color: #73829a; font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.media-main { min-width: 0; padding: 1rem; }
+.media-toolbar { display: flex; align-items: center; gap: 1rem; }
+.media-search { flex: 1; min-width: 0; }
+.media-toolbar-actions .buttons { margin-bottom: 0; flex-wrap: nowrap; }
+.media-catalog-context { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; color: #6a7890; font-size: 0.85rem; }
+.media-catalog-context > span { white-space: nowrap; }
+.media-catalog-context .tag { margin-left: 0.35rem; }
+.media-upload-dialog { padding: 1.5rem; border-radius: var(--lm-radius-md); background: #fff; }
+@media (max-width: 1100px) { .is-platform-catalog .media-layout { grid-template-columns: 150px 150px minmax(0, 1fr); } }
+@media (max-width: 800px) {
+  .is-platform-catalog .media-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .media-category-column { border-bottom: 1px solid var(--lm-color-border); }
+  .media-category-column:nth-child(2) { border-right: 0; }
+  .media-main { grid-column: 1 / -1; }
+  .media-toolbar { flex-wrap: wrap; }
+  .media-toolbar-actions { width: 100%; }
+  .media-catalog-context { flex-wrap: wrap; }
+}
+</style>

@@ -1208,6 +1208,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#delivery-overview-and-selected-failed-recipient-retry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Delivery overview and selected failed-recipient retry
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#images-in-the-admin-rich-text-editor" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2814,6 +2825,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#delivery-overview-and-selected-failed-recipient-retry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Delivery overview and selected failed-recipient retry
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#images-in-the-admin-rich-text-editor" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3773,6 +3795,12 @@
 <p>The normal <code>data</code> envelope contains <code>results</code>, <code>total</code> (grouped row count), <code>page</code>, <code>per_page</code>, <code>reasons</code> (category/count pairs), <code>recorded_errors</code> (matching failed attempts), <code>historical_errors</code> (all historical count-only failures without details), and <code>can_export</code>. Rows contain <code>recipient_type</code> (<code>private</code>/<code>pool</code>), <code>recipient_id</code>, <code>organization_id</code>, <code>customer_code</code>, <code>name</code>, <code>email</code>, <code>stage</code> (<code>render</code>/<code>send</code>), <code>category</code>, <code>smtp_code</code> (zero when unavailable), <code>error</code>, <code>count</code>, <code>first_at</code> and <code>last_at</code>. Customer data reflects the failed attempt rather than later edits. A successful retry retains these statistics.</p>
 <p><code>GET /api/campaigns/{id}/send-errors/export</code> accepts the same category/search filters and optional <code>lang</code>. It returns an <code>.xlsx</code> workbook with every matching grouped row, independently of pagination, plus a reason summary sheet. Customer values and raw diagnostics are literal text, including values beginning with formula characters. Historical failures without details are labeled separately; the upgrade does not invent recipients or reasons for them.</p>
 <p>Both endpoints require the campaign owner/administrative boundary, existing list access, <code>campaigns:get_analytics</code>, <code>campaigns:recipients</code>, and read permission for the corresponding customer source. Export additionally requires <code>customers:export</code> for included private rows and <code>pools:export</code> for included pool rows. Organization sharing and manager inspection do not grant access to another owner's error identities. Personal API keys need <code>campaigns:recipients</code> plus <code>customers:read</code> for private data or <code>customer_lists:read</code> for pool data. Without private sensitive-read access, emails are masked and raw diagnostics are omitted; pool emails and diagnostics are similarly protected for non-platform users. Category and SMTP status remain visible. Transferred private customers and a transferred campaign's former-owner snapshots are excluded from ordinary users' results.</p>
+<h3 id="delivery-overview-and-selected-failed-recipient-retry">Delivery overview and selected failed-recipient retry<a class="headerlink" href="#delivery-overview-and-selected-failed-recipient-retry" title="Permanent link">&para;</a></h3>
+<p><code>GET /api/campaigns/{id}/delivery-overview</code> returns <code>data</code> with <code>campaign_id</code>, <code>status</code>, <code>source</code> (<code>private</code>, <code>pool</code>, or <code>mixed</code>), <code>planned</code>, <code>sent</code>, <code>unsent</code>, <code>waiting</code>, <code>failed</code>, <code>progress</code> (0–100), <code>send_errors</code>, and <code>organizations</code>. Public-pool organization entries contain <code>organization_id</code>, <code>name</code>, <code>planned</code>, <code>sent</code>, <code>unsent</code>, and <code>failed</code>. <code>failed</code> counts distinct current unsent recipients with a saved send failure; <code>send_errors</code> remains the cumulative number of failed attempts. A previously failed recipient who was later sent successfully no longer appears in <code>failed</code>. Access follows campaign analytics permissions.</p>
+<p><code>GET /api/campaigns/{id}/failed-recipients</code> accepts <code>page</code>, <code>per_page</code> (maximum 100), <code>search</code>, <code>category</code>, and optional positive <code>organization_id</code> (only public-pool recipients in that target organization). It returns distinct current unsent recipients in <code>data.results</code>, plus <code>total</code>, <code>page</code>, <code>per_page</code>, <code>can_export</code>, and <code>can_retry</code>. Rows include <code>recipient_type</code>, <code>recipient_id</code>, <code>organization_id</code>, <code>customer_code</code>, <code>name</code>, <code>email</code>, <code>status</code>, <code>retryable</code>, <code>stage</code>, <code>category</code>, <code>smtp_code</code>, <code>error</code>, <code>count</code>, and <code>last_at</code>. Category, stage, and diagnostic fields come from the most recent failure; <code>count</code> is the total saved attempts for that recipient. <code>retryable</code> requires a pending/deferred snapshot and a currently eligible audience. In-flight queued rows remain visible but cannot be selected. The existing <code>/send-errors</code> endpoint continues to show historical attempts, including recipients later sent successfully.</p>
+<p><code>GET /api/campaigns/{id}/failed-recipients/export</code> applies the same filters and exports all matching distinct rows to Excel independently of pagination. The read and export permissions, private email masking, separate private diagnostic permission, and public-pool redaction rules are the same as <code>/send-errors</code> and <code>/send-errors/export</code>.</p>
+<p><code>POST /api/campaigns/{id}/failed-recipients/retry</code> accepts JSON such as <code>{"recipients":[{"type":"private","id":123},{"type":"pool","id":456}]}</code>. It accepts 1–500 unique recipients, validates all of them against current unsent failure state and audience eligibility, and starts a <strong>paused</strong> campaign with only those recipients selected. Any stale, sent, unavailable, unauthorized, or duplicate entry rejects the whole request. It requires campaign recipient/analytics access, <code>campaigns:send</code>, sender ownership or explicit public-pool send grant, API send scope where applicable, and normal SMTP/reply/audience readiness. The response contains <code>campaign_id</code>, <code>selected</code>, and <code>status:"running"</code>. The sender retains daily limits, SMTP assignment, retry error threshold, and audit behavior. Once selected recipients are exhausted, the campaign returns to <code>paused</code> if other unsent recipients remain, otherwise to <code>finished</code>; a normal manual resume clears the selection and resumes the usual audience. Repeating the request while running returns a conflict.</p>
+<p>These endpoints were added in v6.63.0. The admin edit page exposes them in the <code>#overview</code> marketing overview tab; its pool organization filter is applied server-side so pagination and export share the same scope.</p>
 <h3 id="images-in-the-admin-rich-text-editor">Images in the admin rich text editor<a class="headerlink" href="#images-in-the-admin-rich-text-editor" title="Permanent link">&para;</a></h3>
 <p>Upload a local image in the image dialog, or paste/drag it into the editor. Local images are uploaded to the current workspace's media library and associated with the campaign automatically. Preview, save, test sending and starting/scheduling wait for uploads to finish; failed uploads keep the image in the editor and require a successful retry before continuing. Uploading requires media maintenance permission. Images selected from the media library reuse the existing media record. Referenced campaign images are sent as inline MIME parts so email recipients do not need access to the private media library.</p>
 <h2 id="public-pool-reply-email-priority">Public-pool reply email priority<a class="headerlink" href="#public-pool-reply-email-priority" title="Permanent link">&para;</a></h2>
@@ -3860,6 +3888,26 @@
 <td style="text-align: left;">GET</td>
 <td style="text-align: left;"><a href="#get-apicampaignscampaign_idreportrecipients">/api/campaigns/{campaign_id}/report/recipients</a></td>
 <td style="text-align: left;">Retrieve recipient-level analytics for a campaign.</td>
+</tr>
+<tr>
+<td style="text-align: left;">GET</td>
+<td style="text-align: left;"><code>/api/campaigns/{campaign_id}/delivery-overview</code></td>
+<td style="text-align: left;">Retrieve delivery progress and current failed-recipient totals.</td>
+</tr>
+<tr>
+<td style="text-align: left;">GET</td>
+<td style="text-align: left;"><code>/api/campaigns/{campaign_id}/failed-recipients</code></td>
+<td style="text-align: left;">Retrieve current unsent recipients with saved failures.</td>
+</tr>
+<tr>
+<td style="text-align: left;">GET</td>
+<td style="text-align: left;"><code>/api/campaigns/{campaign_id}/failed-recipients/export</code></td>
+<td style="text-align: left;">Export the filtered failed-recipient list.</td>
+</tr>
+<tr>
+<td style="text-align: left;">POST</td>
+<td style="text-align: left;"><code>/api/campaigns/{campaign_id}/failed-recipients/retry</code></td>
+<td style="text-align: left;">Retry selected current failed recipients in a paused campaign.</td>
 </tr>
 <tr>
 <td style="text-align: left;">POST</td>

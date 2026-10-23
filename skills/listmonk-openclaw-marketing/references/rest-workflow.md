@@ -48,6 +48,12 @@ LISTMONK_BEARER_TOKEN=lmpk_replace_in_local_secret_store
 | --auto-start | flag / false | 仅完整流程；明确要求立即发信/排期时启用 |
 | --report-from / --report-to | string / 流程可省略 | 成对提供后取单活动报表；独立报表脚本必填 |
 | --recipient-per-page | int / 100 | 收件人明细页大小 |
+| --error-category | string / 空 | inspect_campaign_delivery.py：按失败分类筛选 |
+| --filter-organization-id | int / 空 | inspect_campaign_delivery.py：公海活动按目标组织筛选 |
+| --skip-errors / --skip-recipients | flag / false | inspect_campaign_delivery.py：跳过失败历史或失败名单 |
+| --page / --per-page | int / 1、50 | inspect_campaign_delivery.py：失败历史与失败名单分页 |
+| --customer-id / --search | int / string，二选一 | inspect_customer_replies.py：直接给 ID，或按邮箱/姓名/编号精确匹配 |
+| --replies-only | flag / false | inspect_customer_replies.py：只输出 AI 回信分类结论 |
 | --verbose | flag / false | 进度写 stderr |
 
 Excel 参数：
@@ -239,7 +245,137 @@ recipients 返回 403 时脚本仍成功输出聚合报告，
 CLI 输出对象为 campaign_id/campaign_ids/all_campaigns 加 reports；
 null 比率/唯一人数保持 null。
 
-## 7. 失败恢复与验证
+## 7. 发送失败排查与定向补发
+
+活动暂停或出现发送错误后，按下面的顺序排查，不要一上来就重发。
+
+### 7.1 先看概览
+
+`GET /api/campaigns/{id}/delivery-overview`，scope `campaigns:analytics`：
+
+```shell
+curl -H "Authorization: Bearer $LISTMONK_BEARER_TOKEN" \
+  "$LISTMONK_BASE_URL/api/campaigns/41/delivery-overview"
+```
+
+重点字段：`sent`、`unsent`、`failed`、`send_errors`、`progress`。
+公海活动还会给出 `organizations`，可据此定位是哪个组织卡住。
+`unsent` 包含 `failed`，两者不是并列关系。
+
+### 7.2 再看失败原因
+
+`GET /api/campaigns/{id}/send-errors`，需要 `campaigns:read` +
+`campaigns:recipients` scope，用户侧还要 `campaigns:recipients` 与客户查看权限：
+
+```shell
+curl -G -H "Authorization: Bearer $LISTMONK_BEARER_TOKEN" \
+  "$LISTMONK_BASE_URL/api/campaigns/41/send-errors" \
+  --data-urlencode "category=smtp_rejected" \
+  --data-urlencode "search=张" \
+  --data-urlencode "page=1" --data-urlencode "per_page=50"
+```
+
+- `reasons` 是分类计数，用来回答“主要是哪类失败”。
+- `historical_errors` 是旧版本只累计计数、没有明细的部分，
+  不要从日志反推原因，也不要把它当作客户数。
+- 缺少敏感权限时邮箱会被脱敏、错误原文可能为空，但分类与状态码仍可见。
+  这属于正常的权限边界，不是接口异常。
+
+### 7.3 看还能不能补发
+
+`GET /api/campaigns/{id}/failed-recipients`：只返回仍未被发送、且至少失败一次的人。
+响应中的 `can_retry` 反映“当前是否可补发”，它与 `can_export` 是两件事。
+
+### 7.4 定向补发
+
+**只有活动处于 `paused`、且用户明确要求时**才执行：
+
+```shell
+curl -X POST -H "Authorization: Bearer $LISTMONK_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  "$LISTMONK_BASE_URL/api/campaigns/41/failed-recipients/retry" \
+  -d '{"recipients":[{"type":"private","id":1234},{"type":"pool","id":98765}]}'
+```
+
+- 需要 `campaigns:send` **和** `campaigns:recipients` 两个 scope。
+- `type` 必须是 `private` 或 `pool`，`id` 来自 `failed-recipients` 的 `recipient_id`。
+- 服务端会重新验证每个 id，过期或不属于该活动的 id 不会扩权。
+- 返回 `selected` 是本次重新排队的数量，`status` 变为 running 只代表已启动。
+- 补发会让活动从暂停变为发送中；不要对同一活动并发调用。
+
+### 7.5 补发后复核
+
+再次读取 `delivery-overview` 与 `failed-recipients`。
+已成功的收件人会从失败名单消失，`send_errors` 不会因此减少
+（它是累计失败尝试次数）。如果活动再次因错误阈值暂停，重复 7.1–7.2 的排查。
+
+> 重发前先确认失败原因是否已经解决（邮箱是否存在、SMTP 是否可用、
+> 媒体依赖是否补齐）。对硬退信（邮箱不存在）重复补发通常没有意义，
+> 应先清理名单或走黑名单流程。
+
+### 7.6 失败恢复与验证
+
+- 400：核对字段名、列表类型、必填编号、未来排期、状态转换、时间范围及是否已有导入。
+- 401/403：核对凭据有效性、scope、角色动作权限、绑定工作区、组织资格、所有权及脱敏规则。
+  补发另需活动处于 paused。
+- 404：核对资源是否存在且在可读范围；不推断资源可跨工作区访问。
+- 409：常见为资源/SMTP/组织状态冲突；先核对发送来源与可用营销池。
+- 413：缩小导入或附件体积。
+- 超时/5xx：先查询是否已创建、已入队或已变更状态，再决定重试。
+  不自动重发、删除草稿或停止别人的导入。
+
+技能代码验证：
+
+```shell
+python -m unittest discover -s skills/listmonk-openclaw-marketing/tests -t skills/listmonk-openclaw-marketing
+python scripts/check_docs.py
+```
+
+接口连通检查使用所需 scope 的只读业务接口；需要现场验证写入时仅在明确的测试
+工作区创建草稿并记录 ID。验证步骤默认不发邮件，不从后端日志提取真实令牌。
+
+### 7.7 用脚本一次看完
+
+只读脚本把概览、失败历史与失败名单一次取回，适合先判断再决定是否补发：
+
+```shell
+python scripts/inspect_campaign_delivery.py --campaign-id 41 --per-page 50
+python scripts/inspect_campaign_delivery.py --campaign-id 41 --error-category media --search 张
+```
+
+输出对象包含 `overview`、`send_errors`、`failed_recipients`。
+缺 `campaigns:recipients` scope 时脚本仍成功，这两个字段改为
+`send_errors_unavailable` / `failed_recipients_unavailable` 并附原因，概览照常可用。
+脚本没有任何写操作，**不会**触发补发。
+## 8. AI 回信分类：读取结果
+
+AI 分类本身由平台管理员配置（`settings/reply-ai`，个人 Key 不可调用），
+营销侧能做的是**读取分类结果并据此调整名单**。
+
+```shell
+curl -H "Authorization: Bearer $LISTMONK_BEARER_TOKEN" \
+  "$LISTMONK_BASE_URL/api/customers/1234/activity"
+```
+
+响应中的 `reply_ai_events` 每行给出 intent、confidence、reason_code、
+action、status 与时间戳，**不含正文**。
+
+判读要点：
+
+| 现象 | 结论 |
+| --- | --- |
+| `intent=unsubscribe` 且 `action=blocklisted` | 退订已生效，客户已进黑名单 |
+| `intent=complaint` | 已记录为退信，客户未自动退订，需人工判断 |
+| `intent=product_complaint` / `other` | 仅审计记录，未修改客户 |
+| `status=failed` | 分类调用失败，稍后由队列重试；不代表已退订 |
+| `status=ignored` | 置信度不足或内容不构成明确意图 |
+
+回答“为什么这个客户退订了”时，引用 intent 与 reason_code，
+不要编造客户原文。数组为空表示该客户没有 AI 分类记录，
+可能因为邮箱未启用 AI、没有回信，或事件属于其他所有者。
+
+> 退订是客户意愿的强烈信号。确认 `action=blocklisted` 后，
+> 不要在任何后续流程里重新订阅该客户。
 
 - 400：核对字段名、列表类型、必填编号、未来排期、状态转换、时间范围及是否已有导入。
 - 401/403：核对凭据有效性、scope、角色动作权限、绑定工作区、组织资格、所有权及脱敏规则。

@@ -24,6 +24,8 @@ SCRIPTS = [
     "create_campaign.py",
     "update_campaign_status.py",
     "fetch_campaign_reports.py",
+    "inspect_campaign_delivery.py",
+    "inspect_customer_replies.py",
 ]
 
 
@@ -45,7 +47,13 @@ class CLITests(unittest.TestCase):
                 self.assertIn("usage:", result.stdout)
 
     def test_major_scripts_fail_without_required_args(self) -> None:
-        for script in ["run_marketing_flow.py", "import_subscribers.py", "create_campaign.py"]:
+        for script in [
+            "run_marketing_flow.py",
+            "import_subscribers.py",
+            "create_campaign.py",
+            "inspect_campaign_delivery.py",
+            "inspect_customer_replies.py",
+        ]:
             with self.subTest(script=script):
                 result = self.run_script(script)
                 self.assertNotEqual(result.returncode, 0)

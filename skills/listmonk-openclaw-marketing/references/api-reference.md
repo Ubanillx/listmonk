@@ -1,13 +1,13 @@
 # 对外营销 API：接口、参数与返回值
 
-核对日期：2026-10-05，仓库 v6.56.0。本文描述本部署的实际路由和参数。
+核对日期：2026-10-23，仓库迁移 v6.63.0。本文描述本部署的实际路由和参数。
 JSON 成功响应通常为 `{"data":...}`，错误为 `{"message":"..."}`。
 Python 客户端自动解包 data，脚本输出再包装为本地结果对象。
 
 ## 目录与通用约定
 
 模块：认证边界 → 客户列表 → 私域客户 → 导入 → 模板 → 活动/SMTP →
-报表 → 素材/退信/事务邮件 → 公海受众。
+发送失败与补发 → 报表 → 素材/退信/事务邮件 → 公海受众 → AI 回信分类。
 
 `{id}` 为正整数路径 ID。下表未说明位置的写入参数为 JSON body；
 GET 参数为 query。JSON 使用 snake_case，尤其是 `customer_list_ids`、
@@ -35,6 +35,10 @@ GET 参数为 query。JSON 使用 snake_case，尤其是 `customer_list_ids`、
 | 开始、排期（还需 write）/ 测试发送 | `campaigns:send` |
 | summary、timeseries、links、geo、旧 analytics | `campaigns:analytics` |
 | 收件人明细 | `campaigns:recipients` |
+| 发送失败/失败客户查询及导出 | `campaigns:recipients` |
+| 定向补发失败客户 | `campaigns:send` + `campaigns:recipients` |
+| 发送概览 delivery-overview | `campaigns:analytics` |
+| AI 分类结果（客户活动） | `customers:read` |
 | 退信读 / 维护 | `bounces:read` / `bounces:write` |
 | 事务发送 | `transactional:send` |
 
@@ -47,9 +51,11 @@ GET 参数为 query。JSON 使用 snake_case，尤其是 `customer_list_ids`、
 
 个人 Key 只允许 customer-lists、customers（排除 bulk 与集合 export）、
 import/customers、campaigns、templates、media、bounces、tx 业务路径。
-以下即使持有全部 scopes 也不可调用：`/api/profile/*`、`/api/workspace`、
-`/api/organizations/*`、`/api/pools/*`、`/api/org-pool-allocations/*`、
-`/api/dashboard/*`、`/api/settings`、`/api/users`、`/api/logs`、`/api/health`。
+以下即使持有全部 scopes 也不可调用：`/api/profile/*`（含回信邮箱）、`/api/workspace`、
+`/api/organizations/*`（含组织回件邮箱与回复转发）、`/api/pools/*`、
+`/api/org-pool-allocations/*`、`/api/dashboard/*`、`/api/settings`（含
+`/api/settings/reply-ai/*` AI 探测）、`/api/users`、`/api/logs`、`/api/health`、
+`/api/custom-fields`、`/api/delivery-provider/*`、`/api/audit-events`。
 不要用其他认证类型绕过本次任务的能力边界。
 
 用户先在浏览器创建 Key。创建表单/API 的字段是 `name`、
@@ -90,7 +96,7 @@ Key 到选定月份末到期；创建/轮换只返回一次 token；个人 Key �
 | --- | --- | --- |
 | GET | `/api/customers` | search（邮箱/姓名/客户编号等支持的文本搜索）、重复 customer_list_id、subscription_status、order_by、order、page、per_page |
 | GET | `/api/customers/{id}` | 详情；可选 customer_list_id 提供列表脱敏上下文 |
-| GET | `/api/customers/{id}/activity` | 客户的活动互动记录 |
+| GET | `/api/customers/{id}/activity` | 客户的活动互动记录：campaign_views、link_clicks 与 **reply_ai_events**（AI 回信分类结果，见第 11 节） |
 | GET | `/api/customers/{id}/export` | 单客户 JSON 数据导出；仍需角色导出与敏感信息权限 |
 | POST | `/api/customers` | 新建；字段见下表，返回客户对象 |
 | PUT | `/api/customers/{id}` | 更新；省略邮箱/attribs 保留存储值；明确提交目标列表关系 |
@@ -132,6 +138,10 @@ Key 到选定月份末到期；创建/轮换只返回一次 token；个人 Key �
 | GET | `/api/import/customers` | 状态对象：name、total、imported、status |
 | GET | `/api/import/customers/logs` | text/plain 导入日志，不是 JSON data |
 | DELETE | `/api/import/customers` | 请求停止自己的导入；继续读状态直至终止 |
+
+`GET /api/import-templates/{kind}`（kind=`users` 或 `members`）下载 Excel 模板，
+其余 kind 返回 404。它只需要认证、不含资源数据，但对个人 Key 同样不可用——
+不在业务前缀内。
 
 | params 字段 | 类型 / 要求 | 含义 |
 | --- | --- | --- |
@@ -202,6 +212,12 @@ target_organization_id 省略使用当前空间；0 为个人，正数为组织�
 | GET | `/api/campaigns/{id}/smtp-pools` | 已有活动所属组织的营销池 |
 | GET | `/api/campaigns/smtp-overview` | 新活动发件邮箱概览；source、smtp_pool_id；需 read、活动创建权限和 mailboxes:use |
 | GET | `/api/campaigns/{id}/smtp-overview` | 指定活动所有者/组织的发件邮箱概览；source 不传默认 personal，组织活动应显式传 organization |
+| GET | `/api/campaigns/{id}/delivery-overview` | 私域/公海统一发送概览：planned、sent、unsent、failed、waiting、progress、send_errors 与逐组织进度；analytics scope |
+| GET | `/api/campaigns/{id}/send-errors` | 失败尝试的分类汇总与明细；query search、category、organization_id、page/per_page，每页上限 100；read scope + `campaigns:recipients` |
+| GET | `/api/campaigns/{id}/send-errors/export` | 同筛选条件的 Excel 汇总，含错误原因与历史缺明细计数 |
+| GET | `/api/campaigns/{id}/failed-recipients` | 当前仍未发送、且至少失败过一次的收件人；query 同上；返回 can_export、can_retry |
+| GET | `/api/campaigns/{id}/failed-recipients/export` | 同筛选条件的 Excel 导出 |
+| POST | `/api/campaigns/{id}/failed-recipients/retry` | 仅对勾选的失败客户定向补发；活动必须为 paused；send scope |
 | GET | `/api/campaigns/{id}/pool-send-status` | 公海全组织活动逐组织发送准备情况；read scope |
 | POST | `/api/campaigns/{id}/pools` | 为活动附加公海；pool_id、可选 org_pool_allocation_id，organization_id 仅平台管理员适用；write scope，受众和管理权限仍校验 |
 
@@ -287,7 +303,99 @@ individual tracking。公海行仅有 `pools:get` 时纳入；非平台管理员
 聚合能读不代表明细能读。GeoIP 未配置 enabled=false；历史未知数据不补定位，
 locations 是国家/地区/城市、近似经纬度与 count，不含原始 IP。
 
-## 8. 素材、退信、事务邮件（直接 REST）
+## 8. 发送失败、补发与发送概览
+
+这一组接口回答三个不同的问题，不能互相替代：
+
+1. **这次活动现在到哪一步了** → `delivery-overview`。
+2. **历史上哪些尝试失败了、为什么** → `send-errors`。
+3. **还有谁没收到、能不能单独补发** → `failed-recipients`。
+
+三个口径不能混用：`send_errors` 是累计失败尝试次数（重试失败会重复计数），
+不是当前失败人数，也不是退信数。退信看 `/api/bounces`。重试成功、暂停续发和
+服务重启都不会把 `send_errors` 清零。
+
+### 发送概览
+
+`GET /api/campaigns/{id}/delivery-overview`，scope `campaigns:analytics`。
+
+| 字段 | 含义 |
+| --- | --- |
+| campaign_id / status | 活动身份与当前状态 |
+| source | private（普通受众）或 pool（公海受众） |
+| planned / sent / unsent | 计划量、已发送、未发送；失败客户包含在未发送内 |
+| failed | 当前仍未发送且曾失败的客户数 |
+| waiting | 排队等待中的数量 |
+| progress | 0–100 的完成百分比 |
+| send_errors | 累计失败尝试次数 |
+| organizations | 公海活动才有内容：逐组织 planned/sent/unsent/failed |
+
+私域活动 `organizations` 为空数组。组织维度的筛选统一用 `organization_id`，
+分页与导出使用同一条件。
+
+### 失败历史（send-errors）
+
+`GET /api/campaigns/{id}/send-errors`，scope `campaigns:read`，同时需要
+用户权限 `campaigns:recipients`，以及对应来源的客户查看权限：
+私域来源要 `customers:get`/`customers:get_all`，公海来源要 `pools:get`。
+两者都没有时返回 403 `customer read permission required`。
+
+| Query | 说明 |
+| --- | --- |
+| search | 姓名或客户编码，最长 500 字符 |
+| category | 错误分类，最长 50 字符，见下表 |
+| organization_id | 公海活动按目标组织筛选；必须是正整数 |
+| page / per_page | 服务端分页；`per_page` 会被收敛到 1–100 |
+
+| 错误分类 | 含义 |
+| --- | --- |
+| smtp_auth | SMTP 认证失败 |
+| smtp_rejected | 上游拒信（如 550/554） |
+| smtp_temporary | 临时拒绝（如 421/4xx） |
+| timeout | 连接或读写超时 |
+| network | 网络不可达 |
+| smtp_unavailable | 没有可用发件通道 |
+| reply_unavailable | 回信路由不可用 |
+| media | 媒体依赖缺失或被拦截 |
+| render | 模板渲染失败 |
+| other | 其他 |
+
+响应包含 results、reasons（分类计数）、recorded_errors、historical_errors、
+total、page、per_page、can_export。
+`historical_errors` 表示旧版本只累加计数、没有保存明细的失败次数，
+不能用日志反推原因。
+
+脱敏规则与客户接口一致：缺少 `customers:sensitive_read` 时私域邮箱脱敏；
+缺少 `campaigns:private_send_error_details` 时私域错误原文置空；
+公海明细默认脱敏且原文置空，只有平台管理员可见。
+分类、SMTP 状态码和次数始终可见。聚合能读不等于明细能读。
+
+### 当前失败客户与定向补发
+
+`GET /api/campaigns/{id}/failed-recipients`，query 与脱敏规则同上。
+
+服务端取每个收件人**最近一次**失败事件，再与当前收件人快照关联，
+只返回仍然未发送的记录。重试成功后该收件人自动退出名单，历史报表仍可查。
+响应额外给出 `can_export` 和 `can_retry`。
+
+`POST /api/campaigns/{id}/failed-recipients/retry`，需要活动可发送：
+
+```json
+{"recipients":[{"type":"private","id":1234},{"type":"pool","id":98765}]}
+```
+
+- scope：`campaigns:send` **且** `campaigns:recipients`；
+  用户另需 `campaigns:send` 角色权限和活动所有权。
+- 活动状态必须是 `paused`；草稿、运行中、已完成的补发都会失败。
+- 服务端会在事务内重新校验每个 id 是否仍是当前活动里符合条件的收件人，
+  传错或过期的 id 不会扩大范围。
+- 成功后返回 `{"campaign_id":…, "selected":N, "status":"running"}`，
+  表示已重新排队并启动，不代表已经投递完成。
+
+> 补发是真实发信动作。仅在用户明确要求时调用，并在之后用
+> `delivery-overview` 与 `send-errors` 核对结果。
+
+## 9. 素材、退信、事务邮件（直接 REST）
 
 这些能力没有专用 CLI；需要时直接调用，不能用个人 Key 配置邮件服务器。
 
@@ -323,7 +431,7 @@ default 模式的 customer_emails 与 customer_ids 二选一；fallback/external
 最多 5000 个合并收件人、20 附件、单附件 10 MiB、合计 20 MiB。
 真实发送不自动重试，超时先核对是否已经入队。
 
-## 9. 已授权公海营销与兼容接口
+## 10. 已授权公海营销与兼容接口
 
 公海主数据、组织投放授权、组织分配是不同能力。
 `/api/pools/*` 和 `/api/org-pool-allocations/*` 对个人 Key 整体拒绝，
@@ -353,6 +461,106 @@ pool_reply_priority=contact_first 优先每行导入的 reply_to，
 organization_first 优先已验证启用的组织回信邮箱；缺少地址才用另一来源。
 发送路由保留快照；排期前调用 pool-send-status，查看 ready、organizations、issues。
 
-源码定位（仓库内路径，便于下次维护）：`cmd/{handlers,api_keys,customer_lists,customers,import,templates,campaigns,organization_smtp,organization_smtp_pools,media,media_folders,bounce,tx,pools}.go`、
-`models/{campaigns,report,customer_lists,templates,messages}.go`、
-`internal/core/workspace_analytics.go`。
+源码定位（仓库内路径，便于下次维护）：`cmd/{handlers,api_keys,customer_lists,customers,import,templates,campaigns,campaign_send_errors,campaign_failed_recipients,organization_smtp,organization_smtp_pools,media,media_folders,bounce,tx,pools,reply_ai,reply_ai_settings,reply_mailboxes}.go`、
+`models/{campaigns,report,campaign_send_errors,campaign_delivery_overview,customer_lists,templates,messages,reply_ai}.go`、
+`internal/{core,replyai,manager,media}/**`。
+
+## 11. AI 回信分类（接入与边界）
+
+这是本部署**新增的 AI 能力**：把入站客户回信交给一个 OpenAI 兼容的模型做意图分类，
+再由后端决定是否退订/拉黑。模型只输出意图，**不直接改数据**。
+
+能力边界、事件状态机与使用红线另见 [AI 回信分类](reply-ai.md)。
+
+### 能力边界
+
+| 项目 | 说明 |
+| --- | --- |
+| 入口 | 非破坏性 IMAP 扫描（UID 游标 + `BODY.PEEK`）已启用的回信邮箱，只读取新邮件，不改动已读标记 |
+| 分类结果 | unsubscribe、complaint、product_complaint、other 四类 |
+| 模型接入 | 任意 OpenAI 兼容 `/chat/completions` 网关，含 LiteLLM、one-api、new-api |
+| 输出 | intent + confidence + reason_code，不会返回邮件正文 |
+| 落库 | `reply_ai_events`，正文只在待重试期间保留，任何接口都不返回 |
+| 自动动作 | 仅 `unsubscribe` 会退订并加入黑名单；`complaint` 同步记录为退信 |
+
+`product_complaint` 与 `other` **只记录审计，不修改客户**。
+低于 `min_confidence` 的结果按 unknown 处理，不执行任何动作。
+分类依据是回信正文，不是打开/点击数据。
+
+### 配置界面与接口
+
+AI 分类是**平台级设置**，保存在 `settings` 的 `reply_ai` 行，随所有已启用的
+回信邮箱共享。三个接口都在设置域下：
+
+| Method | Endpoint | 说明 |
+| --- | --- | --- |
+| POST | `/api/settings/reply-ai/models` | 用已保存或本次提交的网关配置拉取模型清单 |
+| POST | `/api/settings/reply-ai/test` | 用真实样本跑一次分类，返回分步结果 |
+| PUT | `/api/settings/:key` | 保存 `reply_ai` 设置（`settings:manage`） |
+
+> **个人 Key 无法调用这些接口。** 它们不在
+> `/api/customers`、`/api/campaigns`、`/api/templates` 等业务前缀内，
+> 会被统一入口直接拒绝；即使传统令牌持有 `settings:manage` 也只按角色放行。
+> 不要尝试用营销 Key 探测它们。
+
+探测与测试请求体：
+
+```json
+{
+  "base_url": "https://gateway.example.com/v1",
+  "api_key": "sk-...",
+  "model": "gpt-4o-mini",
+  "timeout": "15s",
+  "sample_text": "请不要再给我发邮件了",
+  "expected_intent": "unsubscribe"
+}
+```
+
+`api_key` 省略时使用已保存的密钥；`expected_intent` 可为空，
+否则必须是四类之一。测试只提交样本文本，**不涉及真实客户数据**。
+
+`reply_ai` 设置字段：`enabled`、`base_url`、`api_key`、`model`、
+`timeout`、`min_confidence`（0 < x ≤ 1）、`scan_interval`（10s–24h，默认 60s）。
+读取设置时 `api_key` 始终被掩码，回写空值表示保留原密钥。
+
+### 回信邮箱开关
+
+单个邮箱是否参与分类由邮箱自身的 `ai_enabled` 控制：
+
+| Method | Endpoint | 说明 |
+| --- | --- | --- |
+| GET | `/api/profile/reply-mailboxes` | 当前用户/组织的回信邮箱 |
+| POST | `/api/profile/reply-mailboxes` | 新建：email、name、username、password、imap_host、imap_port、imap_tls、folder、is_default、ai_enabled |
+| PUT | `/api/profile/reply-mailboxes/{id}` | 更新，含 `ai_enabled` |
+| POST | `/api/profile/reply-mailboxes/test` | 连接测试 |
+| PUT | `/api/organizations/{id}/reply-mailbox` | 组织统一回件邮箱 |
+
+这些同样**不在个人 Key 的业务前缀内**。
+
+### 读取分类结果
+
+分类结果通过客户活动接口返回，这是个人 Key 唯一能读到 AI 结果的地方：
+
+`GET /api/customers/{id}/activity` → `data.reply_ai_events`
+
+每行包含 intent、confidence、reason_code、model、action、status、
+from_email、subject、received_at、classified_at、actioned_at。
+查询会额外校验回信邮箱归属与客户的工作区/组织一致，避免跨所有者读到旧事件。
+
+| 字段 | 取值 |
+| --- | --- |
+| status | pending、processing、processed、ignored、failed |
+| action | pending、ignored、blocklisted |
+
+**正文不返回**，只有分类结论。
+
+### 在营销流程里怎么用
+
+- 报告“客户为什么退订/投诉”：读 `reply_ai_events`，按 intent 与 action 汇总。
+- 判断 AI 是否生效：`action=blocklisted` 只应出现在 `intent=unsubscribe` 的行。
+- 怀疑误判：先看 confidence 与 reason_code，再看 model；
+  不要因为没有正文就推断客户原话。
+- 调整阈值或换模型属于平台设置，超出个人 Key 能力，交回管理员。
+
+> 分类是辅助判断。**不要把 AI 结果当作客户同意或授权的证据**，
+> 也不要在退订后继续发送。

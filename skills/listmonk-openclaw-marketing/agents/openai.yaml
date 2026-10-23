@@ -1,4 +1,4 @@
 interface:
   display_name: "Listmonk OpenClaw Marketing"
-  short_description: "Listmonk marketing APIs, delivery workflows and analytics"
-  default_prompt: "使用 $listmonk-openclaw-marketing 在绑定工作区中管理客户与营销活动，按当前 API 参数选择发件来源，并查询发送和互动报表。"
+  short_description: "Listmonk marketing APIs, delivery workflows, analytics and AI reply classification"
+  default_prompt: "使用 $listmonk-openclaw-marketing 在绑定工作区中管理客户与营销活动，按当前 API 参数选择发件来源，排查发送失败并按需定向补发，查询发送/互动报表和 AI 回信分类结果。"

@@ -1,18 +1,25 @@
 ---
 name: listmonk-openclaw-marketing
-description: Operate this Listmonk deployment from OpenClaw through workspace-bound personal API keys. Use for customer lists and imports, marketing templates, campaign drafts and delivery, SMTP selection, and single or cross-campaign analytics (including open locations). 适用于 Listmonk 营销自动化、客户导入、活动排期、发送进度和效果报表；公海管理须先核对个人 Key 的接口边界。
+description: Operate this Listmonk deployment from OpenClaw through workspace-bound personal API keys. Use for customer lists and imports, marketing templates, campaign drafts and delivery, SMTP selection, send-failure diagnosis and selective retry, single or cross-campaign analytics (including open locations), and reading AI-classified inbound replies. 适用于 Listmonk 营销自动化、客户导入、活动排期、发送失败排查与补发、效果报表和 AI 回信分类结果；公海管理与 AI 调试须先核对个人 Key 的接口边界。
 ---
 
 # Listmonk OpenClaw Marketing
 
-用当前部署的 REST API 完成营销任务。接口基线核对于 **2026-10-05（v6.56.0）**，
+用当前部署的 REST API 完成营销任务。接口基线核对于 **2026-10-23（迁移 v6.63.0）**，
 依据仓库的 `cmd/handlers.go`、`cmd/api_keys.go` 和业务处理器，不套用上游旧版
 `/api/lists`、`/api/subscribers` 或旧参数名。
+
+本部署包含上游没有的能力：组织工作区、公海客户与分配、组织发件池、
+发送失败明细与定向补发、以及 **AI 回信分类**。后两者的接口和边界分别在
+API reference 第 8 节和第 11 节，不要在未读之前臆造参数。
 
 ## 按任务读取
 
 - 接口、参数、scope、返回值和权限边界：读 [API reference](references/api-reference.md) 中对应模块。
 - 具体执行顺序、完整请求、CLI 参数和异常恢复：读 [REST workflow](references/rest-workflow.md)。
+- 发送失败排查、失败客户定向补发、以及 AI 回信分类结果的读取与判读：
+  API reference 第 8、11 节，工作流第 7、8 节。
+- AI 能力的完整边界、事件状态与使用红线：读 [AI 回信分类](references/reply-ai.md)。
 - 需要调用未封装的接口时，按 API reference 直接构造 HTTP 请求；不要虚构 CLI 参数。
   配套 Python HTTP 客户端只依赖标准库，读取 Excel 另需 `openpyxl`。
 
@@ -93,6 +100,44 @@ Key 本身不能调用配置接口。看到 403 应根据错误检查 scope、�
 `pool_scope=all_organizations` 另需角色权限 `campaigns:public_pool_send`，
 不能混入私域列表；发送前检查 `pool-send-status`。
 
+## 发送失败排查与定向补发
+
+活动因错误阈值暂停后，按「概览 → 原因 → 名单 → 补发 → 复核」的顺序处理，不要直接重发。
+
+1. `GET /api/campaigns/{id}/delivery-overview`（`campaigns:analytics`）：
+   看 planned / sent / unsent / failed / send_errors / progress；公海活动另有逐组织进度。
+   `unsent` 包含 `failed`。
+2. `GET /api/campaigns/{id}/send-errors`（`campaigns:recipients`）：
+   按 `category`（smtp_auth、smtp_rejected、smtp_temporary、timeout、network、
+   smtp_unavailable、reply_unavailable、media、render、other）与 `search` 筛选。
+   `send_errors` 是累计失败尝试次数，不是失败人数，也不是退信数。
+   `historical_errors` 表示旧版本未保存明细的计数，不能反推原因。
+3. `GET /api/campaigns/{id}/failed-recipients`：只返回仍未发送且至少失败一次的人，
+   并给出 `can_export` / `can_retry`。
+4. `POST /api/campaigns/{id}/failed-recipients/retry`：**仅活动为 paused、
+   且用户明确要求时**调用。请求体 `{"recipients":[{"type":"private|pool","id":…}]}`，
+   需要 `campaigns:send` 与 `campaigns:recipients` 两个 scope。
+5. 复核：重读概览与失败名单。已成功者会退出名单，`send_errors` 不会减少。
+
+缺少 `customers:sensitive_read` 或 `campaigns:private_send_error_details` 时，
+邮箱脱敏、私域错误原文置空，但分类与状态码仍可见——这是权限边界，不是接口故障。
+对硬退信重复补发没有意义，应先清理名单或走黑名单流程。
+
+## AI 回信分类结果
+
+本部署新增 **AI 回信分类**：入站回信经非破坏 IMAP 扫描，由 OpenAI 兼容模型判为
+unsubscribe / complaint / product_complaint / other，仅明确的退订会退订并加入黑名单，
+投诉同步记录为退信，其余只留审计，**不直接改客户**。
+
+个人 Key 只能通过 `GET /api/customers/{id}/activity` 读取分类结论（`reply_ai_events`）：
+intent、confidence、reason_code、model、action、status 与时间戳，**不含正文**。
+
+- `action=blocklisted` 只应出现在 `intent=unsubscribe` 的行。
+- `status=failed` 是调用失败待重试，不代表已退订；`ignored` 表示置信度不足。
+- 配置网关、模型、阈值属于平台设置（`/api/settings/reply-ai/*`），
+  个人 Key 调用会被统一入口拒绝；不要用营销 Key 探测，也不要索取或记录密钥。
+- 不要把 AI 结论当作客户同意或授权的证据，也不要在退订后继续发送。
+
 ## 脚本选择与输出
 
 | 脚本 | 用途 |
@@ -103,6 +148,8 @@ Key 本身不能调用配置接口。看到 403 应根据错误检查 scope、�
 | `create_campaign.py` | 直接创建草稿或复用已有活动的内容蓝本；支持个人/组织 SMTP 选择 |
 | `update_campaign_status.py` | 启动、排期、暂停、取消或撤回排期 |
 | `fetch_campaign_reports.py` | 单活动、多个活动或整个工作区报表，可选 geo 和指定收件人分页 |
+| `inspect_campaign_delivery.py` | 只读：发送概览、失败原因与当前失败客户名单 |
+| `inspect_customer_replies.py` | 只读：客户活动与 AI 回信分类结论 |
 | `run_marketing_flow.py` | 普通列表 → 客户 → 模板/蓝本 → 草稿 → 可选启动 → 可选单活动报表 |
 
 运行 `python scripts/<script>.py --help` 查实际参数。

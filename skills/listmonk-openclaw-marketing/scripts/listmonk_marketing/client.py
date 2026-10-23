@@ -259,3 +259,52 @@ class ListmonkClient:
     ) -> dict[str, Any]:
         params = {"from": from_date, "to": to_date, "page": page, "per_page": per_page}
         return self.request("GET", f"/api/campaigns/{campaign_id}/report/recipients", params=params)
+    def get_delivery_overview(self, campaign_id: int) -> dict[str, Any]:
+        """Campaign delivery progress: planned/sent/unsent/failed plus per-organization rows."""
+        return self.request("GET", f"/api/campaigns/{campaign_id}/delivery-overview")
+
+    def get_campaign_send_errors(
+        self,
+        campaign_id: int,
+        *,
+        search: str = "",
+        category: str = "",
+        organization_id: int | None = None,
+        page: int = 1,
+        per_page: int = 50,
+    ) -> dict[str, Any]:
+        """Historical delivery failures grouped by reason, not the current failed list."""
+        params: dict[str, Any] = {}
+        if search:
+            params["search"] = search
+        if category:
+            params["category"] = category
+        if organization_id is not None:
+            params["organization_id"] = organization_id
+        params.update({"page": page, "per_page": per_page})
+        return self.request("GET", f"/api/campaigns/{campaign_id}/send-errors", params=params)
+
+    def get_campaign_failed_recipients(
+        self,
+        campaign_id: int,
+        *,
+        search: str = "",
+        category: str = "",
+        organization_id: int | None = None,
+        page: int = 1,
+        per_page: int = 50,
+    ) -> dict[str, Any]:
+        """Recipients still unsent that failed at least once, plus can_export/can_retry."""
+        params: dict[str, Any] = {}
+        if search:
+            params["search"] = search
+        if category:
+            params["category"] = category
+        if organization_id is not None:
+            params["organization_id"] = organization_id
+        params.update({"page": page, "per_page": per_page})
+        return self.request("GET", f"/api/campaigns/{campaign_id}/failed-recipients", params=params)
+
+    def get_customer_activity(self, customer_id: int) -> dict[str, Any]:
+        """Read-only activity: campaign views, link clicks and AI reply classification events."""
+        return self.request("GET", f"/api/customers/{customer_id}/activity")

@@ -16,9 +16,10 @@
 [![API](https://img.shields.io/badge/API-REST%20%2B%20Swagger-85EA2D?logo=swagger&logoColor=black)](docs/swagger/)
 [![E2E](https://img.shields.io/badge/E2E-Cypress%20x49-17202C?logo=cypress&logoColor=white)](frontend/cypress/e2e)
 [![Migrations](https://img.shields.io/badge/Migrations-76-7a5af8)](internal/migrations)
+[![Agent Skill](https://img.shields.io/badge/Agent%20Skill-OpenClaw-6f42c1)](skills/listmonk-openclaw-marketing)
 [![i18n](https://img.shields.io/badge/i18n-zh--CN%20%7C%20zh--TW%20%7C%20en-ff6b6b)](i18n)
 
-[亮点](#highlights) · [功能概览](#features) · [界面导览](#screenshots) · [系统架构](#architecture) · [快速开始](#quickstart) · [技术文档](#techdocs) · [文档索引](#index)
+[亮点](#highlights) · [功能概览](#features) · [智能体接入](#agents) · [界面导览](#screenshots) · [系统架构](#architecture) · [快速开始](#quickstart) · [技术文档](#techdocs) · [文档索引](#index)
 
 </div>
 
@@ -40,6 +41,7 @@
   - [组织、工作区与权限](#f-org)
   - [发件池与 AI 回信](#f-delivery)
   - [媒体库与模板](#f-media)
+- [智能体接入](#agents)
 - [界面导览](#screenshots)
 - [系统架构](#architecture)
 - [快速开始](#quickstart)
@@ -251,6 +253,75 @@
 <td align="center"><sub><b>邮件模板</b> · 活动 / 事务模板与共享范围</sub></td>
 </tr>
 </table>
+
+<a id="agents"></a>
+
+## 智能体接入
+
+仓库自带一个可直接投喂给智能体平台的 **Skill**：`skills/listmonk-openclaw-marketing`。
+它把本部署的 REST 接口、权限边界和操作顺序固化成文档和脚本，
+让 OpenClaw 一类的智能体不必猜测参数就能完成营销操作。
+
+> Skill 是**给智能体读的说明书 + 一组受限脚本**，不是一个独立服务。
+> 它复用现有 API 与个人 API Key，不新增端口、不连接数据库、不绕过权限。
+
+### 包含内容
+
+| 文件 | 作用 |
+| --- | --- |
+| `SKILL.md` | 技能入口：适用场景、认证方式、标准流程、边界与红线 |
+| `references/api-reference.md` | 逐接口的参数、scope、返回值与脱敏规则 |
+| `references/rest-workflow.md` | 可照抄的执行顺序、curl 示例与异常恢复 |
+| `references/reply-ai.md` | AI 回信分类的能力边界与判读规则 |
+| `scripts/` | 9 个 Python 脚本，仅依赖标准库（Excel 需 `openpyxl`） |
+| `tests/` | 46 个测试，覆盖接口契约、CLI 参数与脚本行为 |
+| `agents/openai.yaml` | 智能体平台识别的技能元数据（名称、简介、默认提示词） |
+
+### 脚本
+
+| 脚本 | 用途 |
+| --- | --- |
+| `ensure_list.py` | 按 ID 复用或按名称查找 / 创建客户列表 |
+| `import_subscribers.py` | 从 JSON 或 .xlsx 导入私域客户 |
+| `clone_template.py` | 克隆模板到绑定工作区 |
+| `create_campaign.py` | 创建草稿，或复用已有活动作为内容蓝本 |
+| `update_campaign_status.py` | 启动、排期、暂停、取消或撤回排期 |
+| `fetch_campaign_reports.py` | 单活动 / 多活动 / 全工作区报表，可选地理分布 |
+| `inspect_campaign_delivery.py` | 只读：发送概览、失败原因与失败客户名单 |
+| `inspect_customer_replies.py` | 只读：客户活动与 AI 回信分类结论 |
+| `run_marketing_flow.py` | 串起列表 → 客户 → 模板 → 草稿 → 可选启动 |
+
+### 接入步骤
+
+1. 在 **Profile → API Keys** 创建个人 Key，勾选所需 scope（最小权限即可）。
+2. 把 `skills/listmonk-openclaw-marketing` 整个目录放进智能体平台的技能目录，
+   或将 `SKILL.md` 及其 `references/` 作为上下文加载。
+3. 在技能目录复制 [`.env.example`](skills/listmonk-openclaw-marketing/.env.example) 为 `.env` 并填写：
+
+```dotenv
+LISTMONK_BASE_URL=https://listmonk.example.com
+LISTMONK_BEARER_TOKEN=lmpk_...
+```
+
+4. 让智能体按任务读取对应 reference，再执行脚本或直接构造 REST 请求。
+
+键的优先级为：命令行 > 进程环境 > 技能目录 `.env` > 当前目录 `.env`，
+因此也可以完全不落盘，改用环境变量注入。
+
+### 安全边界
+
+- **Key 绑定工作区**：个人 Key 固定属于个人空间或某一个组织，跨工作区操作会被拒绝。
+- **最小 scope**：只读任务给只读 scope；`campaigns:send` 与 `transactional:send` 会真实发信。
+- **前缀白名单**：个人 Key 无法访问 `/api/settings`、`/api/pools/*`、
+  `/api/organizations/*`、`/api/profile/*` 等管理端点，即使角色权限更高也不行。
+- **只读优先**：两个 `inspect_*` 脚本不含任何写操作，适合先诊断再决策。
+- `.env` 已被 `.gitignore` 排除，不要把 Key 写进 SKILL.md 或提交记录。
+
+> 智能体做的是「按既定流程调用 API」。发送、补发、拉黑这类不可撤回的动作，
+> 仍应在人工确认后再触发。
+
+详见 [SKILL.md](skills/listmonk-openclaw-marketing/SKILL.md) 与 
+[API reference](skills/listmonk-openclaw-marketing/references/api-reference.md)。
 
 <a id="screenshots"></a>
 

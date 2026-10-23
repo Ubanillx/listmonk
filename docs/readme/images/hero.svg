@@ -7,14 +7,14 @@
 <rect x="104" y="80" width="86" height="20" rx="10" fill="#0055d4"/>
 <text x="147" y="94" font-size="12" fill="#ffffff" font-weight="700" text-anchor="middle">改进版</text>
 <text x="64" y="148" font-size="30" fill="#101828" font-weight="700">自托管的邮件营销与客户运营平台</text>
-<text x="64" y="182" font-size="16" fill="#5b6577" font-weight="400">单二进制部署 · 多组织工作区 · 公海客户 · 组织发件池 · AI 回信分类</text>
+<text x="64" y="182" font-size="16" fill="#5b6577" font-weight="400">多组织工作区 · 公海客户 · 组织发件池 · AI 回信分类 · 智能体 Skill</text>
 <rect x="64" y="210" width="73" height="26" rx="13.0" fill="#eef3fd"/><text x="76" y="227.5" font-size="12.5" fill="#0055d4" font-weight="600" font-family="'JetBrains Mono','SFMono-Regular',Consolas,'Liberation Mono',monospace">Go 1.26</text>
 <rect x="147.0" y="210" width="73" height="26" rx="13.0" fill="#eef3fd"/><text x="159.0" y="227.5" font-size="12.5" fill="#0055d4" font-weight="600" font-family="'JetBrains Mono','SFMono-Regular',Consolas,'Liberation Mono',monospace">Echo v4</text>
 <rect x="230.0" y="210" width="94" height="26" rx="13.0" fill="#eef3fd"/><text x="242.0" y="227.5" font-size="12.5" fill="#0055d4" font-weight="600" font-family="'JetBrains Mono','SFMono-Regular',Consolas,'Liberation Mono',monospace">PostgreSQL</text>
 <rect x="334.0" y="210" width="59" height="26" rx="13.0" fill="#eef3fd"/><text x="346.0" y="227.5" font-size="12.5" fill="#0055d4" font-weight="600" font-family="'JetBrains Mono','SFMono-Regular',Consolas,'Liberation Mono',monospace">Vue 2</text>
 <rect x="403.0" y="210" width="115" height="26" rx="13.0" fill="#eef3fd"/><text x="415.0" y="227.5" font-size="12.5" fill="#0055d4" font-weight="600" font-family="'JetBrains Mono','SFMono-Regular',Consolas,'Liberation Mono',monospace">React 18 + TS</text>
 <rect x="528.0" y="210" width="66" height="26" rx="13.0" fill="#eef3fd"/><text x="540.0" y="227.5" font-size="12.5" fill="#0055d4" font-weight="600" font-family="'JetBrains Mono','SFMono-Regular',Consolas,'Liberation Mono',monospace">Docker</text>
-<rect x="604.0" y="210" width="80" height="26" rx="13.0" fill="#eef3fd"/><text x="616.0" y="227.5" font-size="12.5" fill="#0055d4" font-weight="600" font-family="'JetBrains Mono','SFMono-Regular',Consolas,'Liberation Mono',monospace">REST API</text>
+<rect x="604.0" y="210" width="80" height="26" rx="13.0" fill="#eef3fd"/><text x="616.0" y="227.5" font-size="12.5" fill="#0055d4" font-weight="600" font-family="'JetBrains Mono','SFMono-Regular',Consolas,'Liberation Mono',monospace">Agent Skill</text>
 <text x="64" y="280" font-size="13" fill="#5b6577" font-weight="600" font-family="'JetBrains Mono','SFMono-Regular',Consolas,'Liberation Mono',monospace">AGPL-3.0</text>
 <circle cx="152" cy="276" r="3" fill="#d7dce5"/>
 <text x="166" y="280" font-size="13" fill="#5b6577" font-weight="600">自托管</text>

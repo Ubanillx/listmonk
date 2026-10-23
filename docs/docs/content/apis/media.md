@@ -2,7 +2,21 @@
 
 Email delivery uses remote links for media-library files. HTML images retain an
 `<img src="https://your-domain/email-media/{token}/{filename}">` source and load
-when the recipient opens the message. Other files appear as download links;
+when the recipient opens the message. Other files that are not already linked
+in the body appear at the end in one grouped attachment section with a file
+count. Each file has its own colored type icon and original filename. For Word,
+Excel, and PowerPoint files, **View** opens [Microsoft's Office Web Viewer](https://www.microsoft.com/en-us/copilot/blog/2013/04/10/office-web-viewer-view-office-documents-in-a-browser/) with
+the recipient file URL; for PDF it opens the file URL directly. Other file types
+offer download only. **Download** always uses the recipient file URL with
+`?download=1`, which sends the original bytes as an attachment under the
+original filename. The media-library URL requires authentication and is never
+placed in outgoing mail. Microsoft must fetch Office files from the public
+`app.root_url` to preview them. The Office Viewer link embeds the recipient URL;
+opening that link (including by an automated link scanner) can share the URL
+and file with Microsoft. An unavailable public URL or a Microsoft viewer
+error does not affect the direct Download link. File
+links already present in the body keep their placement and receive the
+recipient URL. Plain-text messages keep filename and URL lines;
 library files are no longer attached as binary or CID MIME parts. This applies
 to campaign tests, new sends, paused/deferred campaigns resumed after upgrade,
 and transactional template media. Previously delivered messages remain unchanged.

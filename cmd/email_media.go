@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"mime"
 	"net/http"
 	"net/url"
 
@@ -79,5 +80,12 @@ func (a *App) ServeEmailMedia(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusNotFound, "media file not found")
 	}
 	c.Response().Header().Set("Referrer-Policy", "no-referrer")
+	if c.QueryParam("download") == "1" {
+		disposition := mime.FormatMediaType("attachment", map[string]string{"filename": filename})
+		if disposition == "" {
+			disposition = "attachment"
+		}
+		c.Response().Header().Set("Content-Disposition", disposition)
+	}
 	return a.streamMediaBlob(c, filename)
 }

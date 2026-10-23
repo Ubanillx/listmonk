@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"log"
+	"mime"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -69,9 +70,41 @@ func TestEmailMediaRecipientAccessAndRevocation(t *testing.T) {
 		if want == http.StatusOK && (r.Header().Get("Content-Type") != "image/png" || !bytes.Equal(r.Body.Bytes(), content)) {
 			t.Fatalf("mail client could not render remote image: %v %q", r.Header(), r.Body.Bytes())
 		}
+		if strings.HasSuffix(link, "?download=1") {
+			disposition, params, err := mime.ParseMediaType(r.Header().Get("Content-Disposition"))
+			if err != nil || disposition != "attachment" || params["filename"] != filename {
+				t.Fatalf("download did not preserve original filename: %v", r.Header())
+			}
+		}
 	}
 	// No login, no archive setting, and no request workspace are needed.
 	check(issued.DeliveryURL, http.StatusOK)
+	check(issued.DeliveryURL+"?download=1", http.StatusOK)
+	const documentName = "产品选型表.xlsx"
+	document := []byte("PK\x03\x04office file")
+	if _, err := provider.Put(documentName, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bytes.NewReader(document)); err != nil {
+		t.Fatal(err)
+	}
+	var documentID int
+	if err := db.Get(&documentID, `INSERT INTO media(uuid,filename,content_type,thumb)
+		VALUES(gen_random_uuid(),$1,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','') RETURNING id`, documentName); err != nil {
+		t.Fatal(err)
+	}
+	var documentSnapshot media.Media
+	if err := db.Get(&documentSnapshot, `SELECT id,uuid,filename,content_type,organization_id,owner_user_id FROM media WHERE id=$1`, documentID); err != nil {
+		t.Fatal(err)
+	}
+	documentLink, err := s.linkedMediaAttachment(documentSnapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	documentResponse := httptest.NewRecorder()
+	e.ServeHTTP(documentResponse, httptest.NewRequest(http.MethodGet, documentLink.DeliveryURL+"?download=1", nil))
+	disposition, params, err := mime.ParseMediaType(documentResponse.Header().Get("Content-Disposition"))
+	if err != nil || documentResponse.Code != http.StatusOK || disposition != "attachment" ||
+		params["filename"] != documentName || !bytes.Equal(documentResponse.Body.Bytes(), document) {
+		t.Fatalf("document download lost original content or Chinese filename: status=%d headers=%v err=%v", documentResponse.Code, documentResponse.Header(), err)
+	}
 	check(strings.Replace(issued.DeliveryURL, filename, "other.png", 1), http.StatusNotFound)
 	check("/email-media/11111111-2222-4333-8444-555555555555/photo.png", http.StatusNotFound)
 	check("/email-media/invalid/photo.png", http.StatusNotFound)
@@ -145,7 +178,7 @@ func TestEmailMediaRecipientAccessAndRevocation(t *testing.T) {
 	}
 	check(rotated.DeliveryURL, http.StatusNotFound)
 	var count int
-	if err := db.Get(&count, `SELECT COUNT(*) FROM email_media_links`); err != nil || count != 0 {
+	if err := db.Get(&count, `SELECT COUNT(*) FROM email_media_links WHERE media_id=$1`, id); err != nil || count != 0 {
 		t.Fatalf("deletion left a recipient grant: %d %v", count, err)
 	}
 	if _, err := url.ParseRequestURI(issued.DeliveryURL); err != nil {

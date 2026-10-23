@@ -1,6 +1,10 @@
 # 工作状态
 
-快照日期：2026-10-21
+快照日期：2026-10-23
+
+- **附件资料区版式优化（2026-10-23）**：采用白色资料面板、浅灰文件行、文件数量标签和统一的折角文档图标，去掉 emoji 与多层卡片描边；查看使用浅蓝按钮，下载原文件使用次级文字入口。保留按类型颜色区分、不使用竖线及 Office 查看/源文件下载行为。表格固定布局约束长文件名换行，Chrome 实际 820px/390px 视口预览确认页面宽度未溢出。来源：`internal/manager/linked_media.go::writeLinkedFileCard`。
+
+- **营销邮件末尾附件卡片（2026-10-23）**：未在正文使用的非图片媒体从单行文件名链接改为统一“附件资料”区，显示数量及逐文件类型标识、原始文件名，只用图标颜色区分类型，不使用竖线。Office 文件的查看链接交给微软 Office Web Viewer，PDF 直接查看；下载始终通过本地收件人文件路由 `?download=1` 返回原始字节与文件名，其他类型只提供下载。正文已有文件链接、自动加载的图片、纯文本备用正文和系统原始 MIME 附件沿用原行为。专项回归 9 项、中文 Excel 文件真实 PostgreSQL 下载测试、全量 Go 测试 749 项通过；Chrome 桌面/窄屏预览与文档检查通过。微软服务器实际预览生产文件尚未验证，需公网 HTTPS 的 `app.root_url`。回归入口：`internal/manager/linked_media_test.go::TestLinkedMediaFileCardsKeepEachNameAndType`、`cmd/email_media_test.go::TestEmailMediaRecipientAccessAndRevocation`。
 
 - **最高管理员私域列表总览（2026-10-22）**：私域列表页面以独立只读查询范围展示跨个人/组织工作区的所有普通列表；默认 API 与选择器仍按工作区过滤，公海不混入，非最高管理员及个人 Key 禁止该范围。跨页“全选所有结果”暂停提供，避免把全员查看范围误用于旧的工作区批量删除查询。隔离 PostgreSQL 接口测试、Go 全量 747 项、私域列表 Cypress 1/1、前端构建与文档检查通过；ESLint 只有既有地图组件 warning。来源：`cmd/customer_lists.go::GetLists`、`internal/core/workspace_queries.go::QueryPlatformPrivateLists`、`frontend/src/views/CustomerLists.vue`。
 

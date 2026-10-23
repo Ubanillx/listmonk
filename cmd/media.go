@@ -628,7 +628,7 @@ func (a *App) streamMediaBlob(c echo.Context, filename string) error {
 	ctype, attach, csp := mediaServingPolicy(http.DetectContentType(b))
 	c.Response().Header().Set("Cache-Control", "private, max-age=300")
 	c.Response().Header().Set("X-Content-Type-Options", "nosniff")
-	if attach {
+	if attach && c.Response().Header().Get("Content-Disposition") == "" {
 		c.Response().Header().Set("Content-Disposition", "attachment")
 	}
 	if csp != "" {

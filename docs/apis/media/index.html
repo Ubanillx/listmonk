@@ -2430,9 +2430,35 @@
 
 
 <h1 id="api-media">API / Media<a class="headerlink" href="#api-media" title="Permanent link">&para;</a></h1>
+<p>Campaign and template saves reconcile uploaded URLs in the body with their media
+associations, even if the client omits <code>media</code>. An exact media ID must exist and
+match its filename; legacy filename URLs must resolve unambiguously. Media must
+be usable by the resource's saved owner, including its folder permissions.
+Administrator inspection rights do not substitute for that authorization.
+Missing or foreign private files reject the entire save. Starting/scheduling
+also checks saved body and template dependencies. The sender checks static
+dependencies before queueing customers, then checks each rendered message
+before SMTP. An unresolved internal image, relative/blob/data image URL, or
+missing MIME CID blocks delivery. Worker failures pause immediately, keep the
+recipient pending, and appear under the <code>media</code> error category. External HTTP(S)
+URLs are checked for valid shape, not fetched by the worker.</p>
 <p>Email delivery uses remote links for media-library files. HTML images retain an
 <code>&lt;img src="https://your-domain/email-media/{token}/{filename}"&gt;</code> source and load
-when the recipient opens the message. Other files appear as download links;
+when the recipient opens the message. Other files that are not already linked
+in the body appear at the end in one grouped attachment section with a file
+count. Each file has its own colored type icon and original filename. For Word,
+Excel, and PowerPoint files, <strong>View</strong> opens <a href="https://www.microsoft.com/en-us/copilot/blog/2013/04/10/office-web-viewer-view-office-documents-in-a-browser/">Microsoft's Office Web Viewer</a> with
+the recipient file URL; for PDF it opens the file URL directly. Other file types
+offer download only. <strong>Download</strong> always uses the recipient file URL with
+<code>?download=1</code>, which sends the original bytes as an attachment under the
+original filename. The media-library URL requires authentication and is never
+placed in outgoing mail. Microsoft must fetch Office files from the public
+<code>app.root_url</code> to preview them. The Office Viewer link embeds the recipient URL;
+opening that link (including by an automated link scanner) can share the URL
+and file with Microsoft. An unavailable public URL or a Microsoft viewer
+error does not affect the direct Download link. File
+links already present in the body keep their placement and receive the
+recipient URL. Plain-text messages keep filename and URL lines;
 library files are no longer attached as binary or CID MIME parts. This applies
 to campaign tests, new sends, paused/deferred campaigns resumed after upgrade,
 and transactional template media. Previously delivered messages remain unchanged.</p>

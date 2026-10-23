@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="780" viewBox="0 0 1240 780" font-family="'Inter','Segoe UI','PingFang SC','Microsoft YaHei',system-ui,sans-serif">
+<defs>
+<marker id="arrow" markerWidth="9" markerHeight="9" refX="7.5" refY="4.5" orient="auto">
+  <path d="M0,0 L9,4.5 L0,9 z" fill="#5b6577"/></marker>
+<marker id="arrowb" markerWidth="9" markerHeight="9" refX="7.5" refY="4.5" orient="auto">
+  <path d="M0,0 L9,4.5 L0,9 z" fill="#0055d4"/></marker>
+<linearGradient id="band" x1="0" y1="0" x2="1" y2="0">
+  <stop offset="0" stop-color="#eef4ff"/><stop offset="1" stop-color="#f8fbff"/></linearGradient>
+</defs>
+<rect x="0" y="0" width="1240" height="780" rx="16" fill="#ffffff" stroke="#d7dce5" stroke-width="1"/>
+<text x="40" y="48" font-size="20" fill="#101828" font-weight="700">系统全景</text>
+<text x="40" y="72" font-size="13" fill="#5b6577" font-weight="400">浏览器 / API 客户端 → Go + Echo 服务 → PostgreSQL，静态资源与邮件模板打包进单一二进制</text>
+<rect x="40" y="100" width="250" height="128" rx="12" fill="#f6f9fe" stroke="#d7dce5" stroke-width="1"/>
+<text x="56" y="128" font-size="13.5" fill="#101828" font-weight="700">客户端</text>
+<circle cx="62" cy="154" r="3" fill="#0055d4"/>
+<text x="74" y="158" font-size="11.8" fill="#5b6577" font-weight="400">Vue 2 管理端（Vite）</text>
+<circle cx="62" cy="178" r="3" fill="#0055d4"/>
+<text x="74" y="182" font-size="11.8" fill="#5b6577" font-weight="400">React 18 邮件编辑器</text>
+<circle cx="62" cy="202" r="3" fill="#0055d4"/>
+<text x="74" y="206" font-size="11.8" fill="#5b6577" font-weight="400">REST / Bearer API 客户端</text>
+<rect x="340" y="100" width="210" height="128" rx="12" fill="#fff" stroke="#d7dce5" stroke-width="1"/>
+<text x="356" y="128" font-size="13.5" fill="#101828" font-weight="700">接入层</text>
+<text x="356" y="154" font-size="11.8" fill="#5b6577" font-weight="400">· HTTP 会话 / 2FA</text>
+<text x="356" y="178" font-size="11.8" fill="#5b6577" font-weight="400">· OIDC / OAuth2 SSO</text>
+<text x="356" y="202" font-size="11.8" fill="#5b6577" font-weight="400">· 个人 Bearer API Key</text>
+<rect x="600" y="100" width="290" height="260" rx="12" fill="#fff" stroke="#bcd2f7" stroke-width="1.4"/>
+<text x="616" y="128" font-size="13.5" fill="#101828" font-weight="700">Go 服务（cmd/）</text>
+<text x="616" y="147" font-size="11" fill="#5b6577" font-weight="400" font-family="'JetBrains Mono','Consolas','SFMono-Regular',monospace">Echo v4 · sqlx · goyesql</text>
+<rect x="616" y="168" width="258" height="25" rx="6" fill="#f5f8ff" stroke="#e3ecfb"/>
+<text x="626" y="185" font-size="10.6" fill="#0055d4" font-weight="600" font-family="'JetBrains Mono','Consolas','SFMono-Regular',monospace">internal/core</text>
+<text x="756" y="185" font-size="10.6" fill="#5b6577" font-weight="400">工作区 · 权限 · 事务锁</text>
+<rect x="616" y="199" width="258" height="25" rx="6" fill="#f5f8ff" stroke="#e3ecfb"/>
+<text x="626" y="216" font-size="10.6" fill="#0055d4" font-weight="600" font-family="'JetBrains Mono','Consolas','SFMono-Regular',monospace">internal/manager</text>
+<text x="756" y="216" font-size="10.6" fill="#5b6577" font-weight="400">活动批次与发送管道</text>
+<rect x="616" y="230" width="258" height="25" rx="6" fill="#f5f8ff" stroke="#e3ecfb"/>
+<text x="626" y="247" font-size="10.6" fill="#0055d4" font-weight="600" font-family="'JetBrains Mono','Consolas','SFMono-Regular',monospace">internal/messenger</text>
+<text x="756" y="247" font-size="10.6" fill="#5b6577" font-weight="400">SMTP / Postbox 投递</text>
+<rect x="616" y="261" width="258" height="25" rx="6" fill="#f5f8ff" stroke="#e3ecfb"/>
+<text x="626" y="278" font-size="10.6" fill="#0055d4" font-weight="600" font-family="'JetBrains Mono','Consolas','SFMono-Regular',monospace">internal/bounce</text>
+<text x="756" y="278" font-size="10.6" fill="#5b6577" font-weight="400">Webhook / POP3 退信</text>
+<rect x="616" y="292" width="258" height="25" rx="6" fill="#f5f8ff" stroke="#e3ecfb"/>
+<text x="626" y="309" font-size="10.6" fill="#0055d4" font-weight="600" font-family="'JetBrains Mono','Consolas','SFMono-Regular',monospace">internal/replyai</text>
+<text x="756" y="309" font-size="10.6" fill="#5b6577" font-weight="400">回信 AI 分类</text>
+<rect x="616" y="323" width="258" height="25" rx="6" fill="#f5f8ff" stroke="#e3ecfb"/>
+<text x="626" y="340" font-size="10.6" fill="#0055d4" font-weight="600" font-family="'JetBrains Mono','Consolas','SFMono-Regular',monospace">internal/subimporter</text>
+<text x="756" y="340" font-size="10.6" fill="#5b6577" font-weight="400">CSV / XLSX 导入</text>
+<rect x="960" y="100" width="240" height="128" rx="12" fill="#fff" stroke="#d7dce5" stroke-width="1"/>
+<text x="976" y="128" font-size="13.5" fill="#101828" font-weight="700">PostgreSQL 17</text>
+<text x="976" y="154" font-size="11.8" fill="#5b6577" font-weight="400">· 业务数据 / 会话</text>
+<text x="976" y="178" font-size="11.8" fill="#5b6577" font-weight="400">· 版本迁移（47+ 个）</text>
+<text x="976" y="202" font-size="11.8" fill="#5b6577" font-weight="400">· 物化视图与统计</text>
+<rect x="40" y="268" width="510" height="92" rx="12" fill="#fff" stroke="#d7dce5" stroke-width="1"/>
+<text x="56" y="294" font-size="12.8" fill="#101828" font-weight="700">打包进二进制的资源（stuffbin）</text>
+<text x="56" y="314" font-size="10.6" fill="#0055d4" font-weight="600" font-family="'JetBrains Mono','Consolas','SFMono-Regular',monospace">frontend/dist → /admin</text>
+<text x="188" y="314" font-size="10.6" fill="#5b6577" font-weight="400">管理端 SPA</text>
+<text x="306" y="314" font-size="10.6" fill="#0055d4" font-weight="600" font-family="'JetBrains Mono','Consolas','SFMono-Regular',monospace">static/ → /public</text>
+<text x="438" y="314" font-size="10.6" fill="#5b6577" font-weight="400">公开页面 · 邮件模板</text>
+<text x="56" y="338" font-size="10.6" fill="#0055d4" font-weight="600" font-family="'JetBrains Mono','Consolas','SFMono-Regular',monospace">queries/*.sql</text>
+<text x="188" y="338" font-size="10.6" fill="#5b6577" font-weight="400">具名 SQL</text>
+<text x="306" y="338" font-size="10.6" fill="#0055d4" font-weight="600" font-family="'JetBrains Mono','Consolas','SFMono-Regular',monospace">i18n/</text>
+<text x="438" y="338" font-size="10.6" fill="#5b6577" font-weight="400">zh-CN · zh-TW · en</text>
+<line x1="290" y1="164" x2="340" y2="164" stroke="#5b6577" stroke-width="1.6" marker-end="url(#arrow)"/>
+<line x1="550" y1="164" x2="600" y2="164" stroke="#5b6577" stroke-width="1.6" marker-end="url(#arrow)"/>
+<line x1="890" y1="164" x2="960" y2="164" stroke="#0055d4" stroke-width="1.8" marker-end="url(#arrowb)"/>
+<line x1="960" y1="200" x2="890" y2="200" stroke="#0055d4" stroke-width="1.8" marker-end="url(#arrowb)"/>
+<text x="40" y="410" font-size="20" fill="#101828" font-weight="700">活动发送管道</text>
+<text x="40" y="434" font-size="13" fill="#5b6577" font-weight="400">从受众快照到 SMTP 投递，每一步都在事务锁与权限边界内校验</text>
+<rect x="40" y="456" width="216" height="108" rx="12" fill="#fff" stroke="#d7dce5" stroke-width="1"/>
+<circle cx="66" cy="484" r="12" fill="#0055d4"/>
+<text x="66" y="489" font-size="12" fill="#fff" font-weight="700" text-anchor="middle">1</text>
+<text x="86" y="489" font-size="13" fill="#101828" font-weight="700">构建受众</text>
+<text x="56" y="518" font-size="10.8" fill="#5b6577" font-weight="400">私域列表 / 一级公海</text>
+<text x="56" y="535" font-size="10.8" fill="#5b6577" font-weight="400">跨组织分配去重</text>
+<line x1="258" y1="510" x2="272" y2="510" stroke="#5b6577" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="276" y="456" width="216" height="108" rx="12" fill="#fff" stroke="#d7dce5" stroke-width="1"/>
+<circle cx="302" cy="484" r="12" fill="#0055d4"/>
+<text x="302" y="489" font-size="12" fill="#fff" font-weight="700" text-anchor="middle">2</text>
+<text x="322" y="489" font-size="13" fill="#101828" font-weight="700">冻结收件人</text>
+<text x="292" y="518" font-size="10.8" fill="#5b6577" font-weight="400">campaign_recipients</text>
+<text x="292" y="535" font-size="10.8" fill="#5b6577" font-weight="400">campaign_pool_recipients</text>
+<line x1="494" y1="510" x2="508" y2="510" stroke="#5b6577" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="512" y="456" width="216" height="108" rx="12" fill="#fff" stroke="#d7dce5" stroke-width="1"/>
+<circle cx="538" cy="484" r="12" fill="#0055d4"/>
+<text x="538" y="489" font-size="12" fill="#fff" font-weight="700" text-anchor="middle">3</text>
+<text x="558" y="489" font-size="13" fill="#101828" font-weight="700">渲染邮件</text>
+<text x="528" y="518" font-size="10.8" fill="#5b6577" font-weight="400">模板变量 · 媒体引用</text>
+<text x="528" y="535" font-size="10.8" fill="#5b6577" font-weight="400">每封信再次校验依赖</text>
+<line x1="730" y1="510" x2="744" y2="510" stroke="#5b6577" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="748" y="456" width="216" height="108" rx="12" fill="#fff" stroke="#d7dce5" stroke-width="1"/>
+<circle cx="774" cy="484" r="12" fill="#0055d4"/>
+<text x="774" y="489" font-size="12" fill="#fff" font-weight="700" text-anchor="middle">4</text>
+<text x="794" y="489" font-size="13" fill="#101828" font-weight="700">选择发件</text>
+<text x="764" y="518" font-size="10.8" fill="#5b6577" font-weight="400">个人 SMTP / 组织 SMTP 池</text>
+<text x="764" y="535" font-size="10.8" fill="#5b6577" font-weight="400">持久化游标轮询</text>
+<line x1="966" y1="510" x2="980" y2="510" stroke="#5b6577" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="984" y="456" width="216" height="108" rx="12" fill="#fff" stroke="#d7dce5" stroke-width="1"/>
+<circle cx="1010" cy="484" r="12" fill="#0055d4"/>
+<text x="1010" y="489" font-size="12" fill="#fff" font-weight="700" text-anchor="middle">5</text>
+<text x="1030" y="489" font-size="13" fill="#101828" font-weight="700">投递与回写</text>
+<text x="1000" y="518" font-size="10.8" fill="#5b6577" font-weight="400">smtppool → MTA</text>
+<text x="1000" y="535" font-size="10.8" fill="#5b6577" font-weight="400">发送快照 · 失败事件</text>
+<rect x="40" y="592" width="1160" height="72" rx="12" fill="#f6f9fe" stroke="#d7dce5" stroke-width="1"/>
+<rect x="64" y="614" width="108" height="28" rx="14" fill="#fff" stroke="#0055d4" stroke-opacity="0.35"/>
+<circle cx="79" cy="628" r="3.5" fill="#0055d4"/>
+<text x="90" y="632" font-size="11.6" fill="#101828" font-weight="600">SMTP 投递</text>
+<rect x="186.2" y="614" width="246" height="28" rx="14" fill="#fff" stroke="#7a5af8" stroke-opacity="0.35"/>
+<circle cx="201.2" cy="628" r="3.5" fill="#7a5af8"/>
+<text x="212.2" y="632" font-size="11.6" fill="#101828" font-weight="600">退信处理（Webhook / POP3）</text>
+<rect x="446.2" y="614" width="129" height="28" rx="14" fill="#fff" stroke="#12b76a" stroke-opacity="0.35"/>
+<circle cx="461.2" cy="628" r="3.5" fill="#12b76a"/>
+<text x="472.2" y="632" font-size="11.6" fill="#101828" font-weight="600">打开 / 点击追踪</text>
+<rect x="589.5999999999999" y="614" width="119" height="28" rx="14" fill="#fff" stroke="#f79009" stroke-opacity="0.35"/>
+<circle cx="604.5999999999999" cy="628" r="3.5" fill="#f79009"/>
+<text x="615.5999999999999" y="632" font-size="11.6" fill="#101828" font-weight="600">回信 AI 分类</text>
+<rect x="722.3999999999999" y="614" width="151" height="28" rx="14" fill="#fff" stroke="#5b6577" stroke-opacity="0.35"/>
+<circle cx="737.3999999999999" cy="628" r="3.5" fill="#5b6577"/>
+<text x="748.3999999999999" y="632" font-size="11.6" fill="#101828" font-weight="600">Excel 报表与审计</text>
+<text x="40" y="704" font-size="13" fill="#101828" font-weight="700">工程约束</text>
+<text x="40" y="728" font-size="11.8" fill="#5b6577" font-weight="400">· 工作区、所有者与角色权限逐层校验，前一层通过不代表后一层自动通过。</text>
+<text x="40" y="748" font-size="11.8" fill="#5b6577" font-weight="400">· 活动启动/排期在同一事务内重查正文与生效模板，媒体依赖缺失时暂停而不丢件。</text>
+<text x="40" y="768" font-size="11.8" fill="#5b6577" font-weight="400">· 所有时间为绝对时刻，展示与统计统一使用部署时区（默认 Asia/Shanghai）。</text>
+</svg>

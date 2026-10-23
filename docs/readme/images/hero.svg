@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="330" viewBox="0 0 1200 330" role="img" font-family="'Inter','Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',system-ui,sans-serif">
+<defs><linearGradient id="g1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f7faff"/><stop offset="1" stop-color="#ffffff"/></linearGradient><linearGradient id="g2" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#0055d4"/><stop offset="1" stop-color="#3a8bff"/></linearGradient></defs>
+<rect width="1200" height="330" rx="16" fill="url(#g1)" stroke="#d7dce5"/>
+<rect x="0" y="0" width="6" height="330" rx="3" fill="url(#g2)"/>
+<circle cx="72" cy="76" r="21" fill="none" stroke="#0055d4" stroke-width="9"/>
+<text x="104" y="70" font-size="26" fill="#101828" font-weight="700">listmonk</text>
+<rect x="104" y="80" width="86" height="20" rx="10" fill="#0055d4"/>
+<text x="147" y="94" font-size="12" fill="#ffffff" font-weight="700" text-anchor="middle">改进版</text>
+<text x="64" y="148" font-size="30" fill="#101828" font-weight="700">自托管的邮件营销与客户运营平台</text>
+<text x="64" y="182" font-size="16" fill="#5b6577" font-weight="400">单二进制部署 · 多组织工作区 · 公海客户 · 组织发件池 · AI 回信分类</text>
+<rect x="64" y="210" width="73" height="26" rx="13.0" fill="#eef3fd"/><text x="76" y="227.5" font-size="12.5" fill="#0055d4" font-weight="600" font-family="'JetBrains Mono','SFMono-Regular',Consolas,'Liberation Mono',monospace">Go 1.26</text>
+<rect x="147.0" y="210" width="73" height="26" rx="13.0" fill="#eef3fd"/><text x="159.0" y="227.5" font-size="12.5" fill="#0055d4" font-weight="600" font-family="'JetBrains Mono','SFMono-Regular',Consolas,'Liberation Mono',monospace">Echo v4</text>
+<rect x="230.0" y="210" width="94" height="26" rx="13.0" fill="#eef3fd"/><text x="242.0" y="227.5" font-size="12.5" fill="#0055d4" font-weight="600" font-family="'JetBrains Mono','SFMono-Regular',Consolas,'Liberation Mono',monospace">PostgreSQL</text>
+<rect x="334.0" y="210" width="59" height="26" rx="13.0" fill="#eef3fd"/><text x="346.0" y="227.5" font-size="12.5" fill="#0055d4" font-weight="600" font-family="'JetBrains Mono','SFMono-Regular',Consolas,'Liberation Mono',monospace">Vue 2</text>
+<rect x="403.0" y="210" width="115" height="26" rx="13.0" fill="#eef3fd"/><text x="415.0" y="227.5" font-size="12.5" fill="#0055d4" font-weight="600" font-family="'JetBrains Mono','SFMono-Regular',Consolas,'Liberation Mono',monospace">React 18 + TS</text>
+<rect x="528.0" y="210" width="66" height="26" rx="13.0" fill="#eef3fd"/><text x="540.0" y="227.5" font-size="12.5" fill="#0055d4" font-weight="600" font-family="'JetBrains Mono','SFMono-Regular',Consolas,'Liberation Mono',monospace">Docker</text>
+<rect x="604.0" y="210" width="80" height="26" rx="13.0" fill="#eef3fd"/><text x="616.0" y="227.5" font-size="12.5" fill="#0055d4" font-weight="600" font-family="'JetBrains Mono','SFMono-Regular',Consolas,'Liberation Mono',monospace">REST API</text>
+<text x="64" y="280" font-size="13" fill="#5b6577" font-weight="600" font-family="'JetBrains Mono','SFMono-Regular',Consolas,'Liberation Mono',monospace">AGPL-3.0</text>
+<circle cx="152" cy="276" r="3" fill="#d7dce5"/>
+<text x="166" y="280" font-size="13" fill="#5b6577" font-weight="600">自托管</text>
+<circle cx="222" cy="276" r="3" fill="#d7dce5"/>
+<text x="236" y="280" font-size="13" fill="#5b6577" font-weight="600">上游 knadh/listmonk</text>
+<circle cx="386" cy="276" r="3" fill="#d7dce5"/>
+<text x="400" y="280" font-size="13" fill="#5b6577" font-weight="600">可离线部署</text>
+<rect x="836" y="62" width="310" height="206" rx="14" fill="#ffffff" stroke="#d7dce5" stroke-width="1" />
+<text x="860" y="94" font-size="14" fill="#101828" font-weight="700">工作区模型</text>
+<rect x="860" y="122" width="6" height="34" rx="3" fill="#0055d4"/>
+<text x="878" y="137" font-size="13.5" fill="#101828" font-weight="700">个人空间</text>
+<text x="878" y="153" font-size="11.5" fill="#5b6577" font-weight="400">私人列表 / 活动 / 模板</text>
+<rect x="860" y="170" width="6" height="34" rx="3" fill="#3a8bff"/>
+<text x="878" y="185" font-size="13.5" fill="#101828" font-weight="700">组织工作区</text>
+<text x="878" y="201" font-size="11.5" fill="#5b6577" font-weight="400">成员 · 角色 · 共享资源</text>
+<rect x="860" y="218" width="6" height="34" rx="3" fill="#7aa9ff"/>
+<text x="878" y="233" font-size="13.5" fill="#101828" font-weight="700">一级公海</text>
+<text x="878" y="249" font-size="11.5" fill="#5b6577" font-weight="400">跨组织主数据与分配</text>
+</svg>

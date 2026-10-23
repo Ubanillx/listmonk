@@ -122,7 +122,7 @@ export default {
       report: {
         results: [], reasons: [], total: 0, recordedErrors: 0, historicalErrors: 0, canExport: false,
       },
-      categories: ['smtp_auth', 'smtp_rejected', 'smtp_temporary', 'timeout', 'network', 'smtp_unavailable', 'reply_unavailable', 'render', 'other'],
+      categories: ['smtp_auth', 'smtp_rejected', 'smtp_temporary', 'timeout', 'network', 'smtp_unavailable', 'reply_unavailable', 'media', 'render', 'other'],
     };
   },
   computed: {
@@ -137,7 +137,7 @@ export default {
   methods: {
     reasonLabel(category) { return this.$t(`campaigns.sendErrorReasons.${category}`); },
     reasonClass(category) {
-      if (['smtp_auth', 'smtp_unavailable', 'reply_unavailable', 'render'].includes(category)) return 'send-error-reason-danger';
+      if (['smtp_auth', 'smtp_unavailable', 'reply_unavailable', 'media', 'render'].includes(category)) return 'send-error-reason-danger';
       if (category === 'smtp_rejected') return 'send-error-reason-warning';
       return 'send-error-reason-info';
     },

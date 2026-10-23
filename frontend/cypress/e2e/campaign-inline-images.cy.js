@@ -22,7 +22,7 @@ describe('Campaign inline image uploads', () => {
     cy.intercept('GET', '/api/config', (req) => req.continue((res) => { res.body.data.lang = 'en'; }));
   });
 
-  it('uploads dialog and pasted images, waits before saving, previews and sends remotely loaded images', () => {
+  it('reconciles omitted media IDs when saving, previews and sends anonymously readable images', () => {
     cy.resetDB();
     cy.loginAndVisit('/admin/campaigns');
     cy.request('PUT', '/api/profile/smtp', { smtp: [{ name: 'Inline image test', enabled: true,
@@ -54,12 +54,17 @@ describe('Campaign inline image uploads', () => {
       editor.selection.collapse(false);
       editor.insertContent(`<p><img alt="inline-pasted" src="${imageData(win)}"></p>`);
     });
-    cy.intercept('PUT', '/api/campaigns/*').as('save');
+    cy.intercept('PUT', '/api/campaigns/*', (req) => {
+      // Reproduce the historical editor/API defect: HTML has uploaded image
+      // URLs while the request accidentally omits the association array.
+      req.body.media = [];
+      req.continue();
+    }).as('save');
     cy.get('.campaign > header [data-cy=btn-save]').click();
     cy.wait('@upload');
     cy.wait('@save').then(({ request, response }) => {
       expect(request.body.body).not.to.match(/(?:blob:|data:image)/);
-      expect(request.body.media).to.have.length(2);
+      expect(request.body.media).to.have.length(0);
       expect(response.statusCode).to.eq(200);
       expect(response.body.data.media.map((item) => item.id)).to.deep.eq(uploaded.map((item) => item.id));
     });
@@ -94,6 +99,15 @@ describe('Campaign inline image uploads', () => {
       expect(response.statusCode).to.eq(200);
       expect(request.body.media).to.have.length(2);
       expect(request.body.body).not.to.match(/(?:blob:|data:image)/);
+      const blockedSubject = `${subject}-blocked`;
+      cy.request({ method: 'POST', url: request.url, failOnStatusCode: false,
+        body: { ...request.body, subject: blockedSubject, body: '<img src="/api/media/file/999999/missing.png">', media: [] } })
+        .then((blocked) => {
+          expect(blocked.status).to.be.within(400, 599);
+          cy.request({ url: 'http://127.0.0.1:8265/api/v2/search',
+            qs: { kind: 'containing', query: blockedSubject, start: 0, limit: 10 } })
+            .its('body.items').should('have.length', 0);
+        });
     });
     cy.waitUntil(() => cy.request({ url: 'http://127.0.0.1:8265/api/v2/search',
       qs: { kind: 'containing', query: subject, start: 0, limit: 10 } }).then(({ body }) => body.items.length > 0));
@@ -217,6 +231,29 @@ describe('Campaign inline image uploads', () => {
         expect(body.data.media).to.have.length(0);
       });
     });
+    cy.get('.modal-card-foot button').click();
+  });
+
+  it('loads wrapper-template images when previewing from the campaign list', () => {
+    cy.visit('/admin/campaigns');
+    cy.window().then(async (win) => {
+      const blob = await (await win.fetch(imageData(win))).blob();
+      const form = new win.FormData();
+      form.set('file', blob, 'wrapper-image.png');
+      const uploaded = await (await win.fetch('/api/media', { method: 'POST', body: form })).json();
+      return uploaded.data;
+    }).then((image) => {
+      cy.request('POST', '/api/templates', { name: 'Wrapper image regression', type: 'campaign',
+        body: `<html><body><img src="${image.url}" alt="wrapper-only">{{ template "content" . }}</body></html>`, media: [] })
+        .then(({ body: template }) => {
+          cy.request('POST', '/api/campaigns', { name: 'wrapper-preview-regression', subject: 'wrapper-preview-regression',
+            type: 'regular', content_type: 'richtext', body: '<p>No direct images</p>', template_id: template.data.id,
+            customer_list_ids: [1], smtp_source: 'personal', smtp_rate_limit: 20 });
+        });
+    });
+    cy.visit('/admin/campaigns');
+    cy.contains('tbody tr', 'wrapper-preview-regression').find('[data-cy=btn-preview]').click();
+    cy.get('#iframe').invoke('attr', 'srcdoc').should('contain', 'src="data:image/png;base64,');
     cy.get('.modal-card-foot button').click();
   });
 });

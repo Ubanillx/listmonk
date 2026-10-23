@@ -614,6 +614,7 @@
     "campaigns.sendErrorReasons.timeout": "Connection or delivery timeout",
     "campaigns.sendErrorReasons.network": "Network connection failed",
     "campaigns.sendErrorReasons.smtp_unavailable": "Sender unavailable",
+    "campaigns.sendErrorReasons.media": "Image or media unavailable",
     "campaigns.sendErrorReasons.reply_unavailable": "Reply route unavailable",
     "campaigns.sendErrorReasons.render": "Message rendering failed",
     "campaigns.sendErrorReasons.other": "Other send error",

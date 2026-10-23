@@ -74,6 +74,14 @@ export default {
     },
 
     async embedPreviewImages(html) {
+      const allowedMedia = [...this.media];
+      // List previews receive campaign media separately from wrapper-template
+      // media. Load that exact authorized template so its private/shared images
+      // can also be materialized inside the cookie-free sandbox.
+      if (this.type === 'campaign' && this.templateId && this.contentType !== 'visual') {
+        const selectedTemplate = await this.$api.getTemplate(this.templateId);
+        allowedMedia.push(...(selectedTemplate.media || []));
+      }
       const template = document.createElement('template');
       template.innerHTML = html;
       const sources = [...new Set(Array.from(template.content.querySelectorAll('img')).map((image) => image.getAttribute('src')).filter(Boolean))];
@@ -83,7 +91,7 @@ export default {
         if (url.origin !== window.location.origin || !/^\/(?:api\/media\/file|uploads)\//.test(url.pathname)) return;
         const match = url.pathname.match(/^\/api\/media\/file\/(\d+)\/([^/]+)$/);
         const filename = decodeURIComponent(url.pathname.split('/').pop());
-        const media = this.media.find((item) => item.id && item.filename === filename && (!match || Number(item.id) === Number(match[1])));
+        const media = allowedMedia.find((item) => item.id && item.filename === filename && (!match || Number(item.id) === Number(match[1])));
         if (!media) return;
         // Read protected files with the parent's authenticated workspace request.
         // The sandbox receives only these authorized bytes, never a session cookie.

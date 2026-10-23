@@ -46,6 +46,15 @@ func (c *Core) CloneCampaignForWorkspaceWithSource(sourceID int, sourceAccess, t
 	if !c.CanCopyCampaign(sourceAccess, sourceScope) {
 		return models.Campaign{}, echo.NewHTTPError(http.StatusForbidden, "campaign is not copyable in the active workspace")
 	}
+	// Copy authority permits snapshotting the source owner's private graph.
+	// Reconcile against that owner, rather than requiring the manager to be
+	// allowed to send the source's private media as their own campaign.
+	sourceMediaAccess := models.WorkspaceAccess{Workspace: models.Workspace{
+		Personal: !sourceScope.OrganizationID.Valid, OrganizationID: int(sourceScope.OrganizationID.Int), Role: "member",
+	}, UserID: int(sourceScope.OwnerUserID.Int)}
+	if err := c.reconcileStoredCampaignMediaTx(tx, sourceMediaAccess, sourceID); err != nil {
+		return models.Campaign{}, err
+	}
 
 	// The campaign row is locked before its associations are read. Normal
 	// campaign updates use the same lock, so the customer_list/media/template snapshot is

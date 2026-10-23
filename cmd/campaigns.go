@@ -1884,6 +1884,11 @@ func (a *App) preloadTestCampaignMedia(c echo.Context, access models.WorkspaceAc
 }
 
 func (a *App) requireUsableCampaignResources(c echo.Context, access models.WorkspaceAccess, req campReq) error {
+	if req.ContentType != models.CampaignContentTypePlain {
+		if err := a.requireBodyMediaPermission(c, req.Body); err != nil {
+			return err
+		}
+	}
 	if req.TemplateID.Valid && req.TemplateID.Int > 0 {
 		if _, err := a.requireUsableWorkspaceResource(c, access, resourceTemplates, int(req.TemplateID.Int), auth.PermTemplatesGet); err != nil {
 			return err

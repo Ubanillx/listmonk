@@ -110,6 +110,17 @@ func (c *Core) updateCampaignTx(tx *sqlx.Tx, access models.WorkspaceAccess, id i
 			return err
 		}
 	}
+	if o.ContentType != models.CampaignContentTypePlain {
+		var savedScope models.ResourceScope
+		if err := tx.Get(&savedScope, `SELECT organization_id,owner_user_id FROM campaigns WHERE id=$1`, id); err != nil {
+			return workspaceQueryError("reading campaign image owner", err)
+		}
+		var err error
+		mediaIDs, err = c.reconcileBodyMediaTx(tx, access, savedScope, o.Body, mediaIDs, int(o.TemplateID.Int))
+		if err != nil {
+			return err
+		}
+	}
 	if err := c.lockWorkspaceUsableResources(tx, access, resourceMedia, mediaIDs); err != nil {
 		return err
 	}
@@ -185,6 +196,11 @@ func (c *Core) UpdateCampaignStatusInWorkspace(access models.WorkspaceAccess, id
 		}
 		if err := c.validateCampaignStatusTransition(state.Status, state.SendAt.Valid, status); err != nil {
 			return err
+		}
+		if status == models.CampaignStatusRunning || status == models.CampaignStatusScheduled {
+			if err := c.reconcileStoredCampaignMediaTx(tx, access, id); err != nil {
+				return err
+			}
 		}
 		if status == models.CampaignStatusRunning || status == models.CampaignStatusScheduled || status == models.CampaignStatusCancelled {
 			if _, err := tx.Exec(`UPDATE campaigns SET retry_mode=false WHERE id=$1`, id); err != nil {

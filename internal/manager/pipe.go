@@ -110,6 +110,12 @@ func (m *Manager) newPipe(c *models.Campaign) (*pipe, error) {
 		m.markCampaignStartFailure(c)
 		return nil, err
 	}
+	if email.IsMessengerName(c.Messenger) {
+		if err := validateCampaignMedia(c, m.cfg.RootURL); err != nil {
+			m.markCampaignStartFailure(c)
+			return nil, err
+		}
+	}
 
 	// Add the campaign to the active map.
 	p := &pipe{

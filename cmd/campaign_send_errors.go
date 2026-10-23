@@ -137,7 +137,7 @@ func (a *App) ExportCampaignSendErrors(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	for _, category := range []string{"smtp_auth", "smtp_rejected", "smtp_temporary", "timeout", "network", "smtp_unavailable", "reply_unavailable", "render", "other"} {
+	for _, category := range []string{"smtp_auth", "smtp_rejected", "smtp_temporary", "timeout", "network", "smtp_unavailable", "reply_unavailable", "media", "render", "other"} {
 		if count := reasonCounts[category]; count > 0 {
 			if err := summary.addRow(book.translated("campaigns.sendErrorReasons."+category, category), count); err != nil {
 				return err

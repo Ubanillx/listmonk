@@ -505,6 +505,14 @@ func (m *Manager) PushCampaignMessage(msg CampaignMessage) error {
 	if err := m.attachMedia(msg.Campaign); err != nil {
 		return err
 	}
+	// Interactive test sends have no lifecycle pipe. Validate synchronously so
+	// the API cannot report success merely because an invalid message queued.
+	if msg.pipe == nil && email.IsMessengerName(msg.Campaign.Messenger) {
+		if _, _, _, err := LinkMediaAttachments(msg.body, msg.altBody, msg.Campaign.Attachments,
+			m.cfg.RootURL, msg.Campaign.ContentType == models.CampaignContentTypePlain); err != nil {
+			return err
+		}
+	}
 
 	select {
 	case m.campMsgQ <- msg:
@@ -1286,7 +1294,11 @@ func (m *Manager) worker() {
 					}
 					// Call the error callback, which keeps track of the error count
 					// and stops the campaign if the error count exceeds the threshold.
-					msg.pipe.OnError()
+					if errors.Is(err, ErrUnresolvedMedia) {
+						msg.pipe.Stop(stopReasonPause, true)
+					} else {
+						msg.pipe.OnError()
+					}
 				} else {
 					var uErr error
 					if msg.PoolContactID > 0 {

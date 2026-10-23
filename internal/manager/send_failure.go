@@ -40,6 +40,9 @@ func sanitizeSendFailure(err error) string {
 }
 
 func classifySendFailure(stage string, err error) (string, int) {
+	if errors.Is(err, ErrUnresolvedMedia) {
+		return "media", 0
+	}
 	if stage == "render" {
 		return "render", 0
 	}

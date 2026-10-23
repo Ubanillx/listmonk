@@ -41,6 +41,7 @@ type Core struct {
 
 // Constants represents constant config.
 type Constants struct {
+	RootURL               string
 	SendOptinConfirmation bool
 	BounceActions         map[string]struct {
 		Count  int

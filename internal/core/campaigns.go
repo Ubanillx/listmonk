@@ -434,6 +434,13 @@ func (c *Core) createCampaignTx(tx *sqlx.Tx, access models.WorkspaceAccess, o mo
 			return 0, err
 		}
 	}
+	var mediaErr error
+	if o.ContentType != models.CampaignContentTypePlain {
+		mediaIDs, mediaErr = c.reconcileBodyMediaTx(tx, access, scope, o.Body, mediaIDs, int(o.TemplateID.Int))
+		if mediaErr != nil {
+			return 0, mediaErr
+		}
+	}
 	if err := c.lockWorkspaceUsableResources(tx, access, resourceMedia, mediaIDs); err != nil {
 		return 0, err
 	}

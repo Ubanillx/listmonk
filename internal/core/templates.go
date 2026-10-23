@@ -55,6 +55,14 @@ func (c *Core) CreateTemplate(name, typ, subject string, body []byte, bodySource
 func (c *Core) CreateTemplateInWorkspace(access models.WorkspaceAccess, name, typ, subject string, body []byte, bodySource null.String, mediaIDs pq.Int64Array, scope models.ResourceScope, fallback *models.NameFallback) (models.Template, error) {
 	var newID int
 	err := c.withWorkspaceCreation(access, func(tx *sqlx.Tx) error {
+		ids, err := c.reconcileBodyMediaTx(tx, access, scope, string(body), int64IDs(mediaIDs), 0)
+		if err != nil {
+			return err
+		}
+		mediaIDs = make(pq.Int64Array, 0, len(ids))
+		for _, id := range ids {
+			mediaIDs = append(mediaIDs, int64(id))
+		}
 		if err := c.lockWorkspaceUsableResources(tx, access, resourceMedia, int64IDs(mediaIDs)); err != nil {
 			return err
 		}
@@ -94,6 +102,18 @@ func (c *Core) UpdateTemplate(id int, name, subject string, body []byte, bodySou
 // inside the write transaction.
 func (c *Core) UpdateTemplateInWorkspace(access models.WorkspaceAccess, id int, name, subject string, body []byte, bodySource null.String, mediaIDs pq.Int64Array, visibility string, fallback *models.NameFallback) (models.Template, error) {
 	err := c.withWorkspaceResourceMutation(access, resourceTemplates, []int{id}, func(tx *sqlx.Tx) error {
+		var savedScope models.ResourceScope
+		if err := tx.Get(&savedScope, `SELECT organization_id,owner_user_id FROM templates WHERE id=$1`, id); err != nil {
+			return workspaceQueryError("reading template image owner", err)
+		}
+		ids, err := c.reconcileBodyMediaTx(tx, access, savedScope, string(body), int64IDs(mediaIDs), 0)
+		if err != nil {
+			return err
+		}
+		mediaIDs = make(pq.Int64Array, 0, len(ids))
+		for _, mid := range ids {
+			mediaIDs = append(mediaIDs, int64(mid))
+		}
 		if visibility != "" {
 			if err := validateResourceVisibility(resourceTemplates, visibility); err != nil {
 				return err

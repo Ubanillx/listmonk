@@ -1,5 +1,18 @@
 # API / Media
 
+Campaign and template saves reconcile uploaded URLs in the body with their media
+associations, even if the client omits `media`. An exact media ID must exist and
+match its filename; legacy filename URLs must resolve unambiguously. Media must
+be usable by the resource's saved owner, including its folder permissions.
+Administrator inspection rights do not substitute for that authorization.
+Missing or foreign private files reject the entire save. Starting/scheduling
+also checks saved body and template dependencies. The sender checks static
+dependencies before queueing customers, then checks each rendered message
+before SMTP. An unresolved internal image, relative/blob/data image URL, or
+missing MIME CID blocks delivery. Worker failures pause immediately, keep the
+recipient pending, and appear under the `media` error category. External HTTP(S)
+URLs are checked for valid shape, not fetched by the worker.
+
 Email delivery uses remote links for media-library files. HTML images retain an
 `<img src="https://your-domain/email-media/{token}/{filename}">` source and load
 when the recipient opens the message. Other files that are not already linked

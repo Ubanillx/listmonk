@@ -166,9 +166,9 @@ func TestLinkedMediaPlainAndExplicitImage(t *testing.T) {
 
 func TestLinkedMediaCannotFallbackToWrongClone(t *testing.T) {
 	media := linkedTestMedia()
-	body, _, _, err := LinkMediaAttachments([]byte(`<img src="/api/media/file/99/photo.png">`), nil, media, "https://example.com", false)
-	if err != nil || !strings.Contains(string(body), `src="/api/media/file/99/photo.png"`) {
-		t.Fatalf("rewrote an unrelated exact ID: %s %v", body, err)
+	_, _, _, err := LinkMediaAttachments([]byte(`<img src="/api/media/file/99/photo.png">`), nil, media, "https://example.com", false)
+	if err == nil {
+		t.Fatal("an unrelated exact ID must be rejected before SMTP")
 	}
 	media[0].DeliveryURL = ""
 	if _, _, _, err := LinkMediaAttachments(nil, nil, media, "https://example.com", false); err == nil {
@@ -179,7 +179,7 @@ func TestLinkedMediaCannotFallbackToWrongClone(t *testing.T) {
 func TestLinkedMediaRewritesBackgroundAndExistingDownload(t *testing.T) {
 	body, _, files, err := LinkMediaAttachments([]byte(`<body style="background-image:url('/uploads/photo.png')"><a href="/api/media/file/8/catalog.pdf">Download</a></body>`),
 		nil, linkedTestMedia(), "https://example.com", false)
-	if err != nil || len(files) != 0 || !strings.Contains(string(body), "url(https://example.com/email-media/image-token/photo.png)") ||
+	if err != nil || len(files) != 0 || !strings.Contains(string(body), "https://example.com/email-media/image-token/photo.png") ||
 		!strings.Contains(string(body), `href="https://example.com/email-media/pdf-token/catalog.pdf"`) || strings.Count(string(body), "catalog.pdf") != 1 ||
 		strings.Contains(string(body), "附件资料") {
 		t.Fatalf("background/download replacement failed: %s %v", body, err)

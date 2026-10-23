@@ -218,6 +218,9 @@ func (a *App) CreateTemplate(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := a.requireBodyMediaPermission(c, o.Body); err != nil {
+		return err
+	}
 	if err := a.requireUsableMedia(c, access, req.MediaIDs); err != nil {
 		return err
 	}
@@ -260,6 +263,9 @@ func (a *App) UpdateTemplate(c echo.Context) error {
 	id := getID(c)
 	scope, err := a.requireManagedWorkspaceTemplate(c, access, id)
 	if err != nil {
+		return err
+	}
+	if err := a.requireBodyMediaPermission(c, o.Body); err != nil {
 		return err
 	}
 	if err := a.requireUsableMedia(c, access, req.MediaIDs); err != nil {

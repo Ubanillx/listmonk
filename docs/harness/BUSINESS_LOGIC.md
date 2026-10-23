@@ -1,5 +1,7 @@
 # 业务逻辑
 
+- **图片依赖不变量（2026-10-23）**：保存、启动/排期和克隆按原所有者权限解析并补齐正文素材依赖，精确 ID 不回退到同名文件。发送管道先检查静态正文/模板，每封客户邮件在渲染和链接替换后再次检查；未解析的受保护地址、相对/blob/data 图片或无 MIME 部件的 CID 不得进入 SMTP。worker 对 `media` 错误立即暂停并保留待发送收件人，不受普通错误阈值影响。HTTP(S) 第三方图片只保证 URL 形态，网络可用性和客户端远程图片策略需单独验证。来源：`internal/core/campaign_media_references.go`、`internal/manager/{media_guard,pipe,manager}.go`。
+
 - **概览筛选与选中补发 UI**：失败客户查询、分页、导出使用相同已应用的搜索/原因/目标组织条件；未提交的搜索输入不影响导出。勾选仅限当前页、由服务端 `can_retry` 与逐行 `retryable` 同时控制，筛选/翻页/刷新后清空，不把过滤条件当成补发身份或授权。运行中刷新只同步活动状态，不重置编辑器正文。来源：`frontend/src/components/CampaignDeliveryOverview.vue`、`frontend/cypress/e2e/campaign-delivery-overview.cy.js`。
 
 - **失败客户与定向补发（v6.63.0）**：`send_errors` 是失败尝试次数；概览「失败客户」是有失败事件且当前仍未发送的去重收件人数。失败名单按最新事件显示分类/原因，成功发送者退出当前名单但保留历史错误报告。仅暂停活动可选 1–500 名当前可投放的失败客户，整单校验、原子选择，发送管道只领取选中快照；正常额度、SMTP 和公海组织分配规则继续执行。选中耗尽后还有其他未发送者回到暂停，全部完成才结束；普通继续发送清除定向选择。来源：`internal/core/campaign_failed_recipients.go`、`cmd/campaign_failed_recipients.go`、`queries/campaigns.sql`、`cmd/manager_store.go`。

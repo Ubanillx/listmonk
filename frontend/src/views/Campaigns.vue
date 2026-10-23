@@ -298,6 +298,7 @@
     </paginated-table>
 
     <campaign-preview v-if="previewItem" type="campaign" :id="previewItem.id" :title="previewItem.name" :media="previewItem.media || []"
+      :template-id="previewItem.templateId" :content-type="previewItem.contentType"
       @close="closePreview" />
 
     <campaign-send-errors v-if="sendErrorCampaign" :campaign="sendErrorCampaign" @close="sendErrorCampaign = null" />

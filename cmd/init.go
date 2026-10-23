@@ -561,6 +561,7 @@ func initI18n(lang string, fs stuffbin.FileSystem) *i18n.I18n {
 func initCore(fnNotify func(sub models.Customer, customerListIDs []int) (int, error), queries *models.Queries, db *sqlx.DB, i *i18n.I18n, ko *koanf.Koanf) *core.Core {
 	opt := &core.Opt{
 		Constants: core.Constants{
+			RootURL:               ko.String("app.root_url"),
 			SendOptinConfirmation: ko.Bool("app.send_optin_confirmation"),
 			CacheSlowQueries:      ko.Bool("app.cache_slow_queries"),
 		},

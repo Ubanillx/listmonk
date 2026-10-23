@@ -7,15 +7,11 @@ import (
 	"mime"
 	"net/url"
 	"path"
-	"regexp"
 	"strings"
 
+	"github.com/knadh/listmonk/internal/media"
 	"github.com/knadh/listmonk/models"
 )
-
-var reMediaReference = regexp.MustCompile("(?is)(<[a-z][^>]*?\\s+(?:src|href|background)\\s*=\\s*)(?:\"([^\"]*)\"|'([^']*)'|([^\\s\"'=<>`]+))")
-var reCSSMediaReference = regexp.MustCompile(`(?i)url\(\s*(?:"([^"]*)"|'([^']*)'|([^\s)]+))\s*\)`)
-var reMediaHref = regexp.MustCompile(`(?i)\bhref\s*=\s*$`)
 
 // LinkMediaAttachments keeps images in place as remote <img> sources and
 // represents other library files with links. Raw, one-off system attachments
@@ -29,6 +25,11 @@ func LinkMediaAttachments(body, altBody []byte, attachments []models.Attachment,
 		}
 	}
 	if !hasMedia {
+		if !plain {
+			if err := validateRecipientMedia(body, attachments, rootURL); err != nil {
+				return nil, nil, nil, err
+			}
+		}
 		return body, altBody, attachments, nil
 	}
 	root, err := url.Parse(strings.TrimRight(rootURL, "/") + "/")
@@ -49,42 +50,21 @@ func LinkMediaAttachments(body, altBody []byte, attachments []models.Attachment,
 		urls[i] = strings.TrimRight(rootURL, "/") + "/" + strings.TrimLeft(a.DeliveryURL, "/")
 	}
 	if !plain {
-		body = reMediaReference.ReplaceAllFunc(body, func(tag []byte) []byte {
-			match := reMediaReference.FindSubmatchIndex(tag)
-			start, end := imageSourceIndex(match)
-			if start < 0 {
-				return tag
-			}
-			source := html.UnescapeString(string(tag[start:end]))
-			i := linkedMediaIndex(source, attachments, root)
+		body, err = media.TransformReferences(body, func(ref media.Reference) (string, error) {
+			i := linkedMediaIndex(ref.Source, attachments, root)
 			if i < 0 || urls[i] == "" {
-				return tag
+				return ref.Source, nil
 			}
 			// An image download link alone does not display the image. Still add
 			// an <img> below unless a src/background reference renders it.
-			if !isImageAttachment(attachments[i]) || !reMediaHref.Match(tag[:match[3]]) {
+			if !isImageAttachment(attachments[i]) || ref.Image {
 				used[i] = true
 			}
-			// Always quote the new source: legacy editor HTML may use unquoted URLs.
-			return []byte(string(tag[:match[3]]) + `"` + html.EscapeString(urls[i]) + `"`)
+			return urls[i], nil
 		})
-		body = reCSSMediaReference.ReplaceAllFunc(body, func(css []byte) []byte {
-			match := reCSSMediaReference.FindSubmatch(css)
-			source := ""
-			for _, group := range match[1:] {
-				if len(group) > 0 {
-					source = html.UnescapeString(string(group))
-					break
-				}
-			}
-			i := linkedMediaIndex(source, attachments, root)
-			if i < 0 || urls[i] == "" {
-				return css
-			}
-			used[i] = true
-			// Issued URLs have escaped filenames and no whitespace/quotes.
-			return []byte("url(" + html.EscapeString(urls[i]) + ")")
-		})
+		if err != nil {
+			return nil, nil, nil, err
+		}
 	}
 	var extraImages, extraFiles bytes.Buffer
 	fileCount := 0
@@ -129,6 +109,11 @@ func LinkMediaAttachments(body, altBody []byte, attachments []models.Attachment,
 		out = append(out, extraImages.Bytes()...)
 		out = append(out, extraFiles.Bytes()...)
 		body = append(out, body[insert:]...)
+	}
+	if !plain {
+		if err := validateRecipientMedia(body, remaining, rootURL); err != nil {
+			return nil, nil, nil, err
+		}
 	}
 	return body, altBody, remaining, nil
 }

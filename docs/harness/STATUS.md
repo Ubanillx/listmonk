@@ -2,6 +2,10 @@
 
 快照日期：2026-10-23
 
+- **营销图片关联缺失修复与生产核验（2026-10-23）**：保存自动按资源原所有者权限补齐正文素材；启动/排期及克隆检查正文和模板，静态管道与每客户 SMTP 边界双重拦截缺图，worker 立即暂停并保留 pending，错误分类 `media`。列表预览补充所选模板素材，仍只把已授权关联文件交给无 Cookie 沙箱。生产已补齐活动 68/70→媒体 47、109/110→媒体 95；官网 Logo 和 WhatsApp 图标转存为全局媒体 100/101，更新相应正文/模板关联。全量清单 23 活动/12 模板/65 素材；21 个图片收件人链接在无登录状态全部 HTTP 200 并成功解码，生产正文逐活动经实际 worker 本地捕获 22 通过、66 因已删除媒体 50 被阻断。活动 66 无原文件、无 body_source 内嵌原图，仍为草稿，需补原图；110 持续暂停，sent=822，未发送验证邮件或恢复任何活动。
+
+- **图片修复验证与发布范围**：全量 Go（含真实隔离 PostgreSQL）、`go vet`、图片 Cypress 6/6、前端 lint/构建、文档检查通过。本地 backend 已重启且 9173 HTTP 200。生产以 `bf3f6d5f` 加本次图片修复构建独立版本 `/opt/listmonk/releases/imagefix-20261023-verified-linux`，未夹带 `1f494711` 附件卡片/Office Viewer 提交；未提交/push Git。首次 Windows 资源打包未通过健康检查并自动回滚，改用 Linux 打包后先在临时 PostgreSQL 启动验证，再完成生产切换；当前服务 active、公网登录 HTTP 200、上海时区与原配置保持一致。来源：`internal/{core/campaign_media_references,media/references,manager/media_guard}.go`、`dev/media-audit`、`frontend/cypress/e2e/campaign-inline-images.cy.js`；生产证据保存在本地忽略目录 `.codex-artifacts/media-production-*`。
+
 - **附件资料区版式优化（2026-10-23）**：采用白色资料面板、浅灰文件行、文件数量标签和统一的折角文档图标，去掉 emoji 与多层卡片描边；查看使用浅蓝按钮，下载原文件使用次级文字入口。保留按类型颜色区分、不使用竖线及 Office 查看/源文件下载行为。表格固定布局约束长文件名换行，Chrome 实际 820px/390px 视口预览确认页面宽度未溢出。来源：`internal/manager/linked_media.go::writeLinkedFileCard`。
 
 - **营销邮件末尾附件卡片（2026-10-23）**：未在正文使用的非图片媒体从单行文件名链接改为统一“附件资料”区，显示数量及逐文件类型标识、原始文件名，只用图标颜色区分类型，不使用竖线。Office 文件的查看链接交给微软 Office Web Viewer，PDF 直接查看；下载始终通过本地收件人文件路由 `?download=1` 返回原始字节与文件名，其他类型只提供下载。正文已有文件链接、自动加载的图片、纯文本备用正文和系统原始 MIME 附件沿用原行为。专项回归 9 项、中文 Excel 文件真实 PostgreSQL 下载测试、全量 Go 测试 749 项通过；Chrome 桌面/窄屏预览与文档检查通过。微软服务器实际预览生产文件尚未验证，需公网 HTTPS 的 `app.root_url`。回归入口：`internal/manager/linked_media_test.go::TestLinkedMediaFileCardsKeepEachNameAndType`、`cmd/email_media_test.go::TestEmailMediaRecipientAccessAndRevocation`。

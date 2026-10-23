@@ -554,6 +554,7 @@
     "campaigns.sendErrorReasons.timeout": "連線或發送逾時",
     "campaigns.sendErrorReasons.network": "網路連線失敗",
     "campaigns.sendErrorReasons.smtp_unavailable": "發信信箱不可用",
+    "campaigns.sendErrorReasons.media": "圖片或素材不可用",
     "campaigns.sendErrorReasons.reply_unavailable": "回信路由不可用",
     "campaigns.sendErrorReasons.render": "郵件渲染失敗",
     "campaigns.sendErrorReasons.other": "其他發送錯誤",

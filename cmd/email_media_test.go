@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -60,6 +61,7 @@ func TestEmailMediaRecipientAccessAndRevocation(t *testing.T) {
 	a := &App{db: db, media: provider, log: log.New(io.Discard, "", 0)}
 	e := echo.New()
 	e.GET("/email-media/:token/:filename", a.ServeEmailMedia)
+	e.HEAD("/email-media/:token/:filename", a.ServeEmailMedia)
 	check := func(link string, want int) {
 		t.Helper()
 		r := httptest.NewRecorder()
@@ -69,6 +71,9 @@ func TestEmailMediaRecipientAccessAndRevocation(t *testing.T) {
 		}
 		if want == http.StatusOK && (r.Header().Get("Content-Type") != "image/png" || !bytes.Equal(r.Body.Bytes(), content)) {
 			t.Fatalf("mail client could not render remote image: %v %q", r.Header(), r.Body.Bytes())
+		}
+		if want == http.StatusOK && r.Header().Get("Content-Length") != strconv.Itoa(len(content)) {
+			t.Fatalf("mail image response has no exact Content-Length: %v", r.Header())
 		}
 		if strings.HasSuffix(link, "?download=1") {
 			disposition, params, err := mime.ParseMediaType(r.Header().Get("Content-Disposition"))
@@ -80,6 +85,11 @@ func TestEmailMediaRecipientAccessAndRevocation(t *testing.T) {
 	// No login, no archive setting, and no request workspace are needed.
 	check(issued.DeliveryURL, http.StatusOK)
 	check(issued.DeliveryURL+"?download=1", http.StatusOK)
+	head := httptest.NewRecorder()
+	e.ServeHTTP(head, httptest.NewRequest(http.MethodHead, issued.DeliveryURL, nil))
+	if head.Code != http.StatusOK || head.Header().Get("Content-Length") != strconv.Itoa(len(content)) {
+		t.Fatalf("mail image proxy HEAD probe failed: status=%d headers=%v", head.Code, head.Header())
+	}
 	const documentName = "产品选型表.xlsx"
 	document := []byte("PK\x03\x04office file")
 	if _, err := provider.Put(documentName, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bytes.NewReader(document)); err != nil {
@@ -104,6 +114,9 @@ func TestEmailMediaRecipientAccessAndRevocation(t *testing.T) {
 	if err != nil || documentResponse.Code != http.StatusOK || disposition != "attachment" ||
 		params["filename"] != documentName || !bytes.Equal(documentResponse.Body.Bytes(), document) {
 		t.Fatalf("document download lost original content or Chinese filename: status=%d headers=%v err=%v", documentResponse.Code, documentResponse.Header(), err)
+	}
+	if documentResponse.Header().Get("Content-Length") != strconv.Itoa(len(document)) {
+		t.Fatalf("document download has no exact Content-Length: %v", documentResponse.Header())
 	}
 	check(strings.Replace(issued.DeliveryURL, filename, "other.png", 1), http.StatusNotFound)
 	check("/email-media/11111111-2222-4333-8444-555555555555/photo.png", http.StatusNotFound)

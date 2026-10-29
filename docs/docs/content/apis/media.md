@@ -41,8 +41,10 @@ references at delivery time. There is no need to recreate the campaign, edit its
 saved body, or reset its progress; already sent recipients are not sent again.
 
 `GET /email-media/{token}/{filename}` is a file-specific recipient capability:
-no login or public archive is required. Links are issued after sending-resource
-authorization, survive application restarts, and can be forwarded by recipients.
+no login or public archive is required. `HEAD` is accepted on the same URL for
+mail security gateways and image proxies that probe a file before fetching it.
+Links are issued after sending-resource authorization, survive application
+restarts, and can be forwarded by recipients.
 They stop working when the media is deleted/replaced, pending transfer, moved to
 another owner/workspace, or its organization is archived. Folder visibility
 controls new sending authorization; it does not revoke an already delivered link.

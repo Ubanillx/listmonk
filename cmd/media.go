@@ -626,6 +626,10 @@ func (a *App) streamMediaBlob(c echo.Context, filename string) error {
 	}
 
 	ctype, attach, csp := mediaServingPolicy(http.DetectContentType(b))
+	// Keep the byte length explicit. Email image proxies in particular handle
+	// chunked media responses inconsistently and may abort a request midway,
+	// which shows up as a broken image in the recipient's client.
+	c.Response().Header().Set("Content-Length", strconv.Itoa(len(b)))
 	c.Response().Header().Set("Cache-Control", "private, max-age=300")
 	c.Response().Header().Set("X-Content-Type-Options", "nosniff")
 	if attach && c.Response().Header().Get("Content-Disposition") == "" {

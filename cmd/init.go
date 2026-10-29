@@ -1125,7 +1125,10 @@ func initHTTPServer(cfg *Config, urlCfg *UrlConfig, i *i18n.I18n, fs stuffbin.Fi
 	srv.GET("/api/media/file/:id/:filename", app.ServeMediaFileByID, mediaFileAuth)
 	srv.GET("/api/media/file/:filename", app.ServeMediaFile, mediaFileAuth)
 	// Recipient links carry their own file-specific capability, not a session.
+	// HEAD is served as well because corporate mail gateways and image proxies
+	// commonly probe an image URL before allowing the client to fetch it.
 	srv.GET("/email-media/:token/:filename", app.ServeEmailMedia)
+	srv.HEAD("/email-media/:token/:filename", app.ServeEmailMedia)
 
 	// Media binaries are never exposed as a raw static directory. Resource URLs
 	// are scoped by the active workspace, while legacy storage URLs are checked

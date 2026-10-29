@@ -1,7 +1,8 @@
 # 工作状态
 
-快照日期：2026-10-23
+快照日期：2026-10-29
 
+- **活动 101 图片预览与收件端响应修复（2026-10-29）**：超级管理员跨工作区预览活动时，正文图片按 `scope=all_owners` 读取平台只读媒体目录，个人空间不再因媒体所在组织文件夹而 404；媒体文件响应补充精确 `Content-Length`，并为 `/email-media/:token/:filename` 增加 HEAD，兼容会先探测图片再下载的邮件网关/图片代理。campaign 101 的 78/80/81/82 媒体记录、关联和收件人 token 均已核验，图片二进制与 `email-media` GET 200；生产已发布 `mediafix-20261029-preview-length-v5`，HEAD 与 GET 均返回 200 且带 Content-Length，回滚到 `jenkins-101-21f0b84f` 的路径已验证。来源：`frontend/src/components/CampaignPreview.vue`、`cmd/{media,init,email_media_test}.go`。
 - **营销图片关联缺失修复与生产核验（2026-10-23）**：保存自动按资源原所有者权限补齐正文素材；启动/排期及克隆检查正文和模板，静态管道与每客户 SMTP 边界双重拦截缺图，worker 立即暂停并保留 pending，错误分类 `media`。列表预览补充所选模板素材，仍只把已授权关联文件交给无 Cookie 沙箱。生产已补齐活动 68/70→媒体 47、109/110→媒体 95；官网 Logo 和 WhatsApp 图标转存为全局媒体 100/101，更新相应正文/模板关联。全量清单 23 活动/12 模板/65 素材；21 个图片收件人链接在无登录状态全部 HTTP 200 并成功解码，生产正文逐活动经实际 worker 本地捕获 22 通过、66 因已删除媒体 50 被阻断。活动 66 无原文件、无 body_source 内嵌原图，仍为草稿，需补原图；110 持续暂停，sent=822，未发送验证邮件或恢复任何活动。
 
 - **图片修复验证与发布范围**：全量 Go（含真实隔离 PostgreSQL）、`go vet`、图片 Cypress 6/6、前端 lint/构建、文档检查通过。本地 backend 已重启且 9173 HTTP 200。生产以 `bf3f6d5f` 加本次图片修复构建独立版本 `/opt/listmonk/releases/imagefix-20261023-verified-linux`，未夹带 `1f494711` 附件卡片/Office Viewer 提交；未提交/push Git。首次 Windows 资源打包未通过健康检查并自动回滚，改用 Linux 打包后先在临时 PostgreSQL 启动验证，再完成生产切换；当前服务 active、公网登录 HTTP 200、上海时区与原配置保持一致。来源：`internal/{core/campaign_media_references,media/references,manager/media_guard}.go`、`dev/media-audit`、`frontend/cypress/e2e/campaign-inline-images.cy.js`；生产证据保存在本地忽略目录 `.codex-artifacts/media-production-*`。

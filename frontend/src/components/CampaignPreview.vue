@@ -95,7 +95,13 @@ export default {
         if (!media) return;
         // Read protected files with the parent's authenticated workspace request.
         // The sandbox receives only these authorized bytes, never a session cookie.
-        const blob = await this.$api.getMediaFile(`/api/media/file/${media.id}/${encodeURIComponent(media.filename)}`);
+        // A Super Admin may preview a campaign from another workspace while the
+        // media sits in a folder outside the current one; the explicit platform
+        // scope lets the existing read-only catalog endpoint serve those bytes.
+        const mediaURL = `/api/media/file/${media.id}/${encodeURIComponent(media.filename)}`;
+        const blob = await this.$api.getMediaFile(
+          this.$isPlatformAdmin() ? `${mediaURL}?scope=all_owners` : mediaURL,
+        );
         const dataURL = await new Promise((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = () => resolve(reader.result);

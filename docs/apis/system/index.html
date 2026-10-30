@@ -4193,6 +4193,15 @@ data: {"id":"...","type":"error","message":"...","data":null}
 <span class="p">}</span>
 </code></pre></div>
 <h2 id="organization-marketing-smtp">Organization marketing SMTP<a class="headerlink" href="#organization-marketing-smtp" title="Permanent link">&para;</a></h2>
+<p>The shared <code>smtp_delivery</code> settings object includes <code>max_recipient_retries</code>
+(integer 0–1000, default 3), configurable in Settings → SMTP or through the
+existing settings update endpoints. It limits retries after the initial delivery
+for the same regular SMTP campaign and recipient across pauses, resumes and
+restarts. Zero disables additional retries. Preserve the other delivery fields
+when replacing this object. This is separate from <code>max_msg_retries</code>, which still
+controls transient network attempts for system, transactional and opt-in mail.
+Since v6.67.0, regular SMTP campaigns use one network attempt per queue delivery,
+then complete other recipients in the current failure-count round before retrying.</p>
 <p>In an active organization workspace, organization managers and platform organization operators can manage independent marketing senders:</p>
 <table>
 <thead>

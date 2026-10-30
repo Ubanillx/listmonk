@@ -1101,6 +1101,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#contact-states" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Contact states
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#pool-list-hierarchy-in-the-admin-ui" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1890,6 +1901,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#contact-states" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Contact states
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#pool-list-hierarchy-in-the-admin-ui" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1962,6 +1984,21 @@
 
 
 <h1 id="public-pools">Public pools<a class="headerlink" href="#public-pools" title="Permanent link">&para;</a></h1>
+<h2 id="contact-states">Contact states<a class="headerlink" href="#contact-states" title="Permanent link">&para;</a></h2>
+<p>Aggregate and single-list contact queries and exports accept <code>status=all</code>,
+<code>active</code>, <code>blocklisted</code>, <code>unsubscribed</code>, <code>removed</code> or <code>archived</code>; an omitted
+status retains the all-records API behavior. <code>active</code> now means an active
+contact without a current-scope removal/opt-out. <code>blocklisted</code> and <code>archived</code>
+filter master contact status; <code>removed</code> retains the allocation-exclusion view.
+Invalid values return 400 and totals are filtered before pagination.</p>
+<p>Contact DTOs include read-only boolean <code>unsubscribed</code>, including masked DTOs.
+It reflects a non-restored organization exclusion with source <code>unsubscribe</code>.
+Organization callers and allocation-list views read only that organization's
+state; platform aggregate/source-pool views report whether any organization
+currently has such an opt-out in the pool. Manual removals remain distinct.
+Blacklisting and unsubscribing can coexist; restoring an exclusion removes its
+current unsubscribe flag while preserving historical campaign click events.
+The admin table shows separate colored state badges and defaults to all states.</p>
 <h2 id="pool-list-hierarchy-in-the-admin-ui">Pool list hierarchy in the admin UI<a class="headerlink" href="#pool-list-hierarchy-in-the-admin-ui" title="Permanent link">&para;</a></h2>
 <p>The public pool list page groups organization allocations below their source pool
 using <code>pool_parent_id</code>. Each source can be expanded or collapsed; name search,

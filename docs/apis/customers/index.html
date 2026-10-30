@@ -3774,9 +3774,29 @@
 
 
 <h1 id="api-customers">API / Customers<a class="headerlink" href="#api-customers" title="Permanent link">&para;</a></h1>
+<p><code>GET /api/customers</code> and <code>/api/customers/export</code> accept <code>contact_status</code>:
+<code>all</code> (default), <code>enabled</code>, <code>blocklisted</code>, <code>unsubscribed</code>, or <code>disabled</code>.
+The same field is accepted by JSON requests to bulk delete, blocklist and
+membership operations that resolve targets by filters. Invalid values return 400.
+Counts, pagination, export and bulk targets use the same predicate.</p>
+<p><code>blocklisted</code> and <code>disabled</code> match the customer's global status. <code>unsubscribed</code>
+matches an unsubscribed membership in the requested list(s), or any visible
+matching-owner/workspace list if no list filter is supplied. <code>enabled</code> requires
+an enabled customer without an unsubscribe in that list scope. An unsubscribe
+membership is distinct from a confirmed campaign unsubscribe click; blacklisted
+customers can also have unsubscribed memberships. Existing <code>subscription_status</code>
+filters continue to apply separately. These filters do not widen permissions.
+Paginated results include a derived <code>unsubscribed:true</code> when the customer has
+an unsubscribe in exactly that requested list scope. The status badge and
+filter therefore agree even if another list has a different subscription state.</p>
 <p>Customer resources are exposed under <code>/api/customers</code>. Use the import API for
 bulk ingestion and the customer endpoints for individual records. Customer
 codes are business fields and are not unique identifiers.</p>
+<p>Interactive highest administrators may inspect another owner's private-list
+members by supplying a concrete <code>customer_list_id</code>, including across the active
+workspace boundary. Only real same-owner/workspace memberships are returned;
+the corresponding list metadata endpoint supports the same drill-down. This
+exception does not apply to personal API keys, exports or mutation endpoints.</p>
 <p>See the <a href="../import/">Import API</a> and the <a href="../apis/">API introduction</a> for
 authentication and request conventions.</p>
 <table>

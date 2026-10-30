@@ -1185,6 +1185,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#confirmed-unsubscribe-recipients" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Confirmed unsubscribe recipients
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#send-errors-and-automatic-deferral" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2802,6 +2813,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#confirmed-unsubscribe-recipients" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Confirmed unsubscribe recipients
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#send-errors-and-automatic-deferral" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3786,7 +3808,37 @@
 
 
 <h1 id="api-campaigns">API / Campaigns<a class="headerlink" href="#api-campaigns" title="Permanent link">&para;</a></h1>
+<h2 id="confirmed-unsubscribe-recipients">Confirmed unsubscribe recipients<a class="headerlink" href="#confirmed-unsubscribe-recipients" title="Permanent link">&para;</a></h2>
+<p>Since v6.66.0, campaign list/detail responses and <code>GET /api/campaigns/running/stats</code> include the read-only integer <code>unsubscribes</code>. It counts distinct recipients who confirmed an unsubscribe through that campaign's public email link (including One-Click POST). Opening the GET landing page alone does not count. Repeated or concurrent confirmations count once per campaign, recipient type, and recipient ID. Removing a subscription on the preferences page counts only when the removed list belongs to this campaign; editing profile details alone does not count. Administrative unsubscribe, bounce processing, and reply/AI blocklisting do not create these events.</p>
+<p>New and cloned campaigns start at zero. Upgrades do not infer past clicks from current unsubscribe states. Counts survive recipient deletion, pauses, resumes, and restarts; deleting the campaign removes its events. Public-pool unsubscribe affects only the source organization and preserves already-sent delivery history. The original <code>bounces</code> field and bounce APIs remain available; the admin campaign list uses this statistic's position for <strong>unsubscribed recipients</strong>.</p>
+<p><code>GET /api/campaigns/{id}/unsubscribes</code> accepts <code>page</code>, <code>per_page</code> (default 20, maximum 100), and <code>search</code> (maximum 500 characters). It returns <code>data.results</code>, <code>total</code>, <code>page</code>, and <code>per_page</code>. Each row contains <code>recipient_type</code> (<code>private</code>/<code>pool</code>), <code>recipient_id</code>, <code>organization_id</code>, <code>customer_code</code>, <code>name</code>, <code>email</code>, and <code>created_at</code> (first confirmed unsubscribe time). No public recipient UUID or bearer URL is returned. Search matches current customer code/name and authorized email fields; deleted identities have empty identity fields.</p>
+<p>Details require the campaign owner/administrative boundary, active workspace and existing list access, <code>campaigns:get_analytics</code>, <code>campaigns:recipients</code>, and customer read permission for the corresponding source. Personal API keys additionally require <code>campaigns:recipients</code> and <code>customers:read</code> for private recipients or <code>customer_lists:read</code> for pool recipients. Private emails are masked without sensitive-read permission; pool emails are masked for non-platform administrators. Masked emails cannot be searched by their raw value. Former-owner snapshots and transferred private identities are hidden from ordinary users; therefore authorized detail totals may differ from the campaign's aggregate total. Responses use <code>Cache-Control: no-store</code>.</p>
 <h2 id="send-errors-and-automatic-deferral">Send errors and automatic deferral<a class="headerlink" href="#send-errors-and-automatic-deferral" title="Permanent link">&para;</a></h2>
+<p>Since v6.65.0, <code>smtp_delivery.max_recipient_retries</code> limits cumulative retries
+for each regular SMTP campaign and recipient. The default is 3 additional retries
+after the initial delivery; 0 permits only the initial delivery. Rendering and
+delivery failures persist across pauses, resumes and restarts. Quota deferrals
+and intentional stops do not consume this allowance. Opt-in, transactional and
+system mail do not use this campaign limit.</p>
+<p>Since v6.67.0, regular SMTP campaigns yield after the first failed delivery
+attempt instead of immediately retrying that recipient. They complete the
+lowest failure-count round across all eligible private/public-pool recipients
+before starting the next round. In-flight recipients also block later rounds,
+so a fast failure cannot overtake another recipient's first delivery. Pauses,
+resumes and restarts preserve the order through saved failure history. Explicit
+targeted retries consider only their selected recipients. Unsubscribed, moved,
+unavailable and exhausted recipients do not block later rounds. Ordinary
+campaign sends use one SMTP network attempt per queue delivery; <code>max_msg_retries</code>
+still applies to opt-in, transactional and system messages. Existing daily caps,
+cumulative recipient limits and campaign error-threshold protections remain in force.</p>
+<p>Exhausted recipients have snapshot <code>status:"failed"</code> and <code>retryable:false</code>.
+They remain in failed-recipient lists and exports and in overview <code>failed</code>
+counts, but are excluded from runnable <code>unsent</code>/<code>waiting</code> counts. Ordinary resume,
+audience refresh and targeted retry cannot revive them. Increasing the setting
+does not automatically revive a terminal recipient. The cumulative allowance
+uses all saved failure events, independently of report filters and diagnostic
+visibility. Migration applies existing detailed history without inventing
+recipient counts from older campaign-only error totals.</p>
 <p>Campaign list/detail responses and <code>GET /api/campaigns/running/stats</code> include the read-only integer <code>send_errors</code>. The admin campaign list displays this cumulative number of failed attempts. Rendering failures, delivery failures and unavailable delivery/reply routes encountered by workers are counted for both private and public-pool recipients. Repeated failed retries add to the count; successful retries, pause/resume and server restarts retain it. It is separate from unsent recipients and bounces. New and cloned campaigns start at zero. Existing campaigns default to zero on upgrade because historical failures were not stored.</p>
 <p>Daily campaign or SMTP quotas defer remaining sends until the next day's <code>daily_resume_time</code>, in the server's local timezone. Quota deferrals and intentional cancellation/shutdown do not increment <code>send_errors</code>. Ordinary send/render errors meeting the configured maximum error threshold pause the campaign instead; this threshold applies to the current run, independently of the cumulative count. Repair the delivery configuration and resume a paused campaign to retry unsent recipients.</p>
 <h3 id="error-reasons-customer-statistics-and-excel-export">Error reasons, customer statistics and Excel export<a class="headerlink" href="#error-reasons-customer-statistics-and-excel-export" title="Permanent link">&para;</a></h3>
@@ -3903,6 +3955,11 @@
 <td style="text-align: left;">GET</td>
 <td style="text-align: left;"><code>/api/campaigns/{campaign_id}/failed-recipients/export</code></td>
 <td style="text-align: left;">Export the filtered failed-recipient list.</td>
+</tr>
+<tr>
+<td style="text-align: left;">GET</td>
+<td style="text-align: left;"><code>/api/campaigns/{campaign_id}/unsubscribes</code></td>
+<td style="text-align: left;">Retrieve distinct confirmed unsubscribe recipients.</td>
 </tr>
 <tr>
 <td style="text-align: left;">POST</td>
@@ -4635,7 +4692,7 @@ This is a test e-mail campaign. Your second name is Doe and you are from Bengalu
 <td style="text-align: left;">daily_send_limit</td>
 <td style="text-align: left;">number</td>
 <td style="text-align: left;">Conditionally required</td>
-<td style="text-align: left;">Required for <code>regular</code> campaigns using <code>email</code> or <code>email-*</code>. Limits campaign sends per local day.</td>
+<td style="text-align: left;">Required for <code>regular</code> campaigns using <code>email</code> or <code>email-*</code>. Limits successful SMTP sends per local day; failed attempts and retries do not consume the allowance.</td>
 </tr>
 <tr>
 <td style="text-align: left;">daily_resume_time</td>
@@ -5032,11 +5089,18 @@ This is a test e-mail campaign. Your second name is Doe and you are from Bengalu
 <h2 id="smtp-sender-source-and-overview">SMTP sender source and overview<a class="headerlink" href="#smtp-sender-source-and-overview" title="Permanent link">&para;</a></h2>
 <p>The new campaign form defaults to organization visibility and organization SMTP
 rotation in an organization workspace (100 messages/minute), or private visibility
-and personal SMTP in a personal workspace (20 messages/minute). Link tracking is
+and personal SMTP in a personal workspace (5 messages/minute). Link tracking is
 enabled by default in the form. Editing an existing campaign uses its saved values.
+Upgrades change the default for new personal campaigns and zero-rate legacy
+fallbacks; existing saved rate limits are preserved.
 The daily resume time uses a 24-hour time picker with hour and minute selection
 (native time selection on mobile). It is saved as <code>HH:mm</code> in server local time,
 without converting it to a date or a UTC timestamp.</p>
+<p>The daily send limit counts successful SMTP deliveries in the deployment's local
+day. Queued recipients reserve capacity while sending; failed attempts release
+that capacity for retries. Pausing and resuming preserve successful sends already
+counted that day. A campaign defers only after its successful-send limit is
+reached with recipients remaining; if all recipients are sent, it finishes.</p>
 <p>Create, update and test requests accept <code>smtp_rate_limit</code>, an integer from 1 to
 1000000 specifying the campaign's total SMTP messages per minute across all its
 senders. Omitted/zero values on creation default to 20 for <code>personal</code> and 100 for

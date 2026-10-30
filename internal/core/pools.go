@@ -448,8 +448,17 @@ func (c *Core) QueryPoolContacts(poolID int, organizationID int, platformAdmin b
 	}
 	platformAdmin = platformAdmin || (len(globalScope) > 0 && globalScope[0] && scope.AllocationID == nil)
 	poolStatus = strings.ToLower(strings.TrimSpace(poolStatus))
-	if poolStatus != "" && poolStatus != "active" && poolStatus != "removed" {
-		return nil, 0, echo.NewHTTPError(http.StatusBadRequest, "invalid pool contact status")
+	statusOrg := int64(organizationID)
+	if platformAdmin {
+		statusOrg = 0
+	}
+	if scope.AllocationID != nil {
+		statusOrg = scope.OrganizationID
+	}
+	unsubscribed := poolUnsubscribedPredicate(statusOrg)
+	contactStatus, err := poolContactStatusPredicate(poolStatus, unsubscribed)
+	if err != nil {
+		return nil, 0, err
 	}
 	args := []any{scope.PoolID}
 	where := ""
@@ -495,6 +504,7 @@ func (c *Core) QueryPoolContacts(poolID int, organizationID int, platformAdmin b
 			where = ` AND ps.organization_id=$2 AND (` + memberStatusPredicate + `)`
 		}
 	}
+	where += " AND (" + contactStatus + ")"
 	if s := strings.TrimSpace(search); s != "" {
 		args = append(args, "%"+s+"%")
 		placeholder := strconv.Itoa(len(args))
@@ -513,6 +523,7 @@ func (c *Core) QueryPoolContacts(poolID int, organizationID int, platformAdmin b
 
 	// The filtered rows are built as a subquery so the requested sort can be
 	// applied outside a DISTINCT ON selection, whose ORDER BY prefix is fixed.
+	exclusionSelect += ", " + unsubscribed + " AS unsubscribed"
 	inner := `SELECT pc.id, pc.uuid, pc.customer_code, pc.email, pc.reply_to, pc.name, pc.allocation_department, pc.status, pc.created_at, pc.updated_at,
 			` + exclusionSelect + `
 		FROM pool_contacts pc JOIN pool_members pm ON pm.contact_id=pc.id` + join + `
@@ -605,8 +616,14 @@ func (c *Core) QueryAllPoolContacts(organizationID int, platformAdmin bool, pool
 	plaintext := platformAdmin
 	platformAdmin = platformAdmin || (len(globalScope) > 0 && globalScope[0])
 	poolStatus = strings.ToLower(strings.TrimSpace(poolStatus))
-	if poolStatus != "" && poolStatus != "active" && poolStatus != "removed" {
-		return nil, 0, echo.NewHTTPError(http.StatusBadRequest, "invalid pool contact status")
+	statusOrg := int64(organizationID)
+	if platformAdmin {
+		statusOrg = 0
+	}
+	unsubscribed := poolUnsubscribedPredicate(statusOrg)
+	contactStatus, err := poolContactStatusPredicate(poolStatus, unsubscribed)
+	if err != nil {
+		return nil, 0, err
 	}
 	if poolID < 0 {
 		return nil, 0, echo.NewHTTPError(http.StatusBadRequest, "invalid pool id")
@@ -660,6 +677,8 @@ func (c *Core) QueryAllPoolContacts(organizationID int, platformAdmin bool, pool
 		where += " AND BTRIM(pc.allocation_department)=$" + strconv.Itoa(len(args))
 	}
 
+	where += " AND (" + contactStatus + ")"
+	exclusionSelect += ", " + unsubscribed + " AS unsubscribed"
 	from := ` FROM pool_contacts pc
 		JOIN pool_members pm ON pm.contact_id=pc.id
 		JOIN customer_lists cl ON cl.id=pm.pool_id AND cl.type='pool'` + join + where

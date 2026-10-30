@@ -27,6 +27,7 @@ type PoolContact struct {
 	CreatedAt                 time.Time              `db:"created_at" json:"created_at"`
 	UpdatedAt                 time.Time              `db:"updated_at" json:"updated_at"`
 	Excluded                  bool                   `db:"excluded" json:"excluded,omitempty"`
+	Unsubscribed              bool                   `db:"unsubscribed" json:"unsubscribed"`
 	ExclusionReason           string                 `db:"exclusion_reason" json:"exclusion_reason,omitempty"`
 	ExceptionAllocationID     *int64                 `db:"exception_allocation_id" json:"exception_allocation_id,omitempty"`
 	ExceptionOrganizationName string                 `db:"exception_organization_name" json:"exception_organization_name,omitempty"`
@@ -58,6 +59,7 @@ type SafePoolContact struct {
 	CreatedAt            time.Time `json:"created_at"`
 	UpdatedAt            time.Time `json:"updated_at"`
 	Excluded             bool      `json:"excluded,omitempty"`
+	Unsubscribed         bool      `json:"unsubscribed"`
 	ExclusionReason      string    `json:"exclusion_reason,omitempty"`
 }
 
@@ -201,6 +203,7 @@ func (p PoolContact) Safe() SafePoolContact {
 		CreatedAt:            p.CreatedAt,
 		UpdatedAt:            p.UpdatedAt,
 		Excluded:             p.Excluded,
+		Unsubscribed:         p.Unsubscribed,
 		ExclusionReason:      p.ExclusionReason,
 	}
 }

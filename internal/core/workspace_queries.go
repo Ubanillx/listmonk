@@ -552,6 +552,9 @@ func (c *Core) GetWorkspaceList(access models.WorkspaceAccess, id int) (models.C
 	}
 	_ = c.refreshCache(matListSubStats, false)
 	scope, args := workspaceCustomerListReadPredicate(access, "l", 1)
+	if access.PlatformAdmin && access.InspectPrivateLists {
+		scope, args = "l.type IN ('private','public')", nil
+	}
 	idArg := len(args) + 1
 	stmt := fmt.Sprintf(`
 		WITH statuses AS (
@@ -1454,7 +1457,7 @@ func (c *Core) GetWorkspaceCustomerProfileForExport(access models.WorkspaceAcces
 // QueryWorkspaceCustomers keeps customer identifiers and personal data
 // inside the active owner/workspace boundary. Organization managers may read
 // member records but never gain a writable result set from this query.
-func (c *Core) QueryWorkspaceCustomers(access models.WorkspaceAccess, search string, customerListIDs []int, subscriptionStatus, order, orderBy string, offset, limit int) (models.Customers, int, error) {
+func (c *Core) QueryWorkspaceCustomers(access models.WorkspaceAccess, search string, customerListIDs []int, subscriptionStatus, order, orderBy string, offset, limit int, contactStatus ...string) (models.Customers, int, error) {
 	if customerListIDs == nil {
 		customerListIDs = []int{}
 	}
@@ -1470,13 +1473,24 @@ func (c *Core) QueryWorkspaceCustomers(access models.WorkspaceAccess, search str
 		orderBy = "created_at"
 	}
 	scope, args := workspaceCustomerReadPredicate(access, "s", 1)
+	listTypePredicate := "TRUE"
+	if access.PlatformAdmin && access.InspectPrivateLists && len(customerListIDs) > 0 {
+		// Membership remains tied to the requested private lists below.
+		scope, args = "TRUE", nil
+		listTypePredicate = "l.type IN ('private','public')"
+	}
 	first := len(args) + 1
+	statusPredicate, err := customerStatusPredicate(access, "s", fmt.Sprintf("$%d", first+1), contactStatus)
+	if err != nil {
+		return nil, 0, err
+	}
+	unsubscribed, _ := customerStatusPredicate(access, "s", fmt.Sprintf("$%d", first+1), []string{"unsubscribed"})
 	stmt := fmt.Sprintf(`
-		SELECT s.*, COALESCE(u.username, '') AS owner_username, COALESCE(u.name, '') AS owner_name,
+		SELECT s.*, (%s) AS unsubscribed, COALESCE(u.username, '') AS owner_username, COALESCE(u.name, '') AS owner_name,
 			COUNT(*) OVER() AS total
 		FROM customers s
 		LEFT JOIN users u ON u.id = COALESCE(s.owner_user_id, s.original_owner_user_id)
-		WHERE (%s)
+		WHERE (%s) AND (%s)
 			AND ($%d = '' OR s.name ~* $%d OR s.email ~* $%d OR s.customer_code ~* $%d)
 			AND (CARDINALITY($%d::INT[]) = 0 OR EXISTS (
 				SELECT 1 FROM customer_list_memberships sl
@@ -1485,12 +1499,13 @@ func (c *Core) QueryWorkspaceCustomers(access models.WorkspaceAccess, search str
 					AND l.organization_id IS NOT DISTINCT FROM s.organization_id
 					AND l.owner_user_id IS NOT DISTINCT FROM s.owner_user_id
 					AND l.transfer_pending_at IS NULL
+					AND (%s)
 					AND ($%d = '' OR sl.status = $%d::subscription_status)
 			))
 		ORDER BY %s OFFSET $%d LIMIT (CASE WHEN $%d < 1 THEN NULL ELSE $%d END)`,
-		scope,
+		unsubscribed, scope, statusPredicate,
 		first, first, first, first,
-		first+1, first+1, first+2, first+2,
+		first+1, first+1, listTypePredicate, first+2, first+2,
 		workspaceSort(orderBy, order, fields, "s.created_at"), first+3, first+4, first+4)
 	args = append(args, strings.TrimSpace(search), pq.Array(customerListIDs), subscriptionStatus, offset, limit)
 
@@ -1511,15 +1526,19 @@ func (c *Core) QueryWorkspaceCustomers(access models.WorkspaceAccess, search str
 // GetWorkspaceCustomerIDs resolves bulk targets through the same scope
 // predicate used for customer_list views. It intentionally does not accept arbitrary
 // SQL expressions; raw expressions are unsafe for workspace bulk writes.
-func (c *Core) GetWorkspaceCustomerIDs(access models.WorkspaceAccess, search string, customerListIDs []int, subscriptionStatus string) ([]int, error) {
+func (c *Core) GetWorkspaceCustomerIDs(access models.WorkspaceAccess, search string, customerListIDs []int, subscriptionStatus string, contactStatus ...string) ([]int, error) {
 	if customerListIDs == nil {
 		customerListIDs = []int{}
 	}
 	scope, args := workspaceCustomerReadPredicate(access, "s", 1)
 	first := len(args) + 1
+	statusPredicate, err := customerStatusPredicate(access, "s", fmt.Sprintf("$%d", first+1), contactStatus)
+	if err != nil {
+		return nil, err
+	}
 	stmt := fmt.Sprintf(`
 		SELECT s.id FROM customers s
-		WHERE (%s)
+		WHERE (%s) AND (%s)
 			AND ($%d = '' OR s.name ~* $%d OR s.email ~* $%d OR s.customer_code ~* $%d)
 			AND (CARDINALITY($%d::INT[]) = 0 OR EXISTS (
 				SELECT 1 FROM customer_list_memberships sl
@@ -1531,7 +1550,7 @@ func (c *Core) GetWorkspaceCustomerIDs(access models.WorkspaceAccess, search str
 					AND l.transfer_pending_at IS NULL
 					AND ($%d = '' OR sl.status = $%d::subscription_status)
 			))`,
-		scope,
+		scope, statusPredicate,
 		first, first, first, first,
 		first+1, first+1, first+2, first+2)
 	args = append(args, strings.TrimSpace(search), pq.Array(customerListIDs), subscriptionStatus)
@@ -1618,8 +1637,8 @@ func (c *Core) GetManagedWorkspaceCustomersByEmails(access models.WorkspaceAcces
 // ExportWorkspaceCustomers batches export rows without ever preparing an
 // unscoped query. Managers are rejected at the handler boundary before this
 // helper is called.
-func (c *Core) ExportWorkspaceCustomers(access models.WorkspaceAccess, search string, customerListIDs, requestedIDs []int, subscriptionStatus string, batchSize int) (func() ([]models.CustomerExport, error), error) {
-	return c.exportWorkspaceCustomers(access, search, customerListIDs, requestedIDs, subscriptionStatus, batchSize)
+func (c *Core) ExportWorkspaceCustomers(access models.WorkspaceAccess, search string, customerListIDs, requestedIDs []int, subscriptionStatus string, batchSize int, contactStatus ...string) (func() ([]models.CustomerExport, error), error) {
+	return c.exportWorkspaceCustomers(access, search, customerListIDs, requestedIDs, subscriptionStatus, batchSize, contactStatus...)
 }
 
 // InsertWorkspaceCustomer creates an owner-scoped customer and its customer_list

@@ -75,8 +75,12 @@
             <b-field v-if="isPoolList" class="pool-status-filter">
               <b-select :value="queryParams.poolStatus" :aria-label="$t('pool.contactStatusFilter')"
                 data-cy="pool-status-filter" @input="setPoolStatus">
+                <option value="all">{{ $t('customers.contactStates.all') }}</option>
                 <option value="active">{{ $t('pool.activeContacts') }}</option>
+                <option value="blocklisted">{{ $t('customers.contactStates.blocklisted') }}</option>
+                <option value="unsubscribed">{{ $t('customers.contactStates.unsubscribed') }}</option>
                 <option value="removed">{{ $t('pool.tabPoolExceptions') }}</option>
+                <option value="archived">{{ $t('pool.statusArchived') }}</option>
               </b-select>
             </b-field>
             <b-field v-if="isPoolRoute" class="pool-status-filter pool-facet-filter">
@@ -177,7 +181,10 @@
         </b-table-column>
 
         <b-table-column v-slot="props" field="status" :label="$t('pool.tableStatus')" header-class="cy-pool-status" sortable>
-          {{ poolContactStatus(props.row) }}
+          <b-tag v-for="state in contactStateTags(props.row, true)" :key="state.key" :type="state.type"
+            :data-cy="`contact-state-${state.key}`">
+            {{ state.label }}
+          </b-tag>
         </b-table-column>
 
         <b-table-column v-slot="props" field="created_at" :label="$t('globals.fields.createdAt')" sortable>
@@ -268,6 +275,16 @@
             <b-icon icon="cloud-download-outline" size="is-small" />
             {{ $t('customers.export') }}
           </a>
+          <b-field class="customer-status-filter">
+            <b-select :value="queryParams.contactStatus" :aria-label="$t('pool.contactStatusFilter')"
+              data-cy="customer-status-filter" @input="setCustomerStatus">
+              <option value="all">{{ $t('customers.contactStates.all') }}</option>
+              <option value="enabled">{{ $t('pool.statusNormal') }}</option>
+              <option value="blocklisted">{{ $t('customers.contactStates.blocklisted') }}</option>
+              <option value="unsubscribed">{{ $t('customers.contactStates.unsubscribed') }}</option>
+              <option value="disabled">{{ $t('users.status.disabled') }}</option>
+            </b-select>
+          </b-field>
           <template v-if="bulk.checked.length > 0">
             <a v-if="canManageMemberships" class="a" href="#" @click.prevent="showBulkListForm" data-cy="btn-manage-customer_lists">
               <b-icon icon="format-list-bulleted-square" size="is-small" /> {{ $t('customers.manageLists') }}
@@ -303,9 +320,6 @@
           {{ props.row.email }}
           <copy-text :text="`${props.row.email}`" hide-text />
         </a>
-        <b-tag v-if="props.row.status !== 'enabled'" :class="props.row.status" data-cy="blocklisted">
-          {{ $t(`customers.status.${props.row.status}`) }}
-        </b-tag>
       </b-table-column>
 
       <b-table-column v-slot="props" field="name" :label="$t('customers.salutation')" header-class="cy-name" sortable>
@@ -331,6 +345,13 @@
         <b-tag v-if="transferPendingAt(props.row)" size="is-small" type="is-warning" class="is-light">
           {{ $t('shared.transferPending', { date: $utils.niceDate(transferPendingAt(props.row), true) }) }}
         </b-tag>
+      </b-table-column>
+
+      <b-table-column v-slot="props" field="status" :label="$t('pool.tableStatus')" header-class="cy-customer-status" sortable>
+        <span :data-cy="props.row.status === 'blocklisted' ? 'blocklisted' : null">
+          <b-tag v-for="state in contactStateTags(props.row)" :key="state.key" :type="state.type"
+            :data-cy="`contact-state-${state.key}`">{{ state.label }}</b-tag>
+        </span>
       </b-table-column>
 
       <b-table-column v-slot="props" field="created_at" :label="$t('globals.fields.createdAt')"
@@ -512,7 +533,8 @@ export default Vue.extend({
         page: 1,
         orderBy: 'id',
         order: 'desc',
-        poolStatus: 'active',
+        poolStatus: 'all',
+        contactStatus: 'all',
         poolID: 0,
         poolDepartment: null,
         subStatus: null,
@@ -647,8 +669,8 @@ export default Vue.extend({
     },
 
     setPoolStatus(status) {
-      const nextStatus = status === 'removed' ? 'removed' : 'active';
-      const routeStatus = this.$route.query.pool_status === 'removed' ? 'removed' : 'active';
+      const nextStatus = ['all', 'active', 'removed', 'blocklisted', 'unsubscribed', 'archived'].includes(status) ? status : 'all';
+      const routeStatus = this.$route.query.pool_status || 'all';
       if (this.queryParams.poolStatus === nextStatus && routeStatus === nextStatus) {
         return;
       }
@@ -657,6 +679,14 @@ export default Vue.extend({
       this.$router.replace({
         query: { ...this.$route.query, pool_status: nextStatus },
       });
+    },
+
+    setCustomerStatus(status) {
+      if (status === this.queryParams.contactStatus) return;
+      const query = { ...this.$route.query, contact_status: status };
+      delete query.subscription_status;
+      if (this.queryParams.search) query.search = this.queryParams.search;
+      this.$router.replace({ query });
     },
 
     setPoolFacet(key, value) {
@@ -865,6 +895,22 @@ export default Vue.extend({
         : this.$t('pool.statusNormal');
     },
 
+    contactStateTags(contact, pool = false) {
+      const tags = [];
+      const add = (key, type, label) => tags.push({ key, type, label: label || this.$t(`customers.contactStates.${key}`) });
+      if (contact.status === 'blocklisted') add('blocklisted', 'is-danger');
+      if (contact.status === 'disabled') add('disabled', 'is-light', this.$t('users.status.disabled'));
+      if (contact.status === 'archived') add('archived', 'is-light', this.$t('pool.statusArchived'));
+      const unsubscribed = !!contact.unsubscribed;
+      if (unsubscribed) add('unsubscribed', 'is-warning');
+      if (pool && contact.excluded && !unsubscribed) {
+        add('removed', 'is-warning', this.$t((this.isFirstLevelPool || this.isPoolRoute) && this.isPlatformAdmin
+          ? 'pool.statusRemovedGlobal' : 'pool.statusRemoved'));
+      }
+      if (!tags.length) add('normal', 'is-success', this.$t('pool.statusNormal'));
+      return tags;
+    },
+
     poolContactListID(contact) {
       return this.isPoolRoute ? Number(this.poolRowValue(contact, 'poolId', 'pool_id')) : this.queryParams.customerListID;
     },
@@ -1048,6 +1094,13 @@ export default Vue.extend({
         this.loadPoolContacts({ search: (this.queryInput || '').trim(), page: 1 });
         return;
       }
+      const query = { ...this.$route.query };
+      if (this.queryParams.search) query.search = this.queryParams.search;
+      else delete query.search;
+      if (query.search !== this.$route.query.search) {
+        this.$router.replace({ query });
+        return;
+      }
       this.queryCustomers({ page: 1 });
     },
 
@@ -1061,6 +1114,7 @@ export default Vue.extend({
         page: this.queryParams.page,
         per_page: this.queryParams.perPage,
         subscription_status: this.queryParams.subStatus,
+        contact_status: this.queryParams.contactStatus,
         order_by: this.queryParams.orderBy,
         order: this.queryParams.order,
       };
@@ -1102,6 +1156,7 @@ export default Vue.extend({
             search: this.queryParams.search,
             customer_list_ids: this.queryParams.customerListID ? [this.queryParams.customerListID] : null,
             subscription_status: this.queryParams.subStatus,
+            contact_status: this.queryParams.contactStatus,
           }).then(() => this.queryCustomers());
         };
       }
@@ -1127,6 +1182,7 @@ export default Vue.extend({
         if (this.queryParams.subStatus) {
           q.append('subscription_status', this.queryParams.subStatus);
         }
+        q.set('contact_status', this.queryParams.contactStatus);
 
         if (this.workspace.organizationId) {
           q.append('organization_id', this.workspace.organizationId);
@@ -1163,6 +1219,7 @@ export default Vue.extend({
             search: this.queryParams.search,
             customer_list_ids: this.queryParams.customerListID ? [this.queryParams.customerListID] : null,
             subscription_status: this.queryParams.subStatus,
+            contact_status: this.queryParams.contactStatus,
           }).then(() => {
             this.queryCustomers();
 
@@ -1183,6 +1240,7 @@ export default Vue.extend({
         search: this.queryParams.search,
         customer_list_ids: this.queryParams.customerListID ? [this.queryParams.customerListID] : null,
         target_customer_list_ids: customerLists.map((l) => l.id),
+        contact_status: this.queryParams.contactStatus,
       };
 
       if (preconfirm) {
@@ -1425,8 +1483,16 @@ export default Vue.extend({
     if (this.$route.query.subscription_status) {
       this.queryParams.subStatus = this.$route.query.subscription_status;
     }
-    if (this.$route.query.pool_status === 'removed') {
-      this.queryParams.poolStatus = 'removed';
+    if (['all', 'active', 'removed', 'blocklisted', 'unsubscribed', 'archived'].includes(this.$route.query.pool_status)) {
+      this.queryParams.poolStatus = this.$route.query.pool_status;
+    }
+    if (['all', 'enabled', 'blocklisted', 'unsubscribed', 'disabled'].includes(this.$route.query.contact_status)) {
+      this.queryParams.contactStatus = this.$route.query.contact_status;
+    }
+    if (typeof this.$route.query.search === 'string') {
+      this.queryInput = this.$route.query.search;
+      this.queryParams.search = this.queryInput;
+      this.pool.search = this.queryInput;
     }
 
     if (this.isPoolRoute) {
@@ -1461,3 +1527,7 @@ export default Vue.extend({
   },
 });
 </script>
+
+<style scoped>
+.customer-status-filter { display: inline-flex; margin: 0 12px 0 0; vertical-align: middle; }
+</style>

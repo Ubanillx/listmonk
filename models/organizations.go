@@ -144,6 +144,8 @@ type Workspace struct {
 // is passed to core methods rather than inferred from process-global state so
 // concurrent requests and API-token clients remain isolated.
 type WorkspaceAccess struct {
+	// Set only by authenticated platform-admin GET drill-down handlers.
+	InspectPrivateLists bool `json:"-"`
 	Workspace
 	UserID int `json:"-"`
 	// PoolMaster grants administration of first-level pools only. It must never

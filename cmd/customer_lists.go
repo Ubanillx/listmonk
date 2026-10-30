@@ -139,6 +139,7 @@ func (a *App) GetList(c echo.Context) error {
 	if _, err := a.requireReadableWorkspaceList(c, access, id); err != nil {
 		return err
 	}
+	access.InspectPrivateLists = auth.GetUser(c).IsPlatformAdmin() && !auth.IsPersonalIntegrationToken(c)
 
 	// Get the customer_list from the DB.
 	out, err := a.core.GetWorkspaceList(access, id)

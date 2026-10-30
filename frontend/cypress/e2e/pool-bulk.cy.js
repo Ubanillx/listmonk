@@ -1,6 +1,13 @@
 /* eslint-env mocha */
 /* global cy, Cypress, expect */
 
+import * as XLSX from 'xlsx';
+
+const workbookRows = (body) => {
+  const book = XLSX.read(body, { type: typeof body === 'string' ? 'binary' : 'array' });
+  return XLSX.utils.sheet_to_json(book.Sheets[book.SheetNames[0]], { header: 1 });
+};
+
 describe('Public pool bulk actions', () => {
   const pools = [];
   let organizationID;
@@ -68,19 +75,20 @@ describe('Public pool bulk actions', () => {
 
   it('exports only selected memberships and rejects malformed selections', () => {
     const [alpha, beta] = pools;
-    cy.request(`/api/pools/contacts/export?contact=${alpha.id}:${alpha.selected}&contact=${beta.id}:${beta.selected}`).then(({ body }) => {
-      expect(body).to.contain('Alpha-selected').and.contain('Beta-selected');
-      expect(body).not.to.contain('untouched');
-      expect(body.trim().split('\n')).to.have.length(3);
+    cy.request({ url: `/api/pools/contacts/export?contact=${alpha.id}:${alpha.selected}&contact=${beta.id}:${beta.selected}`, encoding: 'binary' }).then(({ body }) => {
+      const rows = workbookRows(body);
+      expect(rows.flat()).to.include('Alpha-selected').and.include('Beta-selected');
+      expect(rows.flat().join(' ')).not.to.contain('untouched');
+      expect(rows).to.have.length(3);
     });
-    cy.request(`/api/pools/contacts/export?contact=${beta.id}:${alpha.selected}`).then(({ body }) => {
-      expect(body.trim().split('\n')).to.have.length(1);
+    cy.request({ url: `/api/pools/contacts/export?contact=${beta.id}:${alpha.selected}`, encoding: 'binary' }).then(({ body }) => {
+      expect(workbookRows(body)).to.have.length(1);
     });
-    cy.request(`/api/customer-lists/${alpha.id}/pool-contacts/export?contact=0:${alpha.selected}`).then(({ body }) => {
-      expect(body).to.contain('Alpha-selected').and.not.contain('untouched');
+    cy.request({ url: `/api/customer-lists/${alpha.id}/pool-contacts/export?contact=0:${alpha.selected}`, encoding: 'binary' }).then(({ body }) => {
+      expect(workbookRows(body).flat().join(' ')).to.contain('Alpha-selected').and.not.contain('untouched');
     });
-    cy.request(`/api/pools/contacts/export?search=untouched&contact=${alpha.id}:${alpha.selected}`).then(({ body }) => {
-      expect(body.trim().split('\n')).to.have.length(1);
+    cy.request({ url: `/api/pools/contacts/export?search=untouched&contact=${alpha.id}:${alpha.selected}`, encoding: 'binary' }).then(({ body }) => {
+      expect(workbookRows(body)).to.have.length(1);
     });
     cy.request({ url: '/api/pools/contacts/export?contact=bad', failOnStatusCode: false }).its('status').should('eq', 400);
   });
@@ -102,7 +110,7 @@ describe('Public pool bulk actions', () => {
     cy.wait('@export').then(({ request, response }) => {
       expect(new URL(request.url).searchParams.getAll('contact')).to.have.members(pools.map((pool) => `${pool.id}:${pool.selected}`));
       expect(response.statusCode).to.eq(200);
-      expect(response.body).not.to.contain('untouched');
+      expect(workbookRows(response.body).flat().join(' ')).not.to.contain('untouched');
     });
   });
 

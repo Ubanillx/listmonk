@@ -33,6 +33,7 @@ type subQueryReq struct {
 	Action                string          `json:"action"`
 	Status                string          `json:"status"`
 	SubscriptionStatus    string          `json:"subscription_status"`
+	ContactStatus         string          `json:"contact_status"`
 	All                   bool            `json:"all"`
 }
 
@@ -120,6 +121,9 @@ func (a *App) QueryCustomers(c echo.Context) error {
 	if err := requireLegacyPermission(user, auth.PermCustomersGetAll, auth.PermCustomersGet); err != nil {
 		return err
 	}
+	// An explicit private-list drill-down is a read-only platform inspection.
+	// Selectors, exports and mutations keep their existing scope.
+	access.InspectPrivateLists = c.QueryParams().Has("customer_list_id") && user.IsPlatformAdmin() && !auth.IsPersonalIntegrationToken(c)
 	CustomerListIDs, err := a.workspaceCustomerListIDsForRequest(c, access, "customer_list_id", c.QueryParams(), false)
 	if err != nil {
 		return err
@@ -133,7 +137,7 @@ func (a *App) QueryCustomers(c echo.Context) error {
 		pg        = a.pg.NewFromURL(c.Request().URL.Query())
 	)
 
-	res, total, err := a.core.QueryWorkspaceCustomers(access, searchStr, CustomerListIDs, subStatus, order, orderBy, pg.Offset, pg.Limit)
+	res, total, err := a.core.QueryWorkspaceCustomers(access, searchStr, CustomerListIDs, subStatus, order, orderBy, pg.Offset, pg.Limit, c.QueryParam("contact_status"))
 	if err != nil {
 		return err
 	}
@@ -275,7 +279,7 @@ func (a *App) ExportCustomers(c echo.Context) error {
 	if len(subIDs) == 0 {
 		subIDs = []int{-1}
 	}
-	exp, err = a.core.ExportWorkspaceCustomers(access, searchStr, CustomerListIDs, subIDs, subStatus, a.cfg.DBBatchSize)
+	exp, err = a.core.ExportWorkspaceCustomers(access, searchStr, CustomerListIDs, subIDs, subStatus, a.cfg.DBBatchSize, c.QueryParam("contact_status"))
 	if err != nil {
 		return err
 	}
@@ -681,7 +685,7 @@ func (a *App) DeleteCustomersByFilter(c echo.Context) error {
 		return err
 	}
 	req.CustomerListIDs = CustomerListIDs
-	ids, err := a.managedWorkspaceCustomerIDs(access, req.Search, req.CustomerListIDs, req.SubscriptionStatus)
+	ids, err := a.managedWorkspaceCustomerIDs(access, req.Search, req.CustomerListIDs, req.SubscriptionStatus, req.ContactStatus)
 	if err != nil {
 		return err
 	}
@@ -724,7 +728,7 @@ func (a *App) BlocklistCustomersByFilter(c echo.Context) error {
 		return err
 	}
 	req.CustomerListIDs = CustomerListIDs
-	ids, err := a.managedWorkspaceCustomerIDs(access, req.Search, req.CustomerListIDs, req.SubscriptionStatus)
+	ids, err := a.managedWorkspaceCustomerIDs(access, req.Search, req.CustomerListIDs, req.SubscriptionStatus, req.ContactStatus)
 	if err != nil {
 		return err
 	}
@@ -770,7 +774,7 @@ func (a *App) ManageCustomerListMembershipsByFilter(c echo.Context) error {
 	if err := a.requireWorkspaceCustomerListIDsForRequest(c, access, req.TargetCustomerListIDs, true); err != nil {
 		return err
 	}
-	subIDs, err := a.managedWorkspaceCustomerIDs(access, req.Search, req.CustomerListIDs, req.SubscriptionStatus)
+	subIDs, err := a.managedWorkspaceCustomerIDs(access, req.Search, req.CustomerListIDs, req.SubscriptionStatus, req.ContactStatus)
 	if err != nil {
 		return err
 	}
@@ -1103,7 +1107,9 @@ func (a *App) requireWorkspaceCustomerListIDsForRequestWithOptions(c echo.Contex
 		if err != nil {
 			return err
 		}
-		if !allowPool && !customerListInActiveWorkspace(access, scope, ownerOnly) {
+		inspection := !manage && !ownerOnly && access.PlatformAdmin && access.InspectPrivateLists &&
+			(scope.CustomerListType == models.CustomerListTypePrivate || scope.CustomerListType == models.CustomerListTypePublic)
+		if !allowPool && !inspection && !customerListInActiveWorkspace(access, scope, ownerOnly) {
 			return customerListOutsideActiveWorkspaceError()
 		}
 	}
@@ -1133,8 +1139,8 @@ func (a *App) workspaceManagedCustomerListIDsForRequest(c echo.Context, access m
 // managedWorkspaceCustomerIDs applies the writable owner boundary after a
 // workspace read query. This matters for organization managers, who may read
 // every member's records but must never change them through a bulk endpoint.
-func (a *App) managedWorkspaceCustomerIDs(access models.WorkspaceAccess, search string, CustomerListIDs []int, status string) ([]int, error) {
-	ids, err := a.core.GetWorkspaceCustomerIDs(access, search, CustomerListIDs, status)
+func (a *App) managedWorkspaceCustomerIDs(access models.WorkspaceAccess, search string, CustomerListIDs []int, status string, contactStatus ...string) ([]int, error) {
+	ids, err := a.core.GetWorkspaceCustomerIDs(access, search, CustomerListIDs, status, contactStatus...)
 	if err != nil {
 		return nil, err
 	}

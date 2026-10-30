@@ -10,7 +10,7 @@ import (
 
 // exportWorkspaceCustomers streams only customers inside the caller's mutable
 // workspace boundary. All filters are passed as SQL parameters.
-func (c *Core) exportWorkspaceCustomers(access models.WorkspaceAccess, search string, customerListIDs, requestedIDs []int, subscriptionStatus string, batchSize int) (func() ([]models.CustomerExport, error), error) {
+func (c *Core) exportWorkspaceCustomers(access models.WorkspaceAccess, search string, customerListIDs, requestedIDs []int, subscriptionStatus string, batchSize int, contactStatus ...string) (func() ([]models.CustomerExport, error), error) {
 	if batchSize < 1 {
 		batchSize = 1000
 	}
@@ -23,11 +23,15 @@ func (c *Core) exportWorkspaceCustomers(access models.WorkspaceAccess, search st
 
 	scope, args := workspaceSensitiveCustomerPredicate(access, "customers", 1)
 	first := len(args) + 1
+	statusPredicate, err := customerStatusPredicate(access, "customers", fmt.Sprintf("$%d", first+3), contactStatus)
+	if err != nil {
+		return nil, err
+	}
 	stmt := fmt.Sprintf(`
 		SELECT customers.id, customers.uuid, customers.email, customers.name, customers.attribs,
 			customers.status, customers.customer_code, customers.created_at, customers.updated_at
 		FROM customers
-		WHERE (%s) AND customers.id > $%d
+		WHERE (%s) AND (%s) AND customers.id > $%d
 			AND customers.id = ANY($%d::INT[])
 			AND ($%d = '' OR customers.name ~* $%d OR customers.email ~* $%d OR customers.customer_code ~* $%d)
 			AND (CARDINALITY($%d::INT[]) = 0 OR EXISTS (
@@ -41,7 +45,7 @@ func (c *Core) exportWorkspaceCustomers(access models.WorkspaceAccess, search st
 					AND ($%d = '' OR sl.status = $%d::subscription_status)
 			))
 		ORDER BY customers.id ASC LIMIT $%d`,
-		scope,
+		scope, statusPredicate,
 		first,
 		first+1,
 		first+2, first+2, first+2, first+2,

@@ -26,6 +26,8 @@ type Customers []Customer
 
 // Customer represents an e-mail customer.
 type Customer struct {
+	// Derived for the requested list scope by the paginated customer query.
+	Unsubscribed bool `db:"unsubscribed" json:"unsubscribed,omitempty"`
 	Base
 	ResourceScope
 

@@ -616,6 +616,16 @@ curl -u 'api_username:access_token' -X POST 'http://localhost:9000/api/logout'
 
 ## Organization marketing SMTP
 
+The shared `smtp_delivery` settings object includes `max_recipient_retries`
+(integer 0–1000, default 3), configurable in Settings → SMTP or through the
+existing settings update endpoints. It limits retries after the initial delivery
+for the same regular SMTP campaign and recipient across pauses, resumes and
+restarts. Zero disables additional retries. Preserve the other delivery fields
+when replacing this object. This is separate from `max_msg_retries`, which still
+controls transient network attempts for system, transactional and opt-in mail.
+Since v6.67.0, regular SMTP campaigns use one network attempt per queue delivery,
+then complete other recipients in the current failure-count round before retrying.
+
 In an active organization workspace, organization managers and platform organization operators can manage independent marketing senders:
 
 | Method | Endpoint | Purpose |

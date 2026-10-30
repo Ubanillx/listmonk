@@ -1,8 +1,31 @@
 # API / Customers
 
+`GET /api/customers` and `/api/customers/export` accept `contact_status`:
+`all` (default), `enabled`, `blocklisted`, `unsubscribed`, or `disabled`.
+The same field is accepted by JSON requests to bulk delete, blocklist and
+membership operations that resolve targets by filters. Invalid values return 400.
+Counts, pagination, export and bulk targets use the same predicate.
+
+`blocklisted` and `disabled` match the customer's global status. `unsubscribed`
+matches an unsubscribed membership in the requested list(s), or any visible
+matching-owner/workspace list if no list filter is supplied. `enabled` requires
+an enabled customer without an unsubscribe in that list scope. An unsubscribe
+membership is distinct from a confirmed campaign unsubscribe click; blacklisted
+customers can also have unsubscribed memberships. Existing `subscription_status`
+filters continue to apply separately. These filters do not widen permissions.
+Paginated results include a derived `unsubscribed:true` when the customer has
+an unsubscribe in exactly that requested list scope. The status badge and
+filter therefore agree even if another list has a different subscription state.
+
 Customer resources are exposed under `/api/customers`. Use the import API for
 bulk ingestion and the customer endpoints for individual records. Customer
 codes are business fields and are not unique identifiers.
+
+Interactive highest administrators may inspect another owner's private-list
+members by supplying a concrete `customer_list_id`, including across the active
+workspace boundary. Only real same-owner/workspace memberships are returned;
+the corresponding list metadata endpoint supports the same drill-down. This
+exception does not apply to personal API keys, exports or mutation endpoints.
 
 See the [Import API](import.md) and the [API introduction](apis.md) for
 authentication and request conventions.

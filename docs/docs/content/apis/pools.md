@@ -1,5 +1,23 @@
 # Public pools
 
+## Contact states
+
+Aggregate and single-list contact queries and exports accept `status=all`,
+`active`, `blocklisted`, `unsubscribed`, `removed` or `archived`; an omitted
+status retains the all-records API behavior. `active` now means an active
+contact without a current-scope removal/opt-out. `blocklisted` and `archived`
+filter master contact status; `removed` retains the allocation-exclusion view.
+Invalid values return 400 and totals are filtered before pagination.
+
+Contact DTOs include read-only boolean `unsubscribed`, including masked DTOs.
+It reflects a non-restored organization exclusion with source `unsubscribe`.
+Organization callers and allocation-list views read only that organization's
+state; platform aggregate/source-pool views report whether any organization
+currently has such an opt-out in the pool. Manual removals remain distinct.
+Blacklisting and unsubscribing can coexist; restoring an exclusion removes its
+current unsubscribe flag while preserving historical campaign click events.
+The admin table shows separate colored state badges and defaults to all states.
+
 ## Pool list hierarchy in the admin UI
 
 The public pool list page groups organization allocations below their source pool

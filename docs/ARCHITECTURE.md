@@ -1,4 +1,27 @@
 # Listmonk 工程架构与运行指南
+
+## 客户状态列与筛选（2026-10-30）
+
+`Customers.vue` 在公海与私域表格统一提供独立状态列，以红色标记黑名单、黄色标记已退订；同一客户可以同时具备两种状态。私域退订来源为当前可见 `customer_list_memberships.status='unsubscribed'`，具体列表页只判断该列表，汇总页表示至少一个可见列表已退订，不等同于营销退订点击事件。公海新增只读 `unsubscribed` DTO 字段，来自仍有效的 `org_pool_allocation_exclusions.source='unsubscribe'`；分配页与组织成员只看目标组织，平台总表可汇总该公海中的组织退订，普通人工移除不冒充退订。恢复排除后退订标记消失，历史点击计数继续保留。
+
+公海 `status` 参数新增 `all/blocklisted/unsubscribed/archived`，保留 `active/removed`；active 仅返回未被当前范围排除的正常 active 联系人。私域查询、导出及按筛选批量操作统一增加 `contact_status`（all/enabled/blocklisted/unsubscribed/disabled），enabled 排除当前列表范围内已退订客户。`internal/core/customer_status.go` 的白名单 SQL 谓词在分页前应用，并复用于导出与批量 ID 解析；原工作区、归属、个人 Key 和敏感字段边界不变。页面默认全部状态，状态条件存入 URL，修改条件从第一页重新查询并清空选择。无需数据库迁移。回归：`cmd/customer_status_filters_test.go`、`frontend/cypress/e2e/customer-status-filters.cy.js`。
+
+## 营销投递按轮重试（v6.67.0，2026-10-30）
+
+`campaign_retry_queue` 把私域与公海当前可投递、未完成的快照合并，并从持久 `campaign_send_errors` 计算各收件人的失败次数。普通 SMTP 活动每次只领取全活动最低失败次数的轮次：先完成首次投递，再处理一次失败的收件人，随后处理两次失败的收件人。私域、公海及不同目标组织共享轮次；组织轮询游标和 SMTP 分配规则保持原语义。暂停、恢复、重启、定向补发不清除失败历史；已退订、已转移、分配失效或重试耗尽的收件人不阻塞下一轮。定向补发的轮次只包含选中快照。
+
+尚在 queued 的低轮次收件人也构成屏障；更高轮次不能抢在其 SMTP 结果之前领取。队列因该屏障暂时为空时，`cmd/manager_store.go` 返回已有 `ErrCampaignBatchPending`，Manager 异步等待进度通知，不能误判活动结束。全组织公海在目标组织额度耗尽时按原日历规则延期。每封失败记录与累计上限仍原子保存，原全局错误阈值和 SMTP 结构故障暂停保护继续生效。
+
+`internal/messenger/email/email.go` 为普通营销投递使用只尝试一次的 SMTP 池，失败立即交还活动队列，不在一封邮件内部重复尝试；非营销、事务、系统和 opt-in 仍采用 `max_msg_retries`。两个连接池共用既有 SMTP 并发门、随机等待和每日额度跟踪。迁移仅安装派生视图，不改写历史或复活 failed/sent。回归：`cmd/campaign_retry_order_test.go`（暂停/在途屏障/混合受众/跨组织轮询/升级一致性）、`internal/messenger/email/campaign_retry_test.go`（真实 TCP 失败尝试数）。
+
+## 活动退订人数与明细（v6.66.0，2026-10-30）
+
+`campaign_unsubscriptions` 保存邮件公开退订入口确认的事实，以 `(campaign_id, recipient_type, recipient_id)` 唯一约束实现并发去重，记录首次确认时间与来源归属，不保存姓名、邮箱或公开 bearer UUID。私域普通退订与列表偏好退订由 `queries/customers.sql` 的数据修改 CTE 将退订和事件同语句提交；偏好页仅移除本活动关联的有效订阅才归因。公海由 `internal/core/campaigns.go::UnsubscribePoolByCampaign` 在事务内写来源组织排除与事件，待发送快照取消，已发送快照保留 sent/sent_at；重复确认仍返回成功。
+
+GET 退订落地页、资料修改、管理端批量退订、退信和回信 AI 状态变更不产生该事实。迁移不从历史订阅状态推断点击，也不回填不可靠的历史人数。删除客户不删除去标识化事实，删除活动级联清理。`models.CampaignMeta.Unsubscribes` 与运行统计从同一事实表聚合，列表「退信」位置改为「退订人数」，原退信事件/API 保留。
+
+`GET /api/campaigns/:id/unsubscribes` 提供分页搜索明细；`cmd/campaign_unsubscriptions.go` 和 `internal/core/campaign_unsubscriptions.go` 沿用活动所有者/管理员、工作区、列表、分析、收件人及对应来源读取权限，个人 Key 另需收件人和客户/列表 scope。身份字段从当前客户读取，私域邮箱遵守敏感字段权限、公海非平台管理员始终脱敏；脱敏邮箱不能被原文搜索。转移后的旧归属明细对普通用户隐藏，不影响活动聚合人数。前端 `CampaignUnsubscribes.vue` 隔离失败/空态，切工作区或关闭后丢弃在途响应。接口契约见 [Campaigns API](docs/docs/content/apis/campaigns.md)。回归入口：`cmd/campaign_unsubscriptions_test.go`、`internal/migrations/v6.66.0_test.go`、`frontend/cypress/e2e/campaign-unsubscribes.cy.js`。
+
 ## 营销邮件图片依赖校验（2026-10-23）
 
 `internal/media/references.go` 为保存、全量审计和发送边界提供同一 HTML 引用扫描器，覆盖 `src`、`srcset`、背景 CSS、`background` 与 Outlook 条件注释。活动/模板保存时，Core 在原资源所有者的使用权限下解析正文，按精确媒体 ID 和文件名补齐遗漏的关联；相对旧上传地址只在无歧义时匹配。启动/排期在同一事务中重查正文和生效模板，克隆先对来源所有者的素材依赖做同样检查，再复制独立快照。管理员巡查权限不授予活动所有者使用外来私有素材的能力，目录、转移、归档与共享模板的例外继续受既有权限控制。
@@ -22,7 +45,7 @@ Manager 在创建发送管道前校验静态依赖，且在每封客户邮件渲
 
 ## 最高管理员私域列表总览（2026-10-22）
 
-`/admin/customer-lists` 对最高管理员单独调用 `GET /api/customer-lists?type_group=private&scope=all_owners`，跨个人与组织工作区显示所有人的普通 `private`/`public` 列表、归属与客户数量，不混入一级公海或组织分配。仅此显式 GET 查询可启用全员范围，普通/最小列表选择器默认仍限定当前工作区，非最高管理员及个人 API Key 不能使用该范围。列表详情和客户查看沿用既有授权；导入、活动受众、批量写入和按条件删除不继承全员查询范围。实现见 `cmd/customer_lists.go::GetLists`、`internal/core/workspace_queries.go::QueryPlatformPrivateLists`。
+`/admin/customer-lists` 对最高管理员单独调用 `GET /api/customer-lists?type_group=private&scope=all_owners`，跨个人与组织工作区显示所有人的普通 `private`/`public` 列表、归属与客户数量，不混入一级公海或组织分配。普通/最小列表选择器默认仍限定当前工作区，非最高管理员及个人 API Key 不能使用该范围。点击人数或直接重载客户页时，非个人 Key 的最高管理员可按明确列表 ID 跨归属读取 `GET /api/customer-lists/:id` 和 `GET /api/customers?customer_list_id=...`；仅这两个处理器在鉴权后派生内部 `WorkspaceAccess.InspectPrivateLists`，Core 继续验证真实私域列表成员及相同 owner/org 关系。此能力不来自用户参数，也不扩展导出、导入、活动受众、批量写入或按条件删除。来源：`cmd/{customer_lists,customers,customer_list_inspection_test}.go`、`internal/core/workspace_queries.go::{GetWorkspaceList,QueryWorkspaceCustomers}`、`frontend/cypress/e2e/customer-list-inspection.cy.js`。
 
 ## 活动失败客户定向补发（2026-10-21）
 
@@ -105,9 +128,17 @@ Bulma 入口改用显式路径 `bulma/sass/utilities/all` 与 `bulma/bulma.sass`
 
 ## 活动发送错误统计（v6.59.0）
 
+### 营销收件人累计重试上限（v6.65.0）
+
+统一投递设置新增 `smtp_delivery.max_recipient_retries`，默认 3，允许 0–1000，表示首次投递之外最多重试的次数；0 为失败后不再重试。仅 regular 的 `email` / `email-*` 活动受限，覆盖私域、单组织公海及全组织公海；系统通知、事务邮件和 opt-in 不采用此累计策略。自 v6.67.0 起普通营销不在单封邮件内部重试，`max_msg_retries` 仅约束非营销/opt-in 的单次 SMTP 网络尝试；营销改由持久队列按轮安排，累计上限仍独立生效。
+
+`campaign_recipient_retry_exhausted(campaign_id,recipient_type,recipient_id)` 统一从不可改写的 `campaign_send_errors` 判断累计失败是否超过重试上限，借现有 recipient 索引读取至上限所需的记录；它不受报告搜索、分类筛选或旧归属可见性影响，且不向调用方暴露旧诊断。普通与两类公海领取、Core 定向补发资格共用此判定。`RecordCampaignSendFailure` 按活动→收件人锁序，在同一事务写失败历史、累计错误数和收件人 `failed` 终态；随后 pending 回写不得覆盖 failed/sent。失败历史持久化失败时发送器立即暂停，避免丢失计数后无限重试。主动停止、额度延期和关闭不生成失败事件，也不消耗次数。
+
+暂停、恢复、调度重载、重启、受众刷新与定向补发均保留累计记录及终态。重新加载活动会按历史和当前上限收敛未终止收件人；已 failed 不自动复活，即使后来调大上限。失败列表和 Excel 保留这些人，显示「已达累计重试上限」、`retryable=false`；概览仍计入失败人数，从可继续发送的 unsent/waiting 中排除，且不混淆不同归属的可见失败。schema 与 v6.65.0 同步新增 failed 枚举和判定函数，升级只补缺失的默认配置并依据已有明细收敛终态，不猜测早期仅有活动总数的个人失败次数。来源：`cmd/{manager_store,campaign_recipient_retries_test}.go`、`internal/core/{campaign_failed_recipients,campaign_delivery_overview}.go`、`internal/manager/{manager,pipe,recipient_retries_test}.go`、`internal/migrations/v6.65.0{,_test}.go`、`frontend/src/views/settings/smtp.vue`。
+
 `campaigns.send_errors` 保存活动累计失败次数，发送 worker 与收件人渲染失败通过 `CampaignSendErrorStore` 调用 `cmd/manager_store.go::RecordCampaignSendError`，数据库原子递增，普通与公海收件人共用同一活动统计。每日额度耗尽、主动停止和服务关闭不计入；SMTP/回信路由不可用及普通发送失败计入。重试失败重复计数，成功重试、暂停续发及重启不清零；不是当前失败收件人数，也不是退信数。渲染失败归还 pending 并参与单次运行的错误暂停阈值。列表、详情及运行统计 API 返回 `send_errors`；`Campaigns.vue` 使用运行统计轮询展示，暂停后重新读取持久化总数。迁移 `internal/migrations/v6.59.0.go` 为旧活动置零，不从日志或 pending 状态猜测历史错误；新建/克隆活动从零开始。
 
-额度延期仍由活动每日上限（包括 queued 额度预占）或 SMTP 每日额度触发，在服务器本地时区次日 `daily_resume_time` 恢复；SMTP 额度耗尽只输出延期日志，不再打印 `error sending`。普通发送错误达到 `MaxSendErrors` 时暂停，阈值只计算本轮运行。来源：`internal/manager/{manager,pipe,send_errors_test}.go`、`cmd/campaign_send_errors_test.go`、`models/{campaigns,templates}.go`、`queries/campaigns.sql`、`frontend/cypress/e2e/campaign-send-errors.cy.js`。
+活动每日上限只按部署时区当天成功发送的邮件计数；queued 收件人仅预占容量，预占满额返回 `ErrCampaignBatchPending`，Manager 异步等待 worker 持久化结果后重新领取，不据此延期，也不阻塞其他活动。失败归还 pending 并释放容量，成功才消耗每日额度；达到成功上限且仍有未发送收件人，或 SMTP 每日额度耗尽，才延至次日 `daily_resume_time`；最后一封恰好达到上限时直接完成。普通与公海收件人的 sent 状态、`campaign_daily_usage` 和累计成功数在同一事务内更新，按活动→收件人锁顺序且已 sent 不重复累计。结果写入或失败归还出错时暂停，避免留下无人处理的 queued 预占。停止/关闭会唤醒等待管道并释放调度引用；无需迁移或重算历史每日使用量。SMTP 额度耗尽只输出延期日志，不打印 `error sending`。普通发送错误达到 `MaxSendErrors` 时暂停，阈值只计算本轮运行。来源：`cmd/{send_limits,manager_store,campaign_daily_limit_test}.go`、`internal/manager/{manager,pipe,daily_limit_test,send_errors_test}.go`、`queries/campaigns.sql`。
 
 ### 错误原因与客户汇总（v6.60.0）
 
@@ -336,13 +367,15 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 
 ### 平台级公海营销（全量组织受众 + 组织 SMTP 池轮询，已实施）
 
+个人 SMTP 轮询自 v6.64.0 默认 5 封/分钟，组织来源仍默认 100。新建表单、切换发件来源、零值旧数据兜底、API 省略频率及发送器使用相同来源默认值；v6.64.0 只将数据库列默认值改为 5，不覆盖已有活动保存的频率。来源：`models/campaigns.go`、`cmd/send_limits.go`、`frontend/src/views/Campaign.vue`、`internal/migrations/v6.64.0.go`。
+
 平台设置自 v6.49.0 起只保留一个用于系统通知的 SMTP；营销活动使用账号或组织发件池，事务邮件仍使用账号 SMTP。`settings.smtp_delivery` 统一定义每个 SMTP 的连接数、重试、超时、随机延迟和邮件头：`cmd/manager_store.go` 每次解析时应用它，系统通知 SMTP 保存时同步这些字段。TLS 协议和证书校验属于各 SMTP 的连接配置。v6.53.0 将旧全局 TLS 的实际生效值复制到各 SMTP，转换延迟单位，并回填活动频率；后续迁移重跑不覆盖单 SMTP TLS 或活动频率修改。设置保存后需重启，运行中的活动按既有规则延迟重启。
 
 统一投递配置的 `send_delay_min` / `send_delay_max` 是整数毫秒，满足 `0 ≤ 下限 ≤ 上限 ≤ 3600000`；两者为 0 时关闭，兼容读取旧 `2s` 等时长字符串并按原时长转换。每封 SMTP 邮件（包括首封）发送前按整数毫秒均匀抽样。`internal/messenger/email/send_delay.go` 在进程内按 SMTP UUID 共享可取消的发送门与连接容量，避免同一 SMTP 被多个缓存池重复放大并发；开启随机延迟时同 SMTP 依次等待并投递，不同 SMTP 可并行。网络重试属于同一发送尝试，不重新抽样。暂停/取消或关闭可中断等待，释放 SMTP 每日额度预占；连接测试跳过随机延迟。
 
 个人/组织 SMTP 测试共用 `cmd/personal_smtp.go::testOwnedSMTP` 和 `cmd/smtp_errors.go::smtpTestError`。当前 smtppool v2.0.2 将 `wait_timeout` 同时用于连接池等待与新连接创建；隐式 TLS 的 `context deadline exceeded` 表示 TCP 连接/SSL/TLS 握手尚未完成，未进入 SMTP 认证。测试 API 保持 HTTP 500，使用本地化诊断说明目标地址和单次连接时限，并保留内部原始错误；不更改凭据、TLS 校验或全局超时。重试可使请求总时间超过单次时限，本机连接成功不能证明部署服务器的出站网络正常。
 
-投递限速分三层：`campaigns.smtp_rate_limit` 先约束单活动所有 SMTP 的合计发送频率（封/分钟），个人来源默认 20、组织来源默认 100，用户可设 1–1000000；以活动 UUID 共享平滑间隔，全组织公海也共用该活动额度。平台 `app.message_rate` 是所有 SMTP 合计的每秒硬上限，滑动窗口同样为平台总量；`app.concurrency` 同时控制工作线程数和所有 SMTP 的实际投递总并发。超限等待、不丢弃，线程数不乘大发送频率。`internal/messenger/email/delivery_limiter.go` 在实际 SMTP Send 前统一取得活动、平台频率及并发许可，完成或失败时释放并发许可并唤醒队列；`internal/manager/manager.go` 给系统通知、个人/组织缓存池、公海单发件池及临时连接测试挂同一 limiter，因此直接发送的系统通知也受平台限制。单 SMTP 连接、重试、超时和随机延迟仍独立生效。所有限速与发送门为进程内状态，重启重置，多个活动工作进程之间不共享；需要平台合计上限时采用一个活动发送进程。
+投递限速分三层：`campaigns.smtp_rate_limit` 先约束单活动所有 SMTP 的合计发送频率（封/分钟），个人来源默认 5、组织来源默认 100，用户可设 1–1000000；以活动 UUID 共享平滑间隔，全组织公海也共用该活动额度。平台 `app.message_rate` 是所有 SMTP 合计的每秒硬上限，滑动窗口同样为平台总量；`app.concurrency` 同时控制工作线程数和所有 SMTP 的实际投递总并发。超限等待、不丢弃，线程数不乘大发送频率。`internal/messenger/email/delivery_limiter.go` 在实际 SMTP Send 前统一取得活动、平台频率及并发许可，完成或失败时释放并发许可并唤醒队列；`internal/manager/manager.go` 给系统通知、个人/组织缓存池、公海单发件池及临时连接测试挂同一 limiter，因此直接发送的系统通知也受平台限制。单 SMTP 连接、重试、超时和随机延迟仍独立生效。所有限速与发送门为进程内状态，重启重置，多个活动工作进程之间不共享；需要平台合计上限时采用一个活动发送进程。
 
 - 营销活动勾选一级公海时，默认仍是单组织范围（`campaigns.pool_scope = 'organization'`，按当前工作区组织的公海分配解析）。持有专用权限 `campaigns:public_pool_send` 的账号可以把活动创建为 `all_organizations`：受众是该一级公海下**所有活跃组织**的公海分配并集，只接受一级公海列表（显式公海分配列表与普通客户列表都会被拒绝），权限常量在 `internal/auth/models.go`、清单在 `permissions.json`（`campaigns` 组），前端以 `$can('campaigns:public_pool_send')` 控制入口。
 - 组织工作区的新活动通过“公海发送范围”显式选择本组织或全部目标组织，默认本组织；选择全部目标组织后禁止混选私域列表。个人工作区仅允许纯公海受众进入全组织路径。已有活动范围不可修改。发送条件状态绑定已保存活动的发件来源、受众 ID 集合及回信优先级；编辑后隐藏旧状态并提示保存，成功保存后重新检查，异步旧响应不能覆盖新状态。已有全组织活动的 SMTP 概览也按表单传入的 `customer_list_ids` 解析，省略该参数才使用已保存受众。

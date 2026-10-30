@@ -32,6 +32,15 @@ keys; omitted `scope` retains the selected workspace boundary, including for
 list selectors. It does not expand create, import, campaign audience, or bulk
 delete queries. Cross-page select-all is not offered in this administrator view.
 
+Interactive highest administrators can also drill down by a concrete private/public
+list ID through `GET /api/customer-lists/{id}` and
+`GET /api/customers?customer_list_id={id}`, including a list owned by another
+user or organization. The member query still requires a real same-owner,
+same-workspace list membership. This read-only inspection is unavailable to
+personal API keys and does not widen list selectors, exports, imports, campaign
+audiences or bulk mutations. It fixes cross-workspace list links reporting a
+missing list after the administrator had already seen it in the platform index.
+
 | Method | Endpoint                                        | Description               |
 | :----- | :---------------------------------------------- | :------------------------ |
 | GET | [/api/customer-lists](#get-apicustomer-lists) | Retrieve all customer_lists. |

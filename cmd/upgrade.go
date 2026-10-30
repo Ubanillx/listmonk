@@ -104,6 +104,7 @@ var migList = []migFunc{
 	{"v6.63.0", migrations.V6_63_0},
 	{"v6.64.0", migrations.V6_64_0},
 	{"v6.65.0", migrations.V6_65_0},
+	{"v6.66.0", migrations.V6_66_0},
 	{"v6.67.0", migrations.V6_67_0},
 }
 

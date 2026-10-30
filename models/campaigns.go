@@ -132,10 +132,11 @@ type Campaign struct {
 
 // CampaignMeta contains fields tracking a campaign's progress.
 type CampaignMeta struct {
-	CampaignID int `db:"campaign_id" json:"-"`
-	Views      int `db:"views" json:"views"`
-	Clicks     int `db:"clicks" json:"clicks"`
-	Bounces    int `db:"bounces" json:"bounces"`
+	CampaignID   int `db:"campaign_id" json:"-"`
+	Views        int `db:"views" json:"views"`
+	Clicks       int `db:"clicks" json:"clicks"`
+	Bounces      int `db:"bounces" json:"bounces"`
+	Unsubscribes int `db:"unsubscribes" json:"unsubscribes"`
 
 	// This is a customer_list of {customer_list_id, name} pairs unlike Customer.CustomerLists[]
 	// because customer_lists can be deleted after a campaign is finished, resulting
@@ -157,8 +158,8 @@ const (
 	CampaignRecipientStatusDeferred  = "deferred"
 	CampaignRecipientStatusSent      = "sent"
 	CampaignRecipientStatusCancelled = "cancelled"
-)
 	CampaignRecipientStatusFailed    = "failed"
+)
 
 var reTrackableHREF = regexp.MustCompile(`(?i)(href\s*=\s*)(['"])(https?://[^"'<>]+)(['"])`)
 
@@ -189,6 +190,7 @@ func (camps Campaigns) LoadStats(stmt *sqlx.Stmt) error {
 			camps[i].Views = c.Views
 			camps[i].Clicks = c.Clicks
 			camps[i].Bounces = c.Bounces
+			camps[i].Unsubscribes = c.Unsubscribes
 			camps[i].Media = c.Media
 		}
 	}

@@ -248,7 +248,9 @@ FROM campaigns c
 JOIN campaign_pool_recipients cpr ON cpr.campaign_id=c.id
 JOIN pool_contacts pc ON pc.id=cpr.pool_contact_id
 WHERE c.uuid=$1::UUID AND pc.uuid=$2::UUID
-  AND cpr.status IN ('pending','queued','sent')
+  AND (cpr.status IN ('pending','queued','sent') OR (cpr.status='cancelled' AND EXISTS (
+      SELECT 1 FROM campaign_unsubscriptions u WHERE u.campaign_id=cpr.campaign_id
+          AND u.recipient_type='pool' AND u.recipient_id=cpr.pool_contact_id)))
 LIMIT 1;
 
 -- name: get-archived-campaigns
@@ -353,11 +355,15 @@ bounces AS (
     SELECT campaign_id, COUNT(campaign_id) as num FROM bounces
     WHERE campaign_id = ANY($1)
     GROUP BY campaign_id
+), unsubscriptions AS (
+    SELECT campaign_id,COUNT(*) AS num FROM campaign_unsubscriptions
+    WHERE campaign_id=ANY($1) GROUP BY campaign_id
 )
 SELECT id as campaign_id,
     COALESCE(v.num, 0) AS views,
     COALESCE(c.num, 0) AS clicks,
     COALESCE(b.num, 0) AS bounces,
+    COALESCE(u.num, 0) AS unsubscribes,
     COALESCE(l.customer_lists, '[]') AS customer_lists,
     COALESCE(l.customer_pools, '[]') AS customer_pools,
     COALESCE(m.media, '[]') AS media
@@ -367,6 +373,7 @@ LEFT JOIN media AS m ON (m.campaign_id = id)
 LEFT JOIN views AS v ON (v.campaign_id = id)
 LEFT JOIN clicks AS c ON (c.campaign_id = id)
 LEFT JOIN bounces AS b ON (b.campaign_id = id)
+LEFT JOIN unsubscriptions AS u ON (u.campaign_id = id)
 ORDER BY ARRAY_POSITION($1, id);
 
 -- name: get-campaign-for-preview
@@ -412,6 +419,7 @@ WHERE campaigns.id = $1;
 
 -- name: get-campaign-status
 SELECT id, status, to_send, sent, send_errors,
+    (SELECT COUNT(*) FROM campaign_unsubscriptions u WHERE u.campaign_id=campaigns.id) AS unsubscribes,
     -- Same single definition as every other projection; the completed-state check
     -- reads the same effective recipient set the sender uses.
     COALESCE((SELECT sc.unsent_count FROM campaign_send_counts sc WHERE sc.campaign_id = campaigns.id), 0) AS unsent_count,
@@ -1351,6 +1359,10 @@ WITH retry_queue AS MATERIALIZED (SELECT * FROM campaign_retry_queue WHERE campa
     JOIN customers s ON s.id = cr.customer_id
     WHERE cr.campaign_id = $1
       AND cr.status = ANY($2::campaign_recipient_status[])
+      AND NOT campaign_recipient_retry_exhausted(cr.campaign_id,'private',cr.customer_id)
+      AND (c.type<>'regular' OR (c.messenger<>'email' AND c.messenger NOT LIKE 'email-%') OR EXISTS (
+          SELECT 1 FROM retry_queue rq WHERE rq.recipient_type='private' AND rq.recipient_id=cr.customer_id
+              AND rq.failures=(SELECT MIN(failures) FROM retry_queue)))
       AND c.status = 'running'
       AND (NOT c.retry_mode OR cr.retry_selected)
       AND c.owner_user_id IS NOT NULL
@@ -1359,10 +1371,6 @@ WITH retry_queue AS MATERIALIZED (SELECT * FROM campaign_retry_queue WHERE campa
       -- UPDATE on a query whose nullable side participates in the join,
       -- even when the lock is explicitly restricted to campaign_recipients.
       AND (c.organization_id IS NULL OR EXISTS (
-      AND NOT campaign_recipient_retry_exhausted(cr.campaign_id,'private',cr.customer_id)
-      AND (c.type<>'regular' OR (c.messenger<>'email' AND c.messenger NOT LIKE 'email-%') OR EXISTS (
-          SELECT 1 FROM retry_queue rq WHERE rq.recipient_type='private' AND rq.recipient_id=cr.customer_id
-              AND rq.failures=(SELECT MIN(failures) FROM retry_queue)))
           SELECT 1 FROM organizations organization
           WHERE organization.id = c.organization_id
             AND organization.status = 'active'
@@ -1432,6 +1440,10 @@ WITH retry_queue AS MATERIALIZED (SELECT * FROM campaign_retry_queue WHERE campa
         AND ex.restored_at IS NULL
     WHERE cpr.campaign_id=$1
       AND cpr.status = ANY($2::campaign_recipient_status[])
+      AND NOT campaign_recipient_retry_exhausted(cpr.campaign_id,'pool',cpr.pool_contact_id)
+      AND (c.type<>'regular' OR (c.messenger<>'email' AND c.messenger NOT LIKE 'email-%') OR EXISTS (
+          SELECT 1 FROM retry_queue rq WHERE rq.recipient_type='pool' AND rq.recipient_id=cpr.pool_contact_id
+              AND rq.failures=(SELECT MIN(failures) FROM retry_queue)))
       AND c.status='running'
       AND (NOT c.retry_mode OR cpr.retry_selected)
       AND pc.status='active'
@@ -1440,10 +1452,6 @@ WITH retry_queue AS MATERIALIZED (SELECT * FROM campaign_retry_queue WHERE campa
           JOIN organizations ao ON ao.id=av.organization_id AND ao.status='active'
           JOIN customer_lists al ON al.id=av.list_id AND al.status='active' AND al.transfer_pending_at IS NULL
           JOIN customer_lists ap ON ap.id=av.pool_id AND ap.status='active' AND ap.transfer_pending_at IS NULL
-      AND NOT campaign_recipient_retry_exhausted(cpr.campaign_id,'pool',cpr.pool_contact_id)
-      AND (c.type<>'regular' OR (c.messenger<>'email' AND c.messenger NOT LIKE 'email-%') OR EXISTS (
-          SELECT 1 FROM retry_queue rq WHERE rq.recipient_type='pool' AND rq.recipient_id=cpr.pool_contact_id
-              AND rq.failures=(SELECT MIN(failures) FROM retry_queue)))
           JOIN pool_members avm ON avm.pool_id=av.pool_id AND avm.contact_id=cpr.pool_contact_id
           JOIN org_pool_allocation_members am ON am.allocation_id=av.id AND am.contact_id=cpr.pool_contact_id AND am.status='active'
           WHERE av.id=cpr.allocation_id AND av.pool_id=cpr.pool_id AND av.organization_id=cpr.organization_id AND av.state='active')
@@ -1480,13 +1488,13 @@ UPDATE campaign_recipients
 SET status = 'sent',
     sent_at = NOW(),
     updated_at = NOW()
-WHERE campaign_id = $1 AND customer_id = $2 AND status NOT IN ('sent','failed');
+WHERE campaign_id = $1 AND customer_id = $2 AND status <> 'sent';
 
 -- name: mark-campaign-recipient-status
 UPDATE campaign_recipients
 SET status = $3::campaign_recipient_status,
     updated_at = NOW()
-WHERE campaign_id = $1 AND customer_id = $2 AND status <> 'sent';
+WHERE campaign_id = $1 AND customer_id = $2 AND status NOT IN ('sent','failed');
 
 -- name: reset-campaign-queued-recipients
 UPDATE campaign_recipients

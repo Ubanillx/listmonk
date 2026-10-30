@@ -37,6 +37,7 @@ type Queries struct {
 	DeleteBlocklistedCustomers       *sqlx.Stmt `query:"delete-blocklisted-customers"`
 	DeleteOrphanCustomers            *sqlx.Stmt `query:"delete-orphan-customers"`
 	UnsubscribeByCampaign            *sqlx.Stmt `query:"unsubscribe-by-campaign"`
+	UnsubscribePreferencesByCampaign *sqlx.Stmt `query:"unsubscribe-preferences-by-campaign"`
 	ExportCustomerData               *sqlx.Stmt `query:"export-customer-data"`
 	GetCustomerActivity              *sqlx.Stmt `query:"get-customer-activity"`
 

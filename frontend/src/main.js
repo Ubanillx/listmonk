@@ -303,6 +303,8 @@ async function initConfig(app) {
     && Vue.prototype.$can('customers:get_all', 'customers:get', 'pools:get')
   );
 
+  Vue.prototype.$canReadCampaignUnsubscribes = (campaign) => Vue.prototype.$canReadCampaignSendErrors(campaign);
+
   // Creation and mutation controls mirror the legacy role model as well as
   // the active-workspace archive state. The API remains authoritative, but
   // this prevents an organization membership from making a disabled feature

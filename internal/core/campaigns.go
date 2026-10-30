@@ -197,19 +197,34 @@ func (c *Core) GetPublicPoolCampaignRecipient(campUUID, contactUUID string) (Pub
 }
 
 func (c *Core) UnsubscribePoolByCampaign(campUUID, contactUUID string, reason string) error {
+	tx, err := c.db.Beginx()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
 	var r PublicPoolRecipient
-	if err := c.q.GetPublicPoolCampaignRecipient.Get(&r, campUUID, contactUUID); err != nil {
+	if err := tx.Stmtx(c.q.GetPublicPoolCampaignRecipient).Get(&r, campUUID, contactUUID); err != nil {
 		if err == sql.ErrNoRows {
 			return echo.NewHTTPError(http.StatusNotFound, "campaign recipient not found")
 		}
 		return err
 	}
-	_, err := c.db.Exec(`INSERT INTO org_pool_allocation_exclusions(pool_id,organization_id,contact_id,allocation_id,reason,source) SELECT cpr.pool_id,cpr.organization_id,cpr.pool_contact_id,cpr.allocation_id,$3,'unsubscribe' FROM campaign_pool_recipients cpr WHERE cpr.campaign_id=$1 AND cpr.pool_contact_id=$2 ON CONFLICT(pool_id,organization_id,contact_id) DO UPDATE SET reason=EXCLUDED.reason,source='unsubscribe',removed_at=NOW(),restored_at=NULL`, r.CampaignID, r.PoolContactID, reason)
+	_, err = tx.Exec(`INSERT INTO org_pool_allocation_exclusions(pool_id,organization_id,contact_id,allocation_id,reason,source) SELECT cpr.pool_id,cpr.organization_id,cpr.pool_contact_id,cpr.allocation_id,$3,'unsubscribe' FROM campaign_pool_recipients cpr WHERE cpr.campaign_id=$1 AND cpr.pool_contact_id=$2 ON CONFLICT(pool_id,organization_id,contact_id) DO UPDATE SET reason=EXCLUDED.reason,source='unsubscribe',removed_at=NOW(),restored_at=NULL`, r.CampaignID, r.PoolContactID, reason)
 	if err != nil {
 		return err
 	}
-	_, err = c.db.Exec(`UPDATE campaign_pool_recipients SET status='cancelled',updated_at=NOW() WHERE campaign_id=$1 AND pool_contact_id=$2`, r.CampaignID, r.PoolContactID)
-	return err
+	if _, err = tx.Exec(`INSERT INTO campaign_unsubscriptions(campaign_id,recipient_type,recipient_id,campaign_owner_user_id,campaign_organization_id,recipient_organization_id)
+		SELECT c.id,'pool',cpr.pool_contact_id,c.owner_user_id,c.organization_id,COALESCE(cpr.organization_id,0)
+		FROM campaign_pool_recipients cpr JOIN campaigns c ON c.id=cpr.campaign_id
+		WHERE cpr.campaign_id=$1 AND cpr.pool_contact_id=$2
+		ON CONFLICT(campaign_id,recipient_type,recipient_id) DO NOTHING`, r.CampaignID, r.PoolContactID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`UPDATE campaign_pool_recipients SET status='cancelled',updated_at=NOW()
+		WHERE campaign_id=$1 AND pool_contact_id=$2 AND status IN ('pending','queued','deferred')`, r.CampaignID, r.PoolContactID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // GetArchivedCampaign retrieves a campaign with the archive template body.

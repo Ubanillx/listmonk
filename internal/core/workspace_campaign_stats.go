@@ -179,11 +179,16 @@ func (c *Core) loadWorkspaceCampaignStats(access models.WorkspaceAccess, camps m
 			SELECT b.campaign_id, COUNT(*) AS num
 			FROM bounces b JOIN scoped_campaigns sc ON sc.id = b.campaign_id
 			GROUP BY b.campaign_id
+		), unsubscriptions AS (
+			SELECT u.campaign_id, COUNT(*) AS num
+			FROM campaign_unsubscriptions u JOIN scoped_campaigns sc ON sc.id = u.campaign_id
+			GROUP BY u.campaign_id
 		)
 		SELECT requested.id AS campaign_id,
 			COALESCE(v.num, 0) AS views,
 			COALESCE(clicks.num, 0) AS clicks,
 			COALESCE(b.num, 0) AS bounces,
+			COALESCE(u.num, 0) AS unsubscribes,
 			COALESCE(l.customer_lists, '[]') AS customer_lists,
 			COALESCE(l.customer_pools, '[]') AS customer_pools,
 			COALESCE(m.media, '[]') AS media
@@ -193,6 +198,7 @@ func (c *Core) loadWorkspaceCampaignStats(access models.WorkspaceAccess, camps m
 		LEFT JOIN views v ON v.campaign_id = requested.id
 		LEFT JOIN clicks ON clicks.campaign_id = requested.id
 		LEFT JOIN bounces b ON b.campaign_id = requested.id
+		LEFT JOIN unsubscriptions u ON u.campaign_id = requested.id
 		ORDER BY ARRAY_POSITION($1::INT[], requested.id)`,
 		campaignScope, listPredicate, mediaPredicate)
 
@@ -214,6 +220,7 @@ func (c *Core) loadWorkspaceCampaignStats(access models.WorkspaceAccess, camps m
 		camps[i].Views = row.Views
 		camps[i].Clicks = row.Clicks
 		camps[i].Bounces = row.Bounces
+		camps[i].Unsubscribes = row.Unsubscribes
 		camps[i].Media = row.Media
 	}
 	return nil

@@ -1272,6 +1272,21 @@ CREATE TABLE campaign_send_errors (
 CREATE INDEX campaign_send_errors_campaign_idx ON campaign_send_errors(campaign_id,created_at,id);
 CREATE INDEX campaign_send_errors_recipient_idx ON campaign_send_errors(campaign_id,recipient_type,recipient_id,created_at DESC,id DESC);
 
+-- Confirmed public opt-outs, deduplicated per campaign and recipient. Identity
+-- IDs intentionally survive customer deletion; no address or name is stored.
+DROP TABLE IF EXISTS campaign_unsubscriptions;
+CREATE TABLE campaign_unsubscriptions (
+    campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+    recipient_type TEXT NOT NULL CHECK (recipient_type IN ('private','pool')),
+    recipient_id BIGINT NOT NULL CHECK (recipient_id > 0),
+    campaign_owner_user_id INTEGER,
+    campaign_organization_id INTEGER,
+    recipient_organization_id INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY(campaign_id,recipient_type,recipient_id)
+);
+CREATE INDEX campaign_unsubscriptions_time_idx ON campaign_unsubscriptions(campaign_id,created_at DESC);
+
 -- Initial delivery plus max_recipient_retries failures exhausts a recipient.
 -- The immutable error stream survives pauses, restarts and targeted retries.
 CREATE OR REPLACE FUNCTION campaign_recipient_retry_exhausted(campaign_id INTEGER, recipient_type TEXT, recipient_id BIGINT)

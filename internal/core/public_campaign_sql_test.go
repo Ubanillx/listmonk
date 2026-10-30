@@ -51,6 +51,7 @@ func TestPublicCampaignSQLGuards(t *testing.T) {
 	for _, name := range []string{
 		"get-public-campaign-recipient",
 		"unsubscribe-by-campaign",
+		"unsubscribe-preferences-by-campaign",
 	} {
 		requireQueryTerms(t, queries, name, "resolve_campaign_recipient(")
 		requireNoLocalCopyOfRecipientRule(t, queries, name)

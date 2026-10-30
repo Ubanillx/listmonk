@@ -594,6 +594,13 @@ func (c *Core) UnsubscribeByCampaign(subUUID, campUUID string, blocklist bool) e
 	return nil
 }
 
+// UnsubscribePreferencesByCampaign attributes only a removed campaign list,
+// atomically with the preference change. Other list edits remain unattributed.
+func (c *Core) UnsubscribePreferencesByCampaign(subUUID, campUUID string, listUUIDs []string) error {
+	_, err := c.q.UnsubscribePreferencesByCampaign.Exec(campUUID, subUUID, pq.Array(listUUIDs))
+	return err
+}
+
 // ConfirmOptionSubscription confirms a customer's optin subscription.
 func (c *Core) ConfirmOptionSubscription(subUUID string, listUUIDs []string, meta models.JSON) error {
 	if meta == nil {

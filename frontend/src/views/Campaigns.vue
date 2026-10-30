@@ -179,12 +179,14 @@
               <template v-else>{{ $utils.formatNumber(stats.sendErrors || 0) }}</template>
             </span>
           </p>
-          <p>
-            <label for="#">{{ $t('globals.terms.bounces') }}</label>
+          <p class="campaign-unsubscribes" :title="$t('campaigns.unsubscribesHelp')">
+            <label for="#">{{ $t('campaigns.unsubscribes') }}</label>
             <span>
-              <router-link :to="{ name: 'bounces', query: { campaign_id: props.row.id } }">
-                {{ $utils.formatNumber(props.row.bounces) }}
-              </router-link>
+              <a v-if="$canReadCampaignUnsubscribes(props.row) && (stats.unsubscribes || 0) > 0" href="#"
+                @click.prevent="unsubscribeCampaign = props.row" :aria-label="$t('campaigns.unsubscribeDetails')">
+                {{ $utils.formatNumber(stats.unsubscribes || 0) }}
+              </a>
+              <template v-else>{{ $utils.formatNumber(stats.unsubscribes || 0) }}</template>
             </span>
           </p>
           <p v-if="stats.rate">
@@ -302,6 +304,7 @@
       @close="closePreview" />
 
     <campaign-send-errors v-if="sendErrorCampaign" :campaign="sendErrorCampaign" @close="sendErrorCampaign = null" />
+    <campaign-unsubscribes v-if="unsubscribeCampaign" :campaign="unsubscribeCampaign" @close="unsubscribeCampaign = null" />
 
     <b-modal scroll="keep" :aria-modal="true" :active.sync="isCloneFormVisible" :width="520">
       <div class="modal-card content" style="width: auto">
@@ -335,6 +338,7 @@ import Vue from 'vue';
 import { mapState } from 'vuex';
 import CampaignPreview from '../components/CampaignPreview.vue';
 import CampaignSendErrors from '../components/CampaignSendErrors.vue';
+import CampaignUnsubscribes from '../components/CampaignUnsubscribes.vue';
 import CopyText from '../components/CopyText.vue';
 import EmptyPlaceholder from '../components/EmptyPlaceholder.vue';
 
@@ -342,6 +346,7 @@ export default Vue.extend({
   components: {
     CampaignPreview,
     CampaignSendErrors,
+    CampaignUnsubscribes,
     EmptyPlaceholder,
     CopyText,
   },
@@ -350,6 +355,7 @@ export default Vue.extend({
     return {
       previewItem: null,
       sendErrorCampaign: null,
+      unsubscribeCampaign: null,
       isCloneFormVisible: false,
       cloneItem: null,
       cloneForm: {

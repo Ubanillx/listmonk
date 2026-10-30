@@ -400,7 +400,13 @@ func (a *App) SubscriptionPrefs(c echo.Context) error {
 	}
 
 	// Unsubscribe from customer_lists.
-	if err := a.core.UnsubscribeLists([]int{sub.ID}, nil, unsubUUIDs); err != nil {
+	var preferenceErr error
+	if campUUID == dummyUUID {
+		preferenceErr = a.core.UnsubscribeLists([]int{sub.ID}, nil, unsubUUIDs)
+	} else {
+		preferenceErr = a.core.UnsubscribePreferencesByCampaign(subUUID, campUUID, unsubUUIDs)
+	}
+	if preferenceErr != nil {
 		return c.Render(http.StatusInternalServerError, tplMessage,
 			makeMsgTpl(a.i18n.T("public.errorTitle"), "", a.i18n.T("public.errorProcessingRequest")))
 

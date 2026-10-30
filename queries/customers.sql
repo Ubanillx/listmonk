@@ -376,11 +376,35 @@ sub AS (
     FROM recipient r
     WHERE s.id = r.customer_id
     RETURNING s.id
+), recorded AS (
+    INSERT INTO campaign_unsubscriptions(campaign_id,recipient_type,recipient_id,campaign_owner_user_id,campaign_organization_id,recipient_organization_id)
+    SELECT c.id,'private',r.customer_id,c.owner_user_id,c.organization_id,COALESCE(c.organization_id,0)
+    FROM recipient r JOIN campaigns c ON c.id=r.campaign_id JOIN sub ON sub.id=r.customer_id
+    ON CONFLICT(campaign_id,recipient_type,recipient_id) DO NOTHING
 )
 UPDATE customer_list_memberships SET status = 'unsubscribed', updated_at=NOW() WHERE
     customer_id = (SELECT id FROM sub) AND status != 'unsubscribed' AND
     -- If $3 is false, unsubscribe from the campaign's customer_lists, otherwise all customer_lists.
     CASE WHEN $3 IS FALSE THEN customer_list_id = ANY(SELECT customer_list_id FROM customer_lists) ELSE customer_list_id != 0 END;
+
+-- name: unsubscribe-preferences-by-campaign
+-- Only removing an active subscription belonging to this campaign is attributed
+-- to it. Profile edits or removing an unrelated list do not count as opt-outs.
+WITH recipient AS (
+    SELECT * FROM resolve_campaign_recipient($1::UUID,$2::TEXT)
+), changed AS (
+    UPDATE customer_list_memberships sl SET status='unsubscribed',updated_at=NOW()
+    FROM customer_lists l,recipient r
+    WHERE sl.customer_id=r.customer_id AND sl.customer_list_id=l.id
+        AND l.uuid=ANY($3::UUID[]) AND sl.status<>'unsubscribed'
+    RETURNING sl.customer_list_id,sl.customer_id
+)
+INSERT INTO campaign_unsubscriptions(campaign_id,recipient_type,recipient_id,campaign_owner_user_id,campaign_organization_id,recipient_organization_id)
+SELECT DISTINCT c.id,'private',r.customer_id,c.owner_user_id,c.organization_id,COALESCE(c.organization_id,0)
+FROM recipient r JOIN campaigns c ON c.id=r.campaign_id
+JOIN changed ch ON ch.customer_id=r.customer_id
+JOIN campaign_customer_lists cl ON cl.campaign_id=c.id AND cl.customer_list_id=ch.customer_list_id
+ON CONFLICT(campaign_id,recipient_type,recipient_id) DO NOTHING;
 
 -- name: delete-unconfirmed-subscriptions
 WITH optins AS (

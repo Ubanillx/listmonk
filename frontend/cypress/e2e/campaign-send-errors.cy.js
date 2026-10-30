@@ -6,7 +6,7 @@ describe('Campaign send errors', () => {
       results: [{
         id: 901, name: '错误原因统计活动', subject: 'Error report', status: 'paused', type: 'regular', tags: [],
         customer_lists: [], customer_pools: [], send_errors: 25, owner_username: 'admin', visibility: 'private',
-        views: 0, clicks: 0, sent: 3, to_send: 10, unsent_count: 7, bounces: 0,
+        views: 0, clicks: 0, sent: 3, to_send: 10, unsent_count: 7, bounces: 0, delivery_total: 10, delivery_sent: 3, delivery_pending: 7, delivery_unavailable: 0,
       }],
       total: 1, per_page: 20,
     } }).as('campaigns');
@@ -85,7 +85,7 @@ describe('Campaign send errors', () => {
       results: [{
         id: 901, name: 'tracking-e2e-37564', subject: 'Error report', status: 'paused', type: 'regular', tags: [],
         customer_lists: [], customer_pools: [], send_errors: 44, owner_username: 'admin', visibility: 'private',
-        views: 0, clicks: 0, sent: 3, to_send: 10, unsent_count: 7, bounces: 0,
+        views: 0, clicks: 0, sent: 3, to_send: 10, unsent_count: 7, bounces: 0, delivery_total: 10, delivery_sent: 3, delivery_pending: 7, delivery_unavailable: 0,
       }], total: 1, per_page: 20,
     } }).as('campaigns');
     let mode = 'rows';
@@ -165,14 +165,14 @@ describe('Campaign send errors', () => {
     cy.get('.campaign-send-error-report').should('not.exist');
   });
 
-  it('shows durable totals, updates running totals and retains them after a pause', () => {
+  it('shows error presence without attempt totals and retains it after a pause', () => {
     cy.resetDB();
     cy.intercept('GET', '/api/config', (req) => req.continue((res) => { res.body.data.lang = 'zh-CN'; }));
     const campaign = (id, name, status, sendErrors) => ({
       id, name, subject: name, status, send_errors: sendErrors,
       type: 'regular', tags: [], customer_lists: [], customer_pools: [],
       created_at: '2026-10-09T00:00:00Z', owner_username: 'admin', visibility: 'private',
-      views: 0, clicks: 0, sent: 3, to_send: 10, unsent_count: 7, bounces: 0,
+      views: 0, clicks: 0, sent: 3, to_send: 10, unsent_count: 7, bounces: 0, delivery_total: 10, delivery_sent: 3, delivery_pending: 7, delivery_unavailable: 0,
       next_resume_at: status === 'deferred' ? '2026-10-10T09:00:00Z' : null,
     });
     let paused = false;
@@ -190,22 +190,22 @@ describe('Campaign send errors', () => {
     cy.loginAndVisit('/admin/campaigns');
     cy.wait('@campaigns');
     cy.contains('tbody tr', '延期中的活动').find('.campaign-send-errors')
-      .should('contain', '发送错误次数').and('contain', '5').and('have.class', 'has-text-danger')
-      .and('have.attr', 'title').and('contain', '同一收件人重试失败会累计');
+      .should('contain', '有发送错误').and('not.contain', '5').and('have.class', 'has-text-danger')
+      .and('have.attr', 'title').and('contain', '历史错误');
     cy.contains('tbody tr', '没有错误的活动').find('.campaign-send-errors')
-      .should('contain', '0').and('not.have.class', 'has-text-danger');
+      .should('contain', '无发送错误').and('not.have.class', 'has-text-danger');
     cy.wait('@liveStats');
-    cy.contains('tbody tr', '发送中的活动').find('.campaign-send-errors').should('contain', '7');
+    cy.contains('tbody tr', '发送中的活动').find('.campaign-send-errors').should('contain', '有发送错误').and('not.contain', '7');
     paused = true;
     cy.intercept('GET', '/api/campaigns/running/stats', { data: [] }).as('stoppedStats');
     cy.wait('@stoppedStats');
     cy.wait('@campaigns');
     cy.contains('tbody tr', '发送中的活动').should('contain', '暂停')
-      .find('.campaign-send-errors').should('contain', '8');
+      .find('.campaign-send-errors').should('contain', '有发送错误').and('not.contain', '8');
     cy.reload();
     cy.wait('@campaigns');
-    cy.contains('tbody tr', '发送中的活动').find('.campaign-send-errors').should('contain', '8');
+    cy.contains('tbody tr', '发送中的活动').find('.campaign-send-errors').should('contain', '有发送错误').and('not.contain', '8');
     cy.viewport(390, 844);
-    cy.contains('tbody tr', '延期中的活动').find('.campaign-send-errors').should('be.visible').and('contain', '5');
+    cy.contains('tbody tr', '延期中的活动').find('.campaign-send-errors').scrollIntoView().should('be.visible').and('contain', '有发送错误');
   });
 });

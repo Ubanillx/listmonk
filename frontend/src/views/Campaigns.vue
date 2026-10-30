@@ -55,165 +55,91 @@
         </div>
       </template>
 
-      <b-table-column v-slot="props" cell-class="status" field="status" :label="$t('globals.fields.status')" width="10%"
-        sortable :td-attrs="$utils.tdID" header-class="cy-status">
-        <div>
-          <p>
-            <router-link :to="{ name: 'campaign', params: { id: props.row.id } }">
-              <b-tag :class="props.row.status">
-                {{ $t(`campaigns.status.${props.row.status}`) }}
-              </b-tag>
-              <span class="spinner is-tiny" v-if="isRunning(props.row.id)">
-                <b-loading :is-full-page="false" active />
-              </span>
-            </router-link>
-          </p>
-          <p v-if="isSheduled(props.row)">
-            <span class="is-size-7 has-text-grey scheduled">
-              <b-icon icon="alarm" size="is-small" />
-              <span v-if="!isDone(props.row) && !isRunning(props.row)">
-                {{ $utils.duration($utils.currentDate(), props.row.sendAt, true) }}
-                <br />
-              </span>
-              {{ $utils.niceDate(props.row.sendAt, true) }}
-            </span>
-          </p>
-          <p v-if="props.row.status === 'deferred' && props.row.nextResumeAt">
-            <span class="is-size-7 has-text-grey scheduled">
-              <b-icon icon="calendar-clock" size="is-small" />
-              {{ $utils.niceDate(props.row.nextResumeAt, true) }}
-            </span>
-          </p>
+      <b-table-column v-slot="props" field="name" :label="$t('globals.fields.name')" width="26%" sortable
+        cell-class="campaign-identity" header-class="cy-name">
+        <div class="campaign-name">
+          <b-tag v-if="props.row.type === 'optin'" size="is-small">{{ $t('customer_lists.optin') }}</b-tag>
+          <router-link :to="{ name: 'campaign', params: { id: props.row.id } }">{{ props.row.name }}</router-link>
+          <copy-text :text="props.row.name" hide-text />
         </div>
-      </b-table-column>
-      <b-table-column v-slot="props" field="name" :label="$t('globals.fields.name')" width="25%" sortable
-        header-class="cy-name">
-        <div>
-          <p>
-            <b-tag v-if="props.row.type === 'optin'" class="is-small">
-              {{ $t('customer_lists.optin') }}
-            </b-tag>
-            <router-link :to="{ name: 'campaign', params: { id: props.row.id } }">
-              {{ props.row.name }}
-              <copy-text :text="props.row.name" hide-text />
-            </router-link>
-          </p>
-          <p class="is-size-7 has-text-grey">
-            <copy-text :text="props.row.subject" />
-          </p>
-          <b-taglist>
-            <b-tag class="is-small" v-for="t in props.row.tags" :key="t">
-              {{ t }}
-            </b-tag>
-          </b-taglist>
+        <p class="campaign-subject"><copy-text :text="props.row.subject" /></p>
+        <div class="campaign-meta">
+          <b-tag size="is-small" :class="props.row.status">{{ $t(`campaigns.status.${props.row.status}`) }}</b-tag>
+          <span class="spinner is-tiny" v-if="isRunning(props.row.id)"><b-loading :is-full-page="false" active /></span>
+          <span v-if="isSheduled(props.row) && props.row.sendAt && !isDone(props.row) && !isRunning(props.row.id)">
+            <b-icon icon="alarm" size="is-small" /> {{ $utils.niceDate(props.row.sendAt, true) }}
+          </span>
+          <span>{{ ownerLabel(props.row) }}</span>
+          <b-tag size="is-small" class="is-light">{{ visibilityLabel(props.row.visibility) }}</b-tag>
+          <b-tag v-if="transferPendingAt(props.row)" size="is-small" type="is-warning" class="is-light">
+            {{ $t('shared.transferPending', { date: $utils.niceDate(transferPendingAt(props.row), true) }) }}
+          </b-tag>
         </div>
-      </b-table-column>
-      <b-table-column v-slot="props" field="ownerUsername" :label="$t('shared.owner')" width="12%">
-        <span>{{ ownerLabel(props.row) }}</span>
-        <b-tag size="is-small" class="is-light">{{ visibilityLabel(props.row.visibility) }}</b-tag>
-        <b-tag v-if="transferPendingAt(props.row)" size="is-small" type="is-warning" class="is-light">
-          {{ $t('shared.transferPending', { date: $utils.niceDate(transferPendingAt(props.row), true) }) }}
-        </b-tag>
-      </b-table-column>
-      <b-table-column v-slot="props" cell-class="customer_lists" field="customerLists" :label="$t('campaigns.audienceLists')" width="15%">
-        <ul>
-          <li v-for="l in campaignAudienceLists(props.row)" :key="`${l.type}-${l.id}-${l.name}`" class="campaign-customer-list">
+        <ul class="campaign-audience">
+          <li v-for="l in campaignAudienceLists(props.row)" :key="`${l.type}-${l.id}-${l.name}`">
             <router-link v-if="l.id" :to="{ name: l.type === 'pool' ? 'poolListContacts' : 'customersCustomerList', params: { customerListID: l.id } }">
               {{ l.name }}
             </router-link>
             <span v-else>{{ l.name }}</span>
-            <b-tag size="is-small" :type="l.type === 'pool' ? 'is-info' : ''" class="is-light">
-              {{ $t(`customer_lists.types.${l.type}`) }}
-            </b-tag>
+            <b-tag size="is-small" :type="l.type === 'pool' ? 'is-info' : ''" class="is-light">{{ $t(`customer_lists.types.${l.type}`) }}</b-tag>
           </li>
         </ul>
+        <b-taglist v-if="props.row.tags && props.row.tags.length"><b-tag size="is-small" v-for="t in props.row.tags" :key="t">{{ t }}</b-tag></b-taglist>
       </b-table-column>
-      <b-table-column v-slot="props" field="created_at" :label="$t('campaigns.timestamps')" width="19%" sortable
-        header-class="cy-timestamp">
-        <div class="fields timestamps" :set="stats = getCampaignStats(props.row)">
-          <p>
-            <label for="#">{{ $t('globals.fields.createdAt') }}</label>
-            <span>{{ $utils.niceDate(props.row.createdAt, true) }}</span>
-          </p>
-          <p v-if="stats.startedAt">
-            <label for="#">{{ $t('campaigns.startedAt') }}</label>
-            <span>{{ $utils.niceDate(stats.startedAt, true) }}</span>
-          </p>
-          <p v-if="isDone(props.row)">
-            <label for="#">{{ $t('campaigns.ended') }}</label>
-            <span>{{ $utils.niceDate(stats.updatedAt, true) }}</span>
-          </p>
-          <p v-if="stats.startedAt && stats.updatedAt" class="is-capitalized">
-            <label for="#"><b-icon icon="alarm" size="is-small" /></label>
-            <span>{{ $utils.duration(stats.startedAt, stats.updatedAt) }}</span>
-          </p>
+
+      <b-table-column v-slot="props" field="created_at" :label="$t('campaigns.deliveryStatus')" width="24%" sortable
+        cell-class="campaign-delivery" header-class="cy-timestamp">
+        <div :set="stats = getCampaignStats(props.row)">
+          <div class="campaign-progress-heading">
+            <span><strong>{{ $utils.formatNumber(stats.deliverySent) }}</strong><span class="campaign-target"> / {{ $utils.formatNumber(stats.deliveryTotal) }}</span></span>
+            <span class="campaign-progress-percent">{{ deliveryProgress(stats).toFixed(1) }}%</span>
+          </div>
+          <div class="campaign-progress-track" role="meter" :aria-label="$t('campaigns.progress')"
+            aria-valuemin="0" aria-valuemax="100" :aria-valuenow="deliveryProgress(stats)">
+            <span class="campaign-progress-fill" :style="{ width: `${deliveryProgress(stats)}%` }" />
+          </div>
+          <div class="campaign-delivery-note">
+            <span>{{ $t('campaigns.unsent') }} {{ $utils.formatNumber(stats.deliveryPending) }}</span>
+            <span v-if="isDone(props.row) && stats.updatedAt">{{ $utils.niceDate(stats.updatedAt) }} · {{ $t('campaigns.ended') }}</span>
+            <span v-else-if="props.row.status === 'deferred' && props.row.nextResumeAt">{{ $utils.niceDate(props.row.nextResumeAt, true) }}</span>
+            <span v-else-if="props.row.status === 'scheduled' && props.row.sendAt">{{ $utils.niceDate(props.row.sendAt, true) }}</span>
+          </div>
+          <div class="campaign-delivery-states" :title="$t('campaigns.deliveryStatusHelp')">
+            <span class="delivery-sent">{{ $t('campaigns.sent') }} <strong data-cy="delivery-sent">{{ $utils.formatNumber(stats.deliverySent) }}</strong></span>
+            <span :class="{ 'delivery-unavailable': stats.deliveryUnavailable > 0 }">
+              {{ $t('campaigns.deliveryUnavailable') }} <strong data-cy="delivery-unavailable">{{ $utils.formatNumber(stats.deliveryUnavailable) }}</strong>
+            </span>
+            <span>{{ $t('campaigns.deliveryPending') }} <strong data-cy="delivery-pending">{{ $utils.formatNumber(stats.deliveryPending) }}</strong></span>
+          </div>
         </div>
       </b-table-column>
 
-      <b-table-column v-slot="props" field="stats" :label="$t('campaigns.stats')" width="15%">
-        <div class="fields stats" :set="stats = getCampaignStats(props.row)">
-          <p>
-            <label for="#">{{ $t('campaigns.views') }}</label>
-            <span>{{ $utils.formatNumber(props.row.views) }}</span>
-          </p>
-          <p>
-            <label for="#">{{ $t('campaigns.clicks') }}</label>
-            <span>{{ $utils.formatNumber(props.row.clicks) }}</span>
-          </p>
-          <p>
-            <label for="#">{{ $t('campaigns.sent') }}</label>
-            <span>
-              {{ $utils.formatNumber(stats.sent) }} /
-              {{ $utils.formatNumber(stats.toSend) }}
-            </span>
-          </p>
-          <p v-if="props.row.unsentCount">
-            <label for="#">{{ $t('campaigns.unsent') }}</label>
-            <span>{{ $utils.formatNumber(props.row.unsentCount) }}</span>
-          </p>
-          <p class="campaign-send-errors" :class="{ 'has-text-danger': stats.sendErrors > 0 }" :title="$t('campaigns.sendErrorsHelp')">
-            <label for="#">{{ $t('campaigns.sendErrors') }}</label>
-            <span>
-              <a v-if="$canReadCampaignSendErrors(props.row)" href="#" @click.prevent="sendErrorCampaign = props.row"
-                :aria-label="$t('campaigns.sendErrorDetails')">{{ $utils.formatNumber(stats.sendErrors || 0) }}</a>
-              <template v-else>{{ $utils.formatNumber(stats.sendErrors || 0) }}</template>
-            </span>
-          </p>
-          <p class="campaign-unsubscribes" :title="$t('campaigns.unsubscribesHelp')">
-            <label for="#">{{ $t('campaigns.unsubscribeActivity') }}</label>
-            <span>
-              <a v-if="$canReadCampaignUnsubscribes(props.row) && (stats.unsubscribeActivity || 0) > 0" href="#"
-                @click.prevent="unsubscribeCampaign = props.row" :aria-label="$t('campaigns.unsubscribeDetails')">
-                {{ $utils.formatNumber(stats.unsubscribeActivity || 0) }}
-              </a>
-              <template v-else>{{ $utils.formatNumber(stats.unsubscribeActivity || 0) }}</template>
-            </span>
-          </p>
-          <p v-if="stats.rate">
-            <label for="#"><b-icon icon="speedometer" size="is-small" /></label>
-            <span class="send-rate">
-              <b-tooltip
-                :label="`${stats.netRate} / ${$t('campaigns.rateMinuteShort')} @ ${$utils.duration(stats.startedAt, stats.updatedAt)}`"
-                type="is-dark">
-                {{ stats.rate.toFixed(0) }} / {{ $t('campaigns.rateMinuteShort') }}
-              </b-tooltip>
-            </span>
-          </p>
-          <p v-if="isRunning(props.row.id)">
-            <label for="#">
-              {{ $t('campaigns.progress') }}
-              <span class="spinner is-tiny">
-                <b-loading :is-full-page="false" active />
-              </span>
-            </label>
-            <span>
-              <b-progress :value="stats.sent / stats.toSend * 100" size="is-small" />
-            </span>
-          </p>
+      <b-table-column v-slot="props" field="interaction" :label="$t('campaigns.customerInteraction')" width="16%" cell-class="campaign-interaction">
+        <div class="campaign-dual-metrics">
+          <div><strong>{{ $utils.formatNumber(props.row.views) }}</strong><span>{{ $t('campaigns.views') }}</span></div>
+          <div><strong>{{ $utils.formatNumber(props.row.clicks) }}</strong><span>{{ $t('campaigns.clicks') }}</span></div>
         </div>
       </b-table-column>
 
-      <b-table-column v-slot="props" cell-class="actions" width="260" align="right">
+      <b-table-column v-slot="props" field="sendErrors" :label="$t('campaigns.deliveryErrors')" width="9%" cell-class="campaign-error-column">
+        <div class="campaign-send-errors" :set="stats = getCampaignStats(props.row)" :class="{ 'has-text-danger': stats.sendErrors > 0 }"
+          :title="$t('campaigns.deliveryErrorsHelp')">
+          <a v-if="stats.sendErrors > 0 && $canReadCampaignSendErrors(props.row)" href="#" @click.prevent="sendErrorCampaign = props.row"
+            :aria-label="$t('campaigns.sendErrorDetails')">{{ $t('campaigns.deliveryHasErrors') }}</a>
+          <span v-else>{{ $t(stats.sendErrors > 0 ? 'campaigns.deliveryHasErrors' : 'campaigns.deliveryNoErrors') }}</span>
+        </div>
+      </b-table-column>
+
+      <b-table-column v-slot="props" field="unsubscribeActivity" :label="$t('campaigns.unsubscribeActivity')" width="10%" cell-class="campaign-unsubscribe-column">
+        <div class="campaign-unsubscribes" :set="stats = getCampaignStats(props.row)" :title="$t('campaigns.unsubscribesHelp')">
+          <a v-if="$canReadCampaignUnsubscribes(props.row) && (stats.unsubscribeActivity || 0) > 0" href="#"
+            @click.prevent="unsubscribeCampaign = props.row" :aria-label="$t('campaigns.unsubscribeDetails')">{{ $utils.formatNumber(stats.unsubscribeActivity || 0) }}</a>
+          <span v-else>{{ $utils.formatNumber(stats.unsubscribeActivity || 0) }}</span>
+          <span class="campaign-metric-caption">{{ $t('campaigns.uniqueRecipients') }}</span>
+        </div>
+      </b-table-column>
+
+      <b-table-column v-slot="props" cell-class="actions" width="72" align="right">
         <div>
           <!-- start / pause / resume / scheduled -->
           <template v-if="canManageCampaign(props.row)">
@@ -490,9 +416,13 @@ export default Vue.extend({
     // values.
     getCampaignStats(c) {
       if (c.id in this.campaignStatsData) {
-        return this.campaignStatsData[c.id];
+        return { ...c, ...this.campaignStatsData[c.id] };
       }
       return c;
+    },
+
+    deliveryProgress(stats) {
+      return stats.deliveryTotal > 0 ? Math.min(100, Math.max(0, (stats.deliverySent / stats.deliveryTotal) * 100)) : 0;
     },
 
     pollStats() {
@@ -502,16 +432,17 @@ export default Vue.extend({
       // Poll for the status as long as the import is running.
       this.pollID = setInterval(() => {
         this.$api.getCampaignStats().then((data) => {
+          // Refresh durable rows when any running campaign leaves the live set,
+          // including while other campaigns are still running.
+          const activeIDs = new Set(data.map((campaign) => String(campaign.id)));
+          if (Object.keys(this.campaignStatsData).some((id) => !activeIDs.has(id))) this.getCampaigns();
           // Stop polling. No running campaigns.
           if (data.length === 0) {
             clearInterval(this.pollID);
 
             // There were running campaigns and stats earlier. Clear them
             // and refetch the campaigns customer_list with up-to-date fields.
-            if (Object.keys(this.campaignStatsData).length > 0) {
-              this.getCampaigns();
-              this.campaignStatsData = {};
-            }
+            this.campaignStatsData = {};
           } else {
             // Turn the customer_list of campaigns [{id: 1, ...}, {id: 2, ...}] into
             // a map indexed by the id: {1: {}, 2: {}}.
@@ -695,3 +626,7 @@ export default Vue.extend({
   },
 });
 </script>
+
+<style lang="scss">
+@use '../assets/styles/views/campaigns';
+</style>

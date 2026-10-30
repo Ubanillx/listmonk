@@ -1,5 +1,13 @@
 # 业务逻辑
 
+## 营销活动分组统计（v6.69.0，2026-10-30）
+
+采用 B 方案，将列表分为营销活动、发送情况、客户互动、发送错误、退订相关人数；归属、受众及状态集中在活动信息，日期位于进度下方。错误列仅显示「有发送错误 / 无发送错误」，沿用原明细权限及历史诊断，不展示累计尝试数。退订仍为点击或确认的去重并集，不改变订阅状态。
+
+只读 `campaign_delivery_counts` 视图按当前工作区有效快照汇总 `delivery_total/delivery_sent/delivery_pending/delivery_unavailable`，列表、详情、运行轮询共用，页面不逐活动调用概览。sent=已发送，pending/queued/deferred=待发送，failed/cancelled=无法发送（含重试耗尽、退订和失效取消）；暂时失败仍可重试者在待发送内。三类之和等于有效快照目标，不使用 `send_errors` 或目标减法猜失败人数。无快照时沿用持久目标/成功数，无法发送为 0；删除、转移或工作区失效的历史快照不推断补齐，因此当前范围目标可能与旧 `to_send` 不同。旧发送器视图 `campaign_send_counts`、调度、重试和所有状态均不变，迁移只安装视图。仍在运行的另一活动不会阻止已结束活动刷新持久统计。原型仅保留在 `codex/prototype-campaign-stats`（`d08a1093`），正式分支从 master 独立实现。
+
+回归：`cmd/campaign_delivery_counts_test.go`（真实 PostgreSQL、混合受众、全组织、重试成功、无快照、工作区有效性、新装升级幂等）及 `frontend/cypress/e2e/campaign-stats-grouped.cy.js`（布局、运行刷新、错误/退订明细、手机边界）。
+
 - **退订点击与确认对齐（2026-10-30，v6.68.0）**：`campaign_unsubscription_activity` 按活动/收件人合并精确匹配站点、活动和收件人令牌的追踪点击与确认事实。`unsubscribe_clicks` 为点击去重人数，`unsubscribes` 为确认人数，`unsubscribe_activity` 为两者去重并集，列表显示一项退订相关人数；报告 `status=all|clicked|confirmed` 共用同一视图，默认 confirmed 保持 API 兼容。点击本身不变更客户状态；只凭当前退订/黑名单不补确认，历史回填需成功自助 POST 审计与同一分钟对应状态变更，幂等保留首次时间、来源组织及投递状态。点击来源仍遵循追踪隐私与保留策略，明细仍按原权限脱敏。来源：`internal/migrations/v6.68.0.go`、`cmd/campaign_unsubscribe_activity_test.go`、`frontend/cypress/e2e/campaign-unsubscribes.cy.js`。
 
 - **客户状态列与筛选（2026-10-30）**：黑名单与退订是独立状态，可同时标记。私域按当前列表/可见列表的现有订阅状态判断，公海按有效 source=unsubscribe 排除判断，组织成员及分配页只看对应组织；人工移除与其他组织退订不冒充本组织退订。私域 `contact_status` 与公海 `status` 在分页前筛选，导出及私域按筛选批量操作复用同一条件，权限与邮箱脱敏不扩大。页面默认全部状态，URL 保留条件并在更改时重置页码和勾选。来源：`internal/core/customer_status.go`、`cmd/customer_status_filters_test.go`、`frontend/src/views/Customers.vue`。

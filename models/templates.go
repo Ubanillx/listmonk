@@ -91,6 +91,11 @@ func (t *Template) Compile(f template.FuncMap) error {
 }
 
 type CampaignStats struct {
+	DeliveryTotal       int `db:"delivery_total" json:"delivery_total"`
+	DeliverySent        int `db:"delivery_sent" json:"delivery_sent"`
+	DeliveryPending     int `db:"delivery_pending" json:"delivery_pending"`
+	DeliveryUnavailable int `db:"delivery_unavailable" json:"delivery_unavailable"`
+
 	ID                  int       `db:"id" json:"id"`
 	Status              string    `db:"status" json:"status"`
 	ToSend              int       `db:"to_send" json:"to_send"`

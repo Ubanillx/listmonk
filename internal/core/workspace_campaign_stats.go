@@ -186,6 +186,10 @@ func (c *Core) loadWorkspaceCampaignStats(access models.WorkspaceAccess, camps m
 			GROUP BY u.campaign_id
 		)
 		SELECT requested.id AS campaign_id,
+			COALESCE(d.delivery_total, 0) AS delivery_total,
+			COALESCE(d.delivery_sent, 0) AS delivery_sent,
+			COALESCE(d.delivery_pending, 0) AS delivery_pending,
+			COALESCE(d.delivery_unavailable, 0) AS delivery_unavailable,
 			COALESCE(v.num, 0) AS views,
 			COALESCE(clicks.num, 0) AS clicks,
 			COALESCE(b.num, 0) AS bounces,
@@ -196,6 +200,8 @@ func (c *Core) loadWorkspaceCampaignStats(access models.WorkspaceAccess, camps m
 			COALESCE(l.customer_pools, '[]') AS customer_pools,
 			COALESCE(m.media, '[]') AS media
 		FROM UNNEST($1::INT[]) AS requested(id)
+		LEFT JOIN scoped_campaigns allowed ON allowed.id = requested.id
+		LEFT JOIN campaign_delivery_counts d ON d.campaign_id = allowed.id
 		LEFT JOIN customer_lists l ON l.campaign_id = requested.id
 		LEFT JOIN media m ON m.campaign_id = requested.id
 		LEFT JOIN views v ON v.campaign_id = requested.id
@@ -220,6 +226,10 @@ func (c *Core) loadWorkspaceCampaignStats(access models.WorkspaceAccess, camps m
 		}
 		camps[i].CustomerLists = row.CustomerLists
 		camps[i].CustomerPools = row.CustomerPools
+		camps[i].DeliveryTotal = row.DeliveryTotal
+		camps[i].DeliverySent = row.DeliverySent
+		camps[i].DeliveryPending = row.DeliveryPending
+		camps[i].DeliveryUnavailable = row.DeliveryUnavailable
 		camps[i].Views = row.Views
 		camps[i].Clicks = row.Clicks
 		camps[i].Bounces = row.Bounces

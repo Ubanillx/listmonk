@@ -132,6 +132,11 @@ type Campaign struct {
 
 // CampaignMeta contains fields tracking a campaign's progress.
 type CampaignMeta struct {
+	DeliveryTotal       int `db:"delivery_total" json:"delivery_total"`
+	DeliverySent        int `db:"delivery_sent" json:"delivery_sent"`
+	DeliveryPending     int `db:"delivery_pending" json:"delivery_pending"`
+	DeliveryUnavailable int `db:"delivery_unavailable" json:"delivery_unavailable"`
+
 	CampaignID          int `db:"campaign_id" json:"-"`
 	Views               int `db:"views" json:"views"`
 	Clicks              int `db:"clicks" json:"clicks"`
@@ -189,6 +194,10 @@ func (camps Campaigns) LoadStats(stmt *sqlx.Stmt) error {
 	for i, c := range meta {
 		if c.CampaignID == camps[i].ID {
 			camps[i].CustomerLists = c.CustomerLists
+			camps[i].DeliveryTotal = c.DeliveryTotal
+			camps[i].DeliverySent = c.DeliverySent
+			camps[i].DeliveryPending = c.DeliveryPending
+			camps[i].DeliveryUnavailable = c.DeliveryUnavailable
 			camps[i].Views = c.Views
 			camps[i].Clicks = c.Clicks
 			camps[i].Bounces = c.Bounces

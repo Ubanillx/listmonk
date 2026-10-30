@@ -361,6 +361,10 @@ bounces AS (
     WHERE campaign_id=ANY($1) GROUP BY campaign_id
 )
 SELECT id as campaign_id,
+    COALESCE(d.delivery_total,0) AS delivery_total,
+    COALESCE(d.delivery_sent,0) AS delivery_sent,
+    COALESCE(d.delivery_pending,0) AS delivery_pending,
+    COALESCE(d.delivery_unavailable,0) AS delivery_unavailable,
     COALESCE(v.num, 0) AS views,
     COALESCE(c.num, 0) AS clicks,
     COALESCE(b.num, 0) AS bounces,
@@ -371,6 +375,7 @@ SELECT id as campaign_id,
     COALESCE(l.customer_pools, '[]') AS customer_pools,
     COALESCE(m.media, '[]') AS media
 FROM (SELECT id FROM UNNEST($1) AS id) x
+LEFT JOIN campaign_delivery_counts d ON d.campaign_id = id
 LEFT JOIN customer_lists AS l ON (l.campaign_id = id)
 LEFT JOIN media AS m ON (m.campaign_id = id)
 LEFT JOIN views AS v ON (v.campaign_id = id)
@@ -422,6 +427,7 @@ WHERE campaigns.id = $1;
 
 -- name: get-campaign-status
 SELECT id, status, to_send, sent, send_errors,
+    d.delivery_total, d.delivery_sent, d.delivery_pending, d.delivery_unavailable,
     (SELECT COUNT(*) FROM campaign_unsubscriptions u WHERE u.campaign_id=campaigns.id) AS unsubscribes,
     (SELECT COUNT(*) FROM campaign_unsubscription_activity u WHERE u.campaign_id=campaigns.id AND u.clicked_at IS NOT NULL) AS unsubscribe_clicks,
     (SELECT COUNT(*) FROM campaign_unsubscription_activity u WHERE u.campaign_id=campaigns.id) AS unsubscribe_activity,
@@ -431,7 +437,7 @@ SELECT id, status, to_send, sent, send_errors,
     next_resume_at,
     started_at,
     updated_at
-FROM campaigns WHERE status=$1;
+FROM campaigns JOIN campaign_delivery_counts d ON d.campaign_id=campaigns.id WHERE status=$1;
 
 -- name: campaign-has-customer-lists
 -- Returns TRUE if the campaign $1 has any of the customer_lists given in $2.

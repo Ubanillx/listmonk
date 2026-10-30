@@ -51,7 +51,7 @@ describe('Campaign unsubscribe recipients', () => {
         });
         cy.visit('/admin/campaigns');
         cy.contains('tbody tr', '退订人数回归').within(() => {
-          cy.get('.campaign-unsubscribes').should('contain', '退订相关人数').and('contain', '1');
+          cy.get('.campaign-unsubscribes').should('contain', '1');
           cy.get('.campaign-unsubscribes a').click();
         });
         cy.get('[data-cy=unsubscribe-report]').within(() => {
@@ -83,7 +83,7 @@ describe('Campaign unsubscribe recipients', () => {
     cy.intercept({ method: 'GET', pathname: '/api/campaigns' }, { data: {
       results: [{ id: 901, name: '退订分页', subject: 'Opt-out', status: 'paused', type: 'regular', tags: [],
         customer_lists: [], customer_pools: [], owner_username: 'admin', visibility: 'private',
-        views: 0, clicks: 0, sent: 30, to_send: 30, unsubscribes: 21, unsubscribe_activity: 21, send_errors: 0 }],
+        views: 0, clicks: 0, sent: 30, to_send: 30, delivery_total: 30, delivery_sent: 30, delivery_pending: 0, delivery_unavailable: 0, unsubscribes: 21, unsubscribe_activity: 21, send_errors: 0 }],
       total: 1, per_page: 20,
     } });
     let failed = true;

@@ -1,5 +1,13 @@
 # API / Campaigns
 
+## 营销活动分组统计（v6.69.0，2026-10-30）
+
+采用 B 方案，将列表分为营销活动、发送情况、客户互动、发送错误、退订相关人数；归属、受众及状态集中在活动信息，日期位于进度下方。错误列仅显示「有发送错误 / 无发送错误」，沿用原明细权限及历史诊断，不展示累计尝试数。退订仍为点击或确认的去重并集，不改变订阅状态。
+
+只读 `campaign_delivery_counts` 视图按当前工作区有效快照汇总 `delivery_total/delivery_sent/delivery_pending/delivery_unavailable`，列表、详情、运行轮询共用，页面不逐活动调用概览。sent=已发送，pending/queued/deferred=待发送，failed/cancelled=无法发送（含重试耗尽、退订和失效取消）；暂时失败仍可重试者在待发送内。三类之和等于有效快照目标，不使用 `send_errors` 或目标减法猜失败人数。无快照时沿用持久目标/成功数，无法发送为 0；删除、转移或工作区失效的历史快照不推断补齐，因此当前范围目标可能与旧 `to_send` 不同。旧发送器视图 `campaign_send_counts`、调度、重试和所有状态均不变，迁移只安装视图。仍在运行的另一活动不会阻止已结束活动刷新持久统计。原型仅保留在 `codex/prototype-campaign-stats`（`d08a1093`），正式分支从 master 独立实现。
+
+回归：`cmd/campaign_delivery_counts_test.go`（真实 PostgreSQL、混合受众、全组织、重试成功、无快照、工作区有效性、新装升级幂等）及 `frontend/cypress/e2e/campaign-stats-grouped.cy.js`（布局、运行刷新、错误/退订明细、手机边界）。
+
 ## Confirmed unsubscribe recipients
 
 Since v6.66.0, campaign list/detail responses and `GET /api/campaigns/running/stats` include the read-only integer `unsubscribes`. It counts distinct recipients who confirmed an unsubscribe through that campaign's public email link (including One-Click POST). Opening the GET landing page alone does not count. Repeated or concurrent confirmations count once per campaign, recipient type, and recipient ID. Removing a subscription on the preferences page counts only when the removed list belongs to this campaign; editing profile details alone does not count. Administrative unsubscribe, bounce processing, and reply/AI blocklisting do not create these events.

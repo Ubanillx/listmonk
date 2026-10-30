@@ -1185,6 +1185,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#v66902026-10-30" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        营销活动分组统计（v6.69.0，2026-10-30）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#confirmed-unsubscribe-recipients" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2813,6 +2824,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#v66902026-10-30" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        营销活动分组统计（v6.69.0，2026-10-30）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#confirmed-unsubscribe-recipients" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3808,6 +3830,10 @@
 
 
 <h1 id="api-campaigns">API / Campaigns<a class="headerlink" href="#api-campaigns" title="Permanent link">&para;</a></h1>
+<h2 id="v66902026-10-30">营销活动分组统计（v6.69.0，2026-10-30）<a class="headerlink" href="#v66902026-10-30" title="Permanent link">&para;</a></h2>
+<p>采用 B 方案，将列表分为营销活动、发送情况、客户互动、发送错误、退订相关人数；归属、受众及状态集中在活动信息，日期位于进度下方。错误列仅显示「有发送错误 / 无发送错误」，沿用原明细权限及历史诊断，不展示累计尝试数。退订仍为点击或确认的去重并集，不改变订阅状态。</p>
+<p>只读 <code>campaign_delivery_counts</code> 视图按当前工作区有效快照汇总 <code>delivery_total/delivery_sent/delivery_pending/delivery_unavailable</code>，列表、详情、运行轮询共用，页面不逐活动调用概览。sent=已发送，pending/queued/deferred=待发送，failed/cancelled=无法发送（含重试耗尽、退订和失效取消）；暂时失败仍可重试者在待发送内。三类之和等于有效快照目标，不使用 <code>send_errors</code> 或目标减法猜失败人数。无快照时沿用持久目标/成功数，无法发送为 0；删除、转移或工作区失效的历史快照不推断补齐，因此当前范围目标可能与旧 <code>to_send</code> 不同。旧发送器视图 <code>campaign_send_counts</code>、调度、重试和所有状态均不变，迁移只安装视图。仍在运行的另一活动不会阻止已结束活动刷新持久统计。原型仅保留在 <code>codex/prototype-campaign-stats</code>（<code>d08a1093</code>），正式分支从 master 独立实现。</p>
+<p>回归：<code>cmd/campaign_delivery_counts_test.go</code>（真实 PostgreSQL、混合受众、全组织、重试成功、无快照、工作区有效性、新装升级幂等）及 <code>frontend/cypress/e2e/campaign-stats-grouped.cy.js</code>（布局、运行刷新、错误/退订明细、手机边界）。</p>
 <h2 id="confirmed-unsubscribe-recipients">Confirmed unsubscribe recipients<a class="headerlink" href="#confirmed-unsubscribe-recipients" title="Permanent link">&para;</a></h2>
 <p>Since v6.66.0, campaign list/detail responses and <code>GET /api/campaigns/running/stats</code> include the read-only integer <code>unsubscribes</code>. It counts distinct recipients who confirmed an unsubscribe through that campaign's public email link (including One-Click POST). Opening the GET landing page alone does not count. Repeated or concurrent confirmations count once per campaign, recipient type, and recipient ID. Removing a subscription on the preferences page counts only when the removed list belongs to this campaign; editing profile details alone does not count. Administrative unsubscribe, bounce processing, and reply/AI blocklisting do not create these events.</p>
 <p>New and cloned campaigns start at zero. Confirmed counts survive recipient deletion, pauses, resumes, and restarts; deleting the campaign removes its events. Public-pool unsubscribe affects only the source organization and preserves already-sent delivery history. The original <code>bounces</code> field and bounce APIs remain available.</p>

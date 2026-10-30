@@ -18,11 +18,13 @@ section.campaigns {
   .campaign-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--lm-space-2); margin-top: var(--lm-space-2); }
   .campaign-audience { list-style: none; margin: var(--lm-space-2) 0 0; }
   .campaign-audience li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--lm-space-1); }
-  .campaign-progress-heading { display: flex; justify-content: space-between; align-items: baseline; gap: var(--lm-space-2); }
-  .campaign-progress-heading strong { font-size: 20px; font-weight: 600; }
-  .campaign-target, .campaign-progress-percent { font-size: 12px; color: var(--lm-color-text-muted); }
+  .campaign-progress-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--lm-space-2); }
+  .campaign-progress-heading strong { font-size: 16px; font-weight: 600; }
+  .campaign-target { font-size: 12px; color: var(--lm-color-text-muted); }
+  .campaign-progress-percent { font-size: 12px; font-weight: 600; color: var(--lm-color-primary); }
   .campaign-progress-track {
-    height: 5px;
+    height: 4px;
+    width: 100%;
     margin: var(--lm-space-2) 0;
     overflow: hidden;
     border-radius: var(--lm-radius-sm);
@@ -31,6 +33,7 @@ section.campaigns {
   .campaign-progress-fill {
     display: block;
     height: 100%;
+    border-radius: inherit;
     background: var(--lm-color-primary);
     transition: width 180ms ease;
   }

@@ -100,7 +100,7 @@
           </div>
           <div class="campaign-delivery-note">
             <span>{{ $t('campaigns.unsent') }} {{ $utils.formatNumber(stats.deliveryPending) }}</span>
-            <span v-if="isDone(props.row) && stats.updatedAt">{{ $utils.niceDate(stats.updatedAt) }} · {{ $t('campaigns.ended') }}</span>
+            <span v-if="isDone(props.row) && stats.updatedAt">{{ $utils.getDate(stats.updatedAt).format('YYYY-MM-DD') }} {{ $t('campaigns.ended') }}</span>
             <span v-else-if="props.row.status === 'deferred' && props.row.nextResumeAt">{{ $utils.niceDate(props.row.nextResumeAt, true) }}</span>
             <span v-else-if="props.row.status === 'scheduled' && props.row.sendAt">{{ $utils.niceDate(props.row.sendAt, true) }}</span>
           </div>

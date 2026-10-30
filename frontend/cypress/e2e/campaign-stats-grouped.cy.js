@@ -42,17 +42,29 @@ describe('Grouped campaign statistics', () => {
     ['发送情况', '客户互动', '发送错误', '退订相关人数'].forEach((label) => cy.contains('th', label).should('be.visible'));
     cy.contains('tbody tr', 'B 分组统计活动').within(() => {
       cy.get('[data-cy=delivery-unavailable]').should('have.text', '413');
-      cy.get('.campaign-progress-track').should('be.visible').and('have.attr', 'role', 'meter')
-        .find('.campaign-progress-fill').should('have.css', 'width').and('not.equal', '0px');
+      cy.get('.campaign-progress-heading').should('contain', '1,534').and('contain', '/ 2,122');
+      cy.get('.campaign-progress-percent').should('have.text', '72.3%');
+      cy.get('.campaign-progress-track').should('be.visible').and('have.attr', 'role', 'meter').should(($track) => {
+        const track = $track[0]; const fill = track.querySelector('.campaign-progress-fill');
+        expect(track.getBoundingClientRect().height).to.equal(4);
+        expect(fill.getBoundingClientRect().width / track.getBoundingClientRect().width).to.be.closeTo(1534 / 2122, 0.001);
+        expect(getComputedStyle(fill).backgroundColor).to.equal('rgb(21, 94, 239)');
+      });
       cy.get('.campaign-send-errors').should('contain', '有发送错误').and('not.contain', '2821');
       cy.get('.campaign-unsubscribes a').should('have.text', '24');
     });
     cy.contains('tbody tr', '零错误活动').find('.campaign-send-errors').should('have.text', '无发送错误').find('a').should('not.exist');
     cy.contains('tbody tr', '零错误活动').find('.campaign-delivery-note')
-      .should('contain', '未发送').and('contain', '2026年10月30日').and('contain', '结束');
+      .should('contain', '未发送 175').and('contain', '2026-10-30 结束');
     cy.wait('@live');
     cy.contains('tbody tr', 'B 分组统计活动').find('[data-cy=delivery-sent]').should('have.text', '1,535');
     cy.contains('tbody tr', 'B 分组统计活动').find('[data-cy=delivery-pending]').should('have.text', '174');
+    cy.contains('tbody tr', 'B 分组统计活动').find('.campaign-progress-track').should(($track) => {
+      const track = $track[0];
+      expect(Number(track.getAttribute('aria-valuenow'))).to.be.closeTo((1535 / 2122) * 100, 0.001);
+      expect(track.querySelector('.campaign-progress-fill').getBoundingClientRect().width / track.getBoundingClientRect().width)
+        .to.be.closeTo(1535 / 2122, 0.001);
+    });
     cy.contains('tbody tr', 'B 分组统计活动').find('.campaign-send-errors a').click();
     cy.wait('@errors');
     cy.get('.campaign-send-error-report').should('be.visible');

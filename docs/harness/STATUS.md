@@ -2,7 +2,7 @@
 
 快照日期：2026-10-30
 
-- **退订点击与确认对齐（2026-10-30，v6.68.0）**：活动列表显示退订相关人数（点击或确认的收件人去重并集），共用报告支持点击未确认/确认筛选；公开 GET 不更改订阅，确认 POST 沿用原子写入。升级仅在成功自助退订审计及同一分钟状态变更同时存在时补齐历史确认。生产数据库已按该规则补齐 3 条（活动 65 两条、99 一条），活动 58 确认有 15 次点击、11 人、0 条可证明的确认。真实 PostgreSQL 回归覆盖私域/公海、状态过滤、无关链接、别名、权限脱敏、新装/升级一致和幂等回填；隔离 Cypress 覆盖真实追踪点击、重复去重、确认、列表和明细。来源：`internal/migrations/v6.68.0.go`、`cmd/campaign_unsubscribe_activity_test.go`、`frontend/cypress/e2e/campaign-unsubscribes.cy.js`。此前 master 提交 `4e2a25bf` 经 Jenkins #104 发布；合并列表人数后的版本待发布验证。
+- **退订点击与确认对齐（2026-10-30，v6.68.0）**：活动列表显示退订相关人数（点击或确认的收件人去重并集），共用报告支持点击未确认/确认筛选；公开 GET 不更改订阅，确认 POST 沿用原子写入。升级仅在成功自助退订审计及同一分钟状态变更同时存在时补齐历史确认。生产数据库已按该规则补齐 3 条（活动 65 两条、99 一条）；活动 58 有 15 次点击、11 人、0 条可证明的确认；活动 113 列表显示 7 位退订相关收件人，明细显示 7 位已点击未确认。真实 PostgreSQL 回归覆盖私域/公海、状态过滤、无关链接、别名、权限脱敏、新装/升级一致、并集去重和幂等回填；隔离 Cypress 2/2 覆盖真实追踪点击、重复去重、确认、列表和明细。来源：`internal/migrations/v6.68.0.go`、`cmd/campaign_unsubscribe_activity_test.go`、`frontend/cypress/e2e/campaign-unsubscribes.cy.js`。master 提交 `b6ed79d1` 经 Jenkins #105 发布，生产页面及活动 113 明细已核验。
 
 - **公海/私域客户状态列与筛选（2026-10-30）**：两类表格统一独立状态列，红色黑名单、黄色已退订可同时显示，默认全部状态；公海总表、单池、分配页可筛正常/黑名单/退订/移除/归档，私域可筛正常/黑名单/退订/停用，URL 与刷新保留条件。私域 `unsubscribed` 由后端按当前列表范围派生，公海依据有效 source=unsubscribe 排除并保留组织隔离，不将人工移除当退订。状态谓词在分页前应用，私域导出/筛选批量 ID 复用，验证按黑名单筛选批量删除不会删除其他客户；公海安全 DTO 保留脱敏。真实 PostgreSQL 状态/组织/分页/导出/批量回归、全量 `make test`（含 cmd DB 集成）、`go vet ./...`、前端 lint/build、隔离 Cypress 13/13 通过，桌面与手机截图已复核。公海批量导出旧测试改为解析现行 XLSX。lint 仅保留既有 GeoHeatmap shadow 警告。本地已构建/重启并验证 9173 HTTP 200，无新增迁移，未发布生产。来源：`cmd/customer_status_filters_test.go`、`internal/core/customer_status.go`、`frontend/src/views/Customers.vue`、`frontend/cypress/e2e/customer-status-filters.cy.js`。
 

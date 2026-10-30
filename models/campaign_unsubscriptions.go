@@ -1,6 +1,9 @@
 package models
 
-import "time"
+import (
+	"gopkg.in/volatiletech/null.v6"
+	"time"
+)
 
 type CampaignUnsubscription struct {
 	RecipientType  string    `db:"recipient_type" json:"recipient_type"`
@@ -10,10 +13,15 @@ type CampaignUnsubscription struct {
 	Name           string    `db:"name" json:"name"`
 	Email          string    `db:"email" json:"email"`
 	CreatedAt      time.Time `db:"created_at" json:"created_at"`
+	ClickedAt      null.Time `db:"clicked_at" json:"clicked_at"`
+	ConfirmedAt    null.Time `db:"confirmed_at" json:"confirmed_at"`
+	ClickCount     int       `db:"click_count" json:"click_count"`
+	Status         string    `db:"status" json:"status"`
 }
 
 type CampaignUnsubscriptionFilters struct {
 	Search                          string
+	Status                          string
 	IncludePrivate, IncludePool     bool
 	SensitivePrivate, SensitivePool bool
 }

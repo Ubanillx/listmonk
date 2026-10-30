@@ -2,9 +2,11 @@ package core
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/knadh/listmonk/models"
+	"github.com/labstack/echo/v4"
 )
 
 // Opt-out history has no PII snapshot. Current identities can be read only
@@ -13,14 +15,23 @@ func (c *Core) GetCampaignUnsubscriptions(access models.WorkspaceAccess, id int,
 	if _, err := c.RequireManageResource(access, resourceCampaigns, id); err != nil {
 		return nil, 0, err
 	}
+	if f.Status == "" {
+		f.Status = "confirmed"
+	}
+	if f.Status != "all" && f.Status != "clicked" && f.Status != "confirmed" {
+		return nil, 0, echo.NewHTTPError(http.StatusBadRequest, "invalid unsubscribe status")
+	}
 	scope, scopeArgs := workspaceSensitiveCustomerPredicate(access, "c", 9)
 	args := []any{id, strings.TrimSpace(f.Search), f.IncludePrivate, f.IncludePool, access.OrganizationID, access.PlatformAdmin, f.SensitivePrivate, f.SensitivePool}
 	args = append(args, scopeArgs...)
+	args = append(args, f.Status)
+	statusArg := len(args)
 	query := fmt.Sprintf(`WITH visible AS (
 		SELECT u.recipient_type,u.recipient_id,u.recipient_organization_id AS organization_id,u.created_at,
+			u.clicked_at,u.confirmed_at,u.click_count,u.status,
 			COALESCE(cu.customer_code,pc.customer_code,'') AS customer_code,
 			COALESCE(cu.name,pc.name,'') AS name,COALESCE(cu.email,pc.email,'') AS email
-		FROM campaign_unsubscriptions u JOIN campaigns c ON c.id=u.campaign_id
+		FROM campaign_unsubscription_activity u JOIN campaigns c ON c.id=u.campaign_id
 		LEFT JOIN customers cu ON u.recipient_type='private' AND cu.id=u.recipient_id
 		LEFT JOIN pool_contacts pc ON u.recipient_type='pool' AND pc.id=u.recipient_id
 		WHERE c.id=$1 AND (%s) AND c.transfer_pending_at IS NULL
@@ -31,9 +42,9 @@ func (c *Core) GetCampaignUnsubscriptions(access models.WorkspaceAccess, id int,
 			OR (cu.owner_user_id=c.owner_user_id AND cu.organization_id IS NOT DISTINCT FROM c.organization_id AND cu.transfer_pending_at IS NULL)))
 			OR (u.recipient_type='pool' AND $4::BOOL AND ($6::BOOL OR u.recipient_organization_id=$5)))
 	), filtered AS (
-		SELECT * FROM visible WHERE $2::TEXT='' OR name ILIKE '%%'||$2||'%%' OR customer_code ILIKE '%%'||$2||'%%'
-		OR (((recipient_type='private' AND $7::BOOL) OR (recipient_type='pool' AND $8::BOOL)) AND email ILIKE '%%'||$2||'%%')
-	) `, scope)
+		SELECT * FROM visible WHERE ($%d::TEXT='all' OR status=$%d::TEXT) AND ($2::TEXT='' OR name ILIKE '%%'||$2||'%%' OR customer_code ILIKE '%%'||$2||'%%'
+		OR (((recipient_type='private' AND $7::BOOL) OR (recipient_type='pool' AND $8::BOOL)) AND email ILIKE '%%'||$2||'%%'))
+	) `, scope, statusArg, statusArg)
 	var total int
 	if err := c.db.Get(&total, query+`SELECT COUNT(*)::INT FROM filtered`, args...); err != nil {
 		return nil, 0, workspaceQueryError("counting campaign unsubscriptions", err)

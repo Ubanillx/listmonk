@@ -1385,3 +1385,46 @@ LEFT JOIN LATERAL (
     WHERE cpr.campaign_id = c.id
         AND (c.pool_scope = 'all_organizations' OR cpr.organization_id IS NOT DISTINCT FROM c.organization_id)
 ) po ON TRUE;
+
+-- Unified, deduplicated unsubscribe funnel. A click never mutates subscriptions.
+CREATE OR REPLACE VIEW campaign_unsubscription_activity AS
+WITH valid_clicks AS (
+    SELECT lc.campaign_id,
+        CASE WHEN lc.customer_id IS NOT NULL THEN 'private' ELSE 'pool' END AS recipient_type,
+        COALESCE(lc.customer_id::BIGINT,lc.pool_contact_id) AS recipient_id,
+        c.owner_user_id AS campaign_owner_user_id,c.organization_id AS campaign_organization_id,
+        COALESCE(pr.organization_id,c.organization_id,0)::INT AS recipient_organization_id,
+        lc.created_at
+    FROM link_clicks lc
+    JOIN campaigns c ON c.id=lc.campaign_id
+    JOIN links l ON l.id=lc.link_id
+    JOIN settings root ON root.key='app.root_url'
+    LEFT JOIN customers cu ON cu.id=lc.customer_id
+    LEFT JOIN pool_contacts pc ON pc.id=lc.pool_contact_id
+    LEFT JOIN campaign_pool_recipients pr ON pr.campaign_id=lc.campaign_id AND pr.pool_contact_id=lc.pool_contact_id
+    WHERE lc.created_at IS NOT NULL AND (
+        (lc.customer_id IS NOT NULL AND (
+            split_part(split_part(l.url,'?',1),'#',1)=rtrim(root.value#>>'{}','/')||'/subscription/'||c.uuid::TEXT||'/'||cu.uuid::TEXT
+            OR EXISTS(SELECT 1 FROM customer_uuid_aliases ca WHERE ca.customer_id=lc.customer_id
+                AND split_part(split_part(l.url,'?',1),'#',1)=rtrim(root.value#>>'{}','/')||'/subscription/'||c.uuid::TEXT||'/'||ca.uuid::TEXT)
+        ))
+        OR (lc.pool_contact_id IS NOT NULL AND pr.pool_contact_id IS NOT NULL
+            AND split_part(split_part(l.url,'?',1),'#',1)=rtrim(root.value#>>'{}','/')||'/subscription/'||c.uuid::TEXT||'/'||pc.uuid::TEXT)
+    )
+), clicks AS (
+    SELECT campaign_id,recipient_type,recipient_id,campaign_owner_user_id,campaign_organization_id,recipient_organization_id,
+        MIN(created_at) AS clicked_at,MAX(created_at) AS last_clicked_at,COUNT(*)::INT AS click_count
+    FROM valid_clicks
+    GROUP BY campaign_id,recipient_type,recipient_id,campaign_owner_user_id,campaign_organization_id,recipient_organization_id
+)
+SELECT COALESCE(u.campaign_id,cl.campaign_id) AS campaign_id,
+    COALESCE(u.recipient_type,cl.recipient_type) AS recipient_type,
+    COALESCE(u.recipient_id,cl.recipient_id) AS recipient_id,
+    CASE WHEN u.campaign_id IS NOT NULL THEN u.campaign_owner_user_id ELSE cl.campaign_owner_user_id END AS campaign_owner_user_id,
+    CASE WHEN u.campaign_id IS NOT NULL THEN u.campaign_organization_id ELSE cl.campaign_organization_id END AS campaign_organization_id,
+    COALESCE(u.recipient_organization_id,cl.recipient_organization_id) AS recipient_organization_id,
+    COALESCE(cl.clicked_at,u.created_at) AS created_at,
+    cl.clicked_at,cl.last_clicked_at,u.created_at AS confirmed_at,COALESCE(cl.click_count,0) AS click_count,
+    CASE WHEN u.campaign_id IS NOT NULL THEN 'confirmed' ELSE 'clicked' END AS status
+FROM campaign_unsubscriptions u FULL OUTER JOIN clicks cl
+    ON cl.campaign_id=u.campaign_id AND cl.recipient_type=u.recipient_type AND cl.recipient_id=u.recipient_id;

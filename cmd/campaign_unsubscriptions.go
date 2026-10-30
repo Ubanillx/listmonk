@@ -20,7 +20,7 @@ func (a *App) GetCampaignUnsubscriptions(c echo.Context) error {
 	if err := requireLegacyPermission(user, auth.PermCampaignsRecipients); err != nil {
 		return err
 	}
-	f := models.CampaignUnsubscriptionFilters{Search: c.QueryParam("search"),
+	f := models.CampaignUnsubscriptionFilters{Search: c.QueryParam("search"), Status: c.QueryParam("status"),
 		IncludePrivate:   hasLegacyPermission(user, auth.PermCustomersGetAll, auth.PermCustomersGet) && requireAPIKeyScope(c, apiKeyScopeCustomersRead) == nil,
 		IncludePool:      hasLegacyPermission(user, auth.PermPoolsGet) && requireAPIKeyScope(c, apiKeyScopeListsRead) == nil,
 		SensitivePrivate: user.IsPlatformAdmin() || user.HasPerm(auth.PermCustomersSensitiveRead), SensitivePool: user.IsPlatformAdmin()}

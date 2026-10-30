@@ -356,7 +356,8 @@ bounces AS (
     WHERE campaign_id = ANY($1)
     GROUP BY campaign_id
 ), unsubscriptions AS (
-    SELECT campaign_id,COUNT(*) AS num FROM campaign_unsubscriptions
+    SELECT campaign_id,COUNT(*) FILTER(WHERE confirmed_at IS NOT NULL) AS num,
+        COUNT(*) FILTER(WHERE clicked_at IS NOT NULL) AS clicked FROM campaign_unsubscription_activity
     WHERE campaign_id=ANY($1) GROUP BY campaign_id
 )
 SELECT id as campaign_id,
@@ -364,6 +365,7 @@ SELECT id as campaign_id,
     COALESCE(c.num, 0) AS clicks,
     COALESCE(b.num, 0) AS bounces,
     COALESCE(u.num, 0) AS unsubscribes,
+    COALESCE(u.clicked, 0) AS unsubscribe_clicks,
     COALESCE(l.customer_lists, '[]') AS customer_lists,
     COALESCE(l.customer_pools, '[]') AS customer_pools,
     COALESCE(m.media, '[]') AS media
@@ -420,6 +422,7 @@ WHERE campaigns.id = $1;
 -- name: get-campaign-status
 SELECT id, status, to_send, sent, send_errors,
     (SELECT COUNT(*) FROM campaign_unsubscriptions u WHERE u.campaign_id=campaigns.id) AS unsubscribes,
+    (SELECT COUNT(*) FROM campaign_unsubscription_activity u WHERE u.campaign_id=campaigns.id AND u.clicked_at IS NOT NULL) AS unsubscribe_clicks,
     -- Same single definition as every other projection; the completed-state check
     -- reads the same effective recipient set the sender uses.
     COALESCE((SELECT sc.unsent_count FROM campaign_send_counts sc WHERE sc.campaign_id = campaigns.id), 0) AS unsent_count,

@@ -179,6 +179,16 @@
               <template v-else>{{ $utils.formatNumber(stats.sendErrors || 0) }}</template>
             </span>
           </p>
+          <p class="campaign-unsubscribe-clicks" :title="$t('campaigns.unsubscribesHelp')">
+            <label for="#">{{ $t('campaigns.unsubscribeClicks') }}</label>
+            <span>
+              <a v-if="$canReadCampaignUnsubscribes(props.row) && (stats.unsubscribeClicks || 0) > 0" href="#"
+                @click.prevent="unsubscribeCampaign = props.row" :aria-label="$t('campaigns.unsubscribeDetails')">
+                {{ $utils.formatNumber(stats.unsubscribeClicks || 0) }}
+              </a>
+              <template v-else>{{ $utils.formatNumber(stats.unsubscribeClicks || 0) }}</template>
+            </span>
+          </p>
           <p class="campaign-unsubscribes" :title="$t('campaigns.unsubscribesHelp')">
             <label for="#">{{ $t('campaigns.unsubscribes') }}</label>
             <span>

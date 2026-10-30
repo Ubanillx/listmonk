@@ -124,6 +124,11 @@ func TestMigrationV6_46_0Tracking(t *testing.T) {
 		t.Fatalf("historical pool send timestamp was not backfilled: %v", err)
 	}
 
+	// Exercise today's tracking query against the complete schema it expects;
+	// the v6.46 migration assertions above still use the legacy fixture.
+	if err := V6_47_0(db, nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
 	view := trackingQuery(t, "campaigns.sql", "register-campaign-view")
 	click := trackingQuery(t, "links.sql", "register-link-click")
 	for _, recipient := range []string{poolUUID, customerUUID, ""} {

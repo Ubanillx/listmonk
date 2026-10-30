@@ -1,6 +1,7 @@
 describe('Campaign unsubscribe recipients', () => {
   it('records confirmed opt-outs once and shows durable list/detail counts', () => {
     cy.resetDB();
+    cy.task('enableIndividualTracking', null, { timeout: 120000 });
     cy.intercept('GET', '/api/config', (req) => req.continue((res) => { res.body.data.lang = 'zh-CN'; }));
     cy.loginAndVisit('/admin/campaigns');
     cy.request('POST', '/api/customers', {
@@ -8,19 +9,43 @@ describe('Campaign unsubscribe recipients', () => {
     }).then(({ body: customerBody }) => {
       const customer = customerBody.data;
       cy.request('POST', '/api/campaigns', {
-        name: '退订人数回归', subject: 'Unsubscribe E2E', type: 'regular', content_type: 'plain',
-        body: 'Test campaign', customer_list_ids: [1], smtp_source: 'personal', template_id: 1,
+        name: '退订人数回归', subject: 'Unsubscribe E2E', type: 'regular', content_type: 'richtext', auto_track_links: true,
+        body: '<p><a href="{{ UnsubscribeURL }}">Unsubscribe</a></p>', customer_list_ids: [1], smtp_source: 'personal', template_id: 1,
       }).then(({ body }) => {
         const campaign = body.data;
         const url = `/subscription/${campaign.uuid}/${customer.uuid}`;
         cy.request(url).its('status').should('eq', 200);
         cy.request(`/api/campaigns/${campaign.id}`).its('body.data.unsubscribes').should('eq', 0);
+        cy.request(`/campaign/${campaign.uuid}/${customer.uuid}`).then(({ body: html }) => {
+          const document = new DOMParser().parseFromString(html, 'text/html');
+          const anchor = Array.from(document.querySelectorAll('a')).find((el) => el.textContent.trim() === 'Unsubscribe');
+          expect(Boolean(anchor), `rendered unsubscribe link in ${html}`).to.eq(true);
+          const trackingPath = new URL(anchor.getAttribute('href')).pathname;
+          expect(trackingPath).to.match(/^\/link\//);
+          cy.request({ url: trackingPath, followRedirect: false }).its('status').should('eq', 307);
+          cy.request({ url: trackingPath, followRedirect: false }).its('status').should('eq', 307);
+        });
+        cy.request(`/api/campaigns/${campaign.id}`).then(({ body: stats }) => {
+          expect(stats.data.unsubscribe_clicks).to.eq(1);
+          expect(stats.data.unsubscribes).to.eq(0);
+        });
+        cy.visit('/admin/campaigns');
+        cy.contains('tbody tr', '退订人数回归').find('.campaign-unsubscribe-clicks a')
+          .should(($link) => expect($link.text().trim()).to.eq('1')).click();
+        cy.get('[data-cy=unsubscribe-report]').within(() => {
+          cy.contains('tbody tr', '退订测试客户').should('contain', '已点击，未确认');
+          cy.get('#unsubscribe-status').select('confirmed');
+          cy.contains('暂无已记录的退订。').should('be.visible');
+        });
+        cy.contains('[data-cy=unsubscribe-report] button', '关闭').click();
         cy.request('POST', url, { 'List-Unsubscribe': 'One-Click' }).its('status').should('eq', 200);
         cy.request('POST', url, { 'List-Unsubscribe': 'One-Click' }).its('status').should('eq', 200);
         cy.request(`/api/campaigns/${campaign.id}`).its('body.data.unsubscribes').should('eq', 1);
         cy.request(`/api/campaigns/${campaign.id}/unsubscribes?per_page=1`).then(({ body: report }) => {
           expect(report.data.total).to.eq(1);
           expect(report.data.results[0].name).to.eq('退订测试客户');
+          expect(report.data.results[0].status).to.eq('confirmed');
+          expect(report.data.results[0].click_count).to.eq(2);
           expect(report.data.results[0]).not.to.have.property('uuid');
         });
         cy.visit('/admin/campaigns');
@@ -29,7 +54,7 @@ describe('Campaign unsubscribe recipients', () => {
           cy.get('.campaign-unsubscribes a').click();
         });
         cy.get('[data-cy=unsubscribe-report]').within(() => {
-          cy.contains('tbody tr', '退订测试客户').should('contain', customer.email);
+          cy.contains('tbody tr', '退订测试客户').should('contain', customer.email).and('contain', '已确认退订');
           cy.get('#unsubscribe-search').type('no-such-recipient{enter}');
           cy.contains('暂无已记录的退订。').should('be.visible');
           cy.get('#unsubscribe-search').clear().type('退订测试客户{enter}');
@@ -64,6 +89,7 @@ describe('Campaign unsubscribe recipients', () => {
     const rows = Array.from({ length: 21 }, (_, i) => ({
       recipient_type: 'private', recipient_id: i + 1, customer_code: `OPT-${i}`,
       name: `退订客户 ${i}`, email: 'a***@example.test', created_at: '2026-10-30T01:00:00Z',
+      confirmed_at: '2026-10-30T01:00:00Z', status: 'confirmed',
     }));
     cy.intercept({ method: 'GET', pathname: '/api/campaigns/901/unsubscribes' }, (req) => {
       if (failed) { req.reply({ statusCode: 503, body: { message: 'Unavailable' } }); return; }

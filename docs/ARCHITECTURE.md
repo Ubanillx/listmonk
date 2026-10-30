@@ -1,5 +1,13 @@
 # Listmonk 工程架构与运行指南
 
+## 退订点击与确认统一统计（v6.68.0，2026-10-30）
+
+`campaign_unsubscription_activity` 将可验证的退订链接点击与 `campaign_unsubscriptions` 确认事实合并，按活动、私域/公海类型、收件人 ID 去重。链接必须属于当前站点根地址，路径里的活动及收件人 UUID（含私域旧 UUID 别名）必须与点击事件一致，公海必须有该活动快照；普通链接、外站同路径、错配令牌、无身份的聚合点击均不推断为退订人数。视图只读，不改变订阅或黑名单，仍使用既有追踪隐私设置和保留策略；删除原点击或对应身份可能移除可识别点击，已确认事实不随客户删除消失。根地址变更后的旧域名点击不自动认领。
+
+列表、详情和运行统计新增 `unsubscribe_clicks`（退订点击去重人数），`unsubscribes` 继续表示确认退订人数；两项共用同一视图的口径。管理端两项都打开同一报告，展示首次点击、确认时间和「已点击，未确认 / 已确认退订」，可筛选状态。明细 API 新增 `status=all|clicked|confirmed`，缺省仍为 confirmed；`created_at` 现为首次点击，未记录点击则为确认时间，新增 `clicked_at/confirmed_at/click_count/status`。工作区、归属、来源权限、脱敏和搜索边界沿用原规则。
+
+v6.68.0 同事务安装视图并保守补齐历史确认：必须同时有成功自助 POST 退订审计、匹配活动与收件人、同一分钟内对应列表退订或公海 unsubscribe 排除变更。只凭点击、当前黑名单或退订状态不回填确认；保留首次审计时间，重复迁移不覆盖既有事实。新装与升级视图一致。回归：`cmd/campaign_unsubscribe_activity_test.go`、`frontend/cypress/e2e/campaign-unsubscribes.cy.js`。
+
 ## 客户状态列与筛选（2026-10-30）
 
 `Customers.vue` 在公海与私域表格统一提供独立状态列，以红色标记黑名单、黄色标记已退订；同一客户可以同时具备两种状态。私域退订来源为当前可见 `customer_list_memberships.status='unsubscribed'`，具体列表页只判断该列表，汇总页表示至少一个可见列表已退订，不等同于营销退订点击事件。公海新增只读 `unsubscribed` DTO 字段，来自仍有效的 `org_pool_allocation_exclusions.source='unsubscribe'`；分配页与组织成员只看目标组织，平台总表可汇总该公海中的组织退订，普通人工移除不冒充退订。恢复排除后退订标记消失，历史点击计数继续保留。
@@ -18,7 +26,7 @@
 
 `campaign_unsubscriptions` 保存邮件公开退订入口确认的事实，以 `(campaign_id, recipient_type, recipient_id)` 唯一约束实现并发去重，记录首次确认时间与来源归属，不保存姓名、邮箱或公开 bearer UUID。私域普通退订与列表偏好退订由 `queries/customers.sql` 的数据修改 CTE 将退订和事件同语句提交；偏好页仅移除本活动关联的有效订阅才归因。公海由 `internal/core/campaigns.go::UnsubscribePoolByCampaign` 在事务内写来源组织排除与事件，待发送快照取消，已发送快照保留 sent/sent_at；重复确认仍返回成功。
 
-GET 退订落地页、资料修改、管理端批量退订、退信和回信 AI 状态变更不产生该事实。迁移不从历史订阅状态推断点击，也不回填不可靠的历史人数。删除客户不删除去标识化事实，删除活动级联清理。`models.CampaignMeta.Unsubscribes` 与运行统计从同一事实表聚合，列表「退信」位置改为「退订人数」，原退信事件/API 保留。
+GET 退订落地页、资料修改、管理端批量退订、退信和回信 AI 状态变更不产生确认事实。v6.66.0 不回填历史；v6.68.0 仅按上节双重证据补齐确认，同时单独展示可验证点击。删除客户不删除去标识化确认，删除活动级联清理。`models.CampaignMeta.Unsubscribes` 与运行统计使用相同确认口径，原退信事件/API 保留。
 
 `GET /api/campaigns/:id/unsubscribes` 提供分页搜索明细；`cmd/campaign_unsubscriptions.go` 和 `internal/core/campaign_unsubscriptions.go` 沿用活动所有者/管理员、工作区、列表、分析、收件人及对应来源读取权限，个人 Key 另需收件人和客户/列表 scope。身份字段从当前客户读取，私域邮箱遵守敏感字段权限、公海非平台管理员始终脱敏；脱敏邮箱不能被原文搜索。转移后的旧归属明细对普通用户隐藏，不影响活动聚合人数。前端 `CampaignUnsubscribes.vue` 隔离失败/空态，切工作区或关闭后丢弃在途响应。接口契约见 [Campaigns API](docs/docs/content/apis/campaigns.md)。回归入口：`cmd/campaign_unsubscriptions_test.go`、`internal/migrations/v6.66.0_test.go`、`frontend/cypress/e2e/campaign-unsubscribes.cy.js`。
 

@@ -13,6 +13,13 @@
             <b-input id="unsubscribe-search" v-model.trim="search" icon="magnify" :placeholder="$t('campaigns.unsubscribeSearch')"
               maxlength="500" :has-counter="false" />
           </b-field>
+          <b-field :label="$t('globals.fields.status')" label-for="unsubscribe-status">
+            <b-select id="unsubscribe-status" v-model="status" @input="changePage(1)">
+              <option value="all">{{ $t('campaigns.unsubscribeAll') }}</option>
+              <option value="clicked">{{ $t('campaigns.unsubscribeClicked') }}</option>
+              <option value="confirmed">{{ $t('campaigns.unsubscribeConfirmed') }}</option>
+            </b-select>
+          </b-field>
           <b-button native-type="submit" icon-left="refresh" :loading="loading">{{ $t('analytics.refreshReport') }}</b-button>
         </form>
         <div v-if="failed" class="notification is-danger" role="alert">
@@ -29,8 +36,16 @@
           <b-table-column v-slot="props" field="recipientType" :label="$t('exports.recipientType')">
             {{ $t(`customer_lists.types.${props.row.recipientType}`) }}
           </b-table-column>
-          <b-table-column v-slot="props" field="createdAt" :label="$t('campaigns.unsubscribedAt')">
-            {{ $utils.niceDate(props.row.createdAt, true) }}
+          <b-table-column v-slot="props" field="status" :label="$t('globals.fields.status')">
+            <b-tag :type="props.row.status === 'confirmed' ? 'is-danger is-light' : 'is-warning is-light'">
+              {{ $t(props.row.status === 'confirmed' ? 'campaigns.unsubscribeConfirmed' : 'campaigns.unsubscribeClicked') }}
+            </b-tag>
+          </b-table-column>
+          <b-table-column v-slot="props" field="clickedAt" :label="$t('campaigns.unsubscribeClickedAt')">
+            {{ props.row.clickedAt ? $utils.niceDate(props.row.clickedAt, true) : '—' }}
+          </b-table-column>
+          <b-table-column v-slot="props" field="confirmedAt" :label="$t('campaigns.unsubscribedAt')">
+            {{ props.row.confirmedAt ? $utils.niceDate(props.row.confirmedAt, true) : '—' }}
           </b-table-column>
           <template #empty><p v-if="!loading && !failed" class="py-5 has-text-centered">{{ $t('campaigns.unsubscribeEmpty') }}</p></template>
         </paginated-table>
@@ -48,6 +63,7 @@ export default {
   data() {
     return {
       search: '',
+      status: 'all',
       appliedSearch: '',
       page: 1,
       perPage: 20,
@@ -75,7 +91,7 @@ export default {
       this.failed = false;
       try {
         const report = await this.$api.getCampaignUnsubscribes(this.campaign.id, {
-          search: this.appliedSearch, page: this.page, per_page: this.perPage,
+          search: this.appliedSearch, status: this.status, page: this.page, per_page: this.perPage,
         });
         if (requestID === this.requestID) this.report = report;
       } catch (error) {

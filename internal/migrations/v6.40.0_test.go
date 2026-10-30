@@ -1,6 +1,7 @@
 package migrations
 
 import (
+	"database/sql"
 	"os"
 	"testing"
 
@@ -91,14 +92,14 @@ func TestPoolSecondaryMetadataRepairIsIdempotent(t *testing.T) {
 	}
 
 	var pool struct {
-		OrganizationID int64  `db:"organization_id"`
-		Visibility     string `db:"visibility"`
-		Status         string `db:"status"`
+		OrganizationID sql.NullInt64 `db:"organization_id"`
+		Visibility     string        `db:"visibility"`
+		Status         string        `db:"status"`
 	}
 	if err = db.Get(&pool, `SELECT organization_id,visibility,status FROM customer_lists WHERE id=5`); err != nil {
 		t.Fatal(err)
 	}
-	if pool.OrganizationID != 0 || pool.Visibility != "global" || pool.Status != "active" {
+	if pool.OrganizationID.Valid || pool.Visibility != "global" || pool.Status != "active" {
 		t.Fatalf("first-level pool was not normalized: %+v", pool)
 	}
 }

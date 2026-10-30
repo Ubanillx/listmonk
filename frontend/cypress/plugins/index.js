@@ -29,6 +29,17 @@ async function waitForBackend() {
 
 module.exports = (on, config) => {
   on('task', {
+    async enableIndividualTracking() {
+      if (process.env.LISTMONK_CYPRESS_ISOLATED !== '1'
+        || config.baseUrl !== testURL || config.env.apiUrl !== testURL) {
+        throw new Error('Tracking fixture requires the isolated Cypress backend at port 9273');
+      }
+      docker('exec', '-T', 'db', 'psql', '-U', 'listmonk_cypress', '-d', 'listmonk_cypress',
+        '-v', 'ON_ERROR_STOP=1', '-c', "UPDATE settings SET value='true'::jsonb WHERE key='privacy.individual_tracking'");
+      docker('restart', 'backend');
+      await waitForBackend();
+      return null;
+    },
     async resetDatabase({ blank = false } = {}) {
       if (process.env.LISTMONK_CYPRESS_ISOLATED !== '1'
         || config.baseUrl !== testURL || config.env.apiUrl !== testURL) {

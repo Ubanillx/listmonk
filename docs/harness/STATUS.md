@@ -2,7 +2,7 @@
 
 快照日期：2026-10-30
 
-- **营销活动 B 分组统计（2026-10-30，v6.69.0）**：已实现分组列、三类真实收件人统计、文字错误状态及原明细入口；迁移只安装只读视图，不改发信。实施分支 `codex/campaign-stats-grouped`；原型保留于 `codex/prototype-campaign-stats`。验证：真实 PostgreSQL 汇总回归、`make test`、`go vet ./...`、前端 lint/build、定向 Cypress 6/6、文档检查通过；B 版桌面/手机截图已核对，收件人数列无横向滚动。本地已应用 v6.69.0、9173 返回 HTTP 200；生产发布待 master 合并触发 Jenkins。来源：`frontend/src/views/Campaigns.vue`、`internal/migrations/v6.69.0.go`、`cmd/campaign_delivery_counts_test.go`。
+- **营销活动 B 分组统计（2026-10-30，v6.69.0）**：已实现分组列、三类真实收件人统计、文字错误状态及原明细入口；迁移只安装只读视图，不改发信。实施分支 `codex/campaign-stats-grouped`；原型保留于 `codex/prototype-campaign-stats`。验证：真实 PostgreSQL 汇总回归、`make test`、`go vet ./...`、前端 lint/build、定向 Cypress 6/6、文档检查通过；B 版桌面/手机截图已核对，收件人数列无横向滚动。本地已应用 v6.69.0、9173 返回 HTTP 200；提交 ce2b818a 已推送 master 并触发 Jenkins。该环境未提供 Jenkins 状态检查，线上版本尚未独立核验。来源：`frontend/src/views/Campaigns.vue`、`internal/migrations/v6.69.0.go`、`cmd/campaign_delivery_counts_test.go`。
 
 - **退订点击与确认对齐（2026-10-30，v6.68.0）**：活动列表显示退订相关人数（点击或确认的收件人去重并集），共用报告支持点击未确认/确认筛选；公开 GET 不更改订阅，确认 POST 沿用原子写入。升级仅在成功自助退订审计及同一分钟状态变更同时存在时补齐历史确认。生产数据库已按该规则补齐 3 条（活动 65 两条、99 一条）；活动 58 有 15 次点击、11 人、0 条可证明的确认；活动 113 列表显示 7 位退订相关收件人，明细显示 7 位已点击未确认。真实 PostgreSQL 回归覆盖私域/公海、状态过滤、无关链接、别名、权限脱敏、新装/升级一致、并集去重和幂等回填；隔离 Cypress 2/2 覆盖真实追踪点击、重复去重、确认、列表和明细。来源：`internal/migrations/v6.68.0.go`、`cmd/campaign_unsubscribe_activity_test.go`、`frontend/cypress/e2e/campaign-unsubscribes.cy.js`。master 提交 `b6ed79d1` 经 Jenkins #105 发布，生产页面及活动 113 明细已核验。
 

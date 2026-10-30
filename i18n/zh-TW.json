@@ -533,6 +533,7 @@
     "campaigns.unsubscribes": "退訂人數",
     "campaigns.unsubscribesHelp": "退訂連結點擊與確認退訂按活動和收件人去重，在同一明細中顯示。開啟連結不等於確認退訂；歷史確認僅憑成功退訂稽核和對應狀態變更證據補齊。",
     "campaigns.unsubscribeClicks": "退訂點擊人數",
+    "campaigns.unsubscribeActivity": "退訂相關人數",
     "campaigns.unsubscribeAll": "全部退訂記錄",
     "campaigns.unsubscribeClicked": "已點擊，未確認",
     "campaigns.unsubscribeConfirmed": "已確認退訂",

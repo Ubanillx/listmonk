@@ -593,6 +593,7 @@
     "campaigns.unsubscribes": "Unsubscribed recipients",
     "campaigns.unsubscribesHelp": "Link clicks and confirmed opt-outs are deduplicated by campaign and recipient and shown in one report. Opening a link does not confirm an opt-out. Historical confirmations require successful self-service audit and matching subscription evidence.",
     "campaigns.unsubscribeClicks": "Unsubscribe link visitors",
+    "campaigns.unsubscribeActivity": "Recipients with unsubscribe activity",
     "campaigns.unsubscribeAll": "All unsubscribe activity",
     "campaigns.unsubscribeClicked": "Clicked, not confirmed",
     "campaigns.unsubscribeConfirmed": "Confirmed opt-out",

@@ -50,7 +50,7 @@ func TestCampaignUnsubscribeClickAndConfirmationAlign(t *testing.T) {
 	if err := f.a.GetCampaign(c); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(rec.Body.String(), `"unsubscribe_clicks":1`) || !strings.Contains(rec.Body.String(), `"unsubscribes":0`) {
+	if !strings.Contains(rec.Body.String(), `"unsubscribe_clicks":1`) || !strings.Contains(rec.Body.String(), `"unsubscribes":0`) || !strings.Contains(rec.Body.String(), `"unsubscribe_activity":1`) {
 		t.Fatalf("unsubscribe link clicks are absent from campaign statistics: %s", rec.Body.String())
 	}
 	for _, status := range []string{"all", "clicked", "confirmed"} {
@@ -78,8 +78,20 @@ func TestCampaignUnsubscribeClickAndConfirmationAlign(t *testing.T) {
 			t.Fatalf("activity report lost %s: %s", want, rec.Body.String())
 		}
 	}
+	// A confirmation without a tracked click belongs to the same union, while
+	// confirmation of a clicked recipient must not count that recipient twice.
+	if result := f.publicRequest(http.MethodPost, f.uuid, f.customers[1].UUID, nil); result.Code != 200 {
+		t.Fatalf("untracked confirmation status=%d", result.Code)
+	}
+	c, rec = unsubscribeAPIContext(u, f.id, "")
+	if err := f.a.GetCampaign(c); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(rec.Body.String(), `"unsubscribe_activity":2`) || !strings.Contains(rec.Body.String(), `"unsubscribe_clicks":1`) || !strings.Contains(rec.Body.String(), `"unsubscribes":2`) {
+		t.Fatalf("union count mismatch: %s", rec.Body.String())
+	}
 	rows, err := f.a.core.GetRunningCampaignStats()
-	if err != nil || len(rows) != 1 || rows[0].UnsubscribeClicks != 1 || rows[0].Unsubscribes != 1 {
+	if err != nil || len(rows) != 1 || rows[0].UnsubscribeClicks != 1 || rows[0].Unsubscribes != 2 || rows[0].UnsubscribeActivity != 2 {
 		t.Fatalf("live stats mismatch: %+v %v", rows, err)
 	}
 	c, _ = unsubscribeAPIContext(u, f.id, "?status=invalid")

@@ -181,7 +181,7 @@ func (c *Core) loadWorkspaceCampaignStats(access models.WorkspaceAccess, camps m
 			GROUP BY b.campaign_id
 		), unsubscriptions AS (
 			SELECT u.campaign_id, COUNT(*) FILTER(WHERE u.confirmed_at IS NOT NULL) AS num,
-				COUNT(*) FILTER(WHERE u.clicked_at IS NOT NULL) AS clicked
+				COUNT(*) FILTER(WHERE u.clicked_at IS NOT NULL) AS clicked, COUNT(*) AS activity
 			FROM campaign_unsubscription_activity u JOIN scoped_campaigns sc ON sc.id = u.campaign_id
 			GROUP BY u.campaign_id
 		)
@@ -191,6 +191,7 @@ func (c *Core) loadWorkspaceCampaignStats(access models.WorkspaceAccess, camps m
 			COALESCE(b.num, 0) AS bounces,
 			COALESCE(u.num, 0) AS unsubscribes,
 			COALESCE(u.clicked, 0) AS unsubscribe_clicks,
+			COALESCE(u.activity, 0) AS unsubscribe_activity,
 			COALESCE(l.customer_lists, '[]') AS customer_lists,
 			COALESCE(l.customer_pools, '[]') AS customer_pools,
 			COALESCE(m.media, '[]') AS media
@@ -224,6 +225,7 @@ func (c *Core) loadWorkspaceCampaignStats(access models.WorkspaceAccess, camps m
 		camps[i].Bounces = row.Bounces
 		camps[i].Unsubscribes = row.Unsubscribes
 		camps[i].UnsubscribeClicks = row.UnsubscribeClicks
+		camps[i].UnsubscribeActivity = row.UnsubscribeActivity
 		camps[i].Media = row.Media
 	}
 	return nil

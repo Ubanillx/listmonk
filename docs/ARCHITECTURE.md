@@ -4,7 +4,7 @@
 
 `campaign_unsubscription_activity` 将可验证的退订链接点击与 `campaign_unsubscriptions` 确认事实合并，按活动、私域/公海类型、收件人 ID 去重。链接必须属于当前站点根地址，路径里的活动及收件人 UUID（含私域旧 UUID 别名）必须与点击事件一致，公海必须有该活动快照；普通链接、外站同路径、错配令牌、无身份的聚合点击均不推断为退订人数。视图只读，不改变订阅或黑名单，仍使用既有追踪隐私设置和保留策略；删除原点击或对应身份可能移除可识别点击，已确认事实不随客户删除消失。根地址变更后的旧域名点击不自动认领。
 
-列表、详情和运行统计新增 `unsubscribe_clicks`（退订点击去重人数），`unsubscribes` 继续表示确认退订人数；两项共用同一视图的口径。管理端两项都打开同一报告，展示首次点击、确认时间和「已点击，未确认 / 已确认退订」，可筛选状态。明细 API 新增 `status=all|clicked|confirmed`，缺省仍为 confirmed；`created_at` 现为首次点击，未记录点击则为确认时间，新增 `clicked_at/confirmed_at/click_count/status`。工作区、归属、来源权限、脱敏和搜索边界沿用原规则。
+列表、详情和运行统计提供 `unsubscribe_clicks`（退订点击去重人数）、`unsubscribes`（确认退订人数）及 `unsubscribe_activity`（有点击或确认事实的收件人去重并集）。管理端列表显示一项「退订相关人数」，打开统一报告展示首次点击、确认时间和「已点击，未确认 / 已确认退订」，可筛选状态。明细 API 新增 `status=all|clicked|confirmed`，缺省仍为 confirmed；`created_at` 现为首次点击，未记录点击则为确认时间，新增 `clicked_at/confirmed_at/click_count/status`。工作区、归属、来源权限、脱敏和搜索边界沿用原规则。
 
 v6.68.0 同事务安装视图并保守补齐历史确认：必须同时有成功自助 POST 退订审计、匹配活动与收件人、同一分钟内对应列表退订或公海 unsubscribe 排除变更。只凭点击、当前黑名单或退订状态不回填确认；保留首次审计时间，重复迁移不覆盖既有事实。新装与升级视图一致。回归：`cmd/campaign_unsubscribe_activity_test.go`、`frontend/cypress/e2e/campaign-unsubscribes.cy.js`。
 

@@ -591,6 +591,7 @@
     "campaigns.unsubscribes": "退订人数",
     "campaigns.unsubscribesHelp": "退订链接点击与确认退订按活动和收件人去重，在同一明细中展示。打开链接不等于确认退订；历史确认仅凭成功退订审计和对应状态变更证据补齐。",
     "campaigns.unsubscribeClicks": "退订点击人数",
+    "campaigns.unsubscribeActivity": "退订相关人数",
     "campaigns.unsubscribeAll": "全部退订记录",
     "campaigns.unsubscribeClicked": "已点击，未确认",
     "campaigns.unsubscribeConfirmed": "已确认退订",

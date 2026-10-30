@@ -91,19 +91,20 @@ func (t *Template) Compile(f template.FuncMap) error {
 }
 
 type CampaignStats struct {
-	ID                int       `db:"id" json:"id"`
-	Status            string    `db:"status" json:"status"`
-	ToSend            int       `db:"to_send" json:"to_send"`
-	Sent              int       `db:"sent" json:"sent"`
-	SendErrors        int       `db:"send_errors" json:"send_errors"`
-	Unsubscribes      int       `db:"unsubscribes" json:"unsubscribes"`
-	UnsubscribeClicks int       `db:"unsubscribe_clicks" json:"unsubscribe_clicks"`
-	Unsent            int       `db:"unsent_count" json:"unsent_count"`
-	Started           null.Time `db:"started_at" json:"started_at"`
-	UpdatedAt         null.Time `db:"updated_at" json:"updated_at"`
-	NextResumeAt      null.Time `db:"next_resume_at" json:"next_resume_at"`
-	Rate              int       `json:"rate"`
-	NetRate           int       `json:"net_rate"`
+	ID                  int       `db:"id" json:"id"`
+	Status              string    `db:"status" json:"status"`
+	ToSend              int       `db:"to_send" json:"to_send"`
+	Sent                int       `db:"sent" json:"sent"`
+	SendErrors          int       `db:"send_errors" json:"send_errors"`
+	Unsubscribes        int       `db:"unsubscribes" json:"unsubscribes"`
+	UnsubscribeClicks   int       `db:"unsubscribe_clicks" json:"unsubscribe_clicks"`
+	UnsubscribeActivity int       `db:"unsubscribe_activity" json:"unsubscribe_activity"`
+	Unsent              int       `db:"unsent_count" json:"unsent_count"`
+	Started             null.Time `db:"started_at" json:"started_at"`
+	UpdatedAt           null.Time `db:"updated_at" json:"updated_at"`
+	NextResumeAt        null.Time `db:"next_resume_at" json:"next_resume_at"`
+	Rate                int       `json:"rate"`
+	NetRate             int       `json:"net_rate"`
 }
 
 type CampaignAnalyticsCount struct {

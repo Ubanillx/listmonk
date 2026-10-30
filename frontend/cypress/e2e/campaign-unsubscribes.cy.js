@@ -28,9 +28,10 @@ describe('Campaign unsubscribe recipients', () => {
         cy.request(`/api/campaigns/${campaign.id}`).then(({ body: stats }) => {
           expect(stats.data.unsubscribe_clicks).to.eq(1);
           expect(stats.data.unsubscribes).to.eq(0);
+          expect(stats.data.unsubscribe_activity).to.eq(1);
         });
         cy.visit('/admin/campaigns');
-        cy.contains('tbody tr', '退订人数回归').find('.campaign-unsubscribe-clicks a')
+        cy.contains('tbody tr', '退订人数回归').find('.campaign-unsubscribes a')
           .should(($link) => expect($link.text().trim()).to.eq('1')).click();
         cy.get('[data-cy=unsubscribe-report]').within(() => {
           cy.contains('tbody tr', '退订测试客户').should('contain', '已点击，未确认');
@@ -50,7 +51,7 @@ describe('Campaign unsubscribe recipients', () => {
         });
         cy.visit('/admin/campaigns');
         cy.contains('tbody tr', '退订人数回归').within(() => {
-          cy.get('.campaign-unsubscribes').should('contain', '退订人数').and('contain', '1');
+          cy.get('.campaign-unsubscribes').should('contain', '退订相关人数').and('contain', '1');
           cy.get('.campaign-unsubscribes a').click();
         });
         cy.get('[data-cy=unsubscribe-report]').within(() => {
@@ -82,7 +83,7 @@ describe('Campaign unsubscribe recipients', () => {
     cy.intercept({ method: 'GET', pathname: '/api/campaigns' }, { data: {
       results: [{ id: 901, name: '退订分页', subject: 'Opt-out', status: 'paused', type: 'regular', tags: [],
         customer_lists: [], customer_pools: [], owner_username: 'admin', visibility: 'private',
-        views: 0, clicks: 0, sent: 30, to_send: 30, unsubscribes: 21, send_errors: 0 }],
+        views: 0, clicks: 0, sent: 30, to_send: 30, unsubscribes: 21, unsubscribe_activity: 21, send_errors: 0 }],
       total: 1, per_page: 20,
     } });
     let failed = true;

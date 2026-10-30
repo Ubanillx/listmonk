@@ -132,12 +132,13 @@ type Campaign struct {
 
 // CampaignMeta contains fields tracking a campaign's progress.
 type CampaignMeta struct {
-	CampaignID        int `db:"campaign_id" json:"-"`
-	Views             int `db:"views" json:"views"`
-	Clicks            int `db:"clicks" json:"clicks"`
-	Bounces           int `db:"bounces" json:"bounces"`
-	Unsubscribes      int `db:"unsubscribes" json:"unsubscribes"`
-	UnsubscribeClicks int `db:"unsubscribe_clicks" json:"unsubscribe_clicks"`
+	CampaignID          int `db:"campaign_id" json:"-"`
+	Views               int `db:"views" json:"views"`
+	Clicks              int `db:"clicks" json:"clicks"`
+	Bounces             int `db:"bounces" json:"bounces"`
+	Unsubscribes        int `db:"unsubscribes" json:"unsubscribes"`
+	UnsubscribeClicks   int `db:"unsubscribe_clicks" json:"unsubscribe_clicks"`
+	UnsubscribeActivity int `db:"unsubscribe_activity" json:"unsubscribe_activity"`
 
 	// This is a customer_list of {customer_list_id, name} pairs unlike Customer.CustomerLists[]
 	// because customer_lists can be deleted after a campaign is finished, resulting
@@ -193,6 +194,7 @@ func (camps Campaigns) LoadStats(stmt *sqlx.Stmt) error {
 			camps[i].Bounces = c.Bounces
 			camps[i].Unsubscribes = c.Unsubscribes
 			camps[i].UnsubscribeClicks = c.UnsubscribeClicks
+			camps[i].UnsubscribeActivity = c.UnsubscribeActivity
 			camps[i].Media = c.Media
 		}
 	}

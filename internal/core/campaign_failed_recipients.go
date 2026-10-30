@@ -44,7 +44,7 @@ func failedRecipientCTE(access models.WorkspaceAccess, id int, f models.Campaign
 			ELSE cpr.status IN ('pending','deferred') AND pc.status='active'
 				AND NOT EXISTS(SELECT 1 FROM org_pool_allocation_exclusions ex WHERE ex.pool_id=cpr.pool_id
 					AND ex.organization_id=cpr.organization_id AND ex.contact_id=cpr.pool_contact_id AND ex.restored_at IS NULL)
-				AND %s END AS retryable
+				AND %s END AND NOT campaign_recipient_retry_exhausted($1,e.recipient_type,e.recipient_id) AS retryable
 		FROM latest e JOIN attempts a USING(recipient_type,recipient_id)
 		JOIN scoped_campaign camp ON TRUE
 		LEFT JOIN campaign_recipients cr ON e.recipient_type='private' AND cr.campaign_id=$1 AND cr.customer_id=e.recipient_id
@@ -54,8 +54,8 @@ func failedRecipientCTE(access models.WorkspaceAccess, id int, f models.Campaign
 			AND cpr.pool_contact_id=e.recipient_id
 			AND (e.recipient_organization_id=0 OR cpr.organization_id=e.recipient_organization_id)
 		LEFT JOIN pool_contacts pc ON pc.id=cpr.pool_contact_id
-		WHERE (e.recipient_type='private' AND cr.status IN ('pending','queued','deferred') AND cu.id IS NOT NULL)
-			OR (e.recipient_type='pool' AND cpr.status IN ('pending','queued','deferred') AND pc.id IS NOT NULL)
+		WHERE (e.recipient_type='private' AND cr.status IN ('pending','queued','deferred','failed') AND cu.id IS NOT NULL)
+			OR (e.recipient_type='pool' AND cpr.status IN ('pending','queued','deferred','failed') AND pc.id IS NOT NULL)
 	), failed AS (
 		SELECT * FROM current_failed WHERE ($3::TEXT='' OR category=$3)
 		AND ($%d::INT=0 OR (recipient_type='pool' AND recipient_organization_id=$%d))

@@ -12,6 +12,7 @@ describe('Campaign configuration', () => {
     cy.get('[data-cy=campaign-audience-section]').should('be.visible');
     cy.get('[data-cy=campaign-sender-section]').should('be.visible');
     cy.get('[data-cy=campaign-delivery-section]').should('be.visible');
+    cy.get('[data-cy=campaign-smtp-rate-limit]').should('have.value', '5');
     cy.get('[data-cy=campaign-test-section]').should('not.exist');
     cy.get('[data-cy=campaign-advanced]').should('not.have.attr', 'open');
     cy.get('[data-cy=campaign-delivery-rules]').should('not.have.attr', 'open');

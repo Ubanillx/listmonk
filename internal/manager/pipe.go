@@ -34,6 +34,7 @@ type pipe struct {
 	withErrors atomic.Bool
 	stopReason atomic.Int32
 	done       chan struct{}
+	progress   chan struct{}
 	stopOnce   sync.Once
 
 	m *Manager
@@ -119,8 +120,9 @@ func (m *Manager) newPipe(c *models.Campaign) (*pipe, error) {
 
 	// Add the campaign to the active map.
 	p := &pipe{
-		done: make(chan struct{}),
-		camp: c,
+		done:     make(chan struct{}),
+		progress: make(chan struct{}, 1),
+		camp:     c,
 		// Personal SMTP is resolved for every campaign message so a running
 		// campaign observes account configuration changes immediately. Other
 		// messengers are immutable for the lifetime of the pipe.
@@ -180,7 +182,7 @@ func (p *pipe) NextCustomers() (bool, error) {
 		return false, err
 	}
 	if err != nil {
-		return false, fmt.Errorf("error fetching campaign customers (%s): %v", p.camp.Name, err)
+		return false, fmt.Errorf("error fetching campaign customers (%s): %w", p.camp.Name, err)
 	}
 
 	// There are no customers from the query. Either all customers on the campaign
@@ -198,7 +200,9 @@ func (p *pipe) NextCustomers() (bool, error) {
 		msg, err := p.newMessage(s)
 		if err != nil {
 			p.m.log.Printf("error rendering message (%s) (%s): %v", p.camp.Name, s.Email, err)
-			p.m.recordCampaignSendError(p.camp, s.Customer, s.PoolContactID, int(s.PoolOrganizationID), "render", err)
+			if recordErr := p.m.recordCampaignSendError(p.camp, s.Customer, s.PoolContactID, int(s.PoolOrganizationID), "render", err); recordErr != nil {
+				p.Stop(stopReasonPause, true)
+			}
 			var resetErr error
 			if s.PoolContactID > 0 {
 				if ps, ok := p.m.store.(PoolRecipientStore); ok {
@@ -209,6 +213,7 @@ func (p *pipe) NextCustomers() (bool, error) {
 			}
 			if resetErr != nil {
 				p.m.log.Printf("error resetting campaign recipient (%s:%d): %v", p.camp.Name, s.ID, resetErr)
+				p.Stop(stopReasonPause, true)
 			}
 			p.OnError()
 			continue
@@ -238,6 +243,39 @@ func (p *pipe) NextCustomers() (bool, error) {
 	return true, nil
 }
 
+// waitForProgress owns the pipe's scheduler reference until it can be queued
+// again or stopped. Waiting here must not block the manager's other campaigns.
+func (p *pipe) waitForProgress() {
+	select {
+	case <-p.progress:
+	case <-p.done:
+		p.wg.Done()
+		return
+	case <-p.m.done:
+		p.Stop(stopReasonPause, false)
+		p.wg.Done()
+		return
+	}
+	select {
+	case p.m.nextPipes <- p:
+	case <-p.done:
+		p.wg.Done()
+	case <-p.m.done:
+		p.Stop(stopReasonPause, false)
+		p.wg.Done()
+	}
+}
+
+// messageDone wakes a quota or retry-round waiter only after the worker has persisted
+// the successful send or released the failed recipient's reservation.
+func (p *pipe) messageDone() {
+	select {
+	case p.progress <- struct{}{}:
+	default:
+	}
+	p.wg.Done()
+}
+
 // OnError keeps track of the number of errors that occur while sending messages
 // and pauses the campaign if the error threshold is met.
 func (p *pipe) OnError() {
@@ -261,8 +299,8 @@ func (p *pipe) Defer() {
 
 // DeferImmediately prevents further queued messages from being delivered.
 // It is used when the SMTP pool rejects a message for its own daily quota.
-// In contrast, a campaign-level cap has already reserved its final batch, so
-// Defer lets that batch drain before the campaign is resumed the next day.
+// The campaign daily cap instead waits for queued delivery results before
+// deciding whether successful sends have exhausted the allowance.
 func (p *pipe) DeferImmediately() {
 	p.deferCampaign(true)
 }

@@ -232,6 +232,9 @@ func (s *store) NextCampaigns(currentIDs []int64) ([]*models.Campaign, error) {
 		if _, err := s.queries.ResetCampaignQueuedRecipients.Exec(c.ID, models.CampaignRecipientStatusPending); err != nil {
 			return nil, err
 		}
+		if err := s.exhaustCampaignRecipientRetries(c.ID); err != nil {
+			return nil, err
+		}
 
 		var prog campaignProgress
 		if err := s.queries.SyncCampaignProgress.Get(&prog, c.ID); err != nil {
@@ -255,14 +258,14 @@ func (s *store) NextCampaigns(currentIDs []int64) ([]*models.Campaign, error) {
 }
 
 // NextCustomers retrieves a subset of customers of a given campaign.
-// Since batches are processed sequentially, the retrieval is ordered by customer ID.
+// SMTP campaigns finish the lowest persisted failure round across both sources.
 func (s *store) NextCustomers(campID, limit int) ([]models.CampaignCustomer, error) {
 	var st campaignSendState
 	if err := s.queries.GetCampaignSendState.Get(&st, campID, currentLocalDate()); err != nil {
 		return nil, err
 	}
 
-	if st.Status != models.CampaignStatusRunning {
+	if st.Status != models.CampaignStatusRunning || st.UnsentCount == 0 {
 		return nil, nil
 	}
 
@@ -316,6 +319,9 @@ func (s *store) NextCustomers(campID, limit int) ([]models.CampaignCustomer, err
 			)
 			return nil, manager.ErrCampaignDeferred
 		}
+		if batchLimit == 0 {
+			return nil, manager.ErrCampaignBatchPending
+		}
 		limit = batchLimit
 	}
 
@@ -344,6 +350,9 @@ func (s *store) NextCustomers(campID, limit int) ([]models.CampaignCustomer, err
 		}
 		out = append(out, poolRows...)
 	}
+	if len(out) == 0 && st.QueuedCount > 0 && st.CampaignType == models.CampaignTypeRegular && email.IsMessengerName(st.Messenger) {
+		return nil, manager.ErrCampaignBatchPending
+	}
 	return out, nil
 }
 
@@ -355,30 +364,63 @@ func (s *store) RecordCampaignSendError(campID int) error {
 }
 
 func (s *store) RecordCampaignSendFailure(f models.CampaignSendFailure) error {
-	_, err := s.db.Exec(`WITH recorded AS (
+	tx, err := s.db.Beginx()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	// Match success/pause lock ordering and serialize failures for this campaign.
+	if _, err := tx.Exec(`SELECT id FROM campaigns WHERE id=$1 FOR UPDATE`, f.CampaignID); err != nil {
+		return err
+	}
+	_, err = tx.Exec(`WITH recorded AS (
 		INSERT INTO campaign_send_errors(campaign_id,campaign_owner_user_id,campaign_organization_id,
 			recipient_type,recipient_id,recipient_organization_id,customer_code,name,email,stage,category,smtp_code,error)
 		SELECT c.id,$12,$13,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11 FROM campaigns c WHERE c.id=$1
 		RETURNING campaign_id
 	) UPDATE campaigns SET send_errors=send_errors+1,updated_at=NOW() WHERE id IN (SELECT campaign_id FROM recorded)`,
 		f.CampaignID, f.RecipientType, f.RecipientID, f.RecipientOrganizationID, f.CustomerCode, f.Name, f.Email, f.Stage, f.Category, f.SMTPCode, f.Error, f.CampaignOwnerUserID, f.CampaignOrganizationID)
+	if err != nil {
+		return err
+	}
+	query := `UPDATE campaign_recipients SET status='failed',updated_at=NOW()
+		WHERE campaign_id=$1 AND customer_id=$2 AND status IN ('pending','queued','deferred')
+		AND campaign_recipient_retry_exhausted($1,'private',$2)`
+	if f.RecipientType == "pool" {
+		query = `UPDATE campaign_pool_recipients SET status='failed',updated_at=NOW()
+			WHERE campaign_id=$1 AND pool_contact_id=$2 AND status IN ('pending','queued','deferred')
+			AND campaign_recipient_retry_exhausted($1,'pool',$2)`
+	}
+	if _, err := tx.Exec(query, f.CampaignID, f.RecipientID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// Settle historical failures before loading a resumed campaign. This also
+// applies a lowered setting without clearing counts or reviving exhausted rows.
+func (s *store) exhaustCampaignRecipientRetries(campaignID int) error {
+	_, err := s.db.Exec(`WITH keys AS MATERIALIZED (
+		SELECT DISTINCT recipient_type,recipient_id FROM campaign_send_errors WHERE campaign_id=$1
+	), exhausted AS MATERIALIZED (
+		SELECT * FROM keys WHERE campaign_recipient_retry_exhausted($1,recipient_type,recipient_id)
+	), private AS (
+		UPDATE campaign_recipients SET status='failed',updated_at=NOW()
+		WHERE campaign_id=$1 AND status IN ('pending','deferred')
+		AND customer_id IN (SELECT recipient_id FROM exhausted WHERE recipient_type='private')
+	) UPDATE campaign_pool_recipients SET status='failed',updated_at=NOW()
+		WHERE campaign_id=$1 AND status IN ('pending','deferred')
+		AND pool_contact_id IN (SELECT recipient_id FROM exhausted WHERE recipient_type='pool')`, campaignID)
 	return err
 }
 
 func (s *store) MarkPoolCampaignMessageSent(campID int, contactID int64) error {
-	_, err := s.db.Exec(`UPDATE campaign_pool_recipients SET status=$3::campaign_recipient_status, sent_at=NOW(), updated_at=NOW() WHERE campaign_id=$1 AND pool_contact_id=$2`, campID, contactID, models.CampaignRecipientStatusSent)
-	if err != nil {
-		return err
-	}
-	if _, err = s.queries.IncrementCampaignDailyUsage.Exec(campID, currentLocalDate()); err != nil {
-		return err
-	}
-	_, err = s.queries.UpdateCampaignCounts.Exec(campID, 0, 1, 0)
-	return err
+	return s.markCampaignMessageSent(campID, contactID, true)
 }
 
 func (s *store) MarkPoolCampaignRecipientStatus(campID int, contactID int64, status string) error {
-	_, err := s.db.Exec(`UPDATE campaign_pool_recipients SET status=$3::campaign_recipient_status, updated_at=NOW() WHERE campaign_id=$1 AND pool_contact_id=$2`, campID, contactID, status)
+	_, err := s.db.Exec(`UPDATE campaign_pool_recipients SET status=$3::campaign_recipient_status, updated_at=NOW()
+		WHERE campaign_id=$1 AND pool_contact_id=$2 AND status NOT IN ('sent','failed')`, campID, contactID, status)
 	return err
 }
 
@@ -568,6 +610,10 @@ func (s *store) nextPoolCustomers(campID int, st campaignSendState, limit int) (
 
 	quotaBlocked := make(map[int64]bool)
 	statuses := []string{models.CampaignRecipientStatusPending, models.CampaignRecipientStatusDeferred}
+	var retryRound int
+	if err := tx.Get(&retryRound, `SELECT COALESCE(MIN(failures),0) FROM campaign_retry_queue WHERE campaign_id=$1`, campID); err != nil {
+		return nil, err
+	}
 	out := make([]models.CampaignCustomer, 0, limit)
 	orgIdx := st.PoolOrgIndex
 	visited := 0
@@ -607,11 +653,14 @@ func (s *store) nextPoolCustomers(campID int, st campaignSendState, limit int) (
 				AND ex.restored_at IS NULL
 			WHERE cpr.campaign_id = $1 AND cpr.organization_id = $2
 				AND cpr.status = ANY($3::campaign_recipient_status[])
+				AND NOT campaign_recipient_retry_exhausted(cpr.campaign_id,'pool',cpr.pool_contact_id)
+				AND EXISTS(SELECT 1 FROM campaign_retry_queue rq WHERE rq.campaign_id=cpr.campaign_id
+					AND rq.recipient_type='pool' AND rq.recipient_id=cpr.pool_contact_id AND rq.failures=$4)
 				AND (NOT (SELECT retry_mode FROM campaigns WHERE id=$1) OR cpr.retry_selected)
 				AND pc.status = 'active' AND ex.contact_id IS NULL AND `+core.PoolRecipientAvailableSQL+`
 			ORDER BY cpr.pool_contact_id
 			FOR UPDATE OF cpr SKIP LOCKED
-			LIMIT 1`, campID, orgID, pq.Array(statuses)); err != nil {
+			LIMIT 1`, campID, orgID, pq.Array(statuses), retryRound); err != nil {
 			if err == sql.ErrNoRows {
 				// The organization has no deliverable recipients left; move
 				// on to the next organization in the rotation.
@@ -694,6 +743,14 @@ func (s *store) nextPoolCustomers(campID int, st campaignSendState, limit int) (
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
+	}
+	if len(out) == 0 {
+		if st.QueuedCount > 0 {
+			return nil, manager.ErrCampaignBatchPending
+		}
+		if len(quotaBlocked) > 0 {
+			return nil, manager.ErrCampaignDeferred
+		}
 	}
 	return out, nil
 }
@@ -853,14 +910,44 @@ func (s *store) UpdateCampaignCounts(campID int, toSend int, sent int, lastSubID
 }
 
 func (s *store) MarkCampaignMessageSent(campID int, subID int) error {
-	if _, err := s.queries.MarkCampaignRecipientSent.Exec(campID, subID); err != nil {
+	return s.markCampaignMessageSent(campID, int64(subID), false)
+}
+
+// Release the queued reservation and count its success in one transaction, so
+// the scheduler cannot observe spare capacity between those two writes.
+func (s *store) markCampaignMessageSent(campID int, recipientID int64, pool bool) error {
+	tx, err := s.db.Beginx()
+	if err != nil {
 		return err
 	}
-	if _, err := s.queries.IncrementCampaignDailyUsage.Exec(campID, currentLocalDate()); err != nil {
+	defer tx.Rollback()
+	// Pause and deferral lock campaign before recipient rows. Keep that order
+	// here as well when an in-flight SMTP delivery finishes during a pause.
+	if _, err := tx.Exec(`SELECT id FROM campaigns WHERE id=$1 FOR UPDATE`, campID); err != nil {
 		return err
 	}
-	_, err := s.queries.UpdateCampaignCounts.Exec(campID, 0, 1, 0)
-	return err
+	var result sql.Result
+	if pool {
+		result, err = tx.Exec(`UPDATE campaign_pool_recipients SET status='sent', sent_at=NOW(), updated_at=NOW()
+			WHERE campaign_id=$1 AND pool_contact_id=$2 AND status <> 'sent'`, campID, recipientID)
+	} else {
+		result, err = tx.Stmtx(s.queries.MarkCampaignRecipientSent).Exec(campID, recipientID)
+	}
+	if err != nil {
+		return err
+	}
+	if n, err := result.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return tx.Commit()
+	}
+	if _, err := tx.Stmtx(s.queries.IncrementCampaignDailyUsage).Exec(campID, currentLocalDate()); err != nil {
+		return err
+	}
+	if _, err := tx.Stmtx(s.queries.UpdateCampaignCounts).Exec(campID, 0, 1, 0); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *store) MarkCampaignRecipientStatus(campID int, subID int, status string) error {

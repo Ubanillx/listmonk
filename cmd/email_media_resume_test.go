@@ -77,8 +77,8 @@ func TestStartedCampaignResumesWithRemoteMedia(t *testing.T) {
 			started := time.Date(2026, 9, 1, 8, 0, 0, 0, time.UTC)
 			var campaignID int
 			if err := a.db.Get(&campaignID, `INSERT INTO campaigns(uuid,name,subject,from_email,body,content_type,messenger,
-				status,owner_user_id,started_at,to_send,sent) VALUES(gen_random_uuid(),'Historical campaign','Resume media',
-				'sender@example.test',$1,'html','email','running',1,$2,3,1) RETURNING id`, originalBody, started); err != nil {
+				status,owner_user_id,started_at,to_send,sent,smtp_rate_limit) VALUES(gen_random_uuid(),'Historical campaign','Resume media',
+				'sender@example.test',$1,'html','email','running',1,$2,3,1,1000000) RETURNING id`, originalBody, started); err != nil {
 				t.Fatal(err)
 			}
 			for i, id := range mediaIDs {

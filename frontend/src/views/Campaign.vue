@@ -567,7 +567,7 @@ export default Vue.extend({
         smtpSource: organizationWorkspace ? 'organization' : 'personal',
         smtpPoolId: null,
         poolScope: organizationWorkspace ? 'organization' : 'all_organizations',
-        smtpRateLimit: organizationWorkspace ? 100 : 20,
+        smtpRateLimit: organizationWorkspace ? 100 : 5,
         replyMailboxId: null,
         poolReplyPriority: 'contact_first',
         headersStr: '[]',
@@ -625,7 +625,7 @@ export default Vue.extend({
     },
 
     onSMTPSourceSelection(source) {
-      this.form.smtpRateLimit = source === 'organization' ? 100 : 20;
+      this.form.smtpRateLimit = source === 'organization' ? 100 : 5;
     },
 
     formatDateTime(s) {
@@ -874,7 +874,7 @@ export default Vue.extend({
           archiveMetaStr: data.archiveMeta ? JSON.stringify(data.archiveMeta, null, 4) : '{}',
           smtpSource: data.smtpSource || 'personal',
           smtpPoolId: data.smtpPoolId || null,
-          smtpRateLimit: data.smtpRateLimit || (data.smtpSource === 'organization' ? 100 : 20),
+          smtpRateLimit: data.smtpRateLimit || (data.smtpSource === 'organization' ? 100 : 5),
           poolReplyPriority: data.poolReplyPriority || 'contact_first',
           attribsStr: data.attribs ? JSON.stringify(data.attribs, null, 4) : '{}',
 

@@ -73,6 +73,7 @@ type Server struct {
 	smtppool.Opt `json:",squash"`
 
 	pool          *smtppool.Pool
+	campaignPool  *smtppool.Pool
 	gate          *sendGate
 	gateKey       string
 	connections   *sendGate
@@ -151,6 +152,18 @@ func New(name string, servers ...Server) (*Emailer, error) {
 		}
 
 		s.pool = pool
+		s.campaignPool = pool
+		if s.Opt.MaxMessageRetries > 1 {
+			// Campaign retries belong to the durable recipient queue. Keep
+			// inline network retries only for non-campaign/opt-in messages.
+			campaignOpt := s.Opt
+			campaignOpt.MaxMessageRetries = 1
+			s.campaignPool, err = smtppool.New(campaignOpt)
+			if err != nil {
+				pool.Close()
+				return nil, err
+			}
+		}
 		s.connectionKey = s.UUID
 		if s.connectionKey == "" {
 			s.connectionKey = fmt.Sprintf("%s:%d:%s", s.Host, s.Port, s.Username)
@@ -295,7 +308,11 @@ func (e *Emailer) Push(m models.Message) (err error) {
 		return err
 	}
 	defer e.limiter.Release()
-	err = srv.pool.Send(em)
+	pool := srv.pool
+	if m.Campaign != nil && m.Campaign.Type == models.CampaignTypeRegular && srv.campaignPool != nil {
+		pool = srv.campaignPool
+	}
+	err = pool.Send(em)
 	if errors.Is(err, smtppool.ErrPoolClosed) {
 		return fmt.Errorf("%w: %v", ErrSMTPUnavailable, err)
 	}
@@ -357,6 +374,9 @@ func (e *Emailer) Close() error {
 	}
 	for _, s := range e.servers {
 		s.pool.Close()
+		if s.campaignPool != nil && s.campaignPool != s.pool {
+			s.campaignPool.Close()
+		}
 		releaseSendGate(s.connectionKey)
 		if s.gate != nil {
 			releaseSendGate(s.gateKey)

@@ -34,16 +34,20 @@ type SMTPServer struct {
 	TLSSkipVerify bool    `json:"tls_skip_verify" db:"tls_skip_verify"`
 }
 
-// SMTPDeliverySettings are the platform-wide transport options applied to
-// both system notifications and account-owned SMTP delivery.
+// DefaultCampaignRecipientRetries bounds campaign retries after initial delivery.
+const DefaultCampaignRecipientRetries = 3
+
+// SMTPDeliverySettings are shared transport options plus a durable retry cap
+// that applies only to regular campaign recipients.
 type SMTPDeliverySettings struct {
-	SendDelayMin  int     `json:"send_delay_min"`
-	SendDelayMax  int     `json:"send_delay_max"`
-	MaxConns      int     `json:"max_conns"`
-	MaxMsgRetries int     `json:"max_msg_retries"`
-	IdleTimeout   string  `json:"idle_timeout"`
-	WaitTimeout   string  `json:"wait_timeout"`
-	EmailHeaders  Headers `json:"email_headers"`
+	SendDelayMin        int     `json:"send_delay_min"`
+	SendDelayMax        int     `json:"send_delay_max"`
+	MaxConns            int     `json:"max_conns"`
+	MaxMsgRetries       int     `json:"max_msg_retries"`
+	MaxRecipientRetries int     `json:"max_recipient_retries"`
+	IdleTimeout         string  `json:"idle_timeout"`
+	WaitTimeout         string  `json:"wait_timeout"`
+	EmailHeaders        Headers `json:"email_headers"`
 }
 
 // UnmarshalJSON accepts legacy duration strings while exposing milliseconds
@@ -55,10 +59,13 @@ func (s *SMTPDeliverySettings) UnmarshalJSON(b []byte) error {
 		Min json.RawMessage `json:"send_delay_min"`
 		Max json.RawMessage `json:"send_delay_max"`
 	}
-	out := settings{}
+	out := settings{MaxRecipientRetries: DefaultCampaignRecipientRetries}
 	raw.settings = &out
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return err
+	}
+	if out.MaxRecipientRetries < 0 || out.MaxRecipientRetries > 1000 {
+		return fmt.Errorf("campaign recipient retries must be an integer between 0 and 1000")
 	}
 	parse := func(value json.RawMessage) (int, error) {
 		if len(value) == 0 || string(value) == "null" {

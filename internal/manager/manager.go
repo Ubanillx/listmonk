@@ -38,6 +38,10 @@ const (
 
 var ErrCampaignDeferred = errors.New("campaign deferred")
 
+// ErrCampaignBatchPending means queued deliveries temporarily reserve the
+// remaining daily allowance. Their results must settle before fetching again.
+var ErrCampaignBatchPending = errors.New("campaign batch pending")
+
 // ErrCampaignNotRunning rejects a stale automatic transition after a manual stop.
 var ErrCampaignNotRunning = errors.New("campaign is no longer running")
 
@@ -111,18 +115,21 @@ type CampaignSendErrorDetailStore interface {
 	RecordCampaignSendFailure(models.CampaignSendFailure) error
 }
 
-func (m *Manager) recordCampaignSendError(c *models.Campaign, customer models.Customer, poolID int64, organizationID int, stage string, cause error) {
+func (m *Manager) recordCampaignSendError(c *models.Campaign, customer models.Customer, poolID int64, organizationID int, stage string, cause error) error {
 	if s, ok := m.store.(CampaignSendErrorDetailStore); ok {
 		if err := s.RecordCampaignSendFailure(makeCampaignSendFailure(c, customer, poolID, organizationID, stage, cause)); err != nil {
 			m.log.Printf("error recording campaign send failure (%s): %v", c.Name, err)
+			return err
 		}
-		return
+		return nil
 	}
 	if s, ok := m.store.(CampaignSendErrorStore); ok {
 		if err := s.RecordCampaignSendError(c.ID); err != nil {
 			m.log.Printf("error recording campaign send error (%s): %v", c.Name, err)
+			return err
 		}
 	}
+	return nil
 }
 
 // CampaignOptinListStore resolves the UUIDs of the double-opt-in lists
@@ -870,6 +877,12 @@ func (m *Manager) Run() {
 				continue
 			}
 			has, err := p.NextCustomers()
+			if errors.Is(err, ErrCampaignBatchPending) {
+				// Keep this pipe's scheduler reference while its workers settle.
+				// Other campaigns can continue fetching and delivering meanwhile.
+				go p.waitForProgress()
+				continue
+			}
 			if err != nil {
 				m.log.Printf("error processing campaign batch (%s): %v", p.camp.Name, err)
 
@@ -1143,7 +1156,7 @@ func (m *Manager) worker() {
 			if m.closed.Load() {
 				if msg.pipe != nil {
 					msg.pipe.Stop(stopReasonPause, false)
-					msg.pipe.wg.Done()
+					msg.pipe.messageDone()
 				}
 				continue
 			}
@@ -1151,7 +1164,7 @@ func (m *Manager) worker() {
 			// If the campaign has ended or stopped, ignore the message.
 			if msg.pipe != nil && msg.pipe.stopped.Load() {
 				// Reduce the message counter on the pipe.
-				msg.pipe.wg.Done()
+				msg.pipe.messageDone()
 				continue
 			}
 
@@ -1222,7 +1235,7 @@ func (m *Manager) worker() {
 			if m.closed.Load() {
 				if msg.pipe != nil {
 					msg.pipe.Stop(stopReasonPause, false)
-					msg.pipe.wg.Done()
+					msg.pipe.messageDone()
 				}
 				continue
 			}
@@ -1257,7 +1270,9 @@ func (m *Manager) worker() {
 				// Record before releasing the pipe's wait group so cleanup cannot
 				// finish ahead of the durable statistics update.
 				if msg.pipe != nil {
-					m.recordCampaignSendError(msg.Campaign, msg.Customer, msg.PoolContactID, int(msg.PoolOrganizationID), "send", err)
+					if recordErr := m.recordCampaignSendError(msg.Campaign, msg.Customer, msg.PoolContactID, int(msg.PoolOrganizationID), "send", err); recordErr != nil {
+						msg.pipe.Stop(stopReasonPause, true)
+					}
 				}
 			}
 
@@ -1291,6 +1306,7 @@ func (m *Manager) worker() {
 					}
 					if uErr != nil {
 						m.log.Printf("error resetting campaign recipient (%s:%d): %v", msg.Campaign.Name, msg.Customer.ID, uErr)
+						msg.pipe.Stop(stopReasonPause, true)
 					}
 					// Call the error callback, which keeps track of the error count
 					// and stops the campaign if the error count exceeds the threshold.
@@ -1310,6 +1326,9 @@ func (m *Manager) worker() {
 					}
 					if uErr != nil {
 						m.log.Printf("error updating campaign recipient (%s:%d): %v", msg.Campaign.Name, msg.Customer.ID, uErr)
+						// A rolled-back success still holds its queued reservation.
+						// Stop instead of waiting forever for a nonexistent worker.
+						msg.pipe.Stop(stopReasonPause, true)
 					}
 					msg.pipe.rate.Incr(1)
 					msg.pipe.sent.Add(1)
@@ -1319,7 +1338,7 @@ func (m *Manager) worker() {
 				// stop/defer signal have been persisted. Doing this first lets the
 				// cleanup goroutine race ahead and incorrectly mark a quota or SMTP
 				// failure as a naturally finished campaign.
-				msg.pipe.wg.Done()
+				msg.pipe.messageDone()
 			}
 
 		// Arbitrary message.

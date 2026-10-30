@@ -61,3 +61,23 @@ func TestSMTPDelayJSONKeepsMillisecondsAndLegacyDurations(t *testing.T) {
 		}
 	}
 }
+
+func TestCampaignRecipientRetrySettings(t *testing.T) {
+	for _, tc := range []struct {
+		json string
+		want int
+	}{
+		{`{}`, 3}, {`{"max_recipient_retries":0}`, 0}, {`{"max_recipient_retries":1000}`, 1000},
+	} {
+		var cfg SMTPDeliverySettings
+		if err := json.Unmarshal([]byte(tc.json), &cfg); err != nil || cfg.MaxRecipientRetries != tc.want {
+			t.Fatalf("%s: limit=%d err=%v", tc.json, cfg.MaxRecipientRetries, err)
+		}
+	}
+	for _, payload := range []string{`{"max_recipient_retries":-1}`, `{"max_recipient_retries":1001}`, `{"max_recipient_retries":1.5}`} {
+		var cfg SMTPDeliverySettings
+		if err := json.Unmarshal([]byte(payload), &cfg); err == nil {
+			t.Fatalf("accepted invalid recipient retry limit: %s", payload)
+		}
+	}
+}

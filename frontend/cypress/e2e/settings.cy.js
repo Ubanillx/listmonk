@@ -32,6 +32,7 @@ describe('Settings', () => {
     cy.get('[data-cy=smtp-delivery-settings]').find('select, input[type=checkbox]').should('not.exist');
     cy.get('[data-cy=system-smtp-tls-type]').select('STARTTLS');
     cy.get('[data-cy=smtp-delivery-max-conns]').clear().type('12');
+    cy.get('[data-cy=smtp-recipient-retries]').should('have.value', '3').clear().type('2');
     cy.get('[data-cy=smtp-send-delay-min]').should('have.value', '0').clear().type('2000');
     cy.get('[data-cy=smtp-send-delay-max]').should('have.value', '0').clear().type('5000');
     cy.intercept('PUT', '**/api/settings').as('saveSettings');
@@ -44,6 +45,7 @@ describe('Settings', () => {
       expect(data.smtp).to.have.length(1);
       expect(data.smtp[0].enabled).to.equal(true);
       expect(data.smtp_delivery.max_conns).to.equal(12);
+      expect(data.smtp_delivery.max_recipient_retries).to.equal(2);
       expect(data.smtp[0].tls_type).to.equal('STARTTLS');
       expect(data.smtp_delivery).not.to.have.property('tls_type');
       expect(data.smtp_delivery.send_delay_min).to.equal(2000);
@@ -54,14 +56,23 @@ describe('Settings', () => {
     cy.get('[data-cy=system-smtp-tls-type]').should('have.value', 'STARTTLS');
     cy.get('[data-cy=smtp-send-delay-min]').should('have.value', '2000');
     cy.get('[data-cy=smtp-send-delay-max]').should('have.value', '5000');
+    cy.get('[data-cy=smtp-recipient-retries]').should('have.value', '2');
     cy.get('[data-cy=smtp-delivery-settings]').screenshot('smtp-random-delay');
     cy.viewport(390, 1244);
     cy.get('[data-cy=smtp-send-delay-min]').should('be.visible');
     cy.get('[data-cy=smtp-send-delay-max]').should('be.visible');
+    cy.get('[data-cy=smtp-recipient-retries]').should('be.visible');
     cy.get('[data-cy=smtp-delivery-settings]').screenshot('smtp-random-delay-mobile');
     cy.viewport(1400, 950);
     cy.request(`${apiUrl}/api/settings`).then(({ body }) => {
       const data = body.data;
+      [-1, 1001, 1.5].forEach((limit) => {
+        const delivery = { ...data.smtp_delivery, max_recipient_retries: limit };
+        cy.request({ method: 'PUT', url: `${apiUrl}/api/settings`, body: { ...data, smtp_delivery: delivery }, failOnStatusCode: false })
+          .its('status').should('equal', 400);
+        cy.request({ method: 'PUT', url: `${apiUrl}/api/settings/smtp_delivery`, body: delivery, failOnStatusCode: false })
+          .its('status').should('equal', 400);
+      });
       data.smtp_delivery.send_delay_min = 6000;
       cy.request({ method: 'PUT', url: `${apiUrl}/api/settings`, body: data, failOnStatusCode: false })
         .its('status').should('equal', 400);

@@ -1344,7 +1344,7 @@ WHERE id = $1 AND status = 'running'
 -- Recheck every snapshot recipient immediately before queuing. This protects
 -- in-flight campaigns from a customer_list/customer being moved or transferred after
 -- the recipient snapshot was first created.
-WITH picked AS (
+WITH retry_queue AS MATERIALIZED (SELECT * FROM campaign_retry_queue WHERE campaign_id=$1), picked AS (
     SELECT cr.customer_id
     FROM campaign_recipients cr
     JOIN campaigns c ON c.id = cr.campaign_id
@@ -1359,6 +1359,10 @@ WITH picked AS (
       -- UPDATE on a query whose nullable side participates in the join,
       -- even when the lock is explicitly restricted to campaign_recipients.
       AND (c.organization_id IS NULL OR EXISTS (
+      AND NOT campaign_recipient_retry_exhausted(cr.campaign_id,'private',cr.customer_id)
+      AND (c.type<>'regular' OR (c.messenger<>'email' AND c.messenger NOT LIKE 'email-%') OR EXISTS (
+          SELECT 1 FROM retry_queue rq WHERE rq.recipient_type='private' AND rq.recipient_id=cr.customer_id
+              AND rq.failures=(SELECT MIN(failures) FROM retry_queue)))
           SELECT 1 FROM organizations organization
           WHERE organization.id = c.organization_id
             AND organization.status = 'active'
@@ -1417,7 +1421,7 @@ ORDER BY s.id;
 -- Queue first-class public-pool recipients from their immutable send snapshot.
 -- Exclusions are rechecked immediately before delivery so a manual removal or
 -- reply/complaint cannot leak through an in-flight campaign.
-WITH picked AS (
+WITH retry_queue AS MATERIALIZED (SELECT * FROM campaign_retry_queue WHERE campaign_id=$1), picked AS (
     SELECT cpr.pool_contact_id
     FROM campaign_pool_recipients cpr
     JOIN campaigns c ON c.id = cpr.campaign_id
@@ -1436,6 +1440,10 @@ WITH picked AS (
           JOIN organizations ao ON ao.id=av.organization_id AND ao.status='active'
           JOIN customer_lists al ON al.id=av.list_id AND al.status='active' AND al.transfer_pending_at IS NULL
           JOIN customer_lists ap ON ap.id=av.pool_id AND ap.status='active' AND ap.transfer_pending_at IS NULL
+      AND NOT campaign_recipient_retry_exhausted(cpr.campaign_id,'pool',cpr.pool_contact_id)
+      AND (c.type<>'regular' OR (c.messenger<>'email' AND c.messenger NOT LIKE 'email-%') OR EXISTS (
+          SELECT 1 FROM retry_queue rq WHERE rq.recipient_type='pool' AND rq.recipient_id=cpr.pool_contact_id
+              AND rq.failures=(SELECT MIN(failures) FROM retry_queue)))
           JOIN pool_members avm ON avm.pool_id=av.pool_id AND avm.contact_id=cpr.pool_contact_id
           JOIN org_pool_allocation_members am ON am.allocation_id=av.id AND am.contact_id=cpr.pool_contact_id AND am.status='active'
           WHERE av.id=cpr.allocation_id AND av.pool_id=cpr.pool_id AND av.organization_id=cpr.organization_id AND av.state='active')
@@ -1472,13 +1480,13 @@ UPDATE campaign_recipients
 SET status = 'sent',
     sent_at = NOW(),
     updated_at = NOW()
-WHERE campaign_id = $1 AND customer_id = $2;
+WHERE campaign_id = $1 AND customer_id = $2 AND status NOT IN ('sent','failed');
 
 -- name: mark-campaign-recipient-status
 UPDATE campaign_recipients
 SET status = $3::campaign_recipient_status,
     updated_at = NOW()
-WHERE campaign_id = $1 AND customer_id = $2;
+WHERE campaign_id = $1 AND customer_id = $2 AND status <> 'sent';
 
 -- name: reset-campaign-queued-recipients
 UPDATE campaign_recipients

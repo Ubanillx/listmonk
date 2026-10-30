@@ -201,6 +201,12 @@
         <div class="column is-12">
           <p class="help mb-3">{{ $t('settings.smtp.sendDelayHelp') }}</p>
         </div>
+        <div class="column is-6">
+          <b-field :label="$t('settings.smtp.recipientRetries')" :message="$t('settings.smtp.recipientRetriesHelp')">
+            <b-numberinput v-model="data.smtp_delivery.max_recipient_retries" min="0" max="1000" controls-position="compact"
+              data-cy="smtp-recipient-retries" required />
+          </b-field>
+        </div>
         <div class="column is-12">
           <b-field :label="$t('settings.smtp.setCustomHeaders')" :message="$t('settings.smtp.customHeadersHelp')">
             <b-input v-model="data.smtp_delivery.strEmailHeaders" type="textarea"

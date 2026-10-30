@@ -15,7 +15,8 @@ func TestCampaignPacingDefaultsAndIndependentCampaigns(t *testing.T) {
 		limit    int
 		interval time.Duration
 	}{
-		{"personal", 0, 3 * time.Second},
+		{"personal", 0, 12 * time.Second},
+		{"personal", 20, 3 * time.Second},
 		{"organization", 0, 600 * time.Millisecond},
 		{"organization", 30, 2 * time.Second},
 	} {

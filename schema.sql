@@ -5,7 +5,7 @@ DROP TYPE IF EXISTS customer_status CASCADE; CREATE TYPE customer_status AS ENUM
 DROP TYPE IF EXISTS subscription_status CASCADE; CREATE TYPE subscription_status AS ENUM ('unconfirmed', 'confirmed', 'unsubscribed');
 DROP TYPE IF EXISTS campaign_status CASCADE; CREATE TYPE campaign_status AS ENUM ('draft', 'running', 'scheduled', 'paused', 'deferred', 'cancelled', 'finished');
 DROP TYPE IF EXISTS campaign_type CASCADE; CREATE TYPE campaign_type AS ENUM ('regular', 'optin');
-DROP TYPE IF EXISTS campaign_recipient_status CASCADE; CREATE TYPE campaign_recipient_status AS ENUM ('pending', 'queued', 'deferred', 'sent', 'cancelled');
+DROP TYPE IF EXISTS campaign_recipient_status CASCADE; CREATE TYPE campaign_recipient_status AS ENUM ('pending', 'queued', 'deferred', 'sent', 'cancelled', 'failed');
 DROP TYPE IF EXISTS content_type CASCADE; CREATE TYPE content_type AS ENUM ('richtext', 'html', 'plain', 'markdown', 'visual');
 DROP TYPE IF EXISTS bounce_type CASCADE; CREATE TYPE bounce_type AS ENUM ('soft', 'hard', 'complaint');
 DROP TYPE IF EXISTS template_type CASCADE; CREATE TYPE template_type AS ENUM ('campaign', 'campaign_visual', 'tx');
@@ -152,7 +152,7 @@ CREATE TABLE campaigns (
     -- through the target organization's member SMTP pool.
     smtp_source         TEXT NOT NULL DEFAULT 'personal' CHECK (smtp_source IN ('personal', 'organization')),
     smtp_pool_id        BIGINT,
-    smtp_rate_limit     INT NOT NULL DEFAULT 20 CHECK (smtp_rate_limit BETWEEN 0 AND 1000000),
+    smtp_rate_limit     INT NOT NULL DEFAULT 5 CHECK (smtp_rate_limit BETWEEN 0 AND 1000000),
     pool_reply_priority TEXT NOT NULL DEFAULT 'contact_first' CHECK (pool_reply_priority IN ('contact_first','organization_first')),
     pool_scope          TEXT NOT NULL DEFAULT 'organization' CHECK (pool_scope IN ('organization', 'all_organizations')),
     -- Round-robin position into the campaign's persisted organization order.
@@ -1271,6 +1271,67 @@ CREATE TABLE campaign_send_errors (
 );
 CREATE INDEX campaign_send_errors_campaign_idx ON campaign_send_errors(campaign_id,created_at,id);
 CREATE INDEX campaign_send_errors_recipient_idx ON campaign_send_errors(campaign_id,recipient_type,recipient_id,created_at DESC,id DESC);
+
+-- Initial delivery plus max_recipient_retries failures exhausts a recipient.
+-- The immutable error stream survives pauses, restarts and targeted retries.
+CREATE OR REPLACE FUNCTION campaign_recipient_retry_exhausted(campaign_id INTEGER, recipient_type TEXT, recipient_id BIGINT)
+RETURNS BOOLEAN LANGUAGE SQL STABLE AS $$
+    SELECT EXISTS (SELECT 1 FROM campaigns c WHERE c.id=$1 AND c.type='regular'
+        AND (c.messenger='email' OR c.messenger LIKE 'email-%') AND EXISTS (
+        SELECT 1 FROM campaign_send_errors e
+        WHERE e.campaign_id=$1 AND e.recipient_type=$2 AND e.recipient_id=$3
+        OFFSET GREATEST(0, COALESCE((SELECT (value->>'max_recipient_retries')::INT FROM settings WHERE key='smtp_delivery'),3))
+        LIMIT 1
+    ));
+$$;
+
+-- Pending and in-flight recipients share one retry round across both sources.
+CREATE OR REPLACE VIEW campaign_retry_queue AS
+WITH failures AS (
+    SELECT campaign_id,recipient_type,recipient_id,COUNT(*) AS failures
+    FROM campaign_send_errors GROUP BY campaign_id,recipient_type,recipient_id
+), recipients AS (
+    SELECT cr.campaign_id,'private'::TEXT AS recipient_type,cr.customer_id::BIGINT AS recipient_id,cr.status
+    FROM campaign_recipients cr JOIN campaigns c ON c.id=cr.campaign_id
+    JOIN customers s ON s.id=cr.customer_id
+    WHERE cr.status IN ('pending','queued','deferred') AND c.owner_user_id IS NOT NULL
+        AND c.transfer_pending_at IS NULL
+        AND (c.organization_id IS NULL OR EXISTS(SELECT 1 FROM organizations o WHERE o.id=c.organization_id AND o.status='active'))
+        AND s.organization_id IS NOT DISTINCT FROM c.organization_id AND s.owner_user_id=c.owner_user_id
+        AND s.transfer_pending_at IS NULL AND (NOT c.retry_mode OR cr.retry_selected)
+        AND NOT campaign_recipient_retry_exhausted(cr.campaign_id,'private',cr.customer_id)
+        AND EXISTS(SELECT 1 FROM campaign_customer_lists cl
+            JOIN customer_lists l ON l.id=cl.customer_list_id
+            JOIN customer_list_memberships sl ON sl.customer_list_id=l.id AND sl.customer_id=s.id
+            WHERE cl.campaign_id=c.id AND l.organization_id IS NOT DISTINCT FROM c.organization_id
+                AND l.owner_user_id=c.owner_user_id AND l.transfer_pending_at IS NULL
+                AND ((c.type='optin' AND sl.status='unconfirmed' AND l.optin='double')
+                    OR (c.type<>'optin' AND ((l.optin='double' AND sl.status='confirmed')
+                        OR (l.optin<>'double' AND sl.status<>'unsubscribed')))))
+    UNION ALL
+    SELECT cpr.campaign_id,'pool'::TEXT,cpr.pool_contact_id,cpr.status
+    FROM campaign_pool_recipients cpr JOIN campaigns c ON c.id=cpr.campaign_id
+    JOIN pool_contacts pc ON pc.id=cpr.pool_contact_id
+    WHERE cpr.status IN ('pending','queued','deferred') AND pc.status='active'
+        AND (NOT c.retry_mode OR cpr.retry_selected)
+        AND (c.pool_scope='all_organizations' OR cpr.organization_id IS NOT DISTINCT FROM c.organization_id)
+        AND NOT campaign_recipient_retry_exhausted(cpr.campaign_id,'pool',cpr.pool_contact_id)
+        AND NOT EXISTS(SELECT 1 FROM org_pool_allocation_exclusions ex
+            WHERE ex.pool_id=cpr.pool_id AND ex.organization_id=cpr.organization_id
+                AND ex.contact_id=cpr.pool_contact_id AND ex.restored_at IS NULL)
+        AND EXISTS(SELECT 1 FROM org_pool_allocations a
+            JOIN organizations o ON o.id=a.organization_id AND o.status='active'
+            JOIN customer_lists al ON al.id=a.list_id AND al.status='active' AND al.transfer_pending_at IS NULL
+            JOIN customer_lists ap ON ap.id=a.pool_id AND ap.status='active' AND ap.transfer_pending_at IS NULL
+            JOIN pool_members pm ON pm.pool_id=a.pool_id AND pm.contact_id=cpr.pool_contact_id
+            JOIN org_pool_allocation_members am ON am.allocation_id=a.id AND am.contact_id=cpr.pool_contact_id AND am.status='active'
+            WHERE a.id=cpr.allocation_id AND a.pool_id=cpr.pool_id
+                AND a.organization_id=cpr.organization_id AND a.state='active')
+        AND (c.pool_scope='all_organizations' OR EXISTS(SELECT 1 FROM pool_organization_permissions p
+            WHERE p.pool_id=cpr.pool_id AND p.organization_id=cpr.organization_id))
+)
+SELECT r.*,COALESCE(f.failures,0) AS failures FROM recipients r
+LEFT JOIN failures f ON f.campaign_id=r.campaign_id AND f.recipient_type=r.recipient_type AND f.recipient_id=r.recipient_id;
 
 CREATE VIEW campaign_send_counts AS
 SELECT

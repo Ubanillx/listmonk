@@ -34,7 +34,7 @@ const (
 
 	// SMTP campaign defaults are deliberately conservative for personal pools
 	// and higher for organization pools, which are normally shared by a team.
-	DefaultPersonalSMTPRateLimit     = 20
+	DefaultPersonalSMTPRateLimit     = 5
 	DefaultOrganizationSMTPRateLimit = 100
 
 	// Public-pool audience scopes. PoolScopeOrganization keeps the legacy
@@ -77,7 +77,7 @@ type Campaign struct {
 	DailySendLimit  int         `db:"daily_send_limit" json:"daily_send_limit"`
 	DailyResumeTime string      `db:"daily_resume_time" json:"daily_resume_time"`
 	// SMTPRateLimit is the campaign-wide SMTP send cap per minute. A zero value
-	// is treated as the source default (20 for personal SMTP, 100 for an
+	// is treated as the source default (5 for personal SMTP, 100 for an
 	// organization pool) for legacy rows created before this field existed.
 	SMTPRateLimit     int             `db:"smtp_rate_limit" json:"smtp_rate_limit"`
 	NextResumeAt      null.Time       `db:"next_resume_at" json:"next_resume_at"`
@@ -158,6 +158,7 @@ const (
 	CampaignRecipientStatusSent      = "sent"
 	CampaignRecipientStatusCancelled = "cancelled"
 )
+	CampaignRecipientStatusFailed    = "failed"
 
 var reTrackableHREF = regexp.MustCompile(`(?i)(href\s*=\s*)(['"])(https?://[^"'<>]+)(['"])`)
 

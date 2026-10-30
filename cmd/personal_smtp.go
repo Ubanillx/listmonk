@@ -450,11 +450,12 @@ type smtpPlatformDefaults = models.SMTPDeliverySettings
 
 func bootstrapSMTPPlatformDefaults() smtpPlatformDefaults {
 	return smtpPlatformDefaults{
-		MaxConns:      10,
-		MaxMsgRetries: 2,
-		IdleTimeout:   "15s",
-		WaitTimeout:   "5s",
-		EmailHeaders:  models.Headers{},
+		MaxConns:            10,
+		MaxMsgRetries:       2,
+		MaxRecipientRetries: models.DefaultCampaignRecipientRetries,
+		IdleTimeout:         "15s",
+		WaitTimeout:         "5s",
+		EmailHeaders:        models.Headers{},
 	}
 }
 

@@ -17,7 +17,8 @@ func currentLocalDate() string {
 }
 
 // campaignBatchLimit returns the maximum number of recipients that may be
-// queued in this batch and whether the campaign must be deferred first.
+// queued in this batch and whether successful sends have exhausted today's
+// quota. A zero batch without deferral means queued deliveries must settle.
 // smtpRemaining is -1 when the account SMTP pool has no finite daily quota.
 // Keeping this decision independent from SQL makes the campaign cap explicit
 // and prevents a zero/legacy value from accidentally becoming unlimited.
@@ -31,12 +32,16 @@ func campaignBatchLimit(campaignType, messenger string, dailyLimit, dailySent, q
 	}
 
 	dailyLimit = normalizedCampaignDailySendLimit(dailyLimit)
-	remaining := dailyLimit - dailySent - queued
+	remaining := dailyLimit - dailySent
+	if remaining <= 0 || smtpRemaining == 0 {
+		return 0, true
+	}
+	remaining -= queued
 	if smtpRemaining >= 0 && smtpRemaining < remaining {
 		remaining = smtpRemaining
 	}
 	if remaining <= 0 {
-		return 0, true
+		return 0, false
 	}
 	if remaining < requested {
 		return remaining, false

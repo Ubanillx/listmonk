@@ -2,6 +2,10 @@
 
 快照日期：2026-10-30
 
+- **公海列表状态展示对齐私域（2026-11-01）**：移除公海与组织分配行的启用、归档和分配状态标签，状态列只保留客户状态人数。无退订时显示中性的“退订 0”，有退订时保留红色提示；零值也可点击进入退订筛选，无客户查看权限时不补零。现有退订人数和点击筛选继续复用私域形式。隔离 Cypress 公海列表 5/5、桌面/390px 截图、前端 lint/build、文档与 diff 检查通过；lint 仅既有地图 shadow warning。本地生产资源已构建、backend 已重启并核验 9173 HTTP 200。来源：`frontend/src/views/CustomerLists.vue`、`frontend/cypress/e2e/pool-list-tree.cy.js`。
+
+- **公海列表退订人数（2026-11-01）**：公海与组织分配行在原列表状态下增加同私域样式的退订人数，点击进入对应客户页并按退订筛选，刷新保留条件。非 minimal 列表接口按已授权范围批量统计有效退订排除、客户去重，沿用公海明细组织/成员边界；无 `pools:get` 不返回统计，人工移除与已恢复退订不计入。真实 PostgreSQL 专项及全量 Go（含 cmd 数据库集成）、隔离 Cypress 两组 7/7、桌面/390px 截图专项复验 1/1、前端 lint/build、文档与 diff 检查通过；lint 仅既有地图 shadow warning。已同步本地生产资源并重启 backend、核验 9173 HTTP 200；未提交或发布线上。来源：`internal/core/pool_list_stats.go`、`cmd/customer_lists.go`、`cmd/customer_status_filters_test.go`、`frontend/src/views/CustomerLists.vue`、`frontend/cypress/e2e/pool-list-tree.cy.js`。
+
 - **营销活动 B 分组统计（2026-10-30，v6.69.0）**：已实现分组列、三类真实收件人统计、文字错误状态及原明细入口；迁移只安装只读视图，不改发信。实施分支 `codex/campaign-stats-grouped`；原型保留于 `codex/prototype-campaign-stats`。验证：真实 PostgreSQL 汇总回归、`make test`、`go vet ./...`、前端 lint/build、定向 Cypress 6/6、文档检查通过；B 版桌面/手机截图已核对，收件人数列无横向滚动。本地已应用 v6.69.0、9173 返回 HTTP 200；提交 ce2b818a 已推送 master 并触发 Jenkins。该环境未提供 Jenkins 状态检查，线上版本尚未独立核验。来源：`frontend/src/views/Campaigns.vue`、`internal/migrations/v6.69.0.go`、`cmd/campaign_delivery_counts_test.go`。
 
 - **退订点击与确认对齐（2026-10-30，v6.68.0）**：活动列表显示退订相关人数（点击或确认的收件人去重并集），共用报告支持点击未确认/确认筛选；公开 GET 不更改订阅，确认 POST 沿用原子写入。升级仅在成功自助退订审计及同一分钟状态变更同时存在时补齐历史确认。生产数据库已按该规则补齐 3 条（活动 65 两条、99 一条）；活动 58 有 15 次点击、11 人、0 条可证明的确认；活动 113 列表显示 7 位退订相关收件人，明细显示 7 位已点击未确认。真实 PostgreSQL 回归覆盖私域/公海、状态过滤、无关链接、别名、权限脱敏、新装/升级一致、并集去重和幂等回填；隔离 Cypress 2/2 覆盖真实追踪点击、重复去重、确认、列表和明细。来源：`internal/migrations/v6.68.0.go`、`cmd/campaign_unsubscribe_activity_test.go`、`frontend/cypress/e2e/campaign-unsubscribes.cy.js`。master 提交 `b6ed79d1` 经 Jenkins #105 发布，生产页面及活动 113 明细已核验。

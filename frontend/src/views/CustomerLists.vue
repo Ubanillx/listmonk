@@ -4,7 +4,7 @@
       <div class="column is-10">
         <h1 class="title is-4 mb-2">
           {{ $t(isPoolGroup ? 'menu.poolLists' : 'menu.allLists') }}
-          <span v-if="queryParams.status === 'archived'" class="has-text-grey-light">/ {{ queryParams.status }} </span>
+          <span v-if="queryParams.status === 'archived'" class="has-text-grey-light">/ {{ $t('customer_lists.archived') }} </span>
           <span v-if="!isNaN(customer_lists.total)">({{ customer_lists.total }})</span>
         </h1>
 
@@ -71,13 +71,12 @@
         </b-field>
       </form>
     </div>
-    <div v-if="isPoolGroup" class="pool-list-actions">
+    <div v-if="isPoolGroup && poolGroups.length" class="pool-list-actions">
       <div>
         <strong>{{ $t('customer_lists.poolHierarchy') }}</strong>
         <span class="pool-list-result-count" aria-live="polite" data-cy="pool-list-result-count">
           {{ $t('customer_lists.poolResults', { count: poolMatchingCount, groups: poolGroups.length }) }}
         </span>
-        <p>{{ $t('customer_lists.poolHierarchyHelp') }}</p>
       </div>
       <div class="pool-list-tree-controls">
         <b-button size="is-small" icon-left="unfold-more-horizontal" :disabled="!poolGroups.length"
@@ -196,14 +195,10 @@
 
       <b-table-column v-slot="props" field="customer_counts" :label="$t('globals.fields.status')"
         header-class="cy-customer-statuses" width="12%">
-        <b-tag v-if="isPoolGroup" :type="props.row.status === 'active' && (!props.row.allocationState || props.row.allocationState === 'active') ? 'is-success' : 'is-light'"
-          class="is-light">
-          {{ $t(props.row.allocationState ? `allocation.state.${props.row.allocationState}` : (props.row.status === 'active' ? 'customer_lists.active' : 'customer_lists.archived')) }}
-        </b-tag>
-        <div v-else class="fields stats">
+        <div class="fields stats">
           <router-link v-for="(count, status) in canViewListCustomers(props.row) ? filterStatuses(props.row) : {}" :key="status"
-            class="status-item" :class="status"
-            :to="`/customers/customer-lists/${props.row.id}?subscription_status=${status}`">
+            class="status-item" :class="count > 0 ? status : 'is-empty'"
+            :to="customerListCustomersRoute(props.row, status)">
             <span class="status-label">{{ $tc(`customers.status.${status}`, count) }}</span>
             <strong>{{ $utils.formatNumber(count) }}</strong>
           </router-link>
@@ -211,11 +206,11 @@
       </b-table-column>
 
       <b-table-column v-if="!isPoolGroup" v-slot="props" field="created_at" :label="$t('globals.fields.createdAt')"
-        header-class="cy-created_at" sortable>
+        header-class="cy-created_at" sortable cell-class="date-cell">
         {{ $utils.niceDate(props.row.createdAt) }}
       </b-table-column>
       <b-table-column v-slot="props" field="updated_at" :label="$t('globals.fields.updatedAt')"
-        header-class="cy-updated_at" :cell-class="isPoolGroup ? 'pool-tree-date' : ''" sortable>
+        header-class="cy-updated_at" :cell-class="isPoolGroup ? 'pool-tree-date date-cell' : 'date-cell'" sortable>
         {{ $utils.niceDate(props.row.updatedAt) }}
       </b-table-column>
 
@@ -268,7 +263,7 @@
       <template #empty v-if="!loading.listsFull">
         <div v-if="isPoolGroup && !poolLoadError" class="pool-list-empty">
           <b-icon icon="file-tree-outline" />
-          <p>{{ $t('customer_lists.poolEmpty') }}</p>
+          <p>{{ $t(queryParams.status === 'archived' ? 'customer_lists.archivedPoolEmpty' : 'customer_lists.poolEmpty') }}</p>
           <b-button v-if="hasPoolFilters" size="is-small" @click="resetPoolFilters">{{ $t('customer_lists.resetFilters') }}</b-button>
         </div>
         <empty-placeholder v-else-if="!poolLoadError" />
@@ -506,7 +501,7 @@ export default Vue.extend({
     },
 
     filterStatuses(customerList) {
-      const out = { ...customerList.customerStatuses };
+      const out = { ...(this.isPoolGroup ? { unsubscribed: 0 } : {}), ...customerList.customerStatuses };
       if (customerList.optin === 'single') {
         delete out.unconfirmed;
         delete out.confirmed;
@@ -704,11 +699,12 @@ export default Vue.extend({
     // Pool lists render their contacts inside the customers view, so every
     // A list's customer count opens its scoped detail; the navigation's
     // public-pool entry opens the aggregate across all accessible pools.
-    customerListCustomersRoute(customerList) {
+    customerListCustomersRoute(customerList, status) {
       const isPool = customerList.type === 'pool' || customerList.type === 'org_pool_allocation';
       return {
         name: isPool ? 'poolListContacts' : 'customersCustomerList',
         params: { customerListID: customerList.id },
+        ...(status ? { query: { [isPool ? 'pool_status' : 'subscription_status']: status } } : {}),
       };
     },
   },

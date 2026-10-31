@@ -167,4 +167,76 @@ func TestPoolCustomerStatusFiltersRespectUnsubscribeOrganization(t *testing.T) {
 			t.Fatalf("allocation %d unsubscribe scope: total=%d err=%v", org, total, err)
 		}
 	}
+	checkCounts := func(org int, admin, master bool, wantPool, want101, want102 int) {
+		t.Helper()
+		rows := []models.CustomerList{
+			{Base: models.Base{ID: pool}, Type: models.CustomerListTypePool},
+			{Base: models.Base{ID: int(lists[101])}, Type: models.CustomerListTypeOrgPoolAllocation},
+			{Base: models.Base{ID: int(lists[102])}, Type: models.CustomerListTypeOrgPoolAllocation},
+			{Base: models.Base{ID: f.listID}, Type: models.CustomerListTypePublic, CustomerCounts: models.StringIntMap{"confirmed": 2}},
+		}
+		if err := f.a.core.EnrichPoolListUnsubscribeCounts(rows, org, admin, master); err != nil {
+			t.Fatal(err)
+		}
+		for i, want := range []int{wantPool, want101, want102} {
+			if got := rows[i].CustomerCounts["unsubscribed"]; got != want {
+				t.Fatalf("org=%d admin=%v master=%v list=%d count=%d want=%d", org, admin, master, rows[i].ID, got, want)
+			}
+		}
+		if rows[3].CustomerCounts["confirmed"] != 2 {
+			t.Fatal("pool counters changed private-list statistics")
+		}
+	}
+	checkCounts(0, true, false, 1, 1, 0)
+	checkCounts(101, false, false, 1, 1, 0)
+	checkCounts(102, false, false, 0, 0, 0)
+	checkCounts(0, false, true, 1, 0, 0)
+
+	// The list index exposes the same count, without widening metadata-only grants.
+	exec(`UPDATE customer_lists SET visibility='global', owner_user_id=1 WHERE id=$1`, pool)
+	for _, canRead := range []bool{true, false} {
+		user := permissionTestUser(auth.PermPoolsMasterManage, auth.PermWorkspacesPersonal)
+		if canRead {
+			user = permissionTestUser(auth.PermPoolsMasterManage, auth.PermWorkspacesPersonal, auth.PermPoolsGet)
+		}
+		user.ID = orgPoolAllocationTestMemberUser
+		rec := httptest.NewRecorder()
+		ctx := echo.New().NewContext(httptest.NewRequest(http.MethodGet, "/api/customer-lists?type_group=pool", nil), rec)
+		ctx.Set(auth.UserHTTPCtxKey, user)
+		if err := f.a.GetLists(ctx); err != nil {
+			t.Fatal(err)
+		}
+		var response struct {
+			Data struct {
+				Results []models.CustomerList `json:"results"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, row := range response.Data.Results {
+			if row.ID != pool {
+				continue
+			}
+			found = true
+			if canRead && row.CustomerCounts["unsubscribed"] != 1 {
+				t.Fatalf("list API omitted unsubscribe count: %+v", row)
+			}
+			if !canRead && (len(row.CustomerCounts) != 0 || row.CustomerCount != 0) {
+				t.Fatalf("metadata-only grant exposed customer counts: %+v", row)
+			}
+		}
+		if !found {
+			t.Fatalf("authorized pool missing from list API: %s", rec.Body.String())
+		}
+	}
+	// Opting out in two organizations still counts one source-pool customer.
+	exec(`INSERT INTO org_pool_allocation_exclusions(pool_id,organization_id,contact_id,allocation_id,reason,source)
+		SELECT pool_id,102,contact_id,$2,'unsubscribe','unsubscribe' FROM org_pool_allocation_exclusions
+		WHERE pool_id=$1 AND source='unsubscribe'`, pool, allocations[102])
+	checkCounts(0, true, false, 1, 1, 1)
+	checkCounts(102, false, false, 1, 0, 1)
+	exec(`UPDATE org_pool_allocation_exclusions SET restored_at=NOW() WHERE pool_id=$1 AND source='unsubscribe'`, pool)
+	checkCounts(0, true, false, 0, 0, 0)
 }

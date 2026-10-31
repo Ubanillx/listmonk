@@ -62,6 +62,15 @@ ______________________________________________________________________
 
 Retrieve customer_lists.
 
+For non-minimal responses, callers with `pools:get` also receive
+`customer_statuses.unsubscribed` on pool and allocation rows when the count is
+nonzero. This counts distinct contacts with an unrestored `source=unsubscribe`
+exclusion, using the same membership and organization scope as the corresponding
+pool-contacts endpoint with `status=unsubscribed`. First-level pools show all
+organizations only to platform administrators or pool master maintainers;
+allocation rows always use their own organization. Manual exclusions and restored
+unsubscribes are not counted. Metadata-only permissions do not expose these counts.
+
 > **Note:** CustomerLists with `status: archived` are hidden from customer_list selectors in campaigns, public subscription forms, and roles by default. They can only be viewed by filtering with `status=archived` or by viewing all customer_lists without a status filter.
 
 ##### Parameters

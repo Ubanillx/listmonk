@@ -42,6 +42,46 @@ describe('Public pool list hierarchy', () => {
     cy.intercept('GET', '/api/config', (req) => req.continue((res) => { res.body.data.lang = 'en'; }));
   });
 
+  it('shows unsubscribe counts on pools and allocations and opens the matching contact filter', () => {
+    cy.viewport(1280, 720);
+    cy.intercept('GET', '/api/config', (req) => req.continue((res) => { res.body.data.lang = 'zh-CN'; }));
+    mockLists([
+      { ...north, customer_statuses: { unsubscribed: 1 } },
+      list(10, 'Primary pool', 'pool', { customer_statuses: { unsubscribed: 2 } }),
+      list(20, 'Empty pool', 'pool'),
+    ]);
+    cy.loginAndVisit('/admin/pool-lists');
+    cy.contains('tbody tr', 'Primary pool').find('.status-item.unsubscribed')
+      .should('contain', '退订').and('contain', '2')
+      .and('have.attr', 'href', '/admin/pool-lists/10/contacts?pool_status=unsubscribed');
+    cy.contains('tbody tr', 'North allocation').find('.status-item.unsubscribed')
+      .should('contain', '1').and('have.attr', 'href', '/admin/pool-lists/12/contacts?pool_status=unsubscribed');
+    cy.contains('tbody tr', 'Empty pool').find('.status-item.is-empty')
+      .should('contain', '退订').and('contain', '0')
+      .and('have.attr', 'href', '/admin/pool-lists/20/contacts?pool_status=unsubscribed');
+    cy.contains('tbody tr', 'Empty pool').find('.status-item.unsubscribed').should('not.exist');
+    cy.get('tbody .fields.stats > .tag').should('not.exist');
+    cy.screenshot('pool-list-unsubscribe-counts-desktop', { capture: 'viewport' });
+    cy.viewport(390, 844);
+    cy.contains('tbody tr', 'Primary pool').find('.status-item.unsubscribed').should('be.visible');
+    cy.document().then((doc) => { expect(doc.documentElement.scrollWidth).to.be.at.most(390); });
+    cy.contains('tbody tr', 'Primary pool').scrollIntoView();
+    cy.screenshot('pool-list-unsubscribe-counts-mobile', { capture: 'viewport' });
+    cy.viewport(1400, 950);
+    cy.intercept('GET', '/api/customer-lists/10', { data: list(10, 'Primary pool', 'pool') });
+    cy.intercept('GET', '/api/customer-lists/10/org-pool-allocations*', { data: [] });
+    cy.intercept('GET', '/api/customer-lists/10/pool-contacts*', {
+      data: {
+        results: [], total: 0, per_page: 20, page: 1,
+      },
+    }).as('unsubscribedContacts');
+    cy.contains('tbody tr', 'Primary pool').find('.status-item.unsubscribed').click();
+    cy.wait('@unsubscribedContacts').its('request.query').should('include', { status: 'unsubscribed' });
+    cy.get('[data-cy=pool-status-filter]').should('have.value', 'unsubscribed');
+    cy.reload();
+    cy.get('[data-cy=pool-status-filter]').should('have.value', 'unsubscribed');
+  });
+
   it('groups allocations by real parent, filters with context and keeps selection safe', () => {
     mockLists();
     cy.loginAndVisit('/admin/pool-lists');

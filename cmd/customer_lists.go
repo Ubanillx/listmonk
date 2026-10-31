@@ -73,6 +73,11 @@ func (a *App) GetLists(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	if user := auth.GetUser(c); user.HasPerm(auth.PermPoolsGet) {
+		if err := a.core.EnrichPoolListUnsubscribeCounts(res, access.OrganizationID, user.IsPlatformAdmin(), canManagePoolMaster(user)); err != nil {
+			return err
+		}
+	}
 
 	out := models.PageResults{
 		Query:   query,

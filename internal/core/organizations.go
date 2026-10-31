@@ -834,7 +834,7 @@ func (c *Core) TransferPendingOrganizationResources(orgID, targetUserID int) err
 	for _, table := range []string{"customer_lists", "campaigns", "media"} {
 		stmt := fmt.Sprintf(`
 			UPDATE %s SET owner_user_id = $2, transfer_pending_at = NULL, updated_at = NOW()
-			WHERE organization_id = $1 AND owner_user_id IS NULL AND transfer_pending_at IS NOT NULL`, table)
+			WHERE %s`, table, pendingOrganizationResourcePredicate)
 		if _, err := tx.Exec(stmt, orgID, targetUserID); err != nil {
 			return c.organizationDBErr("transferring organization resources", err)
 		}
@@ -846,7 +846,7 @@ func (c *Core) TransferPendingOrganizationResources(orgID, targetUserID int) err
 	if _, err := tx.Exec(`
 		UPDATE templates SET owner_user_id = $2, transfer_pending_at = NULL,
 			is_default = FALSE, updated_at = NOW()
-		WHERE organization_id = $1 AND owner_user_id IS NULL AND transfer_pending_at IS NOT NULL`, orgID, targetUserID); err != nil {
+		WHERE `+pendingOrganizationResourcePredicate, orgID, targetUserID); err != nil {
 		return c.organizationDBErr("transferring organization templates", err)
 	}
 
@@ -857,8 +857,7 @@ func (c *Core) TransferPendingOrganizationResources(orgID, targetUserID int) err
 	var pending []pendingCustomer
 	if err := tx.Select(&pending, `
 		SELECT id, email FROM customers
-		WHERE organization_id = $1 AND owner_user_id IS NULL AND transfer_pending_at IS NOT NULL
-		FOR UPDATE`, orgID); err != nil {
+		WHERE `+pendingOrganizationResourcePredicate+` FOR UPDATE`, orgID); err != nil {
 		return c.organizationDBErr("fetching pending customers", err)
 	}
 	for _, source := range pending {

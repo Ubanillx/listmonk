@@ -410,6 +410,11 @@ export const transferPendingOrganizationResources = (data, organizationID) => ht
   organizationWorkspaceConfig(organizationID),
 );
 
+export const previewPendingOrganizationResources = (organizationID, page = 1) => http.get(
+  '/api/organizations/resources/pending',
+  { ...organizationWorkspaceConfig(organizationID), params: { page } },
+);
+
 export const getOrganizationMembersByID = (id) => http.get(`/api/organizations/${id}/members`);
 
 export const transferArchivedOrganizationResources = (id, data) => http.post(`/api/organizations/${id}/resources/transfer`, data);
@@ -911,6 +916,11 @@ export const logout = async () => http.post('/api/logout');
 export const deleteGCCampaignAnalytics = async (typ, beforeDate) => http.delete(
   `/api/maintenance/analytics/${typ}`,
   { loading: models.maintenance, params: { before_date: beforeDate } },
+);
+
+export const previewMaintenance = (dataset, typ, beforeDate) => http.get(
+  `/api/maintenance/${dataset}/${typ}/preview`,
+  { params: { before_date: beforeDate } },
 );
 
 export const deleteGCCustomers = async (typ) => http.delete(

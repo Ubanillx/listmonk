@@ -42,7 +42,7 @@ SMTP pool counts automatically.
   `internal/auth/models.go:111`), and answer HTTP 403
   `platform organization management permission required` otherwise. An operator
   holding that permission may also use the organization-management paths
-  (`members`, `resources/transfer`, `templates/*`, `reply-forwarding`, `invites`)
+  (`members`, `resources/pending`, `resources/transfer`, `templates/*`, `reply-forwarding`, `invites`)
   inside a selected organization without joining it — `cmd/organizations.go:233`.
 
 | Method | Endpoint                                                                 | Description                                        |
@@ -55,6 +55,7 @@ SMTP pool counts automatically.
 | POST   | [/api/organizations/members](#post-apiorganizationsmembers)               | Add a member to the active organization            |
 | PUT    | [/api/organizations/members/{user_id}](#put-apiorganizationsmembersuser_id) | Change a member's organization role               |
 | DELETE | [/api/organizations/members/{user_id}](#delete-apiorganizationsmembersuser_id) | Remove a member from the active organization   |
+| GET | /api/organizations/resources/pending | Preview all pending resources in the selected active organization |
 | GET    | [/api/organizations/{id}/members](#get-apiorganizationsidmembers)         | List members of any organization (platform)        |
 | POST   | [/api/organizations/{id}/members/bulk](#post-apiorganizationsidmembersbulk) | Bulk-add registered accounts to an organization (platform) |
 | PUT    | [/api/organizations/{id}/reply-mailbox](#put-apiorganizationsidreply-mailbox) | Set the organization's unified reply mailbox (organization manager) |
@@ -956,6 +957,33 @@ curl -u 'api_username:access_token' -X POST 'http://localhost:9000/api/organizat
 ______________________________________________________________________
 
 ### Resource transfer between members
+
+#### GET /api/organizations/resources/pending
+
+Preview the resources that the pending-transfer action currently matches. Uses
+the same organization manager/platform authorization and selected organization
+header as the POST below. Ordinary members and outsiders receive HTTP 403;
+archived organizations receive HTTP 409. Personal API keys cannot use this path.
+
+Optional `page` is a positive integer (maximum 1,000,000), default 1. Pages contain
+20 items, sorted by kind and ID; an out-of-range page is clamped to the last page.
+Totals and rows use one consistent, read-only snapshot. The predicate is the
+selected organization, a NULL owner, and a non-NULL `transfer_pending_at`. It
+covers customer lists, customers, campaigns, templates and media. No customer
+email/attributes, template bodies, or media URLs are returned.
+`original_owner_name` is the former account's current username; an empty name/zero
+owner ID means that account is no longer available.
+
+```json
+{"data":{"counts":[{"kind":"campaigns","count":1}],"results":[{"kind":"campaigns","id":42,"name":"Pending campaign","original_owner_user_id":3,"original_owner_name":"former-member","pending_at":"2026-10-01T00:00:00Z"}],"total":1,"page":1,"per_page":20}}
+```
+
+Empty results use `counts: []`, `results: []`, `total: 0`. Previewing does not
+reserve the resource set. The transfer rechecks organization status, recipient
+membership and matching resources in its existing transaction. Counts can change
+between preview and execution; duplicate customer emails may merge into fewer
+target customer rows. The UI re-queries before confirmation and names the selected
+organization and recipient. Cancel does not submit a transfer.
 
 #### POST /api/organizations/resources/transfer
 

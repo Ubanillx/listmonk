@@ -6,7 +6,7 @@
       </div>
     </header>
 
-    <b-field v-if="manageableOrganizations.length" :label="$t('organizations.manageSelectLabel')" label-position="on-border" class="section-mini mb-5">
+    <b-field v-if="manageableOrganizations.length && activeTab !== 'platform'" :label="$t('organizations.manageSelectLabel')" label-position="on-border" class="section-mini mb-5">
       <b-select v-model.number="membershipOrganizationID" expanded>
         <option v-if="!membershipOrganizationID" :value="null" disabled>{{ $t('pool.selectOrganizationPlaceholder') }}</option>
         <option v-for="organization in manageableOrganizations" :key="organization.id" :value="organization.id">
@@ -15,7 +15,7 @@
       </b-select>
     </b-field>
 
-    <b-notification v-if="selectedPlatformOrganization" type="is-light" :closable="false" data-cy="platform-managed-organization">
+    <b-notification v-if="selectedPlatformOrganization && activeTab !== 'platform'" type="is-light" :closable="false" data-cy="platform-managed-organization">
       {{ $t('organizations.manageSelectLabel') }}: {{ selectedPlatformOrganization.name }}
     </b-notification>
 
@@ -119,24 +119,9 @@
 
       <b-tab-item v-if="selectedOrganizationID" value="pending" :label="$t('organizations.tabPending')" icon="swap-horizontal">
         <section class="wrap">
-          <p class="has-text-grey mb-4">{{ $t('organizations.pendingHelp') }}</p>
-          <div class="columns is-vcentered">
-            <div class="column is-7">
-              <b-field :label="$t('organizations.receiveMember')" label-position="on-border">
-                <b-select v-model.number="transferTargetUserID" :placeholder="$t('organizations.selectRecipient')" expanded>
-                  <option :value="null">{{ $t('organizations.selectMember') }}</option>
-                  <option v-for="member in activeMembers" :key="member.userId" :value="member.userId">
-                    {{ member.username }}
-                  </option>
-                </b-select>
-              </b-field>
-            </div>
-            <div class="column is-3 is-flex is-align-items-flex-end">
-              <b-button :disabled="!transferTargetUserID" icon-left="swap-horizontal" @click="transferPendingResources">
-                {{ $t('organizations.transferResources') }}
-              </b-button>
-            </div>
-          </div>
+          <pending-resources-panel v-if="activeTab === 'pending'" :key="selectedOrganizationID"
+            :organization-id="Number(selectedOrganizationID)" :organization-name="selectedOrganization ? selectedOrganization.name : ''"
+            :members="activeMembers" @changed="refreshSelectedOrganization" />
         </section>
       </b-tab-item>
 
@@ -228,9 +213,6 @@
                     <b-icon icon="chevron-right" size="is-small" />
                   </button>
                 </div>
-                <div v-else class="notification is-light smtp-pool-empty mb-4">
-                  {{ $t('organizations.smtpPoolEmpty') }}
-                </div>
 
                 <div class="smtp-pool-create">
                   <b-field :label="$t('organizations.smtpPoolName')" label-position="on-border">
@@ -264,6 +246,7 @@
       </b-tab-item>
 
       <b-tab-item v-if="canManageAllOrganizations" value="platform" :label="$t('organizations.tabPlatform')" icon="shield-crown-outline">
+        <p class="help mb-4">{{ $t('organizations.platformScope') }}</p>
         <section class="mb-6">
           <h2 class="title is-5">{{ $t('organizations.creationRequests') }}</h2>
           <div class="table-scroll">
@@ -354,10 +337,13 @@ import { mapState } from 'vuex';
 import CopyText from '../../components/CopyText.vue';
 import ReplyMailboxSettings from '../../components/ReplyMailboxSettings.vue';
 import PersonalSMTPSettings from '../../components/PersonalSMTPSettings.vue';
+import PendingResourcesPanel from '../../components/PendingResourcesPanel.vue';
 import { wallClockISO } from '../../time';
 
 export default Vue.extend({
-  components: { CopyText, ReplyMailboxSettings, PersonalSMTPSettings },
+  components: {
+    CopyText, ReplyMailboxSettings, PersonalSMTPSettings, PendingResourcesPanel,
+  },
 
   data() {
     return {
@@ -378,7 +364,6 @@ export default Vue.extend({
       requests: [],
       platformOrganizations: [],
       newInviteCode: '',
-      transferTargetUserID: null,
       memberForm: { account: '', role: 'member' },
       inviteForm: { name: '', expiresAt: '', maxUses: null },
       isArchiveTransferVisible: false,
@@ -612,7 +597,6 @@ export default Vue.extend({
         this.members = [];
         this.invites = [];
         this.replyForwardRules = [];
-        this.transferTargetUserID = null;
         this.organizationReplyMailboxes = [];
         this.unifiedReplyMailboxID = null;
         this.smtpPools = [];
@@ -637,7 +621,6 @@ export default Vue.extend({
         this.applySMTPPools(pools);
         this.organizationReplyMailboxes = mailboxes || [];
         this.syncUnifiedReplyMailbox();
-        this.transferTargetUserID = null;
         this.normalizeTabQuery();
       } finally {
         if (revision === this.selectedDataRevision) this.isLoading = false;
@@ -806,14 +789,6 @@ export default Vue.extend({
       } finally {
         this.updatingReplyForwardRuleID = null;
       }
-    },
-
-    transferPendingResources() {
-      this.$utils.confirm(this.$t('organizations.confirmTransferPending'), async () => {
-        await this.$api.transferPendingOrganizationResources({ target_user_id: this.transferTargetUserID }, this.selectedOrganizationID);
-        this.transferTargetUserID = null;
-        await this.refreshSelectedOrganization();
-      });
     },
 
     confirmApproveRequest(request) {

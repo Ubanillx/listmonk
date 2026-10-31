@@ -249,6 +249,7 @@ func isOrganizationManagementPath(path string) bool {
 		"/api/organizations/members",
 		"/api/organizations/members/:user_id",
 		"/api/organizations/resources/transfer",
+		"/api/organizations/resources/pending",
 		"/api/organizations/templates/:id/transfer",
 		"/api/organizations/templates/:id/unpublish",
 		"/api/organizations/reply-forwarding",
@@ -821,6 +822,25 @@ func (a *App) LeaveOrganization(c echo.Context) error {
 		}
 	}
 	return c.JSON(http.StatusOK, okResp{true})
+}
+
+func (a *App) PreviewPendingOrganizationResources(c echo.Context) error {
+	ws, err := a.requireOrganizationTransferManager(c)
+	if err != nil {
+		return err
+	}
+	page := 1
+	if value := c.QueryParam("page"); value != "" {
+		page, err = strconv.Atoi(value)
+		if err != nil || page < 1 || page > 1000000 {
+			return echo.NewHTTPError(http.StatusBadRequest, "invalid page")
+		}
+	}
+	preview, err := a.core.PreviewPendingOrganizationResources(ws.OrganizationID, page)
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, okResp{preview})
 }
 
 func (a *App) TransferPendingOrganizationResources(c echo.Context) error {

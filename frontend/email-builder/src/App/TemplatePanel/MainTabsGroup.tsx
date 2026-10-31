@@ -1,3 +1,4 @@
+import { t } from '../../i18n';
 import React from 'react';
 
 import { CodeOutlined, DataObjectOutlined, EditOutlined, PreviewOutlined } from '@mui/icons-material';
@@ -23,33 +24,33 @@ export default function MainTabsGroup() {
   return (
     <Tabs value={selectedMainTab} onChange={handleChange}>
       <Tab
-        value="editor"
+        value="editor" aria-label={t('Edit')}
         label={
-          <Tooltip title="Edit">
+          <Tooltip title={t("Edit")}>
             <EditOutlined fontSize="small" />
           </Tooltip>
         }
       />
       <Tab
-        value="preview"
+        value="preview" aria-label={t('Preview')}
         label={
-          <Tooltip title="Preview">
+          <Tooltip title={t("Preview")}>
             <PreviewOutlined fontSize="small" />
           </Tooltip>
         }
       />
       <Tab
-        value="html"
+        value="html" aria-label={t('HTML output')}
         label={
-          <Tooltip title="HTML output">
+          <Tooltip title={t("HTML output")}>
             <CodeOutlined fontSize="small" />
           </Tooltip>
         }
       />
       <Tab
-        value="json"
+        value="json" aria-label={t('JSON output')}
         label={
-          <Tooltip title="JSON output">
+          <Tooltip title={t("JSON output")}>
             <DataObjectOutlined fontSize="small" />
           </Tooltip>
         }

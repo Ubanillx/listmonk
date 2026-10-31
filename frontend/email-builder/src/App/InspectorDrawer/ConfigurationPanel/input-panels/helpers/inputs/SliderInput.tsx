@@ -23,7 +23,7 @@ export default function SliderInput({ label, defaultValue, onChange, ...props }:
   return (
     <Stack spacing={1} alignItems="flex-start">
       <InputLabel shrink>{label}</InputLabel>
-      <RawSliderInput
+      <RawSliderInput label={label}
         value={value}
         setValue={(value: number) => {
           setValue(value);

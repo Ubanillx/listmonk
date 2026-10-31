@@ -17,16 +17,16 @@ const gutterForeground = '#0055d4';
 const gutterActiveForeground = '#0b216f';
 const keywordColor = '#0055d4';
 const controlKeywordColor = '#af00db';
-const variableColor = '#e45649';
+const variableColor = '#b42318';
 const classTypeColor = '#0055d4';
 const functionColor = '#795e26';
 const numberColor = '#098658';
 const operatorColor = '#383a42';
 const regexpColor = '#af00db';
-const stringColor = '#50a14f';
-const commentColor = '#999';
+const stringColor = '#267326';
+const commentColor = '#667085';
 const linkColor = '#0055d4';
-const invalidColor = '#e45649';
+const invalidColor = '#b42318';
 
 // Define the editor theme styles for VSCode Light
 const vsCodeLightTheme = /* @__PURE__ */EditorView.theme({
@@ -34,6 +34,8 @@ const vsCodeLightTheme = /* @__PURE__ */EditorView.theme({
     color: foreground,
     backgroundColor: background,
     fontFamily: 'Menlo, Monaco, Consolas, "Andale Mono", "Ubuntu Mono", "Courier New", monospace',
+    fontSize: '14px',
+    lineHeight: '1.6',
   },
   '.cm-content': {
     caretColor: caret,

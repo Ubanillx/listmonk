@@ -1,3 +1,4 @@
+import { t } from '../../../../../../../i18n';
 import React, { useState } from 'react';
 
 import { AddOutlined, CloseOutlined } from '@mui/icons-material';
@@ -42,7 +43,7 @@ export default function ColorInput({ label, defaultValue, onChange, nullable }: 
       return null;
     }
     return (
-      <ButtonBase
+      <ButtonBase aria-label={t("Reset color") + ": " + label}
         onClick={() => {
           setValue(null);
           onChange(null);
@@ -55,10 +56,10 @@ export default function ColorInput({ label, defaultValue, onChange, nullable }: 
 
   const renderOpenButton = () => {
     if (value) {
-      return <ButtonBase onClick={handleClickOpen} sx={{ ...BUTTON_SX, bgcolor: value }} />;
+      return <ButtonBase aria-label={t("Choose color") + ": " + label} onClick={handleClickOpen} sx={{ ...BUTTON_SX, bgcolor: value }} />;
     }
     return (
-      <ButtonBase onClick={handleClickOpen} sx={{ ...BUTTON_SX }}>
+      <ButtonBase aria-label={t("Choose color") + ": " + label} onClick={handleClickOpen} sx={{ ...BUTTON_SX }}>
         <AddOutlined fontSize="small" />
       </ButtonBase>
     );

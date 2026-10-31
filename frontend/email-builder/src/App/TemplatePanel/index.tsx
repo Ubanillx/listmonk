@@ -1,3 +1,4 @@
+import { t } from '../../i18n';
 import React from 'react';
 
 import { MonitorOutlined, PhoneIphoneOutlined } from '@mui/icons-material';
@@ -79,27 +80,30 @@ export default function TemplatePanel() {
           borderColor: 'divider',
           backgroundColor: 'white',
           top: 0,
-          px: 1,
+          px: { xs: 0, md: 1 },
+          '& .MuiIconButton-root': { p: { xs: 0.5, md: 1 } },
+          '& .MuiTab-root': { px: { xs: 0.75, md: 1.5 }, minWidth: 32 },
+          '& .MuiToggleButton-root': { p: { xs: 0.5, md: 0.875 } },
         }}
         direction="row"
         justifyContent="space-between"
         alignItems="center"
       >
-        <Stack px={2} direction="row" gap={2} width="100%" justifyContent="space-between" alignItems="center">
-          <Stack direction="row" spacing={2}>
+        <Stack sx={{ px: { xs: 0, md: 2 }, minWidth: 0 }} direction="row" gap={0} width="100%" justifyContent="space-between" alignItems="center">
+          <Stack direction="row" spacing={0}>
             <MainTabsGroup />
           </Stack>
-          <Stack direction="row" spacing={2}>
+          <Stack direction="row" spacing={0}>
             <DownloadJson />
             <ImportJson />
             <ToggleButtonGroup value={selectedScreenSize} exclusive size="small" onChange={handleScreenSizeChange}>
-              <ToggleButton value="desktop">
-                <Tooltip title="Desktop view">
+              <ToggleButton value="desktop" aria-label={t("Desktop view")}>
+                <Tooltip title={t("Desktop view")}>
                   <MonitorOutlined fontSize="small" />
                 </Tooltip>
               </ToggleButton>
-              <ToggleButton value="mobile">
-                <Tooltip title="Mobile view">
+              <ToggleButton value="mobile" aria-label={t("Mobile view")}>
+                <Tooltip title={t("Mobile view")}>
                   <PhoneIphoneOutlined fontSize="small" />
                 </Tooltip>
               </ToggleButton>
@@ -108,7 +112,7 @@ export default function TemplatePanel() {
         </Stack>
         <ToggleInspectorPanelButton />
       </Stack>
-      <Box sx={{ height: 'calc(100vh - 49px)', overflow: 'auto', minWidth: 370 }}>{renderMainPanel()}</Box>
+      <Box sx={{ height: 'calc(100vh - 49px)', overflow: 'auto', minWidth: 0 }}>{renderMainPanel()}</Box>
     </>
   );
 }

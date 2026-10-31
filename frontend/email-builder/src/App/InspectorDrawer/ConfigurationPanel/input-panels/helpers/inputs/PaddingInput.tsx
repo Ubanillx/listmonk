@@ -1,3 +1,4 @@
+import { t } from '../../../../../../i18n';
 import React, { useState } from 'react';
 
 import {
@@ -47,7 +48,7 @@ export default function PaddingInput({ label, defaultValue, onChange }: Props) {
     <Stack spacing={2} alignItems="flex-start" pb={1}>
       <InputLabel shrink>{label}</InputLabel>
 
-      <RawSliderInput
+      <RawSliderInput label={t('Top padding')}
         iconLabel={<AlignVerticalTopOutlined sx={{ fontSize: 16 }} />}
         value={value.top}
         setValue={(num) => handleChange('top', num)}
@@ -58,7 +59,7 @@ export default function PaddingInput({ label, defaultValue, onChange }: Props) {
         marks
       />
 
-      <RawSliderInput
+      <RawSliderInput label={t('Bottom padding')}
         iconLabel={<AlignVerticalBottomOutlined sx={{ fontSize: 16 }} />}
         value={value.bottom}
         setValue={(num) => handleChange('bottom', num)}
@@ -69,7 +70,7 @@ export default function PaddingInput({ label, defaultValue, onChange }: Props) {
         marks
       />
 
-      <RawSliderInput
+      <RawSliderInput label={t('Left padding')}
         iconLabel={<AlignHorizontalLeftOutlined sx={{ fontSize: 16 }} />}
         value={value.left}
         setValue={(num) => handleChange('left', num)}
@@ -80,7 +81,7 @@ export default function PaddingInput({ label, defaultValue, onChange }: Props) {
         marks
       />
 
-      <RawSliderInput
+      <RawSliderInput label={t('Right padding')}
         iconLabel={<AlignHorizontalRightOutlined sx={{ fontSize: 16 }} />}
         value={value.right}
         setValue={(num) => handleChange('right', num)}

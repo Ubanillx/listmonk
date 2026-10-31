@@ -19,5 +19,9 @@ export default function validateTextAreaValue(value: string): TResult {
     return { error: 'Missing "root" node' };
   }
 
+  if (parseResult.data.root.type !== 'EmailLayout') {
+    return { error: 'Invalid root node' };
+  }
+
   return { data: parseResult.data };
 }

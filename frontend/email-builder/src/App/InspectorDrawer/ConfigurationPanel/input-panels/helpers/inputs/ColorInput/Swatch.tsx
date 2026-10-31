@@ -1,3 +1,4 @@
+import { t } from '../../../../../../../i18n';
 import React from 'react';
 
 import { Box, Button, SxProps } from '@mui/material';
@@ -17,6 +18,7 @@ export default function Swatch({ paletteColors, value, onChange }: Props) {
     return (
       <Button
         key={colorValue}
+        aria-label={t("Choose color") + " " + colorValue}
         onClick={() => onChange(colorValue)}
         sx={{
           ...TILE_BUTTON,

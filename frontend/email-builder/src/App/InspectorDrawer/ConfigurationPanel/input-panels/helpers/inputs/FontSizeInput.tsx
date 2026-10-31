@@ -19,7 +19,7 @@ export default function FontSizeInput({ label, defaultValue, onChange }: Props) 
   return (
     <Stack spacing={1} alignItems="flex-start">
       <InputLabel shrink>{label}</InputLabel>
-      <RawSliderInput
+      <RawSliderInput label={label}
         iconLabel={<TextFieldsOutlined sx={{ fontSize: 16 }} />}
         value={value}
         setValue={handleChange}

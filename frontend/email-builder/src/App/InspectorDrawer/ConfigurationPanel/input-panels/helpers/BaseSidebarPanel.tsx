@@ -1,3 +1,4 @@
+import { t } from '../../../../../i18n';
 import React from 'react';
 
 import { Box, Stack, Typography } from '@mui/material';
@@ -10,7 +11,7 @@ export default function BaseSidebarPanel({ title, children }: SidebarPanelProps)
   return (
     <Box p={2}>
       <Typography variant="overline" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
-        {title}
+        {t(title)}
       </Typography>
       <Stack spacing={5} mb={3}>
         {children}

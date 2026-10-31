@@ -1,3 +1,4 @@
+import { t } from '../../../../../../i18n';
 import React, { useState } from 'react';
 
 import { FormatAlignCenterOutlined, FormatAlignLeftOutlined, FormatAlignRightOutlined } from '@mui/icons-material';
@@ -22,13 +23,13 @@ export default function TextAlignInput({ label, defaultValue, onChange }: Props)
         onChange(value);
       }}
     >
-      <ToggleButton value="left">
+      <ToggleButton value="left" aria-label={t('Align left')}>
         <FormatAlignLeftOutlined fontSize="small" />
       </ToggleButton>
-      <ToggleButton value="center">
+      <ToggleButton value="center" aria-label={t('Align center')}>
         <FormatAlignCenterOutlined fontSize="small" />
       </ToggleButton>
-      <ToggleButton value="right">
+      <ToggleButton value="right" aria-label={t('Align right')}>
         <FormatAlignRightOutlined fontSize="small" />
       </ToggleButton>
     </RadioGroupInput>

@@ -7,6 +7,15 @@ visibility additionally requires `assets:share`; saving unchanged visibility
 does not. Media use still requires `media:get`, including private assets linked
 from a shared template. See [business permissions](../business-permissions.md).
 
+The visual editor follows the admin interface language. Chinese translates
+controls, block menus, font choices and import validation; other languages retain
+the English interface. Switching language preserves the current document and
+does not translate existing email text, JSON keys, block types, URLs or template
+expressions. Newly inserted placeholder text follows the current interface
+language. On narrow screens the settings panel covers the canvas at full width;
+use Back to canvas or the toolbar's show/hide settings button to switch between
+them. Save and Cancel remain in the containing template or campaign form.
+
 | Method | Endpoint | Description |
 | :----- | :------- | :---------- |
 | GET | [/api/templates](#get-apitemplates) | Retrieve all templates |

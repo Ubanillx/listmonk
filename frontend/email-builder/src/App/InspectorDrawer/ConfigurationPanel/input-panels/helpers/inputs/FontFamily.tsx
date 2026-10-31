@@ -1,12 +1,13 @@
+import { t } from '../../../../../../i18n';
 import React, { useState } from 'react';
 
 import { MenuItem, TextField } from '@mui/material';
 
 import { FONT_FAMILIES } from '../../../../../../documents/blocks/helpers/fontFamily';
 
-const OPTIONS = FONT_FAMILIES.map((option) => (
+const options = () => FONT_FAMILIES.map((option) => (
   <MenuItem key={option.key} value={option.key} sx={{ fontFamily: option.value }}>
-    {option.label}
+    {t(option.label)}
   </MenuItem>
 ));
 
@@ -29,8 +30,8 @@ export function NullableFontFamily({ label, onChange, defaultValue }: NullablePr
         onChange(v === null ? null : v);
       }}
     >
-      <MenuItem value="inherit">Match email settings</MenuItem>
-      {OPTIONS}
+      <MenuItem value="inherit">{t("Match email settings")}</MenuItem>
+      {options()}
     </TextField>
   );
 }

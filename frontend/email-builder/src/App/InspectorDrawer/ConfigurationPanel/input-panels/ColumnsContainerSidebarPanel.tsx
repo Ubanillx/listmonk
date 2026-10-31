@@ -1,3 +1,4 @@
+import { t } from '../../../../i18n';
 import React, { useState } from 'react';
 
 import {
@@ -35,9 +36,9 @@ export default function ColumnsContainerPanel({ data, setData }: ColumnsContaine
   };
 
   return (
-    <BaseSidebarPanel title="Columns block">
+    <BaseSidebarPanel title={t("Columns block")}>
       <RadioGroupInput
-        label="Number of columns"
+        label={t("Number of columns")}
         defaultValue={data.props?.columnsCount === 2 ? '2' : '3'}
         onChange={(v) => {
           updateData({ ...data, props: { ...data.props, columnsCount: v === '2' ? 2 : 3 } });
@@ -53,7 +54,7 @@ export default function ColumnsContainerPanel({ data, setData }: ColumnsContaine
         }}
       />
       <SliderInput
-        label="Columns gap"
+        label={t("Columns gap")}
         iconLabel={<SpaceBarOutlined sx={{ color: 'text.secondary' }} />}
         units="px"
         step={4}
@@ -64,19 +65,19 @@ export default function ColumnsContainerPanel({ data, setData }: ColumnsContaine
         onChange={(columnsGap) => updateData({ ...data, props: { ...data.props, columnsGap } })}
       />
       <RadioGroupInput
-        label="Alignment"
+        label={t("Alignment")}
         defaultValue={data.props?.contentAlignment ?? 'middle'}
         onChange={(contentAlignment) => {
           updateData({ ...data, props: { ...data.props, contentAlignment } });
         }}
       >
-        <ToggleButton value="top">
+        <ToggleButton value="top" aria-label={t('Align top')}>
           <VerticalAlignTopOutlined fontSize="small" />
         </ToggleButton>
-        <ToggleButton value="middle">
+        <ToggleButton value="middle" aria-label={t('Align middle')}>
           <VerticalAlignCenterOutlined fontSize="small" />
         </ToggleButton>
-        <ToggleButton value="bottom">
+        <ToggleButton value="bottom" aria-label={t('Align bottom')}>
           <VerticalAlignBottomOutlined fontSize="small" />
         </ToggleButton>
       </RadioGroupInput>

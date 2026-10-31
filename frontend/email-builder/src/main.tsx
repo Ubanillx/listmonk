@@ -5,6 +5,7 @@ import { setDocument, resetDocument } from './documents/editor/EditorContext';
 
 import { CssBaseline, ThemeProvider } from '@mui/material';
 import theme from './theme';
+import { setLocale } from './i18n';
 
 function isRendered(containerId: string): boolean {
   const container = document.getElementById(containerId);
@@ -16,6 +17,7 @@ function isRendered(containerId: string): boolean {
 }
 
 function render(containerId: string, props: AppProps, force: boolean = false) {
+  setLocale(props.locale || 'en');
   if (!isRendered(containerId) || force) {
     const container = document.getElementById(containerId);
     if (!container) return;
@@ -31,4 +33,4 @@ function render(containerId: string, props: AppProps, force: boolean = false) {
   }
 }
 
-export { App, setDocument, resetDocument, render, isRendered, DEFAULT_SOURCE };
+export { App, setDocument, resetDocument, render, isRendered, DEFAULT_SOURCE, setLocale };

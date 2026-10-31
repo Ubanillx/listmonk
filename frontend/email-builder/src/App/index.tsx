@@ -6,6 +6,7 @@ import { setDocument, subscribeDocument, useInspectorDrawerOpen, useSamplesDrawe
 import { renderHtmlWithMeta } from '../utils';
 import InspectorDrawer, { INSPECTOR_DRAWER_WIDTH } from './InspectorDrawer';
 import TemplatePanel from './TemplatePanel';
+import { useEditorLocale } from '../i18n';
 
 export const DEFAULT_SOURCE: TEditorConfiguration = {
   "root": {
@@ -23,6 +24,7 @@ function useDrawerTransition(cssProperty: 'margin-left' | 'margin-right', open: 
 }
 
 export interface AppProps {
+  locale?: string,
   // Initial configuration to load. Optional.
   data?: TEditorConfiguration,
   // Callback for any change in document. Optional.
@@ -32,6 +34,9 @@ export interface AppProps {
 }
 
 export default function App(props: AppProps) {
+  // Re-render interface copy when the host changes language; the document
+  // seed/subscription effects below deliberately do not depend on locale.
+  useEditorLocale((state) => state.locale);
   const inspectorDrawerOpen = useInspectorDrawerOpen();
   const samplesDrawerOpen = useSamplesDrawerOpen();
 
@@ -81,7 +86,7 @@ export default function App(props: AppProps) {
 
       <Stack
         sx={{
-          marginRight: inspectorDrawerOpen ? `${INSPECTOR_DRAWER_WIDTH}px` : 0,
+          marginRight: { xs: 0, md: inspectorDrawerOpen ? `${INSPECTOR_DRAWER_WIDTH}px` : 0 },
           transition: [marginLeftTransition, marginRightTransition].join(', '),
           height: props.height ? props.height : 'auto',
         }}

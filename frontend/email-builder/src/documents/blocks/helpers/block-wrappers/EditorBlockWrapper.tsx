@@ -32,6 +32,7 @@ export default function EditorBlockWrapper({ children }: TEditorBlockWrapperProp
 
   return (
     <Box
+      data-block-id={blockId}
       sx={{
         position: 'relative',
         maxWidth: '100%',

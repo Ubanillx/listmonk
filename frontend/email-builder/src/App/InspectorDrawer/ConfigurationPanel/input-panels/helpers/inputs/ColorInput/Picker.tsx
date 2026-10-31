@@ -1,3 +1,4 @@
+import { t } from '../../../../../../../i18n';
 import React from 'react';
 import { HexColorInput, HexColorPicker } from 'react-colorful';
 
@@ -79,7 +80,7 @@ export default function Picker({ value, onChange }: Props) {
       <HexColorPicker color={value} onChange={onChange} />
       <Swatch paletteColors={DEFAULT_PRESET_COLORS} value={value} onChange={onChange} />
       <Box pt={1}>
-        <HexColorInput prefixed color={value} onChange={onChange} />
+        <HexColorInput aria-label={t("Hex color")} prefixed color={value} onChange={onChange} />
       </Box>
     </Stack>
   );

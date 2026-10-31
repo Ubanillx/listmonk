@@ -1,10 +1,12 @@
+import { t } from '../../i18n';
 import React from 'react';
 
 import {
-  Box, Drawer, Tab, Tabs,
+  Box, Button, Drawer, Tab, Tabs,
 } from '@mui/material';
+import { ArrowBackOutlined } from '@mui/icons-material';
 
-import { setSidebarTab, useInspectorDrawerOpen, useSelectedSidebarTab } from '../../documents/editor/EditorContext';
+import { setSidebarTab, toggleInspectorDrawerOpen, useInspectorDrawerOpen, useSelectedSidebarTab } from '../../documents/editor/EditorContext';
 
 import ConfigurationPanel from './ConfigurationPanel';
 import StylesPanel from './StylesPanel';
@@ -31,27 +33,32 @@ export default function InspectorDrawer() {
       className="sidebar"
       open={inspectorDrawerOpen}
       sx={{
-        width: inspectorDrawerOpen ? INSPECTOR_DRAWER_WIDTH : 0,
+        width: { xs: 0, md: inspectorDrawerOpen ? INSPECTOR_DRAWER_WIDTH : 0 },
       }}
       // Make the drawer relative to the wrapper instead of body.
-      PaperProps={{ style: { position: 'absolute', zIndex: 0 } }}
+      PaperProps={{ sx: { position: 'absolute', zIndex: 2, maxWidth: '100%', width: { xs: '100%', md: INSPECTOR_DRAWER_WIDTH },
+        top: { xs: 49, md: 0 }, height: { xs: 'calc(100% - 49px)', md: '100%' } } }}
       ModalProps={{
         container: document.querySelector('.email-builder-container'),
         style: { position: 'absolute', zIndex: 0 },
       }}
     >
       <Box sx={{
-        width: INSPECTOR_DRAWER_WIDTH, height: 49, borderBottom: 1, borderColor: 'divider',
+        width: '100%', height: { xs: 85, md: 49 }, flexShrink: 0, borderBottom: 1, borderColor: 'divider',
       }}
       >
+        <Button startIcon={<ArrowBackOutlined fontSize="small" />} onClick={toggleInspectorDrawerOpen}
+          sx={{ display: { xs: 'inline-flex', md: 'none' }, height: 36, ml: 1 }}>
+          {t('Back to canvas')}
+        </Button>
         <Box px={2}>
           <Tabs value={selectedSidebarTab} onChange={(_, v) => setSidebarTab(v)}>
-            <Tab value="styles" label="Styles" />
-            <Tab value="block-configuration" label="Inspect" />
+            <Tab value="styles" label={t("Styles")} />
+            <Tab value="block-configuration" label={t("Inspect")} />
           </Tabs>
         </Box>
       </Box>
-      <Box sx={{ width: INSPECTOR_DRAWER_WIDTH, height: 'calc(100% - 49px)', overflow: 'auto' }}>
+      <Box sx={{ width: '100%', height: { xs: 'calc(100% - 85px)', md: 'calc(100% - 49px)' }, overflow: 'auto' }}>
         {renderCurrentSidebarPanel()}
       </Box>
     </Drawer>

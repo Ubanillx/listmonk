@@ -1,3 +1,4 @@
+import { t } from '../../../../i18n';
 import React, { useState } from 'react';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import {
@@ -32,9 +33,9 @@ export default function ImageSidebarPanel({ data, setData }: ImageSidebarPanelPr
   };
 
   return (
-    <BaseSidebarPanel title="Image block">
+    <BaseSidebarPanel title={t("Image block")}>
       <TextInput
-        label="Source URL"
+        label={t("Source URL")}
         className="image-url"
         defaultValue={data.props?.url ?? ''}
         onChange={(v) => {
@@ -42,21 +43,21 @@ export default function ImageSidebarPanel({ data, setData }: ImageSidebarPanelPr
           updateData({ ...data, props: { ...data.props, url } });
         }}
       />
-      <a href="#" class="select-media"
+      <a href="#" className="select-media"
         style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', marginTop: '5px' }}
         onClick={(e) => {
         // @ts-ignore
         window.parent.postMessage('visualeditor.select-media', '*');
         e.preventDefault();
-      }}><CloudUploadIcon style={{fontSize: '1rem'}} /> Select media</a>
+      }}><CloudUploadIcon style={{fontSize: '1rem'}} /> {t("Select media")}</a>
 
       <TextInput
-        label="Alt text"
+        label={t("Alt text")}
         defaultValue={data.props?.alt ?? ''}
         onChange={(alt) => updateData({ ...data, props: { ...data.props, alt } })}
       />
       <TextInput
-        label="Click through URL"
+        label={t("Click through URL")}
         defaultValue={data.props?.linkHref ?? ''}
         onChange={(v) => {
           const linkHref = v.trim().length === 0 ? null : v.trim();
@@ -65,29 +66,29 @@ export default function ImageSidebarPanel({ data, setData }: ImageSidebarPanelPr
       />
       <Stack direction="row" spacing={2}>
         <TextDimensionInput
-          label="Width"
+          label={t("Width")}
           defaultValue={data.props?.width}
           onChange={(width) => updateData({ ...data, props: { ...data.props, width } })}
         />
         <TextDimensionInput
-          label="Height"
+          label={t("Height")}
           defaultValue={data.props?.height}
           onChange={(height) => updateData({ ...data, props: { ...data.props, height } })}
         />
       </Stack>
 
       <RadioGroupInput
-        label="Alignment"
+        label={t("Alignment")}
         defaultValue={data.props?.contentAlignment ?? 'middle'}
         onChange={(contentAlignment) => updateData({ ...data, props: { ...data.props, contentAlignment } })}
       >
-        <ToggleButton value="top">
+        <ToggleButton value="top" aria-label={t('Align top')}>
           <VerticalAlignTopOutlined fontSize="small" />
         </ToggleButton>
-        <ToggleButton value="middle">
+        <ToggleButton value="middle" aria-label={t('Align middle')}>
           <VerticalAlignCenterOutlined fontSize="small" />
         </ToggleButton>
-        <ToggleButton value="bottom">
+        <ToggleButton value="bottom" aria-label={t('Align bottom')}>
           <VerticalAlignBottomOutlined fontSize="small" />
         </ToggleButton>
       </RadioGroupInput>

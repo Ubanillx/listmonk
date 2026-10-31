@@ -1,3 +1,4 @@
+import { t } from '../../../../../../i18n';
 import React from 'react';
 
 import { TextField, Typography } from '@mui/material';
@@ -19,7 +20,7 @@ export default function TextDimensionInput({ label, defaultValue, onChange }: Te
       defaultValue={defaultValue}
       label={label}
       variant="standard"
-      placeholder="auto"
+      placeholder={t("auto")}
       size="small"
       InputProps={{
         endAdornment: (

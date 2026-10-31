@@ -1,3 +1,4 @@
+import { t } from '../../../../../../i18n';
 import React, { useState } from 'react';
 
 import { Stack } from '@mui/material';
@@ -38,7 +39,7 @@ export default function ColumnWidthsInput({ defaultValue, onChange }: ColumnsLay
   if (columnsCountValue === 3) {
     column3 = (
       <TextDimensionInput
-        label="Column 3"
+        label={t("Column 3")}
         defaultValue={currentValue?.[2]}
         onChange={(v) => {
           setIndexValue(2, v);
@@ -49,14 +50,14 @@ export default function ColumnWidthsInput({ defaultValue, onChange }: ColumnsLay
   return (
     <Stack direction="row" spacing={1}>
       <TextDimensionInput
-        label="Column 1"
+        label={t("Column 1")}
         defaultValue={currentValue?.[0]}
         onChange={(v) => {
           setIndexValue(0, v);
         }}
       />
       <TextDimensionInput
-        label="Column 2"
+        label={t("Column 2")}
         defaultValue={currentValue?.[1]}
         onChange={(v) => {
           setIndexValue(1, v);

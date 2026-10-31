@@ -35,6 +35,12 @@ export default {
     };
   },
 
+  watch: {
+    '$i18n.locale': function onLocaleChange(locale) {
+      this.$refs.visualEditor?.contentWindow.EmailBuilder?.setLocale(locale);
+    },
+  },
+
   methods: {
     onEditorFocus(event) {
       // Keep the last text field when keyboard focus moves to the outer page.
@@ -75,6 +81,7 @@ export default {
       const em = iframe.contentWindow.EmailBuilder;
       if (!em || !em.isRendered('visual-editor-container')) {
         iframe.contentWindow.EmailBuilder.render('visual-editor-container', {
+          locale: this.$i18n.locale,
           data: {},
           onChange: (data, body) => {
             // Hack to fix quotes in Go {{ templating }} in the HTML body.
@@ -150,7 +157,7 @@ export default {
     // Set basic iframe HTML structure
     iframe.srcdoc = `
       <!DOCTYPE html>
-      <html>
+      <html lang="${this.$i18n.locale}">
         <head>
           <style>
             body { margin: 0; padding: 0; }

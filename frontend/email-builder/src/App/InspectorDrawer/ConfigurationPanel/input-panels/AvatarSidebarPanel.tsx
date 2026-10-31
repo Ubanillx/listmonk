@@ -1,3 +1,4 @@
+import { t } from '../../../../i18n';
 import React, { useState } from 'react';
 
 import { AspectRatioOutlined } from '@mui/icons-material';
@@ -32,9 +33,9 @@ export default function AvatarSidebarPanel({ data, setData }: AvatarSidebarPanel
   const shape = data.props?.shape ?? AvatarPropsDefaults.shape;
 
   return (
-    <BaseSidebarPanel title="Avatar block">
+    <BaseSidebarPanel title={t("Avatar block")}>
       <SliderInput
-        label="Size"
+        label={t("Size")}
         iconLabel={<AspectRatioOutlined sx={{ color: 'text.secondary' }} />}
         units="px"
         step={3}
@@ -46,18 +47,18 @@ export default function AvatarSidebarPanel({ data, setData }: AvatarSidebarPanel
         }}
       />
       <RadioGroupInput
-        label="Shape"
+        label={t("Shape")}
         defaultValue={shape}
         onChange={(shape) => {
           updateData({ ...data, props: { ...data.props, shape } });
         }}
       >
-        <ToggleButton value="circle">Circle</ToggleButton>
-        <ToggleButton value="square">Square</ToggleButton>
-        <ToggleButton value="rounded">Rounded</ToggleButton>
+        <ToggleButton value="circle">{t("Circle")}</ToggleButton>
+        <ToggleButton value="square">{t("Square")}</ToggleButton>
+        <ToggleButton value="rounded">{t("Rounded")}</ToggleButton>
       </RadioGroupInput>
       <TextInput
-        label="Image URL"
+        label={t("Image URL")}
         className="image-url"
         defaultValue={imageUrl}
         onChange={(imageUrl) => {
@@ -65,7 +66,7 @@ export default function AvatarSidebarPanel({ data, setData }: AvatarSidebarPanel
         }}
       />
       <TextInput
-        label="Alt text"
+        label={t("Alt text")}
         defaultValue={alt}
         onChange={(alt) => {
           updateData({ ...data, props: { ...data.props, alt } });

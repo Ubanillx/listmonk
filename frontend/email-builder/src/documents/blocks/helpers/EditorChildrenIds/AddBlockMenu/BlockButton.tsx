@@ -1,3 +1,4 @@
+import { t } from '../../../../../i18n';
 import React from 'react';
 
 import { Box, Button, SxProps, Typography } from '@mui/material';
@@ -30,7 +31,7 @@ export default function BlockTypeButton({ label, icon, onClick }: BlockMenuButto
       }}
     >
       <Box sx={ICON_SX}>{icon}</Box>
-      <Typography variant="body2">{label}</Typography>
+      <Typography variant="body2">{t(label)}</Typography>
     </Button>
   );
 }

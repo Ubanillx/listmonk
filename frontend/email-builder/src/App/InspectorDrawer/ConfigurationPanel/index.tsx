@@ -1,3 +1,4 @@
+import { t } from '../../../i18n';
 import React from 'react';
 
 import { Box, Typography } from '@mui/material';
@@ -30,11 +31,11 @@ export default function ConfigurationPanel() {
   const selectedBlockId = useSelectedBlockId();
 
   if (!selectedBlockId) {
-    return renderMessage('Click on a block to inspect.');
+    return renderMessage(t('Click on a block to inspect.'));
   }
   const block = document[selectedBlockId];
   if (!block) {
-    return renderMessage(`Block with id ${selectedBlockId} was not found. Click on a block to reset.`);
+    return renderMessage(t('Selected block is unavailable. Select another block.'));
   }
 
   const setBlock = (conf: TEditorBlock) => setDocument({ [selectedBlockId]: conf });

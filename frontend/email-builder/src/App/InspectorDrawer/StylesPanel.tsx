@@ -1,3 +1,4 @@
+import { t } from '../../i18n';
 import React from 'react';
 
 import { setDocument, useDocument } from '../../documents/editor/EditorContext';
@@ -7,7 +8,7 @@ import EmailLayoutSidebarPanel from './ConfigurationPanel/input-panels/EmailLayo
 export default function StylesPanel() {
   const block = useDocument().root;
   if (!block) {
-    return <p>Block not found</p>;
+    return <p>{t("Block not found")}</p>;
   }
 
   const { data, type } = block;

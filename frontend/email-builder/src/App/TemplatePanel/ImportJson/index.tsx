@@ -1,3 +1,4 @@
+import { t } from '../../../i18n';
 import React, { useState } from 'react';
 
 import { FileUploadOutlined } from '@mui/icons-material';
@@ -15,8 +16,8 @@ export default function ImportJson() {
 
   return (
     <>
-      <Tooltip title="Import JSON">
-        <IconButton onClick={() => setOpen(true)}>
+      <Tooltip title={t("Import JSON")}>
+        <IconButton aria-label={t("Import JSON")} onClick={() => setOpen(true)}>
           <FileUploadOutlined fontSize="small" />
         </IconButton>
       </Tooltip>

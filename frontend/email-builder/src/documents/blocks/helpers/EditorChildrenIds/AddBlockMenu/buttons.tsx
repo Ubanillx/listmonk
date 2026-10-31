@@ -1,4 +1,5 @@
 import React from 'react';
+import { t } from '../../../../../i18n';
 
 import {
   AccountCircleOutlined,
@@ -27,7 +28,7 @@ export const BUTTONS: TButtonProps[] = [
     block: () => ({
       type: 'Heading',
       data: {
-        props: { text: 'Heading' },
+        props: { text: t('Heading') },
         style: {
           padding: { top: 16, bottom: 16, left: 24, right: 24 },
         },
@@ -40,7 +41,7 @@ export const BUTTONS: TButtonProps[] = [
     block: () => ({
       type: 'Text',
       data: {
-        props: { text: 'My new text block' },
+        props: { text: t('My new text block') },
         style: {
           padding: { top: 16, bottom: 16, left: 24, right: 24 },
           fontWeight: 'normal',
@@ -56,7 +57,7 @@ export const BUTTONS: TButtonProps[] = [
       type: 'Button',
       data: {
         props: {
-          text: 'Button',
+          text: t('Button'),
           url: 'https://listmonk.app',
         },
         style: { padding: { top: 16, bottom: 16, left: 24, right: 24 } },
@@ -71,7 +72,7 @@ export const BUTTONS: TButtonProps[] = [
       data: {
         props: {
           url: 'https://upload.wikimedia.org/wikipedia/commons/3/3f/Placeholder_view_vector.svg',
-          alt: 'Sample product',
+          alt: t('Sample product'),
           contentAlignment: 'middle',
           linkHref: null,
         },
@@ -120,7 +121,7 @@ export const BUTTONS: TButtonProps[] = [
     block: () => ({
       type: 'Html',
       data: {
-        props: { contents: '<strong>Hello world</strong>' },
+        props: { contents: `<strong>${t('Hello world')}</strong>` },
         style: {
           fontSize: 16,
           textAlign: null,

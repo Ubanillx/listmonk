@@ -22,6 +22,7 @@ import ContainerPropsSchema from '../blocks/Container/ContainerPropsSchema';
 import EmailLayoutEditor from '../blocks/EmailLayout/EmailLayoutEditor';
 import EmailLayoutPropsSchema from '../blocks/EmailLayout/EmailLayoutPropsSchema';
 import EditorBlockWrapper from '../blocks/helpers/block-wrappers/EditorBlockWrapper';
+import { t } from '../../i18n';
 
 const EDITOR_DICTIONARY = buildBlockConfigurationDictionary({
   Avatar: {
@@ -75,11 +76,15 @@ const EDITOR_DICTIONARY = buildBlockConfigurationDictionary({
   Image: {
     schema: ImagePropsSchema,
     Component: (data) => {
+      const placeholder = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400">
+        <rect width="600" height="400" fill="#f8f8f8"/>
+        <text x="300" y="210" text-anchor="middle" font-family="sans-serif" font-size="40" fill="#767676">${t('Image')}</text>
+      </svg>`;
       const props = {
         ...data,
         props: {
           ...data.props,
-          url: data.props?.url ?? 'https://placehold.co/600x400@2x/F8F8F8/CCC?text=Your%20image',
+          url: data.props?.url || `data:image/svg+xml,${encodeURIComponent(placeholder)}`,
         },
       };
       return (

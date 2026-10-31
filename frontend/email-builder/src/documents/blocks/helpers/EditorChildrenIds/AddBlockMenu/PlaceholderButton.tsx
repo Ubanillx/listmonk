@@ -1,3 +1,4 @@
+import { t } from '../../../../../i18n';
 import React from 'react';
 
 import { AddOutlined } from '@mui/icons-material';
@@ -8,7 +9,7 @@ type Props = {
 };
 export default function PlaceholderButton({ onClick }: Props) {
   return (
-    <ButtonBase
+    <ButtonBase aria-label={t("Add block")}
       onClick={(ev) => {
         ev.stopPropagation();
         onClick();

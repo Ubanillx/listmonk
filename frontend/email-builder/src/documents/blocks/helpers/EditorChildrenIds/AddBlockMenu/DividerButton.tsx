@@ -1,3 +1,4 @@
+import { t } from '../../../../../i18n';
 import React, { useEffect, useState } from 'react';
 
 import { AddOutlined } from '@mui/icons-material';
@@ -36,7 +37,7 @@ export default function DividerButton({ buttonElement, onClick }: Props) {
 
   return (
     <Fade in={visible}>
-      <IconButton
+      <IconButton aria-label={t("Add block")}
         size="small"
         sx={{
           p: 0.12,

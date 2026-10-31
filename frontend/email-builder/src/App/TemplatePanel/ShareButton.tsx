@@ -1,3 +1,4 @@
+import { t } from '../../i18n';
 import React, { useState } from 'react';
 
 import { IosShareOutlined } from '@mui/icons-material';
@@ -21,8 +22,8 @@ export default function ShareButton() {
 
   return (
     <>
-      <IconButton onClick={onClick}>
-        <Tooltip title="Share current template">
+      <IconButton aria-label={t("Share current template")} onClick={onClick}>
+        <Tooltip title={t("Share current template")}>
           <IosShareOutlined fontSize="small" />
         </Tooltip>
       </IconButton>
@@ -30,7 +31,7 @@ export default function ShareButton() {
         anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
         open={message !== null}
         onClose={onClose}
-        message={message}
+        message={message ? t(message) : undefined}
       />
     </>
   );

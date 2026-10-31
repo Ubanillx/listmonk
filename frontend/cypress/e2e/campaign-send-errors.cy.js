@@ -39,7 +39,7 @@ describe('Campaign send errors', () => {
     }).as('exportErrors');
     cy.loginAndVisit('/admin/campaigns');
     cy.wait('@campaigns');
-    cy.get('.campaign-send-errors a').click();
+    cy.get('[data-cy=btn-send-errors]').click();
     cy.wait('@errors');
     cy.get('.campaign-send-error-report').within(() => {
       cy.contains('共 22 次错误，汇总为 21 条记录').should('be.visible');
@@ -109,7 +109,7 @@ describe('Campaign send errors', () => {
     }).as('errors');
     cy.loginAndVisit('/admin/campaigns');
     cy.wait('@campaigns');
-    cy.get('.campaign-send-errors a').click();
+    cy.get('[data-cy=btn-send-errors]').click();
     cy.wait('@errors');
     cy.get('.campaign-send-error-report').within(() => {
       cy.get('thead th').should('have.length', 6);
@@ -189,23 +189,21 @@ describe('Campaign send errors', () => {
     ] }).as('liveStats');
     cy.loginAndVisit('/admin/campaigns');
     cy.wait('@campaigns');
-    cy.contains('tbody tr', '延期中的活动').find('.campaign-send-errors')
-      .should('contain', '有发送错误').and('not.contain', '5').and('have.class', 'has-text-danger')
-      .and('have.attr', 'title').and('contain', '历史错误');
-    cy.contains('tbody tr', '没有错误的活动').find('.campaign-send-errors')
-      .should('contain', '无发送错误').and('not.have.class', 'has-text-danger');
+    cy.contains('tbody tr', '延期中的活动').find('[data-cy=btn-send-errors]')
+      .should('be.visible').and('have.attr', 'aria-label', '发送错误统计');
+    cy.contains('tbody tr', '没有错误的活动').find('[data-cy=btn-send-errors]').should('not.exist');
     cy.wait('@liveStats');
-    cy.contains('tbody tr', '发送中的活动').find('.campaign-send-errors').should('contain', '有发送错误').and('not.contain', '7');
+    cy.contains('tbody tr', '发送中的活动').find('[data-cy=btn-send-errors]').should('be.visible');
     paused = true;
     cy.intercept('GET', '/api/campaigns/running/stats', { data: [] }).as('stoppedStats');
     cy.wait('@stoppedStats');
     cy.wait('@campaigns');
     cy.contains('tbody tr', '发送中的活动').should('contain', '暂停')
-      .find('.campaign-send-errors').should('contain', '有发送错误').and('not.contain', '8');
+      .find('[data-cy=btn-send-errors]').should('be.visible');
     cy.reload();
     cy.wait('@campaigns');
-    cy.contains('tbody tr', '发送中的活动').find('.campaign-send-errors').should('contain', '有发送错误').and('not.contain', '8');
+    cy.contains('tbody tr', '发送中的活动').find('[data-cy=btn-send-errors]').should('be.visible');
     cy.viewport(390, 844);
-    cy.contains('tbody tr', '延期中的活动').find('.campaign-send-errors').scrollIntoView().should('be.visible').and('contain', '有发送错误');
+    cy.contains('tbody tr', '延期中的活动').find('[data-cy=btn-send-errors]').scrollIntoView().should('be.visible');
   });
 });

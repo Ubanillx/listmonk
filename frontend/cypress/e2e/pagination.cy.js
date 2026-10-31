@@ -95,7 +95,10 @@ describe('Shared pagination', () => {
     cy.intercept({ method: 'GET', pathname: '/api/audit-events' }, (req) => {
       req.reply({
         data: {
-          results: [], total: 0, page: Number(req.query.page), per_page: Number(req.query.per_page),
+          results: [{
+            id: 1, action: 'auth.login_succeeded', entityType: 'user', entityId: 1,
+            actorName: 'Test operator', result: 'success', createdAt: '2026-10-31T00:00:00Z',
+          }], total: 1, page: Number(req.query.page), per_page: Number(req.query.per_page),
         },
       });
     }).as('audit');

@@ -532,6 +532,20 @@ describe('BestEDM delivery provider console', () => {
     cy.screenshot('bestedm-report-design-desktop', { capture: 'viewport' });
   });
 
+  it('keeps missing report days visible as gaps in the discrete trend', () => {
+    visitConsole();
+    cy.intercept('GET', url('statistics'), ok({ data: {
+      results: [
+        { ...statistics[0], task_date: '2026-10-15' },
+        { ...statistics[1], task_date: '2026-10-17' },
+      ], source: 'live',
+    } })).as('gappedStatistics');
+    cy.get('form.provider-filter').submit();
+    cy.wait('@gappedStatistics');
+    cy.get('[data-cy=provider-trend]').should('have.attr', 'data-point-count', '3')
+      .and('have.attr', 'data-missing-count', '1');
+  });
+
   it('keeps every tab, form and pagination control inside the mobile workspace', () => {
     visitConsole();
     cy.viewport(390, 844);

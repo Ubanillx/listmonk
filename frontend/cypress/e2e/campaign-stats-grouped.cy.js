@@ -39,7 +39,7 @@ describe('Grouped campaign statistics', () => {
         table: $wrapper[0].querySelector('table').getBoundingClientRect().width, viewport: window.innerWidth };
       expect(dimensions.scroll, JSON.stringify(dimensions)).to.be.at.most(dimensions.client);
     });
-    ['发送情况', '客户互动', '发送错误', '退订相关人数'].forEach((label) => cy.contains('th', label).should('be.visible'));
+    ['发送情况', '客户互动', '退订相关人数'].forEach((label) => cy.contains('th', label).should('be.visible'));
     cy.contains('tbody tr', 'B 分组统计活动').within(() => {
       cy.get('[data-cy=delivery-unavailable]').should('have.text', '413');
       cy.get('.campaign-progress-heading').should('contain', '1,534').and('contain', '/ 2,122');
@@ -50,10 +50,10 @@ describe('Grouped campaign statistics', () => {
         expect(fill.getBoundingClientRect().width / track.getBoundingClientRect().width).to.be.closeTo(1534 / 2122, 0.001);
         expect(getComputedStyle(fill).backgroundColor).to.equal('rgb(21, 94, 239)');
       });
-      cy.get('.campaign-send-errors').should('contain', '有发送错误').and('not.contain', '2821');
+      cy.get('[data-cy=btn-send-errors]').should('be.visible').and('not.contain', '2821');
       cy.get('.campaign-unsubscribes a').should('have.text', '24');
     });
-    cy.contains('tbody tr', '零错误活动').find('.campaign-send-errors').should('have.text', '无发送错误').find('a').should('not.exist');
+    cy.contains('tbody tr', '零错误活动').find('[data-cy=btn-send-errors]').should('not.exist');
     cy.contains('tbody tr', '零错误活动').find('.campaign-delivery-note')
       .should('contain', '未发送 175').and('contain', '2026-10-30 结束');
     cy.wait('@live');
@@ -65,7 +65,7 @@ describe('Grouped campaign statistics', () => {
       expect(track.querySelector('.campaign-progress-fill').getBoundingClientRect().width / track.getBoundingClientRect().width)
         .to.be.closeTo(1535 / 2122, 0.001);
     });
-    cy.contains('tbody tr', 'B 分组统计活动').find('.campaign-send-errors a').click();
+    cy.contains('tbody tr', 'B 分组统计活动').find('[data-cy=btn-send-errors]').click();
     cy.wait('@errors');
     cy.get('.campaign-send-error-report').should('be.visible');
     cy.get('.send-error-close').click();
@@ -80,7 +80,7 @@ describe('Grouped campaign statistics', () => {
     cy.contains('tbody tr', 'B 分组统计活动').should('contain', '暂停').find('[data-cy=delivery-sent]').should('have.text', '1,534');
     cy.viewport(390, 844);
     cy.contains('tbody tr', 'B 分组统计活动').within(() => {
-      ['.campaign-delivery', '.campaign-interaction', '.campaign-send-errors', '.campaign-unsubscribes'].forEach((selector) => {
+      ['.campaign-delivery', '.campaign-interaction', '.campaign-unsubscribes', '.actions'].forEach((selector) => {
         cy.get(selector).scrollIntoView().should('be.visible').then(($el) => {
           const bounds = $el[0].getBoundingClientRect();
           expect(bounds.left).to.be.at.least(0); expect(bounds.right).to.be.at.most(390);

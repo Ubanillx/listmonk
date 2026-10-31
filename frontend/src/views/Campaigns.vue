@@ -107,7 +107,7 @@
           <div class="campaign-delivery-states" :title="$t('campaigns.deliveryStatusHelp')">
             <span class="delivery-sent">{{ $t('campaigns.sent') }} <strong data-cy="delivery-sent">{{ $utils.formatNumber(stats.deliverySent) }}</strong></span>
             <span :class="{ 'delivery-unavailable': stats.deliveryUnavailable > 0 }">
-              {{ $t('campaigns.deliveryUnavailable') }} <strong data-cy="delivery-unavailable">{{ $utils.formatNumber(stats.deliveryUnavailable) }}</strong>
+              {{ $t('campaigns.deliveryCannotSend') }} <strong data-cy="delivery-unavailable">{{ $utils.formatNumber(stats.deliveryUnavailable) }}</strong>
             </span>
             <span>{{ $t('campaigns.deliveryPending') }} <strong data-cy="delivery-pending">{{ $utils.formatNumber(stats.deliveryPending) }}</strong></span>
           </div>

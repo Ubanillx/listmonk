@@ -92,17 +92,19 @@
         </article>
       </div>
 
+      <p class="provider-footnote mb-4">{{ t('metricHelp') }}</p>
+
       <div v-if="tab === 'overview'" class="provider-overview-grid">
         <article class="provider-panel provider-chart-panel">
           <div class="provider-panel-heading">
             <h2>{{ t('trend') }}</h2>
             <span class="provider-muted">{{ t('latestDates') }}</span>
           </div>
-          <div v-if="daily.length" class="provider-chart" role="img" :aria-label="t('trend')">
+          <div v-if="daily.length" class="provider-chart" role="img" :aria-label="t('trend')" data-cy="provider-trend"
+            :data-point-count="daily.length" :data-missing-count="dailyMissingCount">
             <chart type="line" :data="trendData" />
           </div>
           <div v-else class="provider-inline-empty">{{ busy.statistics ? t('loading') : t('noData') }}</div>
-          <p class="provider-footnote">{{ t('metricHelp') }}</p>
         </article>
 
         <article class="provider-panel provider-account-summary">
@@ -662,8 +664,23 @@ export default {
     daily() {
       const grouped = {};
       this.statistics.forEach((row) => { const value = numeric(row.total); if (value != null && row.task_date) grouped[row.task_date] = (grouped[row.task_date] || 0) + value; });
-      return Object.keys(grouped).sort().slice(-30).map((date) => ({ date, value: grouped[date] }));
+      const dates = Object.keys(grouped).sort();
+      if (!dates.length) return [];
+      const last = dateFromISO(dates[dates.length - 1]);
+      const current = dateFromISO(dates[0]);
+      if (!current || !last) return dates.map((date) => ({ date, value: grouped[date] }));
+      const windowStart = new Date(last);
+      windowStart.setDate(windowStart.getDate() - 29);
+      if (current < windowStart) current.setTime(windowStart.getTime());
+      const result = [];
+      while (current <= last) {
+        const date = isoFromDate(current);
+        result.push({ date, value: grouped[date] ?? null });
+        current.setDate(current.getDate() + 1);
+      }
+      return result;
     },
+    dailyMissingCount() { return this.daily.filter((day) => day.value == null).length; },
     trendData() {
       return {
         labels: this.daily.map((day) => day.date),
@@ -676,6 +693,7 @@ export default {
           pointRadius: 3,
           fill: true,
           tension: 0,
+          spanGaps: false,
         }],
       };
     },

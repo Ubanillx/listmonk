@@ -27,12 +27,12 @@
       </b-table-column>
 
       <b-table-column v-slot="props" field="created_at" :label="$t('globals.fields.createdAt')"
-        header-class="cy-created_at" sortable>
+        header-class="cy-created_at" sortable cell-class="date-cell">
         {{ $utils.niceDate(props.row.createdAt) }}
       </b-table-column>
 
       <b-table-column v-slot="props" field="updated_at" :label="$t('globals.fields.updatedAt')"
-        header-class="cy-updated_at" sortable>
+        header-class="cy-updated_at" sortable cell-class="date-cell">
         {{ $utils.niceDate(props.row.updatedAt) }}
       </b-table-column>
 

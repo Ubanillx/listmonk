@@ -4,9 +4,9 @@
       <p>
         <b-icon icon="lock-outline" size="is-large" />
       </p>
-      <p class="title is-5">
+      <h1 class="title is-5">
         {{ $t('globals.messages.permissionDeniedPage') }}
-      </p>
+      </h1>
       <p class="has-text-grey">
         {{ $t('globals.messages.permissionDeniedHelp') }}
       </p>

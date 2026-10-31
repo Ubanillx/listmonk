@@ -88,7 +88,7 @@
       </template>
 
       <template #empty v-if="!loading.bounces">
-        <empty-placeholder />
+        <empty-placeholder icon="email-check-outline" :label="$t('bounces.empty')" />
       </template>
     </paginated-table>
   </section>

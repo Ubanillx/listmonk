@@ -159,19 +159,9 @@
           </div>
         </div>
       </div>
-      <div v-else class="columns is-variable is-6 breakdown-section breakdown-empty">
-        <div class="column is-5-tablet is-4-desktop">
-          <div class="breakdown-chart breakdown-chart-empty">
-            <chart type="pie" :data="breakdownEmptyChartData" />
-          </div>
-        </div>
-        <div class="column is-7-tablet is-8-desktop">
-          <div class="breakdown-empty-copy">
-            <h5 class="title is-6">{{ $t('analytics.breakdown') }}</h5>
-            <p>{{ $t('analytics.breakdownUnavailable') }}</p>
-          </div>
-        </div>
-      </div>
+      <p v-else class="has-text-grey has-text-centered py-5" data-cy="breakdown-empty">
+        {{ $t('analytics.breakdownUnavailable') }}
+      </p>
     </section>
 
     <section class="report-section">
@@ -268,7 +258,7 @@
             </b-field>
           </div>
           <div class="column is-1">
-            <b-field :label="$t('campaigns.views')" label-position="on-border">
+            <b-field :label="$t('analytics.hasOpened')" label-position="on-border">
               <b-select v-model="filters.opened" expanded>
                 <option value="all">{{ $t('analytics.filterAll') }}</option>
                 <option value="yes">{{ $t('analytics.filterYes') }}</option>
@@ -277,7 +267,7 @@
             </b-field>
           </div>
           <div class="column is-1">
-            <b-field :label="$t('campaigns.clicks')" label-position="on-border">
+            <b-field :label="$t('analytics.hasClicked')" label-position="on-border">
               <b-select v-model="filters.clicked" expanded>
                 <option value="all">{{ $t('analytics.filterAll') }}</option>
                 <option value="yes">{{ $t('analytics.filterYes') }}</option>
@@ -565,17 +555,6 @@ export default Vue.extend({
           data: this.breakdownItems.map((item) => item.value),
           backgroundColor: this.breakdownItems.map((item) => item.color),
           borderWidth: 6,
-        }],
-      };
-    },
-
-    breakdownEmptyChartData() {
-      return {
-        labels: [this.$t('analytics.noBreakdownData')],
-        datasets: [{
-          data: [1],
-          backgroundColor: ['#e5e7eb'],
-          borderWidth: 0,
         }],
       };
     },

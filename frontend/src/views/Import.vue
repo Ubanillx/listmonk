@@ -13,9 +13,6 @@
         </li>
       </ul>
     </div>
-    <h2 class="title is-5">
-      {{ poolImport ? $t('import.poolTitle') : $t('import.title') }}
-    </h2>
     <b-loading :active="isLoading" />
 
     <section v-if="isFree()" class="wrap">
@@ -55,7 +52,7 @@
             <customer-list-selector :key="activeImportTab"
               :label="$t(poolImport ? 'menu.poolLists' : 'globals.terms.customer_lists')"
               :placeholder="poolImport ? $t('import.selectPoolList') : $t('import.listSubHelp')"
-              :message="poolImport ? $t('import.poolListHelp') : $t('import.listSubHelp')"
+              :message="poolImport ? $t('import.poolListHelp') : ''"
               v-model="form.customer_lists" :selected="form.customer_lists" :all="importListOptions"
               :max-selected="poolImport ? 1 : 0" />
             <p v-if="canCreateList" class="import-list-create">
@@ -72,12 +69,28 @@
             <pool-manager :key="selectedPoolLists[0].id" :pool="selectedPoolLists[0]" />
           </div>
 
+          <b-field :label="$t('import.csvFile')" label-position="on-border">
+            <b-upload v-model="form.file" drag-drop expanded :accept="uploadAccept">
+              <div class="has-text-centered section">
+                <p>
+                  <b-icon icon="file-upload-outline" size="is-large" />
+                </p>
+                <p>{{ $t('import.csvFileHelp') }}</p>
+              </div>
+            </b-upload>
+          </b-field>
+          <div class="tags" v-if="form.file">
+            <b-tag size="is-medium" closable @close="clearFile">
+              {{ form.file.name }}
+            </b-tag>
+          </div>
+
           <b-field :label="$t('import.firstRowHeader')" :message="$t('import.previewHelp')">
             <b-switch v-model="preview.firstRowHeader" :disabled="poolImport" @input="rebuildPreviewFromRaw" />
           </b-field>
           <p v-if="poolImport" class="help">{{ $t('import.poolHeaderHelp') }}</p>
 
-          <div class="columns">
+          <div v-if="preview.columns.length" class="columns">
             <div class="column">
               <b-field :label="$t('import.mapEmailField')" :message="poolImport ? $t('import.poolRequiredFieldHelp') : ''">
                 <b-select v-model="form.fieldMap.email" expanded>
@@ -100,7 +113,7 @@
             </div>
           </div>
 
-          <div v-if="form.mode === 'subscribe' || poolImport" class="columns">
+          <div v-if="preview.columns.length && (form.mode === 'subscribe' || poolImport)" class="columns">
             <div class="column is-4">
               <b-field :label="$t('import.mapCustomerCodeField')"
                 :message="$t('import.mapCustomerCodeFieldHelp')">
@@ -114,7 +127,7 @@
             </div>
           </div>
 
-          <div v-if="poolImport" class="columns">
+          <div v-if="poolImport && preview.columns.length" class="columns">
             <div class="column is-4">
               <b-field :label="$t('import.mapAllocationDepartmentField')"
                 :message="$t('import.mapAllocationDepartmentFieldHelp')">
@@ -170,21 +183,6 @@
 
           <hr />
 
-          <b-field :label="$t('import.csvFile')" label-position="on-border">
-            <b-upload v-model="form.file" drag-drop expanded :accept="uploadAccept">
-              <div class="has-text-centered section">
-                <p>
-                  <b-icon icon="file-upload-outline" size="is-large" />
-                </p>
-                <p>{{ $t('import.csvFileHelp') }}</p>
-              </div>
-            </b-upload>
-          </b-field>
-          <div class="tags" v-if="form.file">
-            <b-tag size="is-medium" closable @close="clearFile">
-              {{ form.file.name }}
-            </b-tag>
-          </div>
           <div class="buttons">
             <b-button native-type="submit" type="is-primary" :disabled="isSubmitDisabled()"
               :loading="isProcessing" data-cy="btn-upload-import">
@@ -195,10 +193,8 @@
       </form>
       <br /><br />
 
-      <div class="import-help">
-        <h5 class="title is-size-6">
-          {{ $t('import.instructions') }}
-        </h5>
+      <details class="import-help">
+        <summary class="title is-6">{{ $t('import.instructions') }}</summary>
         <p>{{ poolImport ? $t('import.poolInstructionsHelp') : $t('import.instructionsHelp') }}</p>
         <br />
         <blockquote class="csv-example">
@@ -217,7 +213,7 @@
         </h5>
 
         <pre class="csv-example" v-text="poolImport ? form.poolExample : form.example" />
-      </div>
+      </details>
 
       <section v-if="poolImport && poolImportResult" class="import-result" data-cy="pool-import-result">
         <header class="import-result-header">
@@ -1171,6 +1167,7 @@ export default Vue.extend({
   display: flex;
   align-items: flex-start;
   gap: 1rem;
+  margin-bottom: var(--lm-space-6);
 }
 
 .import-list-setup .customer_list-selector {
@@ -1194,6 +1191,7 @@ export default Vue.extend({
 
   .import-list-create {
     padding-top: 0;
+    white-space: normal;
   }
 }
 

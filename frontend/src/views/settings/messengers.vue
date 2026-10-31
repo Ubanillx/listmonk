@@ -1,5 +1,6 @@
 <template>
   <div>
+    <p v-if="!data.messengers.length" class="help mb-5">{{ $t('settings.messengers.empty') }}</p>
     <div class="items messengers">
       <div class="block box" v-for="(item, n) in data.messengers" :key="n">
         <div class="columns">
@@ -78,7 +79,7 @@
     </div><!-- mail-servers -->
 
     <b-button @click="addMessenger" icon-left="plus" type="is-primary">
-      {{ $t('globals.buttons.addNew') }}
+      {{ $t('settings.messengers.add') }}
     </b-button>
   </div>
 </template>

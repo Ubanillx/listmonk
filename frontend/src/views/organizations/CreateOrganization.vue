@@ -7,6 +7,7 @@
     </header>
 
     <section class="section-mini mb-6">
+      <p class="help mb-4">{{ $t('organizations.createRequestHelp') }}</p>
       <form @submit.prevent="submitOrganizationRequest">
         <b-field :label="$t('organizations.name')" label-position="on-border">
           <b-input ref="nameInput" v-model.trim="requestForm.name" maxlength="200" required />

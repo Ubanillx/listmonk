@@ -3,8 +3,9 @@
     <b-loading v-if="loading.users" :active="loading.users" :is-full-page="false" />
 
     <h1 class="title mb-1">
-      @{{ data.username }}
+      {{ $t('users.profile') }}
     </h1>
+    <span class="has-text-grey mr-3">@{{ data.username }}</span>
     <b-tag v-if="data.userRole">{{ data.userRole.name }}</b-tag>
 
     <br /><br />
@@ -47,7 +48,7 @@
 
             <div v-if="data.passwordLogin" class="columns">
               <div class="column is-6">
-                <b-field :label="$t('users.password')" label-position="on-border">
+                <b-field :label="$t('users.password')" label-position="on-border" :message="$t('users.passwordUnchangedHelp')">
                   <b-input minlength="8" :maxlength="200" v-model="form.password" type="password" name="password"
                     :placeholder="$t('users.password')" />
                 </b-field>

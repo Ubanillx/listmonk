@@ -38,8 +38,11 @@
           <b-table-column field="type" :label="$t('customFields.type')" width="14%" v-slot="props">
             <b-tag type="is-light">{{ fieldTypeLabel(props.row.type) }}</b-tag>
           </b-table-column>
+          <b-table-column :label="$t('customFields.valueSource')" v-slot="props">
+            {{ $t(props.row.system ? 'customFields.recipientSource' : 'customFields.ownerSource') }}
+          </b-table-column>
           <b-table-column :label="$t('customFields.placeholder')" v-slot="props">
-            <code class="placeholder-code">{{ props.row.placeholder }}</code>
+            <code class="placeholder-code"><copy-text :text="props.row.placeholder" /></code>
           </b-table-column>
           <b-table-column v-if="isAdmin" :label="$t('customFields.actions')" width="120" centered v-slot="props">
             <div v-if="!props.row.system" class="field-actions">
@@ -85,8 +88,10 @@
 <script>
 import Vue from 'vue';
 import { mapState } from 'vuex';
+import CopyText from '../components/CopyText.vue';
 
 export default Vue.extend({
+  components: { CopyText },
   data() {
     return {
       fields: [], modal: false, editing: false, types: ['text', 'textarea', 'number', 'url', 'date', 'select', 'multi_select', 'checkbox'], form: {},

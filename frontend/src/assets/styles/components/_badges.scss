@@ -38,9 +38,13 @@
 
   &.blocklisted,
   &.cancelled,
-  &.status-unsubscribed,
-  &.campaign_visual {
+  &.status-unsubscribed {
     color: #b42318;
     background: #fef3f2;
+  }
+
+  &.campaign_visual {
+    color: var(--lm-color-text-muted);
+    background: var(--lm-color-surface-subtle);
   }
 }

@@ -14,12 +14,12 @@
             {{ $t('globals.fields.uuid') }}: <copy-text :text="data.uuid" />
           </span>
         </p>
-        <h4 v-if="isEditing" class="title is-4">
+        <h1 v-if="isEditing" class="title is-4">
           {{ data.name }}
-        </h4>
-        <h4 v-else class="title is-4">
+        </h1>
+        <h1 v-else class="title is-4">
           {{ $t('campaigns.newCampaign') }}
-        </h4>
+        </h1>
       </div>
 
       <div class="column is-6">
@@ -56,6 +56,7 @@
 
     <b-loading :active="loading.campaigns" />
 
+    <p v-if="isNew" class="help mb-4" data-cy="campaign-save-first">{{ $t('campaigns.setupNextStep') }}</p>
     <b-tabs type="is-boxed" :animated="false" v-model="activeTab" @input="onTab">
       <b-tab-item v-if="isEditing && canViewAnalytics" :label="$t('campaigns.deliveryOverview')" icon="chart-bar" value="overview">
         <section class="wrap">
@@ -298,7 +299,6 @@
             </details>
 
             <div v-if="isNew" class="campaign-setup-actions">
-              <span class="help">{{ $t('campaigns.setupNextStep') }}</span>
               <b-button native-type="submit" type="is-primary" :loading="loading.campaigns" data-cy="btn-continue">
                 {{ $t('campaigns.continue') }}
               </b-button>
@@ -415,7 +415,7 @@
                   </div>
                   <div class="column is-12">
                     <a :href="`${serverConfig.root_url}/archive/${data.uuid}`" target="_blank" rel="noopener noreferer"
-                      :class="{ 'has-text-grey-light': !form.archive }" aria-label="$t('campaigns.archive')">
+                      :class="{ 'has-text-grey-light': !form.archive }" :aria-label="$t('campaigns.viewPublicPage')">
                       <b-icon icon="link-variant" />
                     </a>
                   </div>
@@ -552,6 +552,7 @@ export default Vue.extend({
       adminOwnerLists: [],
       customFields: [],
       isAltBodyFocused: false,
+      newCampaignBaseline: null,
 
       data: {},
 
@@ -686,17 +687,40 @@ export default Vue.extend({
     },
 
     isUnsaved() {
-      // A campaign that has never been saved has no server state to lose, so
-      // there is nothing to warn about. Its default template body differed from
-      // the empty server baseline, which made the page prompt on every leave
-      // (verified in the browser: the unload handler returned true on an empty
-      // new-campaign form).
       if (!this.data.id) {
-        return false;
+        return this.newCampaignBaseline !== null && this.newCampaignSnapshot() !== this.newCampaignBaseline;
       }
 
       return this.data.body !== this.form.content.body
         || this.data.contentType !== this.form.content.contentType;
+    },
+
+    newCampaignSnapshot() {
+      // Ignore asynchronously supplied defaults; protect the user's task input.
+      return JSON.stringify({
+        name: this.form.name,
+        subject: this.form.subject,
+        visibility: this.form.visibility,
+        content: this.form.content,
+        customerLists: this.form.customer_lists.map((list) => list.id),
+        smtpSource: this.form.smtpSource,
+        smtpPoolId: this.form.smtpPoolId,
+        smtpRateLimit: this.form.smtpRateLimit,
+        replyMailboxId: this.form.replyMailboxId,
+        poolScope: this.form.poolScope,
+        poolReplyPriority: this.form.poolReplyPriority,
+        dailySendLimit: this.form.dailySendLimit,
+        dailyResumeTime: this.form.dailyResumeTime,
+        sendLater: this.form.sendLater,
+        sendAtDate: this.form.sendAtDate,
+        tags: this.form.tags,
+        headersStr: this.form.headersStr,
+        attribsStr: this.form.attribsStr,
+        messenger: this.form.messenger,
+        media: this.form.media.map((item) => item.id),
+        autoTrackLinks: this.form.autoTrackLinks,
+        fromEmail: this.form.fromEmail,
+      });
     },
 
     onTab(tab) {
@@ -969,6 +993,7 @@ export default Vue.extend({
         delete data.reply_mailbox_id;
       }
       this.$api.createCampaign(data).then((d) => {
+        this.newCampaignBaseline = null;
         this.$router.push({ name: 'campaign', hash: '#content', params: { id: d.id } });
       });
       return false;
@@ -1141,10 +1166,12 @@ export default Vue.extend({
       return poolsPromise.then((pools) => {
         if (request !== this.smtpOverviewRequest) return null;
         this.smtpPools = pools || [];
+        const dirty = this.isUnsaved();
         if (this.form.smtpSource === 'organization' && !this.isPlatformPoolCampaign
           && !this.smtpPools.some((pool) => Number(pool.id) === Number(this.form.smtpPoolId))) {
           this.form.smtpPoolId = this.smtpPools.length ? this.smtpPools[0].id : null;
         }
+        if (!dirty && this.newCampaignBaseline !== null) this.newCampaignBaseline = this.newCampaignSnapshot();
         this.smtpPoolsLoaded = true;
         return this.$api.getCampaignSMTPOverview(this.form.smtpSource, this.data.id, {
           pool_scope: this.isPlatformPoolCampaign ? 'all_organizations' : 'organization',
@@ -1476,7 +1503,9 @@ export default Vue.extend({
 
   beforeRouteLeave(to, from, next) {
     if (this.isUnsaved()) {
-      this.$utils.confirm(this.$t('globals.messages.confirmDiscard'), () => next(true));
+      this.$utils.confirm(this.$t('campaigns.unsavedLeave'), () => next(true), () => next(false), {
+        type: 'is-warning', focusOn: 'cancel', confirmText: this.$t('campaigns.discardAndLeave'),
+      });
       return;
     }
     next(true);
@@ -1493,7 +1522,9 @@ export default Vue.extend({
       // An edited campaign receives its regular and pool audiences from the
       // API, and must not be reset when the global list store finishes loading.
       if (!this.isEditing) {
+        const dirty = this.isUnsaved();
         this.form.customer_lists = this.selectedLists;
+        if (!dirty && this.newCampaignBaseline !== null) this.newCampaignBaseline = this.newCampaignSnapshot();
       }
     },
 
@@ -1570,6 +1601,7 @@ export default Vue.extend({
       });
     } else {
       this.form.messenger = 'email';
+      this.newCampaignBaseline = this.newCampaignSnapshot();
     }
 
     this.$nextTick(() => {

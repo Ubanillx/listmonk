@@ -96,18 +96,19 @@
       </b-table-column>
 
       <b-table-column v-slot="props" field="createdAt" :label="$t('globals.fields.createdAt')"
-        header-class="cy-created_at" sortable>
+        header-class="cy-created_at" sortable cell-class="date-cell">
         {{ $utils.niceDate(props.row.createdAt) }}
       </b-table-column>
 
       <b-table-column v-slot="props" field="updatedAt" :label="$t('globals.fields.updatedAt')"
-        header-class="cy-updated_at" sortable>
+        header-class="cy-updated_at" sortable cell-class="date-cell">
         {{ $utils.niceDate(props.row.updatedAt) }}
       </b-table-column>
 
       <b-table-column v-slot="props" field="loggedinAt" :label="$t('users.lastLogin')" header-class="cy-updated_at"
-        sortable>
-        {{ props.row.loggedinAt ? $utils.niceDate(props.row.loggedinAt, true) : '—' }}
+        sortable cell-class="date-cell">
+        {{ props.row.loggedinAt ? $utils.niceDate(props.row.loggedinAt) : '—' }}
+        <span v-if="props.row.loggedinAt" class="is-block has-text-grey is-size-7">{{ $utils.niceDate(props.row.loggedinAt, true).slice(-5) }}</span>
       </b-table-column>
 
       <b-table-column v-slot="props" cell-class="actions" align="right">
@@ -174,7 +175,7 @@
             <b-table-column v-slot="props" field="sentToday" :label="$t('settings.personalSMTP.sentTodayShort')" numeric>
               {{ props.row.sentToday || 0 }}
             </b-table-column>
-            <b-table-column v-slot="props" field="updatedAt" :label="$t('globals.fields.updatedAt')">
+            <b-table-column v-slot="props" field="updatedAt" :label="$t('globals.fields.updatedAt')" cell-class="date-cell">
               {{ props.row.updatedAt ? $utils.niceDate(props.row.updatedAt, true) : '-' }}
             </b-table-column>
             <template #empty v-if="!smtpStatusLoading"><span class="has-text-grey">{{ $t('settings.personalSMTP.empty') }}</span></template>

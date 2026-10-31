@@ -202,6 +202,7 @@ export default class Utils {
     const o = opts || {};
     Dialog.confirm({
       scroll: 'keep',
+      title: o.title || undefined,
       message: !msg ? this.i18n.t('globals.messages.confirm') : this.escapeHTML(msg),
       type: o.type || undefined,
       confirmText: o.confirmText || this.i18n.t('globals.buttons.ok'),

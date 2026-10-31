@@ -8,6 +8,7 @@ section.campaigns {
       min-width: 0;
       > div { display: grid; grid-template-columns: repeat(3, 20px); gap: var(--lm-space-1); }
       a { display: inline-flex; align-items: center; justify-content: center; min-height: 24px; margin: 0; }
+      .campaign-error-action { color: var(--lm-color-danger); }
     }
   }
   .campaign-name { font-weight: 600; }
@@ -55,8 +56,5 @@ section.campaigns {
   .campaign-dual-metrics strong, .campaign-unsubscribes > a, .campaign-unsubscribes > span:first-child { font-size: 20px; font-weight: 600; }
   .campaign-dual-metrics span, .campaign-metric-caption { font-size: 12px; color: var(--lm-color-text-muted); }
   .campaign-metric-caption { display: block; margin-top: var(--lm-space-1); }
-  .campaign-send-errors { font-size: 12px; }
-  .campaign-send-errors.has-text-danger a { color: var(--lm-color-danger); }
-  .campaign-send-errors:not(.has-text-danger) { color: var(--lm-color-text-muted); }
   strong, .campaign-progress-percent, .campaign-unsubscribes { font-variant-numeric: tabular-nums; }
 }

@@ -187,11 +187,11 @@
           </b-tag>
         </b-table-column>
 
-        <b-table-column v-slot="props" field="created_at" :label="$t('globals.fields.createdAt')" sortable>
+        <b-table-column v-slot="props" field="created_at" :label="$t('globals.fields.createdAt')" sortable cell-class="date-cell">
           {{ $utils.niceDate(poolRowValue(props.row, 'createdAt', 'created_at')) }}
         </b-table-column>
 
-        <b-table-column v-slot="props" field="updated_at" :label="$t('globals.fields.updatedAt')" sortable>
+        <b-table-column v-slot="props" field="updated_at" :label="$t('globals.fields.updatedAt')" sortable cell-class="date-cell">
           {{ $utils.niceDate(poolRowValue(props.row, 'updatedAt', 'updated_at')) }}
         </b-table-column>
 
@@ -355,12 +355,12 @@
       </b-table-column>
 
       <b-table-column v-slot="props" field="created_at" :label="$t('globals.fields.createdAt')"
-        header-class="cy-created_at" sortable>
+        header-class="cy-created_at" sortable cell-class="date-cell">
         {{ $utils.niceDate(props.row.createdAt) }}
       </b-table-column>
 
       <b-table-column v-slot="props" field="updated_at" :label="$t('globals.fields.updatedAt')"
-        header-class="cy-updated_at" sortable>
+        header-class="cy-updated_at" sortable cell-class="date-cell">
         {{ $utils.niceDate(props.row.updatedAt) }}
       </b-table-column>
 

@@ -20,7 +20,7 @@
         </b-field>
 
         <b-field :label="$t('pool.tableEmail')" required>
-          <b-input v-model.trim="form.email" type="email" :disabled="isEditing && nameOnly" data-cy="pool-form-email" />
+          <b-input v-model.trim="form.email" type="email" required :disabled="isEditing && nameOnly" data-cy="pool-form-email" />
         </b-field>
 
         <b-field :label="$t('pool.tableReplyTo')" :message="$t('import.mapReplyToFieldHelp')">
@@ -29,7 +29,11 @@
 
         <b-field :label="$t('pool.tableDepartment')"
           :message="$t('pool.formDepartmentHelp')">
-          <b-input v-model.trim="form.allocation_department" :disabled="isEditing && nameOnly" data-cy="pool-form-department" />
+          <b-input v-model.trim="form.allocation_department" list="pool-form-organizations"
+            :disabled="isEditing && nameOnly" data-cy="pool-form-department" />
+          <datalist id="pool-form-organizations">
+            <option v-for="organization in organizations" :key="organization.id" :value="organization.name" />
+          </datalist>
         </b-field>
       </section>
       <footer class="modal-card-foot has-text-right">
@@ -63,6 +67,7 @@ export default Vue.extend({
   data() {
     return {
       loading: false,
+      organizations: [],
       selectedPoolID: this.poolLists.length ? this.poolLists[0].id : 0,
       form: {
         customer_code: '',
@@ -78,6 +83,15 @@ export default Vue.extend({
     targetPoolID() {
       return this.poolListID || Number(this.selectedPoolID);
     },
+  },
+
+  mounted() {
+    if (!this.nameOnly && this.$can('pools:delivery_manage', 'pools:allocation_platform_manage')) {
+      const params = this.$can('pools:allocation_platform_manage') ? { purpose: 'allocations' } : {};
+      this.$api.getPoolOrganizations(params).then((rows) => {
+        this.organizations = rows || [];
+      }).catch(() => this.$utils.toast(this.$t('pool.organizationLoadFailed'), 'is-danger'));
+    }
   },
 
   watch: {

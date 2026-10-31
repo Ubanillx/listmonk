@@ -121,15 +121,6 @@
         </div>
       </b-table-column>
 
-      <b-table-column v-slot="props" field="sendErrors" :label="$t('campaigns.deliveryErrors')" width="9%" cell-class="campaign-error-column">
-        <div class="campaign-send-errors" :set="stats = getCampaignStats(props.row)" :class="{ 'has-text-danger': stats.sendErrors > 0 }"
-          :title="$t('campaigns.deliveryErrorsHelp')">
-          <a v-if="stats.sendErrors > 0 && $canReadCampaignSendErrors(props.row)" href="#" @click.prevent="sendErrorCampaign = props.row"
-            :aria-label="$t('campaigns.sendErrorDetails')">{{ $t('campaigns.deliveryHasErrors') }}</a>
-          <span v-else>{{ $t(stats.sendErrors > 0 ? 'campaigns.deliveryHasErrors' : 'campaigns.deliveryNoErrors') }}</span>
-        </div>
-      </b-table-column>
-
       <b-table-column v-slot="props" field="unsubscribeActivity" :label="$t('campaigns.unsubscribeActivity')" width="10%" cell-class="campaign-unsubscribe-column">
         <div class="campaign-unsubscribes" :set="stats = getCampaignStats(props.row)" :title="$t('campaigns.unsubscribesHelp')">
           <a v-if="$canReadCampaignUnsubscribes(props.row) && (stats.unsubscribeActivity || 0) > 0" href="#"
@@ -193,6 +184,13 @@
             </a>
           </template>
 
+          <a v-if="getCampaignStats(props.row).sendErrors > 0 && $canReadCampaignSendErrors(props.row)" href="#"
+            @click.prevent="sendErrorCampaign = props.row" data-cy="btn-send-errors"
+            class="campaign-error-action" :aria-label="$t('campaigns.sendErrorDetails')">
+            <b-tooltip :label="$t('campaigns.sendErrorDetails')" type="is-dark">
+              <b-icon icon="alert-circle-outline" size="is-small" />
+            </b-tooltip>
+          </a>
           <a href="#" @click.prevent="previewCampaign(props.row)" data-cy="btn-preview"
             :aria-label="$t('campaigns.preview')">
             <b-tooltip :label="$t('campaigns.preview')" type="is-dark">

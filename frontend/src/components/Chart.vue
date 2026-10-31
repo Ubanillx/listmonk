@@ -58,7 +58,6 @@ const DEFAULT_LINE = {
   data: {},
   options: {
     responsive: true,
-    lineTension: 0.5,
     maintainAspectRatio: false,
     interaction: {
       intersect: false,
@@ -98,6 +97,7 @@ const DEFAULT_LINE = {
       },
     },
   },
+  spanGaps: false,
 };
 
 const DEFAULT_BAR = {

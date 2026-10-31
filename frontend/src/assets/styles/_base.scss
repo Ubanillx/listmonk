@@ -97,6 +97,17 @@ body {
   max-width: var(--lm-field-max-width);
 }
 
+// Keep decorations and counters inside the same boundary as their control.
+.main .field .control:has(> .input):not(.is-expanded),
+.main .field .control:has(> .select),
+.main .field .control > .select {
+  max-width: var(--lm-field-max-width);
+}
+
+.main .field .select select {
+  width: 100%;
+}
+
 .field.is-floating-label {
   > .label {
     max-width: calc(min(100%, var(--lm-field-max-width)) - 2em);

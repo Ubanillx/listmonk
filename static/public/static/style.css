@@ -127,7 +127,7 @@ input[disabled] {
   margin-bottom: 20px;
 }
 .customer_lists {
-  customer_list-style-type: none;
+  list-style-type: none;
   padding: 0;
 }
   .customer_lists li {
@@ -148,7 +148,7 @@ input[disabled] {
   }
 
 .archive {
-  customer_list-style-type: none;
+  list-style-type: none;
   margin: 25px 0 0 0;
   padding: 0;
 }
@@ -454,13 +454,13 @@ body:has(.login-page) footer.container {
 }
 
 /* Workspace selection options. */
-.space-customer_list {
-  customer_list-style: none;
+.space-list {
+  list-style: none;
   margin: 22px 0 0 0;
   padding: 0;
 }
 
-.space-customer_list li {
+.space-list li {
   margin: 0 0 10px 0;
 }
 
@@ -603,3 +603,5 @@ body:has(.login-page) footer.container {
     width: 100%;
   }
 }
+
+.customerLists { list-style: none; padding-left: 0; }

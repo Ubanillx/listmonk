@@ -40,7 +40,11 @@
           {{ $t('forms.formHTMLHelp') }}
         </p>
 
-        <code-editor lang="html" v-if="checked.length > 0" v-model="html" disabled />
+        <template v-if="checked.length > 0">
+          <b-button class="mb-3" icon-left="content-copy" @click="copyCode">{{ $t('forms.copyCode') }}</b-button>
+          <details class="mb-3"><summary>{{ $t('forms.embedHelp') }}</summary><p>{{ $t('forms.protocolHelp') }}</p></details>
+          <code-editor lang="html" v-model="html" disabled />
+        </template>
       </div>
     </div><!-- columns -->
   </section>
@@ -66,6 +70,18 @@ export default Vue.extend({
   },
 
   methods: {
+    copyCode() {
+      const input = document.createElement('textarea');
+      input.value = this.html;
+      input.style.position = 'fixed';
+      input.style.opacity = '0';
+      document.body.appendChild(input);
+      input.select();
+      const copied = document.execCommand('copy');
+      input.remove();
+      this.$utils.toast(this.$t(copied ? 'globals.messages.copied' : 'globals.messages.error'), copied ? 'is-success' : 'is-danger');
+    },
+
     renderHTML() {
       let h = `<form method="post" action="${this.serverConfig.root_url}/subscription/form" class="platform-form">\n`
         + '  <div>\n'

@@ -16,8 +16,8 @@
                 <input id="name" name="name" type="text" placeholder="{{ L.T "public.subName" }}" >
             </p>
 
+            <h3>{{ L.T "public.subscriptionContents" }}</h3>
             <ul class="customerLists">
-                <h2>{{ L.T "globals.terms.customer_lists" }}</h2>
                 {{ range $i, $l := .Data.CustomerLists }}
                     <li>
                         <input checked="true" id="l-{{ $l.UUID}}" type="checkbox" name="l" value="{{ $l.UUID }}" >

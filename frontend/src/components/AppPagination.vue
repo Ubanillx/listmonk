@@ -1,5 +1,5 @@
 <template>
-  <div class="app-pagination" data-cy="pagination">
+  <div v-if="Number(total) > 0" class="app-pagination" data-cy="pagination">
     <div class="pagination-size">
       <span>{{ $t('pagination.perPage') }}</span>
       <b-select :value="pageSize" size="is-small" :aria-label="$t('pagination.perPage')"

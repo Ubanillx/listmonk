@@ -1,5 +1,27 @@
 # Listmonk 工程架构与运行指南
 
+## 操作预览与可视化编辑器语言（2026-10-31）
+
+新增 `GET /api/organizations/resources/pending?page=1`，复用执行转移的组织管理员/平台管理授权及组织选择头。`internal/core/organization_resources_preview.go` 用只读 repeatable-read 事务返回五类资源的总数、分类计数与固定每页20项的清单；与实际转移共用 `pendingOrganizationResourcePredicate`，只包含所选活动组织内无所有者、已标记待转移的资源。列表展示资源名称/ID、原所有者和待转移时间，不返回客户邮箱/属性、正文、媒体地址。归档组织走原独立流程，不使用此预览。平台组织操作白名单增加这个只读路径，不扩展资源的一般读取/使用权限。
+
+新增 `GET /api/maintenance/:dataset/:type/preview`，与原清理接口同为 `settings:maintain`，继续按全平台统计。`internal/core/maintenance_preview.go` 精确匹配原有删除条件：无列表客户、黑名单客户、双重确认列表中早于截止时间的未确认订阅关系，以及早于截止时间的浏览/点击记录。统计单位是主要记录，不把级联删除数量混入客户数；分析结果另返回 views/clicks。此计数不使用物化视图缓存。确认前前端重新查询，但预览不锁定后续写入；确认说明执行时按原条件再次匹配，数量可能变化。没有新增迁移或修改删除/合并语义。
+
+`MaintenancePreview.vue`、`PendingResourcesPanel.vue` 分别管理加载/失败/零结果/重试，按请求序号丢弃切条件、组织或卸载后的旧响应。取消不发送写请求；转移后重新获取预览，清理后刷新三个计数。
+
+维护的日期控件仅选择日历日期，前端将浏览器日期字段映射为部署时区的00:00，输入展示、预览和执行使用同一边界；不包含所选日期当天。确认框通过 `Utils.confirm` 的可选 `title/confirmText` 提供具体动作标题，其他调用的行为不变。
+
+React 编辑器的 `src/i18n.ts` 提供界面语言目录与独立 locale store；`VisualEditor.vue` 初次传入平台语言，并在语言变化时调用导出的 `setLocale`。语言 store 不写入文档 store，不触发重新加载/清空内容。类型名、JSON键、模板表达式和已有正文保持原值，新插入块的初始文字使用当前语言。窄屏属性面板全宽覆盖画布，提供“返回画布”和始终可用的工具栏开关；桌面继续保留并列面板。空图片编辑占位采用本地SVG界面文字，不写入文档。编辑器UMD必须先构建并复制到 `frontend/public/static/email-builder`，再构建管理端资产并重启本地后端。
+
+契约及验收：`docs/docs/content/apis/organizations.md`、`docs/docs/content/maintenance/performance.md`、`cmd/{organization_resources_preview,maintenance_preview}_test.go`、`frontend/cypress/e2e/resource-previews-editor.cy.js`；页面证据见 [第二批整改](harness/designs/2026-10-31-platform-ui-review/second-batch/BRIEF.md)。
+
+## 管理端页面与文案整理（2026-10-31）
+
+本轮沿用现有 Vue 2/Buefy 结构，从共享选择器宽度、日期单元格、零结果分页和代码主题修正阅读与布局。`Campaign.vue` 对未保存新建活动记录可编辑输入基线，自动载入的默认列表/SMTP组在尚未编辑时更新基线，用户改动后路由离开与浏览器卸载使用现有确认机制；创建成功清除基线后进入内容编辑。没有新增草稿存储、API或权限。
+
+公海客户表单的组织建议复用既有授权 `getPoolOrganizations`，继续提交组织名称供原有服务端匹配；组织取值不扩大授权范围。自定义字段页面明确系统邮箱/姓名来自收件客户，自定义账号字段来自活动所有者，解释与 `internal/manager/message.go::NewCampaignMessage` 的同名账号值优先规则一致。公开页只调整订阅术语和列表样式，未改变订阅与退订动作。
+
+实施、剩余范围及内置浏览器证据见 [页面整改验收](harness/designs/2026-10-31-platform-ui-review/IMPLEMENTATION.md)。
+
 ## 营销活动分组统计（v6.69.0，2026-10-30）
 
 采用 B 方案，将列表分为营销活动、发送情况、客户互动、发送错误、退订相关人数；归属、受众及状态集中在活动信息，日期位于进度下方。错误列仅显示「有发送错误 / 无发送错误」，沿用原明细权限及历史诊断，不展示累计尝试数。退订仍为点击或确认的去重并集，不改变订阅状态。
@@ -110,6 +132,8 @@ v6.63.0 为活动增加 `retry_mode`，为两类收件人快照增加 `retry_sel
 
 ## 组织公海分配工作台（v6.61.0）
 
+公海列表状态列复用私域的客户状态人数标签，不显示列表启用/归档或分配状态；有客户查看权限且无退订时显示中性的“退订 0”，有退订时保留红色提示。点击退订人数以 `pool_status=unsubscribed` 进入对应一级公海或组织分配的客户页。`cmd/customer_lists.go::GetLists` 仅为非 minimal 且有 `pools:get` 的响应调用 `internal/core/pool_list_stats.go::EnrichPoolListUnsubscribeCounts`，批量填充已授权列表的 `customer_statuses.unsubscribed`。统计按联系人去重，仅计未恢复的 `source=unsubscribe` 排除，成员与组织边界对齐 `QueryPoolContacts`；一级池的平台管理员/主数据维护者可汇总所有组织，其他人限定当前组织，分配行始终限定目标组织。人工移除和已恢复退订不计入；不新增权限或迁移。
+
 公海子行的“管理分配”和父行的分配入口打开 `PoolAllocationWorkbench.vue`，采用用户选定图三的居中双栏布局。左侧目标组织不切换当前工作区，右侧有客户分配、分配信息和操作记录；查询参数 `manage_pool`（一级公海列表 ID）、`manage_org`、`manage_tab` 支持刷新恢复。保留原公海父子树、筛选与分组分页。普通列表更新/归档/删除路径拒绝分配类型。
 
 页签 URL 同步不重建外层页面或工作台。各页签在当前目标内保存筛选、页码/条数、选择和内容滚动位置；已加载数据直接恢复，首次/失败加载仅显示页签内 loading。重复点击当前页签不发请求，切换使旧页签未完成响应失效；CRUD 成功后使缓存失效并在当前/下次访问时局部重查，不删除未保存表单。切换组织清理页签缓存，避免跨目标数据复用。工作台使用稳定视口高度、正文独立滚动，切页签不使外框上下跳动。
@@ -124,7 +148,7 @@ v6.63.0 为活动增加 `retry_mode`，为两类收件人快照增加 `retry_sel
 
 ## 管理端统一分页与运行时资源（2026-10-19）
 
-`frontend/src/components/AppPagination.vue` 提供每页 10/20/50/100 条、页码按钮和输入页码跳转；保留页面已有默认条数（如城市 8、客户活动 10、审计 50）。切换条数通过 `per-page-change` 交给页面处理，回到第一页并保留筛选与排序；服务端列表发送 `per_page`，本地列表调整切片。单页结果仍可调整条数，空结果页数下限为 1；无效页码不发请求。
+`frontend/src/components/AppPagination.vue` 提供每页 10/20/50/100 条、页码按钮和输入页码跳转；保留页面已有默认条数（如城市 8、客户活动 10、审计 50）。切换条数通过 `per-page-change` 交给页面处理，回到第一页并保留筛选与排序；服务端列表发送 `per_page`，本地列表调整切片。有结果的单页仍可调整条数，零结果隐藏分页（内部页数下限仍为 1）；无效页码不发请求。
 
 `PaginatedTable.js` 继承 Buefy 0.9 的表格，只替换内部 `BTablePagination` 为 `TablePagination.vue`，保留列注册、顶部工具栏、选中和分页事件。Buefy 0.9 根入口仅导出插件，`BTable` 必须从 `buefy/dist/esm/table` 导入；升级 Buefy 时需复核这一适配边界。公海列表继续独立按完整父子分组分页，不能对展开行二次切片。
 

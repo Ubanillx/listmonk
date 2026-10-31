@@ -1,10 +1,16 @@
 # 工作状态
 
-快照日期：2026-10-30
+快照日期：2026-11-01
 
 - **公海列表状态展示对齐私域（2026-11-01）**：移除公海与组织分配行的启用、归档和分配状态标签，状态列只保留客户状态人数。无退订时显示中性的“退订 0”，有退订时保留红色提示；零值也可点击进入退订筛选，无客户查看权限时不补零。现有退订人数和点击筛选继续复用私域形式。隔离 Cypress 公海列表 5/5、桌面/390px 截图、前端 lint/build、文档与 diff 检查通过；lint 仅既有地图 shadow warning。本地生产资源已构建、backend 已重启并核验 9173 HTTP 200。来源：`frontend/src/views/CustomerLists.vue`、`frontend/cypress/e2e/pool-list-tree.cy.js`。
 
+- **发件服务离散趋势图（2026-11-01）**：总览趋势按最近30个自然日补齐缺失日期，空值不跨日连线，并移除共享 `Chart.vue` 的过时平滑默认；更新中英文/繁体中文“最近30天”文案，新增缺失日期数据点回归断言。管理端 lint/build 通过，内置浏览器复查桌面与390px总览；隔离 Cypress 后端在首轮场景后端口中断，后续失败为连接环境问题。来源：`frontend/src/views/DeliveryProvider.vue`、`frontend/src/components/Chart.vue`、`frontend/cypress/e2e/delivery-provider.cy.js`。
+
 - **公海列表退订人数（2026-11-01）**：公海与组织分配行在原列表状态下增加同私域样式的退订人数，点击进入对应客户页并按退订筛选，刷新保留条件。非 minimal 列表接口按已授权范围批量统计有效退订排除、客户去重，沿用公海明细组织/成员边界；无 `pools:get` 不返回统计，人工移除与已恢复退订不计入。真实 PostgreSQL 专项及全量 Go（含 cmd 数据库集成）、隔离 Cypress 两组 7/7、桌面/390px 截图专项复验 1/1、前端 lint/build、文档与 diff 检查通过；lint 仅既有地图 shadow warning。已同步本地生产资源并重启 backend、核验 9173 HTTP 200；未提交或发布线上。来源：`internal/core/pool_list_stats.go`、`cmd/customer_lists.go`、`cmd/customer_status_filters_test.go`、`frontend/src/views/CustomerLists.vue`、`frontend/cypress/e2e/pool-list-tree.cy.js`。
+
+- **第二批P1：真实操作预览与编辑器中文化（2026-10-31）**：组织待转移新增授权只读分类数量/分页名称清单，确认前刷新并保留原转移语义；维护新增与原删除条件一致的全平台计数、统计分类、部署时区00:00边界和具体确认标题。React编辑器建立语言资源并跟随平台，工具栏/十类块/属性/导入错误中文化，已有内容与模板变量保持；手机设置全宽并可返回画布。真实PostgreSQL专项4项及9个授权子场景通过，定向Cypress两spec 6/6；保存失败重试/刷新读回补测3/3通过。类型、lint、编辑器/管理端生产构建、文档及diff检查通过；lint仅既有地图warning。全量Go仍为既有月末APIKey日期断言失败。内置浏览器33张逐页证据、独立UX走查/同路径复核和存量视觉评审见[第二批验收](designs/2026-10-31-platform-ui-review/second-batch/IMPLEMENTATION.md)。开发库浏览器未执行清理/转移/发送，27项真实资源在隔离库验证并由后续测试重置。本地backend已同步并核验9173 HTTP200；未提交或部署线上。来源：`internal/core/{organization_resources_preview,maintenance_preview}.go`、`frontend/src/components/{PendingResourcesPanel,MaintenancePreview}.vue`、`frontend/email-builder/src/i18n.ts`、`frontend/cypress/e2e/resource-previews-editor.cy.js`。
+
+- **平台页面P1整改与文案统一（2026-10-31）**：沿用蓝白界面，修复选择器箭头和计数边界、新建活动离页输入保护、日期拆行、零结果分页；维护动作使用危险样式和对象确认，导入先选择文件再显示映射。统一组织申请、回信邮箱、发件邮箱组及公开订阅术语；清理重复说明，增加表单复制与字段取值来源，统计口径移到指标下。Cypress核心三组7/7、公海树4/4、公开模板与账号字段专项、前端lint/build通过；旧forms套件3/6通过，余项存在英文反馈断言与缺活动夹具，详见记录。lint保留既有GeoHeatmap shadow警告。全量Go检查有既有月末日期测试 `TestParsePersonalAPIKeyExpiry` 失败。内置浏览器检查各独立页面类型、设置10页签、组织7页签、活动详情及390px代表页面，71张截图与剩余项见[实施记录](designs/2026-10-31-platform-ui-review/IMPLEMENTATION.md)。本地生产资源已构建并重启backend，9173已核验；未提交或部署生产。来源：`frontend/src/views/{Campaign,Import,Maintenance,CustomFields,DeliveryProvider}.vue`、`frontend/src/components/AppPagination.vue`、`i18n/zh-CN.json`、`frontend/cypress/e2e/ui-cleanup.cy.js`。
 
 - **营销活动 B 分组统计（2026-10-30，v6.69.0）**：已实现分组列、三类真实收件人统计、文字错误状态及原明细入口；迁移只安装只读视图，不改发信。实施分支 `codex/campaign-stats-grouped`；原型保留于 `codex/prototype-campaign-stats`。验证：真实 PostgreSQL 汇总回归、`make test`、`go vet ./...`、前端 lint/build、定向 Cypress 6/6、文档检查通过；B 版桌面/手机截图已核对，收件人数列无横向滚动。本地已应用 v6.69.0、9173 返回 HTTP 200；提交 ce2b818a 已推送 master 并触发 Jenkins。该环境未提供 Jenkins 状态检查，线上版本尚未独立核验。来源：`frontend/src/views/Campaigns.vue`、`internal/migrations/v6.69.0.go`、`cmd/campaign_delivery_counts_test.go`。
 

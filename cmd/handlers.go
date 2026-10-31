@@ -299,6 +299,7 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.PUT("/api/templates/:id/default", apiKeyScope(hasID(a.TemplateSetDefault), apiKeyScopeTemplatesWrite))
 		g.DELETE("/api/templates/:id", apiKeyScope(hasID(a.DeleteTemplate), apiKeyScopeTemplatesWrite))
 
+		g.GET("/api/maintenance/:dataset/:type/preview", pm(a.PreviewMaintenance, "settings:maintain"))
 		g.DELETE("/api/maintenance/customers/:type", pm(a.GCCustomers, "settings:maintain"))
 		g.DELETE("/api/maintenance/analytics/:type", pm(a.GCCampaignAnalytics, "settings:maintain"))
 		g.DELETE("/api/maintenance/subscriptions/unconfirmed", pm(a.GCSubscriptions, "settings:maintain"))
@@ -350,6 +351,7 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.POST("/api/organizations/members", a.AddOrganizationMember)
 		g.PUT("/api/organizations/members/:user_id", a.UpdateOrganizationMember)
 		g.DELETE("/api/organizations/members/:user_id", a.RemoveOrganizationMember)
+		g.GET("/api/organizations/resources/pending", a.PreviewPendingOrganizationResources)
 		g.POST("/api/organizations/resources/transfer", a.TransferPendingOrganizationResources)
 		g.GET("/api/organizations/:id/members", pm(hasID(a.GetOrganizationMembersForPlatform), auth.PermOrganizationsPlatformManage))
 		g.POST("/api/organizations/:id/members/bulk", pm(hasID(a.AddOrganizationMembersBulk), auth.PermOrganizationsPlatformManage))

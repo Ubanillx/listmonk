@@ -1,7 +1,6 @@
 <template>
   <div class="items">
     <section>
-      <h2 class="is-size-5 mb-4">{{ $t('settings.performance.name') }}</h2>
       <p class="help mb-5" data-cy="platform-delivery-help">{{ $t('settings.performance.platformHelp') }}</p>
       <div class="columns">
         <div class="column is-6">

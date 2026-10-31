@@ -5,8 +5,9 @@
     </h1>
     <hr />
     <p class="has-text-grey">
-      {{ $t('maintenance.help') }}
+      {{ $t('maintenance.platformScope') }}
     </p>
+    <p class="help">{{ $t('maintenance.previewLive') }} {{ $t('maintenance.dateBoundary', { zone: deploymentZone }) }}</p>
     <br />
 
     <div class="box">
@@ -15,7 +16,7 @@
       </h4><br />
       <div class="columns">
         <div class="column is-4">
-          <b-field :label="$t('maintenance.dataLabel')" :message="$t('maintenance.orphanHelp')">
+          <b-field :label="$t('maintenance.dataLabel')" :message="customerType === 'orphan' ? $t('maintenance.orphanHelp') : ''">
             <b-select v-model="customerType" expanded>
               <option value="orphan">
                 {{ $t('dashboard.orphanSubs') }}
@@ -26,17 +27,15 @@
             </b-select>
           </b-field>
         </div>
-        <div class="column is-5" />
-        <div class="column">
-          <br />
-          <b-field>
-            <b-button class="is-primary" :loading="pendingAction === 'orphans'" :disabled="pendingAction !== ''"
-              @click="deleteCustomers" expanded>
-              {{ $t('globals.buttons.delete') }}
-            </b-button>
-          </b-field>
-        </div>
       </div>
+      <div class="cleanup-review">
+        <maintenance-preview ref="customersPreview" dataset="customers" :type="customerType"
+          :unit="$t('maintenance.unitCustomers')" @ready="previewReady.customers = $event" />
+        <b-button type="is-danger" :loading="pendingAction === 'orphans'" :disabled="pendingAction !== '' || !previewReady.customers" @click="deleteCustomers">
+          {{ $t('maintenance.deleteCustomers') }}
+        </b-button>
+      </div>
+      <p class="help">{{ $t('maintenance.customerCascade') }}</p>
     </div><!-- customers -->
 
     <div class="box mt-6">
@@ -55,20 +54,17 @@
         </div>
         <div class="column is-4">
           <b-field :label="$t('maintenance.olderThan')">
-            <b-datepicker v-model="subscriptionDate" required expanded icon="calendar-clock"
-              :date-formatter="formatDateTime" :date-parser="$utils.parseDateTime" />
+            <b-datepicker v-model="subscriptionPickerDate" required expanded icon="calendar-clock"
+              :date-formatter="formatDateTime" :date-parser="parsePickerDate" />
           </b-field>
         </div>
-        <div class="column is-1" />
-        <div class="column">
-          <br />
-          <b-field>
-            <b-button class="is-primary" :loading="pendingAction === 'unconfirmed'" :disabled="pendingAction !== ''"
-              @click="deleteSubscriptions" expanded>
-              {{ $t('globals.buttons.delete') }}
-            </b-button>
-          </b-field>
-        </div>
+      </div>
+      <div class="cleanup-review">
+        <maintenance-preview ref="subscriptionsPreview" dataset="subscriptions" type="unconfirmed" :before-date="subscriptionDate"
+          :unit="$t('maintenance.unitSubscriptions')" @ready="previewReady.subscriptions = $event" />
+        <b-button type="is-danger" :loading="pendingAction === 'unconfirmed'" :disabled="pendingAction !== '' || !previewReady.subscriptions" @click="deleteSubscriptions">
+          {{ $t('maintenance.deleteSubscriptions') }}
+        </b-button>
       </div>
     </div><!-- subscriptions -->
 
@@ -94,20 +90,17 @@
         </div>
         <div class="column is-4">
           <b-field :label="$t('maintenance.olderThan')">
-            <b-datepicker v-model="analyticsDate" required expanded icon="calendar-clock"
-              :date-formatter="formatDateTime" :date-parser="$utils.parseDateTime" />
+            <b-datepicker v-model="analyticsPickerDate" required expanded icon="calendar-clock"
+              :date-formatter="formatDateTime" :date-parser="parsePickerDate" />
           </b-field>
         </div>
-        <div class="column is-1" />
-        <div class="column">
-          <br />
-          <b-field>
-            <b-button expanded class="is-primary" :loading="pendingAction === 'analytics'"
-              :disabled="pendingAction !== ''" @click="deleteAnalytics">
-              {{ $t('globals.buttons.delete') }}
-            </b-button>
-          </b-field>
-        </div>
+      </div>
+      <div class="cleanup-review">
+        <maintenance-preview ref="analyticsPreview" dataset="analytics" :type="analyticsType" :before-date="analyticsDate"
+          :unit="$t('maintenance.unitAnalytics')" @ready="previewReady.analytics = $event" />
+        <b-button type="is-danger" :loading="pendingAction === 'analytics'" :disabled="pendingAction !== '' || !previewReady.analytics" @click="deleteAnalytics">
+          {{ $t('maintenance.deleteAnalytics') }}
+        </b-button>
       </div>
     </div><!-- analytics -->
 
@@ -150,23 +143,23 @@
 <script>
 import Vue from 'vue';
 import { mapState } from 'vuex';
-import { now, parse } from '../time';
+import { now, parse, zone } from '../time';
+import MaintenancePreview from '../components/MaintenancePreview.vue';
 
 export default Vue.extend({
-  components: {
-  },
+  components: { MaintenancePreview },
 
   data() {
     return {
       isLoading: false,
       pendingAction: '',
+      previewReady: { customers: false, subscriptions: false, analytics: false },
       customerType: 'orphan',
       analyticsType: 'all',
       subscriptionType: 'optin',
-      // Defaults are "seven days ago on the deployment's clock", and the
-      // picker returns that same wall-clock instant (see $utils.parseDateTime).
-      analyticsDate: now().subtract(7, 'day').toDate(),
-      subscriptionDate: now().subtract(7, 'day').toDate(),
+      // A date-only cutoff starts at midnight on the deployment's clock.
+      analyticsDate: now().subtract(7, 'day').startOf('day').toDate(),
+      subscriptionDate: now().subtract(7, 'day').startOf('day').toDate(),
       dbSettings: {
         vacuum: false,
         vacuum_cron_interval: '0 2 * * *',
@@ -180,83 +173,68 @@ export default Vue.extend({
 
   methods: {
     formatDateTime(s) {
-      return this.$utils.niceDate(s);
+      return this.$utils.niceDate(this.cutoffDate(s));
+    },
+
+    // The date picker uses browser-local calendar fields; the API uses the
+    // deployment's midnight. Keep those representations separate.
+    cutoffDate(date) {
+      return date ? this.$utils.wallClockToDate(date.getFullYear(), date.getMonth(), date.getDate()) : null;
+    },
+
+    pickerDate(date) {
+      const d = parse(date);
+      return d.isValid() ? new Date(d.year(), d.month(), d.date()) : null;
+    },
+
+    parsePickerDate(value) {
+      return this.pickerDate(this.$utils.parseDateTime(value));
     },
 
     deleteCustomers() {
-      // Name the exact dataset and, for orphaned customers, what "orphan" means.
-      const target = this.customerType === 'orphan'
-        ? `${this.$t('dashboard.orphanSubs')} (${this.$t('maintenance.orphanHelp')})`
-        : this.$t('customers.status.blocklisted');
-      this.pendingAction = 'orphans';
-
-      this.$utils.confirm(
-        `${this.$tc('globals.terms.customers', 2)}: ${target}. ${this.$t('globals.messages.confirm')}`,
-        () => {
-          this.$api.deleteGCCustomers(this.customerType).then((data) => {
-            this.$utils.toast(this.$t(
-              'globals.messages.deletedCount',
-              { name: this.$tc('globals.terms.customers', 2), num: data.count },
-            ));
-          }).finally(() => {
-            this.pendingAction = '';
-          });
-        },
-        () => {
-          this.pendingAction = '';
-        },
-        { type: 'is-danger' },
-      );
+      const type = this.customerType;
+      const target = type === 'orphan' ? this.$t('dashboard.orphanSubs') : this.$t('customers.status.blocklisted');
+      this.confirmCleanup('customers', target, () => this.$api.deleteGCCustomers(type));
     },
 
     deleteSubscriptions() {
-      // Spell out the retention window that is about to be purged.
-      const days = now().startOf('day').diff(parse(this.subscriptionDate).startOf('day'), 'day');
-      this.pendingAction = 'unconfirmed';
-
-      this.$utils.confirm(
-        this.$t('maintenance.unconfirmedSubs', { name: days }),
-        () => {
-          this.$api.deleteGCSubscriptions(this.subscriptionDate).then((data) => {
-            this.$utils.toast(this.$t(
-              'globals.messages.deletedCount',
-              { name: this.$tc('globals.terms.subscriptions', 2), num: data.count },
-            ));
-          }).finally(() => {
-            this.pendingAction = '';
-          });
-        },
-        () => {
-          this.pendingAction = '';
-        },
-        { type: 'is-danger' },
-      );
+      const date = new Date(this.subscriptionDate);
+      this.confirmCleanup('subscriptions', this.$t('maintenance.maintenance.unconfirmedOptins'), () => this.$api.deleteGCSubscriptions(date));
     },
 
     deleteAnalytics() {
-      const types = {
-        all: this.$t('globals.terms.all'),
-        views: this.$t('dashboard.campaignViews'),
-        clicks: this.$t('dashboard.linkClicks'),
-      };
-      this.pendingAction = 'analytics';
+      const type = this.analyticsType;
+      const date = new Date(this.analyticsDate);
+      const labels = { all: 'globals.terms.all', views: 'dashboard.campaignViews', clicks: 'dashboard.linkClicks' };
+      this.confirmCleanup('analytics', this.$t(labels[type]), () => this.$api.deleteGCCampaignAnalytics(type, date));
+    },
 
-      this.$utils.confirm(
-        `${this.$t('globals.terms.analytics')} (${types[this.analyticsType]}): ${this.$t('maintenance.olderThan')} ${this.$utils.niceDate(this.analyticsDate)}. ${this.$t('globals.messages.confirm')}`,
-        () => {
-          this.$api.deleteGCCampaignAnalytics(this.analyticsType, this.analyticsDate)
-            .then(() => {
-              this.$utils.toast(this.$t('globals.messages.done'));
-            })
-            .finally(() => {
-              this.pendingAction = '';
-            });
-        },
-        () => {
+    async confirmCleanup(dataset, target, remove) {
+      if (this.pendingAction) return;
+      const actionNames = { customers: 'orphans', subscriptions: 'unconfirmed', analytics: 'analytics' };
+      this.pendingAction = actionNames[dataset];
+      const component = this.$refs[`${dataset}Preview`];
+      const { signature } = component;
+      const preview = await component.load();
+      if (!preview || !preview.count || signature !== component.signature) {
+        this.pendingAction = '';
+        return;
+      }
+      const date = component.beforeDate ? ` (${this.$t('maintenance.beforeExact', { date: this.$utils.niceDate(component.beforeDate, true) })})` : '';
+      const message = this.$t('maintenance.confirmPreview', {
+        target, count: preview.count, unit: component.unit, date,
+      });
+      this.$utils.confirm(message, async () => {
+        try {
+          await remove();
+          this.$utils.toast(this.$t('globals.messages.done'));
+        } finally {
           this.pendingAction = '';
-        },
-        { type: 'is-danger' },
-      );
+          ['customers', 'subscriptions', 'analytics'].forEach((key) => this.$refs[`${key}Preview`]?.load());
+        }
+      }, () => { this.pendingAction = ''; }, {
+        type: 'is-danger', title: this.$t('maintenance.confirmTitle'), confirmText: this.$t('maintenance.confirmTitle'),
+      });
     },
 
     loadDBSettings() {
@@ -277,7 +255,31 @@ export default Vue.extend({
 
   computed: {
     ...mapState(['loading']),
+    deploymentZone: () => zone(),
+    subscriptionPickerDate: {
+      get() { return this.pickerDate(this.subscriptionDate); },
+      set(date) { if (date) this.subscriptionDate = this.cutoffDate(date); },
+    },
+    analyticsPickerDate: {
+      get() { return this.pickerDate(this.analyticsDate); },
+      set(date) { if (date) this.analyticsDate = this.cutoffDate(date); },
+    },
   },
 
 });
 </script>
+
+<style scoped>
+.cleanup-review {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.cleanup-review > .button { min-width: 250px; flex-shrink: 0; }
+@media screen and (max-width: 768px) {
+  .cleanup-review { flex-direction: column; align-items: stretch; }
+  .cleanup-review > .button { width: 100%; min-width: 0; }
+}
+</style>

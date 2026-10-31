@@ -9,6 +9,24 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+// PreviewMaintenance uses the same permission middleware as the deletes.
+// Maintenance has always operated across the platform, not a workspace.
+func (a *App) PreviewMaintenance(c echo.Context) error {
+	var before time.Time
+	if c.Param("dataset") != "customers" {
+		var err error
+		before, err = time.Parse(time.RFC3339, c.QueryParam("before_date"))
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("globals.messages.invalidData"))
+		}
+	}
+	preview, err := a.core.PreviewMaintenance(c.Param("dataset"), c.Param("type"), before)
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, okResp{preview})
+}
+
 // GCCustomers garbage collects (deletes) orphaned or blocklisted customers.
 func (a *App) GCCustomers(c echo.Context) error {
 	var (

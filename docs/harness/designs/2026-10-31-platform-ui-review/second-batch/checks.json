@@ -1,0 +1,303 @@
+{
+  "date": "2026-10-31",
+  "screenshotCount": 33,
+  "checks": [
+    {
+      "name": "01-pending-empty",
+      "title": "待转移资源：开发库空态",
+      "url": "http://localhost:8181/admin/organizations/manage?tab=pending",
+      "screenshot": "shots/01-pending-empty.png",
+      "imageWidth": 65536,
+      "imageHeight": 4292542531,
+      "environment": "Vite开发预览"
+    },
+    {
+      "name": "02-maintenance-counts",
+      "title": "维护：真实数量与日期边界",
+      "url": "http://localhost:9173/admin/settings/maintenance",
+      "screenshot": "shots/02-maintenance-counts.png",
+      "imageWidth": 65536,
+      "imageHeight": 4292542531,
+      "environment": "本地生产构建"
+    },
+    {
+      "name": "03-maintenance-confirm",
+      "title": "维护：带标题的清理确认",
+      "url": "http://localhost:9173/admin/settings/maintenance",
+      "screenshot": "shots/03-maintenance-confirm.png",
+      "imageWidth": 65536,
+      "imageHeight": 4292542531,
+      "environment": "本地生产构建"
+    },
+    {
+      "name": "04-maintenance-mobile",
+      "title": "维护：手机整页",
+      "url": "http://localhost:9173/admin/settings/maintenance",
+      "screenshot": "shots/04-maintenance-mobile.png",
+      "imageWidth": 65536,
+      "imageHeight": 4292542531,
+      "environment": "本地生产构建"
+    },
+    {
+      "name": "05-editor-global",
+      "title": "编辑器：整体样式与既有正文",
+      "url": "http://localhost:9173/admin/campaigns/templates",
+      "screenshot": "shots/05-editor-global.png",
+      "imageWidth": 65536,
+      "imageHeight": 4292542531,
+      "environment": "本地生产构建"
+    },
+    {
+      "name": "06-editor-heading",
+      "title": "编辑器：标题设置",
+      "url": "http://localhost:8181/admin/campaigns/templates",
+      "screenshot": "shots/06-editor-heading.png",
+      "imageWidth": 65536,
+      "imageHeight": 4292542531,
+      "environment": "Vite开发预览"
+    },
+    {
+      "name": "07-editor-import-error",
+      "title": "编辑器：中文导入错误",
+      "url": "http://localhost:8181/admin/campaigns/templates",
+      "screenshot": "shots/07-editor-import-error.png",
+      "imageWidth": 65536,
+      "imageHeight": 4292542531,
+      "environment": "Vite开发预览"
+    },
+    {
+      "name": "08-editor-button",
+      "title": "编辑器：按钮设置",
+      "url": "http://localhost:8181/admin/campaigns/templates",
+      "screenshot": "shots/08-editor-button.png",
+      "imageWidth": 65536,
+      "imageHeight": 4292542531,
+      "environment": "Vite开发预览"
+    },
+    {
+      "name": "09-editor-mobile-settings",
+      "title": "编辑器：手机设置与返回画布",
+      "url": "http://localhost:9173/admin/campaigns/templates",
+      "screenshot": "shots/09-editor-mobile-settings.png",
+      "imageWidth": 65536,
+      "imageHeight": 4292542531,
+      "environment": "本地生产构建"
+    },
+    {
+      "name": "10-editor-mobile-canvas",
+      "title": "编辑器：手机画布",
+      "url": "http://localhost:9173/admin/campaigns/templates",
+      "screenshot": "shots/10-editor-mobile-canvas.png",
+      "imageWidth": 65536,
+      "imageHeight": 4292542531,
+      "environment": "本地生产构建"
+    },
+    {
+      "name": "11-editor-spacer",
+      "title": "编辑器：留白设置",
+      "url": "http://localhost:9173/admin/campaigns/templates",
+      "screenshot": "shots/11-editor-spacer.png",
+      "imageWidth": 65536,
+      "imageHeight": 4292542531,
+      "environment": "本地生产构建"
+    },
+    {
+      "name": "12-editor-html",
+      "title": "编辑器：HTML设置",
+      "url": "http://localhost:8181/admin/campaigns/templates",
+      "screenshot": "shots/12-editor-html.png",
+      "imageWidth": 65536,
+      "imageHeight": 4292542531,
+      "environment": "Vite开发预览"
+    },
+    {
+      "name": "13-editor-block-menu",
+      "title": "编辑器：十类中文内容块菜单",
+      "url": "http://localhost:8181/admin/campaigns/templates",
+      "screenshot": "shots/13-editor-block-menu.png",
+      "imageWidth": 65536,
+      "imageHeight": 4292542531,
+      "environment": "Vite开发预览"
+    },
+    {
+      "name": "14-editor-image",
+      "title": "编辑器：图片设置",
+      "url": "http://localhost:8181/admin/campaigns/templates",
+      "screenshot": "shots/14-editor-image.png",
+      "imageWidth": 65536,
+      "imageHeight": 4292542531,
+      "environment": "Vite开发预览"
+    },
+    {
+      "name": "15-editor-avatar",
+      "title": "编辑器：头像设置",
+      "url": "http://localhost:8181/admin/campaigns/templates",
+      "screenshot": "shots/15-editor-avatar.png",
+      "imageWidth": 65536,
+      "imageHeight": 4292542531,
+      "environment": "Vite开发预览"
+    },
+    {
+      "name": "16-editor-columns",
+      "title": "编辑器：分栏设置",
+      "url": "http://localhost:8181/admin/campaigns/templates",
+      "screenshot": "shots/16-editor-columns.png",
+      "imageWidth": 65536,
+      "imageHeight": 4292542531,
+      "environment": "Vite开发预览"
+    },
+    {
+      "name": "17-editor-container",
+      "title": "编辑器：容器设置",
+      "url": "http://localhost:8181/admin/campaigns/templates",
+      "screenshot": "shots/17-editor-container.png",
+      "imageWidth": 65536,
+      "imageHeight": 4292542531,
+      "environment": "Vite开发预览"
+    },
+    {
+      "name": "18-pending-real-page1",
+      "title": "待转移资源：真实27项，第1页",
+      "url": "http://127.0.0.1:9273/admin/organizations/manage?tab=pending",
+      "screenshot": "shots/18-pending-real-page1.png",
+      "imageWidth": 65536,
+      "imageHeight": 4292542531,
+      "environment": "隔离测试库（真实API）"
+    },
+    {
+      "name": "19-pending-real-page2",
+      "title": "待转移资源：第2页7项",
+      "url": "http://127.0.0.1:9273/admin/organizations/manage?tab=pending",
+      "screenshot": "shots/19-pending-real-page2.png",
+      "imageWidth": 65536,
+      "imageHeight": 4292542531,
+      "environment": "隔离测试库（真实API）"
+    },
+    {
+      "name": "20-pending-real-confirm",
+      "title": "待转移资源：带标题的全部资源确认",
+      "url": "http://127.0.0.1:9273/admin/organizations/manage?tab=pending",
+      "screenshot": "shots/20-pending-real-confirm.png",
+      "imageWidth": 65536,
+      "imageHeight": 4292542531,
+      "environment": "隔离测试库（真实API）"
+    },
+    {
+      "name": "21-pending-real-mobile",
+      "title": "待转移资源：手机清单",
+      "url": "http://127.0.0.1:9273/admin/organizations/manage?tab=pending",
+      "screenshot": "shots/21-pending-real-mobile.png",
+      "imageWidth": 65536,
+      "imageHeight": 4292542531,
+      "environment": "隔离测试库（真实API）"
+    },
+    {
+      "name": "22-pending-real-empty",
+      "title": "待转移资源：切组织后空态",
+      "url": "http://localhost:9273/admin/organizations/manage?tab=pending",
+      "screenshot": "shots/22-pending-real-empty.png",
+      "imageWidth": 65536,
+      "imageHeight": 4292542531,
+      "environment": "隔离测试库（真实API）"
+    },
+    {
+      "name": "23-1-organization-tab",
+      "title": "组织：成员",
+      "url": "http://localhost:9173/admin/organizations/manage?tab=members",
+      "screenshot": "shots/23-1-organization-tab.png",
+      "imageWidth": 65536,
+      "imageHeight": 4292542531,
+      "environment": "本地生产构建"
+    },
+    {
+      "name": "23-2-organization-tab",
+      "title": "组织：邀请码",
+      "url": "http://localhost:9173/admin/organizations/manage?tab=invites",
+      "screenshot": "shots/23-2-organization-tab.png",
+      "imageWidth": 65536,
+      "imageHeight": 4292542531,
+      "environment": "本地生产构建"
+    },
+    {
+      "name": "23-3-organization-tab",
+      "title": "组织：待转移资源",
+      "url": "http://localhost:9173/admin/organizations/manage?tab=pending",
+      "screenshot": "shots/23-3-organization-tab.png",
+      "imageWidth": 65536,
+      "imageHeight": 4292542531,
+      "environment": "本地生产构建"
+    },
+    {
+      "name": "23-4-organization-tab",
+      "title": "组织：回信邮箱",
+      "url": "http://localhost:9173/admin/organizations/manage?tab=reply-mailboxes",
+      "screenshot": "shots/23-4-organization-tab.png",
+      "imageWidth": 65536,
+      "imageHeight": 4292542531,
+      "environment": "本地生产构建"
+    },
+    {
+      "name": "23-5-organization-tab",
+      "title": "组织：客户回信转发",
+      "url": "http://localhost:9173/admin/organizations/manage?tab=reply-forwarding",
+      "screenshot": "shots/23-5-organization-tab.png",
+      "imageWidth": 65536,
+      "imageHeight": 4292542531,
+      "environment": "本地生产构建"
+    },
+    {
+      "name": "23-6-organization-tab",
+      "title": "组织：营销SMTP",
+      "url": "http://localhost:9173/admin/organizations/manage?tab=smtp",
+      "screenshot": "shots/23-6-organization-tab.png",
+      "imageWidth": 65536,
+      "imageHeight": 4292542531,
+      "environment": "本地生产构建"
+    },
+    {
+      "name": "23-7-organization-tab",
+      "title": "组织：平台管理",
+      "url": "http://localhost:9173/admin/organizations/manage?tab=platform",
+      "screenshot": "shots/23-7-organization-tab.png",
+      "imageWidth": 65536,
+      "imageHeight": 4292542531,
+      "environment": "本地生产构建"
+    },
+    {
+      "name": "24-editor-mobile-actions",
+      "title": "编辑器：手机取消与保存可达",
+      "url": "http://localhost:9173/admin/campaigns/templates",
+      "screenshot": "shots/24-editor-mobile-actions.png",
+      "imageWidth": 65536,
+      "imageHeight": 4292542531,
+      "environment": "本地生产构建"
+    },
+    {
+      "name": "25-campaigns",
+      "title": "回归：营销活动列表",
+      "url": "http://localhost:9173/admin/campaigns",
+      "screenshot": "shots/25-campaigns.png",
+      "imageWidth": 65536,
+      "imageHeight": 4292542531,
+      "environment": "本地生产构建"
+    },
+    {
+      "name": "26-editor-divider",
+      "title": "编辑器：分隔线设置",
+      "url": "http://localhost:9173/admin/campaigns/templates",
+      "screenshot": "shots/26-editor-divider.png",
+      "imageWidth": 65536,
+      "imageHeight": 4292542531,
+      "environment": "本地生产构建"
+    },
+    {
+      "name": "27-editor-text",
+      "title": "编辑器：正文设置",
+      "url": "http://localhost:8181/admin/campaigns/templates",
+      "screenshot": "shots/27-editor-text.png",
+      "imageWidth": 65536,
+      "imageHeight": 4292542531,
+      "environment": "Vite开发预览"
+    }
+  ]
+}

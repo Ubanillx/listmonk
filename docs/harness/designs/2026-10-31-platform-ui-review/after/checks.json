@@ -1,0 +1,499 @@
+[
+  {
+    "id": "01-campaign-leave-protection",
+    "url": "http://localhost:8181/admin/campaigns/new",
+    "title": "活动离页保护",
+    "viewport": "1440 × 900",
+    "image": "01-campaign-leave-protection.jpg"
+  },
+  {
+    "id": "02-maintenance",
+    "url": "http://localhost:8181/admin/settings/maintenance",
+    "title": "维护危险操作",
+    "viewport": "1440 × 900",
+    "image": "02-maintenance.jpg"
+  },
+  {
+    "id": "03-organization-select",
+    "url": "http://localhost:8181/admin/organizations/manage?tab=members",
+    "title": "组织选择器",
+    "viewport": "1440 × 900",
+    "image": "03-organization-select.jpg"
+  },
+  {
+    "id": "04-platform-scope",
+    "url": "http://localhost:8181/admin/organizations/manage?tab=platform",
+    "title": "平台管理范围",
+    "viewport": "1440 × 900",
+    "image": "04-platform-scope.jpg"
+  },
+  {
+    "id": "05-import-before-upload",
+    "url": "http://localhost:8181/admin/customers/import",
+    "title": "上传前的导入页面",
+    "viewport": "1440 × 900",
+    "image": "05-import-before-upload.jpg"
+  },
+  {
+    "id": "06-analytics-empty",
+    "url": "http://localhost:8181/admin/campaigns/analytics",
+    "title": "营销统计空态",
+    "viewport": "1440 × 900",
+    "image": "06-analytics-empty.jpg"
+  },
+  {
+    "id": "07-pool-lists",
+    "url": "http://localhost:8181/admin/pool-lists",
+    "title": "公海列表",
+    "viewport": "1440 × 900",
+    "image": "07-pool-lists.jpg"
+  },
+  {
+    "id": "08-private-lists",
+    "url": "http://localhost:8181/admin/customer-lists",
+    "title": "私域列表",
+    "viewport": "1440 × 900",
+    "image": "08-private-lists.jpg"
+  },
+  {
+    "id": "09-private-customers",
+    "url": "http://localhost:8181/admin/customers?search=example.com",
+    "title": "私域客户示例筛选",
+    "viewport": "1440 × 900",
+    "image": "09-private-customers.jpg"
+  },
+  {
+    "id": "10-bounces",
+    "url": "http://localhost:8181/admin/customers/bounces",
+    "title": "退信空态",
+    "viewport": "1440 × 900",
+    "image": "10-bounces.jpg"
+  },
+  {
+    "id": "11-subscription-code",
+    "url": "http://localhost:8181/admin/customer-lists/forms",
+    "title": "订阅表单代码及复制",
+    "viewport": "1440 × 900",
+    "image": "11-subscription-code.jpg"
+  },
+  {
+    "id": "12-template-select",
+    "url": "http://localhost:8181/admin/campaigns/templates",
+    "title": "模板选择器",
+    "viewport": "1440 × 900",
+    "image": "12-template-select.jpg"
+  },
+  {
+    "id": "13-settings-general",
+    "url": "http://localhost:8181/admin/settings",
+    "title": "常规设置",
+    "viewport": "1440 × 900",
+    "image": "13-settings-general.jpg"
+  },
+  {
+    "id": "14-settings-performance",
+    "url": "http://localhost:8181/admin/settings",
+    "title": "投递与性能",
+    "viewport": "1440 × 900",
+    "image": "14-settings-performance.jpg"
+  },
+  {
+    "id": "15-settings-privacy",
+    "url": "http://localhost:8181/admin/settings",
+    "title": "隐私设置",
+    "viewport": "1440 × 900",
+    "image": "15-settings-privacy.jpg"
+  },
+  {
+    "id": "16-settings-security",
+    "url": "http://localhost:8181/admin/settings",
+    "title": "安全设置",
+    "viewport": "1440 × 900",
+    "image": "16-settings-security.jpg"
+  },
+  {
+    "id": "17-settings-media",
+    "url": "http://localhost:8181/admin/settings",
+    "title": "媒体存储设置",
+    "viewport": "1440 × 900",
+    "image": "17-settings-media.jpg"
+  },
+  {
+    "id": "18-settings-smtp",
+    "url": "http://localhost:8181/admin/settings",
+    "title": "SMTP投递设置",
+    "viewport": "1440 × 900",
+    "image": "18-settings-smtp.jpg"
+  },
+  {
+    "id": "19-settings-bounces",
+    "url": "http://localhost:8181/admin/settings",
+    "title": "退信处理设置",
+    "viewport": "1440 × 900",
+    "image": "19-settings-bounces.jpg"
+  },
+  {
+    "id": "20-settings-ai",
+    "url": "http://localhost:8181/admin/settings",
+    "title": "回信AI分类",
+    "viewport": "1440 × 900",
+    "image": "20-settings-ai.jpg"
+  },
+  {
+    "id": "21-settings-messengers",
+    "url": "http://localhost:8181/admin/settings",
+    "title": "消息通道",
+    "viewport": "1440 × 900",
+    "image": "21-settings-messengers.jpg"
+  },
+  {
+    "id": "22-settings-admin-appearance",
+    "url": "http://localhost:8181/admin/settings",
+    "title": "管理后台外观",
+    "viewport": "1440 × 900",
+    "image": "22-settings-admin-appearance.jpg"
+  },
+  {
+    "id": "23-settings-public-appearance",
+    "url": "http://localhost:8181/admin/settings",
+    "title": "公开页面外观",
+    "viewport": "1440 × 900",
+    "image": "23-settings-public-appearance.jpg"
+  },
+  {
+    "id": "24-organization-invites",
+    "url": "http://localhost:8181/admin/organizations/manage?tab=invites",
+    "title": "组织邀请码",
+    "viewport": "1440 × 900",
+    "image": "24-organization-invites.jpg"
+  },
+  {
+    "id": "25-organization-transfer",
+    "url": "http://localhost:8181/admin/organizations/manage?tab=pending",
+    "title": "待转移资源",
+    "viewport": "1440 × 900",
+    "image": "25-organization-transfer.jpg"
+  },
+  {
+    "id": "26-organization-reply",
+    "url": "http://localhost:8181/admin/organizations/manage?tab=reply-mailboxes",
+    "title": "组织回信邮箱",
+    "viewport": "1440 × 900",
+    "image": "26-organization-reply.jpg"
+  },
+  {
+    "id": "27-organization-forwarding",
+    "url": "http://localhost:8181/admin/organizations/manage?tab=reply-forwarding",
+    "title": "客户回信转发",
+    "viewport": "1440 × 900",
+    "image": "27-organization-forwarding.jpg"
+  },
+  {
+    "id": "28-organization-smtp",
+    "url": "http://localhost:8181/admin/organizations/manage?tab=smtp",
+    "title": "组织营销SMTP",
+    "viewport": "1440 × 900",
+    "image": "28-organization-smtp.jpg"
+  },
+  {
+    "id": "29-organizations-mine",
+    "url": "http://localhost:8181/admin/organizations/mine",
+    "title": "我的组织",
+    "viewport": "1440 × 900",
+    "image": "29-organizations-mine.jpg"
+  },
+  {
+    "id": "30-organizations-join",
+    "url": "http://localhost:8181/admin/organizations/join",
+    "title": "加入组织",
+    "viewport": "1440 × 900",
+    "image": "30-organizations-join.jpg"
+  },
+  {
+    "id": "31-organizations-create",
+    "url": "http://localhost:8181/admin/organizations/create",
+    "title": "申请创建组织",
+    "viewport": "1440 × 900",
+    "image": "31-organizations-create.jpg"
+  },
+  {
+    "id": "32-profile",
+    "url": "http://localhost:8181/admin/user/profile",
+    "title": "个人邮件配置",
+    "viewport": "1440 × 900",
+    "image": "32-profile.jpg"
+  },
+  {
+    "id": "33-profile-information",
+    "url": "http://localhost:8181/admin/user/profile",
+    "title": "个人信息",
+    "viewport": "1440 × 900",
+    "image": "33-profile-information.jpg"
+  },
+  {
+    "id": "34-profile-api",
+    "url": "http://localhost:8181/admin/user/profile",
+    "title": "API密钥",
+    "viewport": "1440 × 900",
+    "image": "34-profile-api.jpg"
+  },
+  {
+    "id": "35-users",
+    "url": "http://localhost:8181/admin/users",
+    "title": "用户列表",
+    "viewport": "1440 × 900",
+    "image": "35-users.jpg"
+  },
+  {
+    "id": "36-user-roles",
+    "url": "http://localhost:8181/admin/users/roles/users",
+    "title": "用户角色",
+    "viewport": "1440 × 900",
+    "image": "36-user-roles.jpg"
+  },
+  {
+    "id": "37-list-roles",
+    "url": "http://localhost:8181/admin/users/roles/customer-lists",
+    "title": "客户列表角色",
+    "viewport": "1440 × 900",
+    "image": "37-list-roles.jpg"
+  },
+  {
+    "id": "38-pool-customers",
+    "url": "http://localhost:8181/admin/pool",
+    "title": "公海客户",
+    "viewport": "1440 × 900",
+    "image": "38-pool-customers.jpg"
+  },
+  {
+    "id": "39-pool-contact-form",
+    "url": "http://localhost:8181/admin/pool",
+    "title": "新建公海客户",
+    "viewport": "1440 × 900",
+    "image": "39-pool-contact-form.jpg"
+  },
+  {
+    "id": "40-pool-archived",
+    "url": "http://localhost:8181/admin/pool-lists?status=archived",
+    "title": "已归档公海列表",
+    "viewport": "1440 × 900",
+    "image": "40-pool-archived.jpg"
+  },
+  {
+    "id": "41-campaigns",
+    "url": "http://localhost:8181/admin/campaigns",
+    "title": "营销活动列表",
+    "viewport": "1440 × 900",
+    "image": "41-campaigns.jpg"
+  },
+  {
+    "id": "42-media",
+    "url": "http://localhost:8181/admin/campaigns/media",
+    "title": "媒体文件",
+    "viewport": "1440 × 900",
+    "image": "42-media.jpg"
+  },
+  {
+    "id": "43-custom-fields",
+    "url": "http://localhost:8181/admin/campaigns/custom-fields",
+    "title": "自定义字段来源",
+    "viewport": "1440 × 900",
+    "image": "43-custom-fields.jpg"
+  },
+  {
+    "id": "44-campaign-detail",
+    "url": "http://localhost:8181/admin/campaigns/13",
+    "title": "活动配置",
+    "viewport": "1440 × 900",
+    "image": "44-campaign-detail.jpg"
+  },
+  {
+    "id": "45-campaign-overview",
+    "url": "http://localhost:8181/admin/campaigns/13#overview",
+    "title": "活动营销概览",
+    "viewport": "1440 × 900",
+    "image": "45-campaign-overview.jpg"
+  },
+  {
+    "id": "46-campaign-content",
+    "url": "http://localhost:8181/admin/campaigns/13#content",
+    "title": "活动内容",
+    "viewport": "1440 × 900",
+    "image": "46-campaign-content.jpg"
+  },
+  {
+    "id": "47-campaign-attributes",
+    "url": "http://localhost:8181/admin/campaigns/13#attribs",
+    "title": "活动属性",
+    "viewport": "1440 × 900",
+    "image": "47-campaign-attributes.jpg"
+  },
+  {
+    "id": "48-campaign-statistics",
+    "url": "http://localhost:8181/admin/campaigns/13#analytics",
+    "title": "活动营销统计",
+    "viewport": "1440 × 900",
+    "image": "48-campaign-statistics.jpg"
+  },
+  {
+    "id": "49-campaign-archive",
+    "url": "http://localhost:8181/admin/campaigns/13#archive",
+    "title": "活动存档设置",
+    "viewport": "1440 × 900",
+    "image": "49-campaign-archive.jpg"
+  },
+  {
+    "id": "50-provider-overview",
+    "url": "http://localhost:8181/admin/delivery-provider?tab=overview",
+    "title": "服务商总览指标",
+    "viewport": "1440 × 900",
+    "image": "50-provider-overview.jpg"
+  },
+  {
+    "id": "51-provider-statistics",
+    "url": "http://localhost:8181/admin/delivery-provider?tab=statistics",
+    "title": "服务商发送分析指标",
+    "viewport": "1440 × 900",
+    "image": "51-provider-statistics.jpg"
+  },
+  {
+    "id": "52-provider-logs",
+    "url": "http://localhost:8181/admin/delivery-provider?tab=logs",
+    "title": "投递日志",
+    "viewport": "1440 × 900",
+    "image": "52-provider-logs.jpg"
+  },
+  {
+    "id": "53-permission-denied",
+    "url": "http://localhost:8181/admin/403",
+    "title": "无权限页面",
+    "viewport": "1440 × 900",
+    "image": "53-permission-denied.jpg"
+  },
+  {
+    "id": "54-not-found",
+    "url": "http://localhost:8181/admin/404",
+    "title": "页面不存在",
+    "viewport": "1440 × 900",
+    "image": "54-not-found.jpg"
+  },
+  {
+    "id": "55-logs",
+    "url": "http://localhost:8181/admin/settings/logs",
+    "title": "系统日志局部",
+    "viewport": "1440 × 900",
+    "image": "55-logs.jpg"
+  },
+  {
+    "id": "56-audit",
+    "url": "http://localhost:8181/admin/settings/audit",
+    "title": "审计日志局部",
+    "viewport": "1440 × 900",
+    "image": "56-audit.jpg"
+  },
+  {
+    "id": "57-dashboard",
+    "url": "http://localhost:8181/admin/",
+    "title": "仪表盘",
+    "viewport": "1440 × 900",
+    "image": "57-dashboard.jpg"
+  },
+  {
+    "id": "58-public-home",
+    "url": "http://localhost:9173/",
+    "title": "公开首页",
+    "viewport": "1440 × 900",
+    "image": "58-public-home.jpg"
+  },
+  {
+    "id": "59-public-subscription",
+    "url": "http://localhost:9173/subscription/form",
+    "title": "公开订阅",
+    "viewport": "1440 × 900",
+    "image": "59-public-subscription.jpg"
+  },
+  {
+    "id": "60-public-archive",
+    "url": "http://localhost:9173/archive",
+    "title": "历史邮件",
+    "viewport": "1440 × 900",
+    "image": "60-public-archive.jpg"
+  },
+  {
+    "id": "61-select-workspace",
+    "url": "http://localhost:9173/admin/select-workspace",
+    "title": "选择工作空间",
+    "viewport": "1440 × 900",
+    "image": "61-select-workspace.jpg"
+  },
+  {
+    "id": "62-login",
+    "url": "http://localhost:9173/admin/login",
+    "title": "登录",
+    "viewport": "1440 × 900",
+    "image": "62-login.jpg"
+  },
+  {
+    "id": "63-forgot-password",
+    "url": "http://localhost:9173/admin/forgot",
+    "title": "忘记密码",
+    "viewport": "1440 × 900",
+    "image": "63-forgot-password.jpg"
+  },
+  {
+    "id": "64-mobile-users",
+    "url": "http://localhost:8181/admin/users",
+    "title": "用户列表窄屏",
+    "viewport": "390 × 844",
+    "image": "64-mobile-users.jpg"
+  },
+  {
+    "id": "65-mobile-customers",
+    "url": "http://localhost:8181/admin/customers?search=example.com",
+    "title": "客户列表窄屏",
+    "viewport": "390 × 844",
+    "image": "65-mobile-customers.jpg"
+  },
+  {
+    "id": "66-mobile-import",
+    "url": "http://localhost:8181/admin/customers/import",
+    "title": "导入页面窄屏",
+    "viewport": "390 × 844",
+    "image": "66-mobile-import.jpg"
+  },
+  {
+    "id": "67-mobile-organizations",
+    "url": "http://localhost:8181/admin/organizations/manage?tab=members",
+    "title": "组织管理窄屏",
+    "viewport": "390 × 844",
+    "image": "67-mobile-organizations.jpg"
+  },
+  {
+    "id": "68-mobile-campaign",
+    "url": "http://localhost:8181/admin/campaigns/new",
+    "title": "活动新建窄屏",
+    "viewport": "390 × 844",
+    "image": "68-mobile-campaign.jpg"
+  },
+  {
+    "id": "69-mobile-template",
+    "url": "http://localhost:8181/admin/campaigns/templates",
+    "title": "模板弹窗窄屏",
+    "viewport": "390 × 844",
+    "image": "69-mobile-template.jpg"
+  },
+  {
+    "id": "70-mobile-public-subscription",
+    "url": "http://localhost:9173/subscription/form",
+    "title": "公开订阅窄屏",
+    "viewport": "390 × 844",
+    "image": "70-mobile-public-subscription.jpg"
+  },
+  {
+    "id": "71-production-dashboard",
+    "url": "http://localhost:9173/admin/",
+    "title": "生产资源仪表盘",
+    "viewport": "1440 × 900",
+    "image": "71-production-dashboard.jpg"
+  }
+]

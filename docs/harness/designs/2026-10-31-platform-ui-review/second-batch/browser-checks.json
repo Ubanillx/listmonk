@@ -1,0 +1,167 @@
+[
+  {
+    "name": "01-pending-empty",
+    "url": "http://localhost:8181/admin/organizations/manage?tab=pending",
+    "file": "C:/code/listmonk/docs/harness/designs/2026-10-31-platform-ui-review/second-batch/shots/01-pending-empty.png"
+  },
+  {
+    "name": "02-maintenance-counts",
+    "url": "http://localhost:9173/admin/settings/maintenance",
+    "file": "C:/code/listmonk/docs/harness/designs/2026-10-31-platform-ui-review/second-batch/shots/02-maintenance-counts.png"
+  },
+  {
+    "name": "03-maintenance-confirm",
+    "url": "http://localhost:9173/admin/settings/maintenance",
+    "file": "C:/code/listmonk/docs/harness/designs/2026-10-31-platform-ui-review/second-batch/shots/03-maintenance-confirm.png"
+  },
+  {
+    "name": "04-maintenance-mobile",
+    "url": "http://localhost:9173/admin/settings/maintenance",
+    "file": "C:/code/listmonk/docs/harness/designs/2026-10-31-platform-ui-review/second-batch/shots/04-maintenance-mobile.png"
+  },
+  {
+    "name": "05-editor-global",
+    "url": "http://localhost:9173/admin/campaigns/templates",
+    "file": "C:/code/listmonk/docs/harness/designs/2026-10-31-platform-ui-review/second-batch/shots/05-editor-global.png"
+  },
+  {
+    "name": "06-editor-heading",
+    "url": "http://localhost:8181/admin/campaigns/templates",
+    "file": "C:/code/listmonk/docs/harness/designs/2026-10-31-platform-ui-review/second-batch/shots/06-editor-heading.png"
+  },
+  {
+    "name": "07-editor-import-error",
+    "url": "http://localhost:8181/admin/campaigns/templates",
+    "file": "C:/code/listmonk/docs/harness/designs/2026-10-31-platform-ui-review/second-batch/shots/07-editor-import-error.png"
+  },
+  {
+    "name": "08-editor-button",
+    "url": "http://localhost:8181/admin/campaigns/templates",
+    "file": "C:/code/listmonk/docs/harness/designs/2026-10-31-platform-ui-review/second-batch/shots/08-editor-button.png"
+  },
+  {
+    "name": "09-editor-mobile-settings",
+    "url": "http://localhost:9173/admin/campaigns/templates",
+    "file": "C:/code/listmonk/docs/harness/designs/2026-10-31-platform-ui-review/second-batch/shots/09-editor-mobile-settings.png"
+  },
+  {
+    "name": "10-editor-mobile-canvas",
+    "url": "http://localhost:9173/admin/campaigns/templates",
+    "file": "C:/code/listmonk/docs/harness/designs/2026-10-31-platform-ui-review/second-batch/shots/10-editor-mobile-canvas.png"
+  },
+  {
+    "name": "11-editor-spacer",
+    "url": "http://localhost:9173/admin/campaigns/templates",
+    "file": "C:/code/listmonk/docs/harness/designs/2026-10-31-platform-ui-review/second-batch/shots/11-editor-spacer.png"
+  },
+  {
+    "name": "12-editor-html",
+    "url": "http://localhost:8181/admin/campaigns/templates",
+    "file": "C:/code/listmonk/docs/harness/designs/2026-10-31-platform-ui-review/second-batch/shots/12-editor-html.png"
+  },
+  {
+    "name": "13-editor-block-menu",
+    "url": "http://localhost:8181/admin/campaigns/templates",
+    "file": "C:/code/listmonk/docs/harness/designs/2026-10-31-platform-ui-review/second-batch/shots/13-editor-block-menu.png"
+  },
+  {
+    "name": "14-editor-image",
+    "url": "http://localhost:8181/admin/campaigns/templates",
+    "file": "C:/code/listmonk/docs/harness/designs/2026-10-31-platform-ui-review/second-batch/shots/14-editor-image.png"
+  },
+  {
+    "name": "15-editor-avatar",
+    "url": "http://localhost:8181/admin/campaigns/templates",
+    "file": "C:/code/listmonk/docs/harness/designs/2026-10-31-platform-ui-review/second-batch/shots/15-editor-avatar.png"
+  },
+  {
+    "name": "16-editor-columns",
+    "url": "http://localhost:8181/admin/campaigns/templates",
+    "file": "C:/code/listmonk/docs/harness/designs/2026-10-31-platform-ui-review/second-batch/shots/16-editor-columns.png"
+  },
+  {
+    "name": "17-editor-container",
+    "url": "http://localhost:8181/admin/campaigns/templates",
+    "file": "C:/code/listmonk/docs/harness/designs/2026-10-31-platform-ui-review/second-batch/shots/17-editor-container.png"
+  },
+  {
+    "name": "18-pending-real-page1",
+    "url": "http://127.0.0.1:9273/admin/organizations/manage?tab=pending",
+    "file": "C:/code/listmonk/docs/harness/designs/2026-10-31-platform-ui-review/second-batch/shots/18-pending-real-page1.png"
+  },
+  {
+    "name": "19-pending-real-page2",
+    "url": "http://127.0.0.1:9273/admin/organizations/manage?tab=pending",
+    "file": "C:/code/listmonk/docs/harness/designs/2026-10-31-platform-ui-review/second-batch/shots/19-pending-real-page2.png"
+  },
+  {
+    "name": "20-pending-real-confirm",
+    "url": "http://127.0.0.1:9273/admin/organizations/manage?tab=pending",
+    "file": "C:/code/listmonk/docs/harness/designs/2026-10-31-platform-ui-review/second-batch/shots/20-pending-real-confirm.png"
+  },
+  {
+    "name": "21-pending-real-mobile",
+    "url": "http://127.0.0.1:9273/admin/organizations/manage?tab=pending",
+    "file": "C:/code/listmonk/docs/harness/designs/2026-10-31-platform-ui-review/second-batch/shots/21-pending-real-mobile.png"
+  },
+  {
+    "name": "22-pending-real-empty",
+    "url": "http://localhost:9273/admin/organizations/manage?tab=pending",
+    "file": "C:/code/listmonk/docs/harness/designs/2026-10-31-platform-ui-review/second-batch/shots/22-pending-real-empty.png"
+  },
+  {
+    "name": "23-1-organization-tab",
+    "url": "http://localhost:9173/admin/organizations/manage?tab=members",
+    "file": "C:/code/listmonk/docs/harness/designs/2026-10-31-platform-ui-review/second-batch/shots/23-1-organization-tab.png"
+  },
+  {
+    "name": "23-2-organization-tab",
+    "url": "http://localhost:9173/admin/organizations/manage?tab=invites",
+    "file": "C:/code/listmonk/docs/harness/designs/2026-10-31-platform-ui-review/second-batch/shots/23-2-organization-tab.png"
+  },
+  {
+    "name": "23-3-organization-tab",
+    "url": "http://localhost:9173/admin/organizations/manage?tab=pending",
+    "file": "C:/code/listmonk/docs/harness/designs/2026-10-31-platform-ui-review/second-batch/shots/23-3-organization-tab.png"
+  },
+  {
+    "name": "23-4-organization-tab",
+    "url": "http://localhost:9173/admin/organizations/manage?tab=reply-mailboxes",
+    "file": "C:/code/listmonk/docs/harness/designs/2026-10-31-platform-ui-review/second-batch/shots/23-4-organization-tab.png"
+  },
+  {
+    "name": "23-5-organization-tab",
+    "url": "http://localhost:9173/admin/organizations/manage?tab=reply-forwarding",
+    "file": "C:/code/listmonk/docs/harness/designs/2026-10-31-platform-ui-review/second-batch/shots/23-5-organization-tab.png"
+  },
+  {
+    "name": "23-6-organization-tab",
+    "url": "http://localhost:9173/admin/organizations/manage?tab=smtp",
+    "file": "C:/code/listmonk/docs/harness/designs/2026-10-31-platform-ui-review/second-batch/shots/23-6-organization-tab.png"
+  },
+  {
+    "name": "23-7-organization-tab",
+    "url": "http://localhost:9173/admin/organizations/manage?tab=platform",
+    "file": "C:/code/listmonk/docs/harness/designs/2026-10-31-platform-ui-review/second-batch/shots/23-7-organization-tab.png"
+  },
+  {
+    "name": "24-editor-mobile-actions",
+    "url": "http://localhost:9173/admin/campaigns/templates",
+    "file": "C:/code/listmonk/docs/harness/designs/2026-10-31-platform-ui-review/second-batch/shots/24-editor-mobile-actions.png"
+  },
+  {
+    "name": "25-campaigns",
+    "url": "http://localhost:9173/admin/campaigns",
+    "file": "C:/code/listmonk/docs/harness/designs/2026-10-31-platform-ui-review/second-batch/shots/25-campaigns.png"
+  },
+  {
+    "name": "26-editor-divider",
+    "url": "http://localhost:9173/admin/campaigns/templates",
+    "file": "C:/code/listmonk/docs/harness/designs/2026-10-31-platform-ui-review/second-batch/shots/26-editor-divider.png"
+  },
+  {
+    "name": "27-editor-text",
+    "url": "http://localhost:8181/admin/campaigns/templates",
+    "file": "C:/code/listmonk/docs/harness/designs/2026-10-31-platform-ui-review/second-batch/shots/27-editor-text.png"
+  }
+]

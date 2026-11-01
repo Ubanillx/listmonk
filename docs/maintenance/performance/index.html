@@ -1633,6 +1633,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#cleanup-previews" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cleanup previews
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1878,6 +1889,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#cleanup-previews" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cleanup previews
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1908,6 +1930,61 @@
 <p>When this option is enabled, the customer counts on the CustomerLists page, the Customers page, and the statistics on the dashboard, etc., are no longer counted in real-time in the database. Instead, they are updated periodically and cached, resulting in a massive performance boost. The periodicity can be configured on the Settings -&gt; Performance page using a standard crontab expression (default: <code>0 3 * * *</code>, which means 3 AM daily). Use a tool like <a href="https://crontab.guru">crontab.guru</a> for easily generating a desired crontab expression.</p>
 <h2 id="vacuum-ing">VACUUM-ing<a class="headerlink" href="#vacuum-ing" title="Permanent link">&para;</a></h2>
 <p>Running <a href="https://www.postgresql.org/docs/current/sql-vacuum.html"><code>VACUUM ANALYZE</code></a> on large Postgres databases at regular intervals (for instance, once a week), is recommended. It reclaims disk space and improves Postgres' query performance. Do note that this is a blocking operation and all database queries can come to a stand-still on a large database while the operation is running (generally only a few seconds).</p>
+<h2 id="cleanup-previews">Cleanup previews<a class="headerlink" href="#cleanup-previews" title="Permanent link">&para;</a></h2>
+<p>The Maintenance page counts matching records when opened or when conditions
+change, and refreshes that count before showing the deletion confirmation.
+Cleanup applies across <strong>all personal and organization workspaces</strong>, using the
+existing <code>settings:maintain</code> permission. A selected workspace does not narrow it.
+Failed previews show a retry action; zero or unavailable counts disable cleanup.
+Cancel keeps the selected conditions and sends no delete request.
+The date picker uses midnight (00:00) in the deployment timezone, excludes the
+selected day, and shows that exact boundary beside the count. Browser timezone
+differences do not change the selected deployment calendar date.</p>
+<p>The read-only API is <code>GET /api/maintenance/{dataset}/{type}/preview</code>, with these
+accepted combinations:</p>
+<table>
+<thead>
+<tr>
+<th>Dataset</th>
+<th>Type</th>
+<th>Counted records</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>customers</td>
+<td>orphan</td>
+<td>Customers with no customer list memberships</td>
+</tr>
+<tr>
+<td>customers</td>
+<td>blocklisted</td>
+<td>Customers whose status is blocklisted</td>
+</tr>
+<tr>
+<td>subscriptions</td>
+<td>unconfirmed</td>
+<td>Unconfirmed memberships in double-opt-in lists, created strictly before <code>before_date</code></td>
+</tr>
+<tr>
+<td>analytics</td>
+<td>all / views / clicks</td>
+<td>Campaign view and/or link-click records created strictly before <code>before_date</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>before_date</code> is required for subscriptions and analytics, in RFC3339 format.
+Invalid datasets, types, or dates return HTTP 400. The response envelope is
+<code>{"data":{"count":2,"views":1,"clicks":1}}</code>; views/clicks are zero for other
+datasets. Counts come directly from database records, even when slow-query caching
+is enabled. Deleting customers also deletes subscriptions and other dependent
+records according to existing foreign-key behavior; the displayed customer count
+does not include those related rows. Historical analytics with nullable customer
+references remain, as before.</p>
+<p>A preview is a query-time snapshot. The delete action matches the original
+conditions again when executed, so newly added/changed records may affect the
+final count. The confirmation includes this distinction and the exact cutoff in
+the deployment timezone. Previewing never performs cleanup or changes records.</p>
 
 
 

@@ -2171,6 +2171,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#get-apiorganizationsresourcespending" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/organizations/resources/pending
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#post-apiorganizationsresourcestransfer" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4408,6 +4419,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#get-apiorganizationsresourcespending" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /api/organizations/resources/pending
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#post-apiorganizationsresourcestransfer" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4952,7 +4974,7 @@ SMTP pool counts automatically.</p>
   <code>internal/auth/models.go:111</code>), and answer HTTP 403
   <code>platform organization management permission required</code> otherwise. An operator
   holding that permission may also use the organization-management paths
-  (<code>members</code>, <code>resources/transfer</code>, <code>templates/*</code>, <code>reply-forwarding</code>, <code>invites</code>)
+  (<code>members</code>, <code>resources/pending</code>, <code>resources/transfer</code>, <code>templates/*</code>, <code>reply-forwarding</code>, <code>invites</code>)
   inside a selected organization without joining it — <code>cmd/organizations.go:233</code>.</li>
 </ul>
 <table>
@@ -5003,6 +5025,11 @@ SMTP pool counts automatically.</p>
 <td style="text-align: left;">DELETE</td>
 <td style="text-align: left;"><a href="#delete-apiorganizationsmembersuser_id">/api/organizations/members/{user_id}</a></td>
 <td style="text-align: left;">Remove a member from the active organization</td>
+</tr>
+<tr>
+<td style="text-align: left;">GET</td>
+<td style="text-align: left;">/api/organizations/resources/pending</td>
+<td style="text-align: left;">Preview all pending resources in the selected active organization</td>
 </tr>
 <tr>
 <td style="text-align: left;">GET</td>
@@ -5986,6 +6013,27 @@ but checks <code>customer_lists:manage_all</code> explicitly
 </code></pre></div>
 <hr />
 <h3 id="resource-transfer-between-members">Resource transfer between members<a class="headerlink" href="#resource-transfer-between-members" title="Permanent link">&para;</a></h3>
+<h4 id="get-apiorganizationsresourcespending">GET /api/organizations/resources/pending<a class="headerlink" href="#get-apiorganizationsresourcespending" title="Permanent link">&para;</a></h4>
+<p>Preview the resources that the pending-transfer action currently matches. Uses
+the same organization manager/platform authorization and selected organization
+header as the POST below. Ordinary members and outsiders receive HTTP 403;
+archived organizations receive HTTP 409. Personal API keys cannot use this path.</p>
+<p>Optional <code>page</code> is a positive integer (maximum 1,000,000), default 1. Pages contain
+20 items, sorted by kind and ID; an out-of-range page is clamped to the last page.
+Totals and rows use one consistent, read-only snapshot. The predicate is the
+selected organization, a NULL owner, and a non-NULL <code>transfer_pending_at</code>. It
+covers customer lists, customers, campaigns, templates and media. No customer
+email/attributes, template bodies, or media URLs are returned.
+<code>original_owner_name</code> is the former account's current username; an empty name/zero
+owner ID means that account is no longer available.</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">"data"</span><span class="p">:{</span><span class="nt">"counts"</span><span class="p">:[{</span><span class="nt">"kind"</span><span class="p">:</span><span class="s2">"campaigns"</span><span class="p">,</span><span class="nt">"count"</span><span class="p">:</span><span class="mi">1</span><span class="p">}],</span><span class="nt">"results"</span><span class="p">:[{</span><span class="nt">"kind"</span><span class="p">:</span><span class="s2">"campaigns"</span><span class="p">,</span><span class="nt">"id"</span><span class="p">:</span><span class="mi">42</span><span class="p">,</span><span class="nt">"name"</span><span class="p">:</span><span class="s2">"Pending campaign"</span><span class="p">,</span><span class="nt">"original_owner_user_id"</span><span class="p">:</span><span class="mi">3</span><span class="p">,</span><span class="nt">"original_owner_name"</span><span class="p">:</span><span class="s2">"former-member"</span><span class="p">,</span><span class="nt">"pending_at"</span><span class="p">:</span><span class="s2">"2026-10-01T00:00:00Z"</span><span class="p">}],</span><span class="nt">"total"</span><span class="p">:</span><span class="mi">1</span><span class="p">,</span><span class="nt">"page"</span><span class="p">:</span><span class="mi">1</span><span class="p">,</span><span class="nt">"per_page"</span><span class="p">:</span><span class="mi">20</span><span class="p">}}</span>
+</code></pre></div>
+<p>Empty results use <code>counts: []</code>, <code>results: []</code>, <code>total: 0</code>. Previewing does not
+reserve the resource set. The transfer rechecks organization status, recipient
+membership and matching resources in its existing transaction. Counts can change
+between preview and execution; duplicate customer emails may merge into fewer
+target customer rows. The UI re-queries before confirmation and names the selected
+organization and recipient. Cancel does not submit a transfer.</p>
 <h4 id="post-apiorganizationsresourcestransfer">POST /api/organizations/resources/transfer<a class="headerlink" href="#post-apiorganizationsresourcestransfer" title="Permanent link">&para;</a></h4>
 <p>Give every pending resource left behind by a former member of the active
 organization to an active member of that organization. Customer conflicts are

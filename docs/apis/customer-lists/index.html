@@ -3140,6 +3140,14 @@ missing list after the administrator had already seen it in the platform index.<
 <hr />
 <h4 id="get-apicustomer-lists">GET /api/customer-lists<a class="headerlink" href="#get-apicustomer-lists" title="Permanent link">&para;</a></h4>
 <p>Retrieve customer_lists.</p>
+<p>For non-minimal responses, callers with <code>pools:get</code> also receive
+<code>customer_statuses.unsubscribed</code> on pool and allocation rows when the count is
+nonzero. This counts distinct contacts with an unrestored <code>source=unsubscribe</code>
+exclusion, using the same membership and organization scope as the corresponding
+pool-contacts endpoint with <code>status=unsubscribed</code>. First-level pools show all
+organizations only to platform administrators or pool master maintainers;
+allocation rows always use their own organization. Manual exclusions and restored
+unsubscribes are not counted. Metadata-only permissions do not expose these counts.</p>
 <blockquote>
 <p><strong>Note:</strong> CustomerLists with <code>status: archived</code> are hidden from customer_list selectors in campaigns, public subscription forms, and roles by default. They can only be viewed by filtering with <code>status=archived</code> or by viewing all customer_lists without a status filter.</p>
 </blockquote>

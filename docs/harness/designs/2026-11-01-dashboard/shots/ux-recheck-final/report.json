@@ -1,0 +1,12 @@
+[
+  {
+    "file": "page.png",
+    "state": null,
+    "size": "1440x900",
+    "zoom": 1,
+    "failed": true,
+    "issues": [
+      "第 16 步「waitfor .dashboard」：找不到元素 .dashboard；线索：去掉最后一段后 \"（空）\" 匹配 0 个元素；例如 waitfor .open"
+    ]
+  }
+]

@@ -1,0 +1,21 @@
+[
+  {
+    "file": "page.png",
+    "state": null,
+    "size": "390x844",
+    "zoom": 1,
+    "animationWaitMs": 0,
+    "issues": [],
+    "lint": [
+      {
+        "rule": "contrastLow",
+        "label": "文字对比度不达标（正文低于 4.5:1，大字低于 3:1）",
+        "count": 2,
+        "examples": [
+          "footer.container「技术支持： Mailing customer_l」（2.51:1）",
+          "a「Mailing customer_list」（2.27:1）"
+        ]
+      }
+    ]
+  }
+]

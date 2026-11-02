@@ -18,7 +18,7 @@ func (c *Core) GetCampaignUnsubscriptions(access models.WorkspaceAccess, id int,
 	if f.Status == "" {
 		f.Status = "confirmed"
 	}
-	if f.Status != "all" && f.Status != "clicked" && f.Status != "confirmed" {
+	if f.Status != "all" && f.Status != "clicked" && f.Status != "confirmed" && f.Status != "visited" {
 		return nil, 0, echo.NewHTTPError(http.StatusBadRequest, "invalid unsubscribe status")
 	}
 	scope, scopeArgs := workspaceSensitiveCustomerPredicate(access, "c", 9)
@@ -42,9 +42,10 @@ func (c *Core) GetCampaignUnsubscriptions(access models.WorkspaceAccess, id int,
 			OR (cu.owner_user_id=c.owner_user_id AND cu.organization_id IS NOT DISTINCT FROM c.organization_id AND cu.transfer_pending_at IS NULL)))
 			OR (u.recipient_type='pool' AND $4::BOOL AND ($6::BOOL OR u.recipient_organization_id=$5)))
 	), filtered AS (
-		SELECT * FROM visible WHERE ($%d::TEXT='all' OR status=$%d::TEXT) AND ($2::TEXT='' OR name ILIKE '%%'||$2||'%%' OR customer_code ILIKE '%%'||$2||'%%'
+		SELECT * FROM visible WHERE ($%d::TEXT='all' OR ($%d::TEXT='visited' AND clicked_at IS NOT NULL) OR status=$%d::TEXT)
+		AND ($2::TEXT='' OR name ILIKE '%%'||$2||'%%' OR customer_code ILIKE '%%'||$2||'%%'
 		OR (((recipient_type='private' AND $7::BOOL) OR (recipient_type='pool' AND $8::BOOL)) AND email ILIKE '%%'||$2||'%%'))
-	) `, scope, statusArg, statusArg)
+	) `, scope, statusArg, statusArg, statusArg)
 	var total int
 	if err := c.db.Get(&total, query+`SELECT COUNT(*)::INT FROM filtered`, args...); err != nil {
 		return nil, 0, workspaceQueryError("counting campaign unsubscriptions", err)

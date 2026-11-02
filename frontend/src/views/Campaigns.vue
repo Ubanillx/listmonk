@@ -121,12 +121,24 @@
         </div>
       </b-table-column>
 
-      <b-table-column v-slot="props" field="unsubscribeActivity" :label="$t('campaigns.unsubscribeActivity')" width="10%" cell-class="campaign-unsubscribe-column">
-        <div class="campaign-unsubscribes" :set="stats = getCampaignStats(props.row)" :title="$t('campaigns.unsubscribesHelp')">
-          <a v-if="$canReadCampaignUnsubscribes(props.row) && (stats.unsubscribeActivity || 0) > 0" href="#"
-            @click.prevent="unsubscribeCampaign = props.row" :aria-label="$t('campaigns.unsubscribeDetails')">{{ $utils.formatNumber(stats.unsubscribeActivity || 0) }}</a>
-          <span v-else>{{ $utils.formatNumber(stats.unsubscribeActivity || 0) }}</span>
-          <span class="campaign-metric-caption">{{ $t('campaigns.uniqueRecipients') }}</span>
+      <b-table-column v-slot="props" field="unsubscribeActivity" :label="$t('campaigns.unsubscribeActivity')" width="16%" cell-class="campaign-unsubscribe-column">
+        <div class="campaign-unsubscribes campaign-dual-metrics" :set="stats = getCampaignStats(props.row)" :title="$t('campaigns.unsubscribesHelp')">
+          <div data-cy="unsubscribe-clicks">
+            <a v-if="$canReadCampaignUnsubscribes(props.row) && (stats.unsubscribeClicks || 0) > 0" href="#"
+              @click.prevent="showUnsubscribes(props.row, 'visited')" :aria-label="$t('campaigns.unsubscribeClickRecipients')">
+              {{ $utils.formatNumber(stats.unsubscribeClicks || 0) }}
+            </a>
+            <strong v-else>{{ $utils.formatNumber(stats.unsubscribeClicks || 0) }}</strong>
+            <span>{{ $t('campaigns.unsubscribeClickRecipients') }}</span>
+          </div>
+          <div data-cy="unsubscribe-confirmations">
+            <a v-if="$canReadCampaignUnsubscribes(props.row) && (stats.unsubscribes || 0) > 0" href="#"
+              @click.prevent="showUnsubscribes(props.row, 'confirmed')" :aria-label="$t('campaigns.unsubscribeConfirmRecipients')">
+              {{ $utils.formatNumber(stats.unsubscribes || 0) }}
+            </a>
+            <strong v-else>{{ $utils.formatNumber(stats.unsubscribes || 0) }}</strong>
+            <span>{{ $t('campaigns.unsubscribeConfirmRecipients') }}</span>
+          </div>
         </div>
       </b-table-column>
 
@@ -228,7 +240,7 @@
       @close="closePreview" />
 
     <campaign-send-errors v-if="sendErrorCampaign" :campaign="sendErrorCampaign" @close="sendErrorCampaign = null" />
-    <campaign-unsubscribes v-if="unsubscribeCampaign" :campaign="unsubscribeCampaign" @close="unsubscribeCampaign = null" />
+    <campaign-unsubscribes v-if="unsubscribeCampaign" :campaign="unsubscribeCampaign" :initial-status="unsubscribeStatus" @close="unsubscribeCampaign = null" />
 
     <b-modal scroll="keep" :aria-modal="true" :active.sync="isCloneFormVisible" :width="520">
       <div class="modal-card content" style="width: auto">
@@ -280,6 +292,7 @@ export default Vue.extend({
       previewItem: null,
       sendErrorCampaign: null,
       unsubscribeCampaign: null,
+      unsubscribeStatus: 'all',
       isCloneFormVisible: false,
       cloneItem: null,
       cloneForm: {
@@ -305,6 +318,11 @@ export default Vue.extend({
   },
 
   methods: {
+    showUnsubscribes(campaign, status) {
+      this.unsubscribeStatus = status;
+      this.unsubscribeCampaign = campaign;
+    },
+
     campaignAudienceLists(campaign) {
       const lists = (campaign.customerLists || []).map((list) => ({ ...list, type: 'private' }));
       const poolIDs = new Set();

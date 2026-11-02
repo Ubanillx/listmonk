@@ -16,6 +16,7 @@
           <b-field :label="$t('globals.fields.status')" label-for="unsubscribe-status">
             <b-select id="unsubscribe-status" v-model="status" @input="changePage(1)">
               <option value="all">{{ $t('campaigns.unsubscribeAll') }}</option>
+              <option value="visited">{{ $t('campaigns.unsubscribeVisited') }}</option>
               <option value="clicked">{{ $t('campaigns.unsubscribeClicked') }}</option>
               <option value="confirmed">{{ $t('campaigns.unsubscribeConfirmed') }}</option>
             </b-select>
@@ -59,11 +60,14 @@
 import { mapState } from 'vuex';
 
 export default {
-  props: { campaign: { type: Object, required: true } },
+  props: {
+    campaign: { type: Object, required: true },
+    initialStatus: { type: String, default: 'all' },
+  },
   data() {
     return {
       search: '',
-      status: 'all',
+      status: this.initialStatus,
       appliedSearch: '',
       page: 1,
       perPage: 20,

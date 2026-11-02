@@ -31,9 +31,10 @@ describe('Campaign unsubscribe recipients', () => {
           expect(stats.data.unsubscribe_activity).to.eq(1);
         });
         cy.visit('/admin/campaigns');
-        cy.contains('tbody tr', '退订人数回归').find('.campaign-unsubscribes a')
+        cy.contains('tbody tr', '退订人数回归').find('[data-cy=unsubscribe-clicks] a')
           .should(($link) => expect($link.text().trim()).to.eq('1')).click();
         cy.get('[data-cy=unsubscribe-report]').within(() => {
+          cy.get('#unsubscribe-status').should('have.value', 'visited');
           cy.contains('tbody tr', '退订测试客户').should('contain', '已点击，未确认');
           cy.get('#unsubscribe-status').select('confirmed');
           cy.contains('暂无已记录的退订。').should('be.visible');
@@ -51,10 +52,16 @@ describe('Campaign unsubscribe recipients', () => {
         });
         cy.visit('/admin/campaigns');
         cy.contains('tbody tr', '退订人数回归').within(() => {
-          cy.get('.campaign-unsubscribes').should('contain', '1');
-          cy.get('.campaign-unsubscribes a').click();
+          cy.get('[data-cy=unsubscribe-clicks] a').should('contain', '1').click();
         });
         cy.get('[data-cy=unsubscribe-report]').within(() => {
+          cy.get('#unsubscribe-status').should('have.value', 'visited');
+          cy.contains('tbody tr', '退订测试客户').should('contain', '已确认退订');
+        });
+        cy.contains('[data-cy=unsubscribe-report] button', '关闭').click();
+        cy.contains('tbody tr', '退订人数回归').find('[data-cy=unsubscribe-confirmations] a').should('contain', '1').click();
+        cy.get('[data-cy=unsubscribe-report]').within(() => {
+          cy.get('#unsubscribe-status').should('have.value', 'confirmed');
           cy.contains('tbody tr', '退订测试客户').should('contain', customer.email).and('contain', '已确认退订');
           cy.get('#unsubscribe-search').type('no-such-recipient{enter}');
           cy.contains('暂无已记录的退订。').should('be.visible');
@@ -99,7 +106,7 @@ describe('Campaign unsubscribe recipients', () => {
       req.reply({ data: { results: rows.slice((page - 1) * size, page * size), total: rows.length, page, per_page: size } });
     }).as('unsubscribes');
     cy.loginAndVisit('/admin/campaigns');
-    cy.get('.campaign-unsubscribes a').click();
+    cy.get('[data-cy=unsubscribe-confirmations] a').click();
     cy.wait('@unsubscribes');
     cy.get('[data-cy=unsubscribe-report] .notification.is-danger').should('be.visible');
     cy.then(() => { failed = false; });

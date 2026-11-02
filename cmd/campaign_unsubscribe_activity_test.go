@@ -53,7 +53,7 @@ func TestCampaignUnsubscribeClickAndConfirmationAlign(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), `"unsubscribe_clicks":1`) || !strings.Contains(rec.Body.String(), `"unsubscribes":0`) || !strings.Contains(rec.Body.String(), `"unsubscribe_activity":1`) {
 		t.Fatalf("unsubscribe link clicks are absent from campaign statistics: %s", rec.Body.String())
 	}
-	for _, status := range []string{"all", "clicked", "confirmed"} {
+	for _, status := range []string{"all", "clicked", "confirmed", "visited"} {
 		c, rec = unsubscribeAPIContext(u, f.id, "?status="+status)
 		if err := f.a.GetCampaignUnsubscriptions(c); err != nil {
 			t.Fatal(err)
@@ -89,6 +89,15 @@ func TestCampaignUnsubscribeClickAndConfirmationAlign(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `"unsubscribe_activity":2`) || !strings.Contains(rec.Body.String(), `"unsubscribe_clicks":1`) || !strings.Contains(rec.Body.String(), `"unsubscribes":2`) {
 		t.Fatalf("union count mismatch: %s", rec.Body.String())
+	}
+	for status, total := range map[string]int{"all": 2, "clicked": 0, "confirmed": 2, "visited": 1} {
+		c, rec = unsubscribeAPIContext(u, f.id, "?status="+status)
+		if err := f.a.GetCampaignUnsubscriptions(c); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(rec.Body.String(), fmt.Sprintf(`"total":%d`, total)) {
+			t.Fatalf("status %s after confirmation: %s", status, rec.Body.String())
+		}
 	}
 	rows, err := f.a.core.GetRunningCampaignStats()
 	if err != nil || len(rows) != 1 || rows[0].UnsubscribeClicks != 1 || rows[0].Unsubscribes != 2 || rows[0].UnsubscribeActivity != 2 {

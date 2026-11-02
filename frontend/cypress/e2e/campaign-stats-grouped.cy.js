@@ -8,16 +8,18 @@ describe('Grouped campaign statistics', () => {
       created_at: '2026-10-29T01:00:00Z', updated_at: '2026-10-30T01:00:00Z', started_at: '2026-10-29T02:00:00Z',
       owner_username: 'admin', visibility: 'private', views: 241, clicks: 44,
       sent: 1534, to_send: 2122, unsent_count: 175, unsubscribe_activity: 24,
+      unsubscribe_clicks: id === 901 ? 24 : 0, unsubscribes: id === 901 ? 11 : 0,
       delivery_total: 2122, delivery_sent: 1534, delivery_pending: 175, delivery_unavailable: 413,
     });
     let stopped = false;
+    let liveCounts = false;
     cy.intercept({ method: 'GET', pathname: '/api/campaigns' }, (req) => req.reply({ data: {
       results: [campaign(901, 'B 分组统计活动', stopped ? 'paused' : 'running', 2821), campaign(902, '零错误活动', 'finished', 0)],
       total: 2, per_page: 20,
     } })).as('campaigns');
     cy.intercept('GET', '/api/campaigns/running/stats', (req) => req.reply({ data: [
       ...(stopped ? [] : [{ id: 901, status: 'running', send_errors: 2822, delivery_total: 2122, delivery_sent: 1535, delivery_pending: 174,
-        delivery_unavailable: 413, unsubscribe_activity: 24 }]),
+        delivery_unavailable: 413, unsubscribe_activity: 25, unsubscribe_clicks: liveCounts ? 25 : 24, unsubscribes: liveCounts ? 12 : 11 }]),
       // Another campaign remains running when the first stops.
       { id: 999, status: 'running', sent: 1, to_send: 2, send_errors: 0 },
     ] })).as('live');
@@ -51,12 +53,21 @@ describe('Grouped campaign statistics', () => {
         expect(getComputedStyle(fill).backgroundColor).to.equal('rgb(21, 94, 239)');
       });
       cy.get('[data-cy=btn-send-errors]').should('be.visible').and('not.contain', '2821');
-      cy.get('.campaign-unsubscribes a').should('have.text', '24');
+      cy.get('[data-cy=unsubscribe-clicks] a').should('contain', '24');
+      cy.get('[data-cy=unsubscribe-confirmations] a').should('contain', '11');
+      cy.get('.campaign-unsubscribes').should('contain', '点击人数').and('contain', '确认人数').and('not.contain', '去重人数');
     });
     cy.contains('tbody tr', '零错误活动').find('[data-cy=btn-send-errors]').should('not.exist');
+    cy.contains('tbody tr', '零错误活动').find('.campaign-unsubscribes a').should('not.exist');
+    cy.contains('tbody tr', '零错误活动').find('.campaign-unsubscribes strong').should('have.length', 2).each(($count) => {
+      expect($count.text()).to.eq('0');
+    });
     cy.contains('tbody tr', '零错误活动').find('.campaign-delivery-note')
       .should('contain', '未发送 175').and('contain', '2026-10-30 结束');
+    cy.then(() => { liveCounts = true; });
     cy.wait('@live');
+    cy.contains('tbody tr', 'B 分组统计活动').find('[data-cy=unsubscribe-clicks] a').should('contain', '25');
+    cy.contains('tbody tr', 'B 分组统计活动').find('[data-cy=unsubscribe-confirmations] a').should('contain', '12');
     cy.contains('tbody tr', 'B 分组统计活动').find('[data-cy=delivery-sent]').should('have.text', '1,535');
     cy.contains('tbody tr', 'B 分组统计活动').find('[data-cy=delivery-pending]').should('have.text', '174');
     cy.contains('tbody tr', 'B 分组统计活动').find('.campaign-progress-track').should(($track) => {
@@ -69,9 +80,14 @@ describe('Grouped campaign statistics', () => {
     cy.wait('@errors');
     cy.get('.campaign-send-error-report').should('be.visible');
     cy.get('.send-error-close').click();
-    cy.contains('tbody tr', 'B 分组统计活动').find('.campaign-unsubscribes a').click();
-    cy.wait('@unsubscribes');
+    cy.contains('tbody tr', 'B 分组统计活动').find('[data-cy=unsubscribe-clicks] a').click();
+    cy.wait('@unsubscribes').its('request.query').should('include', { status: 'visited' });
     cy.get('[data-cy=unsubscribe-report]').should('be.visible');
+    cy.get('#unsubscribe-status').should('have.value', 'visited');
+    cy.contains('[data-cy=unsubscribe-report] button', '关闭').click();
+    cy.contains('tbody tr', 'B 分组统计活动').find('[data-cy=unsubscribe-confirmations] a').click();
+    cy.wait('@unsubscribes').its('request.query').should('include', { status: 'confirmed' });
+    cy.get('#unsubscribe-status').should('have.value', 'confirmed');
     cy.contains('[data-cy=unsubscribe-report] button', '关闭').click();
     cy.screenshot('campaign-stats-B-desktop', { capture: 'viewport' });
     cy.then(() => { stopped = true; });

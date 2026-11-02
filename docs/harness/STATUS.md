@@ -1,6 +1,10 @@
 # 工作状态
 
-快照日期：2026-11-01
+快照日期：2026-11-02
+
+- **数据化仪表盘（2026-11-02）**：以 ECharts 重构仪表盘，使用现有工作区汇总、互动时序和活动统计接口展示五项概览、近30天独立的浏览与点击趋势、活动状态与排行、客户构成，以及最近5个活动的投递异常、退信、退订点击和确认退订。未增加后端接口或推测增长率，单点/空数据、失败重试与活动跳转保留真实语义；手机端异常表改为卡片。前端 lint/build 通过，桌面/390px 截图、键盘切换、活动跳转与刷新实测通过，截图检查无溢出和可读性提示；Cypress 受本机 Node 非法指令 3221225501 阻断，未宣称自动化通过。证据与评审：`designs/2026-11-01-dashboard/`。来源：`frontend/src/views/Dashboard.vue`、`frontend/src/components/DashboardChart.vue`、`frontend/cypress/e2e/dashboard.cy.js`。
+
+- **活动退订点击与确认人数分开展示（2026-11-01）**：营销列表退订区域移除并集人数和“去重人数”副文案，分别显示点击人数、确认人数并跟随运行统计刷新，零值显示 0。点击分别打开 visited（含点击后已确认）与 confirmed 明细；原 clicked（点击未确认）和默认 confirmed API 语义保持。Docker Desktop 恢复后，全量 Go（含 cmd 真实 PostgreSQL 集成）、隔离 Cypress 两组 3/3、前端 lint/生产构建通过；lint 仅既有地图 shadow warning。回归覆盖两项计数、零值、运行刷新、点击与确认明细、重复去重、搜索分页及失败恢复，桌面/390px 截图已核对。文档与 diff 检查通过；本地 backend 已重新编译启动、确认无待迁移并核验 9173 HTTP 200，未发布线上。来源：`frontend/src/views/Campaigns.vue`、`frontend/src/components/CampaignUnsubscribes.vue`、`internal/core/campaign_unsubscriptions.go`、`cmd/campaign_unsubscribe_activity_test.go`、`frontend/cypress/e2e/campaign-{stats-grouped,unsubscribes}.cy.js`。
 
 - **公海列表状态展示对齐私域（2026-11-01）**：移除公海与组织分配行的启用、归档和分配状态标签，状态列只保留客户状态人数。无退订时显示中性的“退订 0”，有退订时保留红色提示；零值也可点击进入退订筛选，无客户查看权限时不补零。现有退订人数和点击筛选继续复用私域形式。隔离 Cypress 公海列表 5/5、桌面/390px 截图、前端 lint/build、文档与 diff 检查通过；lint 仅既有地图 shadow warning。本地生产资源已构建、backend 已重启并核验 9173 HTTP 200。来源：`frontend/src/views/CustomerLists.vue`、`frontend/cypress/e2e/pool-list-tree.cy.js`。
 

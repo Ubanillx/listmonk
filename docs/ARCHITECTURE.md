@@ -24,7 +24,7 @@ React 编辑器的 `src/i18n.ts` 提供界面语言目录与独立 locale store�
 
 ## 营销活动分组统计（v6.69.0，2026-10-30）
 
-采用 B 方案，将列表分为营销活动、发送情况、客户互动、发送错误、退订相关人数；归属、受众及状态集中在活动信息，日期位于进度下方。错误列仅显示「有发送错误 / 无发送错误」，沿用原明细权限及历史诊断，不展示累计尝试数。退订仍为点击或确认的去重并集，不改变订阅状态。
+采用 B 方案，将列表分为营销活动、发送情况、客户互动、发送错误、退订相关人数；归属、受众及状态集中在活动信息，日期位于进度下方。错误列仅显示「有发送错误 / 无发送错误」，沿用原明细权限及历史诊断，不展示累计尝试数。退订区域分别展示点击人数和确认人数，两项分别按收件人去重，允许同一客户同时计入两项；零值显示 0，不改变订阅状态。
 
 只读 `campaign_delivery_counts` 视图按当前工作区有效快照汇总 `delivery_total/delivery_sent/delivery_pending/delivery_unavailable`，列表、详情、运行轮询共用，页面不逐活动调用概览。sent=已发送，pending/queued/deferred=待发送，failed/cancelled=无法发送（含重试耗尽、退订和失效取消）；暂时失败仍可重试者在待发送内。三类之和等于有效快照目标，不使用 `send_errors` 或目标减法猜失败人数。无快照时沿用持久目标/成功数，无法发送为 0；删除、转移或工作区失效的历史快照不推断补齐，因此当前范围目标可能与旧 `to_send` 不同。旧发送器视图 `campaign_send_counts`、调度、重试和所有状态均不变，迁移只安装视图。仍在运行的另一活动不会阻止已结束活动刷新持久统计。原型仅保留在 `codex/prototype-campaign-stats`（`d08a1093`），正式分支从 master 独立实现。
 
@@ -34,7 +34,7 @@ React 编辑器的 `src/i18n.ts` 提供界面语言目录与独立 locale store�
 
 `campaign_unsubscription_activity` 将可验证的退订链接点击与 `campaign_unsubscriptions` 确认事实合并，按活动、私域/公海类型、收件人 ID 去重。链接必须属于当前站点根地址，路径里的活动及收件人 UUID（含私域旧 UUID 别名）必须与点击事件一致，公海必须有该活动快照；普通链接、外站同路径、错配令牌、无身份的聚合点击均不推断为退订人数。视图只读，不改变订阅或黑名单，仍使用既有追踪隐私设置和保留策略；删除原点击或对应身份可能移除可识别点击，已确认事实不随客户删除消失。根地址变更后的旧域名点击不自动认领。
 
-列表、详情和运行统计提供 `unsubscribe_clicks`（退订点击去重人数）、`unsubscribes`（确认退订人数）及 `unsubscribe_activity`（有点击或确认事实的收件人去重并集）。管理端列表显示一项「退订相关人数」，打开统一报告展示首次点击、确认时间和「已点击，未确认 / 已确认退订」，可筛选状态。明细 API 新增 `status=all|clicked|confirmed`，缺省仍为 confirmed；`created_at` 现为首次点击，未记录点击则为确认时间，新增 `clicked_at/confirmed_at/click_count/status`。工作区、归属、来源权限、脱敏和搜索边界沿用原规则。
+列表、详情和运行统计提供 `unsubscribe_clicks`（退订点击去重人数）、`unsubscribes`（确认退订人数）及 `unsubscribe_activity`（有点击或确认事实的收件人去重并集）。管理端列表的「退订相关人数」分别显示「点击人数 / 确认人数」，不再显示并集数和「去重人数」副文案；两项均使用运行统计刷新。点击人数打开统一报告的 `status=visited`，包含有点击记录且已确认的客户；确认人数打开 `status=confirmed`。明细 API 支持 `status=all|visited|clicked|confirmed`，clicked 继续只表示点击未确认，缺省仍为 confirmed；报告可切换筛选，展示首次点击、确认时间和「已点击，未确认 / 已确认退订」。`created_at` 为首次点击，未记录点击则为确认时间，另有 `clicked_at/confirmed_at/click_count/status`。工作区、归属、来源权限、脱敏和搜索边界沿用原规则。
 
 v6.68.0 同事务安装视图并保守补齐历史确认：必须同时有成功自助 POST 退订审计、匹配活动与收件人、同一分钟内对应列表退订或公海 unsubscribe 排除变更。只凭点击、当前黑名单或退订状态不回填确认；保留首次审计时间，重复迁移不覆盖既有事实。新装与升级视图一致。回归：`cmd/campaign_unsubscribe_activity_test.go`、`frontend/cypress/e2e/campaign-unsubscribes.cy.js`。
 
@@ -286,6 +286,8 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 平台可观测性出口与业务聚合数据的边界：`GET /api/logs` 与 `GET /api/events`（SSE 实时错误流）都是进程日志的出口，统一由 `settings:get` 控制，与 `/api/settings` 共用同一平台权限；管理端也只为持有该权限的账号建立 `EventSource`，无权限账号不会打开连接（否则浏览器会对 403 无限重试）。这两个接口不属于工作区数据面。相对地，仪表板的 `GET /api/dashboard/counts` 与 `GET /api/dashboard/charts` 不设角色权限门：任何登录用户在其当前工作区都可读取，但结果由工作区、所有权和可见性谓词收敛（只有平台管理员读取全局物化视图）。统计响应明确分为 `private_customers`（兼容别名 `customers`）、`pool_customers` 与 `pool_lists`；公海客户按一级公海成员行统计，公海列表按启用的一级公海列表统计，组织空间只计本组织可见列表和分配，个人空间两项公海统计均为零。图表没有数据只表示该工作区内没有可统计的浏览/点击行（或数据落在 30 天窗口之外），不是权限拒绝。
 
 仪表板公海列表卡片提供 `pool_lists.bound`/`unbound`/`allocations`/`organizations` 四项明细。总数保持启用的一级公海列表口径；有启用分配列表且所属组织启用才算绑定，已绑定与未绑定之和等于总数。分配数仅计绑定当前可见一级公海的启用分配，组织数去重；普通组织工作区仅计本组织的绑定，不能推断同一公海在其它组织的使用情况，普通个人工作区全为零。授权但未建立有效分配的公海计未绑定。实现：`internal/core/dashboard.go` 的 `getWorkspacePoolListDashboardCounts`；契约与归档/跨组织边界：`internal/core/dashboard_counts_db_test.go`，UI：`frontend/src/views/Dashboard.vue`。
+
+仪表盘活动分析直接复用受同一工作区边界约束的 `GET /api/campaigns`（最近100条），不新增全局统计接口。浏览/点击时序保留原30天窗口；活动排行取其中前五，投递、退信、退订点击和确认退订分析仅取最新五条，汇总与明细保持同一范围。ECharts 仅作为只读可视化层，活动链接沿用原详情路由，失败请求保留旧数据并在页面内提供重试。
 
 ### 角色动作细分权限（v6.38.0）
 

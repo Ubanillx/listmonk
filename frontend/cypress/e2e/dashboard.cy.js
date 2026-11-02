@@ -10,11 +10,13 @@ describe('Dashboard customer groups', () => {
     cy.wait('@dashboardCounts').its('response.body.data').then((counts) => {
       expect(counts.private_customers.total).to.eq(2);
       expect(counts.pool_customers).to.include({ total: 0, active: 0, removed: 0 });
-      expect(counts.pool_lists).to.deep.eq({ total: 0, bound: 0, unbound: 0, allocations: 0, organizations: 0 });
+      expect(counts.pool_lists).to.deep.eq({
+        total: 0, bound: 0, unbound: 0, allocations: 0, organizations: 0,
+      });
     });
     cy.get('[data-cy=private-customers] .metric-value').should('contain', '2');
-    cy.get('[data-cy=dashboard-pool-customers] .metric-value').should('contain', '0');
-    cy.get('[data-cy=pool-lists] .metric-value').should('exist');
+    cy.get('[data-cy=dashboard-pool-customers] .dashboard-panel-total').should('contain', '0');
+    cy.get('[data-cy=pool-lists] .dashboard-panel-total').should('exist');
     cy.get('[data-cy=messages] .metric-value').should('contain', '0');
   });
 
@@ -42,13 +44,15 @@ describe('Dashboard customer groups', () => {
     cy.intercept('GET', '/api/dashboard/counts').as('populatedCounts');
     cy.get('[data-cy=btn-refresh]').click();
     cy.wait('@populatedCounts').its('response.body.data.pool_lists')
-      .should('deep.eq', { total: 3, bound: 2, unbound: 1, allocations: 3, organizations: 2 });
-    cy.get('[data-cy=pool-lists] .metric-value').should('contain', '3');
+      .should('deep.eq', {
+        total: 3, bound: 2, unbound: 1, allocations: 3, organizations: 2,
+      });
+    cy.get('[data-cy=pool-lists] .dashboard-panel-total').should('contain', '3');
     cy.get('[data-cy=pool-lists-bound]').should('have.text', '2');
     cy.get('[data-cy=pool-lists-unbound]').should('have.text', '1');
     cy.get('[data-cy=pool-lists-allocations]').should('have.text', '3');
     cy.get('[data-cy=pool-lists-organizations]').should('have.text', '2');
-    cy.get('[data-cy=pool-lists] .metric-breakdown li').should('have.length', 4);
+    cy.get('[data-cy=pool-lists] .metric-breakdown li').should('have.length', 3);
     cy.viewport(390, 844);
     cy.get('[data-cy=pool-lists-bound]').should('be.visible');
     cy.document().then((doc) => { expect(doc.documentElement.scrollWidth).to.be.at.most(390); });

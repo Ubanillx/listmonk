@@ -262,8 +262,9 @@
 <script>
 import Vue from 'vue';
 import { mapState } from 'vuex';
+import dayjs from 'dayjs';
 import Chart from './Chart.vue';
-import { now, parse } from '../time';
+import { now, parse, zone } from '../time';
 
 const chartColors = {
   views: '#0055d4',
@@ -497,8 +498,10 @@ export default Vue.extend({
         ? this.campaign.updatedAt
         : now().toDate();
 
-      this.filters.from = parse(from).toDate();
-      this.filters.to = parse(to).toDate();
+      this.filters.from = this.$route.query.from
+        ? dayjs.unix(Number(this.$route.query.from)).tz(zone()).toDate() : parse(from).toDate();
+      this.filters.to = this.$route.query.to
+        ? dayjs.unix(Number(this.$route.query.to)).tz(zone()).toDate() : parse(to).toDate();
       this.filters.search = '';
       this.filters.opened = 'all';
       this.filters.clicked = 'all';

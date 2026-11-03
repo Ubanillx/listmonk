@@ -108,6 +108,7 @@
                 <section class="campaign-config-section" aria-labelledby="campaign-audience-title" data-cy="campaign-audience-section">
                   <h3 id="campaign-audience-title">{{ $t('campaigns.setupAudience') }}</h3>
                   <campaign-audience-tree-select v-model="form.customer_lists" :all="availableLists"
+                    @input="onAudienceSelection"
                     :disabled="!canEdit || listsLocked" :exclusive-groups="exclusiveAudienceGroups"
                     :pool-only="isEditing && isPlatformPoolCampaign"
                     :label="$t('campaigns.audienceLists')" :placeholder="$t('campaigns.sendToLists')" />
@@ -565,10 +566,10 @@ export default Vue.extend({
         name: '',
         subject: '',
         fromEmail: '',
-        smtpSource: organizationWorkspace ? 'organization' : 'personal',
+        smtpSource: 'personal',
         smtpPoolId: null,
         poolScope: organizationWorkspace ? 'organization' : 'all_organizations',
-        smtpRateLimit: organizationWorkspace ? 100 : 5,
+        smtpRateLimit: 5,
         replyMailboxId: null,
         poolReplyPriority: 'contact_first',
         headersStr: '[]',
@@ -627,6 +628,16 @@ export default Vue.extend({
 
     onSMTPSourceSelection(source) {
       this.form.smtpRateLimit = source === 'organization' ? 100 : 5;
+    },
+
+    onAudienceSelection(lists) {
+      const poolTypes = ['pool', 'pool_segment', 'pool_allocation', 'org_pool_allocation'];
+      const source = lists.some((list) => poolTypes.includes(list.type))
+        && (this.workspace.organizationId || this.isPlatformPoolCampaign) ? 'organization' : 'personal';
+      if (source !== this.form.smtpSource) {
+        this.form.smtpSource = source;
+        this.onSMTPSourceSelection(source);
+      }
     },
 
     formatDateTime(s) {
@@ -1524,6 +1535,7 @@ export default Vue.extend({
       if (!this.isEditing) {
         const dirty = this.isUnsaved();
         this.form.customer_lists = this.selectedLists;
+        this.onAudienceSelection(this.selectedLists);
         if (!dirty && this.newCampaignBaseline !== null) this.newCampaignBaseline = this.newCampaignSnapshot();
       }
     },

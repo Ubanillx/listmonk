@@ -65,7 +65,7 @@ describe('Organization marketing SMTP', () => {
     cy.visit('/admin/campaigns/new');
     cy.get('[data-cy=campaign-visibility]').should('have.value', 'private');
     cy.get('[data-cy=campaign-smtp-source]').should('have.value', 'personal');
-    cy.get('[data-cy=campaign-smtp-rate-limit]').should('have.value', '20');
+    cy.get('[data-cy=campaign-smtp-rate-limit]').should('have.value', '5');
     cy.get('[data-cy=campaign-auto-track-links] input').should('be.checked');
     cy.window().then((win) => win.localStorage.setItem('listmonk.workspace.organizationId', String(organizationID)));
     cy.then(() => cy.setCookie('listmonk_workspace_organization_id', String(organizationID)));
@@ -74,22 +74,25 @@ describe('Organization marketing SMTP', () => {
     cy.get('.b-tabs nav a').contains('SMTP').click();
     cy.get('[data-cy=organization-smtp] .smtp-pool-option').should('have.length', 2);
     cy.get('[data-cy=organization-smtp] .smtp-pool-option').eq(1).click();
-    cy.get('[data-cy=organization-smtp] .smtp-empty-state').should('contain', '尚未配置组织营销 SMTP');
+    cy.get('[data-cy=organization-smtp] .smtp-empty-state').should('contain', '尚未配置组织邮箱账号 SMTP 发送');
     cy.get('[data-cy=organization-smtp] .smtp-pool-option').eq(0).click();
     cy.get('[data-cy=organization-smtp] .smtp-card').should('have.length', 2);
     cy.then(() => cy.visit(`/admin/campaigns/new?customer_list_id=${customerListID}`));
     cy.get('[data-cy=campaign-visibility]').should('have.value', 'organization');
+    cy.get('[data-cy=campaign-smtp-source]').should('have.value', 'personal');
+    cy.get('[data-cy=campaign-smtp-rate-limit]').should('have.value', '5');
+    cy.get('[data-cy=campaign-smtp-source]').select('organization');
     cy.get('[data-cy=campaign-smtp-source]').should('have.value', 'organization');
     cy.get('[data-cy=campaign-auto-track-links] input').should('be.checked');
     cy.get('[data-cy=campaign-smtp-rate-limit]').should('have.value', '100');
     cy.then(() => cy.get('[data-cy=campaign-smtp-pool]').select(String(backupSMTPPoolID)));
-    cy.get('[data-cy=campaign-smtp-unavailable]').should('be.visible').and('contain', '所选组织发件池暂无启用的 SMTP')
+    cy.get('[data-cy=campaign-smtp-unavailable]').should('be.visible').and('contain', '当前组织发件邮箱组暂无可用邮箱')
       .and('not.contain', '个人');
-    cy.get('[data-cy=campaign-smtp-overview]').should('contain', '所选组织发件池暂无启用的 SMTP');
+    cy.get('[data-cy=campaign-smtp-overview]').should('contain', '当前组织发件邮箱组暂无可用邮箱');
     cy.get('[data-cy=campaign-smtp-source]').select('personal');
     cy.get('[data-cy=campaign-smtp-unavailable]').should('not.exist');
     cy.get('[data-cy=campaign-smtp-overview]').should('contain', 'personal@example.com').and('not.contain', 'org-one@example.com');
-    cy.get('[data-cy=campaign-smtp-rate-limit]').should('have.value', '20');
+    cy.get('[data-cy=campaign-smtp-rate-limit]').should('have.value', '5');
     cy.get('[data-cy=campaign-smtp-source]').select('organization');
     cy.get('[data-cy=campaign-smtp-rate-limit]').should('have.value', '100').clear().type('30');
     cy.get('[data-cy=campaign-smtp-pool]').should('be.visible').find('option').should('have.length', 2)

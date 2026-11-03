@@ -1,6 +1,14 @@
 # 工作状态
 
-快照日期：2026-11-02
+快照日期：2026-11-03
+
+- **邮箱账号 SMTP 名称补充“发送”（2026-11-03）**：个人/组织邮件配置标题统一为“个人/组织邮箱账号 SMTP 发送”，活动来源及概览选项统一为“个人/组织邮箱账号 SMTP 轮询发送”；同步简繁体空状态、状态标题、配置入口引用及已有回归文案。仅文案调整，发件来源默认及发送逻辑不变。来源：`i18n/{zh-CN,zh-TW}.json`。locale JSON 与 diff 检查通过；本地 backend 已重启，9173 HTTP 200，启动日志无错误，未发布线上。
+
+- **邮箱账号 SMTP 命名与受众默认来源（2026-11-03）**：简繁体个人资料、活动来源和相关提示统一为个人/组织“邮箱账号 SMTP”；私域默认个人，公海（含组织内混选）在权限允许时默认组织，新建 URL 预选同样适用。保留手动选择及已有活动加载的保存来源/自定义速率，来源实际切换才应用 5/100 默认值；同步修正三种语言的旧 20 封提示。lint/生产构建、locale JSON 与 diff 检查通过；新增默认来源 2/2、公海 SMTP 1/1、活动配置 1/1 通过，桌面/390px 截图已复核。组织 SMTP 2/3 通过，综合用例在与本次未修改的时间选择断言处失败（选择 00:05 显示 16:05），不宣称全套通过；已记录待排查。本地 backend 已同步并核验 9173 HTTP 200，未发布线上。来源：`frontend/src/views/Campaign.vue`、`i18n/{zh-CN,zh-TW,en}.json`、`frontend/cypress/e2e/{campaign-smtp-defaults,public-pool-smtp,campaign-setup,organization-smtp}.cy.js`。
+
+- **全平台 tooltip 裁切修复（2026-11-03）**：仪表盘/地理图 ECharts、旧统计 Chart.js、11 个文件复用的 Buefy 提示及 IconTip 均使用 body 浮层，统一视口避让、长文本换行与卸载清理。保留图表 containment 和原数值格式，补齐键盘提示及 Escape。lint/build 通过；隔离 Cypress `tooltip-layers.cy.js` 4/4 通过，桌面/手机及地理图、canvas、表格/弹窗实际检查与独立视觉复核通过；本地 9173 已同步，未发布生产。来源：`frontend/src/components/{AppTooltip,DashboardChart,CampaignGeoHeatmap,Chart,BarChart,IconTip}`、`frontend/src/utils/{chartTooltip,canvasTooltip}.js`；证据：`designs/2026-11-03-tooltip-layers/README.md`。
+
+- **个人 SMTP 快速配置（2026-11-03）**：个人邮件配置的每张 SMTP 卡片新增与系统设置相同的 10 个服务商快速配置按钮，组织复用表单同步具备该入口。共享 `SMTPPresets.vue` 统一预设，按当前卡片填入主机、端口、认证与 TLS，清空旧凭据/HELO/测试结果并聚焦用户名，保留名称、发件人和额度；仍需显式保存。回归覆盖新建卡片、目标卡片隔离、凭据清空、TLS 切换、保存回显、设置页兼容与手机布局。前端 lint/生产构建、隔离 Cypress 两组共 4 项通过；桌面/390px 截图已复核，本地 backend 已重启并核验 9173 HTTP 200，无待迁移及启动错误，未发布线上。来源：`frontend/src/components/{PersonalSMTPSettings,SMTPPresets}.vue`、`frontend/src/views/settings/smtp.vue`、`frontend/cypress/e2e/{smtp-presets,settings}.cy.js`。
 
 - **数据化仪表盘（2026-11-02）**：以 ECharts 重构仪表盘，使用现有工作区汇总、互动时序和活动统计接口展示五项概览、近30天独立的浏览与点击趋势、活动状态与排行、客户构成，以及最近5个活动的投递异常、退信、退订点击和确认退订。未增加后端接口或推测增长率，单点/空数据、失败重试与活动跳转保留真实语义；手机端异常表改为卡片。前端 lint/build 通过，桌面/390px 截图、键盘切换、活动跳转与刷新实测通过，截图检查无溢出和可读性提示；Cypress 受本机 Node 非法指令 3221225501 阻断，未宣称自动化通过。证据与评审：`designs/2026-11-01-dashboard/`。来源：`frontend/src/views/Dashboard.vue`、`frontend/src/components/DashboardChart.vue`、`frontend/cypress/e2e/dashboard.cy.js`。
 

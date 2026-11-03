@@ -2,6 +2,12 @@
 
 本文件记录可执行的后续工作。计划不是承诺；合并前应补充 issue、负责人和验收标准。
 
+## 活动续发时间选择回归异常（2026-11-03）
+
+- [ ] 排查隔离 Cypress 组织 SMTP 综合用例中，时间选择器选中 00:05 后输入框回显 16:05 的问题。责任范围：管理端时间输入与部署时区转换；本次邮箱账号 SMTP 命名/默认来源变更未修改此逻辑。
+- 来源：`frontend/cypress/e2e/organization-smtp.cy.js` 的 `keeps pools independent, saves sender choice and displays the sender overview`；关联 `frontend/src/views/Campaign.vue::dailyResumeTimeDate` / `formatResumeTime`。
+- 下一步与验收：先区分浏览器/测试容器时区和真实交互问题；在部署时区及不同时区浏览器中选择午夜时间后，控件、表单、保存 API 和重新打开的 HH:mm 一致，组织 SMTP 全套回归通过。
+
 ## 页面设计第二批（2026-10-31）
 
 - [x] 组织待转移资源：授权只读接口返回五类数量与每页20项清单，显示原所有者/待转移时间；确认前刷新，接收人与转移按钮在清单上方。真实 PostgreSQL 和隔离内置浏览器27项/两页、空态、组织切换与权限验收见[第二批实施记录](designs/2026-10-31-platform-ui-review/second-batch/IMPLEMENTATION.md)。

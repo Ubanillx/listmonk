@@ -257,6 +257,19 @@ Keys of each `[[bounce.mailboxes]]` entry:
 
 ### `smtp` and `smtp_delivery`
 
+The SMTP forms under **Profile → Personal mail settings**, organization SMTP pools,
+and **Settings → SMTP** provide the same provider shortcuts (Gmail, 263net, topmax,
+Amazon SES, Mailgun, Mailjet, Sendgrid, Postmark, Forward Email, and Lettermint).
+Selecting a provider fills the host, port, authentication, and TLS mode, then clears
+the username, password, and HELO hostname. Enter your credentials and save to apply
+the configuration. The server name, sender address, and daily limit are preserved.
+
+In the campaign editor, selecting private customer lists defaults to personal
+email-account SMTP. Selecting public pools defaults to organization email-account
+SMTP when that source is available, including mixed audiences in an organization.
+You can select another source manually. Opening a saved campaign preserves its
+saved source and rate; changing its audience applies the selection defaults again.
+
 `smtp` contains exactly one platform SMTP server for system e-mails (password
 resets, notifications, opt-in confirmations). Campaign and transactional mail
 uses account-owned SMTP servers; campaigns can also select organization marketing pools.

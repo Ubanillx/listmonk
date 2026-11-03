@@ -1,5 +1,11 @@
 # Listmonk 工程架构与运行指南
 
+## 管理端提示浮层（2026-11-03）
+
+`components/AppTooltip.js` 在 Buefy 安装后统一扩展 `BTooltip`，保留调用方的文案、插槽和触发方式，默认把气泡挂载到 body，使用 1000 层级，并在视口边缘翻转、平移和换行。键盘焦点因自动滚动移动时重新定位；指针提示在滚动/缩放时关闭，触发器离开视口、Escape、组件销毁时清理。`IconTip.vue` 的固定气泡也挂到 body，避免 `contain: paint` 或 transform 再次裁切。
+
+ECharts 的两个入口 `DashboardChart.vue`、`CampaignGeoHeatmap.vue` 共用 `utils/chartTooltip.js`：HTML 提示用 `appendTo` 脱离图表裁切，坐标转换后限制在视口内；保留图表的 `overflow`/`contain` 和原 formatter。旧统计与发件服务使用的 `Chart.vue`、`BarChart.vue` 通过 `utils/canvasTooltip.js` 使用 Chart.js external tooltip，保留格式化后的标题、正文、百分比和颜色标记，以文本节点创建 body 浮层；销毁图表时删除浮层及监听器。共享外观位于 `assets/style.scss`。无 API、权限、统计口径或数据库变化。回归入口：`frontend/cypress/e2e/tooltip-layers.cy.js`；审查记录见 `docs/harness/designs/2026-11-03-tooltip-layers/README.md`。
+
 ## 操作预览与可视化编辑器语言（2026-10-31）
 
 新增 `GET /api/organizations/resources/pending?page=1`，复用执行转移的组织管理员/平台管理授权及组织选择头。`internal/core/organization_resources_preview.go` 用只读 repeatable-read 事务返回五类资源的总数、分类计数与固定每页20项的清单；与实际转移共用 `pendingOrganizationResourcePredicate`，只包含所选活动组织内无所有者、已标记待转移的资源。列表展示资源名称/ID、原所有者和待转移时间，不返回客户邮箱/属性、正文、媒体地址。归档组织走原独立流程，不使用此预览。平台组织操作白名单增加这个只读路径，不扩展资源的一般读取/使用权限。
@@ -390,9 +396,13 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 
 ### 独立组织营销 SMTP 与活动发件来源
 
+活动编辑器根据用户选择的客户列表设置默认来源：仅私域或空受众使用个人邮箱账号 SMTP，含公海且当前范围允许组织来源时使用组织邮箱账号 SMTP；组织内混合受众默认组织来源。新建页 URL 预选遵守相同规则，默认不再取决于是否处于组织工作区。来源实际切换时沿用个人 5 / 组织 100 封/分钟默认值，可继续手动调整；加载或保存已有活动不重新推导来源及自定义速率，用户主动改选受众才重新应用默认。权限、SMTP 池范围及 API 默认 personal 不变。简繁体界面配置标题统一“个人/组织邮箱账号 SMTP 发送”，轮询选项统一“个人/组织邮箱账号 SMTP 轮询发送”。来源：`frontend/src/views/Campaign.vue::onAudienceSelection`；回归：`frontend/cypress/e2e/campaign-smtp-defaults.cy.js`。
+
 管理端入口 `frontend/index.html` 的 favicon、custom.css 和 custom.js 使用 `/admin/` 绝对路径，避免嵌套组织页刷新时将回退 HTML 当脚本加载。组织营销配置位于 `frontend/src/views/organizations/ManageOrganizations.vue` 的独立 SMTP 标签，复用带组织 owner 参数的 `PersonalSMTPSettings.vue`。
 
 组织管理页使用 `tab=members|invites|pending|reply-mailboxes|reply-forwarding|smtp|platform` URL 查询参数保存页签，刷新、直达及浏览器前进/后退恢复选中；未知或无权限的页签回退到首个可见页签。`App.vue::routeViewKey` 在组织管理页排除 `tab`，在公海列表/详情页排除内部 `manage_pool`、`manage_org`、`manage_tab`（其他查询、路径和工作区变化仍保持原重建边界），切换页签不重建页面、不丢失管理目标与未保存草稿。切换页签主动读取对应数据，成员/邀请码/转发及平台 CRUD 成功后刷新列表；邮箱子组件的 `changed` 事件刷新统一邮箱选项，SMTP 子组件事件刷新池数量。干净的邮箱/SMTP 编辑器同步读取，未保存编辑保留；组织切换清空旧列表并校验异步响应目标。来源：`frontend/src/views/organizations/ManageOrganizations.vue`、`frontend/src/components/{ReplyMailboxSettings,PersonalSMTPSettings}.vue`、`frontend/cypress/e2e/organization-management-tabs.cy.js`。
+
+个人/组织 SMTP 与系统设置共用 `frontend/src/components/SMTPPresets.vue` 的 10 个服务商快速配置按钮。选择仅更新目标卡片的主机、端口、认证及 TLS，清空用户名、密码和 HELO 并聚焦用户名；名称、发件人及额度保留，个人/组织卡片同时清除旧测试结果。配置由原保存流程提交，预设本身不发请求。回归：`frontend/cypress/e2e/smtp-presets.cy.js`、`frontend/cypress/e2e/settings.cy.js`。
 
 个人/组织 SMTP 测试由 `PersonalSMTPSettings.vue::testServer` 接收 API 的成功或失败：发送期间显示 loading 并禁用重复测试，完成后在对应 SMTP 卡片内持续显示结果并弹出提示；SMTP 服务端错误原文优先，断网等无响应错误使用请求错误信息。两类测试 API 均关闭全局 toast，由组件统一反馈，避免个人测试失败无提示及组织测试重复提示。测试仍使用当前配置且不保存，结果字段不计入待保存配置。回归：`frontend/cypress/e2e/personal-smtp-test.cy.js`。
 

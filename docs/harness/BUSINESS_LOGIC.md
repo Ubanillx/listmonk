@@ -20,6 +20,8 @@
 
 - **营销收件人累计重试（2026-10-30，v6.65.0）**：`smtp_delivery.max_recipient_retries` 默认 3、0–1000，首次之外可重试 N 次（最多 N+1 次失败投递）；只约束 regular SMTP 营销，不改变单次网络重试、系统通知、事务邮件或 opt-in。判定键为活动/私域或公海类型/收件人 ID，来源为持久失败明细，不随暂停、恢复、重启、筛选或定向补发清零。failed/sent 不被 pending 回写覆盖，failed 不自动复活；超限客户保留失败列表和导出但不能补发。错误事件、累计数与终态同事务，失败历史不能持久化时暂停；额度延期、主动暂停和关闭不计失败。当前权限仍限制诊断读取，累计策略不因隐藏旧归属而重置。来源：`schema.sql::campaign_recipient_retry_exhausted`、`cmd/manager_store.go::RecordCampaignSendFailure`、`cmd/campaign_recipient_retries_test.go`、`internal/migrations/v6.65.0{,_test}.go`。
 
+- **受众决定编辑器默认发件来源（2026-11-03）**：用户选择私域受众时默认个人邮箱账号 SMTP；含公海（组织内允许混选）且组织来源可选时默认组织邮箱账号 SMTP。新建 URL 预选同样适用，工作区本身不决定默认来源；允许手动覆盖，加载已有活动保留已存来源和速率。仅实际切换来源时应用个人 5 / 组织 100 封/分钟；单来源下调整受众不重置自定义速率。来源：`frontend/src/views/Campaign.vue::onAudienceSelection`、`frontend/cypress/e2e/campaign-smtp-defaults.cy.js`。
+
 - **个人轮询默认速率（v6.64.0，2026-10-29）**：新建个人 SMTP 活动、切回个人来源、API 未设速率及零值旧记录的兜底均为 5 封/分钟（平滑间隔 12 秒）；组织默认仍为 100，显式保存的自定义速度不改写。迁移仅调整列默认值，重跑不影响历史记录。来源：`models/campaigns.go::DefaultPersonalSMTPRateLimit`、`cmd/send_limits.go::normalizedCampaignSMTPRateLimit`、`frontend/src/views/Campaign.vue`、`internal/migrations/v6.64.0{,_test}.go`、`internal/messenger/email/delivery_limiter_test.go::TestCampaignPacingDefaultsAndIndependentCampaigns`。
 
 - **图片依赖不变量（2026-10-23）**：保存、启动/排期和克隆按原所有者权限解析并补齐正文素材依赖，精确 ID 不回退到同名文件。发送管道先检查静态正文/模板，每封客户邮件在渲染和链接替换后再次检查；未解析的受保护地址、相对/blob/data 图片或无 MIME 部件的 CID 不得进入 SMTP。worker 对 `media` 错误立即暂停并保留待发送收件人，不受普通错误阈值影响。HTTP(S) 第三方图片只保证 URL 形态，网络可用性和客户端远程图片策略需单独验证。来源：`internal/core/campaign_media_references.go`、`internal/manager/{media_guard,pipe,manager}.go`。

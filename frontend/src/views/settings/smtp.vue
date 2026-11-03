@@ -73,18 +73,7 @@
                 </b-field>
               </div>
             </div><!-- auth -->
-            <div class="smtp-presets is-size-7">
-              <a href="#" @click.prevent="() => fillSettings(n, 'gmail')">Gmail</a>
-              <a href="#" @click.prevent="() => fillSettings(n, '263net')">263net</a>
-              <a href="#" @click.prevent="() => fillSettings(n, 'topmax')">topmax</a>
-              <a href="#" @click.prevent="() => fillSettings(n, 'ses')">Amazon SES</a>
-              <a href="#" @click.prevent="() => fillSettings(n, 'mailgun')">Mailgun</a>
-              <a href="#" @click.prevent="() => fillSettings(n, 'mailjet')">Mailjet</a>
-              <a href="#" @click.prevent="() => fillSettings(n, 'sendgrid')">Sendgrid</a>
-              <a href="#" @click.prevent="() => fillSettings(n, 'postmark')">Postmark</a>
-              <a href="#" @click.prevent="() => fillSettings(n, 'forwardemail')">Forward Email</a>
-              <a href="#" @click.prevent="() => fillSettings(n, 'lettermint')">Lettermint</a>
-            </div>
+            <SMTPPresets @select="fillSettings(n, $event)" />
             <div class="columns">
               <div class="column is-6">
                 <b-field :label="$t('settings.smtp.heloHost')" label-position="on-border"
@@ -221,41 +210,11 @@
 <script>
 import Vue from 'vue';
 import { regDuration } from '../../constants';
-
-const smtpTemplates = {
-  '263net': {
-    host: 'smtp.263.net', port: 465, auth_protocol: 'login', tls_type: 'TLS',
-  },
-  topmax: {
-    host: 'smtp.topmax.cn', port: 465, auth_protocol: 'login', tls_type: 'TLS',
-  },
-  gmail: {
-    host: 'smtp.gmail.com', port: 465, auth_protocol: 'login',
-  },
-  ses: {
-    host: 'email-smtp.YOUR-REGION.amazonaws.com', port: 465, auth_protocol: 'login',
-  },
-  mailjet: {
-    host: 'in-v3.mailjet.com', port: 465, auth_protocol: 'cram',
-  },
-  mailgun: {
-    host: 'smtp.mailgun.org', port: 465, auth_protocol: 'login',
-  },
-  sendgrid: {
-    host: 'smtp.sendgrid.net', port: 465, auth_protocol: 'login',
-  },
-  forwardemail: {
-    host: 'smtp.forwardemail.net', port: 465, auth_protocol: 'login',
-  },
-  postmark: {
-    host: 'smtp.postmarkapp.com', port: 587, auth_protocol: 'cram',
-  },
-  lettermint: {
-    host: 'smtp.lettermint.co', port: 465, auth_protocol: 'login',
-  },
-};
+import SMTPPresets from '../../components/SMTPPresets.vue';
 
 export default Vue.extend({
+  components: { SMTPPresets },
+
   props: {
     form: {
       type: Object, default: () => { },
@@ -323,14 +282,16 @@ export default Vue.extend({
       return true;
     },
 
-    fillSettings(n, key) {
+    fillSettings(n, preset) {
       this.data.smtp.splice(n, 1, {
         ...this.data.smtp[n],
-        ...smtpTemplates[key],
-        tls_type: smtpTemplates[key].port === 587 ? 'STARTTLS' : 'TLS',
-        username: '',
-        password: '',
-        hello_hostname: '',
+        host: preset.host,
+        port: preset.port,
+        auth_protocol: preset.authProtocol,
+        tls_type: preset.tlsType,
+        username: preset.username,
+        password: preset.password,
+        hello_hostname: preset.helloHostname,
       });
 
       this.$nextTick(() => {
@@ -359,9 +320,6 @@ export default Vue.extend({
 }
 
 .smtp-presets {
-  display: flex;
-  flex-wrap: wrap;
-  gap: .5rem 1rem;
   margin-bottom: 1.25rem;
 
   & + .columns {

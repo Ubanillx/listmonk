@@ -11,7 +11,7 @@ describe('Settings', () => {
         const presets = $presets[0].getBoundingClientRect();
         const label = $presets[0].nextElementSibling.querySelector('label').getBoundingClientRect();
         expect(label.top - presets.bottom, 'gap between presets and HELO label').to.be.at.least(8);
-        $presets[0].querySelectorAll('a').forEach((link) => {
+        $presets[0].querySelectorAll('button').forEach((link) => {
           const rect = link.getBoundingClientRect();
           expect(rect.left).to.be.at.least(presets.left - 1);
           expect(rect.right).to.be.at.most(presets.right + 1);

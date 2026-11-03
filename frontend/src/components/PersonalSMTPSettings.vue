@@ -78,7 +78,7 @@
             </div>
             <div class="column is-6">
               <b-field :label="$t('settings.mailserver.username')">
-                <b-input v-model="server.username" :disabled="server.authProtocol === 'none'" maxlength="200"
+                <b-input v-model="server.username" :ref="`smtp-username-${index}`" :disabled="server.authProtocol === 'none'" maxlength="200"
                   placeholder="user@example.com" />
               </b-field>
             </div>
@@ -87,6 +87,9 @@
                 <b-input v-model="server.password" type="password" :disabled="server.authProtocol === 'none'"
                   maxlength="200" placeholder="••••••••" />
               </b-field>
+            </div>
+            <div class="column is-12">
+              <SMTPPresets @select="fillSettings(server, index, $event)" />
             </div>
             <div class="column is-6">
               <b-field :label="$t('settings.smtp.fromEmail')">
@@ -157,6 +160,7 @@
 
 <script>
 import Vue from 'vue';
+import SMTPPresets from './SMTPPresets.vue';
 
 function blankServer() {
   return {
@@ -181,6 +185,8 @@ function blankServer() {
 }
 
 export default Vue.extend({
+  components: { SMTPPresets },
+
   props: {
     organizationId: { type: Number, default: 0 },
     smtpPoolId: { type: Number, default: 0 },
@@ -230,6 +236,13 @@ export default Vue.extend({
 
     addServer() {
       this.servers.push(blankServer());
+    },
+
+    fillSettings(server, index, preset) {
+      Object.assign(server, preset, { testResult: null });
+      this.$nextTick(() => {
+        this.$refs[`smtp-username-${index}`][0].focus();
+      });
     },
 
     removeServer(index) {

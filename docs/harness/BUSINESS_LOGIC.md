@@ -1,5 +1,11 @@
 # 业务逻辑
 
+## 平台发件服务自动拉黑（v6.70.0，2026-11-03）
+
+平台管理员统一管理 `private` / `pool` 两套独立规则，默认关闭，默认类型 1/3/6/8/9。私域覆盖个人/组织已有客户，公海覆盖共享联系人；普通查看/手动拉黑权限不授予自动化配置或明细读取。按部署时区独立安排每天时间或固定小时间隔，以最近1–31天日期范围获取全部失败记录后在服务器筛选，不要求批次、不把记录数视为 SMTP 尝试阈值。只 trim/lower 精确匹配，不创建或猜测修正邮箱。私域同时退订列表，公海影响全部组织；转移中、归档对象跳过，已拉黑幂等跳过。人工恢复前可先在对应规则添加排除名单；不自动恢复订阅或解除黑名单。
+
+启用/更新已启用规则和手动执行要求15分钟内同 scope/version/config 成功预览，保存使旧预览失效；草稿预览零客户写入。执行前重验目标，全部客户变更与明细/成功状态原子提交；上游或存储失败无部分变更。scope advisory lock 跨进程隔离编辑/执行，未完成记录持久化并在恢复后标为 interrupted。逾期补一次，失败等下一计划，不高频自动重试。页面显示最新20条、明细50条分页，历史保留，不向普通报表用户或审计日志暴露明细邮箱。来源：`internal/providerautomation/{rules,service}.go`、`cmd/delivery_provider_automation.go`、`internal/migrations/v6.70.0.go`、`frontend/src/components/ProviderAutomation.vue`。
+
 ## 营销活动分组统计（v6.69.0，2026-10-30）
 
 采用 B 方案，将列表分为营销活动、发送情况、客户互动、发送错误、退订相关人数；归属、受众及状态集中在活动信息，日期位于进度下方。错误列仅显示「有发送错误 / 无发送错误」，沿用原明细权限及历史诊断，不展示累计尝试数。退订仍为点击或确认的去重并集，不改变订阅状态。
@@ -31,6 +37,8 @@
 - **失败客户与定向补发（v6.63.0）**：`send_errors` 是失败尝试次数；概览「失败客户」是有失败事件且当前仍未发送的去重收件人数。失败名单按最新事件显示分类/原因，成功发送者退出当前名单但保留历史错误报告。仅暂停活动可选 1–500 名当前可投放的失败客户，整单校验、原子选择，发送管道只领取选中快照；正常额度、SMTP 和公海组织分配规则继续执行。选中耗尽后还有其他未发送者回到暂停，全部完成才结束；普通继续发送清除定向选择。来源：`internal/core/campaign_failed_recipients.go`、`cmd/campaign_failed_recipients.go`、`queries/campaigns.sql`、`cmd/manager_store.go`。
 
 - **BestEDM 平台报表（2026-10-20）**：发件服务菜单、页面与所有只读接口（含账号资料、安全配置状态、日志和 Excel）需独立 `delivery_provider:get`，最高管理员默认可用；账号保存/连接测试仍仅限最高管理员。新权限默认不授予普通角色，工作区或普通设置/邮箱/组织管理权限不扩大授权；个人 API Key 的路径 allowlist 不变。先保存凭据再测试，空密码仅在账号不变时保留；版本冲突/旧测试不能覆盖新凭据，密码和原始上游错误不进入 API 响应或审计。页面与接口只有真实数据源，请求失败即报错，不回退样例或零值。数据按上游返回汇总、缺字段显示未知；发送分析中批次候选从日期统计去重，下拉选择和点击行同步查询已应用范围；批次按组内最新统计日期倒序、组内记录倒序，分页不拆组。邮箱搜索与 Excel 同口径；页面与导出使用 `group_by=email` 对当前范围忽略邮箱大小写、去除首尾空白后汇总，保留每类错误说明及次数，不跨范围累计，也不把记录出现次数当成 SMTP 尝试次数；原始接口默认保留逐条记录。旧响应不得覆盖新批次。“查日志”带上邮箱与当前批次，按该批次最早统计日期查询一次；未选批次时取全部已加载统计最早日期，无有效日期则取已应用范围起日，不使用未提交草稿。统计日期不推断为真实发送日期，仍支持手动改期，不轮询或自动跨日重试。SMTP 无效地址按日期归属，发送任务/统计记录 ID 不混用，不自动关联 Listmonk 活动或改写发送状态。来源：`cmd/delivery_provider.go`、`internal/bestedm/client.go`、`frontend/src/views/DeliveryProvider.vue`。
+
+- **BestEDM 日期范围内按类型筛选（2026-11-03）**：全部批次不要求选择批次即可查询任意错误类型；后端按日期以 `type=-1` 获取全部失败记录，按 `error_type` 及邮箱搜索筛选后才聚合或导出，次数只统计所选类型。已有 `task_ident` / `task_id` 查询保留上游类型条件；不自动逐批次请求，不从日期记录推断批次归属，保留上游失败与 4 MB 上限错误。来源：`cmd/delivery_provider.go::QueryDeliveryProvider`、`frontend/src/views/DeliveryProvider.vue::refreshFailures`、`cmd/delivery_provider_test.go`、`frontend/cypress/e2e/delivery-provider.cy.js`。
 
 - **BestEDM 失败邮箱 XML 兼容（2026-11-03）**：仅转义失败地址纯文本 `<email>` 字段中未转义的 `&`，随后严格解析；已有实体、CDATA、注释、属性和其它字段不变。原始邮箱、重复记录、错误分类和说明全部保留，页面聚合及 Excel 共用同一修复入口，其它 XML 错误仍整单报错，不跳过记录。来源：`internal/bestedm/failure_xml.go`、`internal/bestedm/client.go::Failures`、`internal/bestedm/client_test.go`。
 

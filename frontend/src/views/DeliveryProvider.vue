@@ -13,7 +13,7 @@
 
     <nav class="tabs provider-tabs" :aria-label="t('title')">
       <ul>
-        <li v-for="item in tabs" :key="item.key" :class="{ 'is-active': tab === item.key }">
+        <li v-for="item in visibleTabs" :key="item.key" :class="{ 'is-active': tab === item.key }">
           <a :href="tabHref(item.key)"
             :aria-current="tab === item.key ? 'page' : null" :data-cy="`provider-tab-${item.key}`" @click.prevent="selectTab(item.key)">
             <b-icon :icon="item.icon" size="is-small" />{{ t(item.key === 'account' && !canConfigure ? 'accountInfo' : item.label) }}
@@ -27,7 +27,9 @@
       <b-button size="is-small" @click="loadConfig">{{ t('retry') }}</b-button>
     </div>
 
-    <div v-if="!config.configured && tab !== 'account' && !configLoading" class="provider-empty provider-panel">
+    <keep-alive><ProviderAutomation v-if="tab === 'automation' && canConfigure" /></keep-alive>
+
+    <div v-if="!config.configured && tab !== 'account' && tab !== 'automation' && !configLoading" class="provider-empty provider-panel">
       <b-icon icon="email-plus-outline" size="is-large" />
       <h2>{{ t('connectTitle') }}</h2>
       <p>{{ t(canConfigure ? 'connectHelp' : 'contactAdmin') }}</p>
@@ -504,11 +506,13 @@ import Chart from '../components/Chart.vue';
 import IconTip from '../components/IconTip.vue';
 import { colors } from '../constants';
 import providerBatches from '../utils/providerBatches';
+import ProviderAutomation from '../components/ProviderAutomation.vue';
 
 const tabs = [
   { key: 'overview', icon: 'view-dashboard-outline', label: 'overview' },
   { key: 'statistics', icon: 'chart-box-outline', label: 'analysis' },
   { key: 'logs', icon: 'text-box-search-outline', label: 'logs' },
+  { key: 'automation', icon: 'shield-clock-outline', label: 'automation' },
   { key: 'account', icon: 'account-cog-outline', label: 'account' },
 ];
 const errorMessage = (error) => error?.response?.data?.message || '请求失败，请稍后重试';
@@ -529,7 +533,7 @@ const isoFromDate = (date) => (date instanceof Date && !Number.isNaN(date.getTim
   : '');
 
 export default {
-  components: { Chart, IconTip },
+  components: { Chart, IconTip, ProviderAutomation },
   data() {
     const date = now().format('YYYY-MM-DD');
     const start = now().subtract(6, 'day').format('YYYY-MM-DD');
@@ -582,6 +586,7 @@ export default {
     };
   },
   computed: {
+    visibleTabs() { return tabs.filter((item) => item.key !== 'automation' || this.canConfigure); },
     canConfigure() { return Number(this.$store.state.profile?.userRole?.id) === 1; },
     startDate: {
       get() { return dateFromISO(this.filters.date); },
@@ -600,7 +605,7 @@ export default {
       get() { return dateFromISO(this.logFilters.date); },
       set(value) { this.logFilters.date = isoFromDate(value); },
     },
-    tab() { if (this.$route.query.tab === 'failures') return 'statistics'; return tabs.some((item) => item.key === this.$route.query.tab) ? this.$route.query.tab : 'overview'; },
+    tab() { if (this.$route.query.tab === 'failures') return 'statistics'; return this.visibleTabs.some((item) => item.key === this.$route.query.tab) ? this.$route.query.tab : 'overview'; },
     statisticsPage() { return this.slice('statistics'); },
     batchGroups() { return providerBatches(this.statistics); },
     batchGroupsPage() { const start = (this.pages.batches - 1) * this.sizes.batches; return this.batchGroups.slice(start, start + this.sizes.batches); },
@@ -795,17 +800,6 @@ export default {
     },
     refreshFailures() {
       const scope = this.applied.statistics; if (!this.loaded.statistics || !scope) return;
-      if (!this.selectedBatch && ['1', '2', '3'].includes(this.failureFilters.type)) {
-        this.errors.failures = this.t('errorTypeNeedsBatch');
-        this.sequence.failures += 1;
-        this.failures = [];
-        this.loaded.failures = false;
-        this.busy.failures = false;
-        this.applied.failures = null;
-        this.clearFailureSelection();
-        this.pages.failures = 1;
-        return;
-      }
       this.failureFilters = {
         date: scope.date, date_end: scope.date_end, task_ident: this.selectedBatch, type: this.failureFilters.type, group_by: 'email',
       };

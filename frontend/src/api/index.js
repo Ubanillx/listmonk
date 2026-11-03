@@ -160,6 +160,11 @@ export const exportDeliveryProviderFailures = (params) => http.get('/api/deliver
 // Moves one failed address into (or out of) the private and pool blocklists it
 // resolves to. The server re-resolves the address and re-checks permissions.
 export const blocklistDeliveryProviderFailure = (data) => http.put('/api/delivery-provider/failures/blocklist', data, providerOptions);
+export const getProviderAutomation = () => http.get('/api/delivery-provider/automation', providerOptions);
+export const saveProviderAutomation = (scope, data) => http.put(`/api/delivery-provider/automation/${scope}`, data, providerOptions);
+export const previewProviderAutomation = (scope, data) => http.post(`/api/delivery-provider/automation/${scope}/preview`, data, providerOptions);
+export const runProviderAutomation = (scope, data) => http.post(`/api/delivery-provider/automation/${scope}/run`, data, providerOptions);
+export const getProviderAutomationItems = (scope, id, page) => http.get(`/api/delivery-provider/automation/${scope}/runs/${id}`, { ...providerOptions, params: { page } });
 
 // Dashboard
 export const getDashboardCounts = () => http.get(

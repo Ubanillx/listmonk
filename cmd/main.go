@@ -384,6 +384,10 @@ func main() {
 	}
 
 	// Star the update checker.
+	automationCtx, stopAutomation := context.WithCancel(context.Background())
+	automationDone := make(chan struct{})
+	go func() { defer close(automationDone); app.runProviderAutomation(automationCtx) }()
+
 	if ko.Bool("app.check_updates") {
 		go app.checkUpdates(versionString, time.Hour*24)
 	}
@@ -408,6 +412,8 @@ func main() {
 		mgr.Close()
 
 		// Close the DB pool.
+		stopAutomation()
+		<-automationDone
 		db.Close()
 		if app.geoIP != nil {
 			app.geoIP.Close()

@@ -182,7 +182,7 @@ describe('BestEDM delivery provider console', () => {
     cy.get('.provider-failure-table tbody tr').should('have.length', 1);
   });
 
-  it('allows task-scoped error types to be selected before choosing a batch', () => {
+  it('queries all batches for every error type and keeps the selected type for export', () => {
     visitConsole();
     cy.intercept('GET', url('failures')).as('failures');
     cy.get('[data-cy=provider-tab-statistics]').click();
@@ -191,13 +191,27 @@ describe('BestEDM delivery provider console', () => {
     ['1', '2', '3'].forEach((type) => {
       cy.get(`[data-cy=provider-error-type] option[value="${type}"]`).should('not.be.disabled');
     });
-    cy.get('[data-cy=provider-error-type]').select('1');
-    cy.get('[role=alert]').should('be.visible').and('contain', '批次');
-    cy.get('[data-cy=provider-error-type]').should('have.value', '1');
+    ['1', '2', '3'].forEach((type) => {
+      cy.get('[data-cy=provider-error-type]').select(type);
+      cy.wait('@failures').its('request.query').should((query) => {
+        expect(query.type).to.equal(type);
+        expect(query.task_ident).to.equal(undefined);
+        expect(query.date).to.be.a('string');
+        expect(query.group_by).to.equal('email');
+      });
+      cy.get('[role=alert]').should('not.exist');
+      cy.get('.provider-failure-table tbody tr').should('have.length', 10);
+    });
+    cy.intercept('GET', '/api/delivery-provider/failures/export*').as('typedExport');
+    cy.contains('.provider-console button', '导出 Excel').click();
+    cy.wait('@typedExport').its('request.query').should((query) => {
+      expect(query.type).to.equal('3');
+      expect(query.task_ident).to.equal(undefined);
+    });
 
     cy.get('[data-cy=provider-batch-select]').select('20261015-17463-smtp');
     cy.wait('@failures').its('request.query').should((query) => {
-      expect(query.type).to.equal('1');
+      expect(query.type).to.equal('3');
       expect(query.task_ident).to.equal('20261015-17463-smtp');
     });
     cy.get('[role=alert]').should('not.exist');

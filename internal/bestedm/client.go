@@ -200,7 +200,9 @@ func (c *Client) Failures(ctx context.Context, cred Credentials, q url.Values) (
 	if err != nil {
 		return nil, err
 	}
-	n, err := parseXML(b)
+	// BestEDM can emit bare ampersands in failed addresses. Preserve those
+	// addresses and every record, then enforce the normal strict XML checks.
+	n, err := parseXML(escapeFailureEmailAmpersands(b))
 	if err != nil {
 		if errors.Is(err, errNoData) {
 			return []Row{}, nil

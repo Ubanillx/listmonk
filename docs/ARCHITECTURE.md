@@ -101,7 +101,7 @@ v6.63.0 为活动增加 `retry_mode`，为两类收件人快照增加 `retry_sel
 
 ## BestEDM 发件服务账号与报表（2026-10-20）
 
-`internal/bestedm` 是固定 HTTPS 上游的只读适配器，使用 HTTP Basic Auth 查询账号、服务、统计、失败地址 XML 和日志 JSON；20 秒超时、4 MB 响应上限、禁用重定向、识别 HTTP 200 的 XML 业务错误，不猜测非法 XML/JSON 示例。`cmd/delivery_provider.go` 负责独立 `delivery_provider:get` 读取权限与平台管理员配置边界、参数组合校验、安全配置 DTO、直接 Excel 导出；报表只有真实数据源，`mode` 等样例参数会被参数校验拒绝，失败即返回错误，不用空数据或零值兜底。个人 Key 的独立前缀 allowlist 不包含这些路由。
+`internal/bestedm` 是固定 HTTPS 上游的只读适配器，使用 HTTP Basic Auth 查询账号、服务、统计、失败地址 XML 和日志 JSON；20 秒超时、4 MB 响应上限、禁用重定向、识别 HTTP 200 的 XML 业务错误。失败地址仅通过 `failure_xml.go::escapeFailureEmailAmpersands` 转义纯文本 `<email>` 字段中未转义的 `&`，保留已有 XML 实体、CDATA、原始邮箱、重复记录及分类说明，再执行严格 XML 解析；不修补其它字段、属性或结构错误，也不丢弃解析失败记录。账号、统计和日志不应用此兼容。`cmd/delivery_provider.go` 负责独立 `delivery_provider:get` 读取权限与平台管理员配置边界、参数组合校验、安全配置 DTO、直接 Excel 导出；报表只有真实数据源，`mode` 等样例参数会被参数校验拒绝，失败即返回错误，不用空数据或零值兜底。个人 Key 的独立前缀 allowlist 不包含这些路由。
 
 配置使用现有 `settings` 的保留行 `integration.bestedm`，不加入 `models.Settings`，避免通用设置读取暴露账号密码。通用按键写入拒绝该行，专用保存以数据库事务锁和 `expected_updated_at` 校验并发；测试读取已保存凭据，结果以原 JSON 比较更新，避免旧请求覆盖新配置，失败安全文本也持久化。凭据沿用既有 SMTP 设置的数据库机密保护，不回传密码；新增账号配置无需 schema 迁移或应用重启。更新、测试及导出登记业务审计，失败测试覆盖审计结果，不记录邮箱/凭据。
 

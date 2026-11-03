@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -70,6 +71,77 @@ func TestFailuresKeepClassificationAndDoNotModifyCallerQuery(t *testing.T) {
 	rows, err := client.Failures(context.Background(), Credentials{}, query)
 	if err != nil || len(rows) != 2 || rows[0]["error_type_dec"] != "不存在" || query.Has("out_type") {
 		t.Fatalf("failure details lost: %v %v", rows, err)
+	}
+}
+
+func TestFailuresEscapeOnlyBareEmailAmpersandsWithoutLosingRows(t *testing.T) {
+	client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/failexport.php" || r.URL.Query().Get("type") != "-1" || r.URL.Query().Has("task_ident") {
+			t.Error("expected all-batches failure query")
+		}
+		fmt.Fprint(w, `<fail_recipient_list>
+<recipient><email>before@example.com</email><error_type>1</error_type></recipient>
+<recipient><email>&broken&name@example.com</email><error_type>9</error_type><error_type_dec>format error</error_type_dec></recipient>
+<recipient><email>&broken&name@example.com</email><error_type>9</error_type><error_type_dec>format error</error_type_dec></recipient>
+<recipient><email>a&amp;b&lt;c&gt;&quot;&apos;&#38;&#x26;@example.com</email><error_type>9</error_type></recipient>
+<recipient><email><![CDATA[c&d@example.com]]></email><error_type>9</error_type></recipient>
+<recipient><email>after@example.com</email><error_type>2</error_type></recipient>
+</fail_recipient_list>`)
+	})
+	rows, err := client.Failures(context.Background(), Credentials{}, url.Values{
+		"date": {"2026-10-01"}, "date_end": {"2026-11-03"}, "type": {"-1"},
+	})
+	want := []Row{
+		{"email": "before@example.com", "error_type": "1"},
+		{"email": "&broken&name@example.com", "error_type": "9", "error_type_dec": "format error"},
+		{"email": "&broken&name@example.com", "error_type": "9", "error_type_dec": "format error"},
+		{"email": "a&b<c>\"'&&@example.com", "error_type": "9"},
+		{"email": "c&d@example.com", "error_type": "9"},
+		{"email": "after@example.com", "error_type": "2"},
+	}
+	if err != nil || !reflect.DeepEqual(rows, want) {
+		t.Fatalf("all-batches records changed or lost: rows=%#v err=%v", rows, err)
+	}
+}
+
+func TestFailuresKeepOtherXMLStrict(t *testing.T) {
+	for _, body := range []string{
+		`<fail_recipient_list><recipient><email>a&b@example.com</email><error_type_dec>bad&text</error_type_dec></recipient></fail_recipient_list>`,
+		`<fail_recipient_list><recipient email="a&b@example.com"><email>ok@example.com</email></recipient></fail_recipient_list>`,
+		`<fail_recipient_list><recipient><email>a&b@example.com</email></wrong></fail_recipient_list>`,
+		`<fail_recipient_list><recipient><email>a&b@example.com</email></recipient>`,
+		`<fail_recipient_list><recipient><email>a&b@example.com</email></recipient></fail_recipient_list><extra/>`,
+		`<fail_recipient_list><recipient><email>a&#0;@example.com</email></recipient></fail_recipient_list>`,
+	} {
+		client := testClient(t, func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, body) })
+		rows, err := client.Failures(context.Background(), Credentials{}, url.Values{"type": {"-1"}})
+		var pe *Error
+		if !errors.As(err, &pe) || pe.Code != "invalid_xml" || rows != nil {
+			t.Fatalf("malformed XML accepted or partial rows returned: rows=%#v err=%v", rows, err)
+		}
+	}
+}
+
+func TestFailureEmailEscapingPreservesOtherXMLBytes(t *testing.T) {
+	unchanged := []string{
+		`<!-- <email>a&b@example.com</email> -->`,
+		`<![CDATA[<email>a&b@example.com</email>]]>`,
+		`<?test <email>a&b@example.com</email> ?>`,
+		`<recipient note="<email>a&b@example.com</email>">`,
+		`<recipient note='<email>a&b@example.com</email>'>`,
+		`<error_type_dec>a&b</error_type_dec>`,
+		`<email><![CDATA[a&b@example.com]]></email>`,
+		`<email>a&amp;b&lt;c&gt;&quot;&apos;&#38;&#x26;@example.com</email>`,
+	}
+	for _, input := range unchanged {
+		if got := string(escapeFailureEmailAmpersands([]byte(input))); got != input {
+			t.Fatalf("unrelated XML changed: got=%q want=%q", got, input)
+		}
+	}
+	input := `<email>&a&unknown;&amp;&#38;&#x26;@example.com&</email>`
+	want := `<email>&amp;a&amp;unknown;&amp;&#38;&#x26;@example.com&amp;</email>`
+	if got := string(escapeFailureEmailAmpersands([]byte(input))); got != want {
+		t.Fatalf("incorrect email escaping: got=%q want=%q", got, want)
 	}
 }
 func TestLogsHandleXMLBusinessErrorJSONAndInvalidExamples(t *testing.T) {

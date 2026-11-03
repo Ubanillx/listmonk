@@ -2,6 +2,8 @@
 
 快照日期：2026-11-03
 
+- **BestEDM 全部批次 XML 兼容（2026-11-03）**：上游失败地址将邮箱内裸 `&` 直接写入 XML，导致日期范围查询在聚合前失败。仅在失败明细入口转义纯文本 `<email>` 中未转义的 `&`，保留已有实体、CDATA、重复记录和分类说明；其它字段、属性及结构仍严格校验。回归先红后绿，`go test ./...` 全部通过，`git diff --check` 通过。本地 backend 已重启，9173 HTTP 200，启动无错误；真实账号查询 `2026-10-01～2026-11-03` 全部批次/全部类型 HTTP 200，3,496 个邮箱汇总计 17,803 条原始记录，4 条含 `&` 的问题记录全部保留。公网仍运行旧代码，本次未发布线上。来源：`internal/bestedm/failure_xml.go`、`internal/bestedm/client.go::Failures`、`internal/bestedm/client_test.go`。
+
 - **组织轮询未选回信邮箱的严重警告（2026-11-03）**：活动含私域受众、使用组织 SMTP 且未选择回信邮箱时，选择框红色边框/浅红底，旁置红色警告图标和回信丢失风险说明；已有可选邮箱、无可选邮箱及已完成只读状态均提示。选中邮箱/切回个人来源后消失，纯公海沿用独立路由不误报；未新增保存/发送限制。同步中英/繁体文案及用户文档。lint/生产构建、locale JSON 和 diff 检查通过；新增警告 3/3、既有默认来源 2/2 通过，桌面/390px/只读截图已复核，桌面及手机无溢出断言通过。本地 backend 已同步，9173 HTTP 200，启动无错误，未发布线上。来源：`frontend/src/views/Campaign.vue`、`frontend/src/assets/styles/views/_campaign.scss`、`frontend/cypress/e2e/campaign-reply-mailbox-warning.cy.js`。
 
 - **邮箱账号 SMTP 名称补充“发送”（2026-11-03）**：个人/组织邮件配置标题统一为“个人/组织邮箱账号 SMTP 发送”，活动来源及概览选项统一为“个人/组织邮箱账号 SMTP 轮询发送”；同步简繁体空状态、状态标题、配置入口引用及已有回归文案。仅文案调整，发件来源默认及发送逻辑不变。来源：`i18n/{zh-CN,zh-TW}.json`。locale JSON 与 diff 检查通过；本地 backend 已重启，9173 HTTP 200，启动日志无错误，未发布线上。

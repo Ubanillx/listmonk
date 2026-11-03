@@ -12,12 +12,14 @@ import { installA11y } from './a11y';
 import AppPagination from './components/AppPagination.vue';
 import PaginatedTable from './components/PaginatedTable';
 import { configureTimezone } from './time';
+import installTooltips from './components/AppTooltip';
 
 // Internationalisation.
 Vue.use(VueI18n);
 const i18n = new VueI18n();
 
 Vue.use(Buefy, {});
+installTooltips(Vue);
 Vue.component('AppPagination', AppPagination);
 Vue.component('PaginatedTable', PaginatedTable);
 Vue.config.productionTip = false;

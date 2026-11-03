@@ -84,6 +84,7 @@ import { HeatmapChart, ScatterChart } from 'echarts/charts';
 import { CanvasRenderer } from 'echarts/renderers';
 import { LabelLayout } from 'echarts/features';
 import { colors } from '../constants';
+import { chartTooltip, dismissChartTooltipOnMove } from '../utils/chartTooltip';
 import {
   worldMap, mapCountries, locationPoints, cityTotals, countryLabel, countryView, wrapLongitude,
 } from '../utils/campaignGeo';
@@ -206,6 +207,7 @@ export default {
   },
 
   beforeDestroy() {
+    if (this.removeTooltipListeners) this.removeTooltipListeners();
     this.requestToken += 1;
     window.removeEventListener('resize', this.resize);
     if (this.chart) {
@@ -293,6 +295,7 @@ export default {
     renderChart() {
       if (!this.chart) {
         this.chart = init(this.$refs.map);
+        this.removeTooltipListeners = dismissChartTooltipOnMove(this.chart);
       }
       const view = this.selectedCountry ? countryView(this.selectedCountry, this.filteredPoints, this.focusedCity) : null;
       const mapName = view && view.geoJSON ? `campaign-country-${this.selectedCountry}` : 'world';
@@ -312,7 +315,7 @@ export default {
         label: { show: !!this.selectedCountry && !!city.city },
       }));
       this.chart.setOption({
-        tooltip: { trigger: 'item', formatter: this.tooltip },
+        tooltip: chartTooltip(this.$refs.map, { trigger: 'item', formatter: this.tooltip }),
         visualMap: {
           show: this.hasPoints,
           seriesIndex: 0,

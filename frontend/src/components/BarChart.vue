@@ -6,6 +6,7 @@
 
 <script>
 import Chart from 'chart.js/auto';
+import canvasTooltip from '../utils/canvasTooltip';
 
 const DEFAULT = {
   type: 'bar',
@@ -42,7 +43,20 @@ export default {
 
   mounted() {
     const ctx = this.$el.querySelector('.bar-chart-canvas');
-    this.chart = new Chart(ctx, { ...DEFAULT, data: this.$props.data });
+    const portal = canvasTooltip();
+    this.chart = new Chart(ctx, {
+      ...DEFAULT,
+      data: this.$props.data,
+      plugins: [portal],
+      options: {
+        ...DEFAULT.options,
+        plugins: { ...DEFAULT.options.plugins, tooltip: { ...DEFAULT.options.plugins.tooltip, enabled: false, external: portal.external } },
+      },
+    });
+  },
+
+  beforeDestroy() {
+    if (this.chart) this.chart.destroy();
   },
 };
 </script>

@@ -3,10 +3,10 @@
     A viewport-aware replacement for b-tooltip on the failure actions. Buefy
     positions its bubble relative to the trigger, so inside the table's
     horizontal scroll container a long label is clipped and never flips at the
-    window edge. This bubble is fixed-positioned, measures itself, flips above
+    window edge. This body-mounted bubble is fixed-positioned, measures itself, flips above
     or below the trigger and clamps horizontally inside the viewport.
   -->
-  <span class="icon-tip" @mouseenter="show" @mouseleave="hide" @focusin="show" @focusout="hide">
+  <span class="icon-tip" @mouseenter="show" @mouseleave="hide" @focusin="show" @focusout="hide" @keydown.esc="hide">
     <button ref="trigger" type="button" class="provider-icon-button" :class="{ 'is-blocked': blocked }"
       :disabled="disabled" :aria-label="label" :data-cy="dataCy" @click="$emit('click')">
       <b-icon :icon="icon" size="is-small" />
@@ -39,6 +39,7 @@ export default {
   beforeDestroy() {
     window.removeEventListener('scroll', this.hide, true);
     window.removeEventListener('resize', this.hide);
+    if (this.$refs.bubble) this.$refs.bubble.remove();
   },
   methods: {
     show() {
@@ -51,6 +52,8 @@ export default {
     position() {
       const { trigger, bubble } = this.$refs;
       if (!trigger || !bubble) return;
+      // Fixed positioning alone still clips inside paint containment/transform.
+      document.body.appendChild(bubble);
       const rect = trigger.getBoundingClientRect();
       const size = bubble.getBoundingClientRect();
       let top = rect.top - size.height - EDGE;

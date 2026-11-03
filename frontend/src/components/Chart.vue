@@ -7,6 +7,7 @@
 <script>
 import Chart from 'chart.js/auto';
 import { colors } from '../constants';
+import canvasTooltip from '../utils/canvasTooltip';
 
 const DEFAULT_DONUT = {
   type: 'doughnut',
@@ -168,7 +169,16 @@ export default {
         break;
     }
 
-    const conf = { ...def, data: this.$props.data };
+    const portal = canvasTooltip();
+    const conf = {
+      ...def,
+      data: this.$props.data,
+      plugins: [portal],
+      options: {
+        ...def.options,
+        plugins: { ...def.options.plugins, tooltip: { ...def.options.plugins.tooltip, enabled: false, external: portal.external } },
+      },
+    };
     if (this.$props.onClick) {
       conf.options.onClick = this.$props.onClick;
     }

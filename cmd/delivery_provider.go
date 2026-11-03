@@ -299,9 +299,6 @@ func validateBestEDMQuery(kind string, q url.Values) error {
 		if q.Get("task_id") != "" && q.Get("task_ident") != "" {
 			return fmt.Errorf("统计任务 ID 和批次号只需选择一项")
 		}
-		if (n == 1 || n == 2 || n == 3) && q.Get("task_id") == "" && q.Get("task_ident") == "" {
-			return fmt.Errorf("该失败类型按文档要求必须填写批次号或统计任务 ID")
-		}
 		if q.Get("date") == "" && q.Get("date_end") == "" && q.Get("task_id") == "" && q.Get("task_ident") == "" {
 			return fmt.Errorf("请指定日期或任务")
 		}
@@ -342,12 +339,19 @@ func (a *App) QueryDeliveryProvider(c echo.Context) error {
 	q.Del("search")
 	groupByEmail := q.Get("group_by") == "email"
 	q.Del("group_by")
+	localFailureType := ""
 	if kind == "failures" {
 		if q.Get("date") != "" && q.Get("date_end") == "" {
 			q.Set("date_end", q.Get("date"))
 		}
 		if q.Get("date_end") != "" && q.Get("date") == "" {
 			q.Set("date", q.Get("date_end"))
+		}
+		// Date-scoped all-types exports include classifications without the
+		// provider's batch requirement for direct type 1..3 queries.
+		if q.Get("task_id") == "" && q.Get("task_ident") == "" && q.Get("type") != "-1" {
+			localFailureType = q.Get("type")
+			q.Set("type", "-1")
 		}
 	}
 	var rows []bestedm.Row
@@ -368,10 +372,10 @@ func (a *App) QueryDeliveryProvider(c echo.Context) error {
 	if err != nil {
 		return providerHTTPError(err)
 	}
-	if kind == "failures" && search != "" {
+	if kind == "failures" && (search != "" || localFailureType != "") {
 		filtered := make([]bestedm.Row, 0, len(rows))
 		for _, row := range rows {
-			if strings.Contains(strings.ToLower(row["email"]), search) {
+			if (localFailureType == "" || row["error_type"] == localFailureType) && strings.Contains(strings.ToLower(row["email"]), search) {
 				filtered = append(filtered, row)
 			}
 		}

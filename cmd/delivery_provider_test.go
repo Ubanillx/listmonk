@@ -107,7 +107,9 @@ func TestDeliveryProviderQueryContracts(t *testing.T) {
 		{"failures", "date=2026-10-20&type=-1&group_by=email&group_by=email", false},
 		{"statistics", "date=2026-10-20&group_by=email", false},
 		{"statistics", "date=2026-10-20&search=recipient01", false},
-		{"failures", "date=2026-10-20&type=1", false}, {"failures", "task_ident=batch&type=1", true},
+		{"failures", "date=2026-10-20&type=1", true}, {"failures", "task_ident=batch&type=1", true},
+		{"failures", "date_end=2026-10-20&type=2", true}, {"failures", "date=2026-10-20&type=3", true},
+		{"failures", "type=1", false},
 		{"failures", "date=2026-10-20&type=11", false}, {"failures", "date=2026-10-20&type=all", false},
 		{"logs", "date=2026-10-20&mail_to=user%2Btag%40example.com", true},
 		{"logs", "date=2026-10-20&mail_to=not-an-email", false}, {"logs", "mail_to=a%40example.com", false},
@@ -122,6 +124,106 @@ func TestDeliveryProviderQueryContracts(t *testing.T) {
 				t.Fatalf("validation %v, wanted valid=%v", err, tc.valid)
 			}
 		})
+	}
+}
+
+func TestDeliveryProviderFiltersAllBatchesBeforeGroupingAndExport(t *testing.T) {
+	for typ := 1; typ <= 10; typ++ {
+		for _, mode := range []string{"raw", "grouped", "export"} {
+			t.Run(fmt.Sprintf("type%d/%s", typ, mode), func(t *testing.T) {
+				var query url.Values
+				rows := append(stubFailures(), bestedm.Row{
+					"email": "RECIPIENT01@example.com", "error_type": "1", "error_type_dec": "duplicate",
+				}, bestedm.Row{"email": "recipient01@example.com", "error_type": "2", "error_type_dec": "other cause"})
+				app := providerTestApp(t, stubBestEDM{query: &query, failures: rows})
+				target := fmt.Sprintf("/api/delivery-provider/failures?date=2026-10-20&type=%d&search=RECIPIENT01", typ)
+				format := ""
+				if mode != "raw" {
+					target += "&group_by=email"
+				}
+				if mode == "export" {
+					format = "export"
+				}
+				c, rec := providerContext(t, target, "kind", "failures", "format", format)
+				if err := app.QueryDeliveryProvider(c); err != nil {
+					t.Fatal(err)
+				}
+				if query.Get("type") != "-1" || query.Get("date_end") != "2026-10-20" || query.Has("task_ident") || query.Has("search") || query.Has("group_by") {
+					t.Fatalf("incorrect all-batches upstream query: %v", query)
+				}
+				wantCount := 0
+				if typ == 1 {
+					wantCount = 2
+				} else if typ == 2 {
+					wantCount = 1
+				}
+				wantGroups := 0
+				if wantCount > 0 {
+					wantGroups = 1
+				}
+				if mode == "export" {
+					file, err := excelize.OpenReader(bytes.NewReader(rec.Body.Bytes()))
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer file.Close()
+					exported, err := file.GetRows(file.GetSheetName(0))
+					if err != nil || len(exported) != wantGroups+1 {
+						t.Fatalf("incorrect filtered export: %v %v", exported, err)
+					}
+					if wantCount > 0 && (exported[1][1] != strconv.Itoa(wantCount) || strings.Contains(exported[1][3], "other cause") != (typ == 2)) {
+						t.Fatalf("export includes unrelated causes: %v", exported)
+					}
+					return
+				}
+				if mode == "raw" {
+					var result struct {
+						Data struct {
+							Results []bestedm.Row `json:"results"`
+						} `json:"data"`
+					}
+					if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil || result.Data.Results == nil || len(result.Data.Results) != wantCount {
+						t.Fatalf("incorrect raw records: %s %v", rec.Body.String(), err)
+					}
+					for _, row := range result.Data.Results {
+						if row["error_type"] != strconv.Itoa(typ) {
+							t.Fatalf("unfiltered record: %v", row)
+						}
+					}
+					return
+				}
+				var result struct {
+					Data struct {
+						Results []providerFailureSummary `json:"results"`
+					} `json:"data"`
+				}
+				if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil || result.Data.Results == nil || len(result.Data.Results) != wantGroups {
+					t.Fatalf("incorrect grouped records: %s %v", rec.Body.String(), err)
+				}
+				if wantCount > 0 {
+					row := result.Data.Results[0]
+					if row.Count != wantCount {
+						t.Fatalf("count includes unrelated causes: %#v", row)
+					}
+					for _, cause := range row.Errors {
+						if cause.Type != strconv.Itoa(typ) {
+							t.Fatalf("unfiltered cause: %#v", cause)
+						}
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestDeliveryProviderKeepsBatchTypeQuery(t *testing.T) {
+	for _, selector := range []string{"task_ident=batch", "task_id=123"} {
+		var query url.Values
+		app := providerTestApp(t, stubBestEDM{query: &query, failures: []bestedm.Row{}})
+		c, _ := providerContext(t, "/api/delivery-provider/failures?"+selector+"&type=1", "kind", "failures")
+		if err := app.QueryDeliveryProvider(c); err != nil || query.Get("type") != "1" {
+			t.Fatalf("batch filter changed: %v %v", query, err)
+		}
 	}
 }
 

@@ -3792,6 +3792,17 @@ is not read by the server at startup.</p>
 </tbody>
 </table>
 <h3 id="smtp-and-smtp_delivery"><code>smtp</code> and <code>smtp_delivery</code><a class="headerlink" href="#smtp-and-smtp_delivery" title="Permanent link">&para;</a></h3>
+<p>The SMTP forms under <strong>Profile → Personal mail settings</strong>, organization SMTP pools,
+and <strong>Settings → SMTP</strong> provide the same provider shortcuts (Gmail, 263net, topmax,
+Amazon SES, Mailgun, Mailjet, Sendgrid, Postmark, Forward Email, and Lettermint).
+Selecting a provider fills the host, port, authentication, and TLS mode, then clears
+the username, password, and HELO hostname. Enter your credentials and save to apply
+the configuration. The server name, sender address, and daily limit are preserved.</p>
+<p>In the campaign editor, selecting private customer lists defaults to personal
+email-account SMTP. Selecting public pools defaults to organization email-account
+SMTP when that source is available, including mixed audiences in an organization.
+You can select another source manually. Opening a saved campaign preserves its
+saved source and rate; changing its audience applies the selection defaults again.</p>
 <p><code>smtp</code> contains exactly one platform SMTP server for system e-mails (password
 resets, notifications, opt-in confirmations). Campaign and transactional mail
 uses account-owned SMTP servers; campaigns can also select organization marketing pools.

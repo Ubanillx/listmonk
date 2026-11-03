@@ -270,6 +270,12 @@ SMTP when that source is available, including mixed audiences in an organization
 You can select another source manually. Opening a saved campaign preserves its
 saved source and rate; changing its audience applies the selection defaults again.
 
+When organization SMTP rotation is selected for a private or mixed audience,
+select a reply mailbox to receive customer replies. A red warning highlights an
+unselected reply mailbox, including on read-only campaigns: if the sending
+accounts cannot receive mail, customer replies may be lost. Public-pool-only
+campaigns keep their separate per-contact/organization reply routing.
+
 `smtp` contains exactly one platform SMTP server for system e-mails (password
 resets, notifications, opt-in confirmations). Campaign and transactional mail
 uses account-owned SMTP servers; campaigns can also select organization marketing pools.

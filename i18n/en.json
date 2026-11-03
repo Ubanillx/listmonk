@@ -2381,6 +2381,8 @@
     "campaigns.replyMailbox": "Reply mailbox",
     "campaigns.replyMailboxHelp": "Customer replies go directly to the selected mailbox; scheduling and sending are blocked until a mailbox is verified.",
     "campaigns.replyMailboxNone": "No reply mailbox",
+    "campaigns.organizationReplyMailboxMissingTitle": "No reply mailbox selected — customer replies are at risk",
+    "campaigns.organizationReplyMailboxMissingHelp": "This campaign uses organization SMTP rotation. If the sending accounts cannot receive mail, customer replies will be lost. Select a reply mailbox before sending, or add one in the organization's mail settings if none are available.",
     "campaigns.replyMailboxLegacy": "Previous reply mailbox (currently unavailable)",
     "campaigns.replyMailboxDefaultTag": "(default)",
     "campaigns.replyMailboxMissing": "No verified reply mailbox is configured; use Organizations -> Organization reply mailboxes for an organization workspace, or Profile for a personal workspace.",

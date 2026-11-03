@@ -85,6 +85,48 @@
     background: var(--lm-color-surface-subtle);
   }
 
+  .campaign-reply-mailbox-danger {
+    .label,
+    .select select {
+      color: var(--lm-color-danger);
+    }
+
+    .select select {
+      border-color: var(--lm-color-danger);
+      background-color: #fff1f0;
+    }
+  }
+
+  .campaign-reply-mailbox-alert {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--lm-space-2);
+    padding: var(--lm-space-4);
+    border: 1px solid var(--lm-color-danger);
+    border-left-width: 4px;
+    background: #fff1f0;
+    color: #912018;
+    overflow-wrap: anywhere;
+
+    > div {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .icon {
+      flex: 0 0 auto;
+      margin-top: .2rem;
+    }
+
+    strong {
+      color: inherit;
+    }
+
+    p {
+      margin-top: var(--lm-space-1);
+    }
+  }
+
   .campaign-section-caption {
     display: flex;
     align-items: center;

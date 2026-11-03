@@ -188,8 +188,12 @@
                       :placeholder="$t('campaigns.fromAddressPlaceholder')" required />
                   </b-field>
 
-                  <b-field v-if="isSMTPMessenger && hasPrivateAudience" key="campaign-reply-mailbox" :label="$t('campaigns.replyMailbox')">
-                    <b-select v-model="form.replyMailboxId" :disabled="!canEdit || !$can('mailboxes:use') || activeReplyMailboxes.length === 0" expanded data-cy="campaign-reply-mailbox">
+                  <b-field v-if="isSMTPMessenger && hasPrivateAudience" key="campaign-reply-mailbox" :label="$t('campaigns.replyMailbox')"
+                    :type="organizationReplyMailboxMissing ? 'is-danger' : null"
+                    :class="{ 'campaign-reply-mailbox-danger': organizationReplyMailboxMissing }">
+                    <b-select v-model="form.replyMailboxId" :disabled="!canEdit || !$can('mailboxes:use') || activeReplyMailboxes.length === 0"
+                      :aria-describedby="organizationReplyMailboxMissing ? 'campaign-reply-mailbox-warning' : null"
+                      expanded data-cy="campaign-reply-mailbox">
                       <option :value="null">{{ $t('campaigns.replyMailboxNone') }}</option>
                       <option v-if="form.replyMailboxId && !activeReplyMailboxes.some((mailbox) => mailbox.id === Number(form.replyMailboxId))"
                         :value="form.replyMailboxId" disabled>
@@ -200,7 +204,15 @@
                       </option>
                     </b-select>
                   </b-field>
-                  <p v-if="isSMTPMessenger && hasPrivateAudience && replyMailboxesLoaded && activeReplyMailboxes.length === 0" class="help is-warning">
+                  <div v-if="organizationReplyMailboxMissing" id="campaign-reply-mailbox-warning"
+                    class="notification campaign-reply-mailbox-alert" role="alert" data-cy="campaign-reply-mailbox-warning">
+                    <b-icon icon="alert-circle-outline" size="is-small" aria-hidden="true" />
+                    <div>
+                      <strong>{{ $t('campaigns.organizationReplyMailboxMissingTitle') }}</strong>
+                      <p>{{ $t('campaigns.organizationReplyMailboxMissingHelp') }}</p>
+                    </div>
+                  </div>
+                  <p v-else-if="isSMTPMessenger && hasPrivateAudience && replyMailboxesLoaded && activeReplyMailboxes.length === 0" class="help is-warning">
                     {{ $t('campaigns.replyMailboxMissing') }}
                   </p>
                   <b-field v-if="isSMTPMessenger && hasPoolAudience" key="campaign-pool-reply-priority" :label="$t('campaigns.poolReplyPriority')"
@@ -1509,6 +1521,11 @@ export default Vue.extend({
         return null;
       }
       return this.form.replyMailboxId || null;
+    },
+
+    organizationReplyMailboxMissing() {
+      return this.isSMTPMessenger && this.hasPrivateAudience
+        && this.form.smtpSource === 'organization' && !this.campaignReplyMailboxID;
     },
   },
 

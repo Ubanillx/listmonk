@@ -2,6 +2,8 @@
 
 快照日期：2026-11-03
 
+- **组织轮询未选回信邮箱的严重警告（2026-11-03）**：活动含私域受众、使用组织 SMTP 且未选择回信邮箱时，选择框红色边框/浅红底，旁置红色警告图标和回信丢失风险说明；已有可选邮箱、无可选邮箱及已完成只读状态均提示。选中邮箱/切回个人来源后消失，纯公海沿用独立路由不误报；未新增保存/发送限制。同步中英/繁体文案及用户文档。lint/生产构建、locale JSON 和 diff 检查通过；新增警告 3/3、既有默认来源 2/2 通过，桌面/390px/只读截图已复核，桌面及手机无溢出断言通过。本地 backend 已同步，9173 HTTP 200，启动无错误，未发布线上。来源：`frontend/src/views/Campaign.vue`、`frontend/src/assets/styles/views/_campaign.scss`、`frontend/cypress/e2e/campaign-reply-mailbox-warning.cy.js`。
+
 - **邮箱账号 SMTP 名称补充“发送”（2026-11-03）**：个人/组织邮件配置标题统一为“个人/组织邮箱账号 SMTP 发送”，活动来源及概览选项统一为“个人/组织邮箱账号 SMTP 轮询发送”；同步简繁体空状态、状态标题、配置入口引用及已有回归文案。仅文案调整，发件来源默认及发送逻辑不变。来源：`i18n/{zh-CN,zh-TW}.json`。locale JSON 与 diff 检查通过；本地 backend 已重启，9173 HTTP 200，启动日志无错误，未发布线上。
 
 - **邮箱账号 SMTP 命名与受众默认来源（2026-11-03）**：简繁体个人资料、活动来源和相关提示统一为个人/组织“邮箱账号 SMTP”；私域默认个人，公海（含组织内混选）在权限允许时默认组织，新建 URL 预选同样适用。保留手动选择及已有活动加载的保存来源/自定义速率，来源实际切换才应用 5/100 默认值；同步修正三种语言的旧 20 封提示。lint/生产构建、locale JSON 与 diff 检查通过；新增默认来源 2/2、公海 SMTP 1/1、活动配置 1/1 通过，桌面/390px 截图已复核。组织 SMTP 2/3 通过，综合用例在与本次未修改的时间选择断言处失败（选择 00:05 显示 16:05），不宣称全套通过；已记录待排查。本地 backend 已同步并核验 9173 HTTP 200，未发布线上。来源：`frontend/src/views/Campaign.vue`、`i18n/{zh-CN,zh-TW,en}.json`、`frontend/cypress/e2e/{campaign-smtp-defaults,public-pool-smtp,campaign-setup,organization-smtp}.cy.js`。

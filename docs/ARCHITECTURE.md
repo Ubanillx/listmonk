@@ -447,6 +447,8 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 
 ## AI 入站回信处理
 
+活动设置使用组织邮箱账号 SMTP 轮询、受众含私域且未选择活动回信邮箱时，在回信选择框及紧邻提示中显示红色风险警告；只读/已完成活动同样显示，已有可选邮箱但未选中也不例外。选中回信邮箱或切换为个人来源后警告消失；纯公海仍按独立的逐客户/组织回信路由展示，不由活动回信邮箱误报。该提示不新增保存、启动或排期限制。来源：`frontend/src/views/Campaign.vue::organizationReplyMailboxMissing`、`frontend/src/assets/styles/views/_campaign.scss`；回归：`frontend/cypress/e2e/campaign-reply-mailbox-warning.cy.js`。
+
 回信邮箱配置分为“回信地址”和“AI 收件连接”。`ai_enabled=false` 时只需邮箱地址，保存即为 `active`、`verified_at` 保持空值，不要求收件账号和密码；营销活动与公海统一回信路由认可该普通地址。开启 AI 时才要求收件配置与已保存或新输入的密码，未验证的连接为 `pending`；后台查询另要求 `verified_at IS NOT NULL`。关闭 AI 保留已有收件配置，恢复普通地址使用；停用和离组保留状态不能通过保存隐式重启。读取仅返回 `has_password`，不会返回密码。
 
 `POST /api/profile/reply-mailboxes/test` 只接受已保存邮箱 ID，按所有者和工作区加载凭据并测试，拒绝地址模式；页面有未保存修改时禁用测试按钮。成功写入验证状态前比较数据库连接快照，遇到并发修改返回 409，避免旧连接测试验证新配置。测试成功保留 `disabled`/`retained` 生命周期，停用邮箱仍需显式启用，前端保持相同状态。来源：`cmd/reply_mailboxes.go`、`queries/replies.sql`、`frontend/src/components/ReplyMailboxSettings.vue`。

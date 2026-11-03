@@ -2381,6 +2381,8 @@
     "campaigns.replyMailbox": "回信邮箱",
     "campaigns.replyMailboxHelp": "客户回复会直接进入所选企业邮箱；未验证邮箱时不能排期或发送",
     "campaigns.replyMailboxNone": "不设置回信邮箱",
+    "campaigns.organizationReplyMailboxMissingTitle": "未设置回信邮箱，存在回信丢失风险",
+    "campaigns.organizationReplyMailboxMissingHelp": "当前使用组织邮箱账号 SMTP 轮询发送。若发件账号不支持收信，客户回信将无法接收。请先选择回信邮箱；如无可选邮箱，请在组织邮件配置中添加。",
     "campaigns.replyMailboxLegacy": "历史回信邮箱（当前不可选择）",
     "campaigns.replyMailboxDefaultTag": "（默认）",
     "campaigns.replyMailboxMissing": "暂无已验证的回信邮箱。请在当前组织的“组织回信邮箱”或个人的“个人邮件配置”中添加并验证。",

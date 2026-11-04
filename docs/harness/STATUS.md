@@ -2,6 +2,8 @@
 
 快照日期：2026-11-04
 
+- **SMTP 配置保存不再卡住（2026-11-04）**：个人/组织 SMTP 保存此前在 `WithPersonalSMTPUpdate` 中等待发送写锁，必须等在途投递结束；投递持读锁期间会等待活动限速（个人默认 5 封/分钟，单封最多约 12 秒）、随机投递延迟及迟缓 SMTP 网络发送，因此有活动发送时保存请求会长时间挂起，关闭旧连接池的 1 秒清扫也叠加在请求内。现改为事务前摘除相关缓存与全部公海单发件池、事务完成即返回；在途投递沿用已取得的旧池正常完成，旧池由 `retireSMTP` 在发送侧排空后后台并行关闭。新增 `TestPersonalSMTPUpdateDoesNotWaitForInFlightDelivery` 锁定非阻塞返回、旧投递不中止及下次解析重建池；`go test ./internal/manager/`、SMTP 相关 cmd 测试与 `go build ./...` 通过。来源：`internal/manager/manager.go`、`internal/manager/manager_test.go`。
+
 - **自动拉黑QA修复（2026-11-04）**：修复离页后的检查响应仍弹全局确认、隐藏无效定时草稿阻断手动查找、用户文档误称手动重排计划，并补上失败后历史刷新。页签停用/组件销毁时递增代次、关闭持有的确认窗，旧响应及旧回调均不能run；手动条件仅从草稿取类型/回查/排除，调度字段取已保存规则，私域/公海草稿独立保留。检查/保存/执行失败后仅刷新runs，历史读取失败可单独重试且不覆盖原始错误和输入；历史序号防止旧请求覆盖新记录。新回归先在旧实现得到6通过/5失败；最终Cypress12/12通过，覆盖返回后的旧响应、两范围同时检查的确认窗清理、隐藏时间/间隔、失败历史与失败重试；lint仅既有地图shadow warning，生产构建通过。正式资源已同步并重启backend，9173返回200、启动正常。Go全量830项通过，真实PostgreSQL自动化4项通过。未执行真实拉黑，两规则继续关闭。来源：`frontend/src/components/ProviderAutomation.vue`、`frontend/src/utils.js`、`frontend/cypress/e2e/provider-automation.cy.js`、`docs/docs/content/delivery-provider.md`。
 
 - **自动拉黑操作流程重构（2026-11-04，当前契约）**：取代下方旧预览/保存步骤。手动处理选择条件后点击“查找待拉黑客户”，系统自动检查，再确认人数并执行；取消不保存、不发run。run增加可选config，绑定同scope/version/config的新鲜检查，执行不改定时开关、版本或计划时间，省略config保留旧API。定时设置一次保存自动完成检查；零结果直接解释原因，记录摘要补充未匹配/排除等数量。Cypress 6/6通过，覆盖取消零写、未保存条件执行、scope独立、自动保存、失败保留输入、零结果/重查、长明细及停用恢复；全量Go测试通过，真实PostgreSQL 4项自动化回归通过。主Agent实际1250px与390px查看真实检查，679个邮箱均未匹配、待处理0；未执行真实拉黑。独立UX提出入口边界/零值原因两项并已修正，报告及复核边界见设计说明。来源：`internal/providerautomation/service.go::Execute`、`cmd/delivery_provider_automation.go`、`frontend/src/components/ProviderAutomation.vue`；证据：`designs/2026-11-03-provider-automation/BRIEF.md`。

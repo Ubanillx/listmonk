@@ -123,11 +123,12 @@ func (a *App) updateOwnedSMTP(c echo.Context, userID int) error {
 	}
 
 	ctx := c.Request().Context()
-	// Hold the manager's SMTP writer lock across the database transaction. This
-	// closes the cached pool first and prevents a concurrent worker (or the
-	// scheduler's resolver) from borrowing a row that is about to be replaced
-	// or deleted. The callback form also keeps this handler testable when an App
-	// is constructed without a manager.
+	// The manager detaches cached pools before running the transaction and keeps
+	// resolutions blocked until it commits, so a concurrent worker (or the
+	// scheduler's resolver) cannot start a delivery from a row that is about to
+	// be replaced or deleted. Deliveries already in flight are allowed to
+	// finish. The callback form also keeps this handler testable when an App is
+	// constructed without a manager.
 	update := func() error {
 		tx, err := a.db.BeginTxx(ctx, nil)
 		if err != nil {

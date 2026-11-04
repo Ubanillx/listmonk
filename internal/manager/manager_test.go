@@ -70,6 +70,103 @@ func TestManagerShutdownCancelsSMTPDelayBeforeTakingSendLock(t *testing.T) {
 	}
 }
 
+// TestPersonalSMTPUpdateDoesNotWaitForInFlightDelivery pins that saving SMTP
+// settings returns while a slow delivery still holds the send read lock, that
+// the delivery is not aborted by the update, and that the next delivery
+// resolves a fresh pool that the retirement does not close.
+func TestPersonalSMTPUpdateDoesNotWaitForInFlightDelivery(t *testing.T) {
+	slow, err := email.New("email", email.Server{
+		UUID: t.Name() + "-slow", AuthProtocol: "none", TLSType: "none",
+		SendDelayMin: time.Hour, SendDelayMax: time.Hour,
+		Opt: smtppool.Opt{Host: "127.0.0.1", Port: 1, MaxConns: 1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	next, err := email.New("email", email.Server{
+		UUID: t.Name() + "-next", AuthProtocol: "none", TLSType: "none",
+		Opt: smtppool.Opt{Host: "127.0.0.1", Port: 1, MaxConns: 1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var resolves atomic.Int32
+	firstResolve := make(chan struct{})
+	m := New(Config{PersonalSMTP: func(int) (*email.Emailer, error) {
+		if resolves.Add(1) == 1 {
+			close(firstResolve)
+			return slow, nil
+		}
+		return next, nil
+	}}, nil, nil, log.New(io.Discard, "", 0))
+	defer m.Close()
+
+	cancel := make(chan struct{})
+	sent := make(chan error, 1)
+	go func() {
+		sent <- m.pushMessage(models.Message{Messenger: "email", OwnerUserID: 5, CampaignCancel: cancel})
+	}()
+	select {
+	case <-firstResolve:
+	case <-time.After(5 * time.Second):
+		t.Fatal("delivery did not resolve the account SMTP")
+	}
+	// The resolver runs under personalSMTPMut, so taking it now guarantees the
+	// pool has been cached before the update starts.
+	m.personalSMTPMut.Lock()
+	cached := m.personalMessengers[5]
+	m.personalSMTPMut.Unlock()
+	if cached != slow {
+		t.Fatal("resolved pool was not cached")
+	}
+
+	updated := make(chan error, 1)
+	go func() {
+		updated <- m.WithPersonalSMTPUpdate(5, func() error { return nil })
+	}()
+	select {
+	case err := <-updated:
+		if err != nil {
+			t.Fatalf("update: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("SMTP settings update waited for an in-flight delivery")
+	}
+
+	// The replaced pool must be detached before the update returns, so no later
+	// delivery can reuse credentials that were just replaced.
+	m.personalSMTPMut.Lock()
+	_, stillCached := m.personalMessengers[5]
+	m.personalSMTPMut.Unlock()
+	if stillCached {
+		t.Fatal("update kept the replaced pool cached")
+	}
+
+	// The delivery that had already resolved must run to completion instead of
+	// being aborted by an immediate pool close.
+	close(cancel)
+	select {
+	case err := <-sent:
+		if !errors.Is(err, email.ErrSendCancelled) {
+			t.Fatalf("in-flight delivery was aborted by the update: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("in-flight delivery did not finish")
+	}
+
+	// A later delivery must build a new pool, and retiring the old one must not
+	// close the newly cached replacement. The unreachable host makes the send
+	// fail at the network layer, which is distinct from a closed pool.
+	err = m.pushMessage(models.Message{Messenger: "email", OwnerUserID: 5})
+	if errors.Is(err, ErrPersonalSMTPUnavailable) || errors.Is(err, email.ErrSMTPUnavailable) {
+		t.Fatalf("replacement pool was retired with the old one: %v", err)
+	}
+	if got := resolves.Load(); got != 2 {
+		t.Fatalf("resolver calls after the update = %d, want 2", got)
+	}
+}
+
 type optinListStore struct{ Store }
 
 func (optinListStore) GetCampaignOptinListUUIDs(int) ([]string, error) {

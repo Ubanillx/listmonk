@@ -254,16 +254,15 @@ type Manager struct {
 	organizationSMTP   func(int, int) (*email.Emailer, error)
 	personalMessengers map[int]*email.Emailer
 	personalSMTPMut    sync.Mutex
-	// personalSMTPSendMut coordinates account-owned sends with cache
-	// invalidation. Readers (sends) may run concurrently, while a
-	// configuration change takes the writer lock before closing the old pool;
-	// this prevents a message from using a pool after the update has completed.
+	// personalSMTPSendMut coordinates account-owned sends with pool closure.
+	// Readers (sends) may run concurrently; a configuration change detaches the
+	// cached pools immediately but closes them only after the reader side has
+	// drained, so a save never waits for a slow delivery or a pacing delay.
 	personalSMTPSendMut sync.RWMutex
 
-	// poolSMTP resolves one SMTP account by UUID for platform-level
-	// public-pool recipients. The cache and its invalidation share the
-	// personal SMTP locks so account configuration changes serialize with
-	// every pool delivery the same way they do with owner deliveries.
+	// poolSMTP resolves one SMTP account by UUID for platform-level public-pool
+	// recipients. Its cache is detached and retired together with the account
+	// pools on any SMTP configuration change.
 	poolSMTP           func(string) (*email.Emailer, error)
 	poolSMTPMessengers map[string]*email.Emailer
 	fnNotify           func(subject string, data any) error
@@ -597,34 +596,87 @@ func (m *Manager) resolvePoolSMTPMessenger(uuid string) (Messenger, error) {
 	return msgr, nil
 }
 
-// InvalidatePoolSMTP closes one cached pool SMTP connection pool. Called after
+// InvalidatePoolSMTP drops one cached pool SMTP connection pool. Called after
 // the owning account's SMTP configuration changed.
 func (m *Manager) InvalidatePoolSMTP(uuid string) {
 	if uuid == "" {
 		return
 	}
-	m.personalSMTPSendMut.Lock()
-	defer m.personalSMTPSendMut.Unlock()
 	m.personalSMTPMut.Lock()
-	defer m.personalSMTPMut.Unlock()
-	if msgr, ok := m.poolSMTPMessengers[uuid]; ok {
-		_ = msgr.Close()
-		delete(m.poolSMTPMessengers, uuid)
-	}
+	retired := m.detachPoolSMTPLocked(uuid)
+	m.personalSMTPMut.Unlock()
+	m.retireSMTP(retired)
 }
 
-// InvalidateAllPoolSMTP closes every cached pool SMTP connection pool. Used
+// InvalidateAllPoolSMTP drops every cached pool SMTP connection pool. Used
 // when membership, account status or SMTP configuration changes in a way that
 // can affect several organizations at once.
 func (m *Manager) InvalidateAllPoolSMTP() {
-	m.personalSMTPSendMut.Lock()
-	defer m.personalSMTPSendMut.Unlock()
 	m.personalSMTPMut.Lock()
-	defer m.personalSMTPMut.Unlock()
-	for uuid, msgr := range m.poolSMTPMessengers {
-		_ = msgr.Close()
-		delete(m.poolSMTPMessengers, uuid)
+	retired := m.detachPoolSMTPLocked("")
+	m.personalSMTPMut.Unlock()
+	m.retireSMTP(retired)
+}
+
+// detachPoolSMTPLocked removes cached pool senders, optionally limited to one
+// UUID, so the next message resolves them from the database again. The caller
+// holds personalSMTPMut and must retire the returned pools.
+func (m *Manager) detachPoolSMTPLocked(uuid string) []*email.Emailer {
+	retired := make([]*email.Emailer, 0, len(m.poolSMTPMessengers))
+	for id, msgr := range m.poolSMTPMessengers {
+		if uuid != "" && id != uuid {
+			continue
+		}
+		retired = append(retired, msgr)
+		delete(m.poolSMTPMessengers, id)
 	}
+	return retired
+}
+
+// detachPersonalSMTPLocked removes cached account senders. A non-zero userID
+// limits the detach to one account; zero detaches every account. The caller
+// holds personalSMTPMut and must retire the returned pools.
+func (m *Manager) detachPersonalSMTPLocked(userID int) []*email.Emailer {
+	retired := make([]*email.Emailer, 0, 1)
+	if userID != 0 {
+		if msgr, ok := m.personalMessengers[userID]; ok {
+			retired = append(retired, msgr)
+			delete(m.personalMessengers, userID)
+		}
+		return retired
+	}
+	for id, msgr := range m.personalMessengers {
+		retired = append(retired, msgr)
+		delete(m.personalMessengers, id)
+	}
+	return retired
+}
+
+// retireSMTP closes detached pools in the background once in-flight
+// account-owned deliveries release the send lock. The wait happens off the
+// request path so saving SMTP settings never blocks on a pacing pause or a
+// slow SMTP server.
+func (m *Manager) retireSMTP(pools []*email.Emailer) {
+	if len(pools) == 0 {
+		return
+	}
+	go func() {
+		// Wait for the readers that are still using a detached pool. Once the
+		// cache no longer references it no new delivery can acquire it, so the
+		// close itself can run without holding up senders of the new pool.
+		m.personalSMTPSendMut.Lock()
+		m.personalSMTPSendMut.Unlock()
+
+		var wg sync.WaitGroup
+		for _, msgr := range pools {
+			wg.Add(1)
+			go func(msgr *email.Emailer) {
+				defer wg.Done()
+				_ = msgr.Close()
+			}(msgr)
+		}
+		wg.Wait()
+	}()
 }
 
 // resolveMessenger isolates account-owned SMTP traffic from the platform
@@ -704,9 +756,9 @@ func (m *Manager) resolveMessenger(msg models.Message) (Messenger, error) {
 }
 
 // pushMessage resolves and sends one message. Account-owned SMTP sends hold a
-// read lock for the complete operation so InvalidatePersonalSMTP can wait for
-// an in-flight delivery, close the old pool, and prevent subsequent sends from
-// borrowing it.
+// read lock for the complete operation so a configuration change can detach
+// the pool immediately while a retired pool is closed only after in-flight
+// deliveries finish.
 func (m *Manager) pushMessage(msg models.Message) error {
 	if email.IsMessengerName(msg.Messenger) {
 		var err error
@@ -757,30 +809,24 @@ func (m *Manager) normalizePersonalSMTPError(msg models.Message, err error) erro
 	return err
 }
 
-// InvalidatePersonalSMTP closes a cached account pool after configuration
+// InvalidatePersonalSMTP drops a cached account pool after configuration
 // changes. Callers enforce the strict running-campaign guard before calling it.
 func (m *Manager) InvalidatePersonalSMTP(userID int) {
 	if userID < 1 {
 		return
 	}
-	// Wait for any in-flight account-owned deliveries before closing the pool.
-	// Once this writer lock is acquired, new sends are blocked until the cache
-	// has been replaced (or removed).
-	m.personalSMTPSendMut.Lock()
-	defer m.personalSMTPSendMut.Unlock()
-
 	m.personalSMTPMut.Lock()
-	defer m.personalSMTPMut.Unlock()
-	if msgr, ok := m.personalMessengers[userID]; ok {
-		_ = msgr.Close()
-		delete(m.personalMessengers, userID)
-	}
+	retired := m.detachPersonalSMTPLocked(userID)
+	m.personalSMTPMut.Unlock()
+	m.retireSMTP(retired)
 }
 
-// WithPersonalSMTPUpdate serializes an account SMTP configuration change with
-// every account-owned delivery. The callback runs while the manager's writer
-// lock is held, so no message can resolve or borrow a pool backed by the old
-// database rows between the configuration transaction and cache invalidation.
+// WithPersonalSMTPUpdate applies an account SMTP configuration change without
+// waiting for in-flight deliveries. The cached pools are detached before the
+// callback runs and resolutions stay blocked for its duration, so no message
+// can start with a pool backed by rows that the transaction replaces. Messages
+// that already acquired a pool finish normally; the detached pools are closed
+// in the background once the send side drains.
 //
 // A non-positive user ID invalidates every cached account pool. This form is
 // used by platform user deletion, where the SMTP rows for several accounts can
@@ -790,33 +836,27 @@ func (m *Manager) WithPersonalSMTPUpdate(userID int, fn func() error) error {
 		return nil
 	}
 
-	m.personalSMTPSendMut.Lock()
-	defer m.personalSMTPSendMut.Unlock()
-	m.personalSMTPMut.Lock()
-	defer m.personalSMTPMut.Unlock()
+	var (
+		retired []*email.Emailer
+		err     error
+	)
+	// Also runs when the callback panics: detached pools are unreachable from
+	// the cache, so they must always be retired.
+	defer func() { m.retireSMTP(retired) }()
+	func() {
+		m.personalSMTPMut.Lock()
+		defer m.personalSMTPMut.Unlock()
 
-	// Any account SMTP change can alter an organization's member SMTP pool,
-	// so drop every pooled sender too. The pool is rebuilt lazily and each
-	// entry is revalidated (enabled row, enabled owner, active membership)
-	// when it is resolved again.
-	for uuid, msgr := range m.poolSMTPMessengers {
-		_ = msgr.Close()
-		delete(m.poolSMTPMessengers, uuid)
-	}
+		// Any account SMTP change can alter an organization's member SMTP pool,
+		// so drop every pooled sender too. The pool is rebuilt lazily and each
+		// entry is revalidated (enabled row, enabled owner, active membership)
+		// when it is resolved again.
+		retired = m.detachPoolSMTPLocked("")
+		retired = append(retired, m.detachPersonalSMTPLocked(userID)...)
+		err = fn()
+	}()
 
-	if userID != 0 {
-		if msgr, ok := m.personalMessengers[userID]; ok {
-			_ = msgr.Close()
-			delete(m.personalMessengers, userID)
-		}
-	} else {
-		for id, msgr := range m.personalMessengers {
-			_ = msgr.Close()
-			delete(m.personalMessengers, id)
-		}
-	}
-
-	return fn()
+	return err
 }
 
 // HasRunningCampaigns checks if there are any active campaigns.

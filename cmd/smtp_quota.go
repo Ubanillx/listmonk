@@ -77,9 +77,9 @@ func (t *smtpQuotaTracker) CommitServer(uuid string) error {
 
 	_, err := t.incrementStmt.Exec(uuid, currentLocalDate())
 	if err != nil {
-		// A server may be deleted immediately after a delivery starts. The
-		// manager serializes normal configuration changes with sends, but this
-		// guard also protects integrations that remove rows directly: the SMTP
+		// A server may be deleted while a delivery is in flight: SMTP settings
+		// saves no longer wait for sends to finish before deleting rows. This
+		// guard also protects integrations that remove rows directly. The SMTP
 		// message was already accepted by the remote server, and a missing usage
 		// row is no reason to report a delivery failure (which would retry and
 		// duplicate the message).

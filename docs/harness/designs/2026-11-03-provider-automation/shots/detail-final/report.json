@@ -1,0 +1,20 @@
+[
+  {
+    "file": "page-2011x1244.png",
+    "state": null,
+    "size": "2011x1244",
+    "zoom": 1,
+    "animationWaitMs": 48,
+    "issues": [],
+    "lint": []
+  },
+  {
+    "file": "page-390x844.png",
+    "state": null,
+    "size": "390x844",
+    "zoom": 1,
+    "animationWaitMs": 116,
+    "issues": [],
+    "lint": []
+  }
+]

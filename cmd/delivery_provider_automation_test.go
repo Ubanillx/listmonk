@@ -1,9 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"testing"
 	"time"
 
@@ -11,6 +16,7 @@ import (
 	"github.com/knadh/listmonk/internal/bestedm"
 	"github.com/knadh/listmonk/internal/migrations"
 	"github.com/knadh/listmonk/internal/providerautomation"
+	"github.com/labstack/echo/v4"
 )
 
 func TestProviderAutomationAdminBoundary(t *testing.T) {
@@ -27,6 +33,170 @@ func TestProviderAutomationAdminBoundary(t *testing.T) {
 		if err := a.GetProviderAutomationItems(c); err != auth.ErrPermDenied {
 			t.Fatalf("reader accessed details: %v", err)
 		}
+	}
+}
+
+func TestProviderAutomationManualHTTPContract(t *testing.T) {
+	db := newAdminTestDB(t)
+	if _, err := db.Exec(`INSERT INTO settings(key,value) VALUES('integration.bestedm','{"username":"stub","password":"stub"}');
+        INSERT INTO customers(uuid,email,name) VALUES(gen_random_uuid(),'http@example.test','HTTP customer')`); err != nil {
+		t.Fatal(err)
+	}
+	a := &App{db: db, bestEDMClient: stubBestEDM{failures: []bestedm.Row{{"email": "http@example.test", "error_type": "2"}}}}
+	rule, err := a.providerAutomation().Rule(context.Background(), "private")
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := rule.Config
+	config.Types = []int{2}
+	request := func(action string, body map[string]any) ([]byte, error) {
+		t.Helper()
+		raw, err := json.Marshal(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c, recorder := providerContext(t, "/api/delivery-provider/automation/private/"+action, "scope", "private", "action", action)
+		req := httptest.NewRequest(http.MethodPost, c.Request().URL.String(), bytes.NewReader(raw))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		c.SetRequest(req)
+		err = a.ChangeProviderAutomation(c)
+		return recorder.Body.Bytes(), err
+	}
+	if _, err := request("preview", map[string]any{"version": rule.Version}); err == nil {
+		t.Fatal("missing check config accepted")
+	}
+	result, err := request("preview", map[string]any{"version": rule.Version, "config": config})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var response struct {
+		Data struct {
+			Run providerautomation.Run `json:"run"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(result, &response); err != nil || response.Data.Run.Counts.ToBlock != 1 {
+		t.Fatalf("check response: %s %v", result, err)
+	}
+	// Omitting config keeps the existing saved-rule contract, which cannot
+	// reuse a check for different manual conditions.
+	if _, err := request("run", map[string]any{"version": rule.Version, "preview_id": response.Data.Run.ID}); err == nil {
+		t.Fatal("manual check authorized saved conditions")
+	}
+	result, err = request("run", map[string]any{"version": rule.Version, "preview_id": response.Data.Run.ID, "config": config})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(result, &response); err != nil || response.Data.Run.Status != "success" || response.Data.Run.Counts.ToBlock != 1 {
+		t.Fatalf("execution response: %s %v", result, err)
+	}
+	after, err := a.providerAutomation().Rule(context.Background(), "private")
+	if err != nil || !reflect.DeepEqual(rule, after) {
+		t.Fatal("HTTP manual execution saved or rescheduled the rule")
+	}
+}
+
+func TestProviderAutomationManualConditionsDoNotSaveSchedule(t *testing.T) {
+	db := newAdminTestDB(t)
+	ctx := context.Background()
+	if _, err := db.Exec(migrations.ProviderAutomationSQL); err != nil {
+		t.Fatal(err)
+	}
+	clock := time.Date(2026, 11, 4, 4, 0, 0, 0, time.FixedZone("CST", 8*3600))
+	fail := false
+	service := &providerautomation.Service{DB: db, Now: func() time.Time { return clock }, Fetch: func(_ context.Context, _ url.Values) ([]bestedm.Row, error) {
+		if fail {
+			return nil, errors.New("provider unavailable")
+		}
+		return []bestedm.Row{{"email": "manual@example.test", "error_type": "2"}, {"email": "excluded@example.test", "error_type": "2"}}, nil
+	}}
+	for _, scope := range []string{"private", "pool"} {
+		t.Run(scope, func(t *testing.T) {
+			table, initial := "customers", "enabled"
+			if scope == "pool" {
+				table, initial = "pool_contacts", "active"
+				if _, err := db.Exec(`INSERT INTO customer_lists(uuid,name,type) VALUES(gen_random_uuid(),'Manual pool','pool')`); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for _, email := range []string{"manual@example.test", "excluded@example.test"} {
+				query := `INSERT INTO customers(uuid,email,name) VALUES(gen_random_uuid(),$1,'Manual customer')`
+				if scope == "pool" {
+					query = `WITH contact AS (INSERT INTO pool_contacts(email) VALUES($1) RETURNING id)
+                    INSERT INTO pool_members(pool_id,contact_id) SELECT l.id,c.id FROM customer_lists l,contact c WHERE l.name='Manual pool'`
+				}
+				if _, err := db.Exec(query, email); err != nil {
+					t.Fatal(err)
+				}
+			}
+			rule, err := service.Rule(ctx, scope)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if scope == "pool" {
+				// Also preserve the timestamps of an already enabled schedule.
+				enabled := rule.Config
+				enabled.Enabled = true
+				check, err := service.Process(ctx, scope, rule.Version, 0, &enabled, false)
+				if err != nil {
+					t.Fatal(err)
+				}
+				rule, err = service.Save(ctx, scope, rule.Version, check.ID, enabled)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			// These are unsaved conditions, including an enabled draft switch.
+			// Applying them must never enable or overwrite the recurring rule.
+			config := rule.Config
+			config.Types = []int{2}
+			config.Enabled = true
+			config.LookbackDays = 9
+			config.ExcludedEmails = []string{"excluded@example.test"}
+			preview, err := service.Process(ctx, scope, rule.Version, 0, &config, false)
+			if err != nil || preview.Counts.ToBlock != 1 || preview.Counts.Excluded != 1 {
+				t.Fatalf("check: %+v %v", preview, err)
+			}
+			assertStatus := func(email, want string) {
+				t.Helper()
+				var got string
+				if err := db.Get(&got, `SELECT status FROM `+table+` WHERE email=$1`, email); err != nil || got != want {
+					t.Fatalf("%s status %s, want %s: %v", email, got, want, err)
+				}
+			}
+			assertStatus("manual@example.test", initial)
+			changed := config
+			changed.LookbackDays++
+			if _, err := service.Execute(ctx, scope, rule.Version, preview.ID, &changed); !errors.Is(err, providerautomation.ErrPreview) {
+				t.Fatalf("check authorized different conditions: %v", err)
+			}
+			if _, err := service.Execute(ctx, scope, rule.Version+1, preview.ID, &config); !errors.Is(err, providerautomation.ErrConflict) {
+				t.Fatalf("stale version accepted: %v", err)
+			}
+			clock = clock.Add(16 * time.Minute)
+			if _, err := service.Execute(ctx, scope, rule.Version, preview.ID, &config); !errors.Is(err, providerautomation.ErrPreview) {
+				t.Fatalf("expired check accepted: %v", err)
+			}
+			preview, err = service.Process(ctx, scope, rule.Version, 0, &config, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			fail = true
+			if _, err := service.Execute(ctx, scope, rule.Version, preview.ID, &config); err == nil {
+				t.Fatal("failed provider request succeeded")
+			}
+			assertStatus("manual@example.test", initial)
+			fail = false
+			run, err := service.Execute(ctx, scope, rule.Version, preview.ID, &config)
+			if err != nil || run.Trigger != "manual" || run.Status != "success" || run.Counts.ToBlock != 1 {
+				t.Fatalf("manual run: %+v %v", run, err)
+			}
+			assertStatus("manual@example.test", "blocklisted")
+			assertStatus("excluded@example.test", initial)
+			after, err := service.Rule(ctx, scope)
+			if err != nil || !reflect.DeepEqual(rule, after) {
+				t.Fatalf("manual operation changed schedule: before %+v after %+v: %v", rule, after, err)
+			}
+		})
 	}
 }
 

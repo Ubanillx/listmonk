@@ -1,0 +1,12 @@
+[
+  {
+    "file": "page.png",
+    "state": null,
+    "size": "1440x900",
+    "zoom": 1,
+    "failed": true,
+    "issues": [
+      "第 6 步「waitfor [data-cy=provider-tab-automation]」：找不到元素 [data-cy=provider-tab-automation]；线索：页面没有属性 data-cy；例如 waitfor .open"
+    ]
+  }
+]

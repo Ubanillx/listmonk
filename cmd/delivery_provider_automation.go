@@ -82,9 +82,9 @@ func (a *App) ChangeProviderAutomation(c echo.Context) error {
 		return echo.NewHTTPError(400, "invalid scope")
 	}
 	var request struct {
-		Version   int64                     `json:"version"`
-		PreviewID int64                     `json:"preview_id"`
-		Config    providerautomation.Config `json:"config"`
+		Version   int64                      `json:"version"`
+		PreviewID int64                      `json:"preview_id"`
+		Config    *providerautomation.Config `json:"config"`
 	}
 	if err := c.Bind(&request); err != nil {
 		return echo.NewHTTPError(400, "invalid request")
@@ -92,28 +92,32 @@ func (a *App) ChangeProviderAutomation(c echo.Context) error {
 	ctx, cancel := context.WithTimeout(c.Request().Context(), 45*time.Second)
 	defer cancel()
 	service := a.providerAutomation()
-	if c.Request().Method == "PUT" || c.Param("action") == "preview" {
+	if c.Request().Method == "PUT" || c.Param("action") == "preview" || request.Config != nil {
+		if request.Config == nil {
+			return echo.NewHTTPError(400, "config is required")
+		}
 		if err := request.Config.Validate(); err != nil {
 			return echo.NewHTTPError(400, err.Error())
 		}
 	}
 	if c.Request().Method == "PUT" {
-		rule, err := service.Save(ctx, scope, request.Version, request.PreviewID, request.Config)
+		rule, err := service.Save(ctx, scope, request.Version, request.PreviewID, *request.Config)
 		if err != nil {
 			return automationHTTPError(err)
 		}
 		setAuditMetadata(c, map[string]any{"scope": scope, "enabled": rule.Config.Enabled, "version": rule.Version})
 		return c.JSON(200, okResp{rule})
 	}
-	var draft *providerautomation.Config
+	var run providerautomation.Run
+	var err error
 	switch c.Param("action") {
 	case "preview":
-		draft = &request.Config
+		run, err = service.Process(ctx, scope, request.Version, 0, request.Config, false)
 	case "run":
+		run, err = service.Execute(ctx, scope, request.Version, request.PreviewID, request.Config)
 	default:
 		return echo.NewHTTPError(404, "unknown action")
 	}
-	run, err := service.Process(ctx, scope, request.Version, request.PreviewID, draft, false)
 	if err != nil {
 		return automationHTTPError(err)
 	}

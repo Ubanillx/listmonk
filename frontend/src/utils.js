@@ -200,7 +200,7 @@ export default class Utils {
   // the number of affected rows.
   confirm = (msg, onConfirm, onCancel, opts) => {
     const o = opts || {};
-    Dialog.confirm({
+    return Dialog.confirm({
       scroll: 'keep',
       title: o.title || undefined,
       message: !msg ? this.i18n.t('globals.messages.confirm') : this.escapeHTML(msg),

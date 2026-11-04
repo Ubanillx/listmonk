@@ -4,7 +4,7 @@
 
 平台管理员统一管理 `private` / `pool` 两套独立规则，默认关闭，默认类型 1/3/6/8/9。私域覆盖个人/组织已有客户，公海覆盖共享联系人；普通查看/手动拉黑权限不授予自动化配置或明细读取。按部署时区独立安排每天时间或固定小时间隔，以最近1–31天日期范围获取全部失败记录后在服务器筛选，不要求批次、不把记录数视为 SMTP 尝试阈值。只 trim/lower 精确匹配，不创建或猜测修正邮箱。私域同时退订列表，公海影响全部组织；转移中、归档对象跳过，已拉黑幂等跳过。人工恢复前可先在对应规则添加排除名单；不自动恢复订阅或解除黑名单。
 
-启用/更新已启用规则和手动执行要求15分钟内同 scope/version/config 成功预览，保存使旧预览失效；草稿预览零客户写入。执行前重验目标，全部客户变更与明细/成功状态原子提交；上游或存储失败无部分变更。scope advisory lock 跨进程隔离编辑/执行，未完成记录持久化并在恢复后标为 interrupted。逾期补一次，失败等下一计划，不高频自动重试。页面显示最新20条、明细50条分页，历史保留，不向普通报表用户或审计日志暴露明细邮箱。来源：`internal/providerautomation/{rules,service}.go`、`cmd/delivery_provider_automation.go`、`internal/migrations/v6.70.0.go`、`frontend/src/components/ProviderAutomation.vue`。
+启用/更新已启用规则和手动执行要求15分钟内同 scope/version/config 成功预览，保存使旧预览失效；草稿预览零客户写入。手动run可传本次config，必须与当前版本的检查完全匹配；只执行客户处理，不保存或重排定时规则，取消不发送run/PUT。旧API省略config仍执行已保存规则。前端自动完成检查，用户不需要预览、保存、再预览。手动条件与未完成定时草稿隔离，隐藏的无效时间/间隔不进入手动请求。离页或切页签作废未确认检查，关闭确认且旧回调不能执行，返回必须重新检查。检查/保存/执行失败后刷新历史而不覆盖草稿/原始错误，历史失败可单独重试。执行前重验目标，全部客户变更与明细/成功状态原子提交；上游或存储失败无部分变更。scope advisory lock 跨进程隔离编辑/执行，未完成记录持久化并在恢复后标为 interrupted。逾期补一次，失败等下一计划，不高频自动重试。页面显示最新20条、明细50条分页，历史保留，不向普通报表用户或审计日志暴露明细邮箱。来源：`internal/providerautomation/{rules,service}.go`、`cmd/delivery_provider_automation.go`、`internal/migrations/v6.70.0.go`、`frontend/src/components/ProviderAutomation.vue`。
 
 ## 营销活动分组统计（v6.69.0，2026-10-30）
 

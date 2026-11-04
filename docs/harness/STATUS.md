@@ -1,6 +1,30 @@
 # 工作状态
 
-快照日期：2026-11-03
+快照日期：2026-11-04
+
+- **自动拉黑QA修复（2026-11-04）**：修复离页后的检查响应仍弹全局确认、隐藏无效定时草稿阻断手动查找、用户文档误称手动重排计划，并补上失败后历史刷新。页签停用/组件销毁时递增代次、关闭持有的确认窗，旧响应及旧回调均不能run；手动条件仅从草稿取类型/回查/排除，调度字段取已保存规则，私域/公海草稿独立保留。检查/保存/执行失败后仅刷新runs，历史读取失败可单独重试且不覆盖原始错误和输入；历史序号防止旧请求覆盖新记录。新回归先在旧实现得到6通过/5失败；最终Cypress12/12通过，覆盖返回后的旧响应、两范围同时检查的确认窗清理、隐藏时间/间隔、失败历史与失败重试；lint仅既有地图shadow warning，生产构建通过。正式资源已同步并重启backend，9173返回200、启动正常。Go全量830项通过，真实PostgreSQL自动化4项通过。未执行真实拉黑，两规则继续关闭。来源：`frontend/src/components/ProviderAutomation.vue`、`frontend/src/utils.js`、`frontend/cypress/e2e/provider-automation.cy.js`、`docs/docs/content/delivery-provider.md`。
+
+- **自动拉黑操作流程重构（2026-11-04，当前契约）**：取代下方旧预览/保存步骤。手动处理选择条件后点击“查找待拉黑客户”，系统自动检查，再确认人数并执行；取消不保存、不发run。run增加可选config，绑定同scope/version/config的新鲜检查，执行不改定时开关、版本或计划时间，省略config保留旧API。定时设置一次保存自动完成检查；零结果直接解释原因，记录摘要补充未匹配/排除等数量。Cypress 6/6通过，覆盖取消零写、未保存条件执行、scope独立、自动保存、失败保留输入、零结果/重查、长明细及停用恢复；全量Go测试通过，真实PostgreSQL 4项自动化回归通过。主Agent实际1250px与390px查看真实检查，679个邮箱均未匹配、待处理0；未执行真实拉黑。独立UX提出入口边界/零值原因两项并已修正，报告及复核边界见设计说明。来源：`internal/providerautomation/service.go::Execute`、`cmd/delivery_provider_automation.go`、`frontend/src/components/ProviderAutomation.vue`；证据：`designs/2026-11-03-provider-automation/BRIEF.md`。
+
+- **自动拉黑长列表明细修复（2026-11-04）**：纠正明细底栏误用表单 `.automation-actions` 导致 `margin-left:auto` 收窄的问题；明细窗加宽、限高，标题/顶部关闭和通栏分页保留，仅正文滚动。邮箱与匹配客户合列，移除空客户列及只读表头“可多选”，错误记录数独立显示。复用AppPagination默认20条，按结果计数汇总总条数，跨固定50条API分页取完整记录，支持失败重试、跳页及10/20/50/100条；关闭恢复触发按钮焦点。长列表断言先复现旧底栏问题，修复后隔离Cypress 6/6、lint/生产构建通过；真实676条明细在2011/390视口看图，且真实第3页20条逐项对照API边界一致。本次取代此前未覆盖长列表的明细验收。来源：`frontend/src/components/ProviderAutomation.vue`、`frontend/cypress/e2e/provider-automation.cy.js`；证据：`designs/2026-11-03-provider-automation/shots/detail-final/`。
+
+- **手动拉黑执行入口可发现性（2026-11-04）**：展开设置后常驻“立即执行一次”，未满足条件时置灰；动作旁区分未预览、未保存、预览失效及零待处理客户，按钮关联提示。动作顺序为预览、按需保存、执行，保留原预览与确认约束。隔离Cypress 5/5通过，lint/构建、locale JSON和文档检查通过；真实页面截图确认入口可见，无控制台错误或溢出。已重启backend，9173 HTTP 200；数据库private/pool均false，未触发真实拉黑。来源：`frontend/src/components/ProviderAutomation.vue`；证据：`designs/2026-11-03-provider-automation/shots/manual-run-action/page.png`。
+
+- **自动拉黑页面重设计（2026-11-04）**：将两套大卡重排为紧凑的私域/公海规则行，开关在顶部；关闭默认收起配置，手动处理为次级入口。展开后失败条件与执行安排分组，排除邮箱按需展开，记录合并为可按范围筛选的表格；开关旁标注保存后启用/停用，停用保存不受隐藏草稿校验影响。隔离 Cypress 4/4、lint（仅既有地图组件warning）、生产构建、文档校验通过；1440/390px截图无控制台错误或溢出。独立视觉一轮8/10后完成状态与次动作微调；独立UX只读路径无关键阻断，真实写入/执行由隔离测试覆盖。本地backend重启、9173返回200，数据库private/pool均false。来源：`frontend/src/components/ProviderAutomation.vue`、`frontend/cypress/e2e/provider-automation.cy.js`；证据：`designs/2026-11-03-provider-automation/BRIEF.md`。
+
+- **自动拉黑配置折叠（2026-11-04）**：定时开关移至私域/公海标题行。关闭时配置默认折叠，通过“手动预览与执行”保留筛选、预览、保存和单次执行；开启后自动展开配置与定时选项，切换不丢草稿。隔离 Cypress 3/3 通过，包含关闭/打开、手动模式、回查值与时间草稿保留，手机宽度溢出断言通过。两套规则继续关闭。来源：`frontend/src/components/ProviderAutomation.vue`、`frontend/cypress/e2e/provider-automation.cy.js`。
+
+- **自动拉黑页签图标（2026-11-04）**：将字体中不存在的 `shield-clock-outline` 换成可用的 `shield-check-outline`，补充字形渲染断言。lint/构建及隔离 Cypress 3/3 通过；本地页面由容器重启同步。来源：`frontend/src/views/DeliveryProvider.vue`、`frontend/cypress/e2e/provider-automation.cy.js`。
+
+- **移除自动拉黑常驻重载按钮（2026-11-04）**：删除页首重新加载按钮和空工具栏，加载失败时保留重试入口；规则、预览和执行语义不变，两套规则保持关闭。来源：`frontend/src/components/ProviderAutomation.vue`。
+
+- **自动拉黑定时交互（2026-11-04）**：开关移至执行安排；关闭收起周期/时间，开启展开且保留草稿，回查天数独立用于预览/手动执行。隔离Cypress 3/3通过，lint/构建通过；修正手机取证为视口截图，既有截图超时不再出现。内置浏览器开关往返验证通过，未保存启用，两套规则继续关闭。来源：`frontend/src/components/ProviderAutomation.vue`、`frontend/cypress/e2e/provider-automation.cy.js`；截图：`designs/2026-11-03-provider-automation/shots/schedule-disabled.png`。
+
+- **移除自动拉黑页首文案（2026-11-04）**：按用户框选删除用途和执行时区文字，保留重新加载按钮及使用说明；清理对应三语键和无用样式/状态。规则开关不变。来源：`frontend/src/components/ProviderAutomation.vue`。
+
+- **自动拉黑用户文案（2026-11-04）**：精简用途、影响范围、排除邮箱、预览失效、使用说明和执行确认等中英繁体文案；去掉重复解释与实现用语，保留操作条件及必要后果。JSON与参数占位校验通过；两套规则保持关闭。来源：`i18n/{zh-CN,zh-TW,en}.json`。
+
+- **自动拉黑页面视觉整理（2026-11-03）**：保留私域/公海双规则，统一范围状态、失败类型、执行安排、排除、动作及记录分组；排除说明13px，共用说明页首展开，禁用执行用中性色。lint/生产构建通过；隔离Cypress 2/3通过，另一用例业务断言均完成但最后手机整页截图超时。内置浏览器1440/390px和手机明细验证、独立视觉复核通过；两套规则数据库均关闭。来源：`frontend/src/components/ProviderAutomation.vue`；证据与限制：`designs/2026-11-03-provider-automation/BRIEF.md`。
 
 - **BestEDM 全部批次按类型筛选（2026-11-03）**：移除前后端错误类型 1/2/3 的强制批次限制；日期查询由服务端请求全部类型并在聚合/导出前筛选所选 `error_type`，批次/任务查询保留原条件。删除三语旧限制提示，更新架构/API/用户文档及业务不变量。Go 回归覆盖 10 类错误的原始、聚合与 Excel 输出、同邮箱混合类型、重复记录、空结果、搜索、日期补齐及批次直查；先红后绿，`go test ./...` 全部通过。隔离 Cypress 24/24 通过，lint 仅既有地图变量 shadow warning，生产构建通过；本地 backend 已重启，9173 HTTP 200，启动无错误。真实账号按 `2026-10-01～2026-11-30` 全部批次筛选邮箱不存在，HTTP 200、624 个邮箱/627 条记录，分类仅 type=1。未发布线上，未启用自动拉黑。来源：`cmd/delivery_provider.go::QueryDeliveryProvider`、`cmd/delivery_provider_test.go`、`frontend/src/views/DeliveryProvider.vue`、`frontend/cypress/e2e/delivery-provider.cy.js`。
 

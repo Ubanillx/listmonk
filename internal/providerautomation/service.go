@@ -143,6 +143,16 @@ func (s *Service) checkPreview(ctx context.Context, db sqlx.QueryerContext, scop
 // successful completion commit atomically. A crash leaves a visible interrupted
 // run, never an unlogged partial application.
 func (s *Service) Process(ctx context.Context, scope string, version, previewID int64, draft *Config, scheduled bool) (Run, error) {
+	return s.process(ctx, scope, version, previewID, draft, scheduled, false)
+}
+
+// Execute applies checked manual conditions without saving or rescheduling the
+// recurring rule. A nil config retains the saved-rule API behavior.
+func (s *Service) Execute(ctx context.Context, scope string, version, previewID int64, config *Config) (Run, error) {
+	return s.process(ctx, scope, version, previewID, config, false, config != nil)
+}
+
+func (s *Service) process(ctx context.Context, scope string, version, previewID int64, draft *Config, scheduled, applyDraft bool) (Run, error) {
 	if !ValidScope(scope) {
 		return Run{}, fmt.Errorf("invalid scope")
 	}
@@ -190,13 +200,16 @@ func (s *Service) Process(ctx context.Context, scope string, version, previewID 
 	}
 	if draft != nil {
 		config = *draft
-		trigger = "preview"
+		if !applyDraft {
+			trigger = "preview"
+		}
 	}
 	if err = config.Validate(); err != nil {
 		return Run{}, err
 	}
 	raw, _ := json.Marshal(config)
-	if draft == nil && !scheduled {
+	apply := draft == nil || applyDraft
+	if apply && !scheduled {
 		if err = s.checkPreview(ctx, conn, scope, version, previewID, raw); err != nil {
 			return Run{}, err
 		}
@@ -236,7 +249,7 @@ func (s *Service) Process(ctx context.Context, scope string, version, previewID 
 		return finishError(err)
 	}
 	defer tx.Rollback()
-	items, counts, err := match(ctx, tx, scope, config, evidence, draft == nil)
+	items, counts, err := match(ctx, tx, scope, config, evidence, apply)
 	if err != nil {
 		tx.Rollback()
 		return finishError(err)
@@ -250,7 +263,7 @@ func (s *Service) Process(ctx context.Context, scope string, version, previewID 
 		return finishError(err)
 	}
 	run.Status = "success"
-	if draft != nil {
+	if !apply {
 		run.Status = "preview"
 	}
 	countJSON, _ := json.Marshal(counts)
@@ -261,7 +274,7 @@ func (s *Service) Process(ctx context.Context, scope string, version, previewID 
 	if err = tx.Commit(); err != nil {
 		return finishError(err)
 	}
-	if s.Audit != nil && draft == nil {
+	if s.Audit != nil && apply {
 		s.Audit(scope, "success", counts)
 	}
 	return run, nil

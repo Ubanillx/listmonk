@@ -1,0 +1,21 @@
+[
+  {
+    "file": "page-1250x900.png",
+    "state": null,
+    "size": "1250x900",
+    "zoom": 1,
+    "animationWaitMs": 121,
+    "issues": [],
+    "lint": []
+  },
+  {
+    "file": "page-390x844.png",
+    "state": null,
+    "size": "390x844",
+    "zoom": 1,
+    "failed": true,
+    "issues": [
+      "第 9 步「waitfor [data-cy=automation-private]」：找不到元素 [data-cy=automation-private]；线索：data-cy=\"provider-tab-overview\"；data-cy=\"provider-tab-statistics\"；data-cy=\"provider-tab-logs\"；data-cy=\"provider-tab-automation\"；data-cy=\"provider-tab-account\"；例如 waitfor [data-cy=\"provider-tab-overview\"]"
+    ]
+  }
+]

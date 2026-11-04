@@ -512,7 +512,7 @@ const tabs = [
   { key: 'overview', icon: 'view-dashboard-outline', label: 'overview' },
   { key: 'statistics', icon: 'chart-box-outline', label: 'analysis' },
   { key: 'logs', icon: 'text-box-search-outline', label: 'logs' },
-  { key: 'automation', icon: 'shield-clock-outline', label: 'automation' },
+  { key: 'automation', icon: 'shield-check-outline', label: 'automation' },
   { key: 'account', icon: 'account-cog-outline', label: 'account' },
 ];
 const errorMessage = (error) => error?.response?.data?.message || '请求失败，请稍后重试';

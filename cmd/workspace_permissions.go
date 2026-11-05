@@ -679,6 +679,9 @@ func (a *App) queryReadableWorkspaceLists(c echo.Context, access models.Workspac
 			continue
 		}
 		if customer_list.Type == models.CustomerListTypePool || customer_list.Type == models.CustomerListTypeOrgPoolAllocation {
+			if access.OrganizationID == 0 && !user.IsPlatformAdmin() && canManagePoolAllocationsAcrossOrganizations(user) && customer_list.TransferPendingAt.Valid {
+				continue
+			}
 			if !user.HasPerm(auth.PermPoolsGet) {
 				customer_list.CustomerCount = 0
 				customer_list.CustomerCounts = nil

@@ -18,6 +18,17 @@ Explicitly privileged platform browsing in personal space and dedicated
 cross-organization allocation management keep their separate authorization.
 Email masking remains based on the existing functional permissions.
 
+The source and allocation lists must both be outside pending transfer for
+department reads. This applies to contact queries, exports and filter choices
+as well as metadata. Administrator contact responses also restrict nested
+`exclusions` to that organization; a personal-space platform source overview
+retains cross-organization summaries. Metadata-only roles without `pools:get`
+receive zero customer counts in directories and direct list details. The
+platform-allocation permission permits reading its already-visible metadata,
+including direct details from the active personal-space directory; archived or
+pending-transfer IDs do not qualify for that metadata exception. Contact and export permissions
+remain separate.
+
 ## Contact states
 
 Aggregate and single-list contact queries and exports accept `status=all`,

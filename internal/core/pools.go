@@ -41,7 +41,7 @@ func (c *Core) QueryOrgPoolAllocations(poolID int, organizationID int64, platfor
 	q := `SELECT s.id,s.list_id,s.state,s.description,s.version,COALESCE(l.name,'') AS list_name,s.pool_id,s.organization_id,COALESCE(o.name,'') AS organization_name,o.reply_mailbox_id,COALESCE(r.email,'') AS reply_mailbox_email FROM org_pool_allocations s JOIN customer_lists l ON l.id=s.list_id JOIN organizations o ON o.id=s.organization_id LEFT JOIN reply_mailboxes r ON r.id=o.reply_mailbox_id WHERE s.pool_id=$1`
 	args := []any{poolID}
 	if !platformAdmin {
-		q += ` AND s.organization_id=$2 AND s.state<>'detached'`
+		q += ` AND s.organization_id=$2 AND ` + poolAllocationReadPredicate("s")
 		args = append(args, organizationID)
 	}
 	var out []models.OrgPoolAllocation
@@ -395,8 +395,8 @@ func (c *Core) AuthorizePoolListAccess(listID int, organizationID int64) error {
 	}
 	var allowed bool
 	if err := c.db.Get(&allowed, `SELECT EXISTS(SELECT 1 FROM org_pool_allocations a
-		WHERE a.pool_id=$1 AND a.organization_id=$2 AND a.state<>'detached'
-			AND a.list_id IS NOT NULL AND ($3::BIGINT IS NULL OR a.id=$3))`, scope.PoolID, organizationID, scope.AllocationID); err != nil {
+		WHERE a.pool_id=$1 AND a.organization_id=$2 AND `+poolAllocationReadPredicate("a")+`
+			AND ($3::BIGINT IS NULL OR a.id=$3))`, scope.PoolID, organizationID, scope.AllocationID); err != nil {
 		return err
 	}
 	if !allowed {
@@ -488,11 +488,11 @@ func (c *Core) QueryPoolContacts(poolID int, organizationID int, platformAdmin b
 			args = append(args, organizationID)
 			join += ` LEFT JOIN org_pool_allocation_exclusions ex ON ex.pool_id=pm.pool_id AND ex.organization_id=$3 AND ex.contact_id=pc.id AND ex.restored_at IS NULL`
 			where += ` AND (psm.status IN ('active','removed') OR ex.contact_id IS NOT NULL)
-				AND EXISTS(SELECT 1 FROM org_pool_allocations a WHERE a.id=psm.allocation_id AND a.state<>'detached')`
+				AND EXISTS(SELECT 1 FROM org_pool_allocations a WHERE a.id=psm.allocation_id AND ` + poolAllocationReadPredicate("a") + `)`
 		} else {
 			args = append(args, organizationID)
 			join = ` JOIN org_pool_allocation_members psm ON psm.contact_id=pc.id JOIN org_pool_allocations ps ON ps.id=psm.allocation_id AND ps.pool_id=pm.pool_id LEFT JOIN org_pool_allocation_exclusions ex ON ex.pool_id=pm.pool_id AND ex.organization_id=ps.organization_id AND ex.contact_id=pc.id AND ex.restored_at IS NULL`
-			where = ` AND ps.organization_id=$2 AND ps.state<>'detached' AND (` + memberStatusPredicate + `)`
+			where = ` AND ps.organization_id=$2 AND ` + poolAllocationReadPredicate("ps") + ` AND (` + memberStatusPredicate + `)`
 		}
 	}
 	where += " AND (" + contactStatus + ")"
@@ -586,7 +586,11 @@ func (c *Core) QueryPoolContacts(poolID int, organizationID int, platformAdmin b
 			ids = append(ids, rows[i].ID)
 		}
 		var exclusions []exclusionRow
-		if err := c.db.Select(&exclusions, `SELECT e.contact_id,e.organization_id,COALESCE(o.name,'') AS organization_name,e.reason,e.source FROM org_pool_allocation_exclusions e LEFT JOIN organizations o ON o.id=e.organization_id WHERE e.pool_id=$1 AND e.restored_at IS NULL AND e.contact_id = ANY($2) ORDER BY e.contact_id,e.organization_id`, scope.PoolID, pq.Array(ids)); err != nil {
+		if err := c.db.Select(&exclusions, `SELECT e.contact_id,e.organization_id,COALESCE(o.name,'') AS organization_name,e.reason,e.source
+			FROM org_pool_allocation_exclusions e LEFT JOIN organizations o ON o.id=e.organization_id
+			WHERE e.pool_id=$1 AND e.restored_at IS NULL AND e.contact_id = ANY($2)
+				AND ($3::BIGINT=0 OR e.organization_id=$3)
+			ORDER BY e.contact_id,e.organization_id`, scope.PoolID, pq.Array(ids), statusOrg); err != nil {
 			return nil, 0, err
 		}
 		byContact := make(map[int64][]models.PoolExclusionSummary)
@@ -639,7 +643,7 @@ func (c *Core) QueryAllPoolContacts(organizationID int, platformAdmin bool, pool
 		}
 	} else {
 		args = append(args, organizationID)
-		join = ` JOIN org_pool_allocations ps ON ps.pool_id=pm.pool_id AND ps.organization_id=$1 AND ps.state<>'detached'
+		join = ` JOIN org_pool_allocations ps ON ps.pool_id=pm.pool_id AND ps.organization_id=$1 AND ` + poolAllocationReadPredicate("ps") + `
 			JOIN org_pool_allocation_members psm ON psm.allocation_id=ps.id AND psm.contact_id=pc.id
 			LEFT JOIN org_pool_allocation_exclusions ex ON ex.pool_id=pm.pool_id
 				AND ex.organization_id=ps.organization_id AND ex.contact_id=pc.id AND ex.restored_at IS NULL`
@@ -730,7 +734,7 @@ func (c *Core) QueryAllPoolContactFilterOptions(organizationID int, platformAdmi
 		JOIN customer_lists cl ON cl.id=pm.pool_id AND cl.type='pool'`
 	args := []any{}
 	if !platformAdmin {
-		query += ` JOIN org_pool_allocations ps ON ps.pool_id=pm.pool_id AND ps.organization_id=$1 AND ps.state<>'detached'
+		query += ` JOIN org_pool_allocations ps ON ps.pool_id=pm.pool_id AND ps.organization_id=$1 AND ` + poolAllocationReadPredicate("ps") + `
 			JOIN org_pool_allocation_members psm ON psm.allocation_id=ps.id AND psm.contact_id=pc.id
 			LEFT JOIN org_pool_allocation_exclusions ex ON ex.pool_id=pm.pool_id
 				AND ex.organization_id=ps.organization_id AND ex.contact_id=pc.id AND ex.restored_at IS NULL

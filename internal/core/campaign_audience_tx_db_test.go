@@ -68,11 +68,6 @@ ALTER TABLE campaigns
     ADD COLUMN reply_mailbox_id  INTEGER REFERENCES reply_mailboxes(id) ON DELETE SET NULL,
     ADD COLUMN updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
--- Campaign updates lock the requested customer_lists exactly like the
--- production table, so the workspace lock predicate needs this column.
-ALTER TABLE customer_lists
-    ADD COLUMN transfer_pending_at TIMESTAMPTZ;
-
 -- update-campaign upserts both relationship tables, which needs the same unique
 -- keys schema.sql declares.
 CREATE UNIQUE INDEX campaign_audience_test_customer_lists_unique ON campaign_customer_lists(campaign_id, customer_list_id);

@@ -99,52 +99,50 @@ func (a *App) GetList(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	// Public pools are selectable through an independent delivery grant and may
-	// live in the platform administrator's workspace. Expose only list metadata
-	// here; pool contact endpoints enforce the separate masked-detail policy.
+	// Department pool metadata follows actual allocations. The personal
+	// workspace retains explicitly privileged platform browsing.
 	var poolType string
 	if err := a.db.Get(&poolType, `SELECT type::text FROM customer_lists WHERE id=$1`, id); err == nil && (poolType == models.CustomerListTypePool || poolType == models.CustomerListTypeOrgPoolAllocation) {
-		if err := requireLegacyPermission(auth.GetUser(c), auth.PermPoolsGet, auth.PermPoolsMasterManage, auth.PermPoolsManage, auth.PermPoolsDeliveryManage,
+		if err := requireLegacyPermission(auth.GetUser(c), auth.PermPoolsGet, auth.PermPoolsMasterManage, auth.PermPoolsManage, auth.PermPoolsDeliveryManage, auth.PermPoolsAllocationPlatform,
 			auth.PermCampaignsManage, auth.PermCampaignsManageAll, auth.PermCampaignsPublicPoolSend); err != nil {
 			return err
 		}
 		user := auth.GetUser(c)
+		var out models.CustomerList
 		if access.OrganizationID > 0 {
-			out, err := a.core.GetAllocatedPoolList(access.OrganizationID, id)
+			out, err = a.core.GetAllocatedPoolList(access.OrganizationID, id)
 			if err != nil {
 				return err
 			}
-			return c.JSON(http.StatusOK, okResp{out})
-		}
-		if !access.PlatformAdmin && !(poolType == models.CustomerListTypePool &&
-			(canManagePoolMaster(user) || canManagePoolDelivery(user) || user.HasPerm(auth.PermCampaignsPublicPoolSend))) {
-			if !access.IsOrganization() || access.OrganizationID <= 0 {
-				return echo.NewHTTPError(http.StatusForbidden, "public pool is outside the active workspace")
-			}
-			var allowed bool
-			if poolType == models.CustomerListTypePool {
-				if err := a.db.Get(&allowed, `SELECT EXISTS(SELECT 1 FROM pool_organization_permissions WHERE pool_id=$1 AND organization_id=$2)`, id, access.OrganizationID); err != nil {
+		} else {
+			if !access.PlatformAdmin && !(poolType == models.CustomerListTypePool &&
+				(canManagePoolMaster(user) || canManagePoolDelivery(user) || user.HasPerm(auth.PermCampaignsPublicPoolSend))) {
+				if !canManagePoolAllocationsAcrossOrganizations(user) {
+					return echo.NewHTTPError(http.StatusForbidden, "public pool is outside the active workspace")
+				}
+				rows, _, err := a.queryReadableWorkspaceLists(c, access, customerListQuery{group: customerListGroupPool, status: models.CustomerListStatusActive})
+				if err != nil {
 					return err
 				}
-				if !allowed {
-					if err := a.db.Get(&allowed, `SELECT EXISTS(SELECT 1 FROM org_pool_allocations WHERE pool_id=$1 AND organization_id=$2)`, id, access.OrganizationID); err != nil {
-						return err
+				for _, row := range rows {
+					if row.ID == id {
+						return c.JSON(http.StatusOK, okResp{row})
 					}
 				}
-			} else if err := a.db.Get(&allowed, `SELECT EXISTS(SELECT 1 FROM org_pool_allocations s WHERE s.list_id=$1 AND s.organization_id=$2 AND s.pool_id IS NOT NULL)`, id, access.OrganizationID); err != nil {
+				return echo.NewHTTPError(http.StatusForbidden, "public pool is outside the active workspace")
+			}
+			out, err = a.core.GetList(id, "")
+			if err != nil {
 				return err
 			}
-			if !allowed {
-				return echo.NewHTTPError(http.StatusForbidden, "public pool is not authorized for this organization")
+			out.CustomerCount, err = a.core.PoolListCustomerCount(id)
+			if err != nil {
+				return err
 			}
 		}
-		out, err := a.core.GetList(id, "")
-		if err != nil {
-			return err
-		}
-		out.CustomerCount, err = a.core.PoolListCustomerCount(id)
-		if err != nil {
-			return err
+		if !user.HasPerm(auth.PermPoolsGet) {
+			out.CustomerCount = 0
+			out.CustomerCounts = nil
 		}
 		out.PoolDeliveryAllowed = true
 		return c.JSON(http.StatusOK, okResp{out})

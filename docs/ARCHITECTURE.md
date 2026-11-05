@@ -6,6 +6,8 @@
 
 `internal/core/pool_workspace_lists.go` 统一查询列表、直接详情与本部门客户数量；`cmd/workspace_permissions.go::queryReadableWorkspaceLists` 在搜索、类型过滤、角色权限和分页前替换宽范围公海结果，minimal 选择器采用同一边界。`cmd/pools.go` 对组织空间的客户详情/导出/分配目录校验实际绑定，`internal/core/pools.go` 的单池与汇总客户、筛选候选均按当前组织过滤，不以平台功能权限扩大范围；邮箱是否明文仍使用原有最高管理员判断。退订人数按同一组织计算。组织空间隐藏跨组织目录筛选器，切换组织重新加载。验收入口：`cmd/pool_list_workspace_test.go`、`frontend/cypress/e2e/pool-workspace-permissions.cy.js`。
 
+独立 QA 后统一使用 `poolAllocationReadPredicate` 检查未解除绑定、来源/分配列表真实类型及两侧待转移标记，目录/详情/计数、直接联系人授权、汇总/筛选与分配目录共享。明文客户的附加 `exclusions` 也以同一组织限定，个人平台来源概览例外保留；元数据角色无 `pools:get` 时详情与目录均清零客户统计。`pools:allocation_platform_manage` 可读取其目录内已授权元数据，个人空间不再出现目录可见而详情 403，但仍不隐含联系人或导出权限。
+
 ## 管理端提示浮层（2026-11-03）
 
 `components/AppTooltip.js` 在 Buefy 安装后统一扩展 `BTooltip`，保留调用方的文案、插槽和触发方式，默认把气泡挂载到 body，使用 1000 层级，并在视口边缘翻转、平移和换行。键盘焦点因自动滚动移动时重新定位；指针提示在滚动/缩放时关闭，触发器离开视口、Escape、组件销毁时清理。`IconTip.vue` 的固定气泡也挂到 body，避免 `contain: paint` 或 transform 再次裁切。

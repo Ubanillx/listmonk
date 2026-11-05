@@ -2021,6 +2021,16 @@ in the department's list page; use the workspace switcher to change departments.
 Explicitly privileged platform browsing in personal space and dedicated
 cross-organization allocation management keep their separate authorization.
 Email masking remains based on the existing functional permissions.</p>
+<p>The source and allocation lists must both be outside pending transfer for
+department reads. This applies to contact queries, exports and filter choices
+as well as metadata. Administrator contact responses also restrict nested
+<code>exclusions</code> to that organization; a personal-space platform source overview
+retains cross-organization summaries. Metadata-only roles without <code>pools:get</code>
+receive zero customer counts in directories and direct list details. The
+platform-allocation permission permits reading its already-visible metadata,
+including direct details from the active personal-space directory; archived or
+pending-transfer IDs do not qualify for that metadata exception. Contact and export permissions
+remain separate.</p>
 <h2 id="contact-states">Contact states<a class="headerlink" href="#contact-states" title="Permanent link">&para;</a></h2>
 <p>Aggregate and single-list contact queries and exports accept <code>status=all</code>,
 <code>active</code>, <code>blocklisted</code>, <code>unsubscribed</code>, <code>removed</code> or <code>archived</code>; an omitted

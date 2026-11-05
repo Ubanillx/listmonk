@@ -1101,6 +1101,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#department-workspace-boundary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Department workspace boundary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#contact-states" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1901,6 +1912,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#department-workspace-boundary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Department workspace boundary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#contact-states" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1984,6 +2006,21 @@
 
 
 <h1 id="public-pools">Public pools<a class="headerlink" href="#public-pools" title="Permanent link">&para;</a></h1>
+<h2 id="department-workspace-boundary">Department workspace boundary<a class="headerlink" href="#department-workspace-boundary" title="Permanent link">&para;</a></h2>
+<p>An organization workspace lists only public pools actually allocated to its
+current department, together with that department's allocation rows. Delivery
+grants alone do not authorize browsing. Detached allocations are excluded;
+disabled but still bound allocations remain readable. This boundary applies
+to highest administrators and holders of master-data, delivery, platform
+allocation, or all-organization campaign permissions as well as ordinary members.</p>
+<p>List metadata, minimal selectors, customer counts, direct contact queries,
+aggregate contact queries, filter options and Excel exports use this same
+department boundary. Requests for another department's source/allocation metadata
+or single-list contacts/exports return 403. The organization dropdown is hidden
+in the department's list page; use the workspace switcher to change departments.
+Explicitly privileged platform browsing in personal space and dedicated
+cross-organization allocation management keep their separate authorization.
+Email masking remains based on the existing functional permissions.</p>
 <h2 id="contact-states">Contact states<a class="headerlink" href="#contact-states" title="Permanent link">&para;</a></h2>
 <p>Aggregate and single-list contact queries and exports accept <code>status=all</code>,
 <code>active</code>, <code>blocklisted</code>, <code>unsubscribed</code>, <code>removed</code> or <code>archived</code>; an omitted
@@ -2013,7 +2050,7 @@ archived view. They do not switch workspace or change customer access permission
 <h2 id="independent-business-permissions-v6560">Independent business permissions (v6.56.0)<a class="headerlink" href="#independent-business-permissions-v6560" title="Permanent link">&para;</a></h2>
 <p>Pool browsing, organization allocation management, master-data maintenance,
 delivery authorization, and export are separate role permissions. Delegated
-master maintainers can access first-level platform pools while receiving masked
+master maintainers in personal space can access first-level platform pools while receiving masked
 contact DTOs. Ordinary allocation-list reads remain organization-scoped; the dedicated cross-organization management capability exposes scoped allocation metadata and, with separate read permission, masked management rows.
 Permission names and dependencies are documented in
 <a href="../../business-permissions/">业务权限说明</a>.</p>
@@ -2036,10 +2073,10 @@ name as <code>organization_name</code>; the creating administrator remains avail
 the owner fields for audit purposes.</p>
 <p>Key endpoints:</p>
 <ul>
-<li><code>GET /api/pools/contacts?search=...&amp;status=active|removed&amp;pool_id=6&amp;allocation_department=...&amp;page=1&amp;per_page=20&amp;order_by=pool_name&amp;order=asc</code> — page through all first-level public-pool memberships visible in the active workspace. Each row includes <code>pool_id</code> and <code>pool_name</code>; a contact in two pools appears twice so its source list stays clear. Search, status, exact source-pool ID, exact trimmed allocation department, sorting, count and pagination apply across the combined result. Omit <code>allocation_department</code> for all departments; send it as an empty value to select contacts without one. Platform administrators see every pool; organization users see only their own allocation memberships with masked e-mails. Requires <code>pools:get</code>.</li>
+<li><code>GET /api/pools/contacts?search=...&amp;status=active|removed&amp;pool_id=6&amp;allocation_department=...&amp;page=1&amp;per_page=20&amp;order_by=pool_name&amp;order=asc</code> — page through all first-level public-pool memberships visible in the active workspace. Each row includes <code>pool_id</code> and <code>pool_name</code>; a contact in two pools appears twice so its source list stays clear. Search, status, exact source-pool ID, exact trimmed allocation department, sorting, count and pagination apply across the combined result. Omit <code>allocation_department</code> for all departments; send it as an empty value to select contacts without one. Platform administrators in personal space see every pool; all organization-workspace callers see only their current department's allocation memberships. Non-platform-administrator e-mails remain masked. Requires <code>pools:get</code>.</li>
 <li><code>GET /api/pools/contacts/filters</code> — return the distinct visible <code>pool_id</code>, <code>pool_name</code>, <code>allocation_department</code> combinations for the aggregate view's dropdowns, independent of the current result page. An empty department denotes unassigned. Requires <code>pools:get</code> and obeys the same organization boundary.</li>
 <li><code>GET /api/pools/contacts/export</code> — export the same combined result as Excel, including source pool name and ID. Accepts the same search, status, pool ID and department filters. Repeat <code>contact=&lt;pool_id&gt;:&lt;contact_id&gt;</code> to export only selected memberships within that authorized, filtered result (maximum 1000 selections). Malformed selections return 400. Requires <code>pools:export</code>; organization e-mails remain masked. <code>lang</code> / <code>X-Listmonk-Language</code> selects translated headings and labels.</li>
-<li><code>GET /api/pools/:id/contacts?search=...&amp;status=active|removed&amp;page=1&amp;per_page=20&amp;order_by=created_at&amp;order=desc</code> — page through first-level or pool-allocation contacts by imported code, name, or e-mail. The equivalent <code>GET /api/customer-lists/:id/pool-contacts</code> route also accepts an <code>org_pool_allocation</code> list ID. <code>status=active</code> shows unremoved contacts; <code>status=removed</code> shows unresolved organization removals or exclusions. In a first-level pool, platform administrators see all organizations' exceptions once per contact, with <code>excluded</code>, <code>exclusion_reason</code>, <code>exception_organization_name</code>, and <code>exception_allocation_id</code> (when a membership can be restored). Non-platform-administrators see only their current organization's allocation and receive masked e-mail addresses. Unassigned contacts remain active. Allocation-list reads stay scoped to that allocation. Omitting <code>status</code> preserves the legacy all-contacts response. The legacy <code>customer_code</code> filter remains a fallback alias of <code>search</code>. Requires <code>pools:get</code>; non-platform-administrators must have the pool granted to the active organization.</li>
+<li><code>GET /api/pools/:id/contacts?search=...&amp;status=active|removed&amp;page=1&amp;per_page=20&amp;order_by=created_at&amp;order=desc</code> — page through first-level or pool-allocation contacts by imported code, name, or e-mail. The equivalent <code>GET /api/customer-lists/:id/pool-contacts</code> route also accepts an <code>org_pool_allocation</code> list ID. <code>status=active</code> shows unremoved contacts; <code>status=removed</code> shows unresolved organization removals or exclusions. In a first-level pool in personal space, platform administrators see all organizations' exceptions once per contact, with <code>excluded</code>, <code>exclusion_reason</code>, <code>exception_organization_name</code>, and <code>exception_allocation_id</code> (when a membership can be restored). Every organization-workspace caller sees only the current organization's allocation. Non-platform-administrators receive masked e-mail addresses. Unassigned contacts remain active. Allocation-list reads stay scoped to that allocation. Omitting <code>status</code> preserves the legacy all-contacts response. The legacy <code>customer_code</code> filter remains a fallback alias of <code>search</code>. Requires <code>pools:get</code>; organization-workspace reads require a non-detached allocation to the current organization.</li>
 <li><code>GET /api/pools/:id/contacts/export</code> (alias <code>GET /api/customer-lists/:id/pool-contacts/export</code>) — download the same filtered rows as Excel with masked e-mails. Repeat <code>contact=0:&lt;contact_id&gt;</code> to narrow the authorized result to selected contacts. Selection validation matches the aggregate export. Requires <code>pools:export</code>. Workbook formatting and the separate customer/allocation status fields are described in <a href="../../exports/">Excel exports</a>.</li>
 <li><code>POST /api/pools/:id/contacts</code> — single-contact compatibility route
   (requires <code>pools:master_manage</code>); the product import entry is the unified customer

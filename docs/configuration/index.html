@@ -3612,7 +3612,7 @@ is not read by the server at startup.</p>
 <td>bool</td>
 <td><code>false</code></td>
 <td>no</td>
-<td>Start the bounce processor. When <code>false</code>, bounce webhooks and mailbox scanning are not started.</td>
+<td>Start the bounce processor and allow reply-mailbox DSN processing. When <code>false</code>, bounce webhooks, POP3 mailbox scanning and IMAP reply-mailbox bounce handling do not run.</td>
 </tr>
 <tr>
 <td><code>webhooks_enabled</code></td>
@@ -3693,6 +3693,7 @@ is not read by the server at startup.</p>
 </tr>
 </tbody>
 </table>
+<p>Reply mailboxes with <strong>Bounce processing</strong> enabled use their own IMAP connection and the same <code>bounce.enabled</code> + <code>bounce.actions.hard</code> policy. That path only records or blocklists hard bounces; it never applies the <code>delete</code>/<code>unsubscribe</code> actions and never uses the POP3 mailbox entry below.</p>
 <p>Keys of each <code>[[bounce.mailboxes]]</code> entry:</p>
 <table>
 <thead>
@@ -4340,7 +4341,7 @@ again changes nothing.</p>
 <h3 id="batch-size">Batch size<a class="headerlink" href="#batch-size" title="Permanent link">&para;</a></h3>
 <p>The batch size parameter is useful when working with very large customer_lists with millions of customers for maximising throughput. It is the number of customers that are fetched from the database sequentially in a single cycle (~5 seconds) when a campaign is running. Increasing the batch size uses more memory, but reduces the round trip to the database.</p>
 <h3 id="organization-marketing-senders">Organization marketing senders<a class="headerlink" href="#organization-marketing-senders" title="Permanent link">&para;</a></h3>
-<p>Each active organization can maintain multiple named SMTP sending pools in <strong>Manage organization</strong>, independently of member SMTP and system notification SMTP. Managers configure sender addresses, credentials, daily quotas and enabled status inside each pool. Campaigns select <strong>Personal SMTP rotation</strong> or <strong>Organization SMTP rotation</strong>, then choose an organization pool and display only that pool's enabled senders with today's usage. The organization source is available in organization workspaces; global public-pool campaigns resolve it per target organization. All SMTP pools use the global delivery settings above, including random delays. Removing or disabling a sender takes effect on subsequent messages; unavailable pools do not fall back to a different source.</p>
+<p>Each active organization can maintain multiple named SMTP sending pools in <strong>Manage organization</strong>, independently of member SMTP and system notification SMTP. Managers configure sender addresses, credentials, daily quotas and enabled status inside each pool. Campaigns select <strong>Personal SMTP rotation</strong> or <strong>Organization SMTP rotation</strong>, then choose an organization pool and display only that pool's enabled senders with today's usage. The organization source requires an organization workspace and uses the campaign organization's selected sender pool for both private and public-pool audiences, including global public-pool campaigns. Personal SMTP always belongs to the campaign owner. Selecting public-pool audiences does not switch the sender source or pool; selecting organization SMTP in a personal workspace prompts switching to an organization workspace. All SMTP pools use the global delivery settings above, including random delays. Removing or disabling a sender takes effect on subsequent messages; unavailable pools do not fall back to a different source.</p>
 
 
 

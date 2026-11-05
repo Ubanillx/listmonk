@@ -647,6 +647,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#reply-mailbox-bounce-processing-imap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reply mailbox bounce processing (IMAP)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#pop3-bounce-mailbox" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2013,6 +2024,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#reply-mailbox-bounce-processing-imap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reply mailbox bounce processing (IMAP)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#pop3-bounce-mailbox" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2159,6 +2181,17 @@
 <li>An explicit spam/abuse complaint additionally records a bounce entry with source <code>reply_ai</code> and metadata holding the queue event id, model, confidence, and reason, so provider feedback (<code>ses</code>, <code>postmark</code>, ...) and AI-derived complaints remain distinguishable. Product/service complaints are retained as <code>product_complaint</code> classifications but do not trigger an automatic action.</li>
 <li>Only the normalized, trimmed latest reply text is sent to the model; attachments and quoted history are never sent. After classification the retained text is removed from the queue and only the hash plus the bounded decision fields are kept for the customer activity audit ("AI reply classifications" on the customer's Activity tab).</li>
 </ul>
+<h2 id="reply-mailbox-bounce-processing-imap">Reply mailbox bounce processing (IMAP)<a class="headerlink" href="#reply-mailbox-bounce-processing-imap" title="Permanent link">&para;</a></h2>
+<p>Each customer reply mailbox can process delivery status notifications (DSNs) in its own IMAP inbox. This is independent of the POP3 bounce mailbox below: the reply mailbox uses the same IMAP server, folder, credentials and scan interval as AI reply classification.</p>
+<ol>
+<li>In <strong>Profile -&gt; Reply mailboxes</strong> or the organization mailbox settings, enable <strong>Bounce processing (hard bounces)</strong> and save the receiving connection. Both features share the same connection test. Global bounce processing in <strong>Settings -&gt; Bounces</strong> must also be enabled, and the global hard-bounce threshold and action are used; the mailbox card shows the effective policy.</li>
+<li>Enabling asks for confirmation. The default policy is one hard bounce -&gt; blocklist, so review <strong>Settings -&gt; Bounces</strong> before turning it on.</li>
+<li>Only explicit hard bounces (<code>5.x.x</code>) can change a customer. Soft bounces and reports without a usable status are recorded but never blocklist. If the global action is <code>Delete</code> or <code>Unsubscribe</code>, this path only records the bounce and never deletes or unsubscribes anyone.</li>
+<li>Private customers are set to <code>blocklisted</code> (list memberships are not changed, matching the existing bounce policy). Public-pool contacts are excluded only from the delivery organization, never globally.</li>
+<li>Only DSNs delivered to that mailbox are considered. A DSN goes to the envelope sender (<code>Return-Path</code> / SMTP <code>MAIL FROM</code>), not to <code>Reply-To</code>; if the sending account and the reply mailbox are different addresses, route or forward DSNs to the reply mailbox first. Otherwise neither this feature nor any parser can see them.</li>
+<li>Use <strong>Inspect latest message</strong> to check whether the mailbox is reachable and whether its newest message is a DSN. <strong>Recent bounce processing</strong> lists what was recorded, ignored, or blocklisted and why; both are read-only and never delete mail or mark it read. Failed recipient addresses are masked unless the operator has the customer sensitive-data permission.</li>
+</ol>
+<p>The parser reads only the outer delivery report (<code>Final-Recipient</code>, <code>Original-Recipient</code>, <code>X-Failed-Recipients</code>, <code>Status</code>, <code>Diagnostic-Code</code>). Forwarded or attached DSNs, ARF abuse reports, plain-text failure messages and body-inferred addresses are not treated as bounces. A DSN is matched to a <code>sent</code> delivery in that mailbox using the original <code>Message-ID</code>, the <code>X-Listmonk-Customer</code> / <code>X-Listmonk-Campaign</code> headers, or a unique failed-recipient match; unmatched, ambiguous or cross-workspace reports are only recorded in the processing history.</p>
 <h2 id="pop3-bounce-mailbox">POP3 bounce mailbox<a class="headerlink" href="#pop3-bounce-mailbox" title="Permanent link">&para;</a></h2>
 <p>Configure the bounce mailbox in Settings -&gt; Bounces. Either the "From" e-mail that is set on a campaign (or in settings) should have a POP3 mailbox behind it to receive bounce e-mails, or you should configure a dedicated POP3 mailbox and add that address as the <code>Return-Path</code> (envelope sender) header in Settings -&gt; SMTP -&gt; Custom headers box. For example:</p>
 <div class="highlight"><pre><span></span><code>[

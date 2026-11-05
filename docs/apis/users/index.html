@@ -2334,17 +2334,22 @@ the timeout diagnostic.</p>
 <h3 id="reply-mailbox-receiving-configuration">Reply mailbox receiving configuration<a class="headerlink" href="#reply-mailbox-receiving-configuration" title="Permanent link">&para;</a></h3>
 <p><code>POST /api/profile/reply-mailboxes</code> and
 <code>PUT /api/profile/reply-mailboxes/{id}</code> require <code>mailboxes:manage</code> and the
-mailbox owner's active workspace. With <code>ai_enabled: false</code> (the default), only
-<code>email</code> is required; <code>name</code> and <code>is_default</code> are optional. Saving makes the
-address available for campaign Reply-To selection without a connection test.
-No receiving credentials are required or used for this mode.</p>
-<p>With <code>ai_enabled: true</code>, creation requires <code>password</code> (or a client authorization
-code). The receiving fields are <code>username</code>, <code>imap_host</code>, <code>imap_port</code>,
-<code>imap_tls</code> and <code>folder</code>. On update an omitted/empty password retains the saved
-password; enabling AI without any saved or replacement password returns 400.
-Connection changes clear verification. Disabling AI preserves the saved
-receiving configuration and makes the ordinary address usable again; disabled
-and retained lifecycle states are not silently re-enabled by saving.</p>
+mailbox owner's active workspace. With <code>ai_enabled: false</code> and
+<code>bounce_enabled: false</code> (the defaults), only <code>email</code> is required; <code>name</code> and
+<code>is_default</code> are optional. Saving makes the address available for campaign
+Reply-To selection without a connection test. No receiving credentials are
+required or used for this mode.</p>
+<p>With <code>ai_enabled: true</code> or <code>bounce_enabled: true</code>, creation requires <code>password</code>
+(or a client authorization code). The receiving fields are <code>username</code>,
+<code>imap_host</code>, <code>imap_port</code>, <code>imap_tls</code> and <code>folder</code>. On update an omitted/empty
+password retains the saved password; enabling either consumer without any saved
+or replacement password returns 400. Connection changes clear verification.
+Disabling both preserves the saved receiving configuration and makes the
+ordinary address usable again; disabled and retained lifecycle states are not
+silently re-enabled by saving. Bounce processing additionally requires the
+global <code>bounce.enabled</code> switch and uses <code>bounce.actions.hard</code>; only hard
+delivery reports are eligible, and this path only applies <code>blocklist</code> (it does
+not execute <code>delete</code> or <code>unsubscribe</code>).</p>
 <p>Responses include <code>has_password</code> but never the password. Connection testing is
 <code>POST /api/profile/reply-mailboxes/test</code> with only <code>{"id": 12}</code>. Save first:
 missing IDs or address-only mailboxes return 400. Tests load saved credentials
@@ -2352,9 +2357,20 @@ on the server, ignore draft connection fields, enforce the existing owner and
 workspace boundary (404 for another owner's/workspace's mailbox), and return
 <code>{"data": true}</code> on success. A concurrent configuration change returns 409
 instead of verifying the old configuration. AI scanning requires both global
-classification and per-mailbox opt-in plus a verified connection. A successful
+classification and per-mailbox opt-in plus a verified connection; bounce
+scanning requires the global bounce switch and the mailbox opt-in. A successful
 connection test preserves disabled and retained lifecycle states; use the
 explicit enable endpoint to resume a disabled mailbox.</p>
+<p><code>POST /api/profile/reply-mailboxes/{id}/inspect-latest</code> is a read-only
+diagnostic: it fetches the newest message with <code>BODY.PEEK</code>, reports whether it is
+a delivery report, and never advances the cursor, writes a ledger row, deletes or
+marks the message read. <code>GET /api/profile/reply-mailboxes/{id}/bounce-events?page=1</code>
+returns the safe processing history (newest first, 20 per page). Both require
+<code>mailboxes:manage</code> and allow the owner, an organization manager of the mailbox's
+organization, or a platform administrator; everyone else receives 404. Failed
+recipients and addresses embedded in the diagnostic/subject/sender are masked
+unless the caller has <code>customers:sensitive_read</code> (platform administrators are
+never masked).</p>
 <h3 id="reply-mailbox-delivery-and-receiving-boundaries-v6570">Reply mailbox delivery and receiving boundaries (v6.57.0)<a class="headerlink" href="#reply-mailbox-delivery-and-receiving-boundaries-v6570" title="Permanent link">&para;</a></h3>
 <p>Receiving configuration and connection testing use IMAP with the saved host, port, TLS setting and folder. AI scans preserve a UID/UIDVALIDITY cursor and process successive batches of at most 200 unseen messages; they do not mark messages read or delete them. Disabling a mailbox retains <code>ai_enabled</code> and credentials for re-enabling.</p>
 <p>Private campaigns with mixed public-pool/private audiences retain <code>reply_mailbox_id</code> for their private recipients. Pool recipients keep independent Reply-To snapshots. Private campaign start/schedule and delivery reject a disabled or changed mailbox while retaining sent route history. AI source resolution requires a sent delivery in the actual mailbox, resolves shared mailboxes through the delivered customer, and ignores ambiguous sources. Platform-admin-created organization mailboxes may scan without the administrator joining the organization, provided the organization is active.</p>

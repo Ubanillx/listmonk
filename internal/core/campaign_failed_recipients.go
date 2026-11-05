@@ -54,8 +54,10 @@ func failedRecipientCTE(access models.WorkspaceAccess, id int, f models.Campaign
 			AND cpr.pool_contact_id=e.recipient_id
 			AND (e.recipient_organization_id=0 OR cpr.organization_id=e.recipient_organization_id)
 		LEFT JOIN pool_contacts pc ON pc.id=cpr.pool_contact_id
-		WHERE (e.recipient_type='private' AND cr.status IN ('pending','queued','deferred','failed') AND cu.id IS NOT NULL)
-			OR (e.recipient_type='pool' AND cpr.status IN ('pending','queued','deferred','failed') AND pc.id IS NOT NULL)
+		WHERE (e.recipient_type='private' AND cr.status IN ('pending','queued','deferred','failed')
+				AND (cu.id IS NOT NULL OR camp.status IN ('finished','cancelled')))
+			OR (e.recipient_type='pool' AND cpr.status IN ('pending','queued','deferred','failed')
+				AND (pc.id IS NOT NULL OR camp.status IN ('finished','cancelled')))
 	), failed AS (
 		SELECT * FROM current_failed WHERE ($3::TEXT='' OR category=$3)
 		AND ($%d::INT=0 OR (recipient_type='pool' AND recipient_organization_id=$%d))

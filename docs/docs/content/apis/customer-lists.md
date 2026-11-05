@@ -15,8 +15,13 @@ permission checks. API requests that omit visibility default to `private`;
 ordinary lists cannot be `global`. The admin create form defaults to
 `organization` in an organization workspace and `private` in a personal
 workspace. Editing a list retains its saved visibility.
-Authorized
-public pools remain an explicit cross-workspace delivery/import exception.
+In an organization workspace, public-pool metadata requires an actual bound
+allocation in that organization; delivery authorization alone is insufficient.
+Only the organization's allocation and its source pool are listed, including
+minimal selectors and highest-administrator requests. Detached allocations are
+excluded; disabled but still bound allocations remain readable. Source-pool
+customer counts are restricted to this organization. The personal workspace's
+explicitly privileged platform directory retains its separate access rules.
 
 List responses include `organization_name` when a row belongs to an
 organization and `owner_username`/`owner_name` for the user owner. A
@@ -67,7 +72,7 @@ For non-minimal responses, callers with `pools:get` also receive
 nonzero. This counts distinct contacts with an unrestored `source=unsubscribe`
 exclusion, using the same membership and organization scope as the corresponding
 pool-contacts endpoint with `status=unsubscribed`. First-level pools show all
-organizations only to platform administrators or pool master maintainers;
+organizations only to platform administrators or pool master maintainers in the personal workspace;
 allocation rows always use their own organization. Manual exclusions and restored
 unsubscribes are not counted. Metadata-only permissions do not expose these counts.
 
@@ -393,7 +398,7 @@ Retrieve one server-paginated page of the contacts of a `pool` or `org_pool_allo
 
 Highest administrators receive complete contact records. Other callers receive only the contacts of their own organization's allocation, with masked e-mail addresses.
 
-> **Note:** Requires the `pools:get` permission (platform administrators bypass the role grant) and the `customer_lists:read` API-key scope (`cmd/handlers.go:181`). A non-platform-admin caller must have the pool granted to the active organization.
+> **Note:** Requires the `pools:get` permission (platform administrators bypass the role grant) and the `customer_lists:read` API-key scope. In an organization workspace, every caller needs a non-detached allocation in that organization. Delivery grants alone do not permit reading contacts.
 
 ##### Parameters
 
@@ -444,7 +449,7 @@ ______________________________________________________________________
 
 #### GET /api/customer-lists/{customer_list_id}/pool-contacts/export
 
-Download the filtered pool contacts as Excel, in the same order as the listing and independent of pagination. Non-platform-administrators may only export pools granted to the active organization and always receive masked e-mail addresses. `lang` or `X-Listmonk-Language` selects workbook headings and statuses.
+Download the filtered pool contacts as Excel, in the same order as the listing and independent of pagination. In an organization workspace, every caller may only export contacts allocated to that organization. Non-platform-administrators receive masked e-mail addresses. `lang` or `X-Listmonk-Language` selects workbook headings and statuses.
 
 > **Note:** Requires the `pools:export` permission and the `customer_lists:read` API-key scope. Accepts the same `search`, `customer_code`, `order_by`, and `order` filters as the listing.
 

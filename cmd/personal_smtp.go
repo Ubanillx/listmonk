@@ -370,7 +370,7 @@ func (a *App) pauseUserRunningCampaigns(userID int) (int, error) {
 	var campaigns []campaignState
 	if err := tx.Select(&campaigns, `
 		SELECT id, status FROM campaigns
-		WHERE ((owner_user_id = $1 AND smtp_source = 'personal' AND pool_scope <> 'all_organizations') OR (smtp_pool_id = -$1 AND smtp_source = 'organization'))
+		WHERE ((owner_user_id = $1 AND smtp_source = 'personal') OR (smtp_pool_id = -$1 AND smtp_source = 'organization'))
 		  AND status = ANY('{running,scheduled,deferred}'::campaign_status[])
 		ORDER BY id FOR UPDATE`, userID); err != nil {
 		return 0, err
@@ -407,6 +407,10 @@ func (a *App) pauseUserRunningCampaigns(userID int) (int, error) {
 	if _, err := tx.Exec(`
 		UPDATE campaign_recipients SET status = 'pending', updated_at = NOW()
 		WHERE campaign_id = ANY($1::INT[]) AND status = 'queued'`, pq.Array(ids)); err != nil {
+		return 0, err
+	}
+	if _, err := tx.Exec(`UPDATE campaign_pool_recipients SET status='pending', updated_at=NOW()
+        WHERE campaign_id=ANY($1::INT[]) AND status='queued'`, pq.Array(ids)); err != nil {
 		return 0, err
 	}
 	if err := tx.Commit(); err != nil {

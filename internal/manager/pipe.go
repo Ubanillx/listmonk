@@ -55,16 +55,13 @@ func (m *Manager) newPipe(c *models.Campaign) (*pipe, error) {
 		m.markCampaignSMTPUnavailable(c)
 		return nil, fmt.Errorf("campaign %s cannot send: %w: campaign has no account owner", c.Name, ErrPersonalSMTPUnavailable)
 	}
-	// Platform-level public-pool campaigns resolve their SMTP per message
-	// from the target organization's member SMTP pool, so the campaign
-	// owner's own personal SMTP is not required here; availability was
-	// validated when the campaign started and per-message resolution failure
-	// pauses the campaign.
+	// Public-pool campaigns assign an exact SMTP from the campaign's selected
+	// sender scope when claiming each recipient. Keep the email pipe messengerless
+	// until that assignment is resolved; an unavailable sender pauses delivery.
 	poolScoped := c.PoolScope == models.CampaignPoolScopeAllOrganizations
 	var msgr Messenger
 	if poolScoped {
-		// A platform-level campaign must not borrow any messenger that is
-		// not the organization pool; keep the pipe messengerless for e-mail.
+		// Custom messengers keep their normal route; email uses the assigned UUID.
 		if !email.IsMessengerName(c.Messenger) {
 			msg := models.Message{Messenger: c.Messenger}
 			var err error
@@ -174,7 +171,7 @@ func (p *pipe) NextCustomers() (bool, error) {
 		return false, nil
 	}
 	if errors.Is(err, ErrPoolSMTPUnavailable) {
-		// A target organization's member SMTP pool has no eligible SMTP
+		// A campaign owner's or selected organization SMTP pool has no eligible SMTP
 		// account. Pause the campaign strictly (no owner/platform fallback)
 		// so an operator can repair the pool and resume.
 		p.Stop(stopReasonPersonalSMTP, false)

@@ -164,6 +164,7 @@ CREATE TABLE pool_organization_permissions (
 
 CREATE TABLE campaigns (
     id              SERIAL PRIMARY KEY,
+    owner_user_id   INTEGER DEFAULT 1,
     organization_id BIGINT,
     smtp_source     TEXT NOT NULL DEFAULT 'personal',
     smtp_pool_id    BIGINT,
@@ -1489,14 +1490,18 @@ func TestValidateAllOrgPoolCampaignAudienceChecksAllPoolsAndSenderSources(t *tes
 		env.exec(`INSERT INTO user_smtp_servers(organization_id,smtp_pool_id,from_email)
             VALUES($1,$2,$3)`, orgs[i], i+1, fmt.Sprintf("org-%d@example.invalid", i))
 	}
-	env.exec(`UPDATE campaigns SET smtp_source='organization' WHERE id=$1`, campaign)
+	env.exec(`UPDATE campaigns SET smtp_source='organization', organization_id=$2, smtp_pool_id=1 WHERE id=$1`, campaign, orgs[0])
 	if err := env.core.ValidatePoolCampaignAudience(campaign); err != nil {
 		t.Fatalf("organization SMTP without any member SMTP rejected: %v", err)
 	}
 	env.exec(`UPDATE user_smtp_servers SET enabled=FALSE WHERE organization_id=$1`, orgs[1])
+	if err := env.core.ValidatePoolCampaignAudience(campaign); err != nil {
+		t.Fatalf("recipient organization's SMTP affected the selected sender pool: %v", err)
+	}
+	env.exec(`UPDATE user_smtp_servers SET enabled=FALSE WHERE smtp_pool_id=1`)
 	err := env.core.ValidatePoolCampaignAudience(campaign)
-	if err == nil || !strings.Contains(err.Error(), "second-pool") || !strings.Contains(err.Error(), "second-org") {
-		t.Fatalf("second pool's missing SMTP was not reported: %v", err)
+	if err == nil {
+		t.Fatal("disabled selected sender pool was accepted")
 	}
 	env.exec(`INSERT INTO organization_members(organization_id,user_id) VALUES($1,1),($2,1)`, orgs[0], orgs[1])
 	env.exec(`INSERT INTO user_smtp_servers(user_id,from_email) VALUES(1,'personal@example.invalid')`)
@@ -1508,11 +1513,11 @@ func TestValidateAllOrgPoolCampaignAudienceChecksAllPoolsAndSenderSources(t *tes
 		t.Fatalf("valid member SMTP rejected: %v", err)
 	}
 	env.exec(`UPDATE organization_members SET removed_at=NOW() WHERE organization_id=$1`, orgs[1])
-	if err := env.core.ValidatePoolCampaignAudience(campaign); err == nil {
-		t.Fatal("removed member incorrectly satisfied the second organization's readiness")
+	if err := env.core.ValidatePoolCampaignAudience(campaign); err != nil {
+		t.Fatalf("recipient organization membership changed owner SMTP readiness: %v", err)
 	}
-	env.exec(`UPDATE user_smtp_servers SET enabled=TRUE WHERE organization_id=$1`, orgs[1])
-	env.exec(`UPDATE campaigns SET smtp_source='organization' WHERE id=$1`, campaign)
+	env.exec(`UPDATE user_smtp_servers SET enabled=TRUE WHERE smtp_pool_id=1`)
+	env.exec(`UPDATE campaigns SET smtp_source='organization', organization_id=$2, smtp_pool_id=1 WHERE id=$1`, campaign, orgs[0])
 	thirdPool := env.seedPool("unallocated-pool")
 	env.seedAllOrgAudience(campaign, thirdPool)
 	err = env.core.ValidatePoolCampaignAudience(campaign)

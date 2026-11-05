@@ -74,7 +74,8 @@ func (a *App) GetLists(c echo.Context) error {
 		return err
 	}
 	if user := auth.GetUser(c); user.HasPerm(auth.PermPoolsGet) {
-		if err := a.core.EnrichPoolListUnsubscribeCounts(res, access.OrganizationID, user.IsPlatformAdmin(), canManagePoolMaster(user)); err != nil {
+		if err := a.core.EnrichPoolListUnsubscribeCounts(res, access.OrganizationID,
+			access.OrganizationID == 0 && user.IsPlatformAdmin(), access.OrganizationID == 0 && canManagePoolMaster(user)); err != nil {
 			return err
 		}
 	}
@@ -108,6 +109,13 @@ func (a *App) GetList(c echo.Context) error {
 			return err
 		}
 		user := auth.GetUser(c)
+		if access.OrganizationID > 0 {
+			out, err := a.core.GetAllocatedPoolList(access.OrganizationID, id)
+			if err != nil {
+				return err
+			}
+			return c.JSON(http.StatusOK, okResp{out})
+		}
 		if !access.PlatformAdmin && !(poolType == models.CustomerListTypePool &&
 			(canManagePoolMaster(user) || canManagePoolDelivery(user) || user.HasPerm(auth.PermCampaignsPublicPoolSend))) {
 			if !access.IsOrganization() || access.OrganizationID <= 0 {

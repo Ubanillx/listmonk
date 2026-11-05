@@ -38,6 +38,19 @@ Disabling a mailbox preserves its AI selection and saved credentials. Testing it
 - Only the normalized, trimmed latest reply text is sent to the model; attachments and quoted history are never sent. After classification the retained text is removed from the queue and only the hash plus the bounded decision fields are kept for the customer activity audit ("AI reply classifications" on the customer's Activity tab).
 
 
+## Reply mailbox bounce processing (IMAP)
+
+Each customer reply mailbox can process delivery status notifications (DSNs) in its own IMAP inbox. This is independent of the POP3 bounce mailbox below: the reply mailbox uses the same IMAP server, folder, credentials and scan interval as AI reply classification.
+
+1. In **Profile -> Reply mailboxes** or the organization mailbox settings, enable **Bounce processing (hard bounces)** and save the receiving connection. Both features share the same connection test. Global bounce processing in **Settings -> Bounces** must also be enabled, and the global hard-bounce threshold and action are used; the mailbox card shows the effective policy.
+2. Enabling asks for confirmation. The default policy is one hard bounce -> blocklist, so review **Settings -> Bounces** before turning it on.
+3. Only explicit hard bounces (`5.x.x`) can change a customer. Soft bounces and reports without a usable status are recorded but never blocklist. If the global action is `Delete` or `Unsubscribe`, this path only records the bounce and never deletes or unsubscribes anyone.
+4. Private customers are set to `blocklisted` (list memberships are not changed, matching the existing bounce policy). Public-pool contacts are excluded only from the delivery organization, never globally.
+5. Only DSNs delivered to that mailbox are considered. A DSN goes to the envelope sender (`Return-Path` / SMTP `MAIL FROM`), not to `Reply-To`; if the sending account and the reply mailbox are different addresses, route or forward DSNs to the reply mailbox first. Otherwise neither this feature nor any parser can see them.
+6. Use **Inspect latest message** to check whether the mailbox is reachable and whether its newest message is a DSN. **Recent bounce processing** lists what was recorded, ignored, or blocklisted and why; both are read-only and never delete mail or mark it read. Failed recipient addresses are masked unless the operator has the customer sensitive-data permission.
+
+The parser reads only the outer delivery report (`Final-Recipient`, `Original-Recipient`, `X-Failed-Recipients`, `Status`, `Diagnostic-Code`). Forwarded or attached DSNs, ARF abuse reports, plain-text failure messages and body-inferred addresses are not treated as bounces. A DSN is matched to a `sent` delivery in that mailbox using the original `Message-ID`, the `X-Listmonk-Customer` / `X-Listmonk-Campaign` headers, or a unique failed-recipient match; unmatched, ambiguous or cross-workspace reports are only recorded in the processing history.
+
 ## POP3 bounce mailbox
 Configure the bounce mailbox in Settings -> Bounces. Either the "From" e-mail that is set on a campaign (or in settings) should have a POP3 mailbox behind it to receive bounce e-mails, or you should configure a dedicated POP3 mailbox and add that address as the `Return-Path` (envelope sender) header in Settings -> SMTP -> Custom headers box. For example:
 

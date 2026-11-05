@@ -139,7 +139,7 @@ func mapSMTPServerWithDelivery(row models.PersonalSMTPServer, delivery models.SM
 
 // GetPoolSMTPServerByUUID loads one specific enabled SMTP account by UUID for
 // a platform-level public-pool recipient, revalidating that the owning user
-// is enabled and still an active member of an active organization. A
+// is enabled (or its SMTP-owning organization is active). A
 // single-server Emailer is returned so the recipient's assigned sender is
 // honored exactly.
 func (s *store) GetPoolSMTPServerByUUID(uuid string) (*email.Emailer, error) {
@@ -278,8 +278,8 @@ func (s *store) NextCustomers(campID, limit int) ([]models.CampaignCustomer, err
 	smtpRemaining := -1
 	if st.CampaignType == models.CampaignTypeRegular && email.IsMessengerName(st.Messenger) {
 		if st.PoolScope == models.CampaignPoolScopeAllOrganizations {
-			// Platform-level public-pool campaigns draw from every target
-			// organization's member SMTP pool. The aggregate remaining
+			// Count the campaign's selected sender quota once, independent of
+			// the number of recipient organizations. The aggregate remaining
 			// capacity is advisory; the authoritative reservation happens at
 			// send time through the shared quota tracker.
 			if err := s.queries.GetCampaignPoolSMTPRemaining.Get(&smtpRemaining, campID, currentLocalDate()); err != nil {
@@ -327,8 +327,7 @@ func (s *store) NextCustomers(campID, limit int) ([]models.CampaignCustomer, err
 
 	// Platform-level public-pool campaigns claim recipients through the
 	// transactional organization allocator, which rotates organizations
-	// fairly and assigns each recipient an SMTP account from the target
-	// organization's member SMTP pool.
+	// fairly and assigns SMTP only from the campaign's selected sender scope.
 	if st.PoolScope == models.CampaignPoolScopeAllOrganizations {
 		return s.nextPoolCustomers(campID, st, limit)
 	}
@@ -574,13 +573,24 @@ func (s *store) pickPoolOrgSMTP(tx *sqlx.Tx, orgID int64, servers []poolOrgSMTPS
 // nextPoolCustomers claims one batch of recipients for a platform-level
 // public-pool campaign. Organizations are served round-robin in the
 // campaign's persisted random order: each visit claims one deliverable
-// recipient for that organization and assigns an SMTP account from that
-// organization's member SMTP pool, advancing the organization's durable
+// recipient for that organization and assigns an SMTP account from the
+// campaign's selected sender pool, advancing the organization's durable
 // cursor. A recipient whose previously assigned SMTP is still eligible keeps
 // it (an in-flight retry never crosses to a different account); a recipient
 // whose assigned SMTP is gone or quota-exhausted is reassigned from the
 // cursor position.
 func (s *store) nextPoolCustomers(campID int, st campaignSendState, limit int) ([]models.CampaignCustomer, error) {
+	if st.SMTPSource == "organization" {
+		var valid bool
+		if err := s.db.Get(&valid, `SELECT EXISTS(SELECT 1 FROM organization_smtp_pools p
+			JOIN organizations o ON o.id=p.organization_id AND o.status='active'
+			WHERE p.id=$1 AND p.organization_id=$2)`, st.SMTPPoolID, st.OrganizationID); err != nil {
+			return nil, err
+		}
+		if !valid {
+			return nil, manager.ErrPoolSMTPUnavailable
+		}
+	}
 	tx, err := s.db.Beginx()
 	if err != nil {
 		return nil, err
@@ -601,7 +611,7 @@ func (s *store) nextPoolCustomers(campID int, st campaignSendState, limit int) (
 			return rows, nil
 		}
 		var rows []poolOrgSMTPServer
-		if err := s.queries.GetOrgPoolSMTPServers.Select(&rows, orgID, currentLocalDate(), st.SMTPSource, st.SMTPPoolID); err != nil {
+		if err := s.queries.GetOrgPoolSMTPServers.Select(&rows, orgID, currentLocalDate(), st.SMTPSource, st.SMTPPoolID, st.OwnerUserID); err != nil {
 			return nil, err
 		}
 		orgServers[orgID] = rows

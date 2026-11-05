@@ -2,6 +2,16 @@
 
 本文件记录可执行的后续工作。计划不是承诺；合并前应补充 issue、负责人和验收标准。
 
+## 回信邮箱自动退信处理（2026-11-05，v6.71.0 已实施）
+
+- [x] 为 IMAP 回信邮箱增加逐邮箱 `bounce_enabled` 开关和确定性 DSN 解析；仅硬退信（5.x.x）按全局 `bounce.actions.hard` 阈值执行拉黑，私域设 `blocklisted`、公海只写来源组织剔除，软退信只记录。
+- [x] 匹配严格限定本邮箱的 `sent` 投递（原始 `Message-ID` / `X-Listmonk-*` / 失败收件人），未匹配、歧义、跨工作区只记台账不动作；`reply_bounce_events` 唯一键保证重试幂等。
+- [x] 双重开关（全局 `bounce.enabled` + 邮箱开关），默认关闭并二次确认；本路径只执行 `blocklist`，不执行 `delete`/`unsubscribe`。按用户确认，本次不处理现有全局 POP 退信邮箱，新增路径独立使用 IMAP。
+- [x] 同步 API、前端开关/提示、i18n、用户文档、业务不变量与迁移测试。
+- 实施快照：[STATUS.md](STATUS.md)。
+- 来源：用户确认的“回信邮箱分析退信并自动拉黑”方案。
+- 详细计划：[2026-11-04-reply-mailbox-bounces/PLAN.md](designs/2026-11-04-reply-mailbox-bounces/PLAN.md)。
+
 ## 活动续发时间选择回归异常（2026-11-03）
 
 - [ ] 排查隔离 Cypress 组织 SMTP 综合用例中，时间选择器选中 00:05 后输入框回显 16:05 的问题。责任范围：管理端时间输入与部署时区转换；本次邮箱账号 SMTP 命名/默认来源变更未修改此逻辑。

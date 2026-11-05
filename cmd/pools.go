@@ -316,7 +316,7 @@ func (a *App) GetPoolContacts(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid pool id")
 	}
 	user := auth.GetUser(c)
-	if !canManagePoolMaster(user) {
+	if access.OrganizationID > 0 || !canManagePoolMaster(user) {
 		if err := a.core.AuthorizePoolListAccess(id, int64(access.OrganizationID)); err != nil {
 			return err
 		}
@@ -510,9 +510,9 @@ func poolExportValues(book *exportWorkbook, code, name, email, replyTo, departme
 	return []any{code, name, email, replyTo, department, book.status(status), allocationStatus, reason, createdAt, updatedAt}
 }
 
-// ExportPoolContacts streams the filtered pool contacts as Excel. Non-platform
-// administrators only reach pools granted to their workspace organization and
-// always receive masked e-mail addresses.
+// ExportPoolContacts streams the filtered pool contacts as Excel. Organization
+// workspaces only reach their allocated contacts, regardless of global roles.
+// Non-platform administrators receive masked e-mail addresses.
 func (a *App) ExportPoolContacts(c echo.Context) error {
 	access, err := a.requirePoolPermission(c, auth.PermPoolsExport)
 	if err != nil {
@@ -523,7 +523,7 @@ func (a *App) ExportPoolContacts(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid pool id")
 	}
 	user := auth.GetUser(c)
-	if !canManagePoolMaster(user) {
+	if access.OrganizationID > 0 || !canManagePoolMaster(user) {
 		if err := a.core.AuthorizePoolListAccess(id, int64(access.OrganizationID)); err != nil {
 			return err
 		}
@@ -606,7 +606,13 @@ func (a *App) GetOrgPoolAllocations(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	rows, err := a.core.QueryOrgPoolAllocations(poolID, int64(access.OrganizationID), canManagePoolDelivery(auth.GetUser(c)) || canManagePoolAllocationsAcrossOrganizations(auth.GetUser(c)))
+	if access.OrganizationID > 0 {
+		if err := a.core.AuthorizePoolListAccess(id, int64(access.OrganizationID)); err != nil {
+			return err
+		}
+	}
+	rows, err := a.core.QueryOrgPoolAllocations(poolID, int64(access.OrganizationID), access.OrganizationID == 0 &&
+		(canManagePoolDelivery(auth.GetUser(c)) || canManagePoolAllocationsAcrossOrganizations(auth.GetUser(c))))
 	if err != nil {
 		return err
 	}

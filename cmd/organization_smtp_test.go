@@ -17,7 +17,7 @@ func TestCampaignSMTPSourceScope(t *testing.T) {
 		{"personal", 1, "organization", false},
 		{"organization", 1, "organization", false},
 		{"organization", 0, "organization", true},
-		{"organization", 0, "all_organizations", false},
+		{"organization", 0, "all_organizations", true},
 		{"system", 1, "organization", true},
 	} {
 		camp := models.Campaign{SMTPSource: tc.source, PoolScope: tc.poolScope}

@@ -644,11 +644,19 @@ SELECT links.id AS link_id, %s AS "count", url
     GROUP BY links.id, links.url ORDER BY "count" DESC, links.url ASC LIMIT 50;
 
 -- name: get-campaign-report-summary
+-- Snapshot sent_at is the precise source. campaign_daily_usage is the durable
+-- fallback for campaigns whose snapshot rows were deleted before v6.72.0.
 WITH sent AS (
-    SELECT (SELECT COUNT(*) FROM campaign_recipients WHERE campaign_id = $1
-        AND sent_at >= $2 AND sent_at <= $3)
+    SELECT GREATEST(
+        (SELECT COUNT(*) FROM campaign_recipients WHERE campaign_id = $1
+            AND sent_at >= $2 AND sent_at <= $3)
       + (SELECT COUNT(*) FROM campaign_pool_recipients WHERE campaign_id = $1
-        AND sent_at >= $2 AND sent_at <= $3) AS sent
+            AND sent_at >= $2 AND sent_at <= $3),
+        COALESCE((SELECT SUM(sent_count)::INT FROM campaign_daily_usage
+            WHERE campaign_id = $1
+                AND usage_date >= $2::DATE
+                AND usage_date <= $3::DATE), 0)
+    ) AS sent
 ),
 views AS (
     SELECT
@@ -685,8 +693,10 @@ SELECT
     COALESCE((SELECT unique_clickers FROM clicks), 0) AS unique_clickers;
 
 -- name: get-campaigns-report-summary
-WITH sent AS (
-    SELECT campaign_id, COUNT(*) AS sent
+-- Per-campaign GREATEST of snapshot sent_at and the durable daily usage count,
+-- so a deleted snapshot cannot erase the sent denominator.
+WITH sent_snapshot AS (
+    SELECT campaign_id, COUNT(*)::INT AS sent
     FROM (SELECT campaign_id, sent_at FROM campaign_recipients
           UNION ALL
           SELECT campaign_id, sent_at FROM campaign_pool_recipients) recipients
@@ -695,6 +705,20 @@ WITH sent AS (
       AND sent_at >= $2
       AND sent_at <= $3
     GROUP BY campaign_id
+),
+sent_usage AS (
+    SELECT campaign_id, SUM(sent_count)::INT AS sent
+    FROM campaign_daily_usage
+    WHERE campaign_id = ANY($1)
+      AND usage_date >= $2::DATE
+      AND usage_date <= $3::DATE
+    GROUP BY campaign_id
+),
+sent AS (
+    SELECT COALESCE(s.campaign_id, u.campaign_id) AS campaign_id,
+        GREATEST(COALESCE(s.sent, 0), COALESCE(u.sent, 0)) AS sent
+    FROM sent_snapshot s
+    FULL OUTER JOIN sent_usage u ON u.campaign_id = s.campaign_id
 ),
 views AS (
     SELECT
@@ -1308,12 +1332,14 @@ JOIN customers s ON s.id = subs.customer_id
 ON CONFLICT (campaign_id, customer_id) DO NOTHING;
 
 -- name: sync-campaign-progress
--- to_send and sent are derived from campaign_send_counts, the single definition
--- of a campaign's effective recipient set (see schema.sql), so the persisted
--- totals cannot drift from the set the sender actually works through.
+-- to_send remains the live sendable remainder from campaign_send_counts so the
+-- sender can finish after recipients are deleted or moved. planned_total and
+-- sent are historical facts and only grow: deleting customers must not rewrite
+-- what a campaign planned or delivered.
 UPDATE campaigns
-SET to_send = COALESCE(sc.total_count, 0),
-    sent = COALESCE(sc.sent_count, 0),
+SET planned_total = GREATEST(campaigns.planned_total, COALESCE(sc.total_count, 0)),
+    to_send = COALESCE(sc.total_count, 0),
+    sent = GREATEST(COALESCE(sc.sent_count, 0), campaigns.sent),
     started_at = CASE WHEN started_at IS NULL THEN NOW() ELSE started_at END,
     updated_at = NOW()
 FROM campaign_send_counts sc
@@ -1773,13 +1799,13 @@ SELECT s.organization_id,
 		AND ex.organization_id=s.organization_id AND ex.contact_id=pc.id AND ex.restored_at IS NULL
 	WHERE am.allocation_id=s.id AND am.status='active' AND pc.status='active'
 		AND ex.contact_id IS NULL AND BTRIM(pc.reply_to)=''))) AS mailbox_ready,
-    (SELECT COUNT(*) FROM user_smtp_servers s2 WHERE s2.enabled AND (
-        ((SELECT smtp_source FROM campaigns WHERE id=$1)='organization' AND ((SELECT smtp_pool_id FROM campaigns WHERE id=$1) IS NULL AND s2.organization_id=s.organization_id OR s2.smtp_pool_id=(SELECT smtp_pool_id FROM campaigns WHERE id=$1)))
-        OR ((SELECT smtp_source FROM campaigns WHERE id=$1)<>'organization' AND EXISTS (
-            SELECT 1 FROM organization_members om2 JOIN users u2 ON u2.id=om2.user_id AND u2.status='enabled'
-            WHERE om2.organization_id=s.organization_id AND om2.user_id=s2.user_id AND om2.removed_at IS NULL
-        ))
-    )) AS smtp_count
+    (SELECT COUNT(*) FROM user_smtp_servers s2 JOIN campaigns c ON c.id=$1
+        WHERE s2.enabled AND (
+            (c.smtp_source='organization' AND s2.organization_id=c.organization_id AND s2.smtp_pool_id=c.smtp_pool_id
+                AND EXISTS(SELECT 1 FROM organizations so WHERE so.id=c.organization_id AND so.status='active'))
+            OR (c.smtp_source='personal' AND s2.user_id=c.owner_user_id
+                AND EXISTS(SELECT 1 FROM users u WHERE u.id=c.owner_user_id AND u.status='enabled'))
+        )) AS smtp_count
 FROM org_pool_allocations s
 JOIN organizations o ON o.id = s.organization_id
 LEFT JOIN reply_mailboxes rm ON rm.id = o.reply_mailbox_id
@@ -1797,19 +1823,19 @@ GROUP BY organization_id, organization_name, organization_status, reply_mailbox_
 ORDER BY organization_id;
 
 -- name: get-org-pool-smtp-servers
+-- Sender scope is independent of the recipient organization ($1).
 SELECT s.uuid, COALESCE(s.user_id,0) AS user_id, s.from_email, s.daily_limit,
     COALESCE(u.sent_count,0) AS sent_today
 FROM user_smtp_servers s
 JOIN organizations o ON o.id=$1 AND o.status='active'
 LEFT JOIN user_smtp_daily_usage u ON u.smtp_uuid=s.uuid AND u.usage_date=$2::DATE
 WHERE s.enabled AND (
-    ($3::TEXT='organization' AND (($4::BIGINT IS NULL AND s.organization_id=$1) OR s.smtp_pool_id=$4))
-    OR ($3::TEXT<>'organization' AND EXISTS (
-        SELECT 1 FROM organization_members om JOIN users usr ON usr.id=om.user_id AND usr.status='enabled'
-        WHERE om.organization_id=$1 AND om.user_id=s.user_id AND om.removed_at IS NULL
+    ($3::TEXT='organization' AND s.smtp_pool_id=$4)
+    OR ($3::TEXT='personal' AND s.user_id=$5 AND EXISTS (
+        SELECT 1 FROM users usr WHERE usr.id=s.user_id AND usr.status='enabled'
     ))
 )
-ORDER BY s.user_id NULLS FIRST, s.id;
+ORDER BY s.id;
 
 -- name: get-enabled-user-smtp-server-by-uuid
 SELECT s.*, FALSE AS is_primary, COALESCE(u.sent_count,0) AS sent_today
@@ -1817,10 +1843,7 @@ FROM user_smtp_servers s
 LEFT JOIN user_smtp_daily_usage u ON u.smtp_uuid=s.uuid AND u.usage_date=$2::DATE
 WHERE s.uuid=$1::UUID AND s.enabled AND (
     EXISTS (SELECT 1 FROM organizations o WHERE o.id=s.organization_id AND o.status='active')
-    OR EXISTS (SELECT 1 FROM users usr
-        JOIN organization_members om ON om.user_id=usr.id AND om.removed_at IS NULL
-        JOIN organizations o ON o.id=om.organization_id AND o.status='active'
-        WHERE usr.id=s.user_id AND usr.status='enabled')
+    OR EXISTS (SELECT 1 FROM users usr WHERE usr.id=s.user_id AND usr.status='enabled')
 );
 
 -- name: upsert-org-pool-smtp-cursor
@@ -1887,23 +1910,17 @@ RETURNING pool_contact_id;
 -- server is unlimited; a finite result is the summed remaining capacity. The
 -- result is advisory (it shapes the batch size); the authoritative per-server
 -- reservation happens at send time.
-WITH orgs AS (
-    SELECT oo.organization_id
-    FROM campaign_pool_org_orders oo
-    WHERE oo.campaign_id = $1
-)
 SELECT CASE
-    WHEN (SELECT COUNT(*) FROM orgs) = 0 THEN -1
     WHEN COUNT(*) = 0 THEN -1
     WHEN COUNT(*) FILTER (WHERE s.daily_limit = 0) > 0 THEN -1
     ELSE COALESCE(SUM(GREATEST(s.daily_limit - COALESCE(u.sent_count, 0), 0)), 0)
 END AS remaining
-FROM orgs o
+FROM campaigns c
 JOIN user_smtp_servers s ON s.enabled AND (
-    ((SELECT smtp_source FROM campaigns WHERE id=$1)='organization' AND ((SELECT smtp_pool_id FROM campaigns WHERE id=$1) IS NULL AND s.organization_id=o.organization_id OR s.smtp_pool_id=(SELECT smtp_pool_id FROM campaigns WHERE id=$1)))
-    OR ((SELECT smtp_source FROM campaigns WHERE id=$1)<>'organization' AND EXISTS (
-        SELECT 1 FROM organization_members om JOIN users usr ON usr.id=om.user_id AND usr.status='enabled'
-        WHERE om.organization_id=o.organization_id AND om.user_id=s.user_id AND om.removed_at IS NULL
+    (c.smtp_source='organization' AND s.organization_id=c.organization_id AND s.smtp_pool_id=c.smtp_pool_id)
+    OR (c.smtp_source='personal' AND s.user_id=c.owner_user_id AND EXISTS (
+        SELECT 1 FROM users usr WHERE usr.id=s.user_id AND usr.status='enabled'
     ))
 )
-LEFT JOIN user_smtp_daily_usage u ON u.smtp_uuid = s.uuid AND u.usage_date = $2::DATE;
+LEFT JOIN user_smtp_daily_usage u ON u.smtp_uuid=s.uuid AND u.usage_date=$2::DATE
+WHERE c.id=$1;

@@ -225,7 +225,7 @@ is not read by the server at startup.
 
 | Key | Type | Default | Required | Description |
 | --- | --- | --- | --- | --- |
-| `enabled` | bool | `false` | no | Start the bounce processor. When `false`, bounce webhooks and mailbox scanning are not started. |
+| `enabled` | bool | `false` | no | Start the bounce processor and allow reply-mailbox DSN processing. When `false`, bounce webhooks, POP3 mailbox scanning and IMAP reply-mailbox bounce handling do not run. |
 | `webhooks_enabled` | bool | `false` | no | Accept bounces on the `/webhooks/bounce` webhook. |
 | `ses_enabled` | bool | `false` | no | Accept AWS SES bounce notifications. |
 | `sendgrid_enabled` | bool | `false` | no | Accept Sendgrid bounce notifications. |
@@ -237,6 +237,8 @@ is not read by the server at startup.
 | `forwardemail.key` | string | `""` | yes, when Forward Email is enabled | Forward Email webhook key. |
 | `actions` | table | `{"soft": {"count": 2, "action": "none"}, "hard": {"count": 1, "action": "blocklist"}, "complaint": {"count": 1, "action": "blocklist"}}` | no | Number of bounces of each type (`soft`, `hard`, `complaint`) after which an action (`none` or `blocklist`) is applied to the customer. |
 | `mailboxes` | array of tables | one disabled POP entry | no | Mailboxes scanned for bounces. See the keys below. |
+
+Reply mailboxes with **Bounce processing** enabled use their own IMAP connection and the same `bounce.enabled` + `bounce.actions.hard` policy. That path only records or blocklists hard bounces; it never applies the `delete`/`unsubscribe` actions and never uses the POP3 mailbox entry below.
 
 Keys of each `[[bounce.mailboxes]]` entry:
 
@@ -569,4 +571,4 @@ The batch size parameter is useful when working with very large customer_lists w
 
 ### Organization marketing senders
 
-Each active organization can maintain multiple named SMTP sending pools in **Manage organization**, independently of member SMTP and system notification SMTP. Managers configure sender addresses, credentials, daily quotas and enabled status inside each pool. Campaigns select **Personal SMTP rotation** or **Organization SMTP rotation**, then choose an organization pool and display only that pool's enabled senders with today's usage. The organization source is available in organization workspaces; global public-pool campaigns resolve it per target organization. All SMTP pools use the global delivery settings above, including random delays. Removing or disabling a sender takes effect on subsequent messages; unavailable pools do not fall back to a different source.
+Each active organization can maintain multiple named SMTP sending pools in **Manage organization**, independently of member SMTP and system notification SMTP. Managers configure sender addresses, credentials, daily quotas and enabled status inside each pool. Campaigns select **Personal SMTP rotation** or **Organization SMTP rotation**, then choose an organization pool and display only that pool's enabled senders with today's usage. The organization source requires an organization workspace and uses the campaign organization's selected sender pool for both private and public-pool audiences, including global public-pool campaigns. Personal SMTP always belongs to the campaign owner. Selecting public-pool audiences does not switch the sender source or pool; selecting organization SMTP in a personal workspace prompts switching to an organization workspace. All SMTP pools use the global delivery settings above, including random delays. Removing or disabling a sender takes effect on subsequent messages; unavailable pools do not fall back to a different source.

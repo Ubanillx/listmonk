@@ -41,7 +41,7 @@ func (c *Core) QueryOrgPoolAllocations(poolID int, organizationID int64, platfor
 	q := `SELECT s.id,s.list_id,s.state,s.description,s.version,COALESCE(l.name,'') AS list_name,s.pool_id,s.organization_id,COALESCE(o.name,'') AS organization_name,o.reply_mailbox_id,COALESCE(r.email,'') AS reply_mailbox_email FROM org_pool_allocations s JOIN customer_lists l ON l.id=s.list_id JOIN organizations o ON o.id=s.organization_id LEFT JOIN reply_mailboxes r ON r.id=o.reply_mailbox_id WHERE s.pool_id=$1`
 	args := []any{poolID}
 	if !platformAdmin {
-		q += ` AND s.organization_id=$2`
+		q += ` AND s.organization_id=$2 AND s.state<>'detached'`
 		args = append(args, organizationID)
 	}
 	var out []models.OrgPoolAllocation
@@ -386,28 +386,18 @@ const allPoolExceptionJoin = ` LEFT JOIN (
 ) pool_exception ON pool_exception.pool_id=pm.pool_id AND pool_exception.contact_id=pc.id`
 
 // AuthorizePoolListAccess applies the organization scope of a pool list to a
-// non-platform-admin caller: a first-level pool must be granted to the active
-// organization (directly or through one of its allocations), and an allocation
-// list belongs to exactly one organization.
+// caller: viewing requires a bound allocation in the current organization.
+// Delivery grants alone do not authorize reading the pool or its contacts.
 func (c *Core) AuthorizePoolListAccess(listID int, organizationID int64) error {
 	scope, err := c.getPoolListScope(listID)
 	if err != nil {
 		return err
 	}
-	if scope.AllocationID != nil {
-		if scope.OrganizationID != organizationID {
-			return echo.NewHTTPError(http.StatusForbidden, "public pool is not authorized for this organization")
-		}
-		return nil
-	}
 	var allowed bool
-	if err := c.db.Get(&allowed, `SELECT EXISTS(SELECT 1 FROM pool_organization_permissions WHERE pool_id=$1 AND organization_id=$2)`, scope.PoolID, organizationID); err != nil {
+	if err := c.db.Get(&allowed, `SELECT EXISTS(SELECT 1 FROM org_pool_allocations a
+		WHERE a.pool_id=$1 AND a.organization_id=$2 AND a.state<>'detached'
+			AND a.list_id IS NOT NULL AND ($3::BIGINT IS NULL OR a.id=$3))`, scope.PoolID, organizationID, scope.AllocationID); err != nil {
 		return err
-	}
-	if !allowed {
-		if err := c.db.Get(&allowed, `SELECT EXISTS(SELECT 1 FROM org_pool_allocations WHERE pool_id=$1 AND organization_id=$2)`, scope.PoolID, organizationID); err != nil {
-			return err
-		}
 	}
 	if !allowed {
 		return echo.NewHTTPError(http.StatusForbidden, "public pool is not authorized for this organization")
@@ -446,7 +436,7 @@ func (c *Core) QueryPoolContacts(poolID int, organizationID int, platformAdmin b
 	if err != nil {
 		return nil, 0, err
 	}
-	platformAdmin = platformAdmin || (len(globalScope) > 0 && globalScope[0] && scope.AllocationID == nil)
+	platformAdmin = organizationID <= 0 && (platformAdmin || (len(globalScope) > 0 && globalScope[0] && scope.AllocationID == nil))
 	poolStatus = strings.ToLower(strings.TrimSpace(poolStatus))
 	statusOrg := int64(organizationID)
 	if platformAdmin {
@@ -497,11 +487,12 @@ func (c *Core) QueryPoolContacts(poolID int, organizationID int, platformAdmin b
 			}
 			args = append(args, organizationID)
 			join += ` LEFT JOIN org_pool_allocation_exclusions ex ON ex.pool_id=pm.pool_id AND ex.organization_id=$3 AND ex.contact_id=pc.id AND ex.restored_at IS NULL`
-			where += ` AND (psm.status IN ('active','removed') OR ex.contact_id IS NOT NULL)`
+			where += ` AND (psm.status IN ('active','removed') OR ex.contact_id IS NOT NULL)
+				AND EXISTS(SELECT 1 FROM org_pool_allocations a WHERE a.id=psm.allocation_id AND a.state<>'detached')`
 		} else {
 			args = append(args, organizationID)
 			join = ` JOIN org_pool_allocation_members psm ON psm.contact_id=pc.id JOIN org_pool_allocations ps ON ps.id=psm.allocation_id AND ps.pool_id=pm.pool_id LEFT JOIN org_pool_allocation_exclusions ex ON ex.pool_id=pm.pool_id AND ex.organization_id=ps.organization_id AND ex.contact_id=pc.id AND ex.restored_at IS NULL`
-			where = ` AND ps.organization_id=$2 AND (` + memberStatusPredicate + `)`
+			where = ` AND ps.organization_id=$2 AND ps.state<>'detached' AND (` + memberStatusPredicate + `)`
 		}
 	}
 	where += " AND (" + contactStatus + ")"
@@ -614,7 +605,7 @@ func (c *Core) QueryPoolContacts(poolID int, organizationID int, platformAdmin b
 // only see their own allocation memberships and receive masked contact data.
 func (c *Core) QueryAllPoolContacts(organizationID int, platformAdmin bool, poolStatus, search string, poolID int64, department *string, orderBy, order string, offset, limit int, globalScope ...bool) (any, int, error) {
 	plaintext := platformAdmin
-	platformAdmin = platformAdmin || (len(globalScope) > 0 && globalScope[0])
+	platformAdmin = organizationID <= 0 && (platformAdmin || (len(globalScope) > 0 && globalScope[0]))
 	poolStatus = strings.ToLower(strings.TrimSpace(poolStatus))
 	statusOrg := int64(organizationID)
 	if platformAdmin {
@@ -648,7 +639,7 @@ func (c *Core) QueryAllPoolContacts(organizationID int, platformAdmin bool, pool
 		}
 	} else {
 		args = append(args, organizationID)
-		join = ` JOIN org_pool_allocations ps ON ps.pool_id=pm.pool_id AND ps.organization_id=$1
+		join = ` JOIN org_pool_allocations ps ON ps.pool_id=pm.pool_id AND ps.organization_id=$1 AND ps.state<>'detached'
 			JOIN org_pool_allocation_members psm ON psm.allocation_id=ps.id AND psm.contact_id=pc.id
 			LEFT JOIN org_pool_allocation_exclusions ex ON ex.pool_id=pm.pool_id
 				AND ex.organization_id=ps.organization_id AND ex.contact_id=pc.id AND ex.restored_at IS NULL`
@@ -728,6 +719,7 @@ func (c *Core) QueryAllPoolContacts(organizationID int, platformAdmin bool, pool
 // visible in the caller's workspace. It does not load contact details or use
 // the current result page, so filter choices remain stable across pagination.
 func (c *Core) QueryAllPoolContactFilterOptions(organizationID int, platformAdmin bool) ([]models.PoolContactFilterOption, error) {
+	platformAdmin = platformAdmin && organizationID <= 0
 	if !platformAdmin && organizationID <= 0 {
 		return []models.PoolContactFilterOption{}, nil
 	}
@@ -738,7 +730,7 @@ func (c *Core) QueryAllPoolContactFilterOptions(organizationID int, platformAdmi
 		JOIN customer_lists cl ON cl.id=pm.pool_id AND cl.type='pool'`
 	args := []any{}
 	if !platformAdmin {
-		query += ` JOIN org_pool_allocations ps ON ps.pool_id=pm.pool_id AND ps.organization_id=$1
+		query += ` JOIN org_pool_allocations ps ON ps.pool_id=pm.pool_id AND ps.organization_id=$1 AND ps.state<>'detached'
 			JOIN org_pool_allocation_members psm ON psm.allocation_id=ps.id AND psm.contact_id=pc.id
 			LEFT JOIN org_pool_allocation_exclusions ex ON ex.pool_id=pm.pool_id
 				AND ex.organization_id=ps.organization_id AND ex.contact_id=pc.id AND ex.restored_at IS NULL
@@ -1623,7 +1615,7 @@ func poolAudienceRouteMessage(issues []PoolAudienceRouteIssue) string {
 // Platform-level ('all_organizations') campaigns are validated across every
 // active organization that owns a pool allocation for the campaign's pool:
 // each organization needs complete reply routes and at least one
-// enabled SMTP account belonging to an enabled active member. A single
+// enabled SMTP account belonging to the campaign owner or selected sender pool. A single
 // unready organization blocks the whole campaign.
 func (c *Core) ValidatePoolCampaignAudience(campaignID int) error {
 	var poolScope string
@@ -1657,7 +1649,7 @@ type poolOrgStatusRow struct {
 	SMTPCount        int    `db:"smtp_count"`
 }
 
-const poolAllOrgMessageSMTPStep = "each target organization needs SMTP for the selected sender source: organization SMTP in Manage organization, or member SMTP in Profile -> SMTP"
+const poolAllOrgMessageSMTPStep = "configure the campaign owner SMTP in Profile, or select a sender pool in the campaign organization"
 
 // PoolCampaignUnallocatedLists identifies selected pools with no organization
 // allocation, even when another selected pool has a usable audience.
@@ -1684,13 +1676,13 @@ func (c *Core) validateAllOrgPoolCampaignAudience(campaignID int) error {
 			((rm.id IS NOT NULL AND rm.status = 'active' AND (NOT rm.ai_enabled OR rm.verified_at IS NOT NULL))
 			OR NOT `+poolMissingContactReplySQL+`) AS mailbox_ready,
 			COALESCE(rm.email, '') AS reply_mailbox_email,
-    (SELECT COUNT(*) FROM user_smtp_servers s2 WHERE s2.enabled AND (
-        ((SELECT smtp_source FROM campaigns WHERE id=$1)='organization' AND ((SELECT smtp_pool_id FROM campaigns WHERE id=$1) IS NULL AND s2.organization_id=s.organization_id OR s2.smtp_pool_id=(SELECT smtp_pool_id FROM campaigns WHERE id=$1)))
-        OR ((SELECT smtp_source FROM campaigns WHERE id=$1)<>'organization' AND EXISTS (
-            SELECT 1 FROM organization_members om2 JOIN users u2 ON u2.id=om2.user_id AND u2.status='enabled'
-            WHERE om2.organization_id=s.organization_id AND om2.user_id=s2.user_id AND om2.removed_at IS NULL
-        ))
-    )) AS smtp_count
+    (SELECT COUNT(*) FROM user_smtp_servers s2 JOIN campaigns c ON c.id=$1
+        WHERE s2.enabled AND (
+            (c.smtp_source='organization' AND s2.organization_id=c.organization_id AND s2.smtp_pool_id=c.smtp_pool_id
+                AND EXISTS(SELECT 1 FROM organizations so WHERE so.id=c.organization_id AND so.status='active'))
+            OR (c.smtp_source='personal' AND s2.user_id=c.owner_user_id
+                AND EXISTS(SELECT 1 FROM users u WHERE u.id=c.owner_user_id AND u.status='enabled'))
+        )) AS smtp_count
 		FROM org_pool_allocations s
 		JOIN customer_lists pl ON pl.id = s.pool_id
 		JOIN organizations o ON o.id = s.organization_id

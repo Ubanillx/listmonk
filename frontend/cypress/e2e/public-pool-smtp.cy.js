@@ -4,13 +4,14 @@ const smtp = (name, email, enabled = true) => ({
 });
 
 describe('Public-pool SMTP selection', () => {
-  it('keeps organization and member SMTP separate, clears hidden pools and refreshes saved readiness', () => {
+  it('keeps owner and selected organization pool independent of public audiences', () => {
     cy.resetDB();
     cy.intercept('GET', '/api/config', (req) => req.continue((res) => { res.body.data.lang = 'en'; }));
     cy.loginAndVisit('/admin/campaigns/new');
     const orgs = [];
     const pools = [];
     let firstSMTPPool;
+    let emptySMTPPool;
     let privateList;
     let campaign;
     cy.request('/api/profile').then(({ body }) => {
@@ -45,6 +46,9 @@ describe('Public-pool SMTP selection', () => {
         body: { name: 'Private SMTP audience', type: 'private', optin: 'single' } })
         .then(({ body }) => { privateList = body.data.id; });
     });
+    cy.then(() => cy.request({ method: 'POST', url: '/api/organizations/smtp-pools',
+      headers: { 'X-Listmonk-Organization-ID': orgs[0] }, body: { name: 'Empty sender pool' },
+    })).then(({ body }) => { emptySMTPPool = body.data.id; });
     cy.request('PUT', '/api/profile/smtp', { smtp: [smtp('member-personal', 'member-personal@example.com', false)] });
     cy.then(() => {
       cy.window().then((win) => win.localStorage.setItem('listmonk.workspace.organizationId', String(orgs[0])));
@@ -52,17 +56,18 @@ describe('Public-pool SMTP selection', () => {
       cy.visit(`/admin/campaigns/new?customer_list_id=${pools[0]}`);
     });
     cy.get('[data-cy=campaign-pool-scope]').should('have.value', 'organization');
+    cy.get('[data-cy=campaign-smtp-source]').select('organization');
     cy.then(() => cy.get('[data-cy=campaign-smtp-pool]').should('have.value', String(firstSMTPPool)));
     cy.get('[data-cy=pool-scope-all-notice]').should('not.exist');
     cy.get('[data-cy=campaign-pool-scope]').select('all_organizations');
-    cy.get('[data-cy=campaign-smtp-pool]').should('not.exist');
+    cy.then(() => cy.get('[data-cy=campaign-smtp-pool]').should('have.value', String(firstSMTPPool)));
     cy.get('[data-cy=campaign-audience-trigger]').click();
     cy.then(() => cy.get(`[data-cy=campaign-audience-${privateList}]`).should('be.disabled'));
     cy.then(() => cy.get(`[data-cy=campaign-audience-${pools[1]}]`).check());
     cy.get('[data-cy=campaign-audience-trigger]').click();
     cy.get('[data-cy=campaign-smtp-overview]').should('contain', 'organization-0@example.com')
-      .and('contain', 'organization-1@example.com').and('not.contain', 'member-personal@example.com');
-    cy.get('[data-cy=campaign-pool-smtp-help]').should('contain', 'Member personal SMTP accounts are excluded');
+      .and('not.contain', 'organization-1@example.com').and('not.contain', 'member-personal@example.com');
+    cy.get('[data-cy=campaign-pool-smtp-help]').should('contain', 'selected sender pool');
     // Returning to single-organization scope restores an actual pool selection.
     cy.get('[data-cy=campaign-pool-scope]').select('organization');
     cy.then(() => cy.get('[data-cy=campaign-smtp-pool]').should('have.value', String(firstSMTPPool)));
@@ -72,7 +77,7 @@ describe('Public-pool SMTP selection', () => {
     cy.intercept('POST', '/api/campaigns').as('createPublicPool');
     cy.get('[data-cy=btn-continue]').click();
     cy.wait('@createPublicPool').then(({ request, response }) => {
-      expect(request.body.smtp_pool_id).to.eq(null);
+      expect(request.body.smtp_pool_id).to.eq(firstSMTPPool);
       expect(request.body.pool_scope).to.eq('all_organizations');
       expect(response.statusCode, JSON.stringify(response.body)).to.eq(200);
       campaign = response.body.data.id;
@@ -96,7 +101,7 @@ describe('Public-pool SMTP selection', () => {
     cy.get('[data-cy=pool-send-status-ready]').should('not.exist');
     cy.get('[data-cy=btn-save]').first().click();
     cy.wait('@savePublicPool').then(({ request, response }) => {
-      expect(request.body.smtp_pool_id).to.eq(null);
+      expect(request.body.smtp_pool_id).to.eq(firstSMTPPool);
       expect(response.statusCode).to.eq(200);
     });
     cy.get('[data-cy=pool-send-status-ready]').should('contain', 'Ready to send');
@@ -111,6 +116,14 @@ describe('Public-pool SMTP selection', () => {
     cy.get('[data-cy=btn-save]').first().click();
     cy.wait('@savePublicPool').its('response.statusCode').should('eq', 200);
     cy.get('[data-cy=pool-send-status-ready]').should('contain', 'Ready to send');
+    // A pool-only change must invalidate saved readiness and show its own empty state.
+    cy.then(() => cy.get('[data-cy=campaign-smtp-pool]').select(String(emptySMTPPool)));
+    cy.get('[data-cy=pool-send-status-ready]').should('not.exist');
+    cy.get('[data-cy=pool-send-status-save]').should('be.visible');
+    cy.get('[data-cy=campaign-smtp-unavailable]').should('be.visible');
+    cy.get('[data-cy=btn-start]').should('not.exist');
+    cy.then(() => cy.get('[data-cy=campaign-smtp-pool]').select(String(firstSMTPPool)));
+    cy.get('[data-cy=campaign-smtp-overview]').should('contain', 'organization-0@example.com');
     cy.get('[data-cy=campaign-sender-section]').screenshot('public-pool-organization-smtp');
     cy.viewport(390, 844);
     cy.document().then((doc) => expect(doc.documentElement.scrollWidth).to.be.at.most(390));

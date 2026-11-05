@@ -203,13 +203,6 @@ func (a *App) validateCampaignSMTPPool(camp *models.Campaign, orgID int) error {
 		camp.SMTPPoolID = null.Int{}
 		return nil
 	}
-	// The legacy platform-wide path routes by organization, not one pool.
-	if camp.PoolScope == models.CampaignPoolScopeAllOrganizations {
-		if camp.SMTPPoolID.Valid {
-			return echo.NewHTTPError(http.StatusBadRequest, "one SMTP pool cannot be used across all organizations")
-		}
-		return nil
-	}
 	if !camp.SMTPPoolID.Valid {
 		var id int
 		if err := a.db.Get(&id, `SELECT COALESCE(MIN(id),0) FROM organization_smtp_pools WHERE organization_id=$1`, orgID); err != nil {

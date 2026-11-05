@@ -14,6 +14,7 @@ import (
 type ReplyAIDelivery struct {
 	CampaignID     int    `db:"campaign_id"`
 	CampaignUUID   string `db:"campaign_uuid"`
+	CustomerUUID   string `db:"customer_uuid"`
 	CustomerID     int    `db:"customer_id"`
 	UserID         int    `db:"user_id"`
 	PoolContactID  int64  `db:"pool_contact_id"`
@@ -23,7 +24,8 @@ type ReplyAIDelivery struct {
 }
 
 const replyAIDeliverySQL = `
-	SELECT c.id AS campaign_id, c.uuid::TEXT AS campaign_uuid, s.id AS customer_id, s.owner_user_id AS user_id,
+	SELECT c.id AS campaign_id, c.uuid::TEXT AS campaign_uuid, s.uuid::TEXT AS customer_uuid,
+		s.id AS customer_id, s.owner_user_id AS user_id,
 		0::BIGINT AS pool_contact_id, 0 AS pool_id, 0::BIGINT AS allocation_id,
 		COALESCE(s.organization_id,0) AS organization_id
 	FROM reply_mailboxes m
@@ -39,7 +41,7 @@ const replyAIDeliverySQL = `
 		AND (m.organization_id IS NOT NULL OR s.owner_user_id=m.user_id)
 		AND ($3=0 OR c.id=$3)
 	UNION ALL
-	SELECT cpr.campaign_id, c.uuid::TEXT, 0, m.user_id, pc.id, cpr.pool_id,
+	SELECT cpr.campaign_id, c.uuid::TEXT, pc.uuid::TEXT, 0, m.user_id, pc.id, cpr.pool_id,
 		COALESCE(cpr.allocation_id,0), cpr.organization_id
 	FROM reply_mailboxes m
 	JOIN campaign_pool_recipients cpr ON cpr.organization_id=m.organization_id
@@ -82,7 +84,7 @@ func findReplyAIDelivery(db sqlx.Queryer, mailboxID int, email string, campaignI
 	}
 	first := rows[0]
 	for _, row := range rows[1:] {
-		if row.CustomerID != first.CustomerID || row.PoolContactID != first.PoolContactID ||
+		if row.CampaignID != first.CampaignID || row.CustomerID != first.CustomerID || row.PoolContactID != first.PoolContactID ||
 			row.OrganizationID != first.OrganizationID || row.PoolID != first.PoolID || row.AllocationID != first.AllocationID {
 			return ReplyAIDelivery{}, false, nil
 		}

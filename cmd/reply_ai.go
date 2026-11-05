@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/emersion/go-message"
+	"github.com/knadh/listmonk/internal/bounce/mailbox"
 	"github.com/knadh/listmonk/internal/core"
 	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
@@ -66,20 +67,24 @@ type replyAIMailboxSource struct {
 	Port           int      `db:"imap_port"`
 	TLSEnabled     bool     `db:"imap_tls"`
 	Folder         string   `db:"folder"`
+	AIActive       bool     `db:"ai_active"`
+	BounceActive   bool     `db:"bounce_active"`
 }
 
 // runReplyAIProcessor scans only mailboxes which both have active global
 // configuration and an explicit per-mailbox opt-in. It never deletes source
 // messages; durable queue rows make every source message idempotent.
 func runReplyAIProcessor(a *App) {
-	if a == nil || a.db == nil || a.replyAI == nil || !a.replyAI.Enabled() {
+	if a == nil || a.db == nil {
 		return
 	}
 	ticker := time.NewTicker(a.replyScanInterval)
 	defer ticker.Stop()
 	for {
 		a.scanReplyAIMailboxes()
-		a.processReplyAIEvents()
+		if a.replyAI != nil {
+			a.processReplyAIEvents()
+		}
 		<-ticker.C
 	}
 }
@@ -256,18 +261,64 @@ func (d *replyAIDialer) Close() error {
 }
 
 func (a *App) ingestReplyAIMessage(source replyAIMailboxSource, raw []byte) error {
+	// Tests and the one-off fetch helpers construct a source by hand and do not
+	// carry the effective flags. Both flags false therefore means "legacy AI
+	// path"; the scan query always sets at least one flag for a selected row.
+	aiActive := source.AIActive || (!source.AIActive && !source.BounceActive)
 	entity, err := message.Read(bytes.NewReader(raw))
 	if err != nil {
 		// A permanently malformed message must not pin the incremental cursor
-		// and prevent later replies from being received. Persist its terminal
-		// audit record first; database failures still retry the same UID.
-		hash := sha256.Sum256(raw)
-		_, err := a.db.Exec(`INSERT INTO reply_ai_events(reply_mailbox_id,message_key,status,action,reason_code)
-			VALUES($1,$2,'ignored','ignored','malformed_message')
-			ON CONFLICT(reply_mailbox_id,message_key) DO NOTHING`, source.ID, "malformed:"+hex.EncodeToString(hash[:]))
-		return err
+		// and prevent later replies from being received. Only messages that
+		// look like reports are written to the bounce ledger; otherwise keep
+		// the existing AI terminal record.
+		if source.BounceActive && bytes.Contains(bytes.ToLower(raw), []byte("delivery-status")) {
+			hash := sha256.Sum256(raw)
+			if _, err := a.core.RecordReplyBounceIgnored(core.ReplyBounceInput{
+				MailboxID:  source.ID,
+				MessageKey: "malformed:" + hex.EncodeToString(hash[:]),
+				Type:       "unknown",
+			}, "malformed_dsn"); err != nil {
+				return err
+			}
+		}
+		if aiActive {
+			hash := sha256.Sum256(raw)
+			_, err := a.db.Exec(`INSERT INTO reply_ai_events(reply_mailbox_id,message_key,status,action,reason_code)
+				VALUES($1,$2,'ignored','ignored','malformed_message')
+				ON CONFLICT(reply_mailbox_id,message_key) DO NOTHING`, source.ID, "malformed:"+hex.EncodeToString(hash[:]))
+			return err
+		}
+		return nil
 	}
+
+	dsn, dsnErr := mailbox.ParseDSN(raw)
+	if dsnErr == nil && dsn.IsBounce {
+		if source.BounceActive {
+			return a.ingestReplyBounceDSN(source, dsn, entity, raw)
+		}
+		// A delivery report must never be sent to the reply classifier, even
+		// when bounce processing is disabled for this mailbox.
+		return nil
+	}
+	if dsnErr != nil && bytes.Contains(bytes.ToLower(raw), []byte("delivery-status")) {
+		if source.BounceActive {
+			hash := sha256.Sum256(raw)
+			if _, ignoredErr := a.core.RecordReplyBounceIgnored(core.ReplyBounceInput{
+				MailboxID:  source.ID,
+				MessageKey: "malformed:" + hex.EncodeToString(hash[:]),
+				Type:       "unknown",
+			}, "malformed_dsn"); ignoredErr != nil {
+				return ignoredErr
+			}
+		}
+		// A malformed delivery report is still not a customer reply.
+		return nil
+	}
+
 	if isAutomatedInboundReply(entity) {
+		return nil
+	}
+	if !aiActive {
 		return nil
 	}
 
@@ -290,16 +341,135 @@ func (a *App) ingestReplyAIMessage(source replyAIMailboxSource, raw []byte) erro
 		return nil
 	}
 	if err == nil {
-		var orgID *int64
-		if source.OrganizationID.Valid && source.OrganizationID.Int > 0 {
-			value := int64(source.OrganizationID.Int)
-			orgID = &value
-		}
-		a.recordBackgroundAudit("system", "reply_ai.received", "reply_ai_event", fmt.Sprintf("%d", id), orgID, map[string]any{
+		a.recordBackgroundAudit("system", "reply_ai.received", "reply_ai_event", fmt.Sprintf("%d", id), replyAISourceOrgID(source), map[string]any{
 			"mailbox_id": source.ID,
 		})
 	}
 	return err
+}
+
+// ingestReplyBounceDSN processes the report recipients of a DSN. Each recipient
+// is independent: one malformed/unmatched block does not prevent the others
+// from being recorded. A database failure is returned so the IMAP cursor does
+// not advance and the same message is retried; the ledger unique key makes the
+// already-committed recipients no-ops.
+func (a *App) ingestReplyBounceDSN(source replyAIMailboxSource, dsn mailbox.DSN, entity *message.Entity, raw []byte) error {
+	messageKey := strings.TrimSpace(dsn.MessageID)
+	if messageKey == "" {
+		hash := sha256.Sum256(raw)
+		messageKey = hex.EncodeToString(hash[:])
+	}
+	references := strings.TrimSpace(dsn.OriginalMessageID)
+	if references == "" {
+		references = replyReferenceHeaders(entity)
+	}
+	occurredAt := time.Now()
+	if parsed, err := mail.ParseDate(dsn.Date); err == nil {
+		occurredAt = parsed
+	}
+	if len(dsn.Recipients) == 0 {
+		return a.recordReplyBounceIgnored(source, dsn, messageKey, mailbox.DSNRecipient{}, occurredAt, "no_report_recipient")
+	}
+	for _, recipient := range dsn.Recipients {
+		delivery, ok, err := a.core.FindReplyAIDelivery(source.ID, recipient.Address, 0, references)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			if err := a.recordReplyBounceIgnored(source, dsn, messageKey, recipient, occurredAt, "unmatched_delivery"); err != nil {
+				return err
+			}
+			continue
+		}
+		if headerCampaign := strings.TrimSpace(dsn.OriginalHeaders["X-Listmonk-Campaign"]); headerCampaign != "" &&
+			!strings.EqualFold(headerCampaign, delivery.CampaignUUID) {
+			if err := a.recordReplyBounceIgnored(source, dsn, messageKey, recipient, occurredAt, "header_delivery_mismatch"); err != nil {
+				return err
+			}
+			continue
+		}
+		if headerCustomer := strings.TrimSpace(dsn.OriginalHeaders["X-Listmonk-Customer"]); headerCustomer != "" &&
+			!strings.EqualFold(headerCustomer, delivery.CustomerUUID) {
+			if err := a.recordReplyBounceIgnored(source, dsn, messageKey, recipient, occurredAt, "header_delivery_mismatch"); err != nil {
+				return err
+			}
+			continue
+		}
+
+		result, err := a.core.RecordReplyBounce(core.ReplyBounceInput{
+			MailboxID:  source.ID,
+			MessageKey: messageKey,
+			Recipient:  recipient.Address,
+			References: references,
+			Type:       recipient.BounceClass,
+			Status:     recipient.Status,
+			Diagnostic: recipient.Diagnostic,
+			MessageID:  dsn.MessageID,
+			Sender:     dsn.From,
+			Subject:    dsn.Subject,
+			OccurredAt: occurredAt,
+			Delivery:   delivery,
+		})
+		if err != nil {
+			return err
+		}
+		if result.Duplicate {
+			continue
+		}
+		metadata := map[string]any{
+			"channel":     "reply_mailbox",
+			"mailbox_id":  source.ID,
+			"bounce_type": recipient.BounceClass,
+		}
+		if result.Outcome == "ignored" {
+			a.recordBackgroundAuditResult("system", "reply_bounce.ignored", "reply_bounce_event",
+				fmt.Sprintf("%d", result.EventID), replyAISourceOrgID(source), "ignored", result.ReasonCode, metadata)
+			continue
+		}
+		metadata["action"] = result.Outcome
+		metadata["count"] = result.ActionCount
+		metadata["threshold"] = result.ActionThreshold
+		a.recordBackgroundAudit("system", "bounce.policy_applied", "reply_bounce_event",
+			fmt.Sprintf("%d", result.EventID), replyAISourceOrgID(source), metadata)
+	}
+	return nil
+}
+
+func (a *App) recordReplyBounceIgnored(source replyAIMailboxSource, dsn mailbox.DSN, messageKey string,
+	recipient mailbox.DSNRecipient, occurredAt time.Time, reason string) error {
+	id, err := a.core.RecordReplyBounceIgnored(core.ReplyBounceInput{
+		MailboxID:  source.ID,
+		MessageKey: messageKey,
+		Recipient:  recipient.Address,
+		Type:       recipient.BounceClass,
+		Status:     recipient.Status,
+		Diagnostic: recipient.Diagnostic,
+		MessageID:  dsn.MessageID,
+		Sender:     dsn.From,
+		Subject:    dsn.Subject,
+		OccurredAt: occurredAt,
+	}, reason)
+	if err != nil {
+		return err
+	}
+	if id == 0 {
+		return nil
+	}
+	a.recordBackgroundAuditResult("system", "reply_bounce.ignored", "reply_bounce_event",
+		fmt.Sprintf("%d", id), replyAISourceOrgID(source), "ignored", reason, map[string]any{
+			"channel":     "reply_mailbox",
+			"mailbox_id":  source.ID,
+			"bounce_type": recipient.BounceClass,
+		})
+	return nil
+}
+
+func replyAISourceOrgID(source replyAIMailboxSource) *int64 {
+	if source.OrganizationID.Valid && source.OrganizationID.Int > 0 {
+		id := int64(source.OrganizationID.Int)
+		return &id
+	}
+	return nil
 }
 
 func (a *App) processReplyAIEvents() {

@@ -193,9 +193,10 @@ func TestCampaignSendCountsHaveOneDefinition(t *testing.T) {
 	view := extractSendCountsView(t, readRepoFile(t, "schema.sql"), "schema.sql")
 	// The newest migration that installs the view defines the post-upgrade
 	// state, so it is the one a fresh install must match. v6.31.0 installed the
-	// original view; v6.44.0 re-installs it with the platform-level
-	// ('all_organizations') pool predicate.
-	migrationView := extractSendCountsView(t, readRepoFile(t, "internal/migrations/v6.44.0.go"), "internal/migrations/v6.44.0.go")
+	// original view; v6.44.0 added the platform-level ('all_organizations')
+	// pool predicate; v6.72.0 separates live sending counts from finished
+	// campaign history and preserves the planned total when recipients vanish.
+	migrationView := extractSendCountsView(t, readRepoFile(t, "internal/migrations/v6.72.0.go"), "internal/migrations/v6.72.0.go")
 	requireSameRuleDefinition(t, view, migrationView)
 
 	requireQueryTerms(t, goyesql.Queries{"campaign_send_counts": {Query: view}}, "campaign_send_counts",
@@ -205,7 +206,8 @@ func TestCampaignSendCountsHaveOneDefinition(t *testing.T) {
 		"s.owner_user_id = c.owner_user_id",
 		"s.transfer_pending_at IS NULL",
 		"c.pool_scope = 'all_organizations' OR cpr.organization_id IS NOT DISTINCT FROM c.organization_id",
-		"GREATEST(c.to_send - c.sent, 0)",
+		"c.status = ANY('{finished,cancelled}'::campaign_status[])",
+		"GREATEST(GREATEST(c.planned_total, c.to_send, c.sent) - c.sent, 0)",
 	)
 
 	// Every projection, the sender and the progress sync consume the view.
@@ -290,7 +292,7 @@ func requireSameRuleDefinition(t *testing.T, install, upgrade string) {
 	}
 
 	if normalize(install) != normalize(upgrade) {
-		t.Error("schema.sql and the v6.30.0 migration must install the same recipient rule; a fresh install and an upgrade would otherwise resolve public bearers differently")
+		t.Error("schema.sql and the v6.72.0 migration must install the same recipient rule; a fresh install and an upgrade would otherwise resolve public bearers differently")
 	}
 }
 

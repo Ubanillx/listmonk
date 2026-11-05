@@ -330,6 +330,8 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.PUT("/api/profile/reply-mailboxes/:id/enable", hasID(a.EnableReplyMailbox))
 		g.POST("/api/profile/reply-mailboxes/:id/delete", hasID(a.DeleteReplyMailbox))
 		g.POST("/api/profile/reply-mailboxes/test", a.TestReplyMailbox)
+		g.POST("/api/profile/reply-mailboxes/:id/inspect-latest", hasID(a.InspectReplyMailbox))
+		g.GET("/api/profile/reply-mailboxes/:id/bounce-events", hasID(a.GetReplyMailboxBounceEvents))
 
 		// Organization workspaces. Workspace-scoped endpoints use the
 		// X-Listmonk-Organization-ID request header; a missing header selects

@@ -1131,6 +1131,24 @@ export const testReplyMailbox = (data, organizationID) => http.post(
   { loading: models.users, disableToast: true, ...organizationWorkspaceConfig(organizationID) },
 );
 
+// Read-only diagnostics for reply-mailbox bounce processing. Neither call
+// changes the mailbox, the scan cursor or any customer state.
+export const inspectReplyMailbox = (id, organizationID) => http.post(
+  `/api/profile/reply-mailboxes/${id}/inspect-latest`,
+  {},
+  { loading: models.users, disableToast: true, ...organizationWorkspaceConfig(organizationID) },
+);
+
+export const getReplyMailboxBounceEvents = (id, page, organizationID) => http.get(
+  `/api/profile/reply-mailboxes/${id}/bounce-events`,
+  {
+    loading: models.users,
+    disableToast: true,
+    ...organizationWorkspaceConfig(organizationID),
+    params: { page },
+  },
+);
+
 export const getUserPersonalSMTP = (id) => http.get(
   `/api/users/${id}/smtp`,
   { loading: models.users },

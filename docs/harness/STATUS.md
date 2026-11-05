@@ -1,6 +1,14 @@
 # 工作状态
 
-快照日期：2026-11-04
+- 2026-11-05：公海列表按当前部门实际未解除分配收敛，含平台管理员；仅投放授权不能读取未分配公海。详情、客户数/退订数、联系人、筛选及导出沿用同一边界；组织空间隐藏跨组织筛选。回归与证据见 `designs/2026-11-05-pool-workspace-permissions/README.md`。
+
+- 2026-11-05：营销活动 SMTP 归属统一到活动所有者/所属组织选定池；公海受众不再借用目标组织成员，个人空间组织来源显示切换提示。验证记录见 `designs/2026-11-05-campaign-smtp-scope/README.md`。
+
+快照日期：2026-11-05
+
+- **活动历史统计保留（2026-11-05，v6.72.0）**：线上活动 118 的两个客户列表以 `delete_customers=true` 删除后，`campaign_recipients` 被级联清空，进度同步把原 323/300 覆盖为 0/0，营销概览与营销统计归零。v6.72.0 将收件人快照与客户/公海联系人生存期解耦（保留只读源 ID，不设级联外键），`campaign_send_counts` 对运行中活动只统计可投递快照、对结束活动统计全部历史快照，`campaigns.planned_total` 与 `sent` 只增不减；概览失败客户在快照缺失时回退到不可变 `campaign_send_errors`，报表 sent 缺失时回退到 `campaign_daily_usage`。新增 PostgreSQL 行为测试 3 项、迁移测试 1 项，`go test ./...` 与最终 `go test ./cmd ./internal/core ./internal/migrations` 通过；本地 dev 已执行 v6.72.0、9173 返回 200。线上 118 已通过 dbx 恢复 `to_send=323`、`sent=300`：158 次失败 = 134 个首轮失败 + 24 次重试失败，首轮重试 111 人成功、23 人（2 次及以上失败）仍未发送，另有 189 人无失败记录。Rebecca 删除后重新导入的列表 106/107（源文件 `REBECCA私域客户邮箱20261104.xlsx`、`公海客户-剔除无关信息.xlsx`）与 134 个失败历史收件人重合 124 人；两个列表中没有失败记录的 165 个成员可高概率判定为原活动成功收件人。结合 111 个首轮重试成功身份，已恢复 276 个成功收件人；23 个最终失败全部可识别；合计 299/323 个身份，剩余 24 个成功收件人需旧版 `公海客户-剔除无关信息.xlsx`（旧导入 total=240/imported=196）或删除前备份核对。当前版本概览恢复 323/300/23，失败客户 23 与营销统计 sent=300 需部署新版本后由历史回退显示。来源：`internal/migrations/v6.72.0.go`、`schema.sql`、`queries/campaigns.sql`、`internal/core/{campaign_delivery_overview,campaign_failed_recipients}.go`、`cmd/campaign_history_preservation_test.go`。
+
+- **回信邮箱退信处理（2026-11-05，v6.71.0）**：新增 `reply_mailboxes.bounce_enabled`、`reply_bounce_events` 和严格 DSN 解析，按邮箱扫描 IMAP 退信；只对硬退信按全局 `bounce.actions.hard` 阈值拉黑私域客户或剔除公海来源组织，软退信/unknown 只记录，`delete`/`unsubscribe` 只写 `action_not_supported`。新增只读“检测最新一封”和“最近退信处理”，均按 `mailboxes:manage` 与所有者/组织经理/平台管理员限制，收件人及诊断/主题/发件人中的地址按敏感权限脱敏；未匹配、歧义、跨工作区、事务内投递变化只写台账。真实 PostgreSQL 新增 7 项测试（硬/软/delete/工作区/完整 DSN 分支/阈值/已拉黑）通过；`go test ./cmd -run 'TestReply|TestBounce|TestIngestReplyBounceDSN'` 通过。`go test ./...` 除 `internal/subimporter` 两项既有临时文件断言失败外，其余通过（与本次无关）。代码质量 QA 后修复：按 rune 截断避免中文 DSN 卡死游标、Inspect 诊断/主题/发件人脱敏、组织经理只读检测入口、跨邮箱旧响应丢弃、公海联系人并发锁、投递消歧加入活动 ID、分页上限、策略读取失败降级、DSN 不再进入 AI 模型。隔离 Cypress 5/5 通过（一次截图超时重跑后通过）；前端 lint（仅既有地图 shadow warning）与生产构建通过。本地 backend 已重启并应用 v6.71.0，9173 HTTP 200、启动无错误；真实邮箱退信和真实拉黑尚未验证。来源：`internal/bounce/mailbox/dsn.go`、`internal/core/reply_bounce.go`、`cmd/reply_ai.go::ingestReplyBounceDSN`、`cmd/reply_mailboxes.go`、`internal/migrations/v6.71.0.go`、`frontend/src/components/ReplyMailboxSettings.vue`、`frontend/cypress/e2e/reply-mailbox-config.cy.js`。
 
 - **SMTP 配置保存不再卡住（2026-11-04）**：个人/组织 SMTP 保存此前在 `WithPersonalSMTPUpdate` 中等待发送写锁，必须等在途投递结束；投递持读锁期间会等待活动限速（个人默认 5 封/分钟，单封最多约 12 秒）、随机投递延迟及迟缓 SMTP 网络发送，因此有活动发送时保存请求会长时间挂起，关闭旧连接池的 1 秒清扫也叠加在请求内。现改为事务前摘除相关缓存与全部公海单发件池、事务完成即返回；在途投递沿用已取得的旧池正常完成，旧池由 `retireSMTP` 在发送侧排空后后台并行关闭。新增 `TestPersonalSMTPUpdateDoesNotWaitForInFlightDelivery` 锁定非阻塞返回、旧投递不中止及下次解析重建池；`go test ./internal/manager/`、SMTP 相关 cmd 测试与 `go build ./...` 通过。来源：`internal/manager/manager.go`、`internal/manager/manager_test.go`。
 

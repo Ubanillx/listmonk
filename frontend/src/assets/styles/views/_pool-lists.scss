@@ -9,6 +9,10 @@
     gap: var(--lm-space-4);
     align-items: end;
 
+    &.is-organization {
+      grid-template-columns: minmax(360px, var(--lm-field-max-width)) minmax(200px, 1fr) 96px;
+    }
+
     > .field { margin-bottom: 0; min-width: 0; }
     .control.is-expanded, .select, select { width: 100%; max-width: 100%; }
     .controls {
@@ -136,8 +140,12 @@
   .pool-list-empty { padding: var(--lm-space-8); text-align: center; color: var(--lm-color-text-muted); }
   .pool-list-empty p { margin: var(--lm-space-3) 0; }
 
+  @media screen and (min-width: $tablet) {
+    .b-table th.cy-name { min-width: 280px; }
+  }
+
   @media screen and (max-width: $tablet - 1px) {
-    .pool-list-filters { grid-template-columns: minmax(0, 1fr); }
+    .pool-list-filters, .pool-list-filters.is-organization { grid-template-columns: minmax(0, 1fr); }
     .pool-list-actions { flex-direction: column; align-items: stretch; }
     .pool-list-result-count { display: block; margin: var(--lm-space-1) 0 0; }
     .pool-list-tree-controls { flex-wrap: wrap; }

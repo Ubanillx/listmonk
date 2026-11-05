@@ -5,7 +5,7 @@
 -- mailbox in a campaign; the `manageable` flag tells callers which rows they
 -- actually own (and may edit/disable/test). Passwords are never selected.
 SELECT id, user_id, organization_id, email, name, username, imap_host, imap_port, imap_tls,
-       folder, status, verified_at, is_default, ai_enabled, last_sync_at, last_sync_error,
+       folder, status, verified_at, is_default, ai_enabled, bounce_enabled, last_sync_at, last_sync_error,
        forward_count, created_at, updated_at, (password <> '') AS has_password,
        (user_id = $1) AS manageable
 FROM reply_mailboxes
@@ -18,7 +18,7 @@ ORDER BY is_default DESC, id;
 
 -- name: get-reply-mailbox
 SELECT id, user_id, organization_id, email, name, username, imap_host, imap_port, imap_tls,
-       folder, status, verified_at, is_default, ai_enabled, last_sync_at, last_sync_error,
+       folder, status, verified_at, is_default, ai_enabled, bounce_enabled, last_sync_at, last_sync_error,
        forward_count, created_at, updated_at, (password <> '') AS has_password
 FROM reply_mailboxes
 WHERE id = $1 AND user_id = $2 AND organization_id IS NOT DISTINCT FROM $3;
@@ -26,32 +26,33 @@ WHERE id = $1 AND user_id = $2 AND organization_id IS NOT DISTINCT FROM $3;
 -- name: create-reply-mailbox
 INSERT INTO reply_mailboxes
     (user_id, organization_id, email, name, username, imap_host, imap_port, imap_tls, folder,
-     password, status, verified_at, is_default, ai_enabled)
+     password, status, verified_at, is_default, ai_enabled, bounce_enabled)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-        CASE WHEN $12 THEN 'pending' ELSE 'active' END, NULL, $11, $12)
+        CASE WHEN $12 OR $13 THEN 'pending' ELSE 'active' END, NULL, $11, $12, $13)
 RETURNING id;
 
 -- name: update-reply-mailbox
 UPDATE reply_mailboxes
 SET email = $3, name = $4,
-    username = CASE WHEN $12 THEN $5 ELSE username END,
-    imap_host = CASE WHEN $12 THEN $6 ELSE imap_host END,
-    imap_port = CASE WHEN $12 THEN $7 ELSE imap_port END,
-    imap_tls = CASE WHEN $12 THEN $8 ELSE imap_tls END,
-    folder = CASE WHEN $12 THEN $9 ELSE folder END,
-	password = CASE WHEN NOT $12 OR $10 = '' THEN password ELSE $10 END,
+    username = CASE WHEN $12 OR $14 THEN $5 ELSE username END,
+    imap_host = CASE WHEN $12 OR $14 THEN $6 ELSE imap_host END,
+    imap_port = CASE WHEN $12 OR $14 THEN $7 ELSE imap_port END,
+    imap_tls = CASE WHEN $12 OR $14 THEN $8 ELSE imap_tls END,
+    folder = CASE WHEN $12 OR $14 THEN $9 ELSE folder END,
+	password = CASE WHEN NOT ($12 OR $14) OR $10 = '' THEN password ELSE $10 END,
 	is_default = $11,
 	ai_enabled = $12,
+	bounce_enabled = $14,
 	-- Any change to the connection parameters invalidates the previous
 	-- verification. The stored 'active' state used to survive a host/port edit,
 	-- so an endpoint that had never been tested (for example an internal
 	-- address) kept being polled as if it had passed.
 	status = CASE WHEN status IN ('disabled', 'retained') THEN status
-	              WHEN NOT $12 THEN 'active'
+	              WHEN NOT ($12 OR $14) THEN 'active'
 	              WHEN verified_at IS NULL OR (imap_host, imap_port, imap_tls, folder, username) IS DISTINCT FROM ($6, $7, $8, $9, $5)
 	                   OR ($10 <> '' AND password IS DISTINCT FROM $10)
 	              THEN 'pending' ELSE status END,
-	verified_at = CASE WHEN $12 AND ((imap_host, imap_port, imap_tls, folder, username) IS DISTINCT FROM ($6, $7, $8, $9, $5)
+	verified_at = CASE WHEN ($12 OR $14) AND ((imap_host, imap_port, imap_tls, folder, username) IS DISTINCT FROM ($6, $7, $8, $9, $5)
 	                        OR ($10 <> '' AND password IS DISTINCT FROM $10))
 	                   THEN NULL ELSE verified_at END,
     updated_at = NOW()
@@ -77,29 +78,41 @@ DELETE FROM reply_mailboxes WHERE id = $1 RETURNING id;
 -- state without requiring the user to re-enter a password that is never
 -- returned to the browser. Unverified mailboxes remain pending until tested.
 UPDATE reply_mailboxes
-SET status = CASE WHEN NOT ai_enabled OR verified_at IS NOT NULL THEN 'active' ELSE 'pending' END,
+SET status = CASE WHEN NOT (ai_enabled OR bounce_enabled) OR verified_at IS NOT NULL THEN 'active' ELSE 'pending' END,
     updated_at = NOW()
 WHERE id = $1 AND user_id = $2 AND organization_id IS NOT DISTINCT FROM $3
   AND status = 'disabled'
 RETURNING id;
 
 -- name: get-reply-ai-mailboxes
-SELECT m.id, m.user_id, m.organization_id, m.email, m.username, m.password,
-       m.imap_host, m.imap_port, m.imap_tls, m.folder
-FROM reply_mailboxes m
-JOIN users u ON u.id = m.user_id AND u.status = 'enabled'
-WHERE m.status = 'active' AND m.ai_enabled = TRUE AND m.verified_at IS NOT NULL
-	AND EXISTS(SELECT 1 FROM settings WHERE key='reply_ai' AND value->>'enabled'='true')
-  AND (m.organization_id IS NULL OR EXISTS (
+-- Returns the mailboxes that currently have an active consumer: AI classification
+-- (global reply_ai setting) or deterministic bounce processing (global
+-- bounce.enabled). The effective flags are computed against settings so a
+-- mailbox that is only enabled for bounces still gets scanned when AI is off.
+WITH candidates AS (
+    SELECT m.id, m.user_id, m.organization_id, m.email, m.username, m.password,
+           m.imap_host, m.imap_port, m.imap_tls, m.folder,
+           (m.ai_enabled AND EXISTS(SELECT 1 FROM settings WHERE key='reply_ai' AND value->>'enabled'='true')) AS ai_active,
+           (m.bounce_enabled AND EXISTS(SELECT 1 FROM settings WHERE key='bounce.enabled' AND value::BOOLEAN)) AS bounce_active,
+           u.user_role_id
+    FROM reply_mailboxes m
+    JOIN users u ON u.id = m.user_id AND u.status = 'enabled'
+    WHERE m.status = 'active' AND m.verified_at IS NOT NULL
+)
+SELECT id, user_id, organization_id, email, username, password,
+       imap_host, imap_port, imap_tls, folder, ai_active, bounce_active
+FROM candidates
+WHERE (ai_active OR bounce_active)
+  AND (organization_id IS NULL OR EXISTS (
       SELECT 1
       FROM organizations o
       JOIN organization_members om ON om.organization_id = o.id
-      WHERE o.id = m.organization_id
+      WHERE o.id = candidates.organization_id
         AND o.status = 'active'
-        AND om.user_id = m.user_id
+        AND om.user_id = candidates.user_id
         AND om.removed_at IS NULL
-  ) OR EXISTS (SELECT 1 FROM organizations o WHERE o.id=m.organization_id AND o.status='active' AND u.user_role_id=1))
-ORDER BY m.id;
+  ) OR EXISTS (SELECT 1 FROM organizations o WHERE o.id=candidates.organization_id AND o.status='active' AND candidates.user_role_id=1))
+ORDER BY id;
 
 -- name: get-reply-ai-mailbox
 SELECT m.id, m.user_id, m.organization_id, m.email, m.username, m.password,

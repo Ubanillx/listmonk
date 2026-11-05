@@ -21,7 +21,7 @@ describe('Reply mailbox configuration', () => {
     cy.get('[data-cy=reply-mailbox-test]').should('not.exist');
     cy.get(input('email')).type('replies@example.com');
     cy.intercept('POST', '/api/profile/reply-mailboxes', (req) => {
-      expect(req.body).to.deep.equal({ email: 'replies@example.com', name: '', is_default: false, ai_enabled: false });
+      expect(req.body).to.deep.equal({ email: 'replies@example.com', name: '', is_default: false, ai_enabled: false, bounce_enabled: false });
       req.continue();
     }).as('saveAddress');
     cy.get('[data-cy=reply-mailbox-save]').click();
@@ -146,6 +146,80 @@ describe('Reply mailbox configuration', () => {
         .its('status').should('equal', 400);
       cy.request({ method: 'PUT', url: '/api/settings/reply_ai', body: body.data.reply_ai, failOnStatusCode: false })
         .its('status').should('equal', 400);
+    });
+  });
+
+  it('enables bounce processing, inspects the latest message and shows processing history', () => {
+    cy.contains('.reply-mailboxes button', '新建').click();
+    cy.get(input('email')).type('bounce-ui@example.com');
+    cy.get('[data-cy=reply-mailbox-save]').click();
+    cy.contains('.reply-mailbox-card .tag', '回信地址可用').should('be.visible');
+
+    cy.get('[data-cy=reply-mailbox-bounce]').click();
+    cy.get('.dialog .modal-card-foot .button.is-warning', { timeout: 10000 }).click();
+    cy.get('[data-cy=reply-mailbox-receiving]').should('be.visible');
+    cy.get('[data-cy=reply-mailbox-bounce] input').should('be.checked');
+    cy.get(input('password')).type('test-only-mailbox-password');
+    cy.get(input('host')).clear().type('imap.example.com');
+    cy.intercept('PUT', '/api/profile/reply-mailboxes/*', (req) => {
+      expect(req.body.bounce_enabled).to.equal(true);
+      expect(req.body.ai_enabled).to.equal(false);
+      req.continue();
+    }).as('saveBounce');
+    cy.get('[data-cy=reply-mailbox-save]').click();
+    cy.wait('@saveBounce');
+    cy.reload();
+    cy.contains('.b-tabs nav a', '个人邮件配置').click();
+
+    cy.request('/api/profile/reply-mailboxes').then(({ body }) => {
+      const id = body.data[0].id;
+      expect(body.data[0].bounce_enabled).to.equal(true);
+      expect(body.data[0].bounce_policy.action).to.equal('blocklist');
+      cy.intercept('POST', `/api/profile/reply-mailboxes/${id}/inspect-latest`, {
+        body: {
+          data: {
+            empty: false,
+            is_bounce: true,
+            from: 'MAILER-DAEMON@example.com',
+            subject: 'Undelivered Mail',
+            date: '2026-11-05T10:00:00+08:00',
+            message_id: '<dsn@example.com>',
+            bounce_type: 'hard',
+            reason: 'smtp; 550 user unknown',
+            recipients: [{ address: 'liu***@example.com', source: 'final-recipient', status: '5.1.1' }],
+          },
+        },
+      }).as('inspectLatest');
+      cy.intercept('GET', `/api/profile/reply-mailboxes/${id}/bounce-events*`, {
+        body: {
+          data: {
+            results: [{
+              id: 1,
+              created_at: '2026-11-05T10:00:00+08:00',
+              recipient: 'liu***@example.com',
+              bounce_type: 'hard',
+              outcome: 'blocklisted',
+              reason_code: 'blocklisted',
+              campaign_id: 0,
+              customer_id: 0,
+              pool_contact_id: 0,
+            }],
+            total: 1,
+            page: 1,
+            per_page: 20,
+          },
+        },
+      }).as('events');
+
+      cy.get('[data-cy=reply-mailbox-inspect]').click();
+      cy.wait('@inspectLatest');
+      cy.get('[data-cy=reply-mailbox-inspect-result]').should('contain', '最新一封是投递状态通知（退信）');
+      cy.get('[data-cy=reply-mailbox-inspect-result]').should('contain', 'liu***@example.com');
+
+      cy.get('[data-cy=reply-mailbox-bounce-history] a').click();
+      cy.wait('@events');
+      cy.get('[data-cy=reply-mailbox-bounce-events]').should('contain', '已拉黑');
+      cy.get('[data-cy=reply-mailbox-bounce-events]').should('contain', 'liu***@example.com');
     });
   });
 });

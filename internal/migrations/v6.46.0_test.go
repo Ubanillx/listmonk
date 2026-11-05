@@ -36,6 +36,8 @@ const trackingLegacySchema = `
 	CREATE TABLE link_clicks (id BIGSERIAL PRIMARY KEY, campaign_id INT, customer_id INT, link_id INT, created_at TIMESTAMPTZ DEFAULT NOW());
 	CREATE TABLE bounces (id SERIAL PRIMARY KEY, campaign_id INT, customer_id INT, pool_contact_id BIGINT,
 		created_at TIMESTAMPTZ DEFAULT NOW());
+	CREATE TABLE campaign_daily_usage (campaign_id INT NOT NULL, usage_date DATE NOT NULL,
+		sent_count INT NOT NULL DEFAULT 0);
 `
 
 func trackingOrdinaryRecipientRule(t *testing.T) string {

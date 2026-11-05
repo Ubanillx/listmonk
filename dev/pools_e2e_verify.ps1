@@ -12,7 +12,7 @@
 #                 per deduplicated contact, unified reply mailbox on Reply-To.
 #                 Uses dev/pools_e2e_seed.sql and a temporary personal SMTP.
 #   -Mode AllOrg  Platform-level (all_organizations) pool campaign. Seeds and
-#                 removes its own two organizations, three member SMTP servers
+#                 removes its own two organizations, two campaign-owner SMTP servers and one unrelated member sender
 #                 and four contacts; needs no fixture SQL.
 #   -Mode All     Http, then Smtp, then AllOrg (default is Http).
 #
@@ -444,9 +444,9 @@ function Invoke-AllOrgSmtpChecks {
         SqlRun "UPDATE organizations SET reply_mailbox_id=$mbA WHERE id=$orgA"
         SqlRun "UPDATE organizations SET reply_mailbox_id=$mbB WHERE id=$orgB"
 
-        # Three member SMTP accounts: two in organization A, one in organization B.
+        # Two owner SMTP accounts and one unrelated member SMTP that must never be selected.
         $smtpA1 = SqlOne "INSERT INTO user_smtp_servers(uuid,user_id,name,enabled,from_email,daily_limit,host,port,auth_protocol,username,password,tls_type,max_conns,max_msg_retries,idle_timeout,wait_timeout) VALUES(gen_random_uuid(),$userA,'mailhog-a1',TRUE,'e2e-a1-$stamp@example.test',0,'mailhog',1025,'none','','','none',4,1,'15s','5s') RETURNING uuid"
-        $smtpA2 = SqlOne "INSERT INTO user_smtp_servers(uuid,user_id,name,enabled,from_email,daily_limit,host,port,auth_protocol,username,password,tls_type,max_conns,max_msg_retries,idle_timeout,wait_timeout) VALUES(gen_random_uuid(),$userC,'mailhog-a2',TRUE,'e2e-a2-$stamp@example.test',0,'mailhog',1025,'none','','','none',4,1,'15s','5s') RETURNING uuid"
+        $smtpA2 = SqlOne "INSERT INTO user_smtp_servers(uuid,user_id,name,enabled,from_email,daily_limit,host,port,auth_protocol,username,password,tls_type,max_conns,max_msg_retries,idle_timeout,wait_timeout) VALUES(gen_random_uuid(),$userA,'mailhog-a2',TRUE,'e2e-a2-$stamp@example.test',0,'mailhog',1025,'none','','','none',4,1,'15s','5s') RETURNING uuid"
         $smtpB1 = SqlOne "INSERT INTO user_smtp_servers(uuid,user_id,name,enabled,from_email,daily_limit,host,port,auth_protocol,username,password,tls_type,max_conns,max_msg_retries,idle_timeout,wait_timeout) VALUES(gen_random_uuid(),$userB,'mailhog-b1',TRUE,'e2e-b1-$stamp@example.test',0,'mailhog',1025,'none','','','none',4,1,'15s','5s') RETURNING uuid"
 
         $pool = SqlOne "INSERT INTO customer_lists(uuid,name,type,status,visibility) VALUES(gen_random_uuid(),'e2e-allorg-pool-$stamp','pool','active','global') RETURNING id"
@@ -457,8 +457,8 @@ function Invoke-AllOrgSmtpChecks {
 
         # Four contacts: 1-2 belong to BOTH organizations (must still be sent
         # once), 3 belongs to organization A only, 4 belongs to organization B
-        # only. The two single-organization contacts prove per-organization SMTP
-        # pool routing.
+        # only. The single-organization contacts prove recipient routing stays
+        # independent of the campaign owner SMTP configuration.
         foreach ($i in 1..4) {
             $cid = SqlOne "INSERT INTO pool_contacts(uuid,customer_code,email,name,status) VALUES(gen_random_uuid(),'E2E-$stamp-$i','e2e-allorg-$stamp-$i@example.test','Contact $i','active') RETURNING id"
             SqlRun "INSERT INTO pool_members(pool_id,contact_id) VALUES($pool,$cid)"
@@ -505,7 +505,9 @@ function Invoke-AllOrgSmtpChecks {
         Check 'four unique contacts are deduplicated across two organizations' ($total -eq '4')
         Check 'every unique contact is delivered once' ($sent -eq '4')
         Check 'both organizations receive traffic' ($distinctOrgs -eq '2')
-        Check 'senders rotate across the member SMTP accounts' ([int]$distinctSenders -ge 2)
+        Check 'senders rotate across the campaign owner SMTP accounts' ([int]$distinctSenders -ge 2)
+        $wrongSender = SqlOne "SELECT COUNT(*) FROM campaign_pool_recipients r JOIN user_smtp_servers s ON s.uuid=r.sender_smtp_uuid WHERE r.campaign_id=$camp AND s.user_id IS DISTINCT FROM $userA"
+        Check 'recipient organization member SMTP is never used' ($wrongSender -eq '0')
         Check 'every recipient uses its own organization reply mailbox' ($wrongMailbox -eq '0')
 
         $mh = Invoke-RestMethod -Uri "$mailhog/api/v2/search?kind=to&query=e2e-allorg-" -TimeoutSec 30

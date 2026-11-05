@@ -19,6 +19,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- Organization tenancy tables are declared after users below because they
 -- reference user IDs. Drop them explicitly on a destructive fresh install.
 DROP TABLE IF EXISTS audit_events CASCADE;
+DROP TABLE IF EXISTS reply_bounce_events CASCADE;
 DROP TABLE IF EXISTS reply_mailbox_scan_cursors CASCADE;
 DROP TABLE IF EXISTS reply_ai_events CASCADE;
 DROP TABLE IF EXISTS reply_forward_messages CASCADE;
@@ -168,7 +169,11 @@ CREATE TABLE campaigns (
     messenger        TEXT NOT NULL,
     template_id      INTEGER REFERENCES templates(id) ON DELETE SET NULL,
 
-    -- Progress and stats.
+    -- Progress and stats. planned_total is the historical audience size. It
+    -- only grows after the first send starts, so deleting customers or lists
+    -- cannot shrink the planned count of a finished campaign. to_send remains
+    -- the live, sendable remainder for the scheduler.
+    planned_total      INT NOT NULL DEFAULT 0,
     to_send            INT NOT NULL DEFAULT 0,
     sent               INT NOT NULL DEFAULT 0,
     send_errors        INT NOT NULL DEFAULT 0 CHECK (send_errors >= 0),
@@ -212,7 +217,10 @@ DROP INDEX IF EXISTS idx_camp_lists_customer_list_id; CREATE INDEX idx_camp_list
 DROP TABLE IF EXISTS campaign_recipients CASCADE;
 CREATE TABLE campaign_recipients (
     campaign_id    INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE ON UPDATE CASCADE,
-    customer_id  INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    -- This is an immutable historical reference, not a live foreign key:
+    -- recipient snapshots must survive customer deletion. Every query that
+    -- sends or counts a live recipient joins customers explicitly.
+    customer_id  INTEGER NOT NULL,
     status         campaign_recipient_status NOT NULL DEFAULT 'pending',
     retry_selected BOOLEAN NOT NULL DEFAULT false,
     email_snapshot TEXT,
@@ -651,6 +659,7 @@ CREATE TABLE reply_mailboxes (
     verified_at      TIMESTAMP WITH TIME ZONE NULL,
     is_default       BOOLEAN NOT NULL DEFAULT FALSE,
     ai_enabled       BOOLEAN NOT NULL DEFAULT FALSE,
+    bounce_enabled   BOOLEAN NOT NULL DEFAULT FALSE,
     last_sync_at     TIMESTAMP WITH TIME ZONE NULL,
     last_sync_error  TEXT NOT NULL DEFAULT '',
     forward_count    INTEGER NOT NULL DEFAULT 0,
@@ -761,6 +770,38 @@ CREATE INDEX idx_reply_ai_events_customer ON reply_ai_events(customer_id, create
 ALTER TABLE bounces
     ADD CONSTRAINT bounces_reply_ai_event_id_fkey
     FOREIGN KEY (reply_ai_event_id) REFERENCES reply_ai_events(id) ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- Deterministic DSN processing ledger for reply mailboxes. The unique key makes
+-- repeated scans and IMAP retries idempotent; the row also powers the per-mailbox
+-- processing history. No DSN body is stored.
+CREATE TABLE reply_bounce_events (
+    id                     BIGSERIAL PRIMARY KEY,
+    reply_mailbox_id       INTEGER NOT NULL REFERENCES reply_mailboxes(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    message_key            TEXT NOT NULL,
+    recipient              TEXT NOT NULL DEFAULT '',
+    sender                 TEXT NOT NULL DEFAULT '',
+    subject                TEXT NOT NULL DEFAULT '',
+    report_status          TEXT NOT NULL DEFAULT '',
+    diagnostic             TEXT NOT NULL DEFAULT '',
+    bounce_type            TEXT NOT NULL DEFAULT 'unknown'
+                           CHECK (bounce_type IN ('hard','soft','unknown')),
+    outcome                TEXT NOT NULL DEFAULT 'ignored'
+                           CHECK (outcome IN ('recorded','blocklisted','ignored')),
+    reason_code            TEXT NOT NULL DEFAULT '',
+    campaign_id            INTEGER NULL REFERENCES campaigns(id) ON DELETE SET NULL ON UPDATE CASCADE,
+    customer_id            INTEGER NULL REFERENCES customers(id) ON DELETE SET NULL ON UPDATE CASCADE,
+    pool_contact_id        BIGINT NULL,
+    pool_id                INTEGER NULL,
+    source_allocation_id   BIGINT NULL,
+    source_organization_id BIGINT NULL,
+    action_count           INTEGER NOT NULL DEFAULT 0,
+    action_threshold       INTEGER NOT NULL DEFAULT 0,
+    created_at             TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    processed_at           TIMESTAMP WITH TIME ZONE NULL,
+    UNIQUE (reply_mailbox_id, message_key, recipient)
+);
+CREATE INDEX idx_reply_bounce_events_mailbox ON reply_bounce_events(reply_mailbox_id, created_at DESC);
+CREATE INDEX idx_reply_bounce_events_customer ON reply_bounce_events(customer_id, created_at DESC) WHERE customer_id IS NOT NULL;
 
 -- All user-owned resources receive an explicit tenancy and ownership scope.
 -- organization_id is NULL for a personal workspace.
@@ -1123,8 +1164,10 @@ CREATE TABLE campaign_pool_recipients (
     reply_to_snapshot TEXT NOT NULL DEFAULT '',
     reply_to_source TEXT NOT NULL DEFAULT '',
     campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
-    pool_contact_id BIGINT NOT NULL REFERENCES pool_contacts(id) ON DELETE CASCADE,
-    pool_id INTEGER NOT NULL REFERENCES customer_lists(id) ON DELETE CASCADE,
+    -- Pool recipient snapshots outlive pool contact and pool list deletion.
+    -- Live sends and counts join pool_contacts explicitly.
+    pool_contact_id BIGINT NOT NULL,
+    pool_id INTEGER NOT NULL,
     allocation_id BIGINT REFERENCES org_pool_allocations(id) ON DELETE SET NULL,
     organization_id BIGINT REFERENCES organizations(id) ON DELETE SET NULL,
     reply_mailbox_id INTEGER REFERENCES reply_mailboxes(id) ON DELETE SET NULL,
@@ -1246,15 +1289,20 @@ CREATE INDEX idx_audit_events_request ON audit_events(request_id) WHERE request_
 -- the UI and another one to the sender.
 --
 -- Rules, applied to both relations:
---   * a customer snapshot row counts only while the customer still belongs to
---     the campaign's owner in the same workspace (a moved or transfer-pending
---     customer will never be sent to),
+--   * while a campaign can still send, a snapshot row counts only while its
+--     customer/pool contact still exists and belongs to the campaign's
+--     workspace; a moved, deleted or transfer-pending recipient will never be
+--     sent to,
+--   * a finished or cancelled campaign counts every retained snapshot row, so
+--     deleting customers or lists cannot shrink its historical planned, sent
+--     or failed counts,
 --   * a pool snapshot row counts only while it still belongs to the campaign's
 --     organization, except for platform-level 'all_organizations' campaigns
 --     whose pool rows carry the target organization of each contact,
---   * unsent_count applies the persisted to_send/sent fallback only when the
---     campaign has no valid snapshot rows at all, which is the state of a draft
---     that has not been expanded yet.
+--   * unsent_count applies the persisted planned_total/to_send/sent fallback
+--     only when the campaign has no snapshot rows at all, which is the state of
+--     a draft that has not been expanded yet or a campaign whose old snapshot
+--     was deleted before v6.72.0.
 DROP VIEW IF EXISTS campaign_send_counts CASCADE;
 CREATE TABLE campaign_send_errors (
     id BIGSERIAL PRIMARY KEY,
@@ -1358,7 +1406,7 @@ SELECT
     CASE
         WHEN COALESCE(cu.total, 0) + COALESCE(po.total, 0) > 0
             THEN COALESCE(cu.unsent, 0) + COALESCE(po.unsent, 0)
-        ELSE GREATEST(c.to_send - c.sent, 0)
+        ELSE GREATEST(GREATEST(c.planned_total, c.to_send, c.sent) - c.sent, 0)
     END AS unsent_count,
     (COALESCE(cu.total, 0) + COALESCE(po.total, 0)) > 0 AS has_snapshot
 FROM campaigns c
@@ -1369,11 +1417,17 @@ LEFT JOIN LATERAL (
         COUNT(*) FILTER (WHERE cr.status = 'queued') AS queued,
         COUNT(*) FILTER (WHERE cr.status = ANY('{pending,queued,deferred}'::campaign_recipient_status[])) AS unsent
     FROM campaign_recipients cr
-    JOIN customers s ON s.id = cr.customer_id
     WHERE cr.campaign_id = c.id
-        AND s.organization_id IS NOT DISTINCT FROM c.organization_id
-        AND s.owner_user_id = c.owner_user_id
-        AND s.transfer_pending_at IS NULL
+        AND (
+            c.status = ANY('{finished,cancelled}'::campaign_status[])
+            OR EXISTS (
+                SELECT 1 FROM customers s
+                WHERE s.id = cr.customer_id
+                    AND s.organization_id IS NOT DISTINCT FROM c.organization_id
+                    AND s.owner_user_id = c.owner_user_id
+                    AND s.transfer_pending_at IS NULL
+            )
+        )
 ) cu ON TRUE
 LEFT JOIN LATERAL (
     SELECT
@@ -1384,6 +1438,14 @@ LEFT JOIN LATERAL (
     FROM campaign_pool_recipients cpr
     WHERE cpr.campaign_id = c.id
         AND (c.pool_scope = 'all_organizations' OR cpr.organization_id IS NOT DISTINCT FROM c.organization_id)
+        AND (
+            c.status = ANY('{finished,cancelled}'::campaign_status[])
+            OR (
+                EXISTS (SELECT 1 FROM pool_contacts pc WHERE pc.id = cpr.pool_contact_id)
+                AND EXISTS (SELECT 1 FROM customer_lists pl
+                    WHERE pl.id = cpr.pool_id AND pl.status = 'active' AND pl.transfer_pending_at IS NULL)
+            )
+        )
 ) po ON TRUE;
 
 -- Unified, deduplicated unsubscribe funnel. A click never mutates subscriptions.
@@ -1432,9 +1494,10 @@ FROM campaign_unsubscriptions u FULL OUTER JOIN clicks cl
 -- Recipient delivery states for reporting; never derive people from error attempts.
 CREATE OR REPLACE VIEW campaign_delivery_counts AS
 SELECT c.id AS campaign_id,
-    CASE WHEN r.total > 0 THEN r.total ELSE GREATEST(c.to_send, c.sent) END AS delivery_total,
+    CASE WHEN r.total > 0 THEN r.total ELSE GREATEST(c.planned_total, c.to_send, c.sent) END AS delivery_total,
     CASE WHEN r.total > 0 THEN r.sent ELSE c.sent END AS delivery_sent,
-    CASE WHEN r.total > 0 THEN r.pending ELSE GREATEST(c.to_send - c.sent, 0) END AS delivery_pending,
+    CASE WHEN r.total > 0 THEN r.pending
+        ELSE GREATEST(GREATEST(c.planned_total, c.to_send, c.sent) - c.sent, 0) END AS delivery_pending,
     r.unavailable AS delivery_unavailable
 FROM campaigns c
 CROSS JOIN LATERAL (
@@ -1444,13 +1507,28 @@ CROSS JOIN LATERAL (
         COUNT(*) FILTER (WHERE status IN ('failed', 'cancelled'))::INT AS unavailable
     FROM (
         SELECT cr.status FROM campaign_recipients cr
-        JOIN customers cu ON cu.id = cr.customer_id
         WHERE cr.campaign_id = c.id
-            AND cu.organization_id IS NOT DISTINCT FROM c.organization_id
-            AND cu.owner_user_id = c.owner_user_id AND cu.transfer_pending_at IS NULL
+            AND (
+                c.status = ANY('{finished,cancelled}'::campaign_status[])
+                OR EXISTS (
+                    SELECT 1 FROM customers cu
+                    WHERE cu.id = cr.customer_id
+                        AND cu.organization_id IS NOT DISTINCT FROM c.organization_id
+                        AND cu.owner_user_id = c.owner_user_id
+                        AND cu.transfer_pending_at IS NULL
+                )
+            )
         UNION ALL
         SELECT pr.status FROM campaign_pool_recipients pr WHERE pr.campaign_id = c.id
             AND (c.pool_scope = 'all_organizations' OR pr.organization_id IS NOT DISTINCT FROM c.organization_id)
+            AND (
+                c.status = ANY('{finished,cancelled}'::campaign_status[])
+                OR (
+                    EXISTS (SELECT 1 FROM pool_contacts pc WHERE pc.id = pr.pool_contact_id)
+                    AND EXISTS (SELECT 1 FROM customer_lists pl
+                        WHERE pl.id = pr.pool_id AND pl.status = 'active' AND pl.transfer_pending_at IS NULL)
+                )
+            )
     ) recipients
 ) r;
 

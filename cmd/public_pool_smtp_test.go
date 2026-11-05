@@ -11,12 +11,16 @@ import (
 	"github.com/knadh/listmonk/internal/auth"
 	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
+	null "gopkg.in/volatiletech/null.v6"
 )
 
 func TestPublicPoolSMTPOrganizationsCoverAllSelectedPools(t *testing.T) {
 	a := newOrgPoolAllocationTestApp(t)
 	a.queries = prepareQueries(readTestQueries(t), a.db, koanf.New("."))
 	seedOrgPoolAllocationFixtures(t, a.db)
+	if _, err := a.db.Exec(`UPDATE users SET status='enabled'`); err != nil {
+		t.Fatal(err)
+	}
 	exec := func(query string, args ...any) {
 		t.Helper()
 		if _, err := a.db.Exec(query, args...); err != nil {
@@ -52,11 +56,17 @@ func TestPublicPoolSMTPOrganizationsCoverAllSelectedPools(t *testing.T) {
 		exec(`INSERT INTO pool_members(pool_id,contact_id) VALUES($1,$2)`, pair[0], contact)
 		exec(`INSERT INTO org_pool_allocation_members(allocation_id,contact_id) VALUES($1,$2)`, pair[1], contact)
 	}
+	senderPool := 0
 	for _, org := range []int{orgPoolAllocationTestHomeOrgID, orgPoolAllocationTestOtherOrgID} {
 		pool := id(`INSERT INTO organization_smtp_pools(organization_id,name) VALUES($1,'Sender pool') RETURNING id`, org)
+		if org == orgPoolAllocationTestHomeOrgID {
+			senderPool = pool
+		}
 		exec(`INSERT INTO user_smtp_servers(uuid,organization_id,smtp_pool_id,from_email)
             VALUES(gen_random_uuid(),$1,$2,'organization@example.invalid')`, org, pool)
 	}
+	exec(`UPDATE campaigns SET organization_id=$2,owner_user_id=1,smtp_pool_id=$3 WHERE id=$1`, campaign, orgPoolAllocationTestHomeOrgID, senderPool)
+	state := campaignSendState{PoolScope: models.CampaignPoolScopeAllOrganizations, SMTPSource: "organization", SMTPPoolID: null.IntFrom(senderPool), OrganizationID: null.IntFrom(orgPoolAllocationTestHomeOrgID), OwnerUserID: null.IntFrom(1)}
 	var orgs []int64
 	if err := a.queries.GetCampaignPoolOrgs.Select(&orgs, campaign); err != nil {
 		t.Fatal(err)
@@ -119,11 +129,11 @@ func TestPublicPoolSMTPOrganizationsCoverAllSelectedPools(t *testing.T) {
 	if err := a.core.EnsurePoolCampaignRecipients(campaign); err != nil {
 		t.Fatal(err)
 	}
-	rows, err := s.nextPoolCustomers(campaign, campaignSendState{PoolScope: models.CampaignPoolScopeAllOrganizations, SMTPSource: "organization"}, 3)
+	rows, err := s.nextPoolCustomers(campaign, state, 3)
 	if err != nil {
 		t.Fatal(err)
 	}
-	more, err := s.nextPoolCustomers(campaign, campaignSendState{PoolScope: models.CampaignPoolScopeAllOrganizations, SMTPSource: "organization"}, 3)
+	more, err := s.nextPoolCustomers(campaign, state, 3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,6 +141,10 @@ func TestPublicPoolSMTPOrganizationsCoverAllSelectedPools(t *testing.T) {
 	gotOrgs := make(map[int64]bool)
 	for _, row := range rows {
 		gotOrgs[row.PoolOrganizationID] = true
+		var belongs bool
+		if err := a.db.Get(&belongs, `SELECT EXISTS(SELECT 1 FROM user_smtp_servers WHERE uuid=$1 AND smtp_pool_id=$2)`, row.PoolSenderSMTPUUID, senderPool); err != nil || !belongs {
+			t.Fatalf("delivery used a recipient organization's SMTP instead of the selected pool: %+v %v", row, err)
+		}
 		if row.PoolSenderUserID != 0 || row.PoolSenderSMTPUUID == "" {
 			t.Fatalf("organization SMTP assignment is invalid: %+v", row)
 		}
@@ -138,14 +152,40 @@ func TestPublicPoolSMTPOrganizationsCoverAllSelectedPools(t *testing.T) {
 	if len(rows) != 3 || len(gotOrgs) != 2 {
 		t.Fatalf("allocator skipped a selected pool: recipients=%d organizations=%v", len(rows), gotOrgs)
 	}
+	exec(`INSERT INTO user_smtp_servers(uuid,user_id,from_email,daily_limit) VALUES(gen_random_uuid(),1,'owner@example.invalid',12)`)
+	exec(`UPDATE campaigns SET smtp_source='personal',smtp_pool_id=NULL WHERE id=$1`, campaign)
+	exec(`UPDATE campaign_pool_recipients SET status='pending' WHERE campaign_id=$1`, campaign)
+	personalState := state
+	personalState.SMTPSource = "personal"
+	personalState.SMTPPoolID = null.Int{}
+	for i := 0; i < 3; i++ {
+		personalRows, err := s.nextPoolCustomers(campaign, personalState, 1)
+		if err != nil || len(personalRows) != 1 || personalRows[0].PoolSenderUserID != 1 || personalRows[0].PoolSenderFrom != "owner@example.invalid" {
+			t.Fatalf("public-pool delivery did not use campaign owner's SMTP: %+v %v", personalRows, err)
+		}
+	}
+	var remaining int
+	if err := a.queries.GetCampaignPoolSMTPRemaining.Get(&remaining, campaign, currentLocalDate()); err != nil || remaining != 12 {
+		t.Fatalf("owner SMTP quota multiplied by target organization count: remaining=%d err=%v", remaining, err)
+	}
+	exec(`UPDATE campaigns SET smtp_source='organization',smtp_pool_id=$2 WHERE id=$1`, campaign, senderPool)
 	// A selected retry run must not drain other organizations' pending rows.
 	exec(`UPDATE campaign_pool_recipients SET status='pending',retry_selected=false WHERE campaign_id=$1`, campaign)
 	chosen := rows[0].PoolContactID
 	exec(`UPDATE campaign_pool_recipients SET retry_selected=true WHERE campaign_id=$1 AND pool_contact_id=$2`, campaign, chosen)
 	exec(`UPDATE campaigns SET retry_mode=true WHERE id=$1`, campaign)
-	retryRows, err := s.nextPoolCustomers(campaign, campaignSendState{PoolScope: models.CampaignPoolScopeAllOrganizations, SMTPSource: "organization"}, 3)
+	retryRows, err := s.nextPoolCustomers(campaign, state, 3)
 	if err != nil || len(retryRows) != 1 || retryRows[0].PoolContactID != chosen {
 		t.Fatalf("all-organization retry claimed unselected recipients: %+v %v", retryRows, err)
+	}
+	exec(`UPDATE campaigns SET smtp_source='personal',smtp_pool_id=NULL,status='running' WHERE id=$1`, campaign)
+	exec(`UPDATE campaign_pool_recipients SET status='queued' WHERE campaign_id=$1`, campaign)
+	if n, err := a.pauseUserRunningCampaigns(1); err != nil || n != 1 {
+		t.Fatalf("public-pool owner SMTP removal did not pause campaign: n=%d err=%v", n, err)
+	}
+	var queued int
+	if err := a.db.Get(&queued, `SELECT COUNT(*) FROM campaign_pool_recipients WHERE campaign_id=$1 AND status='queued'`, campaign); err != nil || queued != 0 {
+		t.Fatalf("SMTP removal left public recipients queued: count=%d err=%v", queued, err)
 	}
 }
 
@@ -183,7 +223,7 @@ func TestPublicPoolSMTPOverviewRequiresPermissionToExpandSavedAudience(t *testin
 			if tc.permitted {
 				actor.PermissionsMap = map[string]struct{}{auth.PermCampaignsGet: {}, auth.PermMailboxesUse: {}, auth.PermCampaignsPublicPoolSend: {}}
 			}
-			req := httptest.NewRequest(http.MethodGet, "/api/campaigns/1/smtp-overview?source=organization&"+tc.query, nil)
+			req := httptest.NewRequest(http.MethodGet, "/api/campaigns/1/smtp-overview?source=personal&"+tc.query, nil)
 			req.Header.Set(workspaceHeader, strconv.Itoa(orgPoolAllocationTestHomeOrgID))
 			ctx := echo.New().NewContext(req, httptest.NewRecorder())
 			ctx.Set(auth.UserHTTPCtxKey, actor)

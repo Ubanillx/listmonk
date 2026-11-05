@@ -125,18 +125,23 @@ the timeout diagnostic.
 
 `POST /api/profile/reply-mailboxes` and
 `PUT /api/profile/reply-mailboxes/{id}` require `mailboxes:manage` and the
-mailbox owner's active workspace. With `ai_enabled: false` (the default), only
-`email` is required; `name` and `is_default` are optional. Saving makes the
-address available for campaign Reply-To selection without a connection test.
-No receiving credentials are required or used for this mode.
+mailbox owner's active workspace. With `ai_enabled: false` and
+`bounce_enabled: false` (the defaults), only `email` is required; `name` and
+`is_default` are optional. Saving makes the address available for campaign
+Reply-To selection without a connection test. No receiving credentials are
+required or used for this mode.
 
-With `ai_enabled: true`, creation requires `password` (or a client authorization
-code). The receiving fields are `username`, `imap_host`, `imap_port`,
-`imap_tls` and `folder`. On update an omitted/empty password retains the saved
-password; enabling AI without any saved or replacement password returns 400.
-Connection changes clear verification. Disabling AI preserves the saved
-receiving configuration and makes the ordinary address usable again; disabled
-and retained lifecycle states are not silently re-enabled by saving.
+With `ai_enabled: true` or `bounce_enabled: true`, creation requires `password`
+(or a client authorization code). The receiving fields are `username`,
+`imap_host`, `imap_port`, `imap_tls` and `folder`. On update an omitted/empty
+password retains the saved password; enabling either consumer without any saved
+or replacement password returns 400. Connection changes clear verification.
+Disabling both preserves the saved receiving configuration and makes the
+ordinary address usable again; disabled and retained lifecycle states are not
+silently re-enabled by saving. Bounce processing additionally requires the
+global `bounce.enabled` switch and uses `bounce.actions.hard`; only hard
+delivery reports are eligible, and this path only applies `blocklist` (it does
+not execute `delete` or `unsubscribe`).
 
 Responses include `has_password` but never the password. Connection testing is
 `POST /api/profile/reply-mailboxes/test` with only `{"id": 12}`. Save first:
@@ -145,9 +150,21 @@ on the server, ignore draft connection fields, enforce the existing owner and
 workspace boundary (404 for another owner's/workspace's mailbox), and return
 `{"data": true}` on success. A concurrent configuration change returns 409
 instead of verifying the old configuration. AI scanning requires both global
-classification and per-mailbox opt-in plus a verified connection. A successful
+classification and per-mailbox opt-in plus a verified connection; bounce
+scanning requires the global bounce switch and the mailbox opt-in. A successful
 connection test preserves disabled and retained lifecycle states; use the
 explicit enable endpoint to resume a disabled mailbox.
+
+`POST /api/profile/reply-mailboxes/{id}/inspect-latest` is a read-only
+diagnostic: it fetches the newest message with `BODY.PEEK`, reports whether it is
+a delivery report, and never advances the cursor, writes a ledger row, deletes or
+marks the message read. `GET /api/profile/reply-mailboxes/{id}/bounce-events?page=1`
+returns the safe processing history (newest first, 20 per page). Both require
+`mailboxes:manage` and allow the owner, an organization manager of the mailbox's
+organization, or a platform administrator; everyone else receives 404. Failed
+recipients and addresses embedded in the diagnostic/subject/sender are masked
+unless the caller has `customers:sensitive_read` (platform administrators are
+never masked).
 
 
 ### Reply mailbox delivery and receiving boundaries (v6.57.0)

@@ -59,6 +59,17 @@
     }
   }
 
+  .campaign-sender-controls {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+
+    .control,
+    .select {
+      min-width: 0;
+      max-width: 100%;
+    }
+  }
+
   .field {
     margin-bottom: var(--lm-space-4);
   }

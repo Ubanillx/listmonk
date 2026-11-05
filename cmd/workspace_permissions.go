@@ -606,15 +606,30 @@ func (a *App) queryReadableWorkspaceLists(c echo.Context, access models.Workspac
 	if err != nil {
 		return nil, 0, err
 	}
-	// First-class public pools have an independent delivery grant and may be
-	// stored in the platform administrator's workspace. Add only minimal pool
-	// metadata for organizations that can deliver them; contact endpoints apply
-	// the separate masking/detail policy.
+	// Workspace SQL and global functional privileges may expose pool masters.
+	// Replace those rows with the actual department allocations in every list
+	// response, including minimal selectors and users with platform privileges.
+	if access.OrganizationID > 0 {
+		private := make([]models.CustomerList, 0, len(all))
+		for _, row := range all {
+			if row.Type != models.CustomerListTypePool && row.Type != models.CustomerListTypeOrgPoolAllocation {
+				private = append(private, row)
+			}
+		}
+		all = private
+	}
+	// Organization directories depend on actual allocations. The personal
+	// workspace retains its explicitly privileged platform pool directory.
 	if query.group != customerListGroupPrivate &&
 		(query.typ == "" || query.typ == models.CustomerListTypePool || query.typ == models.CustomerListTypeOrgPoolAllocation) {
-		poolLists, poolErr := a.core.QueryAuthorizedPoolLists(access)
-		if canManagePoolAllocationsAcrossOrganizations(auth.GetUser(c)) {
+		var poolLists []models.CustomerList
+		var poolErr error
+		if access.OrganizationID > 0 {
+			poolLists, poolErr = a.core.QueryAllocatedPoolLists(access.OrganizationID, query.status)
+		} else if canManagePoolAllocationsAcrossOrganizations(auth.GetUser(c)) {
 			poolLists, poolErr = a.core.QueryAuthorizedPoolLists(models.WorkspaceAccess{Workspace: models.Workspace{PlatformAdmin: true}})
+		} else {
+			poolLists, poolErr = a.core.QueryAuthorizedPoolLists(access)
 		}
 		if poolErr != nil {
 			return nil, 0, poolErr
@@ -635,7 +650,7 @@ func (a *App) queryReadableWorkspaceLists(c echo.Context, access models.Workspac
 		// list metadata is added; contact details stay behind the separate
 		// pool-contact policy, and the permission is re-checked when the
 		// campaign is created, updated, scheduled or started.
-		if permUser := auth.GetUser(c); permUser.HasPerm(auth.PermCampaignsPublicPoolSend) || canManagePoolMaster(permUser) || canManagePoolDelivery(permUser) || canManagePoolAllocationsAcrossOrganizations(permUser) {
+		if permUser := auth.GetUser(c); access.OrganizationID == 0 && (permUser.HasPerm(auth.PermCampaignsPublicPoolSend) || canManagePoolMaster(permUser) || canManagePoolDelivery(permUser) || canManagePoolAllocationsAcrossOrganizations(permUser)) {
 			platformPools, err := a.core.QueryPlatformPublicPoolLists()
 			if err != nil {
 				return nil, 0, err

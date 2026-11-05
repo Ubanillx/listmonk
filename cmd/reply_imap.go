@@ -66,6 +66,39 @@ type replyIMAPConsumer struct {
 	advance         func(uint32) error
 }
 
+// fetchLatestReplyIMAPMessage reads the newest message in the selected folder
+// without advancing the cursor, marking it read or deleting it. It backs the
+// read-only "inspect latest message" diagnostic.
+func fetchLatestReplyIMAPMessage(source replyAIMailboxSource, dialer *replyAIDialer) ([]byte, bool, error) {
+	client, status, err := connectReplyIMAP(source, dialer)
+	if err != nil {
+		return nil, false, err
+	}
+	defer client.Terminate()
+	if status.Messages == 0 {
+		return nil, true, nil
+	}
+	seq := new(imap.SeqSet)
+	seq.AddNum(status.Messages)
+	section := &imap.BodySectionName{Peek: true, Partial: []int{0, replyAIMaxMessageBytes + 1}}
+	messages := make(chan *imap.Message, 1)
+	if err := client.Fetch(seq, []imap.FetchItem{section.FetchItem()}, messages); err != nil {
+		return nil, false, err
+	}
+	msg := <-messages
+	if msg == nil || msg.GetBody(section) == nil {
+		return nil, false, fmt.Errorf("latest message body missing")
+	}
+	raw, err := io.ReadAll(io.LimitReader(msg.GetBody(section), replyAIMaxMessageBytes+1))
+	if err != nil {
+		return nil, false, err
+	}
+	if len(raw) > replyAIMaxMessageBytes {
+		return nil, false, fmt.Errorf("latest message exceeds the 5 MiB limit")
+	}
+	return raw, false, nil
+}
+
 func scanReplyIMAP(source replyAIMailboxSource, dialer *replyAIDialer, consumer replyIMAPConsumer) error {
 	client, mailbox, err := connectReplyIMAP(source, dialer)
 	if err != nil {

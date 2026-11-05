@@ -12,9 +12,15 @@ func (c *Core) GetCampaignDeliveryOverview(access models.WorkspaceAccess, id int
 		return out, err
 	}
 	err := c.db.Get(&out, `SELECT c.id AS campaign_id,c.status,c.send_errors,
-		CASE WHEN COALESCE(sc.has_snapshot,false) THEN sc.total_count ELSE c.to_send END AS planned,
-		CASE WHEN COALESCE(sc.has_snapshot,false) THEN sc.sent_count ELSE c.sent END AS sent,
-		COALESCE(sc.unsent_count,0) AS unsent
+		CASE WHEN COALESCE(sc.has_snapshot,false)
+			THEN GREATEST(sc.total_count, c.planned_total)
+			ELSE GREATEST(c.planned_total, c.to_send, c.sent) END AS planned,
+		GREATEST(COALESCE(sc.sent_count,0), c.sent) AS sent,
+		CASE WHEN c.status = ANY('{finished,cancelled}'::campaign_status[])
+			THEN GREATEST(GREATEST(sc.total_count, c.planned_total, c.to_send, c.sent)
+				- GREATEST(COALESCE(sc.sent_count,0), c.sent), 0)
+			WHEN COALESCE(sc.has_snapshot,false) THEN COALESCE(sc.unsent_count,0)
+			ELSE GREATEST(GREATEST(c.planned_total, c.to_send, c.sent) - c.sent, 0) END AS unsent
 		FROM campaigns c LEFT JOIN campaign_send_counts sc ON sc.campaign_id=c.id
 		WHERE c.id=$1 AND c.transfer_pending_at IS NULL`, id)
 	if err != nil {
@@ -33,14 +39,19 @@ func (c *Core) GetCampaignDeliveryOverview(access models.WorkspaceAccess, id int
 		AND e.campaign_organization_id IS NOT DISTINCT FROM c.organization_id
 	), live_private AS (
 		SELECT cr.customer_id,cr.status FROM campaign_recipients cr JOIN campaigns c ON c.id=cr.campaign_id
-		JOIN customers cu ON cu.id=cr.customer_id AND cu.organization_id IS NOT DISTINCT FROM c.organization_id
+		LEFT JOIN customers cu ON cu.id=cr.customer_id AND cu.organization_id IS NOT DISTINCT FROM c.organization_id
 			AND cu.owner_user_id=c.owner_user_id AND cu.transfer_pending_at IS NULL
 		WHERE cr.campaign_id=$1 AND cr.status IN ('pending','queued','deferred','failed')
+			AND (c.status = ANY('{finished,cancelled}'::campaign_status[]) OR cu.id IS NOT NULL)
 	), live_pool AS (
 		SELECT cpr.pool_contact_id,cpr.organization_id,cpr.status FROM campaign_pool_recipients cpr
 		JOIN campaigns c ON c.id=cpr.campaign_id
 		WHERE cpr.campaign_id=$1 AND cpr.status IN ('pending','queued','deferred','failed')
 		AND (c.pool_scope='all_organizations' OR cpr.organization_id IS NOT DISTINCT FROM c.organization_id)
+		AND (c.status = ANY('{finished,cancelled}'::campaign_status[])
+			OR (EXISTS(SELECT 1 FROM pool_contacts pc WHERE pc.id=cpr.pool_contact_id)
+				AND EXISTS(SELECT 1 FROM customer_lists pl
+					WHERE pl.id=cpr.pool_id AND pl.status='active' AND pl.transfer_pending_at IS NULL)))
 	)
 	SELECT (SELECT COUNT(*)::INT FROM campaign_recipients WHERE campaign_id=$1) AS private_count,
 		(SELECT COUNT(*)::INT FROM campaign_pool_recipients WHERE campaign_id=$1) AS pool_count,
@@ -53,6 +64,21 @@ func (c *Core) GetCampaignDeliveryOverview(access models.WorkspaceAccess, id int
 				AND (e.recipient_organization_id=0 OR p.organization_id=e.recipient_organization_id)))) AS failed_count`, id)
 	if err != nil {
 		return out, workspaceQueryError("counting failed campaign recipients", err)
+	}
+	// A campaign whose snapshot rows were deleted before v6.72.0 has no live
+	// recipient state left. The immutable error stream is then the only record
+	// of failed customers; never let it exceed the historical unsent count.
+	if counts.Private == 0 && counts.Pool == 0 &&
+		(out.Status == models.CampaignStatusFinished || out.Status == models.CampaignStatusCancelled) {
+		var historical int
+		if err := c.db.Get(&historical, `SELECT COUNT(DISTINCT (e.recipient_type,e.recipient_id))::INT
+			FROM campaign_send_errors e JOIN campaigns c ON c.id=e.campaign_id
+			WHERE e.campaign_id=$1
+				AND e.campaign_owner_user_id IS NOT DISTINCT FROM c.owner_user_id
+				AND e.campaign_organization_id IS NOT DISTINCT FROM c.organization_id`, id); err != nil {
+			return out, workspaceQueryError("counting historical campaign failures", err)
+		}
+		counts.Failed = min(historical, out.Unsent)
 	}
 	out.Failed = counts.Failed
 	out.Waiting = max(0, out.Unsent-max(0, out.Failed-counts.Exhausted))

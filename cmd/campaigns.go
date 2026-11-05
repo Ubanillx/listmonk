@@ -689,8 +689,7 @@ func (a *App) UpdateCampaignStatus(c echo.Context) error {
 		}
 	}
 	if (req.Status == models.CampaignStatusScheduled || req.Status == models.CampaignStatusRunning) &&
-		email.IsMessengerName(current.Messenger) &&
-		current.PoolScope != models.CampaignPoolScopeAllOrganizations {
+		email.IsMessengerName(current.Messenger) {
 		if !current.OwnerUserID.Valid || current.OwnerUserID.Int < 1 {
 			return echo.NewHTTPError(http.StatusConflict, "campaign owner has no personal SMTP configured")
 		}

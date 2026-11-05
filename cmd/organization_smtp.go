@@ -114,7 +114,7 @@ func (a *App) GetCampaignSMTPOverview(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid SMTP source")
 	}
 	poolID := 0
-	if source == "organization" && camp.PoolScope != models.CampaignPoolScopeAllOrganizations && c.QueryParam("pool_scope") != models.CampaignPoolScopeAllOrganizations {
+	if source == "organization" {
 		selection := models.Campaign{SMTPSource: source, SMTPPoolID: camp.SMTPPoolID}
 		if value := c.QueryParam("smtp_pool_id"); value != "" {
 			requested, err := strconv.Atoi(value)
@@ -131,7 +131,6 @@ func (a *App) GetCampaignSMTPOverview(c echo.Context) error {
 		}
 	}
 	rows := make([]campaignSMTPOverview, 0)
-	poolIDs := make([]int64, 0)
 	allOrgs := camp.PoolScope == models.CampaignPoolScopeAllOrganizations
 	audienceProvided := c.QueryParams().Has("customer_list_ids")
 	if camp.ID == 0 && c.QueryParam("pool_scope") == models.CampaignPoolScopeAllOrganizations {
@@ -166,43 +165,25 @@ func (a *App) GetCampaignSMTPOverview(c echo.Context) error {
 				return auth.ErrPermDenied
 			}
 		}
-		regular, audiences, err := a.splitCampaignAudienceIDs(access, listIDs, true)
+		regular, _, err := a.splitCampaignAudienceIDs(access, listIDs, true)
 		if err != nil {
 			return err
 		}
 		if len(regular) > 0 {
 			return echo.NewHTTPError(http.StatusBadRequest, "an all-organization public pool campaign accepts public pool audiences only")
 		}
-		for _, audience := range audiences {
-			poolIDs = append(poolIDs, int64(audience.PoolID))
-		}
 	}
-	if allOrgs {
-		err = a.db.Select(&rows, `SELECT DISTINCT s.id, s.name, s.from_email, s.daily_limit,
-			COALESCE(u.sent_count,0) AS sent_today, o.id AS organization_id, o.name AS organization_name
-			FROM organizations o JOIN user_smtp_servers s ON s.enabled AND (
-				($3::TEXT='organization' AND s.organization_id=o.id)
-				OR ($3::TEXT='personal' AND EXISTS (SELECT 1 FROM organization_members om
-					JOIN users usr ON usr.id=om.user_id AND usr.status='enabled'
-					WHERE om.organization_id=o.id AND om.user_id=s.user_id AND om.removed_at IS NULL)))
-			JOIN org_pool_allocations opa ON opa.organization_id=o.id
-			LEFT JOIN user_smtp_daily_usage u ON u.smtp_uuid=s.uuid AND u.usage_date=$2::DATE
-			WHERE o.status='active' AND (($5::BOOLEAN AND opa.pool_id=ANY($4::BIGINT[])) OR (NOT $5::BOOLEAN AND EXISTS (
-				SELECT 1 FROM campaign_customer_lists ccl WHERE ccl.pool_id=opa.pool_id AND ccl.campaign_id=$1))
-			)
-			ORDER BY s.id`, camp.ID, currentLocalDate(), source, pq.Int64Array(poolIDs), audienceProvided)
-	} else {
-		if source == "organization" && orgID < 1 {
-			return c.JSON(http.StatusOK, okResp{rows})
-		}
-		key := userID
-		if source == "organization" {
-			key = -poolID
-		}
-		err = a.db.Select(&rows, `SELECT s.id, s.name, s.from_email, s.daily_limit, COALESCE(u.sent_count,0) AS sent_today
-			FROM user_smtp_servers s LEFT JOIN user_smtp_daily_usage u ON u.smtp_uuid=s.uuid AND u.usage_date=$2::DATE
-			WHERE (s.user_id=$1 OR s.smtp_pool_id=-$1) AND s.enabled ORDER BY s.id`, key, currentLocalDate())
+	// Recipient organizations never change the sender owner or selected pool.
+	if source == "organization" && orgID < 1 {
+		return c.JSON(http.StatusOK, okResp{rows})
 	}
+	key := userID
+	if source == "organization" {
+		key = -poolID
+	}
+	err = a.db.Select(&rows, `SELECT s.id, s.name, s.from_email, s.daily_limit, COALESCE(u.sent_count,0) AS sent_today
+		FROM user_smtp_servers s LEFT JOIN user_smtp_daily_usage u ON u.smtp_uuid=s.uuid AND u.usage_date=$2::DATE
+		WHERE (s.user_id=$1 OR s.smtp_pool_id=-$1) AND s.enabled ORDER BY s.id`, key, currentLocalDate())
 	if err != nil {
 		return err
 	}
@@ -216,7 +197,7 @@ func normalizeCampaignSMTPSource(camp *models.Campaign, orgID int) error {
 	if camp.SMTPSource != "personal" && camp.SMTPSource != "organization" {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid SMTP source")
 	}
-	if camp.SMTPSource == "organization" && orgID < 1 && camp.PoolScope != models.CampaignPoolScopeAllOrganizations {
+	if camp.SMTPSource == "organization" && orgID < 1 {
 		return echo.NewHTTPError(http.StatusBadRequest, "organization SMTP requires an organization campaign")
 	}
 	return nil

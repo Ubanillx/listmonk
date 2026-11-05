@@ -379,9 +379,10 @@ func main() {
 	}
 	app.replyScanInterval = interval
 	go runReplyForwarder(app)
-	if app.replyAI.Enabled() {
-		go runReplyAIProcessor(app)
-	}
+	// The processor also drives deterministic reply-mailbox bounce detection,
+	// which is independent of the global AI switch. The per-mailbox query gates
+	// both consumers, so this goroutine can start unconditionally.
+	go runReplyAIProcessor(app)
 
 	// Star the update checker.
 	automationCtx, stopAutomation := context.WithCancel(context.Background())

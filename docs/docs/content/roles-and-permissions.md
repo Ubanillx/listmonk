@@ -28,6 +28,13 @@ customer_list-specific grant never exposes a resource in another workspace.
   mutations, or sending rights. Customer and single-customer exports are direct
   downloads; `customers:export` and the same workspace, ownership, and masking
   rules apply.
+- Public-pool lists in a department workspace require an actual allocation to
+  that department. Delivery grants alone do not authorize browsing. Highest
+  administrators and platform pool permissions do not expand this workspace's
+  list, metadata, contact, count or export scope. Detached allocations are
+  excluded; disabled but still bound allocations remain readable. Platform
+  browsing in personal space and dedicated cross-organization allocation
+  management use their own explicit permissions.
 - Templates and campaigns can be private, organization-visible, or global.
   Members can read organization-visible resources in their active organization;
   global resources remain readable across workspaces. Sending, direct exports, and

@@ -149,7 +149,7 @@ func (a *App) RetryCampaignFailedRecipients(c echo.Context) error {
 	if err := requireCampaignSendOwnership(c, camp); err != nil {
 		return err
 	}
-	if email.IsMessengerName(camp.Messenger) && camp.PoolScope != models.CampaignPoolScopeAllOrganizations {
+	if email.IsMessengerName(camp.Messenger) {
 		if err := a.requireCampaignSMTPAvailable(camp); err != nil {
 			return err
 		}

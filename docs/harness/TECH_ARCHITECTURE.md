@@ -1,5 +1,9 @@
 # 技术架构
 
+## 部门公海目录（2026-11-05）
+
+`internal/core/pool_workspace_lists.go` 以实际未解除分配构造当前部门的目录/详情及客户数；`cmd/workspace_permissions.go::queryReadableWorkspaceLists` 在分页前替换宽范围公海结果，minimal 与完整响应一致。`cmd/pools.go` 检查实际绑定，`internal/core/pools.go` 将组织空间的单池/汇总联系人与筛选候选限制在同一部门，即使角色有全平台权限也不扩展；个人空间管理与专用分配工作台独立。回归和界面证据见 `designs/2026-11-05-pool-workspace-permissions/README.md`。
+
 ## 权威入口
 
 系统架构、目录职责、技术栈、权限控制算法、构建测试和部署脚本的唯一详细说明是 [`docs/ARCHITECTURE.md`](../ARCHITECTURE.md)。修改模块边界或运行命令时，先更新该文件，再在本台账记录状态或技术债。
@@ -32,15 +36,16 @@ BestEDM 报表由 `internal/bestedm` 适配公开协议，`cmd/delivery_provider
 - `organizations:platform_manage` 只用于平台组织管理路由；对活跃组织的成员/邀请/回复转发等管理调用使用显式路径白名单，避免平台操作员被当成普通资源管理员。平台创建组织和批量导入成员使用显式组织 ID/平台路由，不切换工作区，并在 Core 事务内一次性提交组织与成员关系。`users:tokens` 独立控制集成令牌 API。
 - `internal/migrations/v6.36.0.go` 只为历史宽权限用户角色补齐新动作，迁移必须幂等；撤销动作时由角色数组直接生效。新增后台任务或下载接口必须在执行时重新读取权限和工作区状态。
 - 直接客户导出由 `cmd/customers.go` 执行 `customers:export` 和工作区/所有权/脱敏检查；审计导出由 `cmd/audit.go` 执行 `audit:get` 和相同工作区边界。前端只负责发起下载，不能作为安全边界。
-- `internal/core/workspace_queries.go` 的客户列表查询对活动平台管理员也按当前工作区收敛；`cmd/customers.go` 的客户列表 ID 守卫再次校验活动工作区，客户新建/编辑/普通导入使用当前操作者所有权守卫。`frontend/src/utils/workspace.js` 为客户表单、普通导入、批量操作、活动受众和客户列表导入入口复用同一显示规则；一级公海列表仍由独立投放/导入授权显式加入。
+- `internal/core/workspace_queries.go` 的客户列表查询对活动平台管理员也按当前工作区收敛；`cmd/customers.go` 的客户列表 ID 守卫再次校验活动工作区，客户新建/编辑/普通导入使用当前操作者所有权守卫。`frontend/src/utils/workspace.js` 为客户表单、普通导入、批量操作、活动受众和客户列表导入入口复用同一显示规则；组织空间的一级公海列表仅由当前组织未解除分配显式加入，个人空间平台管理另行授权。
 
-## 平台级公海活动的发送组件（v6.44.0）
+## 平台级公海活动的发送组件（v6.44.0，2026-11-05 更新）
 
 - 受众解析与快照在 `internal/core/pools.go`：`all_organizations` 活动复用单组织成员判定（`poolRecipientAllOrgMembershipSQL`）并要求目标组织统一回件邮箱可用，`DISTINCT ON (pc.id)` 去重到活动组织顺序中的第一个组织；刷新只改写 `pending`/`deferred` 行。
+- 发件归属与受众独立：概览、校验、分配器和额度均使用活动所有者个人 SMTP 或活动所属组织所选池；全组织范围同样保存池 ID。前端个人空间的组织来源显示切换提示并隐藏邮箱，受众变更保留来源/池/速率。接口及验收见 `cmd/campaign_smtp_scope_test.go`、`cmd/public_pool_smtp_test.go`、`frontend/cypress/e2e/{campaign-smtp-defaults,public-pool-smtp}.cy.js`。
 - 组织顺序（`campaign_pool_org_orders`）与组织 SMTP 游标（`org_pool_smtp_cursors`）是持久化状态，由 `cmd/manager_store.go` 的 `nextPoolCustomers` 在单个事务内维护：生成/清理顺序 → 按组织轮转领取收件人（`FOR UPDATE ... SKIP LOCKED`）→ 在游标行锁下挑选未被额度耗尽的 SMTP → 写回发件快照并推进 `campaigns.pool_next_org_index`。并发 worker/多实例依赖数据库行锁，不依赖进程内状态。
 - 发送侧 `internal/manager` 新增按 SMTP UUID 解析的池路径（`Config.PoolSMTP` + `resolvePoolSMTPMessenger` + `InvalidateAllPoolSMTP`）：缓存键为 UUID、值为单服务器 `email.Emailer`，与个人 SMTP 共用摘除/退休机制：配置变更在 `personalSMTPMut` 下先摘除缓存再执行事务，`retireSMTP` 等待发送读锁排空后并行关闭旧池，保存请求不再排队等待在途投递；`ErrPoolSMTPUnavailable` 让活动严格暂停，普通活动与系统邮件路径不变。
 - 权限：`campaigns:public_pool_send` 同时存在于 `permissions.json`、`internal/auth/models.go` 与三语 i18n；`cmd/campaigns.go` 的 `normalizeCampaignPoolScope` 是唯一作用域闸门，`requireCampaignSendOwnership` 仅对该作用域放行权限持有者。
-- 验证入口：`dev/pools_e2e_verify.ps1 -Mode AllOrg`（自建/自清理夹具，覆盖多组织、多成员 SMTP 轮询、去重、Reply-To 与游标），`internal/core` 的 `TestAllOrgPoolSnapshot*`/`TestValidateAllOrgPool*`，`internal/manager/pool_smtp_test.go`，`internal/migrations/v6.44.0_test.go`。
+- 验证入口：`dev/pools_e2e_verify.ps1 -Mode AllOrg`（自建/自清理夹具，覆盖多收件组织、活动所有者 SMTP 轮询、排除其他成员发件、去重、Reply-To 与游标），`internal/core` 的 `TestAllOrgPoolSnapshot*`/`TestValidateAllOrgPool*`，`internal/manager/pool_smtp_test.go`，`internal/migrations/v6.44.0_test.go`。
 
 ## Jenkins filesystem media persistence
 
@@ -64,7 +69,7 @@ BestEDM 报表由 `internal/bestedm` 适配公开协议，`cmd/delivery_provider
 - 一级公海主数据、一级成员关系、组织二级分配、组织剔除记录、一级投放授权和二级回件邮箱属于独立的领域边界；不得通过复制 `customers` 或现有普通 `customer_lists` 行来实现。
 - 列表/详情/API 层使用安全 DTO；真实邮箱只允许进入服务端活动受众解析、投递快照和回信处理。导出、浏览器响应、日志和审计字段不得携带明文邮箱给非最高管理员。
 - 活动受众关系需要同时记录一级公海来源、二级组织分配和最终回件邮箱解析结果。发送 worker 以联系人内部 ID 去重，并在查询时过滤组织级剔除状态。
-- 公海分配手动移除与回复剔除写入可审计的逻辑状态；一级公海列表查询按调用者显示组织维度标记，最高管理员跨组织可见，组织用户只可见本组织。
+- 公海分配手动移除与回复剔除写入可审计的逻辑状态；一级公海列表查询按调用者显示组织维度标记，组织空间的所有账号只可见本组织，最高管理员在个人空间管理目录可跨组织查看。
 - 公海组织回退邮箱由组织工作区统一维护，不绑定到单个分配；配置需 `mailboxes:manage` 与组织经理/平台组织管理范围。个人邮箱在个人资料维护，选用与发送另需 `mailboxes:use`。内部地址可明文展示，客户地址遵循公海 DTO。启用依历史验证恢复 active 或 pending。
 - 公海投放授权管理者经 `GET /api/pools/:id/management-target` 读取显式目标组织，普通分配管理者限当前组织。本组织普通创建路径先检查已有授权；跨组织创建在明确授权能力下进入单一事务，不依赖目标成员身份、不切换工作区、不配置邮箱。
 - 公海联系人新增统一通过 `POST /api/import/customers`：请求只允许一个一级 `pool` 列表，后端在首个 CSV/XLSX 工作表解析 `customer_code`、`name`、`email`、`allocation_department` 四个字段，额外模板列丢弃；`allocation_department` 必须匹配启用中的 `organizations.name`，未知或已归档组织的行记为无效并跳过写入；合法值才写入 `pool_contacts`，且不触发组织创建。若对应一级公海已有该组织公海分配，导入事务同时写入 `org_pool_allocation_members`；`CreateOrgPoolAllocation` 对先前导入的联系人执行同样的部门回填。该同步分支由 `poolImportMu` 串行化并在事务内按完整规范化记录幂等，编码相同但比较字段不同则写冲突审计。
@@ -77,6 +82,13 @@ BestEDM 报表由 `internal/bestedm` 适配公开协议，`cmd/delivery_provider
 - `cmd/bounce_mailbox.go`：未保存配置检测、按 UUID 复用已保存密码、统一响应包裹；路由沿用 `settings:manage`。
 - `internal/bounce/mailbox/test.go`：30 秒只读 POP 探测与 STLS 连接适配；`preview.go`：递归 MIME / DSN 解析；`pop.go` 后台扫描复用 STLS 适配但保留原处理行为。
 - `frontend/src/views/settings/bounces.vue`：三种连接模式、检测按钮、四步结果与邮件摘要。
+
+## 回信邮箱退信处理（v6.71.0）
+
+- `internal/bounce/mailbox/dsn.go`：严格解析外层 `multipart/report` / `message/delivery-status`，只读取 `Final-Recipient`、`Original-Recipient`、`X-Failed-Recipients`、`Status`、`Diagnostic-Code`，并提取内嵌原始邮件的 `Message-ID` / `X-Listmonk-*`；转发、嵌套、ARF 和正文推断不进入动作。
+- `cmd/reply_ai.go::ingestReplyAIMessage` 在 AI 自动跳过之前分流 DSN；`ingestReplyBounceDSN` 用 `FindReplyAIDelivery` 复核邮箱实际 `sent` 投递，未匹配/歧义/头不一致只写台账。
+- `internal/core/reply_bounce.go::RecordReplyBounce` 在一个事务内重验邮箱、组织、成员、投递、客户和当前 settings 策略，写 `reply_bounce_events`、`bounces`，硬退信按 `bounce.actions.hard` 拉黑私域或写公海组织剔除；`RecordReplyBounceIgnored` 只写台账。IMAP 游标共用 `reply_mailbox_scan_cursors` 的 `ai` consumer。
+- `cmd/reply_mailboxes.go` 增加 `bounce_enabled`、只读 `inspect-latest` 和处理记录接口；前端 `ReplyMailboxSettings.vue` 在同一邮箱卡片内提供两个开关、共用连接和检测/记录。现有 POP 退信邮箱（`internal/bounce/mailbox/pop.go`）不参与本链路。
 
 ## 回信 AI 网关探测（2026-09-10）
 

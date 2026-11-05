@@ -26,7 +26,7 @@
       </div>
     </header>
     <div v-if="isPoolGroup" class="pool-list-toolbar list-search-toolbar" data-cy="pool-list-filters">
-      <form class="pool-list-filters" @submit.prevent="onSearch">
+      <form class="pool-list-filters" :class="{ 'is-organization': workspace.organizationId }" @submit.prevent="onSearch">
         <b-field addons :label="$t('globals.buttons.search')" class="pool-list-search lm-search-field">
           <b-input v-model="queryParams.query" name="query" expanded icon="magnify" ref="query" data-cy="query"
             :placeholder="$t('customer_lists.poolSearchPlaceholder')" :aria-label="$t('globals.buttons.search')" />
@@ -35,7 +35,7 @@
               :aria-label="$t('globals.buttons.search')" />
           </p>
         </b-field>
-        <b-field :label="$t('customer_lists.organizationFilter')">
+        <b-field v-if="!workspace.organizationId" :label="$t('customer_lists.organizationFilter')">
           <b-select v-model="poolFilters.organizationId" expanded :aria-label="$t('customer_lists.organizationFilter')"
             data-cy="pool-list-organization-filter" @input="onPoolFilterChange">
             <option value="">{{ $t('customer_lists.allOrganizations') }}</option>

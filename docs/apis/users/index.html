@@ -2334,18 +2334,18 @@ the timeout diagnostic.</p>
 <h3 id="reply-mailbox-receiving-configuration">Reply mailbox receiving configuration<a class="headerlink" href="#reply-mailbox-receiving-configuration" title="Permanent link">&para;</a></h3>
 <p><code>POST /api/profile/reply-mailboxes</code> and
 <code>PUT /api/profile/reply-mailboxes/{id}</code> require <code>mailboxes:manage</code> and the
-mailbox owner's active workspace. With <code>ai_enabled: false</code> and
-<code>bounce_enabled: false</code> (the defaults), only <code>email</code> is required; <code>name</code> and
+mailbox owner's active workspace. With <code>scan_enabled: false</code> (the default),
+only <code>email</code> is required; <code>name</code> and
 <code>is_default</code> are optional. Saving makes the address available for campaign
 Reply-To selection without a connection test. No receiving credentials are
 required or used for this mode.</p>
-<p>With <code>ai_enabled: true</code> or <code>bounce_enabled: true</code>, creation requires <code>password</code>
+<p>With <code>scan_enabled: true</code>, creation requires <code>password</code>
 (or a client authorization code). The receiving fields are <code>username</code>,
 <code>imap_host</code>, <code>imap_port</code>, <code>imap_tls</code> and <code>folder</code>. On update an omitted/empty
-password retains the saved password; enabling either consumer without any saved
+password retains the saved password; enabling detection without any saved
 or replacement password returns 400. Connection changes clear verification.
-Disabling both preserves the saved receiving configuration and makes the
-ordinary address usable again; disabled and retained lifecycle states are not
+Pausing detection preserves the saved connection and the independent
+<code>ai_enabled</code> / <code>bounce_enabled</code> preferences and keeps the reply address usable; disabled and retained lifecycle states are not
 silently re-enabled by saving. Bounce processing additionally requires the
 global <code>bounce.enabled</code> switch and uses <code>bounce.actions.hard</code>; only hard
 delivery reports are eligible, and this path only applies <code>blocklist</code> (it does
@@ -2356,9 +2356,13 @@ missing IDs or address-only mailboxes return 400. Tests load saved credentials
 on the server, ignore draft connection fields, enforce the existing owner and
 workspace boundary (404 for another owner's/workspace's mailbox), and return
 <code>{"data": true}</code> on success. A concurrent configuration change returns 409
-instead of verifying the old configuration. AI scanning requires both global
-classification and per-mailbox opt-in plus a verified connection; bounce
-scanning requires the global bounce switch and the mailbox opt-in. A successful
+instead of verifying the old configuration. A connection can be saved and tested
+before choosing either processing method. No automatic processing runs until at
+least one method and its global service are enabled. Legacy clients that omit
+<code>scan_enabled</code> infer it from <code>ai_enabled OR bounce_enabled</code>. AI scanning requires both global
+classification and per-mailbox opt-in plus a verified connection and detection
+switch; bounce scanning requires detection, the global bounce switch and the
+mailbox opt-in. The switch is also rechecked before committing AI/bounce actions. A successful
 connection test preserves disabled and retained lifecycle states; use the
 explicit enable endpoint to resume a disabled mailbox.</p>
 <p><code>POST /api/profile/reply-mailboxes/{id}/inspect-latest</code> is a read-only

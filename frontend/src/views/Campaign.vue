@@ -75,7 +75,7 @@
                   <div class="campaign-field-row">
                     <b-field :label="$t('globals.fields.name')">
                       <b-input :maxlength="200" :ref="'focus'" v-model="form.name" name="name" :disabled="!canEdit"
-                        :placeholder="$t('globals.fields.name')" required autofocus />
+                        :placeholder="$t('campaigns.namePlaceholder')" required autofocus />
                     </b-field>
                     <b-field :label="$t('visibility.label')">
                       <b-select v-model="form.visibility" :disabled="!canEdit" expanded data-cy="campaign-visibility">
@@ -87,7 +87,7 @@
                   </div>
                   <b-field :label="$t('campaigns.subject')">
                     <b-input :maxlength="5000" v-model="form.subject" name="subject" :disabled="!canEdit"
-                      :placeholder="$t('campaigns.subject')" required />
+                      :placeholder="$t('campaigns.subjectPlaceholder')" required />
                   </b-field>
                   <div class="campaign-field-row">
                     <b-field :label="$t('campaigns.format')">
@@ -290,10 +290,10 @@
               <summary>{{ $t('campaigns.setupAdvanced') }}</summary>
               <div class="campaign-field-row">
                 <b-field :label="$t('globals.terms.tags')">
-                  <b-taginput v-model="form.tags" name="tags" :disabled="!canEdit" ellipsis icon="tag-outline" :placeholder="$t('globals.terms.tags')" />
+                  <b-taginput v-model="form.tags" name="tags" :disabled="!canEdit" ellipsis icon="tag-outline" :placeholder="$t('globals.fields.tagsPlaceholder')" />
                 </b-field>
                 <b-field :label="$tc('globals.terms.messenger')">
-                  <b-select :placeholder="$tc('globals.terms.messenger')" v-model="form.messenger" name="messenger" :disabled="!canEdit" required expanded>
+                  <b-select :placeholder="$t('campaigns.messengerPlaceholder')" v-model="form.messenger" name="messenger" :disabled="!canEdit" required expanded>
                     <template v-if="emailMessengers.length > 1">
                       <optgroup label="email">
                         <option v-for="m in emailMessengers" :value="m" :key="m">{{ m }}</option>
@@ -452,7 +452,7 @@
           <div class="columns">
             <div class="column is-6">
               <b-field :label="$tc('globals.terms.template')" label-position="on-border">
-                <b-select :placeholder="$tc('globals.terms.template')" v-model="form.archiveTemplateId" name="template"
+                <b-select :placeholder="$t('campaigns.templatePlaceholder')" v-model="form.archiveTemplateId" name="template"
                   :disabled="!canArchive || !form.archive || form.content.contentType === 'visual'" required>
                   <template v-for="t in templates">
                     <option v-if="t.type === 'campaign'" :value="t.id" :key="t.id">

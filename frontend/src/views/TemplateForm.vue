@@ -22,7 +22,7 @@
             <div class="column is-9">
               <b-field :label="$t('globals.fields.name')" label-position="on-border">
                 <b-input :maxlength="200" :ref="'focus'" v-model="form.name" name="name"
-                  :placeholder="$t('globals.fields.name')" :disabled="!canSave" required />
+                  :placeholder="$t('templates.namePlaceholder')" :disabled="!canSave" required />
               </b-field>
             </div>
             <div class="column is-3">
@@ -45,7 +45,7 @@
             <div class="column is-12">
               <b-field :label="$t('templates.subject')" label-position="on-border">
                 <b-input :maxlength="200" :ref="'focus'" v-model="form.subject" name="name"
-                  :placeholder="$t('templates.subject')" required />
+                  :placeholder="$t('templates.subjectPlaceholder')" required />
               </b-field>
             </div>
           </div>

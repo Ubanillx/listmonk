@@ -125,19 +125,19 @@ the timeout diagnostic.
 
 `POST /api/profile/reply-mailboxes` and
 `PUT /api/profile/reply-mailboxes/{id}` require `mailboxes:manage` and the
-mailbox owner's active workspace. With `ai_enabled: false` and
-`bounce_enabled: false` (the defaults), only `email` is required; `name` and
+mailbox owner's active workspace. With `scan_enabled: false` (the default),
+only `email` is required; `name` and
 `is_default` are optional. Saving makes the address available for campaign
 Reply-To selection without a connection test. No receiving credentials are
 required or used for this mode.
 
-With `ai_enabled: true` or `bounce_enabled: true`, creation requires `password`
+With `scan_enabled: true`, creation requires `password`
 (or a client authorization code). The receiving fields are `username`,
 `imap_host`, `imap_port`, `imap_tls` and `folder`. On update an omitted/empty
-password retains the saved password; enabling either consumer without any saved
+password retains the saved password; enabling detection without any saved
 or replacement password returns 400. Connection changes clear verification.
-Disabling both preserves the saved receiving configuration and makes the
-ordinary address usable again; disabled and retained lifecycle states are not
+Pausing detection preserves the saved connection and the independent
+`ai_enabled` / `bounce_enabled` preferences and keeps the reply address usable; disabled and retained lifecycle states are not
 silently re-enabled by saving. Bounce processing additionally requires the
 global `bounce.enabled` switch and uses `bounce.actions.hard`; only hard
 delivery reports are eligible, and this path only applies `blocklist` (it does
@@ -149,9 +149,13 @@ missing IDs or address-only mailboxes return 400. Tests load saved credentials
 on the server, ignore draft connection fields, enforce the existing owner and
 workspace boundary (404 for another owner's/workspace's mailbox), and return
 `{"data": true}` on success. A concurrent configuration change returns 409
-instead of verifying the old configuration. AI scanning requires both global
-classification and per-mailbox opt-in plus a verified connection; bounce
-scanning requires the global bounce switch and the mailbox opt-in. A successful
+instead of verifying the old configuration. A connection can be saved and tested
+before choosing either processing method. No automatic processing runs until at
+least one method and its global service are enabled. Legacy clients that omit
+`scan_enabled` infer it from `ai_enabled OR bounce_enabled`. AI scanning requires both global
+classification and per-mailbox opt-in plus a verified connection and detection
+switch; bounce scanning requires detection, the global bounce switch and the
+mailbox opt-in. The switch is also rechecked before committing AI/bounce actions. A successful
 connection test preserves disabled and retained lifecycle states; use the
 explicit enable endpoint to resume a disabled mailbox.
 

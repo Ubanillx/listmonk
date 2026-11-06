@@ -12,7 +12,7 @@
         </b-field>
 
         <b-field v-if="self.contentType !== 'visual'" :label="$tc('globals.terms.template')" label-position="on-border">
-          <b-select :placeholder="$t('globals.terms.none')" v-model="templateId" name="template" :disabled="disabled">
+          <b-select :placeholder="$t('templates.nonePlaceholder')" v-model="templateId" name="template" :disabled="disabled">
             <template v-for="t in validTemplates">
               <option :value="t.id" :key="t.id">
                 {{ t.name }}
@@ -27,7 +27,7 @@
             {{ $t('campaigns.importVisualTemplate') }}
           </b-button>
           <b-field v-else :label="$tc('globals.terms.template')" label-position="on-border">
-            <b-select :placeholder="$t('globals.terms.none')" v-model="visualTemplateId"
+            <b-select :placeholder="$t('templates.nonePlaceholder')" v-model="visualTemplateId"
               @input="() => isVisualTplDisabled = false" name="template" :disabled="disabled"
               class="copy-visual-template-list">
               <template v-for="t in validTemplates">

@@ -78,7 +78,7 @@ func (c *Core) RecordReplyBounce(input ReplyBounceInput) (ReplyBounceResult, err
 	if mailbox.OrganizationID.Valid {
 		orgID = mailbox.OrganizationID.Int64
 	}
-	if !mailbox.BounceEnabled || mailbox.Status != "active" || !mailbox.VerifiedAt.Valid {
+	if !mailbox.ScanEnabled || !mailbox.BounceEnabled || mailbox.Status != "active" || !mailbox.VerifiedAt.Valid {
 		return c.finishReplyBounceIgnored(tx, input, ReplyAIDelivery{}, "workspace_not_writable")
 	}
 	if int64(input.Delivery.OrganizationID) != orgID {
@@ -323,13 +323,14 @@ type replyBounceMailbox struct {
 	OrganizationID sql.NullInt64 `db:"organization_id"`
 	Email          string        `db:"email"`
 	Status         string        `db:"status"`
+	ScanEnabled    bool          `db:"scan_enabled"`
 	BounceEnabled  bool          `db:"bounce_enabled"`
 	VerifiedAt     sql.NullTime  `db:"verified_at"`
 }
 
 func lockReplyBounceMailbox(tx *sqlx.Tx, id int) (replyBounceMailbox, error) {
 	var mailbox replyBounceMailbox
-	err := tx.Get(&mailbox, `SELECT m.user_id, m.organization_id, m.email, m.status, m.bounce_enabled,
+	err := tx.Get(&mailbox, `SELECT m.user_id, m.organization_id, m.email, m.status, m.scan_enabled, m.bounce_enabled,
 		m.verified_at
 		FROM reply_mailboxes m
 		JOIN users u ON u.id=m.user_id AND u.status='enabled'

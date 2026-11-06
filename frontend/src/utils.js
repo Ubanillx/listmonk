@@ -209,7 +209,8 @@ export default class Utils {
       cancelText: this.i18n.t('globals.buttons.cancel'),
       focusOn: o.focusOn || (o.type ? 'cancel' : 'confirm'),
       onConfirm,
-      onCancel,
+      // An explicit null overrides Buefy's default and throws before closing.
+      onCancel: typeof onCancel === 'function' ? onCancel : undefined,
     });
   };
 
@@ -228,7 +229,7 @@ export default class Utils {
       },
       trapFocus: true,
       onConfirm,
-      onCancel,
+      onCancel: typeof onCancel === 'function' ? onCancel : undefined,
     });
   };
 

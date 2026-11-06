@@ -16,7 +16,7 @@ const (
 	ReplyForwardStatusDisabled = "disabled"
 )
 
-// ReplyMailbox is a dedicated 263 mailbox used as the Reply-To destination
+// ReplyMailbox is a mailbox used as the Reply-To destination
 // for customer replies. IMAP credentials are never returned by API methods.
 type ReplyMailbox struct {
 	Base
@@ -33,6 +33,7 @@ type ReplyMailbox struct {
 	VerifiedAt     *time.Time `db:"verified_at" json:"verified_at"`
 	IsDefault      bool       `db:"is_default" json:"is_default"`
 	AIEnabled      bool       `db:"ai_enabled" json:"ai_enabled"`
+	ScanEnabled    bool       `db:"scan_enabled" json:"scan_enabled"`
 	BounceEnabled  bool       `db:"bounce_enabled" json:"bounce_enabled"`
 	HasPassword    bool       `db:"has_password" json:"has_password"`
 	LastSyncAt     *time.Time `db:"last_sync_at" json:"last_sync_at"`

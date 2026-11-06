@@ -21,7 +21,7 @@
           <h3>{{ $t('allocation.target') }}</h3>
           <b-input v-if="across" v-model="organizationSearch" type="search" icon="magnify"
             :placeholder="$t('pool.searchOrganizations')" :aria-label="$t('pool.searchOrganizations')" />
-          <b-select class="allocation-workbench__mobile-picker" :value="organizationID" expanded
+          <b-select :key="organizationPickerRevision" class="allocation-workbench__mobile-picker" :value="organizationID" expanded
             :aria-label="$t('allocation.target')" :disabled="locked" @input="chooseOrganization">
             <option v-for="org in filteredOrganizations" :key="org.id" :value="Number(org.id)">{{ org.name }}</option>
           </b-select>
@@ -201,6 +201,7 @@ export default {
       organizations: [],
       allocations: [],
       organizationID: 0,
+      organizationPickerRevision: 0,
       organizationSearch: '',
       detail: null,
       deliveryAllowed: false,
@@ -285,6 +286,9 @@ export default {
         confirmText: this.$t('allocation.discard'),
         cancelText: this.$t('globals.buttons.cancel'),
         onConfirm: () => { this.$delete(this.drafts, this.organizationID); next(); },
+        // Buefy's internal selection changes before confirmation. Rebuild it
+        // on cancellation because the unchanged value prop has no watcher event.
+        onCancel: () => { this.organizationPickerRevision += 1; },
       });
     },
     requestClose() {

@@ -19,11 +19,11 @@
       <section expanded class="modal-card-body">
         <b-field :label="$t('globals.fields.name')" label-position="on-border">
           <b-input :maxlength="200" :ref="'focus'" v-model="form.name" name="name" :disabled="!canSave"
-            :placeholder="$t('globals.fields.name')" required />
+            :placeholder="$t('customer_lists.namePlaceholder')" required />
         </b-field>
 
         <b-field :label="$t('customer_lists.type')" label-position="on-border" :message="typeHelp">
-          <b-select v-model="form.type" name="type" :placeholder="typeHelp" :disabled="!canSave" required expanded>
+          <b-select v-model="form.type" name="type" :placeholder="$t('customer_lists.typePlaceholder')" :disabled="!canSave" required expanded>
             <option v-if="!isPoolGroup" value="private">
               {{ $t('customer_lists.types.private') }}
             </option>
@@ -49,7 +49,7 @@
         </b-field>
 
         <b-field :label="$t('customer_lists.optin')" label-position="on-border" :message="$t('customer_lists.optinHelp')">
-          <b-select v-model="form.optin" name="optin" :placeholder="$t('customer_lists.optin')" :disabled="!canSave"
+          <b-select v-model="form.optin" name="optin" :placeholder="$t('customer_lists.optinPlaceholder')" :disabled="!canSave"
             required expanded>
             <option value="single">
               {{ $t('customer_lists.optins.single') }}
@@ -62,12 +62,12 @@
 
         <b-field :label="$t('globals.terms.tags')" label-position="on-border">
           <b-taginput v-model="form.tags" name="tags" :disabled="!canSave" ellipsis icon="tag-outline"
-            :placeholder="$t('globals.terms.tags')" />
+            :placeholder="$t('globals.fields.tagsPlaceholder')" />
         </b-field>
 
         <b-field :label="$t('globals.fields.description')" label-position="on-border">
           <b-input :maxlength="2000" v-model="form.description" name="description" type="textarea" :disabled="!canSave"
-            :placeholder="$t('globals.fields.description')" />
+            :placeholder="$t('globals.fields.descriptionPlaceholder')" />
         </b-field>
 
         <b-field :message="$t('customer_lists.maskEmailsHelp')" :label="$t('customer_lists.maskEmails')">

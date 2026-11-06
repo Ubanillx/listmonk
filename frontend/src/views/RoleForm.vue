@@ -24,7 +24,7 @@
           <div class="mb-5">
             <div class="columns">
               <div class="column is-9">
-                <b-select :placeholder="$tc('globals.terms.customer_list')" v-model="form.curList" name="customer_list"
+                <b-select :placeholder="$t('users.customerListPlaceholder')" v-model="form.curList" name="customer_list"
                   :disabled="disabled || filteredLists.length < 1" expanded class="mb-3">
                   <template v-for="l in filteredLists">
                     <option :value="l.id" :key="l.id">

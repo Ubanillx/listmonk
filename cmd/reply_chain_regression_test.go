@@ -25,8 +25,8 @@ func auditReplyApp(t *testing.T) (*App, int) {
 	}
 	var mailbox int
 	if err := a.db.Get(&mailbox, `INSERT INTO reply_mailboxes
-		(user_id,organization_id,email,username,password,status,ai_enabled,verified_at)
-		VALUES(2,101,'reply@example.com','test-user','test-secret','active',TRUE,NOW()) RETURNING id`); err != nil {
+		(user_id,organization_id,email,username,password,status,ai_enabled,scan_enabled,verified_at)
+		VALUES(2,101,'reply@example.com','test-user','test-secret','active',TRUE,TRUE,NOW()) RETURNING id`); err != nil {
 		t.Fatal(err)
 	}
 	return a, mailbox
@@ -249,8 +249,8 @@ func TestAuditDisableEnablePreservesAI(t *testing.T) {
 func TestAuditPlatformCreatedOrganizationMailboxScan(t *testing.T) {
 	a, _ := auditReplyApp(t)
 	var mailbox int
-	if err := a.db.Get(&mailbox, `INSERT INTO reply_mailboxes(user_id,organization_id,email,status,ai_enabled,verified_at,password)
-		VALUES(1,101,'platform-created@example.com','active',TRUE,NOW(),'test-secret') RETURNING id`); err != nil {
+	if err := a.db.Get(&mailbox, `INSERT INTO reply_mailboxes(user_id,organization_id,email,status,ai_enabled,scan_enabled,verified_at,password)
+		VALUES(1,101,'platform-created@example.com','active',TRUE,TRUE,NOW(),'test-secret') RETURNING id`); err != nil {
 		t.Fatal(err)
 	}
 	var sources []replyAIMailboxSource
@@ -269,8 +269,8 @@ func TestAuditPoolReplyArrivesAtDifferentMailbox(t *testing.T) {
 	a, originalMailbox := auditReplyApp(t)
 	auditPoolSnapshot(t, a, originalMailbox, "wrong-mailbox@example.com", "sent")
 	var actualMailbox int
-	if err := a.db.Get(&actualMailbox, `INSERT INTO reply_mailboxes(user_id,organization_id,email,status,ai_enabled,verified_at,password)
-		VALUES(2,101,'other-reply@example.com','active',TRUE,NOW(),'test-secret') RETURNING id`); err != nil {
+	if err := a.db.Get(&actualMailbox, `INSERT INTO reply_mailboxes(user_id,organization_id,email,status,ai_enabled,scan_enabled,verified_at,password)
+		VALUES(2,101,'other-reply@example.com','active',TRUE,TRUE,NOW(),'test-secret') RETURNING id`); err != nil {
 		t.Fatal(err)
 	}
 	auditClassifier(t, a, nil)

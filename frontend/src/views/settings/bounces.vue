@@ -134,7 +134,7 @@
               <div class="column is-6">
                 <b-field :label="$t('settings.mailserver.host')" label-position="on-border"
                   :message="$t('settings.mailserver.hostHelp')">
-                  <b-input v-model="item.host" name="host" placeholder="bounce.yourmailserver.net" :maxlength="200" />
+                  <b-input v-model="item.host" name="host" placeholder="bounce.example.com" :maxlength="200" />
                 </b-field>
               </div>
               <div class="column is-3">
@@ -174,12 +174,12 @@
                 <b-field grouped>
                   <b-field :label="$t('settings.mailserver.username')" label-position="on-border" expanded>
                     <b-input v-model="item.username" :disabled="item.auth_protocol === 'none'" name="username"
-                      placeholder="mysmtp" :maxlength="200" />
+                      placeholder="user@example.com" :maxlength="200" />
                   </b-field>
                   <b-field :label="$t('settings.mailserver.password')" label-position="on-border" expanded
                     :message="$t('settings.mailserver.passwordHelp')">
                     <b-input v-model="item.password" :disabled="item.auth_protocol === 'none'" name="password"
-                      type="password" :placeholder="$t('settings.mailserver.passwordHelp')" :maxlength="200" />
+                      type="password" :placeholder="$t('globals.messages.passwordPlaceholder')" :maxlength="200" />
                   </b-field>
                 </b-field>
               </div>

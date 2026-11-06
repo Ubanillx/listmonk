@@ -1,0 +1,26 @@
+[
+  {
+    "file": "page.png",
+    "state": null,
+    "size": "1440x1000",
+    "zoom": 1,
+    "animationWaitMs": 23,
+    "issues": [
+      "加载错误：Failed to load resource: net::ERR_CONNECTION_REFUSED http://localhost:9000/public/static/style.css?v=520625db7f",
+      "加载错误：Failed to load resource: net::ERR_CONNECTION_REFUSED http://localhost:9000/public/custom.css?v=520625db7f",
+      "加载错误：Failed to load resource: net::ERR_CONNECTION_REFUSED http://localhost:9000/public/static/logo.svg?v=520625db7f",
+      "加载错误：Failed to load resource: net::ERR_CONNECTION_REFUSED http://localhost:9000/public/custom.js?v=520625db7f"
+    ],
+    "lint": [
+      {
+        "rule": "contrastLow",
+        "label": "文字对比度不达标（正文低于 4.5:1，大字低于 3:1）",
+        "count": 2,
+        "examples": [
+          "span「默认」（3.51:1）",
+          "p.reply-card-subtitle「qa-replies@example.inval」（3.84:1）"
+        ]
+      }
+    ]
+  }
+]

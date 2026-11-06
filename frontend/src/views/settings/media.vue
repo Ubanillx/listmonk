@@ -16,7 +16,7 @@
       <div class="column is-10">
         <b-field :label="$t('settings.media.upload.extensions')" label-position="on-border" expanded>
           <b-taginput v-model="data['upload.extensions']" name="tags" ellipsis icon="tag-outline"
-            placeholder="jpg, png, gif .." />
+            placeholder="jpg, png, gif" />
         </b-field>
       </div>
     </div>
@@ -26,7 +26,7 @@
       <b-field :label="$t('settings.media.upload.path')" label-position="on-border"
         :message="$t('settings.media.upload.pathHelp')">
         <b-input v-model="data['upload.filesystem.upload_path']" name="app.upload_path"
-          placeholder="/home/app/uploads" :maxlength="200" required />
+          placeholder="/home/user/uploads" :maxlength="200" required />
       </b-field>
 
       <b-field :label="$t('settings.media.upload.uri')" label-position="on-border"
@@ -76,7 +76,7 @@
           <b-field grouped>
             <b-field :label="$t('settings.media.s3.bucket')" label-position="on-border" expanded>
               <b-input v-model="data['upload.s3.bucket']" @input="onS3URLChange" name="upload.s3.bucket"
-                :maxlength="200" placeholder="" />
+                :maxlength="200" />
             </b-field>
             <b-field :label="$t('settings.media.s3.bucketPath')" label-position="on-border"
               :message="$t('settings.media.s3.bucketPathHelp')" expanded>
@@ -99,7 +99,7 @@
           <b-field :label="$t('settings.media.s3.url')" label-position="on-border"
             :message="$t('settings.media.s3.urlHelp')">
             <b-input v-model="data['upload.s3.url']" name="upload.s3.url" required
-              placeholder="https://s3.$region.amazonaws.com" :maxlength="200" expanded type="url"
+              placeholder="https://s3.ap-south-1.amazonaws.com" :maxlength="200" expanded type="url"
               pattern="https?://.*" />
           </b-field>
           <b-field :label="$t('settings.media.s3.publicURL')" label-position="on-border" :message="$t('settings.media.s3.publicURLHelp')" expanded>

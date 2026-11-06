@@ -93,7 +93,8 @@ CREATE TABLE reply_mailboxes (
     organization_id BIGINT,
     status          TEXT NOT NULL DEFAULT 'pending',
     verified_at     TIMESTAMPTZ,
-    ai_enabled      BOOLEAN NOT NULL DEFAULT TRUE
+    ai_enabled      BOOLEAN NOT NULL DEFAULT TRUE,
+    scan_enabled    BOOLEAN NOT NULL DEFAULT TRUE
 );
 -- schema.sql adds the organization's unified reply mailbox through a trailing
 -- ALTER because organizations is created before reply_mailboxes.

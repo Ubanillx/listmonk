@@ -24,8 +24,8 @@ func seedReplyBounceMailbox(t *testing.T, a *App) int {
 	}
 	var mailboxID int
 	if err := a.db.Get(&mailboxID, `INSERT INTO reply_mailboxes
-		(user_id, email, username, imap_host, imap_port, imap_tls, folder, password, status, verified_at, ai_enabled, bounce_enabled)
-		VALUES (501, 'replies@example.com', 'replies@example.com', 'imap.example.com', 993, TRUE, 'INBOX', 'secret', 'active', NOW(), FALSE, TRUE)
+		(user_id, email, username, imap_host, imap_port, imap_tls, folder, password, status, verified_at, ai_enabled, bounce_enabled, scan_enabled)
+		VALUES (501, 'replies@example.com', 'replies@example.com', 'imap.example.com', 993, TRUE, 'INBOX', 'secret', 'active', NOW(), FALSE, TRUE, TRUE)
 		RETURNING id`); err != nil {
 		t.Fatal(err)
 	}

@@ -1,5 +1,13 @@
 # 技术架构
 
+## 确认取消契约（2026-11-06）
+
+共享 confirm/prompt 归一缺省取消回调；设置路由取消必须结束导航，受确认保护的 Buefy 选择器取消必须恢复内部显示。组织回信、SMTP/发件池和无写请求验证见 `designs/2026-11-06-confirmation-cancel-audit/README.md`，对应权威架构“回信自动检测总开关”中的确认说明。
+
+## 回信自动检测（v6.73.0）
+
+`reply_mailboxes.scan_enabled` 独立控制收件检测，两个消费者保留单独选择；迁移一次回填，API 缺省兼容旧客户端。`queries/replies.sql` 候选与 Core 的 AI/退信锁内提交共同阻断暂停后的处理；前端共用邮箱组件表达总开关、处理选择、连接的关系。参见权威架构“回信自动检测总开关”及 `designs/2026-11-05-reply-detection/README.md`。
+
 ## 部门公海目录（2026-11-05）
 
 `internal/core/pool_workspace_lists.go` 以实际未解除分配构造当前部门的目录/详情及客户数；`cmd/workspace_permissions.go::queryReadableWorkspaceLists` 在分页前替换宽范围公海结果，minimal 与完整响应一致。`cmd/pools.go` 检查实际绑定，`internal/core/pools.go` 将组织空间的单池/汇总联系人与筛选候选限制在同一部门，即使角色有全平台权限也不扩展；个人空间管理与专用分配工作台独立。回归和界面证据见 `designs/2026-11-05-pool-workspace-permissions/README.md`。

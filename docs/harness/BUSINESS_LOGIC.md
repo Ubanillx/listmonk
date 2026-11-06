@@ -1,5 +1,9 @@
 # 业务逻辑
 
+## 回信检测与处理开关（2026-11-05，v6.73.0）
+
+`scan_enabled` 控制本邮箱是否自动检测；`ai_enabled`、`bounce_enabled` 只表示处理选择。总开关关闭后保留连接与两个子选项，后台候选和 AI/退信提交事务均必须重验，不能继续产生自动处理副作用。连接可先单独保存/测试，两项未选时不处理；各全局服务和邮箱生命周期继续独立生效。迁移仅第一次回填旧选择，重复升级不重启暂停；省略字段的旧 API 客户端按原子开关推断。来源：`cmd/reply_mailbox_scan_test.go`、`internal/migrations/v6.73.0{,_test}.go`、`frontend/cypress/e2e/reply-mailbox-config.cy.js`。
+
 ## 部门公海可见范围（2026-11-05）
 
 组织空间的公海目录、minimal 选择器及直接详情只能返回当前部门实际绑定且未解除的分配与对应一级公海；投放授权不能替代分配，平台管理角色也不扩大该读取范围。停用但未解除分配仍可查看。客户数、退订人数、客户查询/筛选和导出均限定同一部门。个人空间显式平台管理及专用跨组织分配工作台保留独立授权。来源：`internal/core/pool_workspace_lists.go`、`cmd/pool_list_workspace_test.go`、`frontend/cypress/e2e/pool-workspace-permissions.cy.js`。

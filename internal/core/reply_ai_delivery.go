@@ -128,7 +128,7 @@ func (c *Core) lockReplyAIAuthority(tx *sqlx.Tx, access models.WorkspaceAccess, 
 	}
 	if err := tx.Get(&mailbox, `SELECT m.user_id,m.organization_id FROM reply_mailboxes m
 		JOIN users u ON u.id=m.user_id AND u.status='enabled'
-		WHERE m.id=$1 AND m.status='active' AND m.ai_enabled AND m.verified_at IS NOT NULL
+		WHERE m.id=$1 AND m.status='active' AND m.ai_enabled AND m.scan_enabled AND m.verified_at IS NOT NULL
 		FOR UPDATE OF m FOR SHARE OF u`, event.MailboxID); err != nil {
 		if err == sql.ErrNoRows {
 			return workspaceMutationError()

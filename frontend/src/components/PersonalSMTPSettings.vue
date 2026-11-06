@@ -53,7 +53,7 @@
           <div class="columns is-multiline smtp-grid">
             <div class="column is-6">
               <b-field :label="$t('globals.fields.name')">
-                <b-input v-model="server.name" maxlength="100" :placeholder="$t('globals.fields.name')" />
+                <b-input v-model="server.name" maxlength="100" :placeholder="$t('settings.personalSMTP.namePlaceholder')" />
               </b-field>
             </div>
             <div class="column is-6">
@@ -85,7 +85,7 @@
             <div class="column is-6">
               <b-field :label="$t('settings.mailserver.password')">
                 <b-input v-model="server.password" type="password" :disabled="server.authProtocol === 'none'"
-                  maxlength="200" placeholder="••••••••" />
+                  maxlength="200" :placeholder="$t('settings.personalSMTP.passwordPlaceholder')" />
               </b-field>
             </div>
             <div class="column is-12">

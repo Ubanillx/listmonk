@@ -291,7 +291,7 @@ export default Vue.extend({
 
   beforeRouteLeave(to, from, next) {
     if (this.hasFormChanged) {
-      this.$utils.confirm(this.$t('globals.messages.confirmDiscard'), () => next(true));
+      this.$utils.confirm(this.$t('globals.messages.confirmDiscard'), () => next(true), () => next(false));
       return;
     }
     next(true);

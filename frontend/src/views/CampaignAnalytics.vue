@@ -19,7 +19,7 @@
         <div class="column is-6">
           <b-field :label="$t('globals.terms.campaigns')" label-position="on-border">
             <b-taginput v-model="form.campaigns" :data="queriedCampaigns" name="campaigns" ellipsis icon="tag-outline"
-              :placeholder="$t('globals.terms.campaigns')" autocomplete :allow-new="false"
+              :placeholder="$t('analytics.campaignSearchPlaceholder')" autocomplete :allow-new="false"
               :before-adding="isCampaignSelected" @typing="queryCampaigns" field="name" :loading="isSearchLoading" />
           </b-field>
         </div>

@@ -10,7 +10,7 @@
               <div class="column is-9">
                 <b-field :label="$t('settings.mailserver.host')" label-position="on-border"
                   :message="$t('settings.mailserver.hostHelp')">
-                  <b-input v-model="item.host" name="host" placeholder="smtp.yourmailserver.net" :maxlength="200" />
+                  <b-input v-model="item.host" name="host" placeholder="smtp.example.com" :maxlength="200" />
                 </b-field>
               </div>
               <div class="column">
@@ -62,13 +62,13 @@
                 <b-field grouped>
                   <b-field :label="$t('settings.mailserver.username')" label-position="on-border" expanded>
                     <b-input v-model="item.username" :custom-class="`smtp-username-${n}`"
-                      :disabled="item.auth_protocol === 'none'" name="username" placeholder="mysmtp" :maxlength="200" />
+                      :disabled="item.auth_protocol === 'none'" name="username" placeholder="user@example.com" :maxlength="200" />
                   </b-field>
                   <b-field :label="$t('settings.mailserver.password')" label-position="on-border" expanded
                     :message="$t('settings.mailserver.passwordHelp')">
                     <b-input v-model="item.password" :disabled="item.auth_protocol === 'none'" name="password"
                       type="password" :custom-class="`password-${n}`"
-                      :placeholder="$t('settings.mailserver.passwordHelp')" :maxlength="200" />
+                      :placeholder="$t('globals.messages.passwordPlaceholder')" :maxlength="200" />
                   </b-field>
                 </b-field>
               </div>
@@ -78,7 +78,7 @@
               <div class="column is-6">
                 <b-field :label="$t('settings.smtp.heloHost')" label-position="on-border"
                   :message="$t('settings.smtp.heloHostHelp')">
-                  <b-input v-model="item.hello_hostname" name="hello_hostname" placeholder="" :maxlength="200" />
+                  <b-input v-model="item.hello_hostname" name="hello_hostname" :maxlength="200" />
                 </b-field>
               </div>
             </div>
@@ -94,7 +94,7 @@
                 <b-field :label="$t('settings.smtp.fromEmail')" label-position="on-border"
                   :message="$t('settings.smtp.fromEmailHelp')">
                   <b-input v-model="item.from_email" name="from_email"
-                    placeholder="Your Name <noreply@yoursite.com>" :maxlength="200" />
+                    :placeholder="$t('campaigns.fromAddressPlaceholder')" :maxlength="200" />
                 </b-field>
               </div>
             </div>

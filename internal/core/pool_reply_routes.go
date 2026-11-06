@@ -37,7 +37,7 @@ const poolReplySnapshotRouteSQL = `
 	) route
 	LEFT JOIN LATERAL (
 		SELECT id FROM reply_mailboxes WHERE organization_id=chosen.organization_id
-			AND LOWER(email)=LOWER(route.email) AND status='active' AND (NOT ai_enabled OR verified_at IS NOT NULL)
+			AND LOWER(email)=LOWER(route.email) AND status='active' AND (NOT scan_enabled OR NOT ai_enabled OR verified_at IS NOT NULL)
 		ORDER BY id LIMIT 1
 	) route_mailbox ON TRUE`
 

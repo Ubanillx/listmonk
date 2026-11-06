@@ -147,7 +147,7 @@
             </b-button>
           </div>
           <b-field class="resource-field">
-            <b-select v-model="personalTemplateIDs" multiple expanded :disabled="!personalTemplates.length" :placeholder="$t('organizations.personalTemplates')">
+            <b-select v-model="personalTemplateIDs" multiple expanded :disabled="!personalTemplates.length" :placeholder="$t('organizations.migrationSelectTemplates')">
               <option v-for="template in personalTemplates" :key="template.id" :value="template.id">{{ template.name }}</option>
             </b-select>
           </b-field>
@@ -178,7 +178,7 @@
             </b-button>
           </div>
           <b-field class="resource-field">
-            <b-select v-model="personalCampaignIDs" multiple expanded :disabled="!personalCampaigns.length" :placeholder="$t('organizations.personalCampaigns')">
+            <b-select v-model="personalCampaignIDs" multiple expanded :disabled="!personalCampaigns.length" :placeholder="$t('organizations.migrationSelectCampaigns')">
               <option v-for="campaign in personalCampaigns" :key="campaign.id" :value="campaign.id">{{ campaign.name }} ({{ campaign.status }})</option>
             </b-select>
           </b-field>
@@ -209,7 +209,7 @@
             </b-button>
           </div>
           <b-field class="resource-field">
-            <b-select v-model="personalMediaIDs" multiple expanded :disabled="!personalMedia.length" :placeholder="$t('organizations.personalMedia')">
+            <b-select v-model="personalMediaIDs" multiple expanded :disabled="!personalMedia.length" :placeholder="$t('organizations.migrationSelectMedia')">
               <option v-for="media in personalMedia" :key="media.id" :value="media.id">{{ media.filename }}</option>
             </b-select>
           </b-field>

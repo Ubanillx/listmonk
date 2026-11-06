@@ -1417,7 +1417,7 @@ func (c *Core) refreshPoolCampaignAudienceRoutes(campaignID int) error {
 			FROM org_pool_allocations s
 			JOIN organizations o ON o.id=s.organization_id
 			LEFT JOIN reply_mailboxes rm ON rm.id=o.reply_mailbox_id
-				AND rm.status='active' AND (NOT rm.ai_enabled OR rm.verified_at IS NOT NULL)
+				AND rm.status='active' AND (NOT rm.scan_enabled OR NOT rm.ai_enabled OR rm.verified_at IS NOT NULL)
 			WHERE ccl.source_organization_id IS NOT NULL
 				AND s.pool_id=ccl.pool_id
 				AND s.organization_id=ccl.source_organization_id
@@ -1508,7 +1508,7 @@ func (c *Core) poolAudienceRouteIssues(campaignID int) ([]PoolAudienceRouteIssue
 				WHEN ccl.source_organization_id IS NULL THEN 'organization_missing'
 				WHEN s.id IS NULL THEN 'allocation_missing'
 				WHEN o.reply_mailbox_id IS NULL THEN 'mailbox_missing'
-				WHEN rm.status='active' AND (NOT rm.ai_enabled OR rm.verified_at IS NOT NULL) THEN 'unresolved'
+				WHEN rm.status='active' AND (NOT rm.scan_enabled OR NOT rm.ai_enabled OR rm.verified_at IS NOT NULL) THEN 'unresolved'
 				ELSE 'mailbox_unavailable'
 			END AS reason
 		FROM campaign_customer_lists ccl
@@ -1677,7 +1677,7 @@ func (c *Core) validateAllOrgPoolCampaignAudience(campaignID int) error {
 	if err := c.db.Select(&rows, `SELECT pl.name AS pool_name, s.organization_id,
 			o.name AS organization_name,
 			o.status AS organization_status,
-			((rm.id IS NOT NULL AND rm.status = 'active' AND (NOT rm.ai_enabled OR rm.verified_at IS NOT NULL))
+			((rm.id IS NOT NULL AND rm.status = 'active' AND (NOT rm.scan_enabled OR NOT rm.ai_enabled OR rm.verified_at IS NOT NULL))
 			OR NOT `+poolMissingContactReplySQL+`) AS mailbox_ready,
 			COALESCE(rm.email, '') AS reply_mailbox_email,
     (SELECT COUNT(*) FROM user_smtp_servers s2 JOIN campaigns c ON c.id=$1
@@ -1777,7 +1777,7 @@ const poolRecipientMembershipSQL = `
 	JOIN org_pool_allocation_members sm ON sm.allocation_id=s.id AND sm.status='active'
 	JOIN pool_members pm ON pm.pool_id=s.pool_id AND pm.contact_id=sm.contact_id
 	JOIN pool_contacts pc ON pc.id=sm.contact_id
-	LEFT JOIN reply_mailboxes rm ON rm.id=o.reply_mailbox_id AND rm.status='active' AND (NOT rm.ai_enabled OR rm.verified_at IS NOT NULL)
+	LEFT JOIN reply_mailboxes rm ON rm.id=o.reply_mailbox_id AND rm.status='active' AND (NOT rm.scan_enabled OR NOT rm.ai_enabled OR rm.verified_at IS NOT NULL)
 	LEFT JOIN org_pool_allocation_exclusions ex ON ex.pool_id=s.pool_id AND ex.organization_id=s.organization_id AND ex.contact_id=pc.id AND ex.restored_at IS NULL
 	WHERE s.state='active' AND o.status='active' AND EXISTS(SELECT 1 FROM pool_organization_permissions grant_row WHERE grant_row.pool_id=s.pool_id AND grant_row.organization_id=s.organization_id) AND s.pool_id=$1 AND s.organization_id=$2 AND ($3::BIGINT IS NULL OR s.id=$3::BIGINT) AND ex.contact_id IS NULL AND pc.status='active'`
 
@@ -1872,7 +1872,7 @@ const poolRecipientAllOrgMembershipSQL = `
 	JOIN organizations o ON o.id=s.organization_id AND o.status='active'
 	JOIN org_pool_allocation_members sm ON sm.allocation_id=s.id AND sm.status='active' AND sm.contact_id=pc.id
 	JOIN pool_members pm ON pm.pool_id=s.pool_id AND pm.contact_id=pc.id
-	LEFT JOIN reply_mailboxes rm ON rm.id=o.reply_mailbox_id AND rm.status='active' AND (NOT rm.ai_enabled OR rm.verified_at IS NOT NULL)
+	LEFT JOIN reply_mailboxes rm ON rm.id=o.reply_mailbox_id AND rm.status='active' AND (NOT rm.scan_enabled OR NOT rm.ai_enabled OR rm.verified_at IS NOT NULL)
 	LEFT JOIN org_pool_allocation_exclusions ex ON ex.pool_id=s.pool_id AND ex.organization_id=s.organization_id AND ex.contact_id=pc.id AND ex.restored_at IS NULL
 	LEFT JOIN campaign_pool_org_orders oo ON oo.campaign_id=$2 AND oo.organization_id=s.organization_id
 	WHERE s.state='active' AND ex.contact_id IS NULL AND pc.status='active'`

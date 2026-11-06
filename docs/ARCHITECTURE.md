@@ -1,5 +1,15 @@
 # Listmonk 工程架构与运行指南
 
+## 回信自动检测总开关（v6.73.0，2026-11-05）
+
+回信邮箱的 `scan_enabled` 是独立的检测总开关，AI 与退信是其下两个处理选择。`ReplyMailboxSettings.vue` 先显示地址和总开关，开启后展示两项处理和共用收件连接；允许先保存/测试连接再选处理方式。关闭只停止检测与处理，不清空连接、密码或子选项，不改变邮箱停用/保留生命周期。总开关与子选项分别持久化，界面草稿在保存前不影响 worker。
+
+`queries/replies.sql` 扫描候选、AI 单邮箱加载、`internal/core/reply_ai_delivery.go` 提交前锁以及 `reply_bounce.go` 事务锁均校验总开关，避免暂停期间在途分类产生拉黑/剔除副作用。回信路由按有效 AI 状态判断收件验证要求，暂停时仍可作为普通 Reply-To 地址。默认总开关关闭；v6.73.0 仅首次增列时按既有 `ai_enabled OR bounce_enabled` 回填，重跑不恢复已暂停邮箱。API 省略字段的旧客户端继续按两个子开关推断，显式 false 保留处理选择。测试与证据见 `docs/harness/designs/2026-11-05-reply-detection/README.md`。
+
+管理端 `Utils.confirm` 将可选取消回调的非函数值归一为缺省值，避免显式 `null` 覆盖 Buefy 默认回调并中断关闭；函数回调按原样传递。退信开关与草稿双向同步，取消按钮或 Escape 取消确认时恢复关闭，再次开启需重新确认。回归入口为 `frontend/cypress/e2e/reply-mailbox-confirmation.cy.js`。
+
+`Utils.prompt` 同样归一可选取消回调。设置页未保存离开确认的取消分支明确 `next(false)`，结束导航并保留草稿。公海分配工作台的手机组织选择器在取消放弃草稿时递增组件 key，恢复 Buefy 内部选值，避免下拉显示的组织与标题、草稿和请求范围分离。组织邮箱与 SMTP/发件池取消路径不写请求；跨入口回归见 `frontend/cypress/e2e/confirmation-cancel-audit.cy.js`，独立审查记录见 `docs/harness/designs/2026-11-06-confirmation-cancel-audit/README.md`。
+
 ## 部门公海目录读取边界（2026-11-05）
 
 组织空间的公海目录以当前组织实际绑定的 `org_pool_allocations` 为准：只返回本组织未解除的分配行和对应一级公海，不因投放授权、主数据权限、跨组织分配权限或最高管理员身份扩展目录。停用但未解除的分配仍可查看；已解除、无绑定、待转移列表不进入目录。个人空间的显式平台管理目录和专用跨组织分配工作台保留独立授权。

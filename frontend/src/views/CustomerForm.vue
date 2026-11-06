@@ -21,25 +21,25 @@
       <section expanded class="modal-card-body">
         <b-field :label="$t('customers.customerCode')" label-position="on-border">
           <b-input :maxlength="200" v-model="form.customerCode" name="customer_code" :ref="'focus'" :disabled="!canEdit"
-            :placeholder="$t('customers.customerCode')" required />
+            :placeholder="$t('customers.customerCodePlaceholder')" required />
         </b-field>
 
         <b-field :label="$t('customers.email')" label-position="on-border">
           <b-input :maxlength="200" v-model="form.email" name="email" :disabled="!canEdit || (isEditing && !$can('customers:sensitive_read'))"
-            :placeholder="$t('customers.email')" required />
+            placeholder="name@example.com" required />
         </b-field>
 
         <div class="columns">
           <div class="column is-8">
             <b-field :label="$t('customers.salutation')" label-position="on-border">
               <b-input :maxlength="200" v-model="form.name" name="name" :disabled="!canEdit"
-                :placeholder="$t('customers.salutation')" />
+                :placeholder="$t('customers.namePlaceholder')" />
             </b-field>
           </div>
           <div class="column is-4">
             <b-field :label="$t('globals.fields.status')" label-position="on-border"
               :message="$t('customers.blocklistedHelp')">
-              <b-select v-model="form.status" name="status" :placeholder="$t('globals.fields.status')" :disabled="!canEdit" required
+              <b-select v-model="form.status" name="status" :placeholder="$t('customers.statusPlaceholder')" :disabled="!canEdit" required
                 expanded>
                 <option value="enabled">
                   {{ $t('customers.status.enabled') }}

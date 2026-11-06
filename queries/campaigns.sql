@@ -1784,7 +1784,7 @@ SELECT s.organization_id,
     o.status AS organization_status,
     o.reply_mailbox_id,
     COALESCE(rm.email, '') AS reply_mailbox_email,
-    ((rm.id IS NOT NULL AND rm.status = 'active' AND (NOT rm.ai_enabled OR rm.verified_at IS NOT NULL)) OR NOT (NOT EXISTS (
+    ((rm.id IS NOT NULL AND rm.status = 'active' AND (NOT rm.scan_enabled OR NOT rm.ai_enabled OR rm.verified_at IS NOT NULL)) OR NOT (NOT EXISTS (
 	SELECT 1 FROM org_pool_allocation_members am
 	JOIN pool_members pm ON pm.contact_id=am.contact_id AND pm.pool_id=s.pool_id
 	JOIN pool_contacts pc ON pc.id=am.contact_id

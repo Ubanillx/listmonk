@@ -21,13 +21,13 @@
               <div class="column is-4">
                 <b-field :label="$t('globals.fields.name')" label-position="on-border"
                   :message="$t('settings.messengers.nameHelp')">
-                  <b-input v-model="item.name" name="name" placeholder="mymessenger" :maxlength="200" />
+                  <b-input v-model="item.name" name="name" placeholder="postback-primary" :maxlength="200" />
                 </b-field>
               </div>
               <div class="column is-8">
                 <b-field :label="$t('settings.messengers.url')" label-position="on-border"
                   :message="$t('settings.messengers.urlHelp')">
-                  <b-input v-model="item.root_url" name="root_url" placeholder="https://postback.messenger.net/path"
+                  <b-input v-model="item.root_url" name="root_url" placeholder="https://postback.example.com/path"
                     :maxlength="200" expanded type="url" pattern="https?://.*" />
                 </b-field>
               </div>
@@ -42,7 +42,7 @@
                   <b-field :label="$t('settings.messengers.password')" label-position="on-border" expanded
                     :message="$t('globals.messages.passwordChange')">
                     <b-input v-model="item.password" name="password" type="password"
-                      :placeholder="$t('globals.messages.passwordChange')" :maxlength="200" />
+                      :placeholder="$t('globals.messages.passwordPlaceholder')" :maxlength="200" />
                   </b-field>
                 </b-field>
               </div>

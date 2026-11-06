@@ -660,6 +660,7 @@ CREATE TABLE reply_mailboxes (
     is_default       BOOLEAN NOT NULL DEFAULT FALSE,
     ai_enabled       BOOLEAN NOT NULL DEFAULT FALSE,
     bounce_enabled   BOOLEAN NOT NULL DEFAULT FALSE,
+    scan_enabled     BOOLEAN NOT NULL DEFAULT FALSE,
     last_sync_at     TIMESTAMP WITH TIME ZONE NULL,
     last_sync_error  TEXT NOT NULL DEFAULT '',
     forward_count    INTEGER NOT NULL DEFAULT 0,

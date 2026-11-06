@@ -44,16 +44,16 @@
 
         <b-field :label="$t('users.username')" label-position="on-border">
           <b-input :maxlength="200" v-model="form.username" name="username" ref="focus" autofocus
-            :placeholder="$t('users.username')" required :message="$t('users.usernameHelp')" autocomplete="off"
+            :placeholder="$t('users.usernamePlaceholder')" required :message="$t('users.usernameHelp')" autocomplete="off"
             pattern="[a-zA-Z0-9_\-\.@]+$" />
         </b-field>
 
         <b-field :label="$t('globals.fields.name')" label-position="on-border">
-          <b-input :maxlength="200" v-model="form.name" name="name" :placeholder="$t('globals.fields.name')" />
+          <b-input :maxlength="200" v-model="form.name" name="name" :placeholder="$t('users.namePlaceholder')" />
         </b-field>
 
         <b-field v-if="form.type !== 'api'" :label="$t('customers.email')" label-position="on-border">
-          <b-input :maxlength="200" v-model="form.email" name="email" :placeholder="$t('customers.email')" required />
+          <b-input :maxlength="200" v-model="form.email" name="email" placeholder="name@example.com" required />
         </b-field>
 
         <template v-if="form.type !== 'api'">
@@ -68,7 +68,7 @@
               <div class="column is-6">
                 <b-field :label="$t('users.password')" label-position="on-border">
                   <b-input :disabled="!form.passwordLogin" minlength="8" :maxlength="200" v-model="form.password"
-                    type="password" name="password" :placeholder="$t('users.password')"
+                    type="password" name="password" :placeholder="$t('users.passwordPlaceholder')"
                     :required="form.passwordLogin && !isEditing" />
                 </b-field>
               </div>

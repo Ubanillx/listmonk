@@ -52,14 +52,14 @@ CREATE TABLE users(id INT PRIMARY KEY,status TEXT,user_role_id INT);
 INSERT INTO users VALUES(1,'enabled',2);
 CREATE TABLE organization_members(organization_id BIGINT,user_id INT,removed_at TIMESTAMPTZ);
 INSERT INTO organization_members VALUES(10,1,NULL);
-CREATE TABLE reply_mailboxes(id INT PRIMARY KEY,user_id INT,organization_id BIGINT,email TEXT,status TEXT,ai_enabled BOOLEAN,verified_at TIMESTAMPTZ);
-INSERT INTO reply_mailboxes VALUES(1,1,10,'reply@example.invalid','active',TRUE,NOW());
+CREATE TABLE reply_mailboxes(id INT PRIMARY KEY,user_id INT,organization_id BIGINT,email TEXT,status TEXT,ai_enabled BOOLEAN,scan_enabled BOOLEAN DEFAULT TRUE,verified_at TIMESTAMPTZ);
+INSERT INTO reply_mailboxes VALUES(1,1,10,'reply@example.invalid','active',TRUE,TRUE,NOW());
 CREATE TABLE campaigns(id INT PRIMARY KEY,uuid UUID,reply_mailbox_id INT,organization_id BIGINT);
 INSERT INTO campaigns VALUES(1,gen_random_uuid(),1,10);
-CREATE TABLE customers(id INT,owner_user_id INT,organization_id BIGINT,transfer_pending_at TIMESTAMPTZ,email TEXT);
+CREATE TABLE customers(id INT,owner_user_id INT,organization_id BIGINT,transfer_pending_at TIMESTAMPTZ,email TEXT,uuid UUID DEFAULT gen_random_uuid());
 CREATE TABLE campaign_recipients(campaign_id INT,customer_id INT,status TEXT,email_snapshot TEXT,reply_to_snapshot TEXT);
-CREATE TABLE pool_contacts(id BIGINT PRIMARY KEY,status TEXT);
-INSERT INTO pool_contacts VALUES(7,'active');
+CREATE TABLE pool_contacts(id BIGINT PRIMARY KEY,status TEXT,uuid UUID DEFAULT gen_random_uuid());
+INSERT INTO pool_contacts(id,status) VALUES(7,'active');
 CREATE TABLE campaign_pool_recipients(campaign_id INT,pool_contact_id BIGINT,pool_id INT,allocation_id BIGINT,organization_id BIGINT,reply_mailbox_id INT,status TEXT,email_snapshot TEXT,reply_to_snapshot TEXT);
 INSERT INTO campaign_pool_recipients VALUES(1,7,42,3,10,1,'sent','pool@example.invalid','reply@example.invalid');
 
@@ -468,6 +468,25 @@ func TestApplyReplyAIActionPoolConcurrentWorkersCommitOnce(t *testing.T) {
 }
 
 // Processing the same durable event twice must not double the complaint count.
+func TestApplyReplyAIActionPausedDetectionPreventsSideEffects(t *testing.T) {
+	env := newReplyAITestEnv(t)
+	eventID := env.seedPendingEvent()
+	worker := env.session(false)
+	event, err := env.claim(worker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.admin.Exec(`UPDATE reply_mailboxes SET scan_enabled=FALSE WHERE id=1`); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.apply(worker, replyAITestAction(eventID, event.LeaseToken)); err == nil {
+		t.Fatal("AI action committed after automatic detection was paused")
+	}
+	if env.countComplaintBounces() != 0 || env.countExclusions() != 0 {
+		t.Fatal("paused detection allowed a complaint or exclusion side effect")
+	}
+}
+
 func TestApplyReplyAIActionPoolRepeatedEventKeepsComplaintIdempotent(t *testing.T) {
 	env := newReplyAITestEnv(t)
 	eventID := env.seedPendingEvent()

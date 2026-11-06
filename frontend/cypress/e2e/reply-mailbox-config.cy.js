@@ -21,7 +21,7 @@ describe('Reply mailbox configuration', () => {
     cy.get('[data-cy=reply-mailbox-test]').should('not.exist');
     cy.get(input('email')).type('replies@example.com');
     cy.intercept('POST', '/api/profile/reply-mailboxes', (req) => {
-      expect(req.body).to.deep.equal({ email: 'replies@example.com', name: '', is_default: false, ai_enabled: false, bounce_enabled: false });
+      expect(req.body).to.deep.equal({ email: 'replies@example.com', name: '', is_default: false, ai_enabled: false, bounce_enabled: false, scan_enabled: false });
       req.continue();
     }).as('saveAddress');
     cy.get('[data-cy=reply-mailbox-save]').click();
@@ -32,6 +32,9 @@ describe('Reply mailbox configuration', () => {
       expect(response.body.data).not.to.have.property('password');
     });
     cy.contains('.reply-mailbox-card .tag', '回信地址可用').should('be.visible');
+    cy.get('[data-cy=reply-mailbox-scan]').click();
+    cy.contains('.reply-mailbox-card .tag', '待保存').should('be.visible');
+    cy.get(input('host')).should('have.value', '');
     cy.get('[data-cy=reply-mailbox-ai]').click();
     cy.get('[data-cy=reply-mailbox-receiving]').should('be.visible');
     cy.get('[data-cy=reply-mailbox-test]').should('be.disabled');
@@ -66,28 +69,40 @@ describe('Reply mailbox configuration', () => {
       expect(response.body.data.has_password).to.equal(true);
     });
     cy.get('[data-cy=reply-mailbox-test]').should('not.be.disabled');
-    cy.get('.reply-mailbox-card').screenshot('reply-mailbox-ai-saved');
-    cy.viewport(390, 1244);
-    cy.get('.reply-mailbox-card').screenshot('reply-mailbox-ai-mobile');
+    cy.get('.reply-mailbox-card').scrollIntoView();
+    cy.screenshot('reply-mailbox-ai-saved', { capture: 'viewport' });
+    cy.viewport(390, 844);
+    cy.screenshot('reply-mailbox-ai-mobile', { capture: 'viewport' });
     cy.document().then((doc) => expect(doc.documentElement.scrollWidth).to.be.at.most(390));
-    // Turning AI off hides the connection and keeps credentials for future use.
-    cy.get('[data-cy=reply-mailbox-ai]').click();
+    // Pausing detection preserves the chosen processing method and credentials.
+    cy.get('[data-cy=reply-mailbox-scan]').click();
     cy.get('[data-cy=reply-mailbox-receiving]').should('not.exist');
     cy.get('[data-cy=reply-mailbox-save]').click();
     cy.wait('@saveAI').then(({ request, response }) => {
       expect(request.body).not.to.have.property('imap_host');
       expect(response.body.data.has_password).to.equal(true);
       expect(response.body.data.status).to.equal('active');
+      expect(response.body.data.scan_enabled).to.equal(false);
+      expect(response.body.data.ai_enabled).to.equal(true);
     });
+    cy.reload();
+    cy.contains('.b-tabs nav a', '个人邮件配置').click();
+    cy.get('[data-cy=reply-mailbox-detection-settings]').should('not.exist');
+    cy.get('[data-cy=reply-mailbox-scan]').click();
+    cy.get('[data-cy=reply-mailbox-ai] input').should('be.checked');
+    cy.get(input('host')).should('have.value', 'imap.example.com');
+    cy.get('[data-cy=reply-mailbox-scan]').click();
     cy.viewport(1400, 950);
-    cy.get('.reply-mailbox-card').screenshot('reply-mailbox-address-only');
+    cy.screenshot('reply-mailbox-address-only', { capture: 'viewport' });
   });
 
   it('keeps saved credentials after a connection failure and allows a retry', () => {
     cy.contains('.reply-mailboxes button', '新建').click();
     cy.get(input('email')).type('retry@example.com');
+    cy.get('[data-cy=reply-mailbox-scan]').click();
     cy.get('[data-cy=reply-mailbox-ai]').click();
     cy.get(input('password')).type('test-only-password');
+    cy.get(input('host')).type('imap.example.com');
     cy.get('[data-cy=reply-mailbox-save]').click();
     cy.intercept('POST', '/api/profile/reply-mailboxes/test', {
       statusCode: 502, body: { message: 'Test mailbox unavailable' },
@@ -103,6 +118,54 @@ describe('Reply mailbox configuration', () => {
     cy.get('[data-cy=reply-mailbox-test]').click();
     cy.wait('@retryTest');
     cy.contains('.reply-mailbox-card .tag', '已验证').should('be.visible');
+  });
+
+  it('keeps both processing choices when paused and preserves input after a failed save', () => {
+    cy.request('POST', '/api/profile/reply-mailboxes', {
+      email: 'both@example.com', scan_enabled: true, ai_enabled: true, bounce_enabled: true,
+      password: 'test-only-mailbox-password', imap_host: 'imap.example.com',
+    });
+    cy.reload();
+    cy.contains('.b-tabs nav a', '个人邮件配置').click();
+    cy.get('[data-cy=reply-mailbox-ai] input').should('be.checked');
+    cy.get('[data-cy=reply-mailbox-bounce] input').should('be.checked');
+    cy.viewport(1200, 900);
+    cy.screenshot('reply-mailbox-both-processing', { capture: 'viewport' });
+    cy.get('[data-cy=reply-mailbox-scan]').click();
+    cy.get('[data-cy=reply-mailbox-ai]').should('not.exist');
+    cy.get('[data-cy=reply-mailbox-test]').should('not.exist');
+    cy.get(input('name')).type('Reply processing');
+    cy.intercept({ method: 'PUT', url: '/api/profile/reply-mailboxes/*', times: 1 }, {
+      statusCode: 503, body: { message: 'Temporary save failure' },
+    }).as('failedSave');
+    cy.get('[data-cy=reply-mailbox-save]').click();
+    cy.wait('@failedSave');
+    cy.get('[data-cy=reply-mailbox-save-error]').should('contain', 'Temporary save failure');
+    cy.get(input('name')).should('have.value', 'Reply processing');
+    cy.get('[data-cy=reply-mailbox-scan] input').should('not.be.checked');
+    cy.get('[data-cy=reply-mailbox-unsaved]').should('be.visible');
+    cy.intercept('PUT', '/api/profile/reply-mailboxes/*').as('retrySave');
+    cy.get('[data-cy=reply-mailbox-save]').click();
+    cy.wait('@retrySave').then(({ request, response }) => {
+      expect(request.body.scan_enabled).to.eq(false);
+      expect(request.body.ai_enabled).to.eq(true);
+      expect(request.body.bounce_enabled).to.eq(true);
+      expect(response.body.data.has_password).to.eq(true);
+    });
+    cy.reload();
+    cy.contains('.b-tabs nav a', '个人邮件配置').click();
+    cy.get('[data-cy=reply-mailbox-scan] input').should('not.be.checked');
+    cy.get('[data-cy=reply-mailbox-detection-settings]').should('not.exist');
+    cy.get('[data-cy=reply-mailbox-scan]').click();
+    cy.get('[data-cy=reply-mailbox-ai] input').should('be.checked');
+    cy.get('[data-cy=reply-mailbox-bounce] input').should('be.checked');
+    cy.get(input('host')).should('have.value', 'imap.example.com');
+    cy.get('[data-cy=reply-mailbox-ai]').click();
+    cy.get('[data-cy=reply-mailbox-bounce]').click();
+    cy.get('[data-cy=reply-mailbox-receiving]').should('be.visible');
+    cy.get('[data-cy=reply-mailbox-no-processing]').should('be.visible');
+    cy.get('[data-cy=reply-mailbox-save]').click();
+    cy.wait('@retrySave').its('response.body.data.scan_enabled').should('eq', true);
   });
 
   it('keeps a disabled mailbox disabled after testing its saved connection', () => {
@@ -155,6 +218,7 @@ describe('Reply mailbox configuration', () => {
     cy.get('[data-cy=reply-mailbox-save]').click();
     cy.contains('.reply-mailbox-card .tag', '回信地址可用').should('be.visible');
 
+    cy.get('[data-cy=reply-mailbox-scan]').click();
     cy.get('[data-cy=reply-mailbox-bounce]').click();
     cy.get('.dialog .modal-card-foot .button.is-warning', { timeout: 10000 }).click();
     cy.get('[data-cy=reply-mailbox-receiving]').should('be.visible');

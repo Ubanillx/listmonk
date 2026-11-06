@@ -20,10 +20,10 @@
         <div>
           <div class="reply-card-title">
             {{ mailbox.name || mailbox.email || `${$t('replyMailbox.fallbackName', { n: index + 1 })}` }}
-            <b-tag v-if="mailbox.id" rounded size="is-small" :type="statusType(mailbox.status)">
+            <b-tag v-if="mailbox.id" rounded size="is-small" :type="statusType(mailbox)">
               {{ statusLabel(mailbox) }}
             </b-tag>
-            <b-tag v-if="mailbox.isDefault" type="is-info" rounded size="is-small">{{ $t('replyMailbox.defaultTag') }}</b-tag>
+            <b-tag v-if="mailbox.isDefault" type="is-light" rounded size="is-small">{{ $t('replyMailbox.defaultTag') }}</b-tag>
             <b-tag v-if="mailbox.readOnly" type="is-light" rounded size="is-small">{{ $t('replyMailbox.otherMember') }}</b-tag>
           </div>
           <p class="reply-card-subtitle">{{ mailbox.email || $t('replyMailbox.noEmail') }}</p>
@@ -55,76 +55,93 @@
         </div>
         <div class="column is-6">
           <b-field :label="$t('replyMailbox.nameLabel')" label-position="on-border">
-            <b-input v-model="mailbox.name" maxlength="100" :placeholder="$t('replyMailbox.nameLabel')"
+            <b-input v-model="mailbox.name" maxlength="100" :placeholder="$t('replyMailbox.namePlaceholder')"
               :disabled="mailbox.readOnly || busy(index)" data-cy="reply-mailbox-name" />
           </b-field>
         </div>
       </div>
-      <div class="mt-5 mb-4">
+      <div class="reply-automation">
+        <b-switch v-model="mailbox.scanEnabled" :disabled="mailbox.readOnly || busy(index)" data-cy="reply-mailbox-scan">
+          {{ $t('replyMailbox.scanToggle') }}
+        </b-switch>
+        <p class="help mt-2">{{ $t(mailbox.scanEnabled ? 'replyMailbox.scanHelp' : 'replyMailbox.scanOffHelp') }}</p>
+        <span v-if="hasUnsavedChanges(mailbox)" class="help has-text-warning" data-cy="reply-mailbox-unsaved">
+          {{ $t('replyMailbox.unsaved') }}
+        </span>
+      </div>
+      <div v-if="mailbox.scanEnabled" class="reply-detection-settings" data-cy="reply-mailbox-detection-settings">
         <h3 class="title is-6 mb-3">{{ $t('replyMailbox.processingSection') }}</h3>
-        <b-switch v-model="mailbox.aiEnabled" :disabled="mailbox.readOnly || busy(index)" data-cy="reply-mailbox-ai">
-          {{ $t('replyMailbox.aiToggle') }}
-        </b-switch>
-        <p class="help mt-2">{{ $t('replyMailbox.aiSetupHelp') }}</p>
+        <div class="reply-processing-options">
+          <div class="reply-processing-option">
+            <b-switch v-model="mailbox.aiEnabled" :disabled="mailbox.readOnly || busy(index)" data-cy="reply-mailbox-ai">
+              {{ $t('replyMailbox.aiToggle') }}
+            </b-switch>
+            <p class="help mt-2">{{ $t('replyMailbox.aiSetupHelp') }}</p>
+          </div>
+          <div class="reply-processing-option">
+            <b-switch v-model="mailbox.bounceEnabled" :disabled="mailbox.readOnly || busy(index)"
+              data-cy="reply-mailbox-bounce" @input="onBounceToggle(mailbox, $event)">
+              {{ $t('replyMailbox.bounceToggle') }}
+            </b-switch>
+            <p class="help mt-2">{{ $t('replyMailbox.bounceHelp') }}</p>
+            <p v-if="mailbox.bounceEnabled && mailbox.id && !mailbox.bounceProcessingEnabled" class="help has-text-warning"
+              data-cy="reply-mailbox-bounce-global-warning">
+              {{ $t('replyMailbox.bounceRequiresGlobal') }}
+            </p>
+            <p v-if="mailbox.bounceEnabled && mailbox.id && mailbox.bouncePolicy && mailbox.bouncePolicy.action !== 'blocklist'"
+              class="help has-text-warning" data-cy="reply-mailbox-bounce-policy-warning">
+              {{ $t('replyMailbox.bouncePolicyNotBlocklist') }}
+            </p>
+            <p v-if="mailbox.bounceEnabled && mailbox.id && mailbox.bouncePolicy && mailbox.bouncePolicy.action === 'blocklist'"
+              class="help" data-cy="reply-mailbox-bounce-policy">
+              {{ $t('replyMailbox.bouncePolicy', { count: mailbox.bouncePolicy.threshold }) }}
+            </p>
+          </div>
+        </div>
+        <p v-if="!mailbox.aiEnabled && !mailbox.bounceEnabled" class="help mb-4" data-cy="reply-mailbox-no-processing">
+          {{ $t('replyMailbox.noProcessing') }}
+        </p>
+        <div data-cy="reply-mailbox-receiving" class="reply-receiving">
+          <h3 class="title is-6 mb-3">{{ $t('replyMailbox.receivingSection') }}</h3>
+          <div class="columns is-multiline reply-grid">
+            <div class="column is-6">
+              <b-field :label="$t('replyMailbox.usernameLabel')" label-position="on-border" :message="$t('replyMailbox.usernameHelp')">
+                <b-input v-model.trim="mailbox.username" placeholder="user@example.com" :disabled="mailbox.readOnly || busy(index)"
+                  data-cy="reply-mailbox-username" />
+              </b-field>
+            </div>
+            <div class="column is-6">
+              <b-field :label="$t('replyMailbox.passwordLabel')" label-position="on-border"
+                :message="mailbox.hasPassword ? $t('replyMailbox.passwordStoredHelp') : $t('replyMailbox.passwordHelp')">
+                <b-input v-model="mailbox.password" type="password" password-reveal :disabled="mailbox.readOnly || busy(index)"
+                  data-cy="reply-mailbox-password"
+                  :placeholder="mailbox.hasPassword ? $t('replyMailbox.passwordSaved') : $t('replyMailbox.passwordPlaceholder')" />
+              </b-field>
+            </div>
+            <div class="column is-6">
+              <b-field :label="$t('replyMailbox.imapHostLabel')" label-position="on-border">
+            <b-input v-model.trim="mailbox.imapHost" placeholder="imap.example.com" :disabled="mailbox.readOnly || busy(index)"
+                  data-cy="reply-mailbox-host" />
+              </b-field>
+            </div>
+            <div class="column is-3">
+              <b-field :label="$t('replyMailbox.portLabel')" label-position="on-border">
+                <b-numberinput v-model="mailbox.imapPort" min="1" max="65535" controls-position="compact" :disabled="mailbox.readOnly || busy(index)" />
+              </b-field>
+            </div>
+            <div class="column is-3">
+              <b-field :label="$t('replyMailbox.folderLabel')" label-position="on-border">
+                <b-input v-model.trim="mailbox.folder" placeholder="INBOX" :disabled="mailbox.readOnly || busy(index)" />
+              </b-field>
+            </div>
+          </div>
+          <p v-if="!mailbox.readOnly" class="help" data-cy="reply-mailbox-test-hint">
+            {{ !mailbox.id || hasUnsavedChanges(mailbox) ? $t('replyMailbox.saveBeforeTest') : $t('replyMailbox.testSavedHelp') }}
+          </p>
+        </div>
+      </div>
 
-        <b-switch :value="mailbox.bounceEnabled" :disabled="mailbox.readOnly || busy(index)"
-          data-cy="reply-mailbox-bounce" @input="onBounceToggle(mailbox, $event)">
-          {{ $t('replyMailbox.bounceToggle') }}
-        </b-switch>
-        <p class="help mt-2">{{ $t('replyMailbox.bounceHelp') }}</p>
-        <p v-if="mailbox.bounceEnabled && mailbox.id && !mailbox.bounceProcessingEnabled" class="help has-text-warning"
-          data-cy="reply-mailbox-bounce-global-warning">
-          {{ $t('replyMailbox.bounceRequiresGlobal') }}
-        </p>
-        <p v-if="mailbox.bounceEnabled && mailbox.id && mailbox.bouncePolicy && mailbox.bouncePolicy.action !== 'blocklist'"
-          class="help has-text-warning" data-cy="reply-mailbox-bounce-policy-warning">
-          {{ $t('replyMailbox.bouncePolicyNotBlocklist') }}
-        </p>
-        <p v-if="mailbox.bounceEnabled && mailbox.id && mailbox.bouncePolicy && mailbox.bouncePolicy.action === 'blocklist'"
-          class="help" data-cy="reply-mailbox-bounce-policy">
-          {{ $t('replyMailbox.bouncePolicy', { count: mailbox.bouncePolicy.threshold }) }}
-        </p>
-      </div>
-      <div v-if="mailbox.aiEnabled || mailbox.bounceEnabled" data-cy="reply-mailbox-receiving">
-      <h3 class="title is-6 mb-3">{{ $t('replyMailbox.receivingSection') }}</h3>
-      <div class="columns is-multiline reply-grid">
-        <div class="column is-6">
-          <b-field :label="$t('replyMailbox.usernameLabel')" label-position="on-border" :message="$t('replyMailbox.usernameHelp')">
-            <b-input v-model.trim="mailbox.username" placeholder="user@example.com" :disabled="mailbox.readOnly || busy(index)"
-              data-cy="reply-mailbox-username" />
-          </b-field>
-        </div>
-        <div class="column is-6">
-          <b-field :label="$t('replyMailbox.passwordLabel')" label-position="on-border"
-            :message="mailbox.hasPassword ? $t('replyMailbox.passwordStoredHelp') : $t('replyMailbox.passwordHelp')">
-            <b-input v-model="mailbox.password" type="password" password-reveal :disabled="mailbox.readOnly || busy(index)"
-              data-cy="reply-mailbox-password"
-              :placeholder="mailbox.hasPassword ? $t('replyMailbox.passwordSaved') : $t('replyMailbox.passwordPlaceholder')" />
-          </b-field>
-        </div>
-        <div class="column is-6">
-          <b-field :label="$t('replyMailbox.imapHostLabel')" label-position="on-border">
-            <b-input v-model.trim="mailbox.imapHost" placeholder="imap.263.net" :disabled="mailbox.readOnly || busy(index)"
-              data-cy="reply-mailbox-host" />
-          </b-field>
-        </div>
-        <div class="column is-3">
-          <b-field :label="$t('replyMailbox.portLabel')" label-position="on-border">
-            <b-numberinput v-model="mailbox.imapPort" min="1" max="65535" controls-position="compact" :disabled="mailbox.readOnly || busy(index)" />
-          </b-field>
-        </div>
-        <div class="column is-3">
-          <b-field :label="$t('replyMailbox.folderLabel')" label-position="on-border">
-            <b-input v-model.trim="mailbox.folder" placeholder="INBOX" :disabled="mailbox.readOnly || busy(index)" />
-          </b-field>
-        </div>
-      </div>
-      <p v-if="!mailbox.readOnly" class="help" data-cy="reply-mailbox-test-hint">
-        {{ !mailbox.id || hasUnsavedChanges(mailbox) ? $t('replyMailbox.saveBeforeTest') : $t('replyMailbox.testSavedHelp') }}
-      </p>
-      </div>
-
-      <div v-if="inspectMailboxId === mailbox.id && inspectResult" class="box mt-4" data-cy="reply-mailbox-inspect-result">
+      <div v-if="mailbox.scanEnabled && inspectMailboxId === mailbox.id && inspectResult" class="box mt-4" data-cy="reply-mailbox-inspect-result">
         <p v-if="inspectResult.empty" class="has-text-weight-semibold">{{ $t('replyMailbox.inspectEmpty') }}</p>
         <template v-else>
           <p class="has-text-weight-semibold">
@@ -195,6 +212,9 @@
       </div>
 
       <div class="reply-card-footer">
+        <p v-if="mailbox.saveError" class="help has-text-danger reply-save-error" role="alert" data-cy="reply-mailbox-save-error">
+          {{ mailbox.saveError }}
+        </p>
         <div class="reply-card-default-toggle">
           <b-checkbox v-model="mailbox.isDefault" :disabled="mailbox.readOnly || busy(index)">{{ $t('replyMailbox.setDefault') }}</b-checkbox>
         </div>
@@ -203,12 +223,12 @@
             data-cy="reply-mailbox-save" @click="saveMailbox(mailbox, index)">
             {{ $t('replyMailbox.saveConfiguration') }}
           </b-button>
-          <b-button v-if="!mailbox.readOnly && (mailbox.aiEnabled || mailbox.bounceEnabled)" type="is-light" icon-left="connection" :loading="testing === index"
+          <b-button v-if="!mailbox.readOnly && mailbox.scanEnabled" type="is-light" icon-left="connection" :loading="testing === index"
             :disabled="!mailbox.id || hasUnsavedChanges(mailbox) || saving === index" data-cy="reply-mailbox-test"
             @click="testMailbox(mailbox, index)">
             {{ $t('replyMailbox.testConnection') }}
           </b-button>
-          <b-button v-if="mailbox.inspectable && (mailbox.aiEnabled || mailbox.bounceEnabled)" type="is-light" icon-left="magnify"
+          <b-button v-if="mailbox.inspectable && mailbox.scanEnabled" type="is-light" icon-left="magnify"
             :loading="inspecting === index" :disabled="!mailbox.id || hasUnsavedChanges(mailbox) || saving === index"
             data-cy="reply-mailbox-inspect" @click="inspectMailbox(mailbox, index)">
             {{ $t('replyMailbox.inspectLatest') }}
@@ -237,6 +257,7 @@ function blankMailbox() {
     folder: 'INBOX',
     status: 'pending',
     isDefault: false,
+    scanEnabled: false,
     aiEnabled: false,
     bounceEnabled: false,
     bounceProcessingEnabled: false,
@@ -247,6 +268,7 @@ function blankMailbox() {
     lastSyncAt: null,
     lastSyncError: '',
     forwardCount: 0,
+    saveError: '',
   };
 }
 
@@ -309,6 +331,8 @@ export default Vue.extend({
       const mailbox = {
         ...blankMailbox(), ...row, password: '', readOnly: row.manageable === false,
       };
+      mailbox.scanEnabled = row.scanEnabled == null ? !!(row.aiEnabled || row.bounceEnabled) : !!row.scanEnabled;
+      if (!mailbox.hasPassword && !mailbox.verifiedAt) mailbox.imapHost = '';
       mailbox.bounceEnabled = !!mailbox.bounceEnabled;
       mailbox.bounceProcessingEnabled = !!mailbox.bounceProcessingEnabled;
       mailbox.bouncePolicy = mailbox.bouncePolicy || { enabled: false, threshold: 1, action: '' };
@@ -343,7 +367,10 @@ export default Vue.extend({
       this.mailboxes.push(blankMailbox());
     },
 
-    statusType(status) {
+    statusType(mailbox) {
+      const { status } = mailbox;
+      if (!['disabled', 'retained'].includes(status) && this.hasUnsavedChanges(mailbox)) return 'is-warning';
+      if (mailbox.scanEnabled && status === 'active' && !mailbox.verifiedAt) return 'is-info';
       if (status === 'active') return 'is-success';
       if (status === 'retained') return 'is-warning';
       if (status === 'disabled') return 'is-light';
@@ -351,7 +378,11 @@ export default Vue.extend({
     },
 
     statusLabel(mailbox) {
-      if (mailbox.status === 'active' && !mailbox.aiEnabled && !mailbox.bounceEnabled) return this.$t('replyMailbox.statusAddressReady');
+      if (!['disabled', 'retained'].includes(mailbox.status) && this.hasUnsavedChanges(mailbox)) {
+        return this.$t('replyMailbox.statusUnsaved');
+      }
+      if (mailbox.status === 'active' && !mailbox.scanEnabled) return this.$t('replyMailbox.statusAddressReady');
+      if (mailbox.status === 'active' && mailbox.scanEnabled && !mailbox.verifiedAt) return this.$t('replyMailbox.statusPending');
       return ({
         active: this.$t('replyMailbox.statusActive'),
         retained: this.$t('replyMailbox.statusRetained'),
@@ -361,11 +392,12 @@ export default Vue.extend({
     },
 
     wire(mailbox, includePassword = true) {
-      const receiving = mailbox.aiEnabled || mailbox.bounceEnabled;
+      const receiving = mailbox.scanEnabled;
       const data = {
         email: mailbox.email,
         name: mailbox.name,
         is_default: !!mailbox.isDefault,
+        scan_enabled: !!mailbox.scanEnabled,
         ai_enabled: !!mailbox.aiEnabled,
         bounce_enabled: !!mailbox.bounceEnabled,
       };
@@ -383,7 +415,7 @@ export default Vue.extend({
     },
 
     hasUnsavedChanges(mailbox) {
-      const receiving = mailbox.aiEnabled || mailbox.bounceEnabled;
+      const receiving = mailbox.scanEnabled;
       return (receiving && !!mailbox.password) || JSON.stringify(this.wire(mailbox, false)) !== mailbox.savedConfig;
     },
 
@@ -393,12 +425,17 @@ export default Vue.extend({
     },
 
     saveMailbox(mailbox, index) {
+      this.$set(mailbox, 'saveError', '');
       if (!mailbox.email) {
-        this.$utils.toast(this.$t('replyMailbox.toastMissingEmail'), 'is-danger');
+        this.$set(mailbox, 'saveError', this.$t('replyMailbox.toastMissingEmail'));
         return;
       }
-      if ((mailbox.aiEnabled || mailbox.bounceEnabled) && !mailbox.hasPassword && !mailbox.password) {
-        this.$utils.toast(this.$t('replyMailbox.toastMissingFields'), 'is-danger');
+      if (mailbox.scanEnabled && !mailbox.hasPassword && !mailbox.password) {
+        this.$set(mailbox, 'saveError', this.$t('replyMailbox.toastMissingFields'));
+        return;
+      }
+      if (mailbox.scanEnabled && !mailbox.imapHost) {
+        this.$set(mailbox, 'saveError', this.$t('replyMailbox.toastMissingHost'));
         return;
       }
       this.saving = index;
@@ -411,13 +448,15 @@ export default Vue.extend({
         this.$set(this.mailboxes, index, saved);
         this.$emit('changed', organizationID);
         this.$utils.toast(this.$t('replyMailbox.toastSaved'));
+      }).catch((err) => {
+        this.$set(mailbox, 'saveError', err.response?.data?.message || this.$t('replyMailbox.saveFailed'));
       }).finally(() => {
         this.saving = null;
       });
     },
 
     testMailbox(mailbox, index) {
-      if ((!mailbox.aiEnabled && !mailbox.bounceEnabled) || !mailbox.id || this.hasUnsavedChanges(mailbox)) {
+      if (!mailbox.scanEnabled || !mailbox.id || this.hasUnsavedChanges(mailbox)) {
         this.$utils.toast(this.$t('replyMailbox.saveBeforeTest'), 'is-warning');
         return;
       }
@@ -426,6 +465,7 @@ export default Vue.extend({
       this.$api.testReplyMailbox({
         id: mailbox.id,
       }, this.apiOrganizationID).then(() => {
+        this.$set(mailbox, 'verifiedAt', new Date().toISOString());
         if (!['disabled', 'retained'].includes(mailbox.status)) this.$set(mailbox, 'status', 'active');
         this.$emit('changed', organizationID);
         this.$utils.toast(this.$t('replyMailbox.toastTestSuccess'));
@@ -448,7 +488,7 @@ export default Vue.extend({
         this.$utils.confirm(
           this.$t('replyMailbox.bounceConfirmNew'),
           () => this.$set(mailbox, 'bounceEnabled', true),
-          null,
+          () => this.$set(mailbox, 'bounceEnabled', false),
           { type: 'is-warning', focusOn: 'cancel' },
         );
         return;
@@ -457,7 +497,7 @@ export default Vue.extend({
         this.$utils.confirm(
           this.$t('replyMailbox.bounceConfirmNotBlocklist', { count }),
           () => this.$set(mailbox, 'bounceEnabled', true),
-          null,
+          () => this.$set(mailbox, 'bounceEnabled', false),
           { type: 'is-warning' },
         );
         return;
@@ -465,7 +505,7 @@ export default Vue.extend({
       this.$utils.confirm(
         this.$t('replyMailbox.bounceConfirm', { count }),
         () => this.$set(mailbox, 'bounceEnabled', true),
-        null,
+        () => this.$set(mailbox, 'bounceEnabled', false),
         { type: 'is-warning', focusOn: 'cancel' },
       );
     },
@@ -605,16 +645,25 @@ export default Vue.extend({
 .reply-mailbox-card + .reply-mailbox-card { margin-top: var(--lm-space-4); }
 .reply-card-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1.1rem 1.25rem; background: var(--lm-color-surface-subtle); border-bottom: 1px solid var(--lm-color-border); }
 .reply-card-title { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; font-size: 1.05rem; font-weight: 600; color: #273142; }
-.reply-card-subtitle { margin-top: .25rem; color: #718096; font-size: .85rem; word-break: break-all; }
+.reply-card-subtitle { margin-top: .25rem; color: var(--lm-color-text-muted); font-size: 14px; word-break: break-all; }
 .reply-card-body { padding: 1.25rem; }
 .reply-grid { margin: -.35rem; padding: 0; }
 .reply-grid > .column { min-width: 0; padding: .35rem; }
 .reply-grid .field { min-width: 0; margin-bottom: .35rem; }
-.reply-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.25rem; border-top: 1px solid var(--lm-color-border); }
+.reply-card-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.25rem; border-top: 1px solid var(--lm-color-border); }
+.reply-save-error { flex-basis: 100%; margin: 0; }
 .reply-card-default-toggle { flex-shrink: 0; }
+.reply-automation { margin-top: var(--lm-space-6); }
+.reply-detection-settings { margin-top: var(--lm-space-4); padding: var(--lm-space-6); background: var(--lm-color-surface-subtle); border-radius: var(--lm-radius-md); }
+.reply-processing-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--lm-space-6); margin-bottom: var(--lm-space-6); }
+.reply-processing-option { min-width: 0; }
+.reply-receiving { padding-top: var(--lm-space-4); border-top: 1px solid var(--lm-color-border); }
+.reply-mailboxes .help { font-size: 14px; line-height: 1.5; }
 .reply-bounce-recipient { word-break: break-all; }
 .reply-bounce-reason { word-break: break-word; }
 @media (max-width: 768px) {
+  .reply-processing-options { grid-template-columns: minmax(0, 1fr); }
+  .reply-detection-settings { padding: var(--lm-space-4); }
   .reply-mailboxes-header, .reply-card-header, .reply-card-footer { display: block; }
   .reply-mailboxes-header .button { width: 100%; margin-top: .85rem; }
   .reply-card-header .button { margin-top: .75rem; }

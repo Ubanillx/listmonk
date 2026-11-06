@@ -29,6 +29,16 @@ type replyMailboxRequest struct {
 	IsDefault     bool   `json:"is_default"`
 	AIEnabled     bool   `json:"ai_enabled"`
 	BounceEnabled bool   `json:"bounce_enabled"`
+	ScanEnabled   *bool  `json:"scan_enabled"`
+}
+
+// Older clients opt in through a consumer flag. New clients can pause scanning
+// while preserving the two consumer preferences independently.
+func (req *replyMailboxRequest) scanning() bool {
+	if req.ScanEnabled != nil {
+		return *req.ScanEnabled
+	}
+	return req.AIEnabled || req.BounceEnabled
 }
 
 type replyMailboxTestRequest struct {
@@ -94,10 +104,10 @@ func (a *App) CreateReplyMailbox(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return err
 	}
-	if (req.AIEnabled || req.BounceEnabled) && strings.TrimSpace(req.Password) == "" {
+	if req.scanning() && strings.TrimSpace(req.Password) == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "password or client authorization code is required")
 	}
-	if !req.AIEnabled && !req.BounceEnabled {
+	if !req.scanning() {
 		req.Password = ""
 	}
 	if err := validateReplyMailboxRequest(&req); err != nil {
@@ -116,7 +126,7 @@ func (a *App) CreateReplyMailbox(c echo.Context) error {
 	var id int
 	if err := tx.Stmtx(a.queries.CreateReplyMailbox).Get(&id, userID, nullableOrganizationID(access.OrganizationID), req.Email, req.Name,
 		req.Username, req.IMAPHost, req.IMAPPort, boolValue(req.IMAPTLS), req.Folder,
-		req.Password, req.IsDefault, req.AIEnabled, req.BounceEnabled); err != nil {
+		req.Password, req.IsDefault, req.AIEnabled, req.BounceEnabled, req.scanning()); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 	if err := tx.Commit(); err != nil {
@@ -138,7 +148,7 @@ func (a *App) UpdateReplyMailbox(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return err
 	}
-	if (req.AIEnabled || req.BounceEnabled) && strings.TrimSpace(req.Password) == "" {
+	if req.scanning() && strings.TrimSpace(req.Password) == "" {
 		var hasPassword bool
 		if err := a.db.Get(&hasPassword, `SELECT password <> '' FROM reply_mailboxes
 			WHERE id=$1 AND user_id=$2 AND organization_id IS NOT DISTINCT FROM $3`,
@@ -165,7 +175,7 @@ func (a *App) UpdateReplyMailbox(c echo.Context) error {
 	var updatedID int
 	if err := tx.Stmtx(a.queries.UpdateReplyMailbox).Get(&updatedID, id, userID, req.Email,
 		req.Name, req.Username, req.IMAPHost, req.IMAPPort, boolValue(req.IMAPTLS), req.Folder,
-		req.Password, req.IsDefault, req.AIEnabled, nullableOrganizationID(access.OrganizationID), req.BounceEnabled); err != nil {
+		req.Password, req.IsDefault, req.AIEnabled, nullableOrganizationID(access.OrganizationID), req.BounceEnabled, req.scanning()); err != nil {
 		return echo.NewHTTPError(http.StatusNotFound, "reply mailbox not found")
 	}
 	if err := tx.Commit(); err != nil {
@@ -286,17 +296,16 @@ func (a *App) TestReplyMailbox(c echo.Context) error {
 	}
 	var saved struct {
 		replyAIMailboxSource
-		Status        string `db:"status"`
-		AIEnabled     bool   `db:"ai_enabled"`
-		BounceEnabled bool   `db:"bounce_enabled"`
+		Status      string `db:"status"`
+		ScanEnabled bool   `db:"scan_enabled"`
 	}
 	if err := a.db.Get(&saved, `SELECT id, user_id, organization_id, email, username, password,
-		imap_host, imap_port, imap_tls, folder, status, ai_enabled, bounce_enabled FROM reply_mailboxes
+		imap_host, imap_port, imap_tls, folder, status, scan_enabled FROM reply_mailboxes
 		WHERE id = $1 AND user_id = $2 AND organization_id IS NOT DISTINCT FROM $3`,
 		req.ID, userID, nullableOrganizationID(access.OrganizationID)); err != nil {
 		return echo.NewHTTPError(http.StatusNotFound, "reply mailbox not found")
 	}
-	if !saved.AIEnabled && !saved.BounceEnabled {
+	if !saved.ScanEnabled {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("replyMailbox.testRequiresReceiving"))
 	}
 	if saved.Password == "" {
@@ -320,13 +329,11 @@ func (a *App) TestReplyMailbox(c echo.Context) error {
 		SET status = CASE WHEN status IN ('disabled', 'retained') THEN status ELSE 'active' END,
 		verified_at = COALESCE(verified_at, NOW()), updated_at = NOW(), last_sync_error = ''
 		WHERE id = $1 AND user_id = $2 AND organization_id IS NOT DISTINCT FROM $3
-		AND (ai_enabled = TRUE OR bounce_enabled = TRUE)
-		AND ai_enabled = $12 AND bounce_enabled = $13
+		AND scan_enabled = TRUE
 		AND (email, username, password, imap_host, imap_port, imap_tls, folder, status)
 		IS NOT DISTINCT FROM ($4, $5, $6, $7, $8, $9, $10, $11)`,
 		req.ID, userID, nullableOrganizationID(access.OrganizationID), saved.Email,
-		saved.Username, saved.Password, saved.Host, saved.Port, saved.TLSEnabled, saved.Folder, saved.Status,
-		saved.AIEnabled, saved.BounceEnabled)
+		saved.Username, saved.Password, saved.Host, saved.Port, saved.TLSEnabled, saved.Folder, saved.Status)
 	if err != nil {
 		return err
 	}
@@ -371,8 +378,8 @@ func validateReplyMailboxRequest(req *replyMailboxRequest) error {
 	req.Name = strings.TrimSpace(req.Name)
 	// Address-only mailboxes do not require or validate receiving parameters.
 	// Unused defaults keep the existing storage shape; updates preserve any
-	// previously saved connection configuration while both consumers are off.
-	if !req.AIEnabled && !req.BounceEnabled {
+	// previously saved connection configuration while scanning is paused.
+	if !req.scanning() {
 		req.Username, req.IMAPHost, req.IMAPPort, req.Folder = req.Email, "imap.263.net", 993, "INBOX"
 		return nil
 	}
@@ -381,6 +388,9 @@ func validateReplyMailboxRequest(req *replyMailboxRequest) error {
 		req.Username = req.Email
 	}
 	if req.IMAPHost == "" {
+		if req.ScanEnabled != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, "IMAP server is required for automatic reply detection")
+		}
 		req.IMAPHost = "imap.263.net"
 	}
 	if req.IMAPPort == 0 {
@@ -502,14 +512,13 @@ func (a *App) InspectReplyMailbox(c echo.Context) error {
 	}
 	var saved struct {
 		replyAIMailboxSource
-		AIEnabled     bool `db:"ai_enabled"`
-		BounceEnabled bool `db:"bounce_enabled"`
+		ScanEnabled bool `db:"scan_enabled"`
 	}
 	if err := a.db.Get(&saved, `SELECT id, user_id, organization_id, email, username, password,
-		imap_host, imap_port, imap_tls, folder, ai_enabled, bounce_enabled FROM reply_mailboxes WHERE id=$1`, id); err != nil {
+		imap_host, imap_port, imap_tls, folder, scan_enabled FROM reply_mailboxes WHERE id=$1`, id); err != nil {
 		return echo.NewHTTPError(http.StatusNotFound, "reply mailbox not found")
 	}
-	if !saved.AIEnabled && !saved.BounceEnabled {
+	if !saved.ScanEnabled {
 		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("replyMailbox.testRequiresReceiving"))
 	}
 	if saved.Password == "" {

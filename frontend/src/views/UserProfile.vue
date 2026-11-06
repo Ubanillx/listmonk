@@ -16,12 +16,12 @@
         <div class="profile-panel">
           <form @submit.prevent="onSubmit">
             <b-field v-if="data.type !== 'api'" :label="$t('customers.email')" label-position="on-border">
-              <b-input :maxlength="200" v-model="form.email" name="email" :placeholder="$t('customers.email')"
+              <b-input :maxlength="200" v-model="form.email" name="email" placeholder="name@example.com"
                 :disabled="!data.passwordLogin" required autofocus />
             </b-field>
 
             <b-field :label="$t('globals.fields.name')" label-position="on-border">
-              <b-input :maxlength="200" v-model="form.name" name="name" :placeholder="$t('globals.fields.name')" />
+              <b-input :maxlength="200" v-model="form.name" name="name" :placeholder="$t('users.namePlaceholder')" />
             </b-field>
 
             <section v-if="customFields.length" class="account-custom-fields mb-5">
@@ -50,13 +50,13 @@
               <div class="column is-6">
                 <b-field :label="$t('users.password')" label-position="on-border" :message="$t('users.passwordUnchangedHelp')">
                   <b-input minlength="8" :maxlength="200" v-model="form.password" type="password" name="password"
-                    :placeholder="$t('users.password')" />
+                    :placeholder="$t('users.passwordPlaceholder')" />
                 </b-field>
               </div>
               <div class="column is-6">
                 <b-field :label="$t('users.passwordRepeat')" label-position="on-border">
                   <b-input minlength="8" :maxlength="200" v-model="form.password2" type="password" name="password2"
-                    :placeholder="$t('users.passwordRepeat')" />
+                    :placeholder="$t('users.passwordRepeatPlaceholder')" />
                 </b-field>
               </div>
             </div>
@@ -136,7 +136,7 @@
               <form v-if="showDisableTOTP" class="disable-totp mt-5" @submit.prevent="confirmDisableTOTP">
                 <b-field :label="$t('users.password')" label-position="on-border">
                   <b-input ref="disablePasswordInput" v-model="disableTOTPPassword" type="password" minlength="8"
-                    :placeholder="$t('users.password')" required />
+                    :placeholder="$t('users.currentPasswordPlaceholder')" required />
                 </b-field>
                 <div class="buttons">
                   <b-button type="is-danger" native-type="submit">

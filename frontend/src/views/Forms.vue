@@ -87,7 +87,7 @@ export default Vue.extend({
         + '  <div>\n'
         + `    <h3>${this.$t('public.sub')}</h3>\n`
         + '    <input type="hidden" name="nonce" />\n\n'
-        + `    <p><input type="email" name="email" required placeholder="${this.$t('customers.email')}" /></p>\n`
+        + '    <p><input type="email" name="email" required placeholder="name@example.com" /></p>\n'
         + `    <p><input type="text" name="name" placeholder="${this.$t('public.subName')}" /></p>\n\n`;
 
       this.checked.forEach((i) => {

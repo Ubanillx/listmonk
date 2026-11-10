@@ -96,19 +96,14 @@ func (a *App) GetCampaigns(c echo.Context) error {
 		noBody, _ = strconv.ParseBool(c.QueryParam("no_body"))
 	)
 
-	// Query and retrieve campaigns from the active workspace only, then apply
-	// any legacy campaign/customer_list grants before pagination is exposed.
-	res, total, err := a.queryReadableWorkspaceCampaigns(c, access, query, status, tags, orderBy, order, pg.Offset, pg.Limit)
+	// The workspace boundary and legacy campaign/customer_list grants are applied
+	// in SQL before pagination is exposed.
+	res, total, err := a.queryReadableWorkspaceCampaigns(c, access, query, status, tags, orderBy, order, pg.Offset, pg.Limit, noBody)
 	if err != nil {
 		return err
 	}
 
-	// Remove the body from the response if requested.
 	for i := range res {
-		if noBody {
-			res[i].Body = ""
-			res[i].BodySource.Valid = false
-		}
 		a.redactCampaignSensitiveFields(access, &res[i])
 	}
 
@@ -859,7 +854,11 @@ func (a *App) DeleteCampaigns(c echo.Context) error {
 		// current filter. Intersect it with managed resources so an organization
 		// manager cannot delete a member's campaign and a forged all=true request
 		// cannot ignore the query.
-		visible, _, err := a.queryReadableWorkspaceCampaigns(c, access, query, nil, nil, "created_at", "DESC", 0, 0)
+		user := auth.GetUser(c)
+		if err := requireLegacyPermission(user, auth.PermCampaignsGetAll, auth.PermCampaignsGet); err != nil {
+			return err
+		}
+		visible, err := a.core.QueryReadableWorkspaceCampaignIDs(access, campaignReadScope(access, user))
 		if err != nil {
 			return err
 		}
@@ -867,9 +866,9 @@ func (a *App) DeleteCampaigns(c echo.Context) error {
 		for _, id := range managed {
 			allowed[id] = struct{}{}
 		}
-		for _, campaign := range visible {
-			if _, ok := allowed[campaign.ID]; ok {
-				ids = append(ids, campaign.ID)
+		for _, id := range visible {
+			if _, ok := allowed[id]; ok {
+				ids = append(ids, id)
 			}
 		}
 	}
@@ -1633,29 +1632,21 @@ func (a *App) getAccessibleCampaignReportIDs(c echo.Context) ([]int, error) {
 		return out, nil
 	}
 
-	camps, _, err := a.queryReadableWorkspaceCampaigns(c, access, "", nil, nil, "created_at", "DESC", 0, 0)
-	if err != nil {
-		return nil, err
-	}
-
 	// The customer_list endpoint intentionally contains campaigns that are merely
-	// readable (for example organization/global publications).  Analytics are
+	// readable (for example organization/global publications). Analytics are
 	// narrower: ordinary users may report only on campaigns they own, while an
 	// organization manager may report on campaigns in the active organization.
-	// Re-run the same authorization for every row before constructing the ID
-	// set; otherwise a no-id report request would bypass the owner boundary.
-	out := make([]int, 0, len(camps))
-	for _, camp := range camps {
-		if err := a.requireCampaignAnalytics(c, access, camp.ID); err != nil {
-			if httpErr, ok := err.(*echo.HTTPError); ok && httpErr.Code == http.StatusForbidden {
-				continue
-			}
-			return nil, err
-		}
-		out = append(out, camp.ID)
+	// The workspace, legacy list grants and that owner/manager boundary are all
+	// applied in SQL so a no-id report request does not load and authorize every
+	// campaign row.
+	user := auth.GetUser(c)
+	if err := requireLegacyPermission(user, auth.PermCampaignsGetAll, auth.PermCampaignsGet); err != nil {
+		return nil, err
 	}
-
-	return out, nil
+	if err := requireLegacyPermission(user, auth.PermCampaignsGetAnalytics); err != nil {
+		return nil, err
+	}
+	return a.core.QueryCampaignAnalyticsIDs(access, campaignReadScope(access, user))
 }
 
 func (a *App) getManagedCampaignReportIDs(c echo.Context, access models.WorkspaceAccess) ([]int, error) {

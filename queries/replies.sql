@@ -95,7 +95,7 @@ WITH candidates AS (
     SELECT m.id, m.user_id, m.organization_id, m.email, m.username, m.password,
            m.imap_host, m.imap_port, m.imap_tls, m.folder,
            (m.ai_enabled AND EXISTS(SELECT 1 FROM settings WHERE key='reply_ai' AND value->>'enabled'='true')) AS ai_active,
-           (m.bounce_enabled AND EXISTS(SELECT 1 FROM settings WHERE key='bounce.enabled' AND value::BOOLEAN)) AS bounce_active,
+           (m.bounce_enabled AND EXISTS(SELECT 1 FROM settings WHERE key='bounce.enabled' AND (value #>> '{}') = 'true')) AS bounce_active,
            u.user_role_id
     FROM reply_mailboxes m
     JOIN users u ON u.id = m.user_id AND u.status = 'enabled'
@@ -196,3 +196,9 @@ WHERE id = $1 AND status = 'processing' AND lease_token = $3::UUID;
 UPDATE reply_mailboxes
 SET last_sync_at = NOW(), last_sync_error = $2, updated_at = NOW()
 WHERE id = $1;
+
+-- name: get-bounce-enabled
+-- Read the global switch as text: casting arbitrary settings rows to boolean can
+-- abort the scan when the planner evaluates value::boolean before the key filter
+-- and the table contains array-valued settings.
+SELECT COALESCE((SELECT (value #>> '{}') = 'true' FROM settings WHERE key='bounce.enabled'), FALSE);

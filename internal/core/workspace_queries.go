@@ -288,50 +288,225 @@ func (c *Core) GetPublicSubscriptionLists(uuids []string) ([]models.CustomerList
 	return out, nil
 }
 
-// QueryWorkspaceCampaigns returns campaigns visible in the active workspace.
-func (c *Core) QueryWorkspaceCampaigns(access models.WorkspaceAccess, search string, statuses, tags []string, orderBy, order string, offset, limit int) (models.Campaigns, int, error) {
+// CampaignReadScope describes the legacy campaign -> customer_list read grants
+// that must be applied inside SQL, before pagination, so restricted roles cannot
+// infer inaccessible rows from totals or page boundaries.
+type CampaignReadScope struct {
+	// AllCustomerLists reports whether the caller may read campaigns with any
+	// audience (campaigns:get_all or an all-list grant).
+	AllCustomerLists bool
+	// CustomerListIDs are the legacy-granted customer_list IDs. They are only
+	// consulted when AllCustomerLists is false.
+	CustomerListIDs []int
+}
+
+func campaignField(alias, name string) string {
+	if alias == "" {
+		return name
+	}
+	return alias + "." + name
+}
+
+var campaignListSortFields = map[string]string{
+	"name":       "c.name",
+	"status":     "c.status",
+	"created_at": "c.created_at",
+	"updated_at": "c.updated_at",
+}
+
+// campaignListColumns is explicit instead of c.* so no_body can skip the body
+// columns, and the list query never transfers fields it does not return.
+func campaignListColumns(noBody bool) string {
+	body := "c.body, c.body_source"
+	if noBody {
+		body = "''::TEXT AS body, NULL::TEXT AS body_source"
+	}
+	return `c.id, c.uuid, c.type, c.name, c.subject, c.from_email, ` + body + `,
+		c.altbody, c.send_at, c.status, c.content_type, c.daily_send_limit, c.daily_resume_time,
+		c.smtp_rate_limit, c.next_resume_at, c.send_errors, c.tags, c.headers, c.attribs,
+		c.template_id, c.messenger, c.auto_track_links, c.archive, c.archive_slug,
+		c.archive_template_id, c.archive_meta, c.reply_mailbox_id, c.pool_reply_priority,
+		c.pool_scope, c.smtp_source, c.smtp_pool_id, c.pool_next_org_index, c.name_fallback,
+		c.to_send, c.sent, c.started_at,
+		c.organization_id, c.owner_user_id, c.original_owner_user_id, c.visibility, c.transfer_pending_at,
+		c.created_at, c.updated_at`
+}
+
+// campaignAudienceGrantPredicate is the legacy per-customer_list rule: a campaign
+// with no audience snapshot is readable, and a campaign with an audience requires
+// at least one granted customer_list.
+func campaignAudienceGrantPredicate(customerListIDs []int, alias string, firstArg int) (string, []any) {
+	return fmt.Sprintf(`(NOT EXISTS (
+			SELECT 1 FROM campaign_customer_lists audience_any
+			WHERE audience_any.campaign_id = %s
+		)
+		OR EXISTS (
+			SELECT 1 FROM campaign_customer_lists audience_granted
+			WHERE audience_granted.campaign_id = %s
+				AND audience_granted.customer_list_id = ANY($%d::INT[])
+		))`, campaignField(alias, "id"), campaignField(alias, "id"), firstArg),
+		[]any{pq.Array(customerListIDs)}
+}
+
+// campaignLegacyReadPredicate mirrors workspaceReadException plus the legacy
+// audience grant rule. The list endpoint uses it to decide readability.
+func campaignLegacyReadPredicate(access models.WorkspaceAccess, customerListIDs []int, alias string, firstArg int) (string, []any) {
+	if access.PlatformAdmin {
+		return "TRUE", nil
+	}
+	exceptions := fmt.Sprintf("(%s = 'global' AND %s IS NULL)",
+		campaignField(alias, "visibility"), campaignField(alias, "transfer_pending_at"))
+	var args []any
+	if access.IsOrganization() {
+		manager := "FALSE"
+		if access.IsOrganizationManager() {
+			manager = "TRUE"
+		}
+		exceptions = fmt.Sprintf(`((%s = 'global' AND %s IS NULL)
+			OR (%s = $%d AND (%s OR (%s IS NULL AND %s IN ('global', 'organization')))))`,
+			campaignField(alias, "visibility"), campaignField(alias, "transfer_pending_at"),
+			campaignField(alias, "organization_id"), firstArg, manager,
+			campaignField(alias, "transfer_pending_at"), campaignField(alias, "visibility"))
+		args = append(args, access.OrganizationID)
+	}
+	grant, grantArgs := campaignAudienceGrantPredicate(customerListIDs, alias, firstArg+len(args))
+	args = append(args, grantArgs...)
+	return fmt.Sprintf("(%s OR %s)", exceptions, grant), args
+}
+
+// campaignAccessPredicates builds the workspace and legacy read predicates.
+func campaignAccessPredicates(access models.WorkspaceAccess, read CampaignReadScope, firstArg int) ([]string, []any) {
+	scope, args := workspaceReadPredicate(access, "c", firstArg)
+	preds := []string{"(" + scope + ")"}
+	if !read.AllCustomerLists {
+		legacy, legacyArgs := campaignLegacyReadPredicate(access, read.CustomerListIDs, "c", firstArg+len(args))
+		preds = append(preds, legacy)
+		args = append(args, legacyArgs...)
+	}
+	return preds, args
+}
+
+// campaignListFilters builds the status/tag/search predicates for list queries.
+func campaignListFilters(search string, statuses, tags []string, firstArg int) ([]string, []any) {
 	if statuses == nil {
 		statuses = []string{}
 	}
 	if tags == nil {
 		tags = []string{}
 	}
+	preds := []string{
+		fmt.Sprintf("(CARDINALITY($%d::campaign_status[]) = 0 OR c.status = ANY($%d::campaign_status[]))", firstArg, firstArg),
+		fmt.Sprintf("(CARDINALITY($%d::VARCHAR(100)[]) = 0 OR $%d <@ c.tags)", firstArg+1, firstArg+1),
+		fmt.Sprintf("($%d = '' OR c.name ILIKE $%d OR c.subject ILIKE $%d)", firstArg+2, firstArg+2, firstArg+2),
+	}
+	return preds, []any{pq.StringArray(statuses), pq.StringArray(tags), searchString(search)}
+}
 
+// campaignAnalyticsPredicate mirrors requireCampaignAnalytics: platform
+// administrators see every campaign, organization managers see their
+// organization, and everyone else may report only on campaigns they own in the
+// active workspace.
+func campaignAnalyticsPredicate(access models.WorkspaceAccess, alias string, firstArg int) (string, []any) {
+	if access.PlatformAdmin {
+		return "TRUE", nil
+	}
+	if access.IsOrganization() {
+		if access.IsOrganizationManager() {
+			return fmt.Sprintf("%s = $%d", campaignField(alias, "organization_id"), firstArg), []any{access.OrganizationID}
+		}
+		return fmt.Sprintf("(%s = $%d AND %s = $%d AND %s IS NULL)",
+				campaignField(alias, "organization_id"), firstArg, campaignField(alias, "owner_user_id"), firstArg+1,
+				campaignField(alias, "transfer_pending_at")),
+			[]any{access.OrganizationID, access.UserID}
+	}
+	return fmt.Sprintf("(%s IS NULL AND %s = $%d AND %s IS NULL)",
+			campaignField(alias, "organization_id"), campaignField(alias, "owner_user_id"), firstArg,
+			campaignField(alias, "transfer_pending_at")),
+		[]any{access.UserID}
+}
+
+// QueryCampaignAnalyticsIDs returns the IDs of campaigns the caller may include
+// in aggregate analytics. The workspace and owner/manager analytics boundary are
+// applied in SQL so report endpoints do not have to load every campaign and
+// authorize it row by row. Non-manager owners additionally need the strict
+// audience grant, matching requireCampaignAnalytics even for published rows.
+func (c *Core) QueryCampaignAnalyticsIDs(access models.WorkspaceAccess, read CampaignReadScope) ([]int, error) {
 	scope, args := workspaceReadPredicate(access, "c", 1)
-	first := len(args) + 1
+	preds := []string{"(" + scope + ")"}
+	analytics, analyticsArgs := campaignAnalyticsPredicate(access, "c", len(args)+1)
+	preds = append(preds, analytics)
+	args = append(args, analyticsArgs...)
+	// The strict grant rule implies the list read rule, so the legacy predicate
+	// is not repeated here.
+	if !read.AllCustomerLists && !access.PlatformAdmin && !(access.IsOrganization() && access.IsOrganizationManager()) {
+		grant, grantArgs := campaignAudienceGrantPredicate(read.CustomerListIDs, "c", len(args)+1)
+		preds = append(preds, grant)
+		args = append(args, grantArgs...)
+	}
+
+	var ids []int
+	stmt := "SELECT c.id FROM campaigns c WHERE " + strings.Join(preds, " AND ") + " ORDER BY c.created_at DESC, c.id"
+	if err := c.db.Select(&ids, stmt, args...); err != nil {
+		return nil, workspaceQueryError("fetching campaign analytics IDs", err)
+	}
+	return ids, nil
+}
+
+// QueryReadableWorkspaceCampaignIDs returns every readable campaign ID in the
+// active workspace without loading bodies or statistics. Bulk actions that only
+// need the permission-filtered ID set should use it instead of the list query.
+func (c *Core) QueryReadableWorkspaceCampaignIDs(access models.WorkspaceAccess, read CampaignReadScope) ([]int, error) {
+	preds, args := campaignAccessPredicates(access, read, 1)
+	var ids []int
+	stmt := "SELECT c.id FROM campaigns c WHERE " + strings.Join(preds, " AND ") + " ORDER BY c.created_at DESC, c.id"
+	if err := c.db.Select(&ids, stmt, args...); err != nil {
+		return nil, workspaceQueryError("fetching campaign IDs", err)
+	}
+	return ids, nil
+}
+
+// QueryReadableWorkspaceCampaigns returns a page of campaigns after applying
+// the workspace boundary and the legacy campaign/customer_list grants in SQL.
+// Filtering before OFFSET/LIMIT keeps totals and page boundaries from exposing
+// rows a restricted caller cannot read.
+func (c *Core) QueryReadableWorkspaceCampaigns(access models.WorkspaceAccess, read CampaignReadScope, search string, statuses, tags []string, orderBy, order string, offset, limit int, noBody bool) (models.Campaigns, int, error) {
+	preds, args := campaignAccessPredicates(access, read, 1)
+	filters, filterArgs := campaignListFilters(search, statuses, tags, len(args)+1)
+	preds = append(preds, filters...)
+	args = append(args, filterArgs...)
+	where := strings.Join(preds, " AND ")
+	next := len(args) + 1
+
+	// The count and the page are separate statements, so a concurrent transfer
+	// can make the total disagree with the page by one row. The page query still
+	// applies the same permission predicate, so no unreadable row is exposed.
+	var total int
+	if err := c.db.Get(&total, "SELECT COUNT(*) FROM campaigns c WHERE "+where, args...); err != nil {
+		return nil, 0, workspaceQueryError("counting campaigns", err)
+	}
+	if total == 0 {
+		return models.Campaigns{}, 0, nil
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
 	stmt := fmt.Sprintf(`
-		SELECT c.*, COALESCE(rm.email, '') AS reply_mailbox_email, COALESCE(u.username, '') AS owner_username, COALESCE(u.name, '') AS owner_name,
-			COALESCE((SELECT sc.unsent_count FROM campaign_send_counts sc WHERE sc.campaign_id = c.id), 0) AS unsent_count,
-			COUNT(*) OVER() AS total,
-			(SELECT COALESCE(ARRAY_TO_JSON(ARRAY_AGG(l)), '[]') FROM (
-				SELECT COALESCE(cl.customer_list_id, 0) AS id, cl.customer_list_name AS name
-				FROM campaign_customer_lists cl
-				LEFT JOIN customer_lists cl_list ON cl_list.id = cl.customer_list_id
-				WHERE cl.campaign_id = c.id AND (%s)
-			) l) AS customer_lists
+		SELECT %s,
+			COALESCE(rm.email, '') AS reply_mailbox_email,
+			COALESCE(u.username, '') AS owner_username,
+			COALESCE(u.name, '') AS owner_name,
+			COALESCE((SELECT sc.unsent_count FROM campaign_send_counts sc WHERE sc.campaign_id = c.id), 0) AS unsent_count
 		FROM campaigns c
 		LEFT JOIN users u ON u.id = COALESCE(c.owner_user_id, c.original_owner_user_id)
 		LEFT JOIN reply_mailboxes rm ON rm.id = c.reply_mailbox_id
-		WHERE (%s)
-			AND (CARDINALITY($%d::campaign_status[]) = 0 OR c.status = ANY($%d::campaign_status[]))
-			AND (CARDINALITY($%d::VARCHAR(100)[]) = 0 OR $%d <@ c.tags)
-			AND ($%d = '' OR c.name ILIKE $%d OR c.subject ILIKE $%d)
+		WHERE %s
 		ORDER BY %s OFFSET $%d LIMIT (CASE WHEN $%d < 1 THEN NULL ELSE $%d END)`,
-		workspaceCampaignListPredicate(access, "c", "cl_list", "cl"),
-		scope,
-		first, first,
-		first+1, first+1,
-		first+2, first+2, first+2,
-		workspaceSort(orderBy, order, map[string]string{
-			"name":       "c.name",
-			"status":     "c.status",
-			"created_at": "c.created_at",
-			"updated_at": "c.updated_at",
-		}, "c.created_at"),
-		first+3, first+4, first+4,
-	)
-	args = append(args, pq.StringArray(statuses), pq.StringArray(tags), searchString(search), offset, limit)
+		campaignListColumns(noBody), where,
+		workspaceSort(orderBy, order, campaignListSortFields, "c.created_at"),
+		next, next+1, next+1)
 
+	args = append(args, offset, limit)
 	var out models.Campaigns
 	if err := c.db.Select(&out, stmt, args...); err != nil {
 		return nil, 0, workspaceQueryError("fetching campaigns", err)
@@ -344,11 +519,14 @@ func (c *Core) QueryWorkspaceCampaigns(access models.WorkspaceAccess, search str
 	if err := c.loadWorkspaceCampaignStats(access, out); err != nil {
 		return nil, 0, workspaceQueryError("fetching campaign statistics", err)
 	}
-	total := 0
-	if len(out) > 0 {
-		total = out[0].Total
-	}
 	return out, total, nil
+}
+
+// QueryWorkspaceCampaigns returns campaigns visible in the active workspace
+// without legacy role filters. It is retained for Core-level tests;
+// authenticated endpoints use QueryReadableWorkspaceCampaigns.
+func (c *Core) QueryWorkspaceCampaigns(access models.WorkspaceAccess, search string, statuses, tags []string, orderBy, order string, offset, limit int) (models.Campaigns, int, error) {
+	return c.QueryReadableWorkspaceCampaigns(access, CampaignReadScope{AllCustomerLists: true}, search, statuses, tags, orderBy, order, offset, limit, false)
 }
 
 // GetWorkspaceCampaign returns one campaign through the same workspace

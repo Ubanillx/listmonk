@@ -426,7 +426,7 @@ func redactReplyBounceText(text string) string {
 // mailbox card reflects a threshold changed while campaigns are running.
 func (a *App) replyBouncePolicy() (models.ReplyBouncePolicy, error) {
 	var enabled bool
-	if err := a.db.Get(&enabled, `SELECT COALESCE((SELECT value::BOOLEAN FROM settings WHERE key='bounce.enabled'), FALSE)`); err != nil {
+	if err := a.queries.GetBounceEnabled.Get(&enabled); err != nil {
 		return models.ReplyBouncePolicy{}, err
 	}
 	var raw []byte

@@ -6,6 +6,7 @@ import (
 	"sort"
 
 	"github.com/knadh/listmonk/internal/auth"
+	"github.com/knadh/listmonk/internal/core"
 	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
 )
@@ -723,48 +724,27 @@ func (a *App) queryReadableWorkspaceLists(c echo.Context, access models.Workspac
 	return filtered[query.offset:end], total, nil
 }
 
-// queryReadableWorkspaceCampaigns filters after the fixed workspace query but
-// before pagination. This prevents restricted role/customer_list grants from learning
-// about inaccessible campaign rows through total counts or page boundaries.
-func (a *App) queryReadableWorkspaceCampaigns(c echo.Context, access models.WorkspaceAccess, search string, statuses, tags []string, orderBy, order string, offset, limit int) (models.Campaigns, int, error) {
-	all, _, err := a.core.QueryWorkspaceCampaigns(access, search, statuses, tags, orderBy, order, 0, 0)
-	if err != nil {
+// queryReadableWorkspaceCampaigns applies the workspace boundary and the legacy
+// campaign/customer_list grants in SQL before pagination. This prevents
+// restricted role/customer_list grants from learning about inaccessible campaign
+// rows through total counts or page boundaries.
+func (a *App) queryReadableWorkspaceCampaigns(c echo.Context, access models.WorkspaceAccess, search string, statuses, tags []string, orderBy, order string, offset, limit int, noBody bool) (models.Campaigns, int, error) {
+	user := auth.GetUser(c)
+	if err := requireLegacyPermission(user, auth.PermCampaignsGetAll, auth.PermCampaignsGet); err != nil {
 		return nil, 0, err
 	}
+	return a.core.QueryReadableWorkspaceCampaigns(access, campaignReadScope(access, user), search, statuses, tags, orderBy, order, offset, limit, noBody)
+}
 
-	user := auth.GetUser(c)
-	canReadByRole := hasLegacyPermission(user, auth.PermCampaignsGetAll, auth.PermCampaignsGet)
-	if !canReadByRole {
-		return nil, 0, requireLegacyPermission(user, auth.PermCampaignsGetAll, auth.PermCampaignsGet)
+// campaignReadScope resolves the legacy read grants once per request so the core
+// query can apply them before OFFSET/LIMIT.
+func campaignReadScope(access models.WorkspaceAccess, user auth.User) core.CampaignReadScope {
+	if access.PlatformAdmin || user.HasPerm(auth.PermCampaignsGetAll) {
+		return core.CampaignReadScope{AllCustomerLists: true}
 	}
-	filtered := make(models.Campaigns, 0, len(all))
-	for _, campaign := range all {
-		if workspaceReadException(access, campaign.ResourceScope) {
-			filtered = append(filtered, campaign)
-			continue
-		}
-		if !canReadByRole {
-			continue
-		}
-		ok, err := a.hasLegacyCampaignListAccess(access, user, campaign.ID, false)
-		if err != nil {
-			return nil, 0, err
-		}
-		if ok {
-			filtered = append(filtered, campaign)
-		}
+	hasAll, listIDs := legacyReadableCustomerListIDs(user)
+	if hasAll {
+		return core.CampaignReadScope{AllCustomerLists: true}
 	}
-
-	total := len(filtered)
-	if offset < 0 {
-		offset = 0
-	}
-	if offset >= total {
-		return models.Campaigns{}, total, nil
-	}
-	end := total
-	if limit > 0 && offset+limit < end {
-		end = offset + limit
-	}
-	return filtered[offset:end], total, nil
+	return core.CampaignReadScope{CustomerListIDs: listIDs}
 }

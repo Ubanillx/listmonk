@@ -369,12 +369,12 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 
 目录写入在 `internal/core/media_folders.go` 与工作区事务中重验活动组织、成员资格、所有权和目录边界；归档工作区禁止普通目录/媒体写入。用户物理删除在同一事务中清理其个人目录，目录中的媒体通过外键回到根目录；组织目录保留，仅将已删除创建者引用置空。初始结构和 `v6.37.0` 幂等迁移同步创建目录表、媒体外键、根目录级大小写不敏感唯一约束和索引。管理端 `Media.vue` 提供面包屑、嵌套目录、新建/改名/空目录删除，以及媒体/目录和本地文件拖放上传。
 
-#### 两层策略的维护规则（强制）
+#### 策略镜像的维护规则（强制）
 
-工作区资源授权目前**同时**存在于两层：`cmd/workspace_permissions.go`（HTTP 边界的 `workspaceReadException`/`workspaceCopyException`/`canCopyWorkspaceResource`/`canCopyWorkspaceCampaign`）与 `internal/core/workspace.go`（Core 的 `read`/`use`/`copy`/`manage` 判定），其中 `cmd` 侧的活动复制策略刻意与 Core 的 `CanCopyCampaign` 互为镜像。两层重复是已知技术债，因此：
+工作区资源授权目前**同时**存在于三处：`cmd/workspace_permissions.go`（HTTP 边界的 `workspaceReadException`/`workspaceCopyException`/`canCopyWorkspaceResource`/`canCopyWorkspaceCampaign`）、`internal/core/workspace.go`（Core 的 `read`/`use`/`copy`/`manage` 判定）以及 `internal/core/workspace_queries.go` 的 SQL 谓词（`workspaceReadPredicate`、`campaignLegacyReadPredicate`、`campaignAnalyticsPredicate`）。活动列表与报表的可见集合在 SQL 内按 `CampaignReadScope` 完成，`cmd` 侧只把 legacy 角色/客户列表授权收敛为 scope，不再逐行过滤；其中 `cmd` 侧的活动复制策略刻意与 Core 的 `CanCopyCampaign` 互为镜像。三处重复是已知技术债，因此：
 
-- 任何接触工作区资源的新接口必须先取 `WorkspaceAccess`，再按需叠加传统角色/客户列表权限；不得只做其中一层。
-- 修改任一层的工作区规则时，必须同时检查另一层的对应函数，并在 `cmd/campaign_copy_policy_test.go`（记录了两层当前已知差异）或 `cmd/workspace_permissions_test.go` 中补边界测试。
+- 任何接触工作区资源的新接口必须先取 `WorkspaceAccess`，再按需叠加传统角色/客户列表权限；不得只做其中一处。
+- 修改任一处的工作区规则时，必须同时检查另外两处的对应函数，并在 `cmd/campaign_copy_policy_test.go`（记录了三处当前已知差异）、`cmd/workspace_permissions_test.go` 或 `cmd/workspace_campaign_read_test.go` 中补边界测试。
 - 不要在已有门之后追加“若上一层不通过则回退到传统角色”的兜底分支：这类分支在硬门存在时恒不可达（`cmd/campaigns.go` 的 `CloneCampaign` 曾因此留下一段死代码，2026-09-10 删除），而且复活它只会**放宽**权限。若确实需要更宽的行为，应修改唯一一处策略函数并补测试。
 
 ### 直接数据导出

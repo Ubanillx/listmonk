@@ -171,6 +171,7 @@ type Queries struct {
 	DeleteReplyMailbox       *sqlx.Stmt `query:"delete-reply-mailbox"`
 	GetReplyAIMailboxes      *sqlx.Stmt `query:"get-reply-ai-mailboxes"`
 	GetReplyAIMailbox        *sqlx.Stmt `query:"get-reply-ai-mailbox"`
+	GetBounceEnabled         *sqlx.Stmt `query:"get-bounce-enabled"`
 	InsertReplyAIEvent       *sqlx.Stmt `query:"insert-reply-ai-event"`
 	ClaimReplyAIEvent        *sqlx.Stmt `query:"claim-reply-ai-event"`
 	FinishReplyAIEvent       *sqlx.Stmt `query:"finish-reply-ai-event"`

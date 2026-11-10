@@ -110,7 +110,7 @@ func (c *Core) RecordReplyBounce(input ReplyBounceInput) (ReplyBounceResult, err
 	}
 
 	var bounceEnabled bool
-	if err := tx.Get(&bounceEnabled, `SELECT COALESCE((SELECT value::BOOLEAN FROM settings WHERE key='bounce.enabled'), FALSE)`); err != nil {
+	if err := tx.Stmtx(c.q.GetBounceEnabled).Get(&bounceEnabled); err != nil {
 		return ReplyBounceResult{}, err
 	}
 	if !bounceEnabled {

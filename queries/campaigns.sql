@@ -857,6 +857,62 @@ bounce_stats AS (
       AND created_at <= $3
     GROUP BY customer_id
 ),
+pool_view_stats AS (
+    SELECT
+        campaign_id,
+        pool_contact_id,
+        COUNT(*) AS view_count,
+        MIN(created_at) AS first_viewed_at,
+        MAX(created_at) AS last_viewed_at
+    FROM campaign_views
+    WHERE campaign_id = $1
+      AND created_at >= $2
+      AND created_at <= $3
+      AND pool_contact_id IS NOT NULL
+    GROUP BY campaign_id, pool_contact_id
+),
+pool_click_stats AS (
+    SELECT
+        campaign_id,
+        pool_contact_id,
+        COUNT(*) AS click_count,
+        MIN(created_at) AS first_clicked_at,
+        MAX(created_at) AS last_clicked_at
+    FROM link_clicks
+    WHERE campaign_id = $1
+      AND created_at >= $2
+      AND created_at <= $3
+      AND pool_contact_id IS NOT NULL
+    GROUP BY campaign_id, pool_contact_id
+),
+pool_last_click AS (
+    SELECT DISTINCT ON (lc.campaign_id, lc.pool_contact_id)
+        lc.campaign_id,
+        lc.pool_contact_id,
+        lc.link_id AS last_link_id,
+        links.url AS last_link_url,
+        lc.created_at AS last_clicked_at
+    FROM link_clicks lc
+    LEFT JOIN links ON links.id = lc.link_id
+    WHERE lc.campaign_id = $1
+      AND lc.created_at >= $2
+      AND lc.created_at <= $3
+      AND lc.pool_contact_id IS NOT NULL
+    ORDER BY lc.campaign_id, lc.pool_contact_id, lc.created_at DESC, lc.id DESC
+),
+pool_bounce_stats AS (
+    SELECT
+        campaign_id,
+        pool_contact_id,
+        COUNT(*) AS bounce_count,
+        MAX(created_at) AS last_bounced_at
+    FROM bounces
+    WHERE campaign_id = $1
+      AND created_at >= $2
+      AND created_at <= $3
+      AND pool_contact_id IS NOT NULL
+    GROUP BY campaign_id, pool_contact_id
+),
 filtered AS (
     SELECT
         s.id AS customer_id,
@@ -916,6 +972,8 @@ filtered AS (
           )
     )
 ),
+-- The pool CTEs return no row for recipients without events; COALESCE in the
+-- filters below preserves the former LATERAL COUNT(*)=0 semantics.
 pool_filtered AS (
     SELECT
         0::INT AS customer_id,
@@ -942,40 +1000,19 @@ pool_filtered AS (
         cpr.pool_contact_id
     FROM campaign_pool_recipients cpr
     JOIN pool_contacts pc ON pc.id = cpr.pool_contact_id
-    LEFT JOIN LATERAL (
-        SELECT COUNT(*) AS view_count, MIN(created_at) AS first_viewed_at,
-            MAX(created_at) AS last_viewed_at
-        FROM campaign_views WHERE campaign_id = cpr.campaign_id
-            AND pool_contact_id = cpr.pool_contact_id AND created_at >= $2 AND created_at <= $3
-    ) vs ON TRUE
-    LEFT JOIN LATERAL (
-        SELECT COUNT(*) AS click_count, MIN(created_at) AS first_clicked_at,
-            MAX(created_at) AS last_clicked_at
-        FROM link_clicks WHERE campaign_id = cpr.campaign_id
-            AND pool_contact_id = cpr.pool_contact_id AND created_at >= $2 AND created_at <= $3
-    ) cs ON TRUE
-    LEFT JOIN LATERAL (
-        SELECT lc.link_id AS last_link_id, links.url AS last_link_url,
-            lc.created_at AS last_clicked_at
-        FROM link_clicks lc LEFT JOIN links ON links.id = lc.link_id
-        WHERE lc.campaign_id = cpr.campaign_id AND lc.pool_contact_id = cpr.pool_contact_id
-            AND lc.created_at >= $2 AND lc.created_at <= $3
-        ORDER BY lc.created_at DESC, lc.id DESC LIMIT 1
-    ) lc ON TRUE
-    LEFT JOIN LATERAL (
-        SELECT COUNT(*) AS bounce_count, MAX(created_at) AS last_bounced_at
-        FROM bounces WHERE campaign_id = cpr.campaign_id
-            AND pool_contact_id = cpr.pool_contact_id AND created_at >= $2 AND created_at <= $3
-    ) bs ON TRUE
+    LEFT JOIN pool_view_stats vs ON vs.campaign_id = cpr.campaign_id AND vs.pool_contact_id = cpr.pool_contact_id
+    LEFT JOIN pool_click_stats cs ON cs.campaign_id = cpr.campaign_id AND cs.pool_contact_id = cpr.pool_contact_id
+    LEFT JOIN pool_last_click lc ON lc.campaign_id = cpr.campaign_id AND lc.pool_contact_id = cpr.pool_contact_id
+    LEFT JOIN pool_bounce_stats bs ON bs.campaign_id = cpr.campaign_id AND bs.pool_contact_id = cpr.pool_contact_id
     WHERE cpr.campaign_id = $1 AND $11::BOOLEAN
       AND ($12::BIGINT = -1 OR cpr.organization_id = $12::BIGINT)
       AND ($4 = '' OR cpr.email_snapshot ILIKE $4 OR cpr.name_snapshot ILIKE $4)
-      AND ($5 = 'all' OR ($5 = 'yes' AND vs.view_count > 0)
-           OR ($5 = 'no' AND vs.view_count = 0))
-      AND ($6 = 'all' OR ($6 = 'yes' AND cs.click_count > 0)
-           OR ($6 = 'no' AND cs.click_count = 0))
-      AND ($7 = 'all' OR ($7 = 'yes' AND bs.bounce_count > 0)
-           OR ($7 = 'no' AND bs.bounce_count = 0))
+      AND ($5 = 'all' OR ($5 = 'yes' AND COALESCE(vs.view_count, 0) > 0)
+           OR ($5 = 'no' AND COALESCE(vs.view_count, 0) = 0))
+      AND ($6 = 'all' OR ($6 = 'yes' AND COALESCE(cs.click_count, 0) > 0)
+           OR ($6 = 'no' AND COALESCE(cs.click_count, 0) = 0))
+      AND ($7 = 'all' OR ($7 = 'yes' AND COALESCE(bs.bounce_count, 0) > 0)
+           OR ($7 = 'no' AND COALESCE(bs.bounce_count, 0) = 0))
       AND ($8 = 0 OR EXISTS (
           SELECT 1 FROM link_clicks lcf
           WHERE lcf.campaign_id = cpr.campaign_id
@@ -1066,6 +1103,62 @@ bounce_stats AS (
       AND created_at <= $3
     GROUP BY campaign_id, customer_id
 ),
+pool_view_stats AS (
+    SELECT
+        campaign_id,
+        pool_contact_id,
+        COUNT(*) AS view_count,
+        MIN(created_at) AS first_viewed_at,
+        MAX(created_at) AS last_viewed_at
+    FROM campaign_views
+    WHERE campaign_id = ANY($1)
+      AND created_at >= $2
+      AND created_at <= $3
+      AND pool_contact_id IS NOT NULL
+    GROUP BY campaign_id, pool_contact_id
+),
+pool_click_stats AS (
+    SELECT
+        campaign_id,
+        pool_contact_id,
+        COUNT(*) AS click_count,
+        MIN(created_at) AS first_clicked_at,
+        MAX(created_at) AS last_clicked_at
+    FROM link_clicks
+    WHERE campaign_id = ANY($1)
+      AND created_at >= $2
+      AND created_at <= $3
+      AND pool_contact_id IS NOT NULL
+    GROUP BY campaign_id, pool_contact_id
+),
+pool_last_click AS (
+    SELECT DISTINCT ON (lc.campaign_id, lc.pool_contact_id)
+        lc.campaign_id,
+        lc.pool_contact_id,
+        lc.link_id AS last_link_id,
+        links.url AS last_link_url,
+        lc.created_at AS last_clicked_at
+    FROM link_clicks lc
+    LEFT JOIN links ON links.id = lc.link_id
+    WHERE lc.campaign_id = ANY($1)
+      AND lc.created_at >= $2
+      AND lc.created_at <= $3
+      AND lc.pool_contact_id IS NOT NULL
+    ORDER BY lc.campaign_id, lc.pool_contact_id, lc.created_at DESC, lc.id DESC
+),
+pool_bounce_stats AS (
+    SELECT
+        campaign_id,
+        pool_contact_id,
+        COUNT(*) AS bounce_count,
+        MAX(created_at) AS last_bounced_at
+    FROM bounces
+    WHERE campaign_id = ANY($1)
+      AND created_at >= $2
+      AND created_at <= $3
+      AND pool_contact_id IS NOT NULL
+    GROUP BY campaign_id, pool_contact_id
+),
 filtered AS (
     SELECT
         c.id AS campaign_id,
@@ -1129,6 +1222,8 @@ filtered AS (
           )
       )
 ),
+-- The pool CTEs return no row for recipients without events; COALESCE in the
+-- filters below preserves the former LATERAL COUNT(*)=0 semantics.
 pool_filtered AS (
     SELECT
         c.id AS campaign_id,
@@ -1159,40 +1254,19 @@ pool_filtered AS (
     FROM campaign_pool_recipients cpr
     JOIN campaigns c ON c.id = cpr.campaign_id
     JOIN pool_contacts pc ON pc.id = cpr.pool_contact_id
-    LEFT JOIN LATERAL (
-        SELECT COUNT(*) AS view_count, MIN(created_at) AS first_viewed_at,
-            MAX(created_at) AS last_viewed_at
-        FROM campaign_views WHERE campaign_id = cpr.campaign_id
-            AND pool_contact_id = cpr.pool_contact_id AND created_at >= $2 AND created_at <= $3
-    ) vs ON TRUE
-    LEFT JOIN LATERAL (
-        SELECT COUNT(*) AS click_count, MIN(created_at) AS first_clicked_at,
-            MAX(created_at) AS last_clicked_at
-        FROM link_clicks WHERE campaign_id = cpr.campaign_id
-            AND pool_contact_id = cpr.pool_contact_id AND created_at >= $2 AND created_at <= $3
-    ) cs ON TRUE
-    LEFT JOIN LATERAL (
-        SELECT lc.link_id AS last_link_id, links.url AS last_link_url,
-            lc.created_at AS last_clicked_at
-        FROM link_clicks lc LEFT JOIN links ON links.id = lc.link_id
-        WHERE lc.campaign_id = cpr.campaign_id AND lc.pool_contact_id = cpr.pool_contact_id
-            AND lc.created_at >= $2 AND lc.created_at <= $3
-        ORDER BY lc.created_at DESC, lc.id DESC LIMIT 1
-    ) lc ON TRUE
-    LEFT JOIN LATERAL (
-        SELECT COUNT(*) AS bounce_count, MAX(created_at) AS last_bounced_at
-        FROM bounces WHERE campaign_id = cpr.campaign_id
-            AND pool_contact_id = cpr.pool_contact_id AND created_at >= $2 AND created_at <= $3
-    ) bs ON TRUE
+    LEFT JOIN pool_view_stats vs ON vs.campaign_id = cpr.campaign_id AND vs.pool_contact_id = cpr.pool_contact_id
+    LEFT JOIN pool_click_stats cs ON cs.campaign_id = cpr.campaign_id AND cs.pool_contact_id = cpr.pool_contact_id
+    LEFT JOIN pool_last_click lc ON lc.campaign_id = cpr.campaign_id AND lc.pool_contact_id = cpr.pool_contact_id
+    LEFT JOIN pool_bounce_stats bs ON bs.campaign_id = cpr.campaign_id AND bs.pool_contact_id = cpr.pool_contact_id
     WHERE cpr.campaign_id = ANY($1) AND $11::BOOLEAN
       AND ($12::BIGINT = -1 OR cpr.organization_id = $12::BIGINT)
       AND ($4 = '' OR cpr.email_snapshot ILIKE $4 OR cpr.name_snapshot ILIKE $4)
-      AND ($5 = 'all' OR ($5 = 'yes' AND vs.view_count > 0)
-           OR ($5 = 'no' AND vs.view_count = 0))
-      AND ($6 = 'all' OR ($6 = 'yes' AND cs.click_count > 0)
-           OR ($6 = 'no' AND cs.click_count = 0))
-      AND ($7 = 'all' OR ($7 = 'yes' AND bs.bounce_count > 0)
-           OR ($7 = 'no' AND bs.bounce_count = 0))
+      AND ($5 = 'all' OR ($5 = 'yes' AND COALESCE(vs.view_count, 0) > 0)
+           OR ($5 = 'no' AND COALESCE(vs.view_count, 0) = 0))
+      AND ($6 = 'all' OR ($6 = 'yes' AND COALESCE(cs.click_count, 0) > 0)
+           OR ($6 = 'no' AND COALESCE(cs.click_count, 0) = 0))
+      AND ($7 = 'all' OR ($7 = 'yes' AND COALESCE(bs.bounce_count, 0) > 0)
+           OR ($7 = 'no' AND COALESCE(bs.bounce_count, 0) = 0))
       AND ($8 = 0 OR EXISTS (
           SELECT 1 FROM link_clicks lcf
           WHERE lcf.campaign_id = cpr.campaign_id

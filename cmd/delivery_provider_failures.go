@@ -79,9 +79,47 @@ func filterProviderFailureSummaries(rows []providerFailureSummary, search string
 	out := make([]providerFailureSummary, 0, len(rows))
 	for _, row := range rows {
 		if strings.Contains(strings.ToLower(row.Email), search) ||
-			strings.Contains(strings.ToLower(providerFailureCustomerCodes(row)), search) {
+			providerFailureCustomerCodeContains(row, search) {
 			out = append(out, row)
 		}
 	}
 	return out
+}
+
+// providerFailureCustomerCodeContains checks each code separately, matching the
+// console's per-match filter. Searching the joined "C-001, C-002" string would
+// let a comma-separated query match in the workbook but not on the page.
+func providerFailureCustomerCodeContains(row providerFailureSummary, search string) bool {
+	for _, match := range row.Matches {
+		if strings.Contains(strings.ToLower(strings.TrimSpace(match.CustomerCode)), search) {
+			return true
+		}
+	}
+	return false
+}
+
+// providerDeletableFailureTypes are the classifications that mean the address
+// itself is unusable. Other failures may clear up or reflect a receiver policy,
+// so the workbook leaves them for manual review.
+var providerDeletableFailureTypes = map[string]struct{}{
+	"1": {}, // mailbox not found
+	"8": {}, // invalid address
+	"9": {}, // invalid format
+}
+
+func providerFailureTypeDeletable(typ string) bool {
+	_, ok := providerDeletableFailureTypes[typ]
+	return ok
+}
+
+// providerFailureDeletable marks a grouped address deletable when any cause
+// makes the address unusable; a rejection or temporary error in the same group
+// does not protect a dead mailbox.
+func providerFailureDeletable(row providerFailureSummary) bool {
+	for _, cause := range row.Errors {
+		if providerFailureTypeDeletable(cause.Type) {
+			return true
+		}
+	}
+	return false
 }

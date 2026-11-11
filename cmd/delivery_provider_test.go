@@ -68,9 +68,13 @@ func stubFailures() []bestedm.Row {
 // providerTestApp wires the stubbed provider client and credentials so no
 // request reaches the network.
 func providerTestApp(t *testing.T, client bestEDMAPI) *App {
+	return providerTestAppLang(t, client, "en")
+}
+
+func providerTestAppLang(t *testing.T, client bestEDMAPI, lang string) *App {
 	t.Helper()
 	cred := bestedm.Credentials{Username: "stub", Password: "stub"}
-	return &App{i18n: exportTestLanguage(t, "en"), bestEDMClient: client, bestEDMCreds: &cred}
+	return &App{i18n: exportTestLanguage(t, lang), bestEDMClient: client, bestEDMCreds: &cred}
 }
 
 // providerContext builds a platform-administrator request. Route params are
@@ -172,11 +176,25 @@ func TestDeliveryProviderFiltersAllBatchesBeforeGroupingAndExport(t *testing.T) 
 					if err != nil || len(exported) != wantGroups+1 {
 						t.Fatalf("incorrect filtered export: %v %v", exported, err)
 					}
-					if len(exported) == 0 || len(exported[0]) != 6 || exported[0][1] != "Customer code" {
-						t.Fatalf("export misses the customer-code column: %v", exported)
+					if len(exported) == 0 || len(exported[0]) != 7 || exported[0][1] != "Customer code" || exported[0][5] != "Deletable" {
+						t.Fatalf("export misses the customer-code or deletable column: %v", exported)
 					}
-					if wantCount > 0 && (exported[1][1] != "" || exported[1][2] != strconv.Itoa(wantCount) || strings.Contains(exported[1][4], "other cause") != (typ == 2)) {
-						t.Fatalf("export includes unrelated causes: %v", exported)
+					wantDeletable := "No"
+					if typ == 1 || typ == 8 || typ == 9 {
+						wantDeletable = "Yes"
+					}
+					if wantCount > 0 && (exported[1][1] != "" || exported[1][2] != strconv.Itoa(wantCount) || strings.Contains(exported[1][4], "other cause") != (typ == 2) || exported[1][5] != wantDeletable) {
+						t.Fatalf("export includes unrelated causes or a wrong deletable flag: %v", exported)
+					}
+					if typ == 2 && wantCount > 0 {
+						styleID, err := file.GetCellStyle(file.GetSheetName(0), "F2")
+						if err != nil {
+							t.Fatal(err)
+						}
+						style, err := file.GetStyle(styleID)
+						if err != nil || len(style.Fill.Color) == 0 || style.Fill.Color[0] != "F3F4F6" || style.Font.Color != "5F6B7A" {
+							t.Fatalf("deletable=no style differs: %#v %v", style, err)
+						}
 					}
 					return
 				}
@@ -269,11 +287,19 @@ func TestDeliveryProviderGroupedFailuresMatchExcel(t *testing.T) {
 			t.Fatal(err)
 		}
 		rows, err := file.GetRows(file.GetSheetName(0))
-		if err != nil || len(rows) != 2 || rows[1][0] != "User@example.com" || rows[1][1] != "" || rows[1][2] != "4" || rows[1][3] != "1 (2)\n10 (1)\n10 (1)" || !strings.Contains(rows[1][4], "Timeout (1)") {
+		if err != nil || len(rows) != 2 || rows[1][0] != "User@example.com" || rows[1][1] != "" || rows[1][2] != "4" || rows[1][3] != "1 (2)\n10 (1)\n10 (1)" || !strings.Contains(rows[1][4], "Timeout (1)") || rows[1][5] != "Yes" || rows[1][6] != "live" {
 			t.Fatalf("grouped export differs: %v, %v", rows, err)
 		}
 		if typ, _ := file.GetCellType(file.GetSheetName(0), "C2"); typ != excelize.CellTypeNumber && typ != excelize.CellTypeUnset {
 			t.Fatalf("count is not numeric: %v", typ)
+		}
+		styleID, err := file.GetCellStyle(file.GetSheetName(0), "F2")
+		if err != nil {
+			t.Fatal(err)
+		}
+		style, err := file.GetStyle(styleID)
+		if err != nil || len(style.Fill.Color) == 0 || style.Fill.Color[0] != "E6F4EA" || style.Font.Color != "137333" {
+			t.Fatalf("deletable=yes style differs: %#v %v", style, err)
 		}
 		file.Close()
 	}
@@ -350,9 +376,29 @@ func TestDeliveryProviderFailureSearchMatchesExcel(t *testing.T) {
 		}
 		rows, err := file.GetRows(file.GetSheetName(0))
 		file.Close()
-		if err != nil || len(rows) != 2 || rows[1][0] != "recipient01@example.com" {
+		if err != nil || len(rows) != 2 || len(rows[0]) != 5 || rows[0][3] != "Deletable" || rows[1][0] != "recipient01@example.com" || rows[1][3] != "Yes" {
 			t.Fatalf("export differs from searched results: %v %v", rows, err)
 		}
+	}
+}
+
+func TestProviderFailureDeletable(t *testing.T) {
+	for typ, want := range map[string]bool{
+		"1": true, "2": false, "3": false, "4": false, "5": false,
+		"6": false, "7": false, "8": true, "9": true, "10": false, "": false, "unknown": false,
+	} {
+		if got := providerFailureTypeDeletable(typ); got != want {
+			t.Fatalf("type %q deletable = %v, want %v", typ, got, want)
+		}
+	}
+	if !providerFailureDeletable(providerFailureSummary{Errors: []providerFailureCause{{Type: "3"}, {Type: "8"}}}) {
+		t.Fatal("a dead-mailbox cause must make the grouped address deletable")
+	}
+	if providerFailureDeletable(providerFailureSummary{Errors: []providerFailureCause{{Type: "2"}, {Type: "10"}}}) {
+		t.Fatal("temporary or policy failures must stay non-deletable")
+	}
+	if providerFailureDeletable(providerFailureSummary{}) {
+		t.Fatal("an empty group must stay non-deletable")
 	}
 }
 
@@ -378,8 +424,45 @@ func TestProviderFailureCustomerCodesAndSearch(t *testing.T) {
 			t.Fatalf("search %q returned %#v", search, got)
 		}
 	}
+	// The console checks each code separately; a query spanning the joined
+	// display string must not match in the workbook only.
+	if got := filterProviderFailureSummaries(rows, "c-002, c-003"); len(got) != 0 {
+		t.Fatalf("joined-code search must not match: %#v", got)
+	}
 	if got := filterProviderFailureSummaries(rows, "missing"); got == nil || len(got) != 0 {
 		t.Fatalf("no-match search must return an empty array: %#v", got)
+	}
+}
+
+func TestDeliveryProviderDeletableExportLocalized(t *testing.T) {
+	app := providerTestAppLang(t, stubBestEDM{failures: []bestedm.Row{
+		{"email": "missing@example.com", "error_type": "1", "error_type_dec": "邮箱不存在"},
+		{"email": "rejected@example.com", "error_type": "3", "error_type_dec": "用户拒收"},
+	}}, "zh-CN")
+	for _, grouped := range []bool{true, false} {
+		target := "/api/delivery-provider/failures?date=2026-10-20&type=-1"
+		if grouped {
+			target += "&group_by=email"
+		}
+		c, rec := providerContext(t, target, "kind", "failures", "format", "export")
+		if err := app.QueryDeliveryProvider(c); err != nil {
+			t.Fatal(err)
+		}
+		file, err := excelize.OpenReader(bytes.NewReader(rec.Body.Bytes()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		exported, err := file.GetRows(file.GetSheetName(0))
+		file.Close()
+		if grouped {
+			if err != nil || len(exported) != 3 || exported[0][5] != "可删除" || exported[1][5] != "是" || exported[2][5] != "否" {
+				t.Fatalf("grouped zh-CN deletable column differs: %v %v", exported, err)
+			}
+			continue
+		}
+		if err != nil || len(exported) != 3 || exported[0][3] != "可删除" || exported[1][3] != "是" || exported[2][3] != "否" {
+			t.Fatalf("raw zh-CN deletable column differs: %v %v", exported, err)
+		}
 	}
 }
 

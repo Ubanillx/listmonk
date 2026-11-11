@@ -413,9 +413,24 @@ func (a *App) QueryDeliveryProvider(c echo.Context) error {
 		defer book.file.Close()
 		columns := []exportColumn{book.column("customers.email", 38, "")}
 		if groupByEmail {
-			columns = append(columns, book.column("customers.customerCode", 24, ""), book.column("deliveryProvider.errorCount", 16, "0"))
+			columns = append(columns, book.column("customers.customerCode", 24, ""), book.column("deliveryProvider.errorCount", 16, "number"))
 		}
-		columns = append(columns, book.column("deliveryProvider.errorType", 24, ""), book.column("deliveryProvider.errorDetail", 45, ""), book.column("deliveryProvider.source", 20, ""))
+		yesText := book.lang.T("deliveryProvider.deletableYes")
+		noText := book.lang.T("deliveryProvider.deletableNo")
+		deletable := book.column("deliveryProvider.deletable", 12, "")
+		deletable.cellStyle = func(value any) string {
+			if value == yesText {
+				return exportStyleYes
+			}
+			return exportStyleNo
+		}
+		deletableText := func(ok bool) string {
+			if ok {
+				return yesText
+			}
+			return noText
+		}
+		columns = append(columns, book.column("deliveryProvider.errorType", 24, ""), book.column("deliveryProvider.errorDetail", 45, ""), deletable, book.column("deliveryProvider.source", 20, ""))
 		sheet, e := book.addSheet("deliveryProvider.failures", columns)
 		if e != nil {
 			return e
@@ -427,13 +442,13 @@ func (a *App) QueryDeliveryProvider(c echo.Context) error {
 					types = append(types, fmt.Sprintf("%s (%d)", cause.Type, cause.Count))
 					details = append(details, fmt.Sprintf("%s (%d)", cause.Detail, cause.Count))
 				}
-				if e = sheet.addRow(row.Email, providerFailureCustomerCodes(row), row.Count, strings.Join(types, "\n"), strings.Join(details, "\n"), source); e != nil {
+				if e = sheet.addRow(row.Email, providerFailureCustomerCodes(row), row.Count, strings.Join(types, "\n"), strings.Join(details, "\n"), deletableText(providerFailureDeletable(row)), source); e != nil {
 					return e
 				}
 			}
 		} else {
 			for _, row := range rows {
-				if e = sheet.addRow(row["email"], row["error_type"], row["error_type_dec"], source); e != nil {
+				if e = sheet.addRow(row["email"], row["error_type"], row["error_type_dec"], deletableText(providerFailureTypeDeletable(row["error_type"])), source); e != nil {
 					return e
 				}
 			}

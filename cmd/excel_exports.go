@@ -20,10 +20,16 @@ import (
 
 const excelContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
+const (
+	exportStyleYes = "yes"
+	exportStyleNo  = "no"
+)
+
 type exportColumn struct {
-	label string
-	width float64
-	kind  string // text (default), number, or date
+	label     string
+	width     float64
+	kind      string                 // text (default), number, or date
+	cellStyle func(value any) string // optional style kind override per value
 }
 
 // Export workbooks are request-local: selecting a language never mutates the
@@ -83,7 +89,7 @@ func newExportWorkbook(ctx context.Context, lang *i18n.I18n) (*exportWorkbook, e
 	b := &exportWorkbook{file: excelize.NewFile(), lang: lang, ctx: ctx}
 	for band := range b.styles {
 		b.styles[band] = make(map[string]int)
-		for _, kind := range []string{"text", "number", "date", "header"} {
+		for _, kind := range []string{"text", "number", "date", "header", exportStyleYes, exportStyleNo} {
 			style := &excelize.Style{
 				Font:      &excelize.Font{Family: "Calibri", Size: 11, Color: "243746"},
 				Alignment: &excelize.Alignment{Vertical: "top", WrapText: true},
@@ -100,6 +106,14 @@ func newExportWorkbook(ctx context.Context, lang *i18n.I18n) (*exportWorkbook, e
 			case "header":
 				style.Font.Bold, style.Font.Color = true, "FFFFFF"
 				style.Fill = excelize.Fill{Type: "pattern", Pattern: 1, Color: []string{"24476A"}}
+			case exportStyleYes:
+				style.NumFmt = 49
+				style.Font.Color = "137333"
+				style.Fill = excelize.Fill{Type: "pattern", Pattern: 1, Color: []string{"E6F4EA"}}
+			case exportStyleNo:
+				style.NumFmt = 49
+				style.Font.Color = "5F6B7A"
+				style.Fill = excelize.Fill{Type: "pattern", Pattern: 1, Color: []string{"F3F4F6"}}
 			}
 			id, err := b.file.NewStyle(style)
 			if err != nil {
@@ -232,6 +246,12 @@ func (s *exportSheet) addRow(values ...any) error {
 		if kind == "" {
 			kind = "text"
 		}
+		styleKind := kind
+		if s.columns[i].cellStyle != nil {
+			if override := s.columns[i].cellStyle(value); override != "" {
+				styleKind = override
+			}
+		}
 		if stamp, ok := value.(time.Time); ok {
 			if stamp.IsZero() {
 				value = nil
@@ -252,7 +272,7 @@ func (s *exportSheet) addRow(values ...any) error {
 			height = max(height, min(90, float64(lines)*15))
 		}
 		// Values are literal text; user input never becomes an Excel formula.
-		cells[i] = excelize.Cell{StyleID: s.book.styles[s.row%2][kind], Value: value}
+		cells[i] = excelize.Cell{StyleID: s.book.styles[s.row%2][styleKind], Value: value}
 	}
 	return s.stream.SetRow(fmt.Sprintf("A%d", s.row), cells, excelize.RowOpts{Height: height})
 }

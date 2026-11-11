@@ -67,8 +67,11 @@ func tempImportEntries(t *testing.T) map[string]bool {
 
 	found := map[string]bool{}
 	for _, e := range entries {
-		// Both MkdirTemp and CreateTemp use the "listmonk" prefix.
-		if strings.HasPrefix(e.Name(), "listmonk") {
+		// This package's MkdirTemp and CreateTemp paths use the bare
+		// "listmonk" prefix. A parallel export creates "listmonk-export-*.xlsx"
+		// in the same OS temp directory; exclude only that known prefix so a
+		// future hyphenated import temp path still fails the leak assertion.
+		if strings.HasPrefix(e.Name(), "listmonk") && !strings.HasPrefix(e.Name(), "listmonk-export-") {
 			found[e.Name()] = true
 		}
 	}

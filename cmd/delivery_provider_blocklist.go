@@ -296,7 +296,7 @@ func (a *App) SetPoolContactsBlocklist(c echo.Context) error {
 	return c.JSON(http.StatusOK, okResp{map[string]any{"changed": changed}})
 }
 
-// providerFailureMatches enriches grouped failure rows with the workspace
+// providerFailureMatches enriches grouped failure rows with the visible
 // targets each address resolves to. It is best-effort: a matching failure must
 // not hide the provider report itself.
 func (a *App) providerFailureMatches(c echo.Context, access models.WorkspaceAccess, summaries []providerFailureSummary) {

@@ -619,7 +619,7 @@ export default {
       const search = this.failureSearch.trim().toLowerCase();
       if (!search) return this.failures;
       return this.failures.filter((row) => (row.email || '').toLowerCase().includes(search)
-        || (row.matches || []).some((match) => (match.customer_code || '').toLowerCase().includes(search)));
+        || (row.matches || []).some((match) => (match.customer_code || '').trim().toLowerCase().includes(search)));
     },
     selectedFailureRows() {
       return this.failures.filter((row) => this.isFailureSelected(row));

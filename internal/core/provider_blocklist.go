@@ -12,7 +12,7 @@ import (
 )
 
 // ProviderFailureMatch is one customer or pool contact that a failed provider
-// address resolves to inside the caller's workspace. It deliberately carries no
+// address resolves to in the caller's visible scope. It deliberately carries no
 // e-mail address: the provider report already owns that value and callers must
 // not be able to use a match to read an address they could not otherwise read.
 type ProviderFailureMatch struct {
@@ -55,11 +55,10 @@ func normalizeProviderEmails(emails []string) []string {
 }
 
 // MatchProviderFailureEmails resolves failed provider addresses to the private
-// customers and pool contacts the caller may see in the active workspace. Only
-// owner-scoped customers and organization-scoped pool allocations are matched,
-// so the result never reveals another workspace's identifiers. Pool master
-// holders and platform administrators see the first-level pools they already
-// administer.
+// customers and pool contacts the caller may see. Platform administrators match
+// every private customer and first-level pool contact; other callers match only
+// their owner/organization customers and active pool allocations, so the result
+// never reveals identifiers outside their scope.
 func (c *Core) MatchProviderFailureEmails(access models.WorkspaceAccess, emails []string) (map[string][]ProviderFailureMatch, error) {
 	out := make(map[string][]ProviderFailureMatch, len(emails))
 	normalized := normalizeProviderEmails(emails)

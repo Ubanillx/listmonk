@@ -16,11 +16,14 @@
 | 活动发送失败明细 | 新增出口原为 CSV，未纳入统一格式 | XLSX；原因、阶段、SMTP 状态码、原始诊断、累计次数、首次/最后失败时间、来源与追溯 ID；原因汇总单独成表；保留历史缺明细次数；私域具体诊断需 `campaigns:private_send_error_details`，邮箱列仍独立脱敏，公海诊断继续隐藏。 |
 | 用户导入模板 | XLSX 但表头固定英文，必填与值规则不直观 | 所选语言表头；空数据页及单独填写说明；说明必填项、长度、角色名称/ID和状态值；明文密码只存在于用户自行填写的文件。 |
 | 组织成员导入模板 | 固定英文表头，无填写说明 | 翻译账号/角色，单独解释已注册账号和 member/manager 值；角色留空默认成员；兼容旧英文及简繁中文表头。 |
+| 发件服务失败地址 | 新增出口未纳入统一审查；失败原因与地址混排 | XLSX；邮箱、客户编码（分组时）、错误次数（分组时）、错误类型、错误说明、可删除和来源；可删除在任一原因为邮箱不存在/无效地址/格式错误时为“是”（绿底深绿字），其余为“否”（浅灰底灰字）；逐条导出按该行类型判断；沿用当前日期、批次、类型和搜索范围。 |
 
-共同规则：表头深色底白字、冻结首行、合理列宽、自动换行、隔行底色、有数据时建立可筛选 Excel 表。时间统一为真实 Excel 日期、表头明确 UTC；编号按文本保存前导零与长数字。输入文本不会转成公式。工作表超过 1,048,576 行时续表；单元格超出 32,767 字符时明确报错，避免静默截断。权限、所有权、组织分配和 API Key 约束由原处理器/Core 保留。
+最后更新：2026-11-11
+
+共同规则：表头深色底白字、冻结首行、合理列宽、自动换行、隔行底色、有数据时建立可筛选 Excel 表；“可删除”列的绿/灰状态底色会覆盖该行隔行底色。时间统一为真实 Excel 日期、表头明确 UTC；编号按文本保存前导零与长数字。输入文本不会转成公式。工作表超过 1,048,576 行时续表；单元格超出 32,767 字符时明确报错，避免静默截断。权限、所有权、组织分配和 API Key 约束由原处理器/Core 保留。
 
 语言优先级：请求 `lang` → `X-Listmonk-Language` → 应用语言，缺失翻译沿用英语回退。英语、简体中文和繁体中文新增字段译文完整；其它语言复用已有翻译并对新增项回退英语。客户/组织名称、原始错误等业务内容保持原值；自定义字段标签遵循管理员配置，不能自动推断它们的译名。
 
-实现出处：`cmd/excel_{exports,customer_exports,import_templates}.go`、`cmd/{customers,pools,audit,public,campaign_send_errors}.go`、`queries/customers.sql::export-customer-data`、`internal/core/workspace_queries.go::GetWorkspaceCustomerProfileForExport`、`frontend/src/utils/importTemplateHeaders.js`、导出按钮所在页面。
+实现出处：`cmd/excel_{exports,customer_exports,import_templates}.go`、`cmd/{customers,pools,audit,public,campaign_send_errors,delivery_provider}.go`、`queries/customers.sql::export-customer-data`、`internal/core/workspace_queries.go::GetWorkspaceCustomerProfileForExport`、`frontend/src/utils/importTemplateHeaders.js`、导出按钮所在页面。
 
-验证出处：`cmd/excel_exports{,_integration}_test.go`、`cmd/audit_integration_test.go::TestAuditExportSelectedAndFilteredFullExcelPostgresIntegration`、`cmd/campaign_send_error_report_test.go`、`frontend/cypress/e2e/excel-exports.cy.js`。实际验证结果在 [STATUS.md](STATUS.md) 记录。
+验证出处：`cmd/excel_exports{,_integration}_test.go`、`cmd/audit_integration_test.go::TestAuditExportSelectedAndFilteredFullExcelPostgresIntegration`、`cmd/campaign_send_error_report_test.go`、`cmd/delivery_provider_test.go`、`frontend/cypress/e2e/excel-exports.cy.js`。实际验证结果在 [STATUS.md](STATUS.md) 记录。

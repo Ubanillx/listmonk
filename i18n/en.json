@@ -85,7 +85,7 @@
     "deliveryProvider.currentBatch": "Batch:",
     "deliveryProvider.dateScope": "Date:",
     "deliveryProvider.clearBatch": "Clear batch",
-    "deliveryProvider.searchEmail": "Search email",
+    "deliveryProvider.searchEmailOrCode": "Search email or customer code",
     "deliveryProvider.actions": "Actions",
     "deliveryProvider.viewLogs": "Logs",
     "deliveryProvider.blocklist": "Blocklist",

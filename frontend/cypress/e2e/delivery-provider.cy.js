@@ -243,6 +243,16 @@ describe('BestEDM delivery provider console', () => {
     cy.get('[data-cy=provider-tab-statistics]').click();
     cy.wait('@matchedFailures');
 
+    cy.contains('.provider-failure-table thead th', '客户编码').should('be.visible');
+    cy.contains('.provider-failure-table tbody tr', 'known@example.com')
+      .find('[data-cy=provider-customer-code]').should('have.text', 'C1, P1');
+    cy.contains('.provider-failure-table tbody tr', 'nomatch@example.com')
+      .find('[data-cy=provider-customer-code]').should('have.text', '');
+    cy.get('[data-cy=provider-failure-search]').type('p1');
+    cy.get('.provider-failure-table tbody tr').should('have.length', 1)
+      .and('contain', 'known@example.com');
+    cy.get('[data-cy=provider-failure-search]').clear();
+
     cy.contains('.provider-failure-table tbody tr', 'nomatch@example.com')
       .find('[data-cy=provider-failure-blocklist]').should('be.disabled');
     cy.contains('.provider-failure-table tbody tr', 'known@example.com')

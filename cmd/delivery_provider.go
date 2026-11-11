@@ -372,10 +372,10 @@ func (a *App) QueryDeliveryProvider(c echo.Context) error {
 	if err != nil {
 		return providerHTTPError(err)
 	}
-	if kind == "failures" && (search != "" || localFailureType != "") {
+	if kind == "failures" && localFailureType != "" {
 		filtered := make([]bestedm.Row, 0, len(rows))
 		for _, row := range rows {
-			if (localFailureType == "" || row["error_type"] == localFailureType) && strings.Contains(strings.ToLower(row["email"]), search) {
+			if row["error_type"] == localFailureType {
 				filtered = append(filtered, row)
 			}
 		}
@@ -385,13 +385,22 @@ func (a *App) QueryDeliveryProvider(c echo.Context) error {
 	if groupByEmail {
 		summaries = summarizeProviderFailures(rows)
 		// Attach the workspace match per address so one report answers both
-		// "why did it fail" and "which customer is this". Excel export keeps the
-		// report-only contract and does no matching work.
-		if c.Param("format") == "" {
-			if access, accessErr := a.workspaceAccess(c); accessErr == nil {
-				a.providerFailureMatches(c, access, summaries)
+		// "why did it fail" and "which customer is this". The grouped export
+		// shares these rows so customer-code search and the workbook cannot drift.
+		if access, accessErr := a.workspaceAccess(c); accessErr == nil {
+			a.providerFailureMatches(c, access, summaries)
+		}
+		if search != "" {
+			summaries = filterProviderFailureSummaries(summaries, search)
+		}
+	} else if kind == "failures" && search != "" {
+		filtered := make([]bestedm.Row, 0, len(rows))
+		for _, row := range rows {
+			if strings.Contains(strings.ToLower(row["email"]), search) {
+				filtered = append(filtered, row)
 			}
 		}
+		rows = filtered
 	}
 	if c.Param("format") == "export" {
 		if kind != "failures" {
@@ -404,7 +413,7 @@ func (a *App) QueryDeliveryProvider(c echo.Context) error {
 		defer book.file.Close()
 		columns := []exportColumn{book.column("customers.email", 38, "")}
 		if groupByEmail {
-			columns = append(columns, book.column("deliveryProvider.errorCount", 16, "0"))
+			columns = append(columns, book.column("customers.customerCode", 24, ""), book.column("deliveryProvider.errorCount", 16, "0"))
 		}
 		columns = append(columns, book.column("deliveryProvider.errorType", 24, ""), book.column("deliveryProvider.errorDetail", 45, ""), book.column("deliveryProvider.source", 20, ""))
 		sheet, e := book.addSheet("deliveryProvider.failures", columns)
@@ -418,7 +427,7 @@ func (a *App) QueryDeliveryProvider(c echo.Context) error {
 					types = append(types, fmt.Sprintf("%s (%d)", cause.Type, cause.Count))
 					details = append(details, fmt.Sprintf("%s (%d)", cause.Detail, cause.Count))
 				}
-				if e = sheet.addRow(row.Email, row.Count, strings.Join(types, "\n"), strings.Join(details, "\n"), source); e != nil {
+				if e = sheet.addRow(row.Email, providerFailureCustomerCodes(row), row.Count, strings.Join(types, "\n"), strings.Join(details, "\n"), source); e != nil {
 					return e
 				}
 			}

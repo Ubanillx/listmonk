@@ -327,6 +327,8 @@
 .provider-batch-table tr.is-clickable-batch:hover th { background: var(--lm-color-primary-soft); }
 .provider-failure-cause + .provider-failure-cause { margin-top: var(--lm-space-2); }
 .provider-error-count { font-weight: 600; }
+.provider-customer-code { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.provider-customer-code-inline { display: none; }
 .provider-failure-table {
   td:first-child { white-space: normal; overflow-wrap: anywhere; }
   ::v-deep .tag { font-size: 11.5px; font-weight: 500; }
@@ -428,17 +430,20 @@
   .provider-failure-toolbar .provider-error-type,
   .provider-failure-toolbar .provider-email-search { flex: 0 0 auto; }
   .provider-log-head time { margin-left: 0; }
-  // Keep each address on one line inside the table's own scroll container
-  // instead of wrapping a single address over four rows.
-  .provider-failure-table td:first-child {
-    white-space: nowrap;
-    overflow-wrap: normal;
-    min-width: 190px;
-  }
   .provider-failure-cause + .provider-failure-cause { margin-top: var(--lm-space-1); }
   // The aggregate column duplicates the per-cause counts on a phone, and hiding
   // it keeps the address, causes and action on screen without side scrolling.
   .provider-error-count-cell { display: none; }
+  // A separate code column would push the causes and actions off screen, so the
+  // code moves under the address on phones.
+  .provider-customer-code { display: none; }
+  .provider-customer-code-inline {
+    display: block;
+    margin-top: var(--lm-space-1);
+    color: var(--lm-color-text-muted);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
   // Tighten this table only on phones so address, causes and the log action fit.
   .provider-batch-table,
   .provider-failure-table {
@@ -447,8 +452,9 @@
   }
   .provider-failure-table {
     // Two clamped lines keep a long address readable without pushing the log
-    // action off screen.
-    td:first-child {
+    // action off screen; the customer code stays on its own line.
+    .provider-failure-address { min-width: 0; }
+    .provider-failure-email {
       display: -webkit-box;
       -webkit-box-orient: vertical;
       -webkit-line-clamp: 2;

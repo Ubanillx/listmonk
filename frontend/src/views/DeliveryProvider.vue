@@ -239,8 +239,8 @@
                 <option v-for="i in 10" :key="i" :value="String(i)">{{ t(`error${i}`) }}</option>
               </b-select>
             </b-field>
-            <b-field :label="t('searchEmail')" class="provider-email-search lm-search-field">
-              <b-input v-model="failureSearch" icon="magnify" placeholder="name@example.com" maxlength="320"
+            <b-field :label="t('searchEmailOrCode')" class="provider-email-search lm-search-field">
+              <b-input v-model="failureSearch" icon="magnify" placeholder="name@example.com / C-001" maxlength="320"
                 data-cy="provider-failure-search" @input="pages.failures = 1" />
             </b-field>
           </div>
@@ -272,6 +272,7 @@
                       @change="toggleAllFiltered($event.target.checked)">
                   </th>
                   <th>{{ t('email') }}</th>
+                  <th class="provider-customer-code">{{ $t('customers.customerCode') }}</th>
                   <th>{{ t('errorType') }}</th>
                   <th class="is-numeric provider-error-count-cell">{{ t('errorCount') }}</th>
                   <th>{{ t('actions') }}</th>
@@ -284,7 +285,11 @@
                       :aria-label="$t('deliveryProvider.selectAddress', { email: row.email })" data-cy="provider-select-address"
                       @change="toggleFailure(row)">
                   </td>
-                  <td>{{ row.email }}</td>
+                  <td class="provider-failure-address">
+                    <span class="provider-failure-email">{{ row.email }}</span>
+                    <small v-if="customerCode(row)" class="provider-customer-code-inline">{{ customerCode(row) }}</small>
+                  </td>
+                  <td class="provider-customer-code" data-cy="provider-customer-code">{{ customerCode(row) }}</td>
                   <td>
                     <div v-for="(cause, causeIndex) in row.errors" :key="causeIndex" class="provider-failure-cause">
                       <b-tag :class="failureColor(cause.error_type)">
@@ -305,7 +310,7 @@
                   </td>
                 </tr>
                 <tr v-if="!filteredFailures.length">
-                  <td colspan="5" class="provider-inline-empty">{{ busy.failures ? t('loading') : loaded.failures ? t('noData') : t('queryFirst') }}</td>
+                  <td colspan="6" class="provider-inline-empty">{{ busy.failures ? t('loading') : loaded.failures ? t('noData') : t('queryFirst') }}</td>
                 </tr>
               </tbody>
             </table>
@@ -610,7 +615,12 @@ export default {
     batchGroups() { return providerBatches(this.statistics); },
     batchGroupsPage() { const start = (this.pages.batches - 1) * this.sizes.batches; return this.batchGroups.slice(start, start + this.sizes.batches); },
     failuresPage() { const start = (this.pages.failures - 1) * this.sizes.failures; return this.filteredFailures.slice(start, start + this.sizes.failures); },
-    filteredFailures() { const search = this.failureSearch.trim().toLowerCase(); return this.failures.filter((row) => (row.email || '').toLowerCase().includes(search)); },
+    filteredFailures() {
+      const search = this.failureSearch.trim().toLowerCase();
+      if (!search) return this.failures;
+      return this.failures.filter((row) => (row.email || '').toLowerCase().includes(search)
+        || (row.matches || []).some((match) => (match.customer_code || '').toLowerCase().includes(search)));
+    },
     selectedFailureRows() {
       return this.failures.filter((row) => this.isFailureSelected(row));
     },
@@ -812,6 +822,16 @@ export default {
     },
     failureColor(type) { return ['2', '4', '10'].includes(String(type)) ? 'provider-tag-warning' : 'provider-tag-danger'; },
     failureType(type) { return Number(type) >= 1 && Number(type) <= 10 ? this.t(`error${type}`) : type || '—'; },
+    customerCode(row) {
+      const codes = [];
+      const seen = new Set();
+      (row.matches || []).forEach((match) => {
+        const code = (match.customer_code || '').trim();
+        const key = code.toLowerCase();
+        if (code && !seen.has(key)) { seen.add(key); codes.push(code); }
+      });
+      return codes.join(', ');
+    },
     rowMatches(row) { return row.matches || []; },
     allBlocked(row) {
       const matches = this.rowMatches(row);

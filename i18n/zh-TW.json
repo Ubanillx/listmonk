@@ -31,7 +31,7 @@
     "deliveryProvider.currentBatch": "批次：",
     "deliveryProvider.dateScope": "日期：",
     "deliveryProvider.clearBatch": "取消批次",
-    "deliveryProvider.searchEmail": "搜尋郵箱",
+    "deliveryProvider.searchEmailOrCode": "搜尋郵箱或客戶編碼",
     "deliveryProvider.actions": "操作",
     "deliveryProvider.viewLogs": "查日誌",
     "deliveryProvider.blocklist": "加入黑名單",

@@ -15,6 +15,7 @@ import (
 
 	"github.com/knadh/listmonk/internal/auth"
 	"github.com/knadh/listmonk/internal/bestedm"
+	"github.com/knadh/listmonk/internal/core"
 	"github.com/labstack/echo/v4"
 	"github.com/xuri/excelize/v2"
 )
@@ -171,7 +172,10 @@ func TestDeliveryProviderFiltersAllBatchesBeforeGroupingAndExport(t *testing.T) 
 					if err != nil || len(exported) != wantGroups+1 {
 						t.Fatalf("incorrect filtered export: %v %v", exported, err)
 					}
-					if wantCount > 0 && (exported[1][1] != strconv.Itoa(wantCount) || strings.Contains(exported[1][3], "other cause") != (typ == 2)) {
+					if len(exported) == 0 || len(exported[0]) != 6 || exported[0][1] != "Customer code" {
+						t.Fatalf("export misses the customer-code column: %v", exported)
+					}
+					if wantCount > 0 && (exported[1][1] != "" || exported[1][2] != strconv.Itoa(wantCount) || strings.Contains(exported[1][4], "other cause") != (typ == 2)) {
 						t.Fatalf("export includes unrelated causes: %v", exported)
 					}
 					return
@@ -265,10 +269,10 @@ func TestDeliveryProviderGroupedFailuresMatchExcel(t *testing.T) {
 			t.Fatal(err)
 		}
 		rows, err := file.GetRows(file.GetSheetName(0))
-		if err != nil || len(rows) != 2 || rows[1][0] != "User@example.com" || rows[1][1] != "4" || rows[1][2] != "1 (2)\n10 (1)\n10 (1)" || !strings.Contains(rows[1][3], "Timeout (1)") {
+		if err != nil || len(rows) != 2 || rows[1][0] != "User@example.com" || rows[1][1] != "" || rows[1][2] != "4" || rows[1][3] != "1 (2)\n10 (1)\n10 (1)" || !strings.Contains(rows[1][4], "Timeout (1)") {
 			t.Fatalf("grouped export differs: %v, %v", rows, err)
 		}
-		if typ, _ := file.GetCellType(file.GetSheetName(0), "B2"); typ != excelize.CellTypeNumber && typ != excelize.CellTypeUnset {
+		if typ, _ := file.GetCellType(file.GetSheetName(0), "C2"); typ != excelize.CellTypeNumber && typ != excelize.CellTypeUnset {
 			t.Fatalf("count is not numeric: %v", typ)
 		}
 		file.Close()
@@ -349,6 +353,33 @@ func TestDeliveryProviderFailureSearchMatchesExcel(t *testing.T) {
 		if err != nil || len(rows) != 2 || rows[1][0] != "recipient01@example.com" {
 			t.Fatalf("export differs from searched results: %v %v", rows, err)
 		}
+	}
+}
+
+func TestProviderFailureCustomerCodesAndSearch(t *testing.T) {
+	rows := []providerFailureSummary{
+		{Email: "alpha@example.com"},
+		{Email: "beta@example.com", Matches: []providerFailureTarget{
+			{ProviderFailureMatch: core.ProviderFailureMatch{CustomerCode: " C-002 "}},
+			{ProviderFailureMatch: core.ProviderFailureMatch{CustomerCode: "c-002"}},
+			{ProviderFailureMatch: core.ProviderFailureMatch{CustomerCode: "C-003"}},
+			{ProviderFailureMatch: core.ProviderFailureMatch{CustomerCode: " "}},
+		}},
+	}
+	if got := providerFailureCustomerCodes(rows[1]); got != "C-002, C-003" {
+		t.Fatalf("unexpected customer codes: %q", got)
+	}
+	if got := providerFailureCustomerCodes(rows[0]); got != "" {
+		t.Fatalf("unmatched row must stay blank: %q", got)
+	}
+	for search, want := range map[string]string{"alpha": "alpha@example.com", "c-002": "beta@example.com"} {
+		got := filterProviderFailureSummaries(rows, search)
+		if len(got) != 1 || got[0].Email != want {
+			t.Fatalf("search %q returned %#v", search, got)
+		}
+	}
+	if got := filterProviderFailureSummaries(rows, "missing"); got == nil || len(got) != 0 {
+		t.Fatalf("no-match search must return an empty array: %#v", got)
 	}
 }
 

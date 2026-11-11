@@ -51,3 +51,37 @@ func summarizeProviderFailures(rows []bestedm.Row) []providerFailureSummary {
 	}
 	return out
 }
+
+// providerFailureCustomerCodes returns distinct non-empty codes from every
+// workspace match. An address without a match, or whose match has no code,
+// stays blank instead of showing a placeholder.
+func providerFailureCustomerCodes(row providerFailureSummary) string {
+	codes := make([]string, 0, len(row.Matches))
+	seen := make(map[string]struct{}, len(row.Matches))
+	for _, match := range row.Matches {
+		code := strings.TrimSpace(match.CustomerCode)
+		key := strings.ToLower(code)
+		if code == "" {
+			continue
+		}
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		codes = append(codes, code)
+	}
+	return strings.Join(codes, ", ")
+}
+
+// filterProviderFailureSummaries applies the local email/customer-code search
+// after matching so the page, API and workbook share one set of rows.
+func filterProviderFailureSummaries(rows []providerFailureSummary, search string) []providerFailureSummary {
+	out := make([]providerFailureSummary, 0, len(rows))
+	for _, row := range rows {
+		if strings.Contains(strings.ToLower(row.Email), search) ||
+			strings.Contains(strings.ToLower(providerFailureCustomerCodes(row)), search) {
+			out = append(out, row)
+		}
+	}
+	return out
+}

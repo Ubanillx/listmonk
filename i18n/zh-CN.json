@@ -85,7 +85,7 @@
     "deliveryProvider.currentBatch": "批次：",
     "deliveryProvider.dateScope": "日期：",
     "deliveryProvider.clearBatch": "取消批次",
-    "deliveryProvider.searchEmail": "搜索邮箱",
+    "deliveryProvider.searchEmailOrCode": "搜索邮箱或客户编码",
     "deliveryProvider.actions": "操作",
     "deliveryProvider.viewLogs": "查日志",
     "deliveryProvider.blocklist": "加入黑名单",

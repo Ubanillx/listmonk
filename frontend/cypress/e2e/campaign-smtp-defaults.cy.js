@@ -16,7 +16,9 @@ describe('Campaign SMTP scope follows the owner and workspace', () => {
     cy.viewport(1200, 680);
     cy.intercept('GET', '/api/config', (req) => req.continue((res) => { res.body.data.lang = 'zh-CN'; }));
     cy.loginAndVisit('/admin/campaigns/new');
-    cy.request('PUT', '/api/profile/smtp', { smtp: [smtp('owner', 'owner@example.com')] });
+    cy.request('PUT', '/api/profile/smtp', {
+      smtp: [smtp('owner', 'owner@example.com'), smtp('owner-2', 'owner2@example.com')],
+    });
     cy.request('/api/profile').then(({ body }) => cy.request('POST', '/api/organizations', {
       name: 'SMTP workspace', manager_user_id: body.data.id,
     })).then(({ body }) => { organizationID = body.data.id; });
@@ -26,6 +28,9 @@ describe('Campaign SMTP scope follows the owner and workspace', () => {
       method: 'POST', url: '/api/customer-lists', headers: { 'X-Listmonk-Organization-ID': organizationID },
       body: { name: 'Private audience', type: 'private', optin: 'single' },
     })).then(({ body }) => { privateListID = body.data.id; });
+    cy.then(() => cy.request('POST', '/api/pools/allocations', {
+      pool_id: poolID, organization_id: organizationID, name: 'SMTP audience allocation',
+    }));
     cy.then(() => ['First sender pool', 'Second sender pool'].forEach((name, index) => {
       const headers = { 'X-Listmonk-Organization-ID': organizationID };
       cy.request({ method: 'POST', url: '/api/organizations/smtp-pools', headers, body: { name } })
@@ -37,14 +42,20 @@ describe('Campaign SMTP scope follows the owner and workspace', () => {
     }));
     cy.then(() => cy.visit(`/admin/campaigns/new?customer_list_id=${poolID}`));
     cy.get('[data-cy=campaign-smtp-source]').should('have.value', 'personal');
+    cy.get('[data-cy=campaign-smtp-rate-limit]').should('have.value', '5');
+    cy.get('[data-cy=campaign-daily-send-limit]').should('have.value', '100');
     cy.get('[data-cy=campaign-smtp-overview]').should('contain', 'owner@example.com').and('not.contain', 'org-0@example.com');
     cy.get('[data-cy=campaign-smtp-source]').select('organization');
+    cy.get('[data-cy=campaign-smtp-rate-limit]').should('have.value', '200');
+    cy.get('[data-cy=campaign-daily-send-limit]').should('have.value', '2000');
     cy.get('[data-cy=campaign-smtp-workspace-required]').should('be.visible').and('contain', '切换');
     cy.get('[data-cy=campaign-smtp-overview]').should('not.exist');
     cy.get('[data-cy=campaign-smtp-pool]').should('not.exist');
     cy.get('input[name=from_email]').should('not.exist');
     cy.get('[data-cy=campaign-sender-section]').screenshot('organization-smtp-requires-workspace');
     cy.get('[data-cy=campaign-smtp-source]').select('personal');
+    cy.get('[data-cy=campaign-smtp-rate-limit]').should('have.value', '5');
+    cy.get('[data-cy=campaign-daily-send-limit]').should('have.value', '100');
     cy.get('[data-cy=campaign-smtp-overview]').should('contain', 'owner@example.com');
     cy.then(() => {
       cy.window().then((win) => win.localStorage.setItem('listmonk.workspace.organizationId', String(organizationID)));
@@ -52,14 +63,19 @@ describe('Campaign SMTP scope follows the owner and workspace', () => {
       cy.visit(`/admin/campaigns/new?customer_list_id=${privateListID}`);
     });
     cy.get('[data-cy=campaign-smtp-source]').should('have.value', 'personal');
+    cy.get('[data-cy=campaign-smtp-rate-limit]').should('have.value', '5');
+    cy.get('[data-cy=campaign-daily-send-limit]').should('have.value', '100');
     cy.get('[data-cy=campaign-smtp-rate-limit]').clear().type('17');
+    cy.get('[data-cy=campaign-daily-send-limit]').clear().type('77');
     cy.get('[data-cy=campaign-audience-trigger]').click();
     cy.then(() => cy.get(`[data-cy=campaign-audience-${poolID}]`).check());
     cy.get('[data-cy=campaign-audience-trigger]').click();
     cy.get('[data-cy=campaign-smtp-source]').should('have.value', 'personal');
     cy.get('[data-cy=campaign-smtp-rate-limit]').should('have.value', '17');
+    cy.get('[data-cy=campaign-daily-send-limit]').should('have.value', '77');
     cy.get('[data-cy=campaign-smtp-overview]').should('contain', 'owner@example.com');
     cy.get('[data-cy=campaign-smtp-source]').select('organization');
+    cy.get('[data-cy=campaign-daily-send-limit]').should('have.value', '2000');
     cy.then(() => cy.get('[data-cy=campaign-smtp-pool]').select(String(senderPools[1])));
     cy.get('[data-cy=campaign-smtp-overview]').should('contain', 'org-1@example.com').and('not.contain', 'org-0@example.com');
     cy.get('[data-cy=campaign-smtp-rate-limit]').clear().type('37');
@@ -93,11 +109,12 @@ describe('Campaign SMTP scope follows the owner and workspace', () => {
       body: {
         name: 'Saved SMTP selection', subject: 'SMTP selection', type: 'regular', content_type: 'plain', body: 'Body',
         customer_list_ids: [poolID], pool_scope: 'all_organizations', smtp_source: 'organization',
-        smtp_pool_id: senderPools[1], smtp_rate_limit: 37,
+        smtp_pool_id: senderPools[1], smtp_rate_limit: 37, daily_send_limit: 123,
       },
     })).then(({ body }) => cy.visit(`/admin/campaigns/${body.data.id}`));
     cy.then(() => cy.get('[data-cy=campaign-smtp-pool]').should('have.value', String(senderPools[1])));
     cy.get('[data-cy=campaign-smtp-rate-limit]').should('have.value', '37');
+    cy.get('[data-cy=campaign-daily-send-limit]').should('have.value', '123');
     cy.get('[data-cy=campaign-smtp-overview]').should('contain', 'org-1@example.com').and('not.contain', 'org-0@example.com');
     cy.get('input[name=subject]').clear().type('Preserved selection');
     cy.intercept('PUT', '/api/campaigns/*').as('saveSender');
@@ -106,8 +123,10 @@ describe('Campaign SMTP scope follows the owner and workspace', () => {
       expect(response.statusCode).to.eq(200);
       expect(request.body.smtp_pool_id).to.eq(senderPools[1]);
       expect(request.body.smtp_rate_limit).to.eq(37);
+      expect(request.body.daily_send_limit).to.eq(123);
     });
     cy.reload();
     cy.then(() => cy.get('[data-cy=campaign-smtp-pool]').should('have.value', String(senderPools[1])));
+    cy.get('[data-cy=campaign-daily-send-limit]').should('have.value', '123');
   });
 });

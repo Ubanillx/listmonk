@@ -951,9 +951,10 @@ curl -u "api_user:token" -X DELETE 'http://localhost:9000/api/campaigns?query=te
 
 ## SMTP sender source and overview
 
-The new campaign form defaults to organization visibility and organization SMTP
-rotation in an organization workspace (100 messages/minute), or private visibility
-and personal SMTP in a personal workspace (5 messages/minute). Link tracking is
+The new campaign form defaults to organization visibility in an organization
+workspace, or private visibility in a personal workspace, and to personal SMTP
+(5 messages/minute) in both. Selecting organization SMTP defaults to 200
+messages/minute and 2000 messages/day. Link tracking is
 enabled by default in the form. Editing an existing campaign uses its saved values.
 Upgrades change the default for new personal campaigns and zero-rate legacy
 fallbacks; existing saved rate limits are preserved.
@@ -969,7 +970,7 @@ reached with recipients remaining; if all recipients are sent, it finishes.
 
 Create, update and test requests accept `smtp_rate_limit`, an integer from 1 to
 1000000 specifying the campaign's total SMTP messages per minute across all its
-senders. Omitted/zero values on creation default to 20 for `personal` and 100 for
+senders. Omitted/zero values on creation default to 5 for `personal` and 200 for
 `organization`; updates retain the existing value when omitted. Tests may override
 the saved rate. The activity's chosen rate sets its own pacing first; platform
 aggregate rate and sliding window ceilings still apply. Excess messages wait.

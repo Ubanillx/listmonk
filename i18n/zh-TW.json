@@ -2459,7 +2459,7 @@
     "organizations.smtpHelp": "設定組織獨立的行銷寄件信箱，活動可輪詢使用啟用的 SMTP。憑據、TLS 與每日額度在各 SMTP 配置；連線數、重試、逾時及隨機延遲在「設定 → SMTP 投遞設定」統一配置。",
     "campaigns.smtpSource": "寄件 SMTP 來源",
     "campaigns.smtpRateLimit": "每分鐘上限（封）",
-    "campaigns.smtpRateLimitHelp": "本活動所有 SMTP 合計依此速率寄送，個人郵箱帳號預設 5 封/分鐘，組織郵箱帳號預設 100 封/分鐘；同時受平台和單 SMTP 上限約束，超限排隊。",
+    "campaigns.smtpRateLimitHelp": "本活動所有 SMTP 合計依此速率寄送，個人郵箱帳號預設 5 封/分鐘，組織郵箱帳號預設 200 封/分鐘；每日上限預設依已啟用的個人寄件郵箱數 × 50 計算，組織郵箱帳號預設 2000 封。同時受平台和單 SMTP 上限約束，超限排隊。",
     "campaigns.fieldInvalidSMTPRateLimit": "活動每分鐘 SMTP 發送上限需為 1 至 1000000 的整數。",
     "campaigns.smtpPersonalRotation": "個人郵箱帳號 SMTP 輪詢發送",
     "campaigns.smtpOrganizationRotation": "組織郵箱帳號 SMTP 輪詢發送",

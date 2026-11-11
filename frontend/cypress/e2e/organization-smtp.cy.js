@@ -77,6 +77,13 @@ describe('Organization marketing SMTP', () => {
     cy.get('[data-cy=organization-smtp] .smtp-empty-state').should('contain', '尚未配置组织邮箱账号 SMTP 发送');
     cy.get('[data-cy=organization-smtp] .smtp-pool-option').eq(0).click();
     cy.get('[data-cy=organization-smtp] .smtp-card').should('have.length', 2);
+    cy.get('[data-cy=organization-smtp] .add-smtp-button').click();
+    cy.get('[data-cy=organization-smtp] .smtp-card').should('have.length', 3).last().within(() => {
+      cy.get('input[type=number]').eq(1).should('have.value', '0');
+      cy.get('.smtp-card-actions button.is-danger').click();
+    });
+    cy.get('.dialog .modal-card-foot button.is-primary').click();
+    cy.get('[data-cy=organization-smtp] .smtp-card').should('have.length', 2);
     cy.then(() => cy.visit(`/admin/campaigns/new?customer_list_id=${customerListID}`));
     cy.get('[data-cy=campaign-visibility]').should('have.value', 'organization');
     cy.get('[data-cy=campaign-smtp-source]').should('have.value', 'personal');
@@ -84,7 +91,7 @@ describe('Organization marketing SMTP', () => {
     cy.get('[data-cy=campaign-smtp-source]').select('organization');
     cy.get('[data-cy=campaign-smtp-source]').should('have.value', 'organization');
     cy.get('[data-cy=campaign-auto-track-links] input').should('be.checked');
-    cy.get('[data-cy=campaign-smtp-rate-limit]').should('have.value', '100');
+    cy.get('[data-cy=campaign-smtp-rate-limit]').should('have.value', '200');
     cy.then(() => cy.get('[data-cy=campaign-smtp-pool]').select(String(backupSMTPPoolID)));
     cy.get('[data-cy=campaign-smtp-unavailable]').should('be.visible').and('contain', '当前组织发件邮箱组暂无可用邮箱')
       .and('not.contain', '个人');
@@ -94,7 +101,7 @@ describe('Organization marketing SMTP', () => {
     cy.get('[data-cy=campaign-smtp-overview]').should('contain', 'personal@example.com').and('not.contain', 'org-one@example.com');
     cy.get('[data-cy=campaign-smtp-rate-limit]').should('have.value', '5');
     cy.get('[data-cy=campaign-smtp-source]').select('organization');
-    cy.get('[data-cy=campaign-smtp-rate-limit]').should('have.value', '100').clear().type('30');
+    cy.get('[data-cy=campaign-smtp-rate-limit]').should('have.value', '200').clear().type('30');
     cy.get('[data-cy=campaign-smtp-pool]').should('be.visible').find('option').should('have.length', 2)
       .first().invoke('val').then((value) => {
         expect(Number(value)).to.equal(smtpPoolID);
@@ -114,6 +121,7 @@ describe('Organization marketing SMTP', () => {
       expect(response.body.data.smtp_source).to.equal('organization');
       expect(response.body.data.smtp_pool_id).to.equal(smtpPoolID);
       expect(response.body.data.smtp_rate_limit).to.equal(30);
+      expect(response.body.data.daily_send_limit).to.equal(2000);
       expect(response.body.data.visibility).to.equal('organization');
       expect(response.body.data.auto_track_links).to.equal(true);
       expect(response.body.data.daily_resume_time).to.equal('00:05');
@@ -215,7 +223,7 @@ describe('Organization marketing SMTP', () => {
         daily_resume_time: '09:00', customer_list_ids: [customerListID], headers: [], tags: [], attribs: {} },
     })).then(({ body }) => {
       campaignID = body.data.id;
-      expect(body.data.smtp_rate_limit).to.equal(100);
+      expect(body.data.smtp_rate_limit).to.equal(200);
     });
     const send = (source) => cy.then(() => cy.request({
       method: 'POST', url: `/api/campaigns/${campaignID}/test`, headers: workspaceHeaders(),

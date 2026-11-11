@@ -2513,7 +2513,7 @@
     "organizations.smtpHelp": "Configure independent SMTP accounts for this organization. Campaigns can rotate through enabled senders. Credentials and quotas belong to the organization; delivery options are managed in Settings → SMTP delivery.",
     "campaigns.smtpSource": "Sender SMTP source",
     "campaigns.smtpRateLimit": "Per-minute limit",
-    "campaigns.smtpRateLimitHelp": "Total across this campaign's SMTP senders: 5 emails/minute by default for personal SMTP, 100 for organization SMTP. Platform and individual SMTP limits still apply; excess mail waits.",
+    "campaigns.smtpRateLimitHelp": "Total across this campaign's SMTP senders: 5 emails/minute by default for personal SMTP, 200 for organization SMTP; the daily limit defaults to 50 per enabled personal sender or 2000 for organization SMTP. Platform and individual SMTP limits still apply; excess mail waits.",
     "campaigns.fieldInvalidSMTPRateLimit": "Enter a whole number from 1 to 1000000 for the campaign SMTP cap per minute.",
     "campaigns.smtpPersonalRotation": "Personal SMTP rotation",
     "campaigns.smtpOrganizationRotation": "Organization SMTP rotation",

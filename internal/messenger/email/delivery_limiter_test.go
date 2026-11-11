@@ -17,7 +17,7 @@ func TestCampaignPacingDefaultsAndIndependentCampaigns(t *testing.T) {
 	}{
 		{"personal", 0, 12 * time.Second},
 		{"personal", 20, 3 * time.Second},
-		{"organization", 0, 600 * time.Millisecond},
+		{"organization", 0, 300 * time.Millisecond},
 		{"organization", 30, 2 * time.Second},
 	} {
 		l := NewDeliveryLimiter(1000, 0, 0, nil)

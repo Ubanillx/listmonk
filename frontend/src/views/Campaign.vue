@@ -254,7 +254,8 @@
                       </b-field>
                       <b-field v-if="isLimitedSMTPCampaign" :label="$t('campaigns.dailySendLimit')">
                         <b-numberinput v-model="form.dailySendLimit" :disabled="!canEdit" name="daily_send_limit"
-                          min="1" max="100000000" type="is-light" controls-position="compact" required />
+                          min="1" max="100000000" type="is-light" controls-position="compact" required
+                          data-cy="campaign-daily-send-limit" @input="onDailySendLimitInput" />
                       </b-field>
                     </div>
                     <b-field v-if="isLimitedSMTPCampaign" :label="$t('campaigns.dailyResumeTime')">
@@ -523,6 +524,11 @@ import { isActiveWorkspaceCustomerList } from '../utils/workspace';
 import insertInputText from '../utils/insertInputText';
 import Media from './Media.vue';
 
+const DEFAULT_PERSONAL_SMTP_RATE_LIMIT = 5;
+const DEFAULT_ORGANIZATION_SMTP_RATE_LIMIT = 200;
+const DEFAULT_PERSONAL_SMTP_DAILY_PER_SENDER = 50;
+const DEFAULT_ORGANIZATION_SMTP_DAILY_LIMIT = 2000;
+
 export default Vue.extend({
   components: {
     CampaignAudienceTreeSelect,
@@ -568,6 +574,7 @@ export default Vue.extend({
       customFields: [],
       isAltBodyFocused: false,
       newCampaignBaseline: null,
+      dailySendLimitCustomized: false,
 
       data: {},
 
@@ -583,7 +590,7 @@ export default Vue.extend({
         smtpSource: 'personal',
         smtpPoolId: null,
         poolScope: organizationWorkspace ? 'organization' : 'all_organizations',
-        smtpRateLimit: 5,
+        smtpRateLimit: DEFAULT_PERSONAL_SMTP_RATE_LIMIT,
         replyMailboxId: null,
         poolReplyPriority: 'contact_first',
         headersStr: '[]',
@@ -592,7 +599,7 @@ export default Vue.extend({
         messenger: 'email',
         autoTrackLinks: true,
         visibility: organizationWorkspace ? 'organization' : 'private',
-        dailySendLimit: 300,
+        dailySendLimit: DEFAULT_PERSONAL_SMTP_DAILY_PER_SENDER,
         dailyResumeTime: '09:00',
         customer_lists: [],
         tags: [],
@@ -642,7 +649,37 @@ export default Vue.extend({
 
     onSMTPSourceSelection(source) {
       this.form.smtpPoolId = null;
-      this.form.smtpRateLimit = source === 'organization' ? 100 : 5;
+      this.form.smtpRateLimit = this.defaultSMTPRateLimit(source);
+      if (this.isNew) {
+        this.dailySendLimitCustomized = false;
+        this.form.dailySendLimit = source === 'organization'
+          ? DEFAULT_ORGANIZATION_SMTP_DAILY_LIMIT
+          : DEFAULT_PERSONAL_SMTP_DAILY_PER_SENDER;
+      }
+    },
+
+    defaultSMTPRateLimit(source) {
+      return source === 'organization'
+        ? DEFAULT_ORGANIZATION_SMTP_RATE_LIMIT
+        : DEFAULT_PERSONAL_SMTP_RATE_LIMIT;
+    },
+
+    onDailySendLimitInput() {
+      if (this.isNew) this.dailySendLimitCustomized = true;
+    },
+
+    // Personal defaults scale with sender count; organization pools use a fixed ceiling.
+    applyNewCampaignSMTPDefaults() {
+      if (!this.isNew || this.dailySendLimitCustomized) return;
+      let next = DEFAULT_ORGANIZATION_SMTP_DAILY_LIMIT;
+      if (this.form.smtpSource !== 'organization') {
+        if (!this.smtpSenders.length) return;
+        next = this.smtpSenders.length * DEFAULT_PERSONAL_SMTP_DAILY_PER_SENDER;
+      }
+      if (this.form.dailySendLimit === next) return;
+      const dirty = this.isUnsaved();
+      this.form.dailySendLimit = next;
+      if (!dirty && this.newCampaignBaseline !== null) this.newCampaignBaseline = this.newCampaignSnapshot();
     },
 
     formatDateTime(s) {
@@ -918,7 +955,7 @@ export default Vue.extend({
           archiveMetaStr: data.archiveMeta ? JSON.stringify(data.archiveMeta, null, 4) : '{}',
           smtpSource: data.smtpSource || 'personal',
           smtpPoolId: data.smtpPoolId || null,
-          smtpRateLimit: data.smtpRateLimit || (data.smtpSource === 'organization' ? 100 : 5),
+          smtpRateLimit: data.smtpRateLimit || this.defaultSMTPRateLimit(data.smtpSource),
           poolReplyPriority: data.poolReplyPriority || 'contact_first',
           attribsStr: data.attribs ? JSON.stringify(data.attribs, null, 4) : '{}',
 
@@ -1200,7 +1237,10 @@ export default Vue.extend({
           smtp_pool_id: this.campaignSMTPPoolID || undefined,
         });
       }).then((rows) => {
-        if (request === this.smtpOverviewRequest) this.smtpSenders = rows || [];
+        if (request === this.smtpOverviewRequest) {
+          this.smtpSenders = rows || [];
+          this.applyNewCampaignSMTPDefaults();
+        }
       }).catch(() => {
         if (request === this.smtpOverviewRequest) this.smtpSenders = [];
       }).finally(() => {

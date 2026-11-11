@@ -265,12 +265,17 @@ Amazon SES, Mailgun, Mailjet, Sendgrid, Postmark, Forward Email, and Lettermint)
 Selecting a provider fills the host, port, authentication, and TLS mode, then clears
 the username, password, and HELO hostname. Enter your credentials and save to apply
 the configuration. The server name, sender address, and daily limit are preserved.
+A newly added personal SMTP account starts with a daily limit of 50; organization
+SMTP accounts still start unlimited (0).
 
-In the campaign editor, selecting private customer lists defaults to personal
-email-account SMTP. Selecting public pools defaults to organization email-account
-SMTP when that source is available, including mixed audiences in an organization.
-You can select another source manually. Opening a saved campaign preserves its
-saved source and rate; changing its audience applies the selection defaults again.
+In the campaign editor, new campaigns default to personal email-account SMTP.
+You can select organization email-account SMTP manually when the workspace and
+permissions allow it. A new personal campaign defaults its daily limit to 50
+messages per enabled sender account, recalculated while you have not edited the
+daily limit; an organization campaign defaults to 2000 messages per day and 200
+messages per minute. Switching the source on a new campaign applies that source's
+rate and daily defaults again. Opening a saved campaign preserves its saved
+source, rate, and daily limit; changing its audience keeps them unchanged.
 
 When organization SMTP rotation is selected for a private or mixed audience,
 select a reply mailbox to receive customer replies. A red warning highlights an
@@ -341,7 +346,7 @@ SMTP daily quota. Coordination is within one application process; multiple
 application instances do not share the delay queue.
 
 Each campaign additionally has an aggregate `smtp_rate_limit` in messages per
-minute, defaulting to 20 for personal SMTP and 100 for organization SMTP. The
+minute, defaulting to 5 for personal SMTP and 200 for organization SMTP. The
 campaign's chosen rate applies across its senders using evenly spaced starts.
 Platform rate and sliding window caps remain hard ceilings across all SMTP.
 Messages queue until both campaign and platform capacity are available;

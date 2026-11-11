@@ -2513,7 +2513,7 @@
     "organizations.smtpHelp": "配置组织独立的营销发件邮箱，活动可轮询使用启用的 SMTP。凭据、TLS 和每日额度归各 SMTP 配置；连接数、重试、超时及随机延迟在“设置 → SMTP 投递设置”统一配置。",
     "campaigns.smtpSource": "发件 SMTP 来源",
     "campaigns.smtpRateLimit": "每分钟上限（封）",
-    "campaigns.smtpRateLimitHelp": "本活动所有 SMTP 合计按此速率发送，个人邮箱账号默认 5 封/分钟，组织邮箱账号默认 100 封/分钟；同时受平台和单 SMTP 上限约束，超限排队。",
+    "campaigns.smtpRateLimitHelp": "本活动所有 SMTP 合计按此速率发送，个人邮箱账号默认 5 封/分钟，组织邮箱账号默认 200 封/分钟；每日上限默认按已启用的个人发件邮箱数 × 50 计算，组织邮箱账号默认 2000 封。同时受平台和单 SMTP 上限约束，超限排队。",
     "campaigns.fieldInvalidSMTPRateLimit": "活动每分钟 SMTP 发送上限需为 1 至 1000000 的整数。",
     "campaigns.smtpPersonalRotation": "个人邮箱账号 SMTP 轮询发送",
     "campaigns.smtpOrganizationRotation": "组织邮箱账号 SMTP 轮询发送",

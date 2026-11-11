@@ -162,14 +162,16 @@
 import Vue from 'vue';
 import SMTPPresets from './SMTPPresets.vue';
 
-function blankServer() {
+const DEFAULT_PERSONAL_DAILY_LIMIT = 50;
+
+function blankServer(dailyLimit = 0) {
   return {
     id: 0,
     uuid: '',
     name: '',
     enabled: true,
     fromEmail: '',
-    dailyLimit: 0,
+    dailyLimit,
     host: '',
     helloHostname: '',
     port: 465,
@@ -235,7 +237,7 @@ export default Vue.extend({
     },
 
     addServer() {
-      this.servers.push(blankServer());
+      this.servers.push(blankServer(this.organizationId ? 0 : DEFAULT_PERSONAL_DAILY_LIMIT));
     },
 
     fillSettings(server, index, preset) {

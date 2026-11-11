@@ -63,6 +63,7 @@ describe('SMTP quick configuration', () => {
     cy.get('.personal-smtp .smtp-card').first().screenshot('personal-smtp-presets-desktop');
     cy.get('.add-smtp-button').click();
     cy.get('.personal-smtp .smtp-card').should('have.length', 3).last().within(() => {
+      cy.get('input[type=number]').eq(1).should('have.value', '50');
       cy.contains('[data-cy=smtp-presets] button', '263net').click();
       cy.get('input[placeholder="smtp.example.com"]').should('have.value', 'smtp.263.net');
       cy.get('input[placeholder="user@example.com"]').should('be.focused');

@@ -453,7 +453,7 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 
 ### 平台级公海营销（全量组织受众 + 组织 SMTP 池轮询，已实施）
 
-个人 SMTP 轮询自 v6.64.0 默认 5 封/分钟，组织来源仍默认 100。新建表单、切换发件来源、零值旧数据兜底、API 省略频率及发送器使用相同来源默认值；v6.64.0 只将数据库列默认值改为 5，不覆盖已有活动保存的频率。来源：`models/campaigns.go`、`cmd/send_limits.go`、`frontend/src/views/Campaign.vue`、`internal/migrations/v6.64.0.go`。
+个人 SMTP 轮询自 v6.64.0 默认 5 封/分钟，组织来源自 2026-11-11 起默认 200。新建表单、切换发件来源、零值旧数据兜底、API 省略频率及发送器使用相同来源默认值；新建活动的每日上限默认值为个人来源启用发件邮箱数 × 50、组织来源 2000，手动修改后不再随发件邮箱数变化，切换发件来源会重新应用该来源默认值；打开已有活动保留保存值。个人 SMTP 账号新建时每日额度默认 50，组织 SMTP 账号仍默认不限。v6.64.0 只将数据库列默认值改为 5，不覆盖已有活动保存的频率。来源：`models/campaigns.go`、`cmd/send_limits.go`、`frontend/src/views/Campaign.vue`、`frontend/src/components/PersonalSMTPSettings.vue`、`internal/migrations/v6.64.0.go`。
 
 平台设置自 v6.49.0 起只保留一个用于系统通知的 SMTP；营销活动使用账号或组织发件池，事务邮件仍使用账号 SMTP。`settings.smtp_delivery` 统一定义每个 SMTP 的连接数、重试、超时、随机延迟和邮件头：`cmd/manager_store.go` 每次解析时应用它，系统通知 SMTP 保存时同步这些字段。TLS 协议和证书校验属于各 SMTP 的连接配置。v6.53.0 将旧全局 TLS 的实际生效值复制到各 SMTP，转换延迟单位，并回填活动频率；后续迁移重跑不覆盖单 SMTP TLS 或活动频率修改。设置保存后需重启，运行中的活动按既有规则延迟重启。
 
@@ -461,7 +461,7 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 
 个人/组织 SMTP 测试共用 `cmd/personal_smtp.go::testOwnedSMTP` 和 `cmd/smtp_errors.go::smtpTestError`。当前 smtppool v2.0.2 将 `wait_timeout` 同时用于连接池等待与新连接创建；隐式 TLS 的 `context deadline exceeded` 表示 TCP 连接/SSL/TLS 握手尚未完成，未进入 SMTP 认证。测试 API 保持 HTTP 500，使用本地化诊断说明目标地址和单次连接时限，并保留内部原始错误；不更改凭据、TLS 校验或全局超时。重试可使请求总时间超过单次时限，本机连接成功不能证明部署服务器的出站网络正常。
 
-投递限速分三层：`campaigns.smtp_rate_limit` 先约束单活动所有 SMTP 的合计发送频率（封/分钟），个人来源默认 5、组织来源默认 100，用户可设 1–1000000；以活动 UUID 共享平滑间隔，全组织公海也共用该活动额度。平台 `app.message_rate` 是所有 SMTP 合计的每秒硬上限，滑动窗口同样为平台总量；`app.concurrency` 同时控制工作线程数和所有 SMTP 的实际投递总并发。超限等待、不丢弃，线程数不乘大发送频率。`internal/messenger/email/delivery_limiter.go` 在实际 SMTP Send 前统一取得活动、平台频率及并发许可，完成或失败时释放并发许可并唤醒队列；`internal/manager/manager.go` 给系统通知、个人/组织缓存池、公海单发件池及临时连接测试挂同一 limiter，因此直接发送的系统通知也受平台限制。单 SMTP 连接、重试、超时和随机延迟仍独立生效。所有限速与发送门为进程内状态，重启重置，多个活动工作进程之间不共享；需要平台合计上限时采用一个活动发送进程。
+投递限速分三层：`campaigns.smtp_rate_limit` 先约束单活动所有 SMTP 的合计发送频率（封/分钟），个人来源默认 5、组织来源默认 200，用户可设 1–1000000；以活动 UUID 共享平滑间隔，全组织公海也共用该活动额度。平台 `app.message_rate` 是所有 SMTP 合计的每秒硬上限，滑动窗口同样为平台总量；`app.concurrency` 同时控制工作线程数和所有 SMTP 的实际投递总并发。超限等待、不丢弃，线程数不乘大发送频率。`internal/messenger/email/delivery_limiter.go` 在实际 SMTP Send 前统一取得活动、平台频率及并发许可，完成或失败时释放并发许可并唤醒队列；`internal/manager/manager.go` 给系统通知、个人/组织缓存池、公海单发件池及临时连接测试挂同一 limiter，因此直接发送的系统通知也受平台限制。单 SMTP 连接、重试、超时和随机延迟仍独立生效。所有限速与发送门为进程内状态，重启重置，多个活动工作进程之间不共享；需要平台合计上限时采用一个活动发送进程。
 
 - 营销活动勾选一级公海时，默认仍是单组织范围（`campaigns.pool_scope = 'organization'`，按当前工作区组织的公海分配解析）。持有专用权限 `campaigns:public_pool_send` 的账号可以把活动创建为 `all_organizations`：受众是该一级公海下**所有活跃组织**的公海分配并集，只接受一级公海列表（显式公海分配列表与普通客户列表都会被拒绝），权限常量在 `internal/auth/models.go`、清单在 `permissions.json`（`campaigns` 组），前端以 `$can('campaigns:public_pool_send')` 控制入口。
 - 组织工作区的新活动通过“公海发送范围”显式选择本组织或全部目标组织，默认本组织；选择全部目标组织后禁止混选私域列表。个人工作区仅允许纯公海受众进入全组织路径。已有活动范围不可修改。发送条件状态绑定已保存活动的发件来源、受众 ID 集合及回信优先级；编辑后隐藏旧状态并提示保存，成功保存后重新检查，异步旧响应不能覆盖新状态。已有全组织活动的 SMTP 概览会验证表单传入的 `customer_list_ids` 授权，但不因受众改变发件归属。

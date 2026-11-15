@@ -2992,7 +2992,7 @@ per instance with environment variables such as <code>LISTMONK_app__batch_size</
 <td>string[]</td>
 <td><code>[]</code></td>
 <td>no</td>
-<td>Addresses that receive system notifications, such as import and campaign notifications.</td>
+<td>Addresses that receive system notifications, such as import and campaign notifications. Campaign lifecycle notifications are also sent separately to the campaign owner when that user has an enabled e-mail address.</td>
 </tr>
 <tr>
 <td><code>lang</code></td>
@@ -3063,6 +3063,34 @@ per instance with environment variables such as <code>LISTMONK_app__batch_size</
 <td><code>1000</code></td>
 <td>no</td>
 <td>Number of send errors after which a campaign is paused.</td>
+</tr>
+<tr>
+<td><code>send_error_alert_enabled</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>no</td>
+<td>Send an e-mail alert to the campaign owner and <code>notify_emails</code> when a running campaign records many failures inside the alert window. Alerting does not pause the campaign.</td>
+</tr>
+<tr>
+<td><code>send_error_alert_window</code></td>
+<td>duration string</td>
+<td><code>5m</code></td>
+<td>no</td>
+<td>Sliding window used to count failure events for the window alert, between 1m and 24h.</td>
+</tr>
+<tr>
+<td><code>send_error_alert_threshold</code></td>
+<td>int</td>
+<td><code>50</code></td>
+<td>no</td>
+<td>Failure events inside the window that trigger an alert, between 1 and 1,000,000. Retries count as separate failures.</td>
+</tr>
+<tr>
+<td><code>send_error_alert_cooldown</code></td>
+<td>duration string</td>
+<td><code>30m</code></td>
+<td>no</td>
+<td>Minimum interval between window alerts for the same campaign, between 1m and 24h.</td>
 </tr>
 <tr>
 <td><code>message_sliding_window</code></td>

@@ -88,6 +88,8 @@
 
 - **活动暂停/继续**：手动状态变更与停止信号必须作为同一个生命周期操作执行，后台仅可从 running 完成、自动暂停或额度延迟；额度延迟及普通/公海收件人状态更新同事务。手动停止优先于旧管道的自动错误/SMTP 原因，旧管道不能把快速恢复的活动标为完成或再次暂停。已经进入 SMTP 的投递可完成并记 sent，未发送 queued 清理成 pending，恢复保留启动时间、历史 sent 和每日使用量，并重新验证当前发件条件；素材继续使用远程链接。来源：`cmd/campaigns.go::UpdateCampaignStatus`、`cmd/manager_store.go::{UpdateRunningCampaignStatus,DeferCampaign}`、`internal/manager/{manager,pipe,pause_test}.go`、`cmd/{campaign_pause_test,email_media_resume_test}.go`。
 
+- **活动通知与错误率窗口告警（v6.74.0）**：生命周期通知收件人为 `app.notify_emails` 加活动 owner，系统名单与 owner 分别发送、互不可见；多个 owner/额外地址也逐个单独发送，避免额外收件人互相暴露。owner 账号禁用或无邮箱时只发系统名单。完成、错误阈值自动暂停、个人 SMTP 或组织发件池 SMTP 不可用、手动暂停/取消、每日额度延期都有邮件；手动暂停/取消原因带操作人，延期带部署时区恢复时间。错误阈值暂停只对 running 生效；若本轮先达到每日额度、活动已持久化为 deferred，则发送延期的真实终态通知而不是静默跳过（不得把暂停邮件发成与实际状态不符）。手动暂停的 cleanup 分支不重复发送。窗口告警独立于 `max_send_errors`：只统计 running 活动在 `send_error_alert_window` 内的 `campaign_send_errors` 事件数，达到阈值后向 owner 和系统名单告警，按 `campaign_send_error_alerts` 抢占冷却，不自动暂停；零成功发送释放本次 claim，部分成功保留。非 passive 实例才运行监控。告警邮件不含邮箱、错误原文或客户敏感信息；日志中的收件人也做脱敏。来源：`internal/notifs/notifs.go`、`internal/manager/{manager,pipe,notification_test}.go`、`cmd/{campaigns,campaign_notifications_test,send_error_alerts,send_error_alerts_test}.go`、`internal/migrations/v6.74.0{,_test}.go`。
+
 - **客户列表删除与客户清理**：单个及批量（ID/筛选结果）删除列表默认保留客户。显式 `delete_customers=true` 只删除全部成员关系均在本次所删列表内的可维护客户，客户还属于其他列表（含归档、已退订）则保留；不清理无关孤立客户，不删除他人/其他工作区或待转移客户。公海同样保护其他一级公海及存续组织分配的共享联系人，分配删除不得清除主数据。私域另需客户删除权限，公海沿用主数据权限，个人 Key 另需客户写入 scope。先确认列表，再弹窗选取消/仅删列表/同时删除；两步中关闭或取消均不写入。Core 先锁客户再锁列表，重查共享关系及新增关联竞态，删除同事务，审计保存选项及实际删除数。来源：`cmd/customer_lists.go::{DeleteList,DeleteLists,requireListCustomerDeletion}`、`internal/core/list_customer_deletion.go`、`frontend/src/views/CustomerLists.vue`。
 
 ## 业务权限不变量（v6.56.0）

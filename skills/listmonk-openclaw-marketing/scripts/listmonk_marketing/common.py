@@ -13,9 +13,19 @@ def load_json_file(path: str, expected: type) -> Any:
     return data
 
 
+def _utf8_stream(stream: TextIO) -> TextIO:
+    reconfigure = getattr(stream, "reconfigure", None)
+    if reconfigure is not None:
+        try:
+            reconfigure(encoding="utf-8")
+        except (OSError, ValueError):
+            pass
+    return stream
+
+
 def log(message: str, *, enabled: bool) -> None:
     if enabled:
-        print(message, file=sys.stderr)
+        print(message, file=_utf8_stream(sys.stderr))
 
 
 def normalize_tags(raw: str | list[str]) -> list[str]:
@@ -25,7 +35,7 @@ def normalize_tags(raw: str | list[str]) -> list[str]:
 
 
 def emit_json(payload: Any, *, stream: TextIO | None = None) -> None:
-    out = stream or sys.stdout
+    out = _utf8_stream(stream or sys.stdout)
     print(json.dumps(payload, ensure_ascii=False, indent=2, default=str), file=out)
 
 

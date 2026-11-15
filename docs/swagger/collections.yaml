@@ -3774,6 +3774,14 @@ components:
           type: integer
         app.max_send_errors:
           type: integer
+        app.send_error_alert_enabled:
+          type: boolean
+        app.send_error_alert_window:
+          type: string
+        app.send_error_alert_threshold:
+          type: integer
+        app.send_error_alert_cooldown:
+          type: string
         app.message_rate:
           type: integer
         app.message_sliding_window:

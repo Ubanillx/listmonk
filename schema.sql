@@ -380,6 +380,10 @@ INSERT INTO settings (key, value) VALUES
     ('app.message_rate', '10'),
     ('app.batch_size', '1000'),
     ('app.max_send_errors', '1000'),
+    ('app.send_error_alert_enabled', 'true'),
+    ('app.send_error_alert_window', '"5m"'),
+    ('app.send_error_alert_threshold', '50'),
+    ('app.send_error_alert_cooldown', '"30m"'),
     ('app.message_sliding_window', 'false'),
     ('app.message_sliding_window_duration', '"1h"'),
     ('app.message_sliding_window_rate', '10000'),
@@ -1320,6 +1324,15 @@ CREATE TABLE campaign_send_errors (
 );
 CREATE INDEX campaign_send_errors_campaign_idx ON campaign_send_errors(campaign_id,created_at,id);
 CREATE INDEX campaign_send_errors_recipient_idx ON campaign_send_errors(campaign_id,recipient_type,recipient_id,created_at DESC,id DESC);
+
+-- Per-campaign cooldown for the independent send-error window alerts. A row is
+-- only written when an alert is actually claimed, and is deleted with the
+-- campaign.
+DROP TABLE IF EXISTS campaign_send_error_alerts;
+CREATE TABLE campaign_send_error_alerts (
+    campaign_id   INTEGER PRIMARY KEY REFERENCES campaigns(id) ON DELETE CASCADE,
+    last_alert_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
 -- Confirmed public opt-outs, deduplicated per campaign and recipient. Identity
 -- IDs intentionally survive customer deletion; no address or name is stored.

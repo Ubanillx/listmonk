@@ -1998,3 +1998,36 @@ JOIN user_smtp_servers s ON s.enabled AND (
 )
 LEFT JOIN user_smtp_daily_usage u ON u.smtp_uuid=s.uuid AND u.usage_date=$2::DATE
 WHERE c.id=$1;
+
+-- name: get-running-campaign-send-error-window
+-- Running campaigns whose failure events inside the alert window reached the
+-- configured threshold. Window and threshold are supplied by the monitor; the
+-- LATERAL count uses the campaign_id,created_at index.
+SELECT c.id AS campaign_id, c.name, c.uuid, c.owner_user_id, c.organization_id,
+       c.send_errors, w.window_errors, w.affected_recipients, w.last_error_at
+FROM campaigns c
+JOIN LATERAL (
+    SELECT COUNT(*) AS window_errors,
+           COUNT(DISTINCT e.recipient_type || ':' || e.recipient_id) AS affected_recipients,
+           MAX(e.created_at) AS last_error_at
+    FROM campaign_send_errors e
+    WHERE e.campaign_id = c.id
+      AND e.created_at >= NOW() - make_interval(secs => $1::DOUBLE PRECISION)
+) w ON TRUE
+WHERE c.status = 'running' AND w.window_errors >= $2
+ORDER BY w.window_errors DESC;
+
+-- name: claim-campaign-send-error-alert
+-- Atomically claim the per-campaign alert cooldown. Zero rows means another
+-- instance alerted recently (or its claim is still fresh).
+INSERT INTO campaign_send_error_alerts(campaign_id, last_alert_at)
+VALUES($1, NOW())
+ON CONFLICT(campaign_id) DO UPDATE SET last_alert_at = NOW()
+WHERE campaign_send_error_alerts.last_alert_at <= NOW() - make_interval(secs => $2::DOUBLE PRECISION)
+RETURNING last_alert_at;
+
+-- name: release-campaign-send-error-alert
+-- Release exactly the claim this monitor won. lib/pq round-trips the
+-- PostgreSQL microsecond timestamptz value exactly, so equality is safe and
+-- avoids deleting a concurrent newer claim that happens to share a timestamp.
+DELETE FROM campaign_send_error_alerts WHERE campaign_id = $1 AND last_alert_at = $2;

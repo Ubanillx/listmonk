@@ -22,6 +22,46 @@ describe('Settings', () => {
     cy.viewport(1400, 950);
   });
 
+  it('saves send error window alert settings and rejects invalid values', () => {
+    cy.resetDB();
+    cy.loginAndVisit('/admin/settings');
+    cy.get('.b-tabs nav a').eq(1).click();
+    cy.get('[data-cy=send-error-alert-switch]').find('input').should('be.checked');
+    cy.get('[data-cy=send-error-alert-threshold]').clear().type('25');
+    cy.get('[data-cy=send-error-alert-window]').clear().type('10m');
+    cy.get('[data-cy=send-error-alert-cooldown]').clear().type('1h');
+    cy.intercept('PUT', '**/api/settings').as('saveAlertSettings');
+    cy.get('[data-cy=btn-save]').click();
+    cy.wait('@saveAlertSettings');
+    cy.get('[data-cy=btn-save]', { timeout: 60000 }).should('be.disabled');
+
+    cy.request(`${apiUrl}/api/settings`).then(({ body }) => {
+      const data = body.data;
+      expect(data['app.send_error_alert_enabled']).to.equal(true);
+      expect(data['app.send_error_alert_threshold']).to.equal(25);
+      expect(data['app.send_error_alert_window']).to.equal('10m');
+      expect(data['app.send_error_alert_cooldown']).to.equal('1h');
+
+      cy.request({
+        method: 'PUT',
+        url: `${apiUrl}/api/settings`,
+        body: { ...data, 'app.send_error_alert_window': '0s' },
+        failOnStatusCode: false,
+      }).its('status').should('equal', 400);
+      cy.request({
+        method: 'PUT',
+        url: `${apiUrl}/api/settings/app.send_error_alert_window`,
+        body: '',
+        failOnStatusCode: false,
+      }).its('status').should('equal', 400);
+    });
+
+    cy.visit('/admin/settings');
+    cy.get('.b-tabs nav a').eq(1).click();
+    cy.get('[data-cy=send-error-alert-threshold]').should('have.value', '25');
+    cy.get('[data-cy=send-error-alert-window]').should('have.value', '10m');
+  });
+
   it('keeps one system SMTP and saves shared delivery and random delay options', () => {
     cy.resetDB();
     cy.loginAndVisit('/admin/settings');

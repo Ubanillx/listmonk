@@ -1,0 +1,32 @@
+{{ define "send-error-alert" }}
+{{ template "header" . }}
+<h2>{{ L.Ts "email.alerts.title" }}</h2>
+<p>{{ L.Ts "email.alerts.help" }}</p>
+<table width="100%">
+    <tr>
+        <td width="30%"><strong>{{ L.Ts "globals.terms.campaign" }}</strong></td>
+        <td><a href="{{ RootURL }}/admin/campaigns/{{ index . "ID" }}">{{ index . "Name" }}</a></td>
+    </tr>
+    <tr>
+        <td width="30%"><strong>{{ L.Ts "email.alerts.window" }}</strong></td>
+        <td>{{ index . "Window" }}</td>
+    </tr>
+    <tr>
+        <td width="30%"><strong>{{ L.Ts "email.alerts.windowErrors" }}</strong></td>
+        <td>{{ index . "WindowErrors" }}</td>
+    </tr>
+    <tr>
+        <td width="30%"><strong>{{ L.Ts "email.alerts.totalErrors" }}</strong></td>
+        <td>{{ index . "TotalErrors" }}</td>
+    </tr>
+    <tr>
+        <td width="30%"><strong>{{ L.Ts "email.alerts.affectedRecipients" }}</strong></td>
+        <td>{{ index . "AffectedRecipients" }}</td>
+    </tr>
+    <tr>
+        <td width="30%"><strong>{{ L.Ts "email.alerts.lastError" }}</strong></td>
+        <td>{{ index . "LastErrorAt" }}</td>
+    </tr>
+</table>
+{{ template "footer" }}
+{{ end }}

@@ -26,6 +26,7 @@ SCRIPTS = [
     "fetch_campaign_reports.py",
     "inspect_campaign_delivery.py",
     "inspect_customer_replies.py",
+    "upload_media.py",
 ]
 
 
@@ -53,11 +54,31 @@ class CLITests(unittest.TestCase):
             "create_campaign.py",
             "inspect_campaign_delivery.py",
             "inspect_customer_replies.py",
+            "upload_media.py",
         ]:
             with self.subTest(script=script):
                 result = self.run_script(script)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("usage:", result.stderr)
+
+    def test_campaign_scripts_expose_body_file_and_media_arguments(self) -> None:
+        for script in ["create_campaign.py", "run_marketing_flow.py"]:
+            with self.subTest(script=script):
+                result = self.run_script(script, "--help")
+                self.assertEqual(result.returncode, 0)
+                for flag in (
+                    "--body-file",
+                    "--media-file",
+                    "--media-id",
+                    "--media-folder-id",
+                    "--media-visibility",
+                    "--template-id",
+                ):
+                    self.assertIn(flag, result.stdout)
+        upload = self.run_script("upload_media.py", "--help")
+        self.assertEqual(upload.returncode, 0)
+        for flag in ("--file", "--folder-id", "--visibility"):
+            self.assertIn(flag, upload.stdout)
 
     def test_auth_arguments_can_read_environment_defaults(self) -> None:
         parser = argparse.ArgumentParser()

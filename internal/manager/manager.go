@@ -265,7 +265,7 @@ type Manager struct {
 	// pools on any SMTP configuration change.
 	poolSMTP           func(string) (*email.Emailer, error)
 	poolSMTPMessengers map[string]*email.Emailer
-	fnNotify           func(subject string, data any) error
+	fnNotify           func(extra []string, subject string, data any) error
 	log                *log.Logger
 
 	// Campaigns that are currently running.
@@ -374,6 +374,11 @@ type Config struct {
 	// processing while the others handle other kinds of traffic.
 	ScanCampaigns bool
 
+	// OwnerEmail resolves the enabled e-mail address of a campaign owner for
+	// lifecycle notifications. A nil resolver or an empty result disables
+	// owner notifications; the system notification list still receives them.
+	OwnerEmail func(int) (string, error)
+
 	// PersonalSMTP resolves the enabled SMTP pool for an account. A nil
 	// resolver means account-owned campaign/transactional sends are disabled.
 	PersonalSMTP func(int) (*email.Emailer, error)
@@ -409,8 +414,8 @@ func New(cfg Config, store Store, i *i18n.I18n, l *log.Logger) *Manager {
 		cfg:   cfg,
 		store: store,
 		i18n:  i,
-		fnNotify: func(subject string, data any) error {
-			return notifs.NotifySystem(subject, notifs.TplCampaignStatus, data, nil)
+		fnNotify: func(extra []string, subject string, data any) error {
+			return notifs.NotifySystemAnd(extra, subject, notifs.TplCampaignStatus, data, nil)
 		},
 		log:                l,
 		messengers:         make(map[string]Messenger),
@@ -574,7 +579,7 @@ func (m *Manager) isPersonalSMTPMessage(msg models.Message) bool {
 // removed member stops being usable even while a campaign keeps running.
 func (m *Manager) resolvePoolSMTPMessenger(uuid string) (Messenger, error) {
 	if m.poolSMTP == nil {
-		return nil, fmt.Errorf("%w: no SMTP pool resolver configured", ErrPersonalSMTPUnavailable)
+		return nil, fmt.Errorf("%w: no SMTP pool resolver configured", ErrPoolSMTPUnavailable)
 	}
 	m.personalSMTPMut.Lock()
 	defer m.personalSMTPMut.Unlock()
@@ -586,10 +591,10 @@ func (m *Manager) resolvePoolSMTPMessenger(uuid string) (Messenger, error) {
 	}
 	msgr, err := m.poolSMTP(uuid)
 	if err != nil {
-		return nil, fmt.Errorf("%w: pool SMTP %s: %v", ErrPersonalSMTPUnavailable, uuid, err)
+		return nil, fmt.Errorf("%w: pool SMTP %s: %v", ErrPoolSMTPUnavailable, uuid, err)
 	}
 	if msgr == nil {
-		return nil, fmt.Errorf("%w: pool SMTP %s is not available", ErrPersonalSMTPUnavailable, uuid)
+		return nil, fmt.Errorf("%w: pool SMTP %s is not available", ErrPoolSMTPUnavailable, uuid)
 	}
 	msgr.SetDeliveryLimiter(m.deliveryLimiter)
 	m.poolSMTPMessengers[uuid] = msgr
@@ -695,7 +700,7 @@ func (m *Manager) resolveMessenger(msg models.Message) (Messenger, error) {
 			orgID := msg.Campaign.OrganizationID.Int
 			poolID := msg.Campaign.SMTPPoolID.Int
 			if orgID < 1 || poolID < 1 || m.organizationSMTP == nil {
-				return nil, fmt.Errorf("%w: organization SMTP unavailable", ErrPersonalSMTPUnavailable)
+				return nil, fmt.Errorf("%w: organization SMTP unavailable", ErrPoolSMTPUnavailable)
 			}
 			m.personalSMTPMut.Lock()
 			defer m.personalSMTPMut.Unlock()
@@ -707,10 +712,10 @@ func (m *Manager) resolveMessenger(msg models.Message) (Messenger, error) {
 			}
 			msgr, err := m.organizationSMTP(orgID, poolID)
 			if err != nil {
-				return nil, fmt.Errorf("%w: organization SMTP: %v", ErrPersonalSMTPUnavailable, err)
+				return nil, fmt.Errorf("%w: organization SMTP: %v", ErrPoolSMTPUnavailable, err)
 			}
 			if msgr == nil {
-				return nil, fmt.Errorf("%w: organization SMTP unavailable", ErrPersonalSMTPUnavailable)
+				return nil, fmt.Errorf("%w: organization SMTP unavailable", ErrPoolSMTPUnavailable)
 			}
 			msgr.SetDeliveryLimiter(m.deliveryLimiter)
 			m.personalMessengers[-poolID] = msgr
@@ -800,13 +805,22 @@ func (m *Manager) normalizePersonalSMTPError(msg models.Message, err error) erro
 	if err == nil || !m.isPersonalSMTPMessage(msg) {
 		return err
 	}
-	if errors.Is(err, ErrPersonalSMTPUnavailable) {
+	if errors.Is(err, ErrPersonalSMTPUnavailable) || errors.Is(err, ErrPoolSMTPUnavailable) {
 		return err
 	}
 	if errors.Is(err, email.ErrSMTPUnavailable) {
+		if m.isPoolSMTPMessage(msg) {
+			return fmt.Errorf("%w: %v", ErrPoolSMTPUnavailable, err)
+		}
 		return fmt.Errorf("%w: %v", ErrPersonalSMTPUnavailable, err)
 	}
 	return err
+}
+
+// isPoolSMTPMessage reports whether the message resolves its sender from an
+// organization pool or a pool recipient's assigned SMTP account.
+func (m *Manager) isPoolSMTPMessage(msg models.Message) bool {
+	return msg.PoolSenderSMTPUUID != "" || (msg.Campaign != nil && msg.Campaign.SMTPSource == "organization")
 }
 
 // InvalidatePersonalSMTP drops a cached account pool after configuration
@@ -1324,6 +1338,12 @@ func (m *Manager) worker() {
 					msg.pipe.Stop(stopReasonPause, false)
 				} else if errors.Is(err, ErrReplyMailboxUnavailable) {
 					msg.pipe.Stop(stopReasonPause, false)
+				} else if errors.Is(err, ErrPoolSMTPUnavailable) {
+					// An organization pool or a pool recipient's assigned SMTP
+					// disappeared while the campaign was running. Stop with the
+					// pool-specific reason so audit logs and owner e-mails do not
+					// blame the owner's personal SMTP account.
+					msg.pipe.Stop(stopReasonPoolSMTP, false)
 				} else if errors.Is(err, ErrPersonalSMTPUnavailable) {
 					// A user's SMTP pool was disabled or removed while the
 					// campaign was running. Stop immediately and leave unsent
@@ -1444,8 +1464,13 @@ func (m *Manager) trackLink(url, campUUID, subUUID string) string {
 	return fmt.Sprintf(m.cfg.LinkTrackURL, uu, campUUID, subUUID)
 }
 
-// sendNotif sends a notification to registered admin e-mails.
-func (m *Manager) sendNotif(c *models.Campaign, status, reason string) error {
+// sendNotif sends a notification to the registered admin e-mails and the
+// campaign owner. Extra fields are merged into the template data.
+func (m *Manager) sendNotif(c *models.Campaign, status, reason string, extra map[string]any) error {
+	if m.fnNotify == nil {
+		return nil
+	}
+
 	var (
 		subject = fmt.Sprintf("%s: %s", cases.Title(language.Und).String(status), c.Name)
 		data    = map[string]any{
@@ -1456,9 +1481,34 @@ func (m *Manager) sendNotif(c *models.Campaign, status, reason string) error {
 			"ToSend": c.ToSend,
 			"Reason": reason,
 		}
+		owner []string
 	)
+	for k, v := range extra {
+		data[k] = v
+	}
 
-	return m.fnNotify(subject, data)
+	if m.cfg.OwnerEmail != nil && c.OwnerUserID.Valid && c.OwnerUserID.Int > 0 {
+		email, err := m.cfg.OwnerEmail(int(c.OwnerUserID.Int))
+		if err != nil {
+			m.log.Printf("error resolving owner e-mail for campaign (%s): %v", c.Name, err)
+		} else if email != "" {
+			owner = []string{email}
+		}
+	}
+
+	return m.fnNotify(owner, subject, data)
+}
+
+// reasonText returns a translated notification reason, falling back to the
+// English text when i18n is unavailable or the key is missing.
+func (m *Manager) reasonText(key, fallback string, params ...string) string {
+	if m.i18n == nil {
+		return fallback
+	}
+	if s := m.i18n.Ts(key, params...); s != key {
+		return s
+	}
+	return fallback
 }
 
 // makeGnericFuncMap returns a generic template func map with custom template

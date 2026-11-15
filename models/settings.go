@@ -138,12 +138,16 @@ type Settings struct {
 	CheckUpdates                  bool                    `json:"app.check_updates"`
 	AppLang                       string                  `json:"app.lang"`
 
-	AppBatchSize             int    `json:"app.batch_size"`
-	AppConcurrency           int    `json:"app.concurrency"`
-	AppMaxSendErrors         int    `json:"app.max_send_errors"`
-	AppMessageRate           int    `json:"app.message_rate"`
-	CacheSlowQueries         bool   `json:"app.cache_slow_queries"`
-	CacheSlowQueriesInterval string `json:"app.cache_slow_queries_interval"`
+	AppBatchSize               int    `json:"app.batch_size"`
+	AppConcurrency             int    `json:"app.concurrency"`
+	AppMaxSendErrors           int    `json:"app.max_send_errors"`
+	AppSendErrorAlertEnabled   bool   `json:"app.send_error_alert_enabled"`
+	AppSendErrorAlertWindow    string `json:"app.send_error_alert_window"`
+	AppSendErrorAlertThreshold int    `json:"app.send_error_alert_threshold"`
+	AppSendErrorAlertCooldown  string `json:"app.send_error_alert_cooldown"`
+	AppMessageRate             int    `json:"app.message_rate"`
+	CacheSlowQueries           bool   `json:"app.cache_slow_queries"`
+	CacheSlowQueriesInterval   string `json:"app.cache_slow_queries_interval"`
 
 	AppMessageSlidingWindow         bool   `json:"app.message_sliding_window"`
 	AppMessageSlidingWindowDuration string `json:"app.message_sliding_window_duration"`

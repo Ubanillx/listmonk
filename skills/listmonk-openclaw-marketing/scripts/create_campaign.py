@@ -2,11 +2,23 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
-from listmonk_marketing.campaigns import build_campaign_payload, create_campaign, get_source_campaign
+from listmonk_marketing.campaigns import (
+    build_campaign_payload,
+    create_campaign,
+    get_source_campaign,
+    validate_campaign_template,
+)
 from listmonk_marketing.cli import add_auth_arguments, add_campaign_arguments, add_verbose_argument
 from listmonk_marketing.client import ListmonkClient
 from listmonk_marketing.common import emit_error, emit_json, log
+from listmonk_marketing.media import (
+    apply_media_tokens,
+    merge_media_ids,
+    upload_media_files,
+    validate_media_tokens,
+)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -17,47 +29,119 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def run_create_campaign(
+    args: argparse.Namespace,
+    client: ListmonkClient,
+    *,
+    progress: dict[str, object] | None = None,
+) -> dict[str, object]:
+    progress = progress if progress is not None else {}
+    source_campaign = get_source_campaign(
+        client,
+        source_campaign_id=args.source_campaign_id,
+        source_campaign_name=args.source_campaign_name or "",
+    )
+
+    effective_content_type = args.content_type or (source_campaign or {}).get("content_type") or "richtext"
+    body = args.campaign_body
+    if args.body_file:
+        if effective_content_type == "visual":
+            raise ValueError("--body-file is not supported with content_type=visual; use html or richtext")
+        body = Path(args.body_file).read_text(encoding="utf-8-sig")
+    if body is None and source_campaign:
+        body = source_campaign.get("body")
+
+    template_id = args.template_id
+    if template_id is None and source_campaign:
+        template_id = source_campaign.get("template_id")
+    validate_campaign_template(client, template_id=template_id, content_type=effective_content_type)
+    validate_media_tokens(body, [Path(path).name for path in args.media_file or []])
+    # Validate explicit media IDs before uploading anything, so a bad argument
+    # cannot leave orphaned uploads behind.
+    merge_media_ids(args.media_id, [])
+
+    # Validate scalar fields before uploading anything.
+    build_campaign_payload(
+        campaign_name=args.campaign_name,
+        subject=args.subject,
+        customer_list_id=args.customer_list_id,
+        template_id=template_id,
+        campaign_body=None,
+        content_type=args.content_type,
+        messenger=args.messenger,
+        from_email=args.from_email,
+        reply_mailbox_id=args.reply_mailbox_id,
+        smtp_source=args.smtp_source,
+        smtp_pool_id=args.smtp_pool_id,
+        smtp_rate_limit=args.smtp_rate_limit,
+        visibility=args.visibility,
+        auto_track_links=args.auto_track_links,
+        daily_send_limit=args.daily_send_limit,
+        daily_resume_time=args.daily_resume_time,
+        send_at=args.send_at,
+        tags=args.tag,
+        attribs_file=args.attribs_file or "",
+        source_campaign=source_campaign,
+    )
+
+    uploaded = upload_media_files(
+        client,
+        args.media_file,
+        folder_id=args.media_folder_id,
+        visibility=args.media_visibility,
+        verbose=args.verbose,
+        progress=progress,
+    )
+    media_ids = merge_media_ids(args.media_id, uploaded)
+    progress["media_ids"] = media_ids
+    body = apply_media_tokens(body, uploaded)
+    payload = build_campaign_payload(
+        campaign_name=args.campaign_name,
+        subject=args.subject,
+        customer_list_id=args.customer_list_id,
+        template_id=template_id,
+        campaign_body=body,
+        content_type=args.content_type,
+        messenger=args.messenger,
+        from_email=args.from_email,
+        reply_mailbox_id=args.reply_mailbox_id,
+        smtp_source=args.smtp_source,
+        smtp_pool_id=args.smtp_pool_id,
+        smtp_rate_limit=args.smtp_rate_limit,
+        visibility=args.visibility,
+        auto_track_links=args.auto_track_links,
+        daily_send_limit=args.daily_send_limit,
+        daily_resume_time=args.daily_resume_time,
+        send_at=args.send_at,
+        tags=args.tag,
+        attribs_file=args.attribs_file or "",
+        media_ids=media_ids,
+        source_campaign=source_campaign,
+    )
+    log("Creating campaign", enabled=args.verbose)
+    campaign = create_campaign(client, payload=payload)
+    progress["campaign_id"] = int(campaign["id"])
+    out: dict[str, object] = {
+        "campaign_id": int(campaign["id"]),
+        "campaign": campaign,
+        "media": uploaded,
+        "media_ids": media_ids,
+    }
+    if source_campaign:
+        out["source_campaign_id"] = int(source_campaign["id"])
+        out["source_campaign"] = source_campaign
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     client = ListmonkClient(args.base_url, args.bearer_token, organization_id=args.organization_id)
+    progress: dict[str, object] = {}
     try:
-        source_campaign = get_source_campaign(
-            client,
-            source_campaign_id=args.source_campaign_id,
-            source_campaign_name=args.source_campaign_name or "",
-        )
-        payload = build_campaign_payload(
-            campaign_name=args.campaign_name,
-            subject=args.subject,
-            customer_list_id=args.customer_list_id,
-            template_id=args.template_id,
-            campaign_body=args.campaign_body,
-            content_type=args.content_type,
-            messenger=args.messenger,
-            from_email=args.from_email,
-            reply_mailbox_id=args.reply_mailbox_id,
-            smtp_source=args.smtp_source,
-            smtp_pool_id=args.smtp_pool_id,
-            smtp_rate_limit=args.smtp_rate_limit,
-            visibility=args.visibility,
-            auto_track_links=args.auto_track_links,
-            daily_send_limit=args.daily_send_limit,
-            daily_resume_time=args.daily_resume_time,
-            send_at=args.send_at,
-            tags=args.tag,
-            attribs_file=args.attribs_file or "",
-            source_campaign=source_campaign,
-        )
-        log("Creating campaign", enabled=args.verbose)
-        campaign = create_campaign(client, payload=payload)
-        out = {"campaign_id": int(campaign["id"]), "campaign": campaign}
-        if source_campaign:
-            out["source_campaign_id"] = int(source_campaign["id"])
-            out["source_campaign"] = source_campaign
-        emit_json(out)
+        emit_json(run_create_campaign(args, client, progress=progress))
         return 0
     except Exception as exc:
-        return emit_error(exc)
+        return emit_error(exc, progress=progress)
 
 
 if __name__ == "__main__":

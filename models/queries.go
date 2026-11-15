@@ -114,6 +114,10 @@ type Queries struct {
 	DeleteCampaign                  *sqlx.Stmt `query:"delete-campaign"`
 	DeleteCampaigns                 *sqlx.Stmt `query:"delete-campaigns"`
 
+	GetRunningCampaignSendErrorWindow *sqlx.Stmt `query:"get-running-campaign-send-error-window"`
+	ClaimCampaignSendErrorAlert       *sqlx.Stmt `query:"claim-campaign-send-error-alert"`
+	ReleaseCampaignSendErrorAlert     *sqlx.Stmt `query:"release-campaign-send-error-alert"`
+
 	// Platform-level ('all_organizations') public-pool delivery: fair
 	// organization rotation, the organization SMTP pool and its durable
 	// round-robin cursor, and the transactional recipient claim.

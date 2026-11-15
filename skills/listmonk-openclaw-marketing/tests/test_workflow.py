@@ -23,6 +23,13 @@ class WorkflowClient:
     def validate_token(self) -> list[dict[str, object]]:
         return []
 
+    def get_list(self, customer_list_id: int) -> dict[str, object]:
+        return {"id": customer_list_id, "name": "Launch", "type": "private"}
+
+    def upload_media(self, file_path: str, *, folder_id: int | None = None, visibility: str | None = None) -> dict[str, object]:
+        name = Path(file_path).name
+        return {"id": 7, "filename": name, "url": f"/api/media/file/7/{name}"}
+
     def query_lists(self, query: str) -> list[dict[str, object]]:
         return []
 
@@ -85,6 +92,30 @@ class WorkflowTests(unittest.TestCase):
         self.addCleanup(lambda: Path(handle.name).unlink(missing_ok=True))
         return handle.name
 
+    def test_visual_body_file_is_rejected_before_network(self) -> None:
+        with tempfile.TemporaryDirectory() as workdir:
+            body_path = Path(workdir) / "body.html"
+            body_path.write_text("<p>Hello</p>", encoding="utf-8")
+            client = WorkflowClient()
+            network_calls: list[str] = []
+
+            def fail_network() -> None:
+                network_calls.append("validate_token")
+                raise AssertionError("network should not be called")
+
+            client.validate_token = fail_network
+            args = parse_args([
+                "--base-url", "https://listmonk.example", "--bearer-token", "test-token",
+                "--customer_list-id", "12", "--customers-file", self.make_json_file([]),
+                "--template-id", "9",
+                "--campaign-name", "Visual launch", "--subject", "Hello",
+                "--body-file", str(body_path), "--content-type", "visual",
+                "--daily-send-limit", "300",
+            ])
+            with self.assertRaisesRegex(ValueError, "--body-file is not supported"):
+                run_workflow(args, client=client)
+            self.assertEqual(network_calls, [])
+
     def test_workflow_runs_from_real_cli_arguments_with_delivery_settings(self) -> None:
         source = self.make_json_file([{"email": "flow@example.com", "customer_code": "FLOW001", "attribs": {"city": "Shanghai"}}])
         client = WorkflowClient()
@@ -104,6 +135,33 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(client.created_payload["smtp_pool_id"], 5)
         self.assertEqual(client.created_payload["smtp_rate_limit"], 100)
         self.assertTrue(client.created_payload["auto_track_links"])
+
+    def test_workflow_uploads_media_and_creates_draft_with_template(self) -> None:
+        source = self.make_json_file([{"email": "media@example.com", "customer_code": "MEDIA001"}])
+        with tempfile.TemporaryDirectory() as workdir:
+            media_path = Path(workdir) / "hero.png"
+            media_path.write_bytes(b"image-bytes")
+            body_path = Path(workdir) / "body.html"
+            body_path.write_text('<p>Hello</p><img src="{{media:hero.png}}">', encoding="utf-8")
+
+            client = WorkflowClient()
+            args = parse_args([
+                "--base-url", "https://listmonk.example", "--bearer-token", "test-token",
+                "--customer_list-id", "12", "--customers-file", source,
+                "--template-id", "9", "--campaign-name", "Media launch",
+                "--subject", "Hello", "--body-file", str(body_path),
+                "--content-type", "html", "--daily-send-limit", "300",
+                "--media-file", str(media_path), "--media-id", "3",
+            ])
+            result = run_workflow(args, client=client)
+
+        self.assertEqual(result["status"], "draft")
+        self.assertEqual(result["template_id"], 9)
+        self.assertEqual(result["media_ids"], [3, 7])
+        self.assertEqual(client.created_payload["template_id"], 9)
+        self.assertEqual(client.created_payload["media"], [3, 7])
+        self.assertIn("/api/media/file/7/hero.png", client.created_payload["body"])
+        self.assertFalse(client.clone_template_called)
 
     def test_workflow_cli_defaults_include_optional_reply_mailbox(self) -> None:
         args = parse_args([

@@ -30,7 +30,7 @@ func TestPauseAndImmediateResumeWhilePipeIsFinishing(t *testing.T) {
 	m := newTestManager()
 	defer m.Close()
 	m.store = s
-	m.fnNotify = func(string, any) error { return nil }
+	m.fnNotify = func([]string, string, any) error { return nil }
 	p := &pipe{camp: s.campaign, m: m, done: make(chan struct{})}
 	m.pipes[p.camp.ID] = p
 	s.onGet = func() {

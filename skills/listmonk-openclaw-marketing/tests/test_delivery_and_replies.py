@@ -45,12 +45,12 @@ class DeliveryInspectionTests(unittest.TestCase):
         self.assertEqual(request.call_args.kwargs["params"]["category"], "media")
 
     def test_delivery_endpoints_serialize_ids_into_the_path(self) -> None:
-        with patch("urllib.request.urlopen") as transport:
-            response = transport.return_value.__enter__.return_value
+        with patch.object(self.client, "_opener") as transport:
+            response = transport.open.return_value.__enter__.return_value
             response.headers = {"Content-Type": "application/json"}
             response.read.return_value = b'{"data":{"sent":3}}'
             self.client.get_delivery_overview(77)
-        request = transport.call_args.args[0]
+        request = transport.open.call_args.args[0]
         self.assertEqual(urlparse(request.full_url).path, "/api/campaigns/77/delivery-overview")
 
 

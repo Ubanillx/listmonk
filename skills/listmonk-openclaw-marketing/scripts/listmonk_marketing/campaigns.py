@@ -3,7 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
-from listmonk_marketing.client import ListmonkClient
+from listmonk_marketing.client import APIError, ListmonkClient
 from listmonk_marketing.common import load_json_file
 
 
@@ -66,6 +66,33 @@ def inherit_campaign_fields(source_campaign: dict[str, Any] | None) -> dict[str,
     return payload
 
 
+def validate_campaign_template(
+    client: ListmonkClient,
+    *,
+    template_id: int | None,
+    content_type: str | None,
+) -> None:
+    """Best-effort type check before create; the server remains authoritative."""
+    if not template_id:
+        return
+    getter = getattr(client, "get_template", None)
+    if getter is None:
+        return
+    try:
+        template = getter(int(template_id))
+    except APIError as exc:
+        if exc.status in (401, 403):
+            return
+        raise
+    template_type = str(template.get("type") or "")
+    if template_type == "tx":
+        raise ValueError("template_id must be a campaign template, not a transactional template")
+    if content_type == "visual" and template_type != "campaign_visual":
+        raise ValueError("content_type=visual requires a campaign_visual template")
+    if content_type and content_type != "visual" and template_type == "campaign_visual":
+        raise ValueError("campaign_visual templates require content_type=visual")
+
+
 def build_campaign_payload(
     *,
     campaign_name: str,
@@ -87,6 +114,7 @@ def build_campaign_payload(
     send_at: str | None = None,
     tags: list[str] | None = None,
     attribs_file: str = "",
+    media_ids: list[int] | None = None,
     source_campaign: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     payload = inherit_campaign_fields(source_campaign)
@@ -122,6 +150,8 @@ def build_campaign_payload(
     if auto_track_links is not None:
         payload["auto_track_links"] = auto_track_links
     if daily_send_limit is not None:
+        if isinstance(daily_send_limit, bool) or not isinstance(daily_send_limit, int) or daily_send_limit < 1:
+            raise ValueError("--daily-send-limit must be a positive integer")
         payload["daily_send_limit"] = daily_send_limit
     if daily_resume_time is not None:
         payload["daily_resume_time"] = daily_resume_time
@@ -151,6 +181,16 @@ def build_campaign_payload(
         payload["send_at"] = send_at
     if attribs_file:
         payload["attribs"] = load_json_file(attribs_file, dict)
+    if media_ids:
+        cleaned: list[int] = []
+        seen: set[int] = set()
+        for raw in media_ids:
+            if isinstance(raw, bool) or not isinstance(raw, int) or raw < 1:
+                raise ValueError("media ids must be positive integers")
+            if raw not in seen:
+                seen.add(raw)
+                cleaned.append(raw)
+        payload["media"] = cleaned
     return payload
 
 

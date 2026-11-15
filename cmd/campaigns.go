@@ -21,6 +21,8 @@ import (
 	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
 	"github.com/lib/pq"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 	"gopkg.in/volatiletech/null.v6"
 )
 
@@ -718,8 +720,68 @@ func (a *App) UpdateCampaignStatus(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	a.notifyCampaignStatusChange(out, auth.GetUser(c))
 	setAuditObjectDetails(c, auditCampaignDetails(out))
 	return c.JSON(http.StatusOK, okResp{out})
+}
+
+// notifyCampaignStatusChange sends the manual pause/cancel notification. The
+// notifier is optional so tests and integrations that never initialize the
+// global notifier are unaffected.
+func (a *App) notifyCampaignStatusChange(c models.Campaign, actor auth.User) {
+	if a.notifyCampaign == nil {
+		return
+	}
+	if c.Status != models.CampaignStatusPaused && c.Status != models.CampaignStatusCancelled {
+		return
+	}
+
+	var owner []string
+	if c.OwnerUserID.Valid && c.OwnerUserID.Int > 0 {
+		email, err := a.campaignOwnerEmail(int(c.OwnerUserID.Int))
+		if err != nil {
+			a.log.Printf("error resolving owner e-mail for campaign (%s): %v", c.Name, err)
+		} else if email != "" {
+			owner = []string{email}
+		}
+	}
+
+	actorName := strings.TrimSpace(actor.Name)
+	if actorName == "" {
+		actorName = strings.TrimSpace(actor.Username)
+	}
+	if actorName == "" {
+		actorName = strconv.Itoa(actor.ID)
+	}
+
+	key, reason := "email.status.reasonManualPause", "Paused manually by {actor}"
+	if c.Status == models.CampaignStatusCancelled {
+		key, reason = "email.status.reasonManualCancel", "Cancelled manually by {actor}"
+	}
+	reason = strings.ReplaceAll(reason, "{actor}", actorName)
+	if a.i18n != nil {
+		if s := a.i18n.Ts(key, "actor", actorName); s != key {
+			reason = s
+		}
+	}
+
+	data := map[string]any{
+		"ID":     c.ID,
+		"Name":   c.Name,
+		"Status": c.Status,
+		"Sent":   c.Sent,
+		"ToSend": c.ToSend,
+		"Reason": reason,
+		"Actor":  actorName,
+	}
+	subject := fmt.Sprintf("%s: %s", cases.Title(language.Und).String(c.Status), c.Name)
+
+	// Notification delivery goes through SMTP; keep it out of the request path.
+	go func() {
+		if err := a.notifyCampaign(owner, subject, notifs.TplCampaignStatus, data); err != nil {
+			a.log.Printf("error sending campaign status notification (%s): %v", subject, err)
+		}
+	}()
 }
 
 // UpdateCampaignArchive handles campaign status modification.

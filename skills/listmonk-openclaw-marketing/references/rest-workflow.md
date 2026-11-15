@@ -1,6 +1,6 @@
 # REST 与 Python 营销操作流程
 
-先读 [API reference](api-reference.md) 的任务相关模块。
+接口基线：2026-11-13，迁移 v6.73.0。先读 [API reference](api-reference.md) 的任务相关模块。
 以下 CLI 从技能目录运行；HTTP 示例为 Bash，认证来自环境变量，不把密钥硬编码在命令中。
 Python 3.10+；普通 HTTP 仅使用标准库，Excel 本地解析需要 openpyxl。
 
@@ -31,15 +31,21 @@ LISTMONK_BEARER_TOKEN=lmpk_replace_in_local_secret_store
 | --source-campaign-id / --source-campaign-name | int / string，二选一 | 从活动内容蓝本创建新草稿；名称在搜索结果中精确匹配，优先用 ID |
 | --campaign-name | string / 必填 | 新活动名称 |
 | --subject | string / 蓝本继承 | 无蓝本时必填，即使模板克隆成功也需要 |
-| --template-id | int | 仅 create_campaign.py；完整流程自动取克隆或蓝本模板 ID |
+| --template-id | int | 仅 create_campaign.py 和完整流程；直接使用已有普通 campaign 模板，不克隆；visual 内容需 campaign_visual 模板 |
 | --campaign-body / --content-type | string / 空正文、richtext | 或从蓝本继承；支持 html/markdown/plain/visual |
+| --body-file | 文件路径 | 从 UTF-8 文件读取正文；与 --campaign-body 二选一 |
+| --media-file | 可重复文件路径 | 先上传图片/附件再关联；可重复 |
+| --media-id | 可重复 int | 关联已有媒体 ID；可重复 |
+| --media-folder-id / --media-visibility | int / private、organization | 上传媒体的目标文件夹与可见性 |
+| --file | 可重复文件路径 | upload_media.py：要上传的图片/附件 |
+| --folder-id / --visibility | int / private、organization | upload_media.py：目标文件夹与可见性 |
 | --messenger / --from-email | string / email、服务器配置 | from_email 兼容字段，最终发件人由 SMTP 决定 |
 | --reply-mailbox-id | int / 不指定 | 本次活动可用的已配置回信邮箱 |
-| --smtp-source | personal / organization / 不指定 | 不指定则 API 默认 personal，不继承源活动发件来源 |
-| --smtp-pool-id | 正整数 / 不指定 | 必须搭配 --smtp-source organization；属于 Key 绑定组织 |
-| --smtp-rate-limit | int / 不指定 | 每分钟活动合计封数，1–1000000；不指定用服务端来源默认值 |
-| --daily-send-limit | 正整数 / 蓝本继承 | regular email CLI 必填；无蓝本时显式传入 |
-| --daily-resume-time | HH:MM / 09:00 或蓝本值 | 服务器本地时间，不按运行脚本电脑时区转换 |
+| --smtp-source | personal / organization / 不指定 | 不指定则 API 默认 personal；组织来源要求活动属于组织空间，改受众不会自动改来源 |
+| --smtp-pool-id | 正整数 / 不指定 | 必须搭配 --smtp-source organization；属于 Key 绑定组织；省略时服务端取该组织最小 ID 的池 |
+| --smtp-rate-limit | int / 不指定 | 每分钟活动合计封数，1–1000000；不指定用服务端来源默认值（personal=5，organization=200）；CLI 不接受 0，REST 的 0 表示取默认 |
+| --daily-send-limit | 正整数 / 蓝本继承 | regular email CLI 必填；无蓝本时显式传入。REST 缺失时服务端回退 300 |
+| --daily-resume-time | HH:MM / 09:00 或蓝本值 | 服务器本地时间，不按运行脚本电脑时区转换；额度耗尽后等到次日该时刻 |
 | --visibility | private/organization/global / 不指定 | 本次活动可见性；不指定 API 默认 private |
 | --auto-track-links / --no-auto-track-links | flag / 蓝本值或服务端 false | 显式开/关自动链接追踪 |
 | --send-at | RFC 3339 / 空 | 未来时间；仅保存排期，不自动启动 |
@@ -79,7 +85,11 @@ Excel 参数：
 已有客户查询复用还需 customers:read。模板克隆需 templates:write；
 读取源活动需 campaigns:read；创建草稿需 campaigns:write。
 发信/排期另需 campaigns:send；报表需 campaigns:analytics，
-可选收件人明细需 campaigns:recipients。
+可选收件人明细需 campaigns:recipients。确认退订名单同样用 campaigns:recipients，
+并按私域/公海追加 customers:read 或 customer_lists:read。
+失败导出另需 customers:export（私域）/pools:export（公海）。
+退信列表读取需 bounces:read；客户退信读取用 customers:read，用户另需
+bounces:get（组织经理/平台管理员豁免）。AI 结果读取用 customers:read。
 
 源活动与源模板模式选其一；不要同时设置。源活动可能有同名项，
 使用已核对的 ID 避免复用错误蓝本。
@@ -108,12 +118,15 @@ python scripts/create_campaign.py \
   --campaign-name "Launch" --subject "Launch day" \
   --campaign-body "<p>Hello {{ .Customer.Name }}</p>" --content-type html \
   --daily-send-limit 300 --daily-resume-time "09:00" \
-  --smtp-source organization --smtp-pool-id 5 --smtp-rate-limit 100 \
+  --smtp-source organization --smtp-pool-id 5 --smtp-rate-limit 200 \
   --visibility organization --auto-track-links
 ```
 
 从各步 JSON 取真实 ID 替换示例数字。组织来源示例要求 Key 已绑定目标组织，
 池 5 为该组织可用的营销池；个人来源用 `--smtp-source personal` 并省略池 ID。
+不指定 `--smtp-source` 时服务端用 personal，即使 Key 绑定组织空间也不会自动切换。
+管理端新建的默认值不同：personal 每日上限 = 启用发件数×50，organization = 2000；
+REST 省略每日上限则回退 300。CLI 对 regular email 强制显式传入，避免歧义。
 
 JSON 客户示例：
 
@@ -142,6 +155,64 @@ CSV 为 email/name/customer_code 三列，无表头。
 随后 GET 相同路径取 status；GET `/api/import/customers/logs` 取纯文本诊断。
 订阅状态按用户任务选择，不能因为示例改为 confirmed。
 
+### 3.1 带正文、图片/附件的草稿
+
+正文可以直接写在 `--body-file` 指向的 UTF-8 HTML 中，图片用
+`{{media:文件名}}` 占位；脚本会先上传 `--media-file`，再把占位符替换成
+上传返回的 `/api/media/file/{id}/{filename}` URL。占位符使用本地文件名；
+服务端会规范化空格等字符，但正文占位符仍按本地文件名匹配，`local_filename`
+保留原文件名。
+
+```html
+<p>Hello {{ .Customer.Name }}</p>
+<img src="{{media:hero.png}}" alt="hero">
+<p><a href="{{media:catalog.pdf}}">产品目录</a></p>
+```
+
+```shell
+python scripts/create_campaign.py \
+  --customer_list-id 12 --template-id 4 \
+  --campaign-name "Launch" --subject "Launch day" \
+  --body-file ./email.html --content-type html \
+  --media-file ./hero.png --media-file ./catalog.pdf \
+  --daily-send-limit 300 --daily-resume-time "09:00" \
+  --smtp-source personal
+```
+
+- 上传需要 scope `media:write` + 角色 media:manage；共享到组织另需 `assets:share`。
+  带媒体创建活动还需要角色 media:get。请求体上限 32 MB（含 multipart 开销），
+  单文件应低于约 31.9 MB；图片另有尺寸/像素上限。
+- `--media-id` 可关联已存在的媒体；`--media-file` 与 `--media-id` 可混用、自动去重。
+  占位符只匹配本次 `--media-file` 上传的文件；`--media-id` 不能用于 token 替换。
+  空 token、未知 token、未闭合 token 会在上传前直接报错。
+- 正文中已引用的媒体会自动补齐关联；`--media-file` 上传的未引用文件
+  仍会进入 `media` 数组。
+- 活动媒体在发送时转成收件人 `/email-media/` 链接，仅对 email/email-* 活动成立：
+  图片保留正文位置远程加载；未引用的图片会追加为正文图片；
+  未引用的非图片文件进入邮件末尾附件资料区；plain 模式追加“文件名 + URL”文本行。
+  **不是**传统 MIME 附件；需要真附件时使用事务邮件 `/api/tx`。
+- 正文图片只接受上传媒体或绝对 HTTP(S) URL；`blob:`、`data:`、
+  缺失/歧义媒体的正文会在保存或启动时被拒绝。markdown 的 `![](...)` 图片
+  不在保存/启动扫描范围内，只有发送前才会拦截；需要保存时校验请用 html/richtext。
+- 测试发送不会自动扫描请求正文里的新图片；正文引用新上传媒体时，
+  必须同时把该媒体 ID 放进 `media` 数组。预览不保证加载受保护图片。
+- 创建后默认草稿；预览用 `/preview`，测试发送用 `/test`。
+- 上传发生在创建前；若后续创建失败，已上传媒体会保留。失败输出的 `progress`
+  会带上已上传的 `media` / `media_ids`，可直接复用或删除。
+- 模板应包含 `{{ template "content" . }}`；`--template-id` 只换包装器，
+  不导入模板正文；`content_type=visual` 需要 campaign_visual 模板，
+  `--body-file` 不支持 visual。
+- 共享文件夹中的他人 private 媒体可能保存通过但发送不关联；
+  上传到共享文件夹时显式使用 `--media-visibility organization`。
+  模板自带的私有图片不要放进 `--media-id`。
+
+也可以先单独上传再手工组装：
+
+```shell
+python scripts/upload_media.py --file ./hero.png
+# 输出 media[].id 和 /api/media/file/... URL
+```
+
 ## 4. 完整流程与内容蓝本
 
 模板克隆模式，默认停在草稿：
@@ -153,7 +224,7 @@ python scripts/run_marketing_flow.py \
   --campaign-name "Launch" --subject "Launch day" \
   --campaign-body "<p>Hello {{ .Customer.Name }}</p>" --content-type html \
   --daily-send-limit 300 --daily-resume-time "09:00" \
-  --smtp-source personal --smtp-rate-limit 20 --auto-track-links
+  --smtp-source personal --smtp-rate-limit 5 --auto-track-links
 ```
 
 活动蓝本模式：
@@ -162,7 +233,7 @@ python scripts/run_marketing_flow.py \
 python scripts/run_marketing_flow.py \
   --customer_list-id 12 --customers-file ./customers.json \
   --source-campaign-id 31 --campaign-name "Launch follow-up" \
-  --smtp-source organization --smtp-pool-id 5 --smtp-rate-limit 100
+  --smtp-source organization --smtp-pool-id 5 --smtp-rate-limit 200
 ```
 
 蓝本继承主题、正文、visual body_source、纯文本、格式、模板、messenger、
@@ -197,8 +268,10 @@ curl -X PUT -H "Authorization: Bearer $LISTMONK_BEARER_TOKEN" \
 
 单独 update_campaign_status.py 的 scheduled 不设置 send_at；
 先用活动更新接口保存时间，保持已有内容和受众配置。
-暂停用 paused；取消用 cancelled；撤回排期用 draft。
-成功响应 status 仍需后续读取确认实际发送进度，不能把 running 当作投递完成。
+暂停用 paused；取消用 cancelled；撤回排期用 draft；暂停后也可直接排期（paused → scheduled）。
+目标 running 时若活动已有未来 send_at，服务端会落库为 scheduled；
+要立即发送先清空 send_at。成功响应 status 仍需后续读取确认实际发送进度，
+不能把 running 当作投递完成。
 
 ## 6. 单活动、跨活动与今日报表
 
@@ -230,20 +303,45 @@ python scripts/fetch_campaign_reports.py \
 ```shell
 curl -G -H "Authorization: Bearer $LISTMONK_BEARER_TOKEN" \
   "$LISTMONK_BASE_URL/api/campaigns/report/summary" \
-  --data-urlencode "all=true" \
   --data-urlencode "from=2026-10-05T00:00:00+08:00" \
   --data-urlencode "to=2026-10-05T15:00:00+08:00"
 ```
 
+省略 `id` 即表示当前工作区的全部已授权活动；不要再依赖 `all=true`。
+
 个人 Key 无 dashboard API，但有此报表。
 当用户问“今天新建的活动”，读 campaigns 集合后筛选 created_at；
 当问“今天发生的营销效果”，用报表事件时间，不过滤活动创建日期。
+`all=true` 只是兼容参数，服务端不处理；真正生效的是省略 `id`。
+跨活动 recipients 用“可管理”的活动集合，其他报表用“可分析”的活动集合。
 
 summary/timeseries/links 始终请求，geo 可选。
 recipients 返回 403 时脚本仍成功输出聚合报告，
 并附 `recipients_unavailable` 错误原因；其他错误使脚本失败。
 CLI 输出对象为 campaign_id/campaign_ids/all_campaigns 加 reports；
 null 比率/唯一人数保持 null。
+
+### 6.1 确认退订与点击退订
+
+活动列表、详情和 `running/stats` 的 `unsubscribes`、`unsubscribe_clicks`、
+`unsubscribe_activity` 是三种不同口径：确认退订、点击过退订链接、两者并集。
+明细没有 CLI 封装，直接请求：
+
+```shell
+curl -G -H "Authorization: Bearer $LISTMONK_BEARER_TOKEN" \
+  "$LISTMONK_BASE_URL/api/campaigns/41/unsubscribes" \
+  --data-urlencode "status=all" \
+  --data-urlencode "search=C001" \
+  --data-urlencode "page=1" --data-urlencode "per_page=100"
+```
+
+- `status=confirmed` 默认；`visited` 含点击者（含已确认），`clicked` 仅未确认点击，
+  `all` 全部。
+- `search` 匹配客户编号/姓名；邮箱搜索需敏感权限。
+- `click_count` 是点击次数，不是人数；同一人在 confirmed 和 clicked 中各出现一次。
+- 管理员退订、退信处理、AI 拉黑不会写入活动退订统计；AI 退订需要读
+  `/api/customers/{id}/activity` 或客户/列表状态来解释。
+- 收件人删除后确认历史仍保留；删除活动才删除事件。
 
 ## 7. 发送失败排查与定向补发
 
@@ -258,14 +356,17 @@ curl -H "Authorization: Bearer $LISTMONK_BEARER_TOKEN" \
   "$LISTMONK_BASE_URL/api/campaigns/41/delivery-overview"
 ```
 
-重点字段：`sent`、`unsent`、`failed`、`send_errors`、`progress`。
-公海活动还会给出 `organizations`，可据此定位是哪个组织卡住。
-`unsent` 包含 `failed`，两者不是并列关系。
+重点字段：`sent`、`unsent`、`waiting`、`failed`、`send_errors`、`progress`。
+`source` 可能是 `private`、`pool` 或 `mixed`。公海活动还会给出 `organizations`，
+可据此定位是哪个组织卡住。
+`unsent` 是仍可发送的待处理量；重试耗尽的 `failed` 不再计入 `unsent`/`waiting`，
+但仍是 `failed` 和失败名单的一部分。
 
 ### 7.2 再看失败原因
 
-`GET /api/campaigns/{id}/send-errors`，需要 `campaigns:read` +
-`campaigns:recipients` scope，用户侧还要 `campaigns:recipients` 与客户查看权限：
+`GET /api/campaigns/{id}/send-errors`，scope `campaigns:recipients`；
+用户侧还要 `campaigns:analytics`、`campaigns:recipients`、活动所有者/管理边界
+和对应客户查看权限：
 
 ```shell
 curl -G -H "Authorization: Bearer $LISTMONK_BEARER_TOKEN" \
@@ -276,6 +377,8 @@ curl -G -H "Authorization: Bearer $LISTMONK_BEARER_TOKEN" \
 ```
 
 - `reasons` 是分类计数，用来回答“主要是哪类失败”。
+- `search` 始终匹配客户编号/姓名；邮箱和错误原文搜索另需敏感权限。
+  `per_page` 服务端收敛到 1–100。
 - `historical_errors` 是旧版本只累计计数、没有明细的部分，
   不要从日志反推原因，也不要把它当作客户数。
 - 缺少敏感权限时邮箱会被脱敏、错误原文可能为空，但分类与状态码仍可见。
@@ -284,7 +387,11 @@ curl -G -H "Authorization: Bearer $LISTMONK_BEARER_TOKEN" \
 ### 7.3 看还能不能补发
 
 `GET /api/campaigns/{id}/failed-recipients`：只返回仍未被发送、且至少失败一次的人。
-响应中的 `can_retry` 反映“当前是否可补发”，它与 `can_export` 是两件事。
+响应中的 `can_retry` 反映“当前活动是否可补发”，它与 `can_export` 是两件事；
+行内 `retryable` 才是单个收件人是否还能补发。
+重试耗尽（`max_recipient_retries`，默认 3 次追加重试）的人仍会出现，
+但 `retryable=false`，不能再补发。导出：
+`GET /api/campaigns/{id}/failed-recipients/export`（需 customers:export/pools:export）。
 
 ### 7.4 定向补发
 
@@ -299,15 +406,25 @@ curl -X POST -H "Authorization: Bearer $LISTMONK_BEARER_TOKEN" \
 
 - 需要 `campaigns:send` **和** `campaigns:recipients` 两个 scope。
 - `type` 必须是 `private` 或 `pool`，`id` 来自 `failed-recipients` 的 `recipient_id`。
-- 服务端会重新验证每个 id，过期或不属于该活动的 id 不会扩权。
+- 一次 1–500 个唯一收件人；重复、过期、已发送、不可投递或越权 id 会使整个请求失败。
 - 返回 `selected` 是本次重新排队的数量，`status` 变为 running 只代表已启动。
+- 只发送选中的人；选中者耗尽后，若仍有未发送者回到 paused，否则 finished。
 - 补发会让活动从暂停变为发送中；不要对同一活动并发调用。
+  普通手动续发会清空选中集合、恢复常规受众。
 
 ### 7.5 补发后复核
 
 再次读取 `delivery-overview` 与 `failed-recipients`。
 已成功的收件人会从失败名单消失，`send_errors` 不会因此减少
 （它是累计失败尝试次数）。如果活动再次因错误阈值暂停，重复 7.1–7.2 的排查。
+
+重试轮次要点：
+
+- `max_recipient_retries` 默认 3，表示首次投递后最多再试 3 次（0–1000）。
+- 常规发送按最小失败轮次整轮推进；在途收件人阻挡更快的失败者抢跑。
+- 配额 defer 和主动暂停/取消不消耗重试次数；渲染/投递失败才消耗。
+- 成功投递消耗每日额度，失败尝试不消耗；重试耗尽者不会被调高设置自动复活。
+- `app.max_send_errors` 默认 1000 是单次运行阈值，超过暂停；与累计 `send_errors` 不同。
 
 > 重发前先确认失败原因是否已经解决（邮箱是否存在、SMTP 是否可用、
 > 媒体依赖是否补齐）。对硬退信（邮箱不存在）重复补发通常没有意义，
@@ -324,15 +441,7 @@ curl -X POST -H "Authorization: Bearer $LISTMONK_BEARER_TOKEN" \
 - 超时/5xx：先查询是否已创建、已入队或已变更状态，再决定重试。
   不自动重发、删除草稿或停止别人的导入。
 
-技能代码验证：
-
-```shell
-python -m unittest discover -s skills/listmonk-openclaw-marketing/tests -t skills/listmonk-openclaw-marketing
-python scripts/check_docs.py
-```
-
-接口连通检查使用所需 scope 的只读业务接口；需要现场验证写入时仅在明确的测试
-工作区创建草稿并记录 ID。验证步骤默认不发邮件，不从后端日志提取真实令牌。
+验证命令与连通检查见文末。
 
 ### 7.7 用脚本一次看完
 
@@ -346,11 +455,16 @@ python scripts/inspect_campaign_delivery.py --campaign-id 41 --error-category me
 输出对象包含 `overview`、`send_errors`、`failed_recipients`。
 缺 `campaigns:recipients` scope 时脚本仍成功，这两个字段改为
 `send_errors_unavailable` / `failed_recipients_unavailable` 并附原因，概览照常可用。
+`--search` 可传客户编号或姓名；`--page/--per-page` 服务端上限 100。
 脚本没有任何写操作，**不会**触发补发。
-## 8. AI 回信分类：读取结果
+需要完整失败明细/失败客户 Excel 时，直接请求
+`/send-errors/export` 或 `/failed-recipients/export`；CLI 未封装。
+## 8. 回信、退信与 AI 分类
 
-AI 分类本身由平台管理员配置（`settings/reply-ai`，个人 Key 不可调用），
-营销侧能做的是**读取分类结果并据此调整名单**。
+AI 分类和 DSN 退信都由平台管理员配置（`settings/reply-ai`、回信邮箱开关，
+个人 Key 不可调用），营销侧能做的是**读取结果并据此调整名单**。
+
+### 8.1 读取 AI 分类结果
 
 ```shell
 curl -H "Authorization: Bearer $LISTMONK_BEARER_TOKEN" \
@@ -358,24 +472,54 @@ curl -H "Authorization: Bearer $LISTMONK_BEARER_TOKEN" \
 ```
 
 响应中的 `reply_ai_events` 每行给出 intent、confidence、reason_code、
-action、status 与时间戳，**不含正文**。
+model、action、status、from_email、subject、attempts、body_hash 与时间戳，
+**不含正文**。
 
 判读要点：
 
 | 现象 | 结论 |
 | --- | --- |
-| `intent=unsubscribe` 且 `action=blocklisted` | 退订已生效，客户已进黑名单 |
-| `intent=complaint` | 已记录为退信，客户未自动退订，需人工判断 |
-| `intent=product_complaint` / `other` | 仅审计记录，未修改客户 |
+| `intent=unsubscribe` 且 `action=blocklisted` | 已退订所有列表并拉黑 |
+| `intent=complaint` 且 `action=blocklisted` | 已拉黑并退订；另有一条 `source=reply_ai` 退信 |
+| `intent=product_complaint` / `other` | 仅审计，未修改客户 |
 | `status=failed` | 分类调用失败，稍后由队列重试；不代表已退订 |
-| `status=ignored` | 置信度不足或内容不构成明确意图 |
+| `status=ignored` | 终态：置信度不足、自动回复、无唯一投递来源或内容不明确 |
 
-回答“为什么这个客户退订了”时，引用 intent 与 reason_code，
-不要编造客户原文。数组为空表示该客户没有 AI 分类记录，
-可能因为邮箱未启用 AI、没有回信，或事件属于其他所有者。
+AI 的 unsubscribe/complaint **不会**增加活动 `unsubscribes`，也不写
+`campaign_unsubscriptions`。回答“为什么这个客户退订了”时，引用 intent 与
+reason_code，不要编造客户原文。数组为空可能因为邮箱未启用 AI、没有回信、
+事件属于其他所有者，或该邮箱只开启了退信处理。
 
-> 退订是客户意愿的强烈信号。确认 `action=blocklisted` 后，
-> 不要在任何后续流程里重新订阅该客户。
+> `action=blocklisted` 是硬约束；不要在任何后续流程里重新订阅该客户。
+
+### 8.2 读取回信邮箱退信
+
+回信邮箱的 IMAP DSN 退信与 AI 分类共享连接，但数据独立：
+
+- 只有 hard 且全局 `bounce.actions.hard` 为 blocklist 时才可能拉黑；
+  soft 只记录。`source='reply_mailbox'`。
+- AI complaint 写入 `source='reply_ai'`；传统 POP/Webhook 退信用服务商名称。
+- 客户活动接口不含退信，必须读：
+
+```shell
+curl -G -H "Authorization: Bearer $LISTMONK_BEARER_TOKEN" \
+  "$LISTMONK_BASE_URL/api/bounces" \
+  --data-urlencode "source=reply_mailbox" \
+  --data-urlencode "per_page=50"
+
+curl -H "Authorization: Bearer $LISTMONK_BEARER_TOKEN" \
+  "$LISTMONK_BASE_URL/api/customers/1234/bounces"
+```
+
+无敏感权限时邮箱、客户 UUID 和 `meta` 会被清空，但 type/source/时间仍可见。
+DSN 明细（`reply_bounce_events`）和“最近退信处理历史”属于 `/api/profile/*`，
+个人 Key 不可读；不要尝试。
+
+### 8.3 平台级配置边界
+
+模型网关、阈值、扫描间隔、退信动作、回信邮箱开关都在平台/资料/组织接口，
+个人 Key 一律不可调用。不要用营销 Key 探测 `/api/settings/reply-ai/*`、
+`/api/profile/reply-mailboxes*`、`/api/organizations/*`，也不要索取或记录密钥。
 
 - 400：核对字段名、列表类型、必填编号、未来排期、状态转换、时间范围及是否已有导入。
 - 401/403：核对凭据有效性、scope、角色动作权限、绑定工作区、组织资格、所有权及脱敏规则。

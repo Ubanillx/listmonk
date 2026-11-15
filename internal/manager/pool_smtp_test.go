@@ -32,8 +32,8 @@ func TestResolveMessengerUsesAssignedPoolSMTP(t *testing.T) {
 		Campaign:           campaign,
 		PoolSenderSMTPUUID: "11111111-1111-1111-1111-111111111111",
 	})
-	if !errors.Is(err, ErrPersonalSMTPUnavailable) {
-		t.Fatalf("resolveMessenger(pool) = %v, want ErrPersonalSMTPUnavailable", err)
+	if !errors.Is(err, ErrPoolSMTPUnavailable) {
+		t.Fatalf("resolveMessenger(pool) = %v, want ErrPoolSMTPUnavailable", err)
 	}
 	if len(resolved) != 1 || resolved[0] != "11111111-1111-1111-1111-111111111111" {
 		t.Fatalf("pool resolver received %v, want the assigned UUID", resolved)
@@ -51,6 +51,43 @@ func TestResolveMessengerUsesAssignedPoolSMTP(t *testing.T) {
 	}
 	if len(resolved) != 0 {
 		t.Fatalf("owner message used the pool resolver: %v", resolved)
+	}
+}
+
+func TestNormalizeSMTPUnavailableKeepsPoolAndPersonalDistinct(t *testing.T) {
+	m := New(Config{Concurrency: 1}, nil, nil, log.New(io.Discard, "", 0))
+	cases := []struct {
+		name string
+		msg  models.Message
+		want error
+	}{
+		{
+			name: "assigned pool SMTP",
+			msg:  models.Message{Messenger: email.MessengerName, OwnerUserID: 7, PoolSenderSMTPUUID: "uuid"},
+			want: ErrPoolSMTPUnavailable,
+		},
+		{
+			name: "organization source",
+			msg: models.Message{Messenger: email.MessengerName, OwnerUserID: 7,
+				Campaign: &models.Campaign{SMTPSource: "organization"}},
+			want: ErrPoolSMTPUnavailable,
+		},
+		{
+			name: "personal source",
+			msg:  models.Message{Messenger: email.MessengerName, OwnerUserID: 7},
+			want: ErrPersonalSMTPUnavailable,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := m.normalizePersonalSMTPError(tc.msg, email.ErrSMTPUnavailable)
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("normalized error = %v, want %v", err, tc.want)
+			}
+			if tc.want == ErrPoolSMTPUnavailable && errors.Is(err, ErrPersonalSMTPUnavailable) {
+				t.Fatalf("pool error also matches personal: %v", err)
+			}
+		})
 	}
 }
 

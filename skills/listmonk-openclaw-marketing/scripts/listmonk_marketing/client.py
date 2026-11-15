@@ -18,6 +18,63 @@ class APIError(RuntimeError):
         self.data = data
 
 
+class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Keep the Bearer key on the configured origin only.
+
+    urllib copies request headers, including Authorization, onto redirects. A
+    malicious or misconfigured proxy could therefore receive the API key. The
+    handler also refuses to turn a POST into a GET, which would silently change
+    the operation.
+    """
+
+    _SENSITIVE_HEADERS = frozenset({"authorization", "x-listmonk-organization-id"})
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if req.get_method() not in ("GET", "HEAD"):
+            raise urllib.error.HTTPError(
+                req.full_url, code, "refusing to redirect a non-GET request", headers, fp
+            )
+        old = urllib.parse.urlsplit(req.full_url)
+        new = urllib.parse.urlsplit(newurl)
+        if old.scheme == "https" and new.scheme != "https":
+            raise urllib.error.HTTPError(
+                req.full_url, code, "refusing to redirect HTTPS to plain HTTP", headers, fp
+            )
+        redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if redirected is None:
+            return None
+        if not self._trusted_origin(old, new):
+            # Request normalizes header casing, so remove_header() is not
+            # reliable here. Rebuild the redirect without the credentials.
+            safe_headers = {
+                key: value
+                for key, value in redirected.headers.items()
+                if key.lower() not in self._SENSITIVE_HEADERS
+            }
+            redirected = urllib.request.Request(
+                redirected.full_url,
+                headers=safe_headers,
+                origin_req_host=req.origin_req_host,
+                unverifiable=True,
+            )
+        return redirected
+
+    @staticmethod
+    def _effective_port(parts) -> int | None:
+        if parts.port is not None:
+            return parts.port
+        return {"http": 80, "https": 443}.get(parts.scheme)
+
+    def _trusted_origin(self, old, new) -> bool:
+        if old.hostname != new.hostname:
+            return False
+        if old.scheme == new.scheme:
+            return self._effective_port(old) == self._effective_port(new)
+        # A same-host HTTP->HTTPS upgrade is the common proxy setup. Only keep
+        # credentials for the standard HTTPS port to avoid crossing services.
+        return old.scheme == "http" and new.scheme == "https" and new.port in (None, 443)
+
+
 class ListmonkClient:
     def __init__(
         self,
@@ -35,6 +92,7 @@ class ListmonkClient:
         }
         if organization_id is not None:
             self.headers["X-Listmonk-Organization-ID"] = str(organization_id)
+        self._opener = urllib.request.build_opener(_SafeRedirectHandler())
 
     def request(
         self,
@@ -45,6 +103,7 @@ class ListmonkClient:
         payload: dict[str, Any] | list[Any] | None = None,
         data: bytes | None = None,
         headers: dict[str, str] | None = None,
+        timeout: int | None = None,
     ) -> Any:
         url = f"{self.base_url}{path}"
         if params:
@@ -61,7 +120,7 @@ class ListmonkClient:
 
         req = urllib.request.Request(url, data=body, method=method, headers=request_headers)
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            with self._opener.open(req, timeout=self.timeout if timeout is None else timeout) as resp:
                 raw = resp.read()
                 if not raw:
                     return None
@@ -70,6 +129,11 @@ class ListmonkClient:
                     return parsed.get("data", parsed)
                 return raw.decode("utf-8")
         except urllib.error.HTTPError as exc:
+            if exc.code in (301, 302, 303, 307, 308):
+                raise APIError(
+                    exc.code,
+                    f"redirect refused: {exc.reason or f'HTTP {exc.code}'}",
+                ) from exc
             body = exc.read().decode("utf-8", errors="replace")
             message = body
             data_out = None
@@ -183,6 +247,60 @@ class ListmonkClient:
 
     def get_customer_import_logs(self) -> str:
         return self.request("GET", "/api/import/customers/logs")
+
+    def upload_media(
+        self,
+        file_path: str,
+        *,
+        folder_id: int | None = None,
+        visibility: str | None = None,
+    ) -> dict[str, Any]:
+        """Upload one image or attachment and return the media object (id, url, ...)."""
+        boundary = f"----listmonk-{uuid.uuid4().hex}"
+        source_path = Path(file_path)
+        if not source_path.is_file():
+            raise ValueError(f"Media file not found: {file_path}")
+        if any(char in source_path.name for char in ('"', "\r", "\n")):
+            raise ValueError("Media filename contains unsupported characters")
+        if source_path.stat().st_size + 8192 > 32_000_000:
+            raise ValueError(
+                "Media file is too large for the 32 MB request limit; keep it below about 31.9 MB"
+            )
+        upload_name = source_path.name.replace("\\", "\\\\").replace('"', '\\"')
+        content_type = mimetypes.guess_type(source_path.name)[0] or "application/octet-stream"
+
+        body = bytearray()
+        if folder_id is not None:
+            body.extend(f"--{boundary}\r\n".encode("utf-8"))
+            body.extend(b'Content-Disposition: form-data; name="folder_id"\r\n\r\n')
+            body.extend(str(folder_id).encode("utf-8"))
+            body.extend(b"\r\n")
+        if visibility:
+            body.extend(f"--{boundary}\r\n".encode("utf-8"))
+            body.extend(b'Content-Disposition: form-data; name="visibility"\r\n\r\n')
+            body.extend(visibility.encode("utf-8"))
+            body.extend(b"\r\n")
+
+        body.extend(f"--{boundary}\r\n".encode("utf-8"))
+        disposition = f'Content-Disposition: form-data; name="file"; filename="{upload_name}"\r\n'
+        body.extend(disposition.encode("utf-8"))
+        body.extend(f"Content-Type: {content_type}\r\n\r\n".encode("utf-8"))
+        body.extend(source_path.read_bytes())
+        body.extend(b"\r\n")
+        body.extend(f"--{boundary}--\r\n".encode("utf-8"))
+
+        return self.request(
+            "POST",
+            "/api/media",
+            data=bytes(body),
+            headers={
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+            },
+            timeout=max(self.timeout, 120),
+        )
+
+    def get_template(self, template_id: int) -> dict[str, Any]:
+        return self.request("GET", f"/api/templates/{template_id}", params={"no_body": "true"})
 
     def clone_template(self, template_id: int, name: str, subject: str | None) -> dict[str, Any]:
         payload: dict[str, Any] = {"name": name}

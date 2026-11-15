@@ -246,6 +246,10 @@ func (s *deferCaptureStore) DeferCampaign(_ int, nextResumeAt time.Time) error {
 	return nil
 }
 
+func (s *deferCaptureStore) GetCampaign(id int) (*models.Campaign, error) {
+	return &models.Campaign{Base: models.Base{ID: id}, Name: "daily-limit"}, nil
+}
+
 func (s *deferCaptureStore) ResetCampaignQueuedRecipients(_ int, toStatus string) error {
 	s.resetStatus = toStatus
 	s.resetQueuedCalls++
@@ -284,7 +288,7 @@ func TestPipeCleanupAuditsCampaignFinished(t *testing.T) {
 	}}
 	m := newTestManager()
 	m.store = store
-	m.fnNotify = func(string, any) error { return nil }
+	m.fnNotify = func([]string, string, any) error { return nil }
 	var action string
 	var metadata map[string]any
 	m.cfg.AuditCampaign = func(gotAction string, _ *models.Campaign, gotMetadata map[string]any) {
@@ -311,7 +315,7 @@ func TestPipeCleanupAuditsCampaignPausedAfterErrors(t *testing.T) {
 	}}
 	m := newTestManager()
 	m.store = store
-	m.fnNotify = func(string, any) error { return nil }
+	m.fnNotify = func([]string, string, any) error { return nil }
 	var action string
 	var metadata map[string]any
 	m.cfg.AuditCampaign = func(gotAction string, _ *models.Campaign, gotMetadata map[string]any) {
@@ -433,14 +437,14 @@ func TestOrganizationSMTPSelectionIsIndependentAndInvalidated(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.organizationSMTP = func(int, int) (*email.Emailer, error) { return nil, nil }
-	if _, err := m.resolveMessenger(msg); !errors.Is(err, ErrPersonalSMTPUnavailable) {
+	if _, err := m.resolveMessenger(msg); !errors.Is(err, ErrPoolSMTPUnavailable) {
 		t.Fatalf("removed organization SMTP resolved: %v", err)
 	}
 	if personalCalls != 0 {
 		t.Fatal("fell back to personal SMTP")
 	}
 	msg.Campaign.OrganizationID = null.Int{}
-	if _, err := m.resolveMessenger(msg); !errors.Is(err, ErrPersonalSMTPUnavailable) {
+	if _, err := m.resolveMessenger(msg); !errors.Is(err, ErrPoolSMTPUnavailable) {
 		t.Fatalf("unscoped org send=%v", err)
 	}
 }

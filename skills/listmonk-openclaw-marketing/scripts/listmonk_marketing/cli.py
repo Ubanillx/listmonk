@@ -118,13 +118,42 @@ def add_source_campaign_arguments(parser: argparse.ArgumentParser) -> None:
     source.add_argument("--source-campaign-name", help="Existing campaign name to reuse as a blueprint")
 
 
+def add_campaign_body_arguments(parser: argparse.ArgumentParser) -> None:
+    body = parser.add_mutually_exclusive_group()
+    body.add_argument("--campaign-body", help="Campaign body, or inherit from a source campaign")
+    body.add_argument("--body-file", help="Read the campaign body from a UTF-8 file, or inherit from a source campaign; {{media:filename}} is replaced after upload")
+
+
+def add_campaign_media_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--media-id",
+        action="append",
+        type=int,
+        default=None,
+        help="Existing media ID to associate with the campaign; pass multiple times",
+    )
+    parser.add_argument(
+        "--media-file",
+        action="append",
+        default=None,
+        help="Upload a local image or attachment and associate it; pass multiple times; use {{media:filename}} in --body-file",
+    )
+    parser.add_argument("--media-folder-id", type=int, help="Optional media folder ID for --media-file uploads; omit or 0 for the root")
+    parser.add_argument(
+        "--media-visibility",
+        choices=["private", "organization"],
+        help="Visibility for uploaded media; organization requires an organization workspace",
+    )
+
+
 def add_campaign_arguments(parser: argparse.ArgumentParser) -> None:
     add_source_campaign_arguments(parser)
     parser.add_argument("--customer_list-id", type=int, required=True, help="Existing customer_list ID to use")
     parser.add_argument("--template-id", type=int, help="Template ID to use for the campaign, or inherit from a source campaign")
     parser.add_argument("--campaign-name", required=True, help="Campaign name")
     parser.add_argument("--subject", help="Campaign subject, or inherit from a source campaign")
-    parser.add_argument("--campaign-body", help="Campaign body, or inherit from a source campaign")
+    add_campaign_body_arguments(parser)
+    add_campaign_media_arguments(parser)
     parser.add_argument("--content-type", choices=["richtext", "html", "markdown", "plain", "visual"])
     parser.add_argument("--messenger", help="Messenger name, defaults to email unless inherited")
     parser.add_argument("--from-email", help="Optional campaign from_email, or inherit from a source campaign")

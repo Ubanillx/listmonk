@@ -23,6 +23,20 @@ type CampaignSendFailure struct {
 	Error                   string
 }
 
+// CampaignSendErrorWindow is one running campaign's failure activity inside the
+// alert monitoring window.
+type CampaignSendErrorWindow struct {
+	CampaignID         int       `db:"campaign_id"`
+	Name               string    `db:"name"`
+	UUID               string    `db:"uuid"`
+	OwnerUserID        null.Int  `db:"owner_user_id"`
+	OrganizationID     null.Int  `db:"organization_id"`
+	SendErrors         int       `db:"send_errors"`
+	WindowErrors       int       `db:"window_errors"`
+	AffectedRecipients int       `db:"affected_recipients"`
+	LastErrorAt        time.Time `db:"last_error_at"`
+}
+
 type CampaignSendErrorRow struct {
 	RecipientType  string    `db:"recipient_type" json:"recipient_type"`
 	RecipientID    int64     `db:"recipient_id" json:"recipient_id"`

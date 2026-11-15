@@ -4,16 +4,20 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 from typing import Any
 from listmonk_marketing.campaigns import (
     build_campaign_payload,
     create_campaign,
     get_source_campaign,
     update_campaign_status,
+    validate_campaign_template,
 )
 from listmonk_marketing.cli import (
     add_auth_arguments,
+    add_campaign_body_arguments,
     add_campaign_delivery_arguments,
+    add_campaign_media_arguments,
     add_list_create_arguments,
     add_list_target_arguments,
     add_source_campaign_arguments,
@@ -24,6 +28,12 @@ from listmonk_marketing.cli import (
 from listmonk_marketing.client import ListmonkClient
 from listmonk_marketing.common import emit_error, emit_json, log
 from listmonk_marketing.lists import find_or_create_list
+from listmonk_marketing.media import (
+    apply_media_tokens,
+    merge_media_ids,
+    upload_media_files,
+    validate_media_tokens,
+)
 from listmonk_marketing.reports import fetch_campaign_reports
 from listmonk_marketing.subscribers import create_customers_if_needed
 from listmonk_marketing.templates import clone_template
@@ -40,7 +50,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     parser.add_argument("--campaign-name", required=True, help="Campaign name")
     parser.add_argument("--subject", help="Campaign subject, or inherit from a source campaign")
-    parser.add_argument("--campaign-body", help="Campaign body, or inherit from a source campaign")
+    parser.add_argument("--template-id", type=int, help="Use an existing template instead of cloning one")
+    add_campaign_body_arguments(parser)
+    add_campaign_media_arguments(parser)
     parser.add_argument("--content-type", choices=["richtext", "html", "markdown", "plain", "visual"])
     parser.add_argument("--messenger", help="Messenger name, defaults to email unless inherited")
     parser.add_argument("--from-email", help="Optional campaign from_email, or inherit from a source campaign")
@@ -59,15 +71,51 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def run_workflow(args: argparse.Namespace, *, client: ListmonkClient | None = None) -> dict[str, Any]:
+def run_workflow(
+    args: argparse.Namespace,
+    *,
+    client: ListmonkClient | None = None,
+    progress: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     client = client or ListmonkClient(
         args.base_url,
         args.bearer_token,
         organization_id=getattr(args, "organization_id", None),
     )
-    progress: dict[str, Any] = {}
+    if getattr(args, "template_id", None) is not None and args.source_template_id is not None:
+        raise ValueError("Use --template-id or --source-template-id, not both")
+    if args.source_template_id is not None and (
+        args.source_campaign_id is not None or args.source_campaign_name
+    ):
+        raise ValueError("Use --source-template-id or --source-campaign-*, not both")
+    # Validate local inputs before creating lists, importing customers or
+    # cloning templates, so a bad path or ID cannot leave partial side effects.
+    body_file = getattr(args, "body_file", "") or ""
+    if body_file and not Path(body_file).is_file():
+        raise ValueError(f"Body file not found: {body_file}")
+    for raw_path in getattr(args, "media_file", None) or []:
+        if not Path(raw_path).is_file():
+            raise ValueError(f"Media file not found: {raw_path}")
+    merge_media_ids(getattr(args, "media_id", None), [])
+    if body_file and getattr(args, "content_type", None) == "visual":
+        raise ValueError("--body-file is not supported with content_type=visual; use html or richtext")
+    progress = progress if progress is not None else {}
     log("Validating Bearer personal API key", enabled=args.verbose)
     client.validate_token()
+
+    # Resolve the read-only blueprint and reject unsupported body/type
+    # combinations before creating lists, importing customers or cloning.
+    source_campaign = get_source_campaign(
+        client,
+        source_campaign_id=args.source_campaign_id,
+        source_campaign_name=args.source_campaign_name or "",
+    )
+    if source_campaign:
+        progress["source_campaign_id"] = int(source_campaign["id"])
+        progress["source_campaign"] = source_campaign
+    effective_content_type = args.content_type or (source_campaign or {}).get("content_type") or "richtext"
+    if body_file and effective_content_type == "visual":
+        raise ValueError("--body-file is not supported with content_type=visual; use html or richtext")
 
     log("Resolving target customer_list", enabled=args.verbose)
     list_obj = find_or_create_list(
@@ -102,23 +150,14 @@ def run_workflow(args: argparse.Namespace, *, client: ListmonkClient | None = No
     )
     progress.update(import_result)
 
-    source_campaign = get_source_campaign(
-        client,
-        source_campaign_id=args.source_campaign_id,
-        source_campaign_name=args.source_campaign_name or "",
-    )
-    if source_campaign:
+    if getattr(args, "template_id", None) is not None:
+        progress["template_id"] = int(args.template_id)
+    elif source_campaign:
         log("Resolving source campaign blueprint", enabled=args.verbose)
-        progress["source_campaign_id"] = int(source_campaign["id"])
-        progress["source_campaign"] = source_campaign
         source_template_id = source_campaign.get("template_id")
         if source_template_id is not None:
             progress["template_id"] = int(source_template_id)
-    else:
-        if args.source_template_id is None:
-            raise ValueError(
-                "One of --source-template-id or --source-campaign-id/--source-campaign-name is required"
-            )
+    elif args.source_template_id is not None:
         if not args.new_template_name:
             raise ValueError("--new-template-name is required when using --source-template-id")
 
@@ -131,6 +170,64 @@ def run_workflow(args: argparse.Namespace, *, client: ListmonkClient | None = No
         )
         progress["template_id"] = int(template["id"])
         progress["template"] = template
+    else:
+        raise ValueError(
+            "One of --template-id, --source-template-id or --source-campaign-id/--source-campaign-name is required"
+        )
+
+    effective_content_type = args.content_type or (source_campaign or {}).get("content_type") or "richtext"
+    body = getattr(args, "campaign_body", None)
+    body_file = getattr(args, "body_file", "") or ""
+    if body_file:
+        if effective_content_type == "visual":
+            raise ValueError("--body-file is not supported with content_type=visual; use html or richtext")
+        body = Path(body_file).read_text(encoding="utf-8-sig")
+    if body is None and source_campaign:
+        body = source_campaign.get("body")
+
+    validate_campaign_template(
+        client,
+        template_id=progress.get("template_id"),
+        content_type=effective_content_type,
+    )
+    validate_media_tokens(body, [Path(path).name for path in getattr(args, "media_file", None) or []])
+    merge_media_ids(getattr(args, "media_id", None), [])
+
+    # Validate scalar fields before uploading media.
+    build_campaign_payload(
+        campaign_name=args.campaign_name,
+        subject=args.subject,
+        customer_list_id=customer_list_id,
+        template_id=progress.get("template_id"),
+        campaign_body=None,
+        content_type=args.content_type,
+        messenger=args.messenger,
+        from_email=args.from_email,
+        reply_mailbox_id=args.reply_mailbox_id,
+        smtp_source=getattr(args, "smtp_source", None),
+        smtp_pool_id=getattr(args, "smtp_pool_id", None),
+        smtp_rate_limit=getattr(args, "smtp_rate_limit", None),
+        visibility=getattr(args, "visibility", None),
+        auto_track_links=getattr(args, "auto_track_links", None),
+        daily_send_limit=args.daily_send_limit,
+        daily_resume_time=args.daily_resume_time,
+        send_at=args.send_at,
+        tags=args.tag,
+        attribs_file=args.attribs_file or "",
+        source_campaign=source_campaign,
+    )
+
+    uploaded = upload_media_files(
+        client,
+        getattr(args, "media_file", None),
+        folder_id=getattr(args, "media_folder_id", None),
+        visibility=getattr(args, "media_visibility", None),
+        verbose=args.verbose,
+        progress=progress,
+    )
+    media_ids = merge_media_ids(getattr(args, "media_id", None), uploaded)
+    progress["media_ids"] = media_ids
+    body = apply_media_tokens(body, uploaded)
 
     log("Creating campaign", enabled=args.verbose)
     campaign = create_campaign(
@@ -140,7 +237,7 @@ def run_workflow(args: argparse.Namespace, *, client: ListmonkClient | None = No
             subject=args.subject,
             customer_list_id=customer_list_id,
             template_id=progress.get("template_id"),
-            campaign_body=args.campaign_body,
+            campaign_body=body,
             content_type=args.content_type,
             messenger=args.messenger,
             from_email=args.from_email,
@@ -155,6 +252,7 @@ def run_workflow(args: argparse.Namespace, *, client: ListmonkClient | None = No
             send_at=args.send_at,
             tags=args.tag,
             attribs_file=args.attribs_file or "",
+            media_ids=media_ids,
             source_campaign=source_campaign,
         ),
     )
@@ -182,6 +280,8 @@ def run_workflow(args: argparse.Namespace, *, client: ListmonkClient | None = No
         "template_id": progress.get("template_id"),
         "campaign_id": int(campaign["id"]),
         "status": (status_result or campaign).get("status", "draft"),
+        "media": progress.get("media", []),
+        "media_ids": progress.get("media_ids", []),
         "customer_list": list_obj,
         "campaign": campaign,
         "created_customers": progress.get("created_customers", []),
@@ -204,11 +304,12 @@ def run_workflow(args: argparse.Namespace, *, client: ListmonkClient | None = No
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    progress: dict[str, Any] = {}
     try:
-        emit_json(run_workflow(args))
+        emit_json(run_workflow(args, progress=progress))
         return 0
     except Exception as exc:
-        return emit_error(exc)
+        return emit_error(exc, progress=progress)
 
 
 if __name__ == "__main__":

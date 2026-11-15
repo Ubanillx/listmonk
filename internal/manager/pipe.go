@@ -9,6 +9,7 @@ import (
 
 	"github.com/knadh/listmonk/internal/messenger/email"
 	"github.com/knadh/listmonk/internal/schedule"
+	apptz "github.com/knadh/listmonk/internal/tz"
 	"github.com/knadh/listmonk/models"
 	"github.com/paulbellamy/ratecounter"
 )
@@ -19,6 +20,7 @@ const (
 	stopReasonDeferred
 	stopReasonCancelled
 	stopReasonPersonalSMTP
+	stopReasonPoolSMTP
 )
 
 type pipe struct {
@@ -174,7 +176,7 @@ func (p *pipe) NextCustomers() (bool, error) {
 		// A campaign owner's or selected organization SMTP pool has no eligible SMTP
 		// account. Pause the campaign strictly (no owner/platform fallback)
 		// so an operator can repair the pool and resume.
-		p.Stop(stopReasonPersonalSMTP, false)
+		p.Stop(stopReasonPoolSMTP, false)
 		p.m.log.Printf("paused campaign (%s): %v", p.camp.Name, err)
 		return false, err
 	}
@@ -383,6 +385,37 @@ func (p *pipe) newMessage(s models.CampaignCustomer) (CampaignMessage, error) {
 	return msg, nil
 }
 
+// notifyDeferred sends the daily-limit deferral notification with the resume
+// time from the latest persisted campaign state. A failed read still notifies
+// without the resume time.
+func (p *pipe) notifyDeferred() {
+	c := p.camp
+	if p.m.store != nil {
+		if current, err := p.m.store.GetCampaign(p.camp.ID); err != nil {
+			p.m.log.Printf("error fetching campaign (%s) after deferral: %v", p.camp.Name, err)
+		} else if current == nil {
+			p.m.log.Printf("campaign (%s) not found after deferral", p.camp.Name)
+			return
+		} else if current.Status != models.CampaignStatusDeferred {
+			// A manual pause/cancel or a resume superseded the deferral. The
+			// corresponding path already notified (or will notify) the owner, so
+			// a deferred e-mail would contradict the persisted state.
+			p.m.log.Printf("skipping deferral notification for campaign (%s): current status is %s", p.camp.Name, current.Status)
+			return
+		} else {
+			c = current
+		}
+	}
+
+	p.m.auditCampaign("campaign.deferred", c, map[string]any{"reason": "daily_limit"})
+	extra := map[string]any{}
+	if c.NextResumeAt.Valid {
+		extra["ResumeAt"] = c.NextResumeAt.Time.In(apptz.Location()).Format("2006-01-02 15:04")
+	}
+	_ = p.m.sendNotif(c, models.CampaignStatusDeferred,
+		p.m.reasonText("email.status.reasonDailyLimit", "Daily limit reached"), extra)
+}
+
 // cleanup finishes the campaign and updates the campaign status in the DB
 // and also triggers a notification to the admin. This only triggers once
 // a pipe's wg counter is fully exhausted, draining all messages in its queue.
@@ -413,10 +446,21 @@ func (p *pipe) cleanup() {
 			}
 			if err != nil {
 				p.m.log.Printf("error updating campaign (%s) status to %s: %v", p.camp.Name, models.CampaignStatusPaused, err)
+				if p.deferred.Load() {
+					p.notifyDeferred()
+				}
 			} else if changed {
 				p.m.log.Printf("set campaign (%s) to %s", p.camp.Name, models.CampaignStatusPaused)
 				p.m.auditCampaign("campaign.paused", p.camp, map[string]any{"reason": "send_errors"})
-				_ = p.m.sendNotif(p.camp, models.CampaignStatusPaused, "Too many errors")
+				_ = p.m.sendNotif(p.camp, models.CampaignStatusPaused,
+					p.m.reasonText("email.status.reasonTooManyErrors", "Too many errors"), nil)
+			} else if p.deferred.Load() {
+				// The campaign reached its daily cap earlier in this run, so the
+				// running-only pause transition cannot apply. The persisted state
+				// is deferred; report that instead of staying silent for both the
+				// error threshold and the deferral.
+				p.m.log.Printf("campaign (%s) already deferred; sending the deferral notification instead of an error pause", p.camp.Name)
+				p.notifyDeferred()
 			}
 			return
 		}
@@ -429,7 +473,7 @@ func (p *pipe) cleanup() {
 					p.m.log.Printf("error resetting queued recipients (%s): %v", p.camp.Name, err)
 				}
 				p.m.auditCampaign("campaign.paused", p.camp, map[string]any{"reason": "manual"})
-			case stopReasonPersonalSMTP:
+			case stopReasonPersonalSMTP, stopReasonPoolSMTP:
 				// Persist the stop atomically with recipient reset and scheduling
 				// timestamp cleanup when the database store supports it. This closes
 				// the race in which a scanner could observe a still-running row after
@@ -437,7 +481,7 @@ func (p *pipe) cleanup() {
 				// the historical two-call fallback below.
 				var interrupted bool
 				err := p.m.WithCampaignStatusChange(func() error {
-					if p.stopReason.Load() != stopReasonPersonalSMTP {
+					if reason := p.stopReason.Load(); reason != stopReasonPersonalSMTP && reason != stopReasonPoolSMTP {
 						interrupted = true
 						return nil
 					}
@@ -453,23 +497,49 @@ func (p *pipe) cleanup() {
 				if interrupted {
 					continue
 				}
+				reason := p.stopReason.Load()
+				if reason != stopReasonPersonalSMTP && reason != stopReasonPoolSMTP {
+					continue
+				}
 				if err != nil {
-					p.m.log.Printf("error pausing campaign (%s) after personal SMTP failure: %v", p.camp.Name, err)
+					p.m.log.Printf("error pausing campaign (%s) after SMTP failure: %v", p.camp.Name, err)
 				}
 				// Do not overwrite a concurrent manual pause/cancel. Fetch the final
 				// state only for logging/notification after the atomic transition.
 				if current, err := p.m.store.GetCampaign(p.camp.ID); err != nil {
-					p.m.log.Printf("error fetching campaign (%s) after personal SMTP failure: %v", p.camp.Name, err)
+					p.m.log.Printf("error fetching campaign (%s) after SMTP failure: %v", p.camp.Name, err)
+				} else if current == nil {
+					p.m.log.Printf("campaign (%s) not found after SMTP failure", p.camp.Name)
 				} else if current.Status == models.CampaignStatusPaused {
-					p.m.log.Printf("paused campaign (%s): personal SMTP unavailable", p.camp.Name)
-					p.m.auditCampaign("campaign.paused", current, map[string]any{"reason": "personal_smtp_unavailable"})
-					_ = p.m.sendNotif(current, models.CampaignStatusPaused, "Personal SMTP unavailable")
+					// A manual pause may have replaced the stop reason while the
+					// campaign row was being read; let the manual branch handle it.
+					if latest := p.stopReason.Load(); latest != stopReasonPersonalSMTP && latest != stopReasonPoolSMTP {
+						continue
+					}
+					auditReason := "personal_smtp_unavailable"
+					if reason == stopReasonPoolSMTP {
+						auditReason = "pool_smtp_unavailable"
+					}
+					p.m.log.Printf("paused campaign (%s): %s", p.camp.Name, auditReason)
+					p.m.auditCampaign("campaign.paused", current, map[string]any{"reason": auditReason})
+					key, fallback := "email.status.reasonPersonalSMTPUnavailable", "Personal SMTP unavailable"
+					if reason == stopReasonPoolSMTP {
+						key, fallback = "email.status.reasonPoolSMTPUnavailable", "Organization SMTP pool unavailable"
+					}
+					_ = p.m.sendNotif(current, models.CampaignStatusPaused,
+						p.m.reasonText(key, fallback), nil)
+				} else if current.Status == models.CampaignStatusDeferred {
+					// The campaign had already reached its daily cap; the
+					// running-only pause transition cannot apply. Report the
+					// persisted deferral instead of staying silent.
+					p.m.log.Printf("campaign (%s) stayed deferred after SMTP failure; sending the deferral notification", p.camp.Name)
+					p.notifyDeferred()
 				}
 			case stopReasonDeferred:
 				if err := p.m.store.ResetCampaignQueuedRecipients(p.camp.ID, models.CampaignRecipientStatusDeferred); err != nil {
 					p.m.log.Printf("error deferring queued recipients (%s): %v", p.camp.Name, err)
 				}
-				p.m.auditCampaign("campaign.deferred", p.camp, map[string]any{"reason": "daily_limit"})
+				p.notifyDeferred()
 			case stopReasonCancelled:
 				if err := p.m.store.UpdateCampaignRecipientStatuses(p.camp.ID, models.CampaignRecipientStatusCancelled, []string{
 					models.CampaignRecipientStatusPending,
@@ -492,7 +562,7 @@ func (p *pipe) cleanup() {
 				p.m.log.Printf("error deferring queued recipients (%s): %v", p.camp.Name, err)
 			}
 			p.m.log.Printf("deferred campaign (%s) until the next daily resume time", p.camp.Name)
-			p.m.auditCampaign("campaign.deferred", p.camp, map[string]any{"reason": "daily_limit"})
+			p.notifyDeferred()
 			return
 		}
 
@@ -539,7 +609,7 @@ func (p *pipe) cleanup() {
 			} else {
 				p.m.auditCampaign("campaign.paused", c, map[string]any{"reason": "retry_selection_complete"})
 			}
-			_ = p.m.sendNotif(c, c.Status, "")
+			_ = p.m.sendNotif(c, c.Status, "", nil)
 		} else {
 			p.m.log.Printf("finish processing campaign (%s)", p.camp.Name)
 		}

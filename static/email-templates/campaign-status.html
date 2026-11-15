@@ -14,10 +14,22 @@
         <td width="30%"><strong>{{ L.Ts "email.status.campaignSent" }}</strong></td>
         <td>{{ index . "Sent" }} / {{ index . "ToSend" }}</td>
     </tr>
-    {{ if ne (index . "Reason") "" }}
+    {{ with index . "Reason" }}
         <tr>
             <td width="30%"><strong>{{ L.Ts "email.status.campaignReason" }}</strong></td>
-            <td>{{ index . "Reason" }}</td>
+            <td>{{ . }}</td>
+        </tr>
+    {{ end }}
+    {{ if index . "Actor" }}
+        <tr>
+            <td width="30%"><strong>{{ L.Ts "email.status.campaignActor" }}</strong></td>
+            <td>{{ index . "Actor" }}</td>
+        </tr>
+    {{ end }}
+    {{ if index . "ResumeAt" }}
+        <tr>
+            <td width="30%"><strong>{{ L.Ts "email.status.campaignResumeAt" }}</strong></td>
+            <td>{{ index . "ResumeAt" }}</td>
         </tr>
     {{ end }}
 </table>

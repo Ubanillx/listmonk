@@ -97,7 +97,7 @@ installation may hold values that differ from the defaults below.
 | `logo_url` | string | `""` | no | Logo image shown on the public pages. |
 | `favicon_url` | string | `""` | no | Favicon shown on the public pages. |
 | `from_email` | string | `listmonk <noreply@listmonk.yoursite.com>` | no | Default `From` address for campaigns and system e-mails. |
-| `notify_emails` | string[] | `[]` | no | Addresses that receive system notifications, such as import and campaign notifications. |
+| `notify_emails` | string[] | `[]` | no | Addresses that receive system notifications, such as import and campaign notifications. Campaign lifecycle notifications are also sent separately to the campaign owner when that user has an enabled e-mail address. |
 | `lang` | string | `zh-CN` | no | UI language. It must match one of the language files bundled in `i18n/`, eg: `en` or `de`. |
 | `enable_public_subscription_page` | bool | `true` | no | Serve the public subscription pages at `/subscription/*`. |
 | `enable_public_archive` | bool | `true` | no | Serve the public campaign archive at `/archive`. |
@@ -108,6 +108,10 @@ installation may hold values that differ from the defaults below.
 | `message_rate` | int | `10` | no | Aggregate SMTP messages per second across all workers, campaigns, transactional mail and system notifications. Excess messages wait for capacity. |
 | `batch_size` | int | `1000` | no | Number of customers fetched from the database in a single cycle (~5s) when a campaign is running. Higher values reduce database round trips and use more memory. |
 | `max_send_errors` | int | `1000` | no | Number of send errors after which a campaign is paused. |
+| `send_error_alert_enabled` | bool | `true` | no | Send an e-mail alert to the campaign owner and `notify_emails` when a running campaign records many failures inside the alert window. Alerting does not pause the campaign. |
+| `send_error_alert_window` | duration string | `5m` | no | Sliding window used to count failure events for the window alert, between 1m and 24h. |
+| `send_error_alert_threshold` | int | `50` | no | Failure events inside the window that trigger an alert, between 1 and 1,000,000. Retries count as separate failures. |
+| `send_error_alert_cooldown` | duration string | `30m` | no | Minimum interval between window alerts for the same campaign, between 1m and 24h. |
 | `message_sliding_window` | bool | `false` | no | Enable a platform-wide SMTP sliding window cap. |
 | `message_sliding_window_duration` | duration string | `1h` | no | Sliding window length, eg: `30m`, `1h`. Only used when `message_sliding_window` is enabled. |
 | `message_sliding_window_rate` | int | `10000` | no | Maximum number of messages allowed per sliding window. Only used when `message_sliding_window` is enabled. |

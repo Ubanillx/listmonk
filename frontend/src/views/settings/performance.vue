@@ -30,6 +30,41 @@
         <b-numberinput v-model="data['app.max_send_errors']" name="app.max_send_errors" type="is-light" placeholder="1999"
           min="0" max="100000" />
       </b-field>
+
+      <hr />
+
+      <b-field :label="$t('settings.performance.sendErrorAlert')"
+        :message="$t('settings.performance.sendErrorAlertHelp')">
+        <b-switch v-model="data['app.send_error_alert_enabled']" name="app.send_error_alert_enabled"
+          data-cy="send-error-alert-switch" />
+      </b-field>
+
+      <div class="columns" :class="{ disabled: !data['app.send_error_alert_enabled'] }">
+        <div class="column is-4">
+          <b-field :label="$t('settings.performance.sendErrorAlertThreshold')" label-position="on-border"
+            :message="$t('settings.performance.sendErrorAlertThresholdHelp')">
+            <b-numberinput v-model="data['app.send_error_alert_threshold']"
+              name="app.send_error_alert_threshold" type="is-light" placeholder="50" :disabled="!data['app.send_error_alert_enabled']"
+              data-cy="send-error-alert-threshold" min="1" max="1000000" />
+          </b-field>
+        </div>
+        <div class="column is-4">
+          <b-field :label="$t('settings.performance.sendErrorAlertWindow')" label-position="on-border"
+            :message="$t('settings.performance.sendErrorAlertWindowHelp')">
+            <b-input v-model="data['app.send_error_alert_window']" name="app.send_error_alert_window"
+              :disabled="!data['app.send_error_alert_enabled']" data-cy="send-error-alert-window"
+              placeholder="5m" :pattern="regDuration" :maxlength="10" />
+          </b-field>
+        </div>
+        <div class="column is-4">
+          <b-field :label="$t('settings.performance.sendErrorAlertCooldown')" label-position="on-border"
+            :message="$t('settings.performance.sendErrorAlertCooldownHelp')">
+            <b-input v-model="data['app.send_error_alert_cooldown']" name="app.send_error_alert_cooldown"
+              :disabled="!data['app.send_error_alert_enabled']" data-cy="send-error-alert-cooldown"
+              placeholder="30m" :pattern="regDuration" :maxlength="10" />
+          </b-field>
+        </div>
+      </div>
     </section>
 
     <hr />

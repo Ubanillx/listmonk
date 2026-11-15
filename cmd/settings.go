@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -101,16 +102,43 @@ func (a *App) GetSettings(c echo.Context) error {
 // UpdateSettings returns settings from the DB.
 func (a *App) UpdateSettings(c echo.Context) error {
 	// Unmarshal and marshal the fields once to sanitize the settings blob.
-	var set models.Settings
-	if err := c.Bind(&set); err != nil {
+	// The raw body is kept so keys that an older client omits can retain their
+	// persisted values instead of being silently reset.
+	body, err := io.ReadAll(c.Request().Body)
+	if err != nil {
 		return err
 	}
+	var set models.Settings
+	if err := json.Unmarshal(body, &set); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	var present map[string]json.RawMessage
+	_ = json.Unmarshal(body, &present)
 
 	// Get the existing settings.
 	cur, err := a.core.GetSettings()
 	if err != nil {
 		return err
 	}
+
+	// Send-error alert settings are new. Preserve the persisted values when an
+	// older client omits them, while an explicit false still disables alerts.
+	if _, ok := present["app.send_error_alert_enabled"]; !ok {
+		set.AppSendErrorAlertEnabled = cur.AppSendErrorAlertEnabled
+	}
+	if _, ok := present["app.send_error_alert_window"]; !ok {
+		set.AppSendErrorAlertWindow = cur.AppSendErrorAlertWindow
+	}
+	if _, ok := present["app.send_error_alert_threshold"]; !ok {
+		set.AppSendErrorAlertThreshold = cur.AppSendErrorAlertThreshold
+	}
+	if _, ok := present["app.send_error_alert_cooldown"]; !ok {
+		set.AppSendErrorAlertCooldown = cur.AppSendErrorAlertCooldown
+	}
+	if err := validateSendErrorAlertSettings(set.AppSendErrorAlertWindow, set.AppSendErrorAlertCooldown, set.AppSendErrorAlertThreshold); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
 	// Customer field definitions have their own administrator-only endpoint.
 	// Do not let a broad settings payload overwrite them accidentally.
 	set.CustomFields = cur.CustomFields
@@ -441,6 +469,30 @@ func (a *App) UpdateSettingsByKey(c echo.Context) error {
 		b = normalized
 	}
 
+	switch key {
+	case "app.send_error_alert_enabled":
+		var enabled bool
+		if err := json.Unmarshal(b, &enabled); err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, "invalid send error alert switch")
+		}
+	case "app.send_error_alert_window", "app.send_error_alert_cooldown":
+		var value string
+		if err := json.Unmarshal(b, &value); err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, "invalid send error alert duration")
+		}
+		if err := validateSendErrorAlertDuration(key, value); err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+		}
+	case "app.send_error_alert_threshold":
+		var value int
+		if err := json.Unmarshal(b, &value); err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, "invalid send error alert threshold")
+		}
+		if err := validateSendErrorAlertThreshold(value); err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+		}
+	}
+
 	// Update the value in the DB.
 	if err := a.core.UpdateSettingsByKey(key, b); err != nil {
 		return err
@@ -537,6 +589,33 @@ func (a *App) TestSMTPSettings(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, okResp{a.bufLog.Lines()})
+}
+
+// validateSendErrorAlertDuration accepts a Go duration between 1 minute and
+// 24 hours for the window alert settings.
+func validateSendErrorAlertDuration(name, value string) error {
+	d, err := time.ParseDuration(strings.TrimSpace(value))
+	if err != nil || d < time.Minute || d > 24*time.Hour {
+		return fmt.Errorf("invalid %s: must be between 1m and 24h", name)
+	}
+	return nil
+}
+
+func validateSendErrorAlertThreshold(value int) error {
+	if value < 1 || value > 1000000 {
+		return fmt.Errorf("invalid app.send_error_alert_threshold: must be between 1 and 1000000")
+	}
+	return nil
+}
+
+func validateSendErrorAlertSettings(window, cooldown string, threshold int) error {
+	if err := validateSendErrorAlertDuration("app.send_error_alert_window", window); err != nil {
+		return err
+	}
+	if err := validateSendErrorAlertDuration("app.send_error_alert_cooldown", cooldown); err != nil {
+		return err
+	}
+	return validateSendErrorAlertThreshold(threshold)
 }
 
 func (a *App) GetAboutInfo(c echo.Context) error {

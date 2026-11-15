@@ -596,10 +596,20 @@ func initCampaignManager(msgrs []manager.Messenger, q *models.Queries, u *UrlCon
 	// configuration change from resetting local quota accounting.
 	userSMTPQuota := newUserSMTPQuotaTracker(q)
 	mgr := manager.New(manager.Config{
-		BatchSize:             ko.Int("app.batch_size"),
-		Concurrency:           ko.Int("app.concurrency"),
-		MessageRate:           ko.Int("app.message_rate"),
-		MaxSendErrors:         ko.Int("app.max_send_errors"),
+		BatchSize:     ko.Int("app.batch_size"),
+		Concurrency:   ko.Int("app.concurrency"),
+		MessageRate:   ko.Int("app.message_rate"),
+		MaxSendErrors: ko.Int("app.max_send_errors"),
+		OwnerEmail: func(userID int) (string, error) {
+			user, err := co.GetUser(userID, "", "")
+			if err != nil {
+				return "", err
+			}
+			if user.Status != auth.UserStatusEnabled || !user.Email.Valid {
+				return "", nil
+			}
+			return user.Email.String, nil
+		},
 		FromEmail:             ko.String("app.from_email"),
 		IndividualTracking:    ko.Bool("privacy.individual_tracking"),
 		DisableTracking:       ko.Bool("privacy.disable_tracking"),

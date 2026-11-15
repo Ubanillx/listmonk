@@ -30,6 +30,7 @@ import (
 	"github.com/knadh/listmonk/internal/manager"
 	"github.com/knadh/listmonk/internal/media"
 	"github.com/knadh/listmonk/internal/messenger/email"
+	"github.com/knadh/listmonk/internal/notifs"
 	"github.com/knadh/listmonk/internal/replyai"
 	"github.com/knadh/listmonk/internal/subimporter"
 	apptz "github.com/knadh/listmonk/internal/tz"
@@ -72,6 +73,11 @@ type App struct {
 
 	about         about
 	fnOptinNotify func(models.Customer, []int) (int, error)
+
+	// notifyCampaign sends campaign lifecycle notifications to the owner and
+	// the system notification list. It is optional so tests that operate the
+	// status API without a notifier remain unaffected.
+	notifyCampaign func(extra []string, subject, tplName string, data any) error
 
 	// Channel for passing reload signals.
 	chReload chan os.Signal
@@ -363,8 +369,11 @@ func main() {
 		}),
 
 		fnOptinNotify: fbOptinNotify,
-		about:         initAbout(queries, db),
-		chReload:      chReload,
+		notifyCampaign: func(extra []string, subject, tplName string, data any) error {
+			return notifs.NotifySystemAnd(extra, subject, tplName, data, nil)
+		},
+		about:    initAbout(queries, db),
+		chReload: chReload,
 
 		// If there are no users, then the app needs to prompt for new user setup.
 		needsUserSetup: !hasUsers,
@@ -389,6 +398,25 @@ func main() {
 	automationDone := make(chan struct{})
 	go func() { defer close(automationDone); app.runProviderAutomation(automationCtx) }()
 
+	// The independent send-error window monitor runs only on the instance that
+	// also scans campaigns, so passive replicas never duplicate alerts.
+	var sendErrorAlertDone chan struct{}
+	if !ko.Bool("passive") && ko.Bool("app.send_error_alert_enabled") {
+		alertCfg, err := sendErrorAlertConfigFromKo(ko)
+		if err != nil {
+			lo.Printf("send error alert monitor disabled: %v", err)
+		} else {
+			sendErrorAlertDone = make(chan struct{})
+			go func() {
+				defer close(sendErrorAlertDone)
+				runSendErrorAlerts(automationCtx, newCampaignSendErrorAlertStore(queries),
+					app.campaignOwnerEmail, app.notifyCampaign, i18n, lo, alertCfg)
+			}()
+			lo.Printf("send error alert monitor enabled: window=%s threshold=%d cooldown=%s",
+				alertCfg.Window, alertCfg.Threshold, alertCfg.Cooldown)
+		}
+	}
+
 	if ko.Bool("app.check_updates") {
 		go app.checkUpdates(versionString, time.Hour*24)
 	}
@@ -412,9 +440,16 @@ func main() {
 		// Close the campaign manager.
 		mgr.Close()
 
-		// Close the DB pool.
+		// Close the DB pool. The alert monitor shares the automation context and
+		// gets a bounded grace period before the pool is closed.
 		stopAutomation()
 		<-automationDone
+		if sendErrorAlertDone != nil {
+			select {
+			case <-sendErrorAlertDone:
+			case <-time.After(2 * time.Second):
+			}
+		}
 		db.Close()
 		if app.geoIP != nil {
 			app.geoIP.Close()

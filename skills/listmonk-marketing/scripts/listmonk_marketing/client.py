@@ -311,6 +311,37 @@ class ListmonkClient:
     def get_campaign(self, campaign_id: int) -> dict[str, Any]:
         return self.request("GET", f"/api/campaigns/{campaign_id}")
 
+    def preview_campaign(
+        self,
+        campaign_id: int,
+        *,
+        body: str,
+        content_type: str = "html",
+        template_id: int | None = None,
+        preview_name: str = "Preview Customer",
+        name_fallback: str = "there",
+    ) -> str:
+        """Render a campaign body server-side without sending anything.
+
+        Returns the preview HTML; raises APIError (usually 400) when the body
+        cannot be rendered, including the template error with line and column.
+        """
+        form: dict[str, str] = {
+            "body": body,
+            "content_type": content_type,
+            "preview_name_mode": "custom",
+            "preview_name": preview_name,
+            "name_fallback": name_fallback,
+        }
+        if template_id is not None:
+            form["template_id"] = str(template_id)
+        return self.request(
+            "POST",
+            f"/api/campaigns/{campaign_id}/preview",
+            data=urllib.parse.urlencode(form).encode("utf-8"),
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+
     def query_campaigns(self, query: str) -> list[dict[str, Any]]:
         page = self.request("GET", "/api/campaigns", params={"query": query, "page": 1, "per_page": "all"})
         return page.get("results", [])

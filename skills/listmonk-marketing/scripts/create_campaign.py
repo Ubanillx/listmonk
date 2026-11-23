@@ -8,10 +8,11 @@ from listmonk_marketing.campaigns import (
     build_campaign_payload,
     create_campaign,
     get_source_campaign,
+    validate_campaign_body_vars,
     validate_campaign_template,
 )
 from listmonk_marketing.cli import add_auth_arguments, add_campaign_arguments, add_verbose_argument
-from listmonk_marketing.client import ListmonkClient
+from listmonk_marketing.client import APIError, ListmonkClient
 from listmonk_marketing.common import emit_error, emit_json, log
 from listmonk_marketing.media import (
     apply_media_tokens,
@@ -25,6 +26,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Create a listmonk campaign with a Bearer personal API key.")
     add_auth_arguments(parser)
     add_campaign_arguments(parser)
+    parser.add_argument(
+        "--preview-check",
+        action="store_true",
+        help="After creating the draft, render it via /api/campaigns/{id}/preview and report render errors",
+    )
     add_verbose_argument(parser)
     return parser.parse_args(argv)
 
@@ -55,6 +61,9 @@ def run_create_campaign(
     if template_id is None and source_campaign:
         template_id = source_campaign.get("template_id")
     validate_campaign_template(client, template_id=template_id, content_type=effective_content_type)
+    # Fail before creating anything if the body uses template fields the campaign
+    # render root does not expose (for example the upstream .Subscriber naming).
+    validate_campaign_body_vars(body)
     validate_media_tokens(body, [Path(path).name for path in args.media_file or []])
     # Validate explicit media IDs before uploading anything, so a bad argument
     # cannot leave orphaned uploads behind.
@@ -130,6 +139,20 @@ def run_create_campaign(
     if source_campaign:
         out["source_campaign_id"] = int(source_campaign["id"])
         out["source_campaign"] = source_campaign
+    if getattr(args, "preview_check", False):
+        # The draft is already persisted; a render failure is reported, not raised,
+        # so the caller can fix the body on the same campaign id.
+        try:
+            client.preview_campaign(
+                int(campaign["id"]),
+                body=body or "",
+                content_type=effective_content_type,
+                template_id=template_id,
+            )
+            out["preview_ok"] = True
+        except APIError as exc:
+            out["preview_ok"] = False
+            out["render_error"] = f"HTTP {exc.status}: {exc}"
     return out
 
 

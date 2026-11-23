@@ -224,6 +224,12 @@ func (a *App) PreviewCampaign(c echo.Context) error {
 	// Use a dummy campaign ID to prevent views and clicks from {{ TrackView }}
 	// and {{ TrackLink }} being registered on preview.
 	camp.UUID = dummyCustomer.UUID
+	return a.renderCampaignPreview(c, camp)
+}
+
+// renderCampaignPreview compiles and renders a campaign for preview responses,
+// shared by the saved and unsaved campaign preview handlers.
+func (a *App) renderCampaignPreview(c echo.Context, camp models.Campaign) error {
 	if err := camp.CompileTemplate(a.manager.TemplateFuncs(&camp)); err != nil {
 		a.log.Printf("error compiling template: %v", err)
 		return echo.NewHTTPError(http.StatusBadRequest,
@@ -248,6 +254,102 @@ func (a *App) PreviewCampaign(c echo.Context) error {
 	// opened directly.
 	c.Response().Header().Set("Content-Security-Policy", cspSandboxScripts)
 	return c.HTML(http.StatusOK, string(msg.Body()))
+}
+
+// PreviewNewCampaign renders a preview of an unsaved campaign. The selected
+// template, content type and body come from the request instead of a stored
+// campaign row, so a template can be checked before the draft exists.
+func (a *App) PreviewNewCampaign(c echo.Context) error {
+	access, err := a.workspaceAccess(c)
+	if err != nil {
+		return err
+	}
+	if err := requireWritableWorkspace(access); err != nil {
+		return err
+	}
+	if err := requireLegacyPermission(auth.GetUser(c), auth.PermCampaignsManageAll, auth.PermCampaignsManage); err != nil {
+		return err
+	}
+
+	var (
+		tplID, _    = strconv.Atoi(c.FormValue("template_id"))
+		contentType = c.FormValue("content_type")
+	)
+	if contentType == "" {
+		contentType = models.CampaignContentTypeRichtext
+	}
+	camp := models.Campaign{
+		Type:        models.CampaignTypeRegular,
+		Messenger:   emailMsgr,
+		ContentType: contentType,
+		Body:        c.FormValue("body"),
+	}
+	if v := c.FormValue("auto_track_links"); v != "" {
+		camp.AutoTrackLinks, _ = strconv.ParseBool(v)
+	}
+	if tplID > 0 {
+		if _, err := a.requireReadableWorkspaceResource(c, access, resourceTemplates, tplID, auth.PermTemplatesGet); err != nil {
+			return err
+		}
+		tpl, err := a.core.GetWorkspaceTemplate(access, tplID, false)
+		if err != nil {
+			return err
+		}
+		camp.TemplateID = null.IntFrom(tplID)
+		camp.TemplateBody = tpl.Body
+		camp.TemplateNameFallback = tpl.NameFallback
+	}
+	// A visual import uses its source template rule, but never its wrapper body.
+	if camp.ContentType == models.CampaignContentTypeVisual {
+		camp.TemplateBody = ""
+		if tplID > 0 {
+			camp.NameFallback = camp.TemplateNameFallback
+		}
+	}
+
+	// Use a dummy campaign ID to prevent views and clicks from {{ TrackView }}
+	// and {{ TrackLink }} being registered on preview.
+	camp.UUID = dummyCustomer.UUID
+	return a.renderCampaignPreview(c, camp)
+}
+
+// loadCampaignTemplateBody attaches the selected template body to the campaign
+// so the render validation matches what the sender compiles.
+func (a *App) loadCampaignTemplateBody(access models.WorkspaceAccess, camp *models.Campaign) error {
+	if !camp.TemplateID.Valid || camp.TemplateID.Int < 1 {
+		return nil
+	}
+	tpl, err := a.core.GetWorkspaceTemplate(access, int(camp.TemplateID.Int), false)
+	if err != nil {
+		return err
+	}
+	camp.TemplateBody = tpl.Body
+	camp.TemplateNameFallback = tpl.NameFallback
+	return nil
+}
+
+// validateCampaignRender compiles and renders the campaign against the sample
+// customer so template errors surface at save and start instead of failing per
+// recipient while the campaign is being sent.
+func (a *App) validateCampaignRender(camp models.Campaign) error {
+	if !email.IsMessengerName(camp.Messenger) {
+		return nil
+	}
+	camp.UUID = dummyCustomer.UUID
+	// Validation only needs to execute the templates; skip link registration
+	// so a check never writes tracking rows.
+	camp.AutoTrackLinks = false
+	if err := camp.CompileTemplate(a.manager.TemplateFuncs(&camp)); err != nil {
+		a.log.Printf("error compiling campaign template (%s): %v", camp.Name, err)
+		return echo.NewHTTPError(http.StatusBadRequest,
+			a.i18n.Ts("templates.errorCompiling", "error", err.Error()))
+	}
+	if _, err := a.manager.NewCampaignMessage(&camp, dummyCustomer); err != nil {
+		a.log.Printf("error rendering campaign message (%s): %v", camp.Name, err)
+		return echo.NewHTTPError(http.StatusBadRequest,
+			a.i18n.Ts("templates.errorRendering", "error", err.Error()))
+	}
+	return nil
 }
 
 // PreviewCampaignArchive renders the public campaign archives page.
@@ -401,6 +503,13 @@ func (a *App) CreateCampaign(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	} else {
 		o = c
+	}
+
+	if err := a.loadCampaignTemplateBody(access, &o.Campaign); err != nil {
+		return err
+	}
+	if err := a.validateCampaignRender(o.Campaign); err != nil {
+		return err
 	}
 
 	if o.ArchiveTemplateID.Valid && o.ArchiveTemplateID.Int != 0 {
@@ -575,6 +684,13 @@ func (a *App) UpdateCampaign(c echo.Context) error {
 		o = c
 	}
 
+	if err := a.loadCampaignTemplateBody(access, &o.Campaign); err != nil {
+		return err
+	}
+	if err := a.validateCampaignRender(o.Campaign); err != nil {
+		return err
+	}
+
 	hasRecipients, err := a.core.HasCampaignRecipientsInWorkspace(access, id)
 	if err != nil {
 		return err
@@ -699,6 +815,16 @@ func (a *App) UpdateCampaignStatus(c echo.Context) error {
 			return err
 		}
 		if err := a.core.ValidatePoolCampaignAudience(id); err != nil {
+			return err
+		}
+		// Render once before the scheduler or sender can pick the campaign up.
+		// GetCampaign mirrors the sender's template fallback, so a campaign
+		// without an explicit template is validated against the default one.
+		full, err := a.core.GetCampaign(id, "", "")
+		if err != nil {
+			return err
+		}
+		if err := a.validateCampaignRender(full); err != nil {
 			return err
 		}
 	}

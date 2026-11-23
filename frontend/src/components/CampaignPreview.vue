@@ -124,7 +124,13 @@ export default {
       let uri = 'about:blank';
 
       if (this.type === 'campaign') {
-        uri = this.isArchive ? uris.previewCampaignArchive : uris.previewCampaign;
+        if (this.isArchive) {
+          uri = uris.previewCampaignArchive;
+        } else if (this.id) {
+          uri = uris.previewCampaign;
+        } else {
+          uri = uris.previewCampaignDraft;
+        }
       } else if (this.type === 'template') {
         if (this.id) {
           uri = uris.previewTemplate;

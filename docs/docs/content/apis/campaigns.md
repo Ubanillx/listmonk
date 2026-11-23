@@ -1,5 +1,11 @@
 # API / Campaigns
 
+## Unsaved campaign preview and render validation (2026-11-20)
+
+`POST /api/campaigns/preview` renders an unsaved campaign without persisting anything. It accepts form fields `template_id`, `content_type`, `body`, and `auto_track_links`. The selected template must be readable in the active workspace, and the caller needs campaign management permission plus a `campaigns:write` API key scope. The response is the rendered HTML with the sandbox CSP header, or plain text when `content_type=plain`. Compile and render failures return HTTP 400 with the `templates.errorCompiling` / `templates.errorRendering` message. Saved campaigns keep using `GET|POST /api/campaigns/{id}/preview`, which remains read-only (`campaigns:read`).
+
+`POST /api/campaigns` and `PUT /api/campaigns/{id}` now compile and render the campaign against a sample customer before saving. `PUT /api/campaigns/{id}/status` to `scheduled` or `running` renders first, using the same default-template fallback as the sender. Broken template expressions are rejected with HTTP 400 instead of failing per recipient during delivery. In this fork the campaign render context is `*manager.CampaignMessage` with the `.Campaign` and `.Customer` fields; legacy upstream `.Subscriber.*` expressions fail validation.
+
 ## 营销活动分组统计（v6.69.0，2026-10-30）
 
 采用 B 方案，将列表分为营销活动、发送情况、客户互动、发送错误、退订相关人数；归属、受众及状态集中在活动信息，日期位于进度下方。错误列仅显示「有发送错误 / 无发送错误」，沿用原明细权限及历史诊断，不展示累计尝试数。退订区域分别展示点击人数和确认人数，两项分别按收件人去重，允许同一客户同时计入两项；零值显示 0，不改变订阅状态。

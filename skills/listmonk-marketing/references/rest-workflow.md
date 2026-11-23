@@ -197,6 +197,20 @@ python scripts/create_campaign.py \
 - 测试发送不会自动扫描请求正文里的新图片；正文引用新上传媒体时，
   必须同时把该媒体 ID 放进 `media` 数组。预览不保证加载受保护图片。
 - 创建后默认草稿；预览用 `/preview`，测试发送用 `/test`。
+- 正文里的模板变量只有 `.Customer` 和 `.Campaign`。上游 `.Subscriber.*` 在本部署
+  不存在，会让整封邮件渲染失败（`can't evaluate field Subscriber in type
+  *manager.CampaignMessage`）。写完正文、启动发送前必须先校验：
+
+  ```shell
+  # 本地 lint + 服务端渲染，只读、不发送；失败退出码 1
+  python scripts/preview_campaign.py --campaign-id 123
+  # 改稿阶段可直接校验未保存的正文
+  python scripts/preview_campaign.py --campaign-id 123 --body-file ./email.html
+  ```
+
+  400 时按报错行号定位活动 body 的对应行；列号可能落在字段名末端，不必逐字对齐。
+  该类渲染错误不写入活动 `send_errors`，预览/测试阶段不会留下可查明细，
+  只能靠这一步主动拦截。
 - 上传发生在创建前；若后续创建失败，已上传媒体会保留。失败输出的 `progress`
   会带上已上传的 `media` / `media_ids`，可直接复用或删除。
 - 模板应包含 `{{ template "content" . }}`；`--template-id` 只换包装器，

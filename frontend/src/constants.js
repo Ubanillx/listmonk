@@ -31,6 +31,7 @@ const baseURL = import.meta.env.BASE_URL.replace(/\/$/, '');
 
 export const uris = Object.freeze({
   previewCampaign: '/api/campaigns/:id/preview',
+  previewCampaignDraft: '/api/campaigns/preview',
   previewCampaignArchive: '/api/campaigns/:id/preview/archive',
   previewTemplate: '/api/templates/:id/preview',
   previewRawTemplate: '/api/templates/preview',

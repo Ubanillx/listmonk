@@ -262,6 +262,7 @@ func initHTTPHandlers(e *echo.Echo, a *App) {
 		g.POST("/api/campaigns/:id/content", apiKeyScope(hasID(a.CampaignContent), apiKeyScopeCampaignsRead))
 		g.POST("/api/campaigns/:id/text", apiKeyScope(hasID(a.PreviewCampaign), apiKeyScopeCampaignsRead))
 		g.POST("/api/campaigns/:id/test", apiKeyScope(hasID(a.TestCampaign), apiKeyScopeCampaignsSend))
+		g.POST("/api/campaigns/preview", apiKeyScope(a.PreviewNewCampaign, apiKeyScopeCampaignsWrite))
 		g.POST("/api/campaigns", apiKeyScope(a.CreateCampaign, apiKeyScopeCampaignsWrite))
 		g.POST("/api/campaigns/:id/clone", apiKeyScope(hasID(a.CloneCampaign), apiKeyScopeCampaignsWrite))
 		g.PUT("/api/campaigns/:id", apiKeyScope(hasID(a.UpdateCampaign), apiKeyScopeCampaignsWrite))

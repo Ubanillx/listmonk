@@ -217,6 +217,48 @@ media 为附件 ID 数组。name_fallback 结构为
 target_organization_id 省略使用当前空间；0 为个人，正数为组织。
 个人 Key 只能克隆到自身绑定空间，不能借此跨空间。
 
+### 内容模板可用变量（活动 body 与 campaign 模板共用同一渲染根）
+
+渲染根是 `*manager.CampaignMessage`，**只**暴露 `.Customer` 和 `.Campaign`。
+
+| 表达式 | 说明 |
+| --- | --- |
+| `.Customer.Name` | 客户姓名，可直接做称呼 |
+| `.Customer.Email` | 客户邮箱 |
+| `.Customer.Attribs.<key>` | 自定义资料；键不存在时为空值，用 `{{ if }}` 兜底 |
+| `.Campaign.Name` / `.Campaign.Subject` | 活动名 / 主题 |
+
+称呼的安全写法：
+
+```html
+Hello {{ if .Customer.Name }}{{ .Customer.Name }}{{ else }}there{{ end }},
+```
+
+红线：
+
+- **上游 listmonk 的 `.Subscriber.*` 在本部署不存在**。定制版把 subscriber 改名为
+  customer，接口叫 `/api/customers`，模板变量也必须是 `.Customer`。照抄上游模板或旧
+  文档会直接渲染失败。
+- `.UnsubscribeURL`、`.Message.*`、`.Tx`、`.OptinURL` 在活动内容里同样不存在；
+  退订链接由服务端在外壳模板追加，不要在正文里手写。
+- 失败特征：`template: content:42:33: executing "content" at <.Subscriber.Attribs.contact_name>:
+  can't evaluate field Subscriber in type *manager.CampaignMessage`。行号就是活动
+  `body` 的行号，按行定位即可，不要盲改整段。
+- 这类错误发生在**渲染阶段**：不会写入活动的 `send_errors`，预览/测试发送报错后
+  平台不留明细，只有服务端日志可查。所以发送前必须主动渲染校验，见下一节。
+
+### 发送前必过的渲染校验
+
+| 顺序 | 动作 |
+| --- | --- |
+| 1 | 本地 lint：扫描 `{{ ... }}` 中的根字段，只允许 `.Customer` / `.Campaign` |
+| 2 | 服务端渲染：`POST /api/campaigns/{id}/preview` 必须返回 200 |
+| 3 | 通过后再改状态发送；400 时按报错行号修 body |
+
+`scripts/preview_campaign.py --campaign-id <id>` 一次完成 1 和 2，只读、不发送，
+失败退出码 1 并给出字段、行号与原始报错。`create_campaign.py --preview-check`
+在建草稿后追加同一步渲染校验。
+
 ## 6. 活动、发送控制和 SMTP
 
 | Method | Endpoint | 用途和参数 |

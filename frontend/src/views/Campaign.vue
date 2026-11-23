@@ -24,6 +24,14 @@
 
       <div class="column is-6">
         <div v-if="canManage" class="buttons">
+          <b-field grouped v-if="isNew">
+            <b-field expanded>
+              <b-button expanded type="is-primary is-light" icon-left="file-find-outline"
+                @click="onToggleDraftPreview" data-cy="btn-preview-draft">
+                {{ $t('campaigns.preview') }}
+              </b-button>
+            </b-field>
+          </b-field>
           <b-field grouped v-if="isEditing && canEdit && activeTab !== 'overview'">
             <b-field expanded>
               <b-button expanded @click="() => onSubmit('update')" :loading="loading.campaigns" type="is-primary"
@@ -103,6 +111,16 @@
                       </b-switch>
                     </div>
                   </div>
+                  <b-field v-if="isNew && form.content.contentType !== 'visual'"
+                    :label="$tc('globals.terms.template')" :message="$t('campaigns.templateHelp')"
+                    data-cy="campaign-template-field">
+                    <b-select v-model="form.content.templateId" :placeholder="$t('campaigns.templatePlaceholder')"
+                      :disabled="!canEdit" expanded data-cy="campaign-template">
+                      <option v-for="t in campaignTemplates" :key="t.id" :value="t.id">
+                        {{ t.name }}{{ t.isDefault ? ` · ${$t('templates.default')}` : '' }}
+                      </option>
+                    </b-select>
+                  </b-field>
                 </section>
 
                 <section class="campaign-config-section" aria-labelledby="campaign-audience-title" data-cy="campaign-audience-section">
@@ -506,6 +524,11 @@
     <campaign-preview v-if="isPreviewingArchive" @close="onToggleArchivePreview" type="campaign" :id="data.id"
       :archive-meta="form.archiveMetaStr" :title="data.title" :content-type="data.contentType"
       :template-id="form.archiveTemplateId" :media="archivePreviewMedia" is-post is-archive />
+
+    <campaign-preview v-if="isPreviewingDraft" @close="onToggleDraftPreview" type="campaign" :id="0"
+      :title="form.subject || form.name || $t('campaigns.preview')" :content-type="form.content.contentType"
+      :template-id="form.content.templateId" :body="form.content.body" :auto-track-links="form.autoTrackLinks"
+      :media="form.media" is-post />
   </section>
 </template>
 
@@ -557,6 +580,7 @@ export default Vue.extend({
       isAttachFieldVisible: false,
       isAttachModalOpen: false,
       isPreviewingArchive: false,
+      isPreviewingDraft: false,
       activeTab: 'campaign',
       templateMedia: [],
       smtpSenders: [],
@@ -688,6 +712,30 @@ export default Vue.extend({
 
     onToggleArchivePreview() {
       this.isPreviewingArchive = !this.isPreviewingArchive;
+    },
+
+    onToggleDraftPreview() {
+      this.isPreviewingDraft = !this.isPreviewingDraft;
+    },
+
+    // Mirror the editor's default-template choice so the template shown while
+    // creating the campaign is exactly the one the draft will use.
+    setDefaultCampaignTemplate() {
+      if (!this.isNew || this.form.content.contentType === 'visual') {
+        return;
+      }
+      const list = this.campaignTemplates;
+      if (list.some((t) => t.id === this.form.content.templateId)) {
+        return;
+      }
+      const dirty = this.isUnsaved();
+      const def = list.find((t) => t.isDefault === true);
+      this.form.content.templateId = def?.id ?? list[0]?.id ?? null;
+      // The selection arrives asynchronously when templates load; refresh the
+      // baseline so an untouched form is not treated as modified.
+      if (!dirty && this.newCampaignBaseline !== null) {
+        this.newCampaignBaseline = this.newCampaignSnapshot();
+      }
     },
 
     onAddAltBody() {
@@ -1025,6 +1073,9 @@ export default Vue.extend({
         daily_send_limit: this.isLimitedSMTPCampaign ? this.form.dailySendLimit : 0,
         daily_resume_time: this.isLimitedSMTPCampaign ? this.form.dailyResumeTime : '09:00',
         content_type: this.form.content.contentType,
+        // Visual campaigns import their design into the body; a wrapper
+        // template ID does not apply to them.
+        template_id: this.form.content.contentType === 'visual' ? null : this.form.content.templateId,
         messenger: this.form.messenger,
         smtp_source: this.form.smtpSource,
         smtp_rate_limit: this.isSMTPMessenger ? this.form.smtpRateLimit : 0,
@@ -1316,6 +1367,11 @@ export default Vue.extend({
       const template = this.templates.find((item) => item.id === this.form.archiveTemplateId);
       return [...this.form.media, ...(template?.media || [])];
     },
+
+    campaignTemplates() {
+      const typ = this.form.content.contentType === 'visual' ? 'campaign_visual' : 'campaign';
+      return (this.templates || []).filter((t) => t.type === typ);
+    },
     ...mapState(['serverConfig', 'loading', 'customer_lists', 'templates', 'workspace', 'profile']),
 
     canManage() {
@@ -1582,6 +1638,8 @@ export default Vue.extend({
   },
 
   watch: {
+    templates: function onTemplatesChange() { this.setDefaultCampaignTemplate(); },
+    'form.content.contentType': function onContentTypeChange() { this.setDefaultCampaignTemplate(); },
     'form.smtpSource': function onSMTPSourceChange() { this.loadPersonalSMTPStatus(); },
     'form.smtpPoolId': function onSMTPPoolChange() { if (this.form.smtpSource === 'organization') this.loadPersonalSMTPStatus(); },
     'data.id': function onCampaignIDChange() { this.loadPersonalSMTPStatus(); },
@@ -1671,6 +1729,7 @@ export default Vue.extend({
       });
     } else {
       this.form.messenger = 'email';
+      this.setDefaultCampaignTemplate();
       this.newCampaignBaseline = this.newCampaignSnapshot();
     }
 

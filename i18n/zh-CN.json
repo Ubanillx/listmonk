@@ -598,6 +598,7 @@
     "campaigns.subject": "主题",
     "campaigns.templatingRef": "邮件模板参考",
     "campaigns.templateAttachments": "邮件模板附件",
+    "campaigns.templateHelp": "该营销活动使用的邮件模板，用于包裹邮件内容。保存或启动时会自动校验模板渲染。",
     "campaigns.testEmails": "输入邮箱后按回车",
     "campaigns.testSent": "已发送测试消息",
     "campaigns.timestamps": "时间戳",

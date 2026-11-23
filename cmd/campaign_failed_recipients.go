@@ -153,6 +153,15 @@ func (a *App) RetryCampaignFailedRecipients(c echo.Context) error {
 		if err := a.requireCampaignSMTPAvailable(camp); err != nil {
 			return err
 		}
+		// Retrying starts delivery again; validate the render with the same
+		// sender-side template fallback before touching recipient rows.
+		full, err := a.core.GetCampaign(getID(c), "", "")
+		if err != nil {
+			return err
+		}
+		if err := a.validateCampaignRender(full); err != nil {
+			return err
+		}
 	}
 	if err := a.validateCampaignReplyMailbox(access, &camp); err != nil {
 		return err

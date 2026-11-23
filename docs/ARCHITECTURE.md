@@ -1,5 +1,13 @@
 # Listmonk 工程架构与运行指南
 
+## 创建活动即选模板、未保存预览与渲染校验（2026-11-20）
+
+新建营销活动表单在“基本信息”中直接展示“邮件模板”选择器（仅非可视化格式）。选项过滤与默认模板沿用内容编辑器规则（`campaign` 类型、`is_default` 优先，其次第一个），切换格式或模板列表加载后自动联动，所选 `template_id` 随创建请求落库；可视化格式不提交包裹模板。页头新增“预览”按钮：未保存活动通过新增 `POST /api/campaigns/preview` 以表单中的 `template_id/content_type/body/auto_track_links` 渲染，复用 `dummyCustomer`、模板工作区读取权限、CSP sandbox 与已保存预览相同的编译/渲染路径；模板错误在创建阶段即可见。`CampaignPreview.vue` 在 `id=0` 时改走该端点，已保存活动仍走 `/api/campaigns/{id}/preview`。
+
+`cmd/campaigns.go` 新增 `validateCampaignRender`：仅对 `email` messenger，以样例联系人编译并渲染活动（校验时关闭 `AutoTrackLinks`，不写链接记录）。`CreateCampaign`/`UpdateCampaign` 在落库前经 `GetWorkspaceTemplate` 加载模板体后校验；`UpdateCampaignStatus` 切换 `scheduled`/`running` 前与 `RetryCampaignFailedRecipients` 重试前用 `core.GetCampaign` 读取活动，与发送器一致地回退默认模板再校验。失败返回 400 `templates.errorCompiling`/`templates.errorRendering`，前端经统一错误 toast 展示，坏模板不再等发送时逐收件人失败。
+
+前端 `Campaign.vue` 增加选择器、默认模板联动、创建请求 `template_id` 与预览入口；`constants.js` 增加 `previewCampaignDraft`；i18n 新增 `campaigns.templateHelp`（en/zh-CN）。回归入口：`cmd/campaign_template_validation_test.go`；API 契约见 `docs/docs/content/apis/campaigns.md`。
+
 ## 回信自动检测总开关（v6.73.0，2026-11-05）
 
 回信邮箱的 `scan_enabled` 是独立的检测总开关，AI 与退信是其下两个处理选择。`ReplyMailboxSettings.vue` 先显示地址和总开关，开启后展示两项处理和共用收件连接；允许先保存/测试连接再选处理方式。关闭只停止检测与处理，不清空连接、密码或子选项，不改变邮箱停用/保留生命周期。总开关与子选项分别持久化，界面草稿在保存前不影响 worker。

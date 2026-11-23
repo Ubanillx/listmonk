@@ -1802,6 +1802,7 @@
     "campaigns.editor.imageFloatLeft": "左浮动",
     "campaigns.editor.imageFloatRight": "右浮动",
     "campaigns.templateAttachments": "邮件模板附件",
+    "campaigns.templateHelp": "该营销活动使用的邮件模板，用于包裹邮件内容。保存或启动时会自动校验模板渲染。",
     "globals.buttons.search": "搜索",
     "globals.terms.workspaces": "工作空间",
     "customer_lists.types.org_pool_allocation": "组织公海分配",

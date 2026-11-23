@@ -1,10 +1,78 @@
 from __future__ import annotations
 
+import re
 from copy import deepcopy
 from typing import Any
 
 from listmonk_marketing.client import APIError, ListmonkClient
 from listmonk_marketing.common import load_json_file
+
+
+# Campaign content and campaign-type templates share one render root:
+# *manager.CampaignMessage, which only exposes .Customer and .Campaign.
+# Upstream listmonk templates use .Subscriber.* / .UnsubscribeURL / .Message.* / .Tx,
+# none of which exist in this deployment and all of which fail at render time.
+TEMPLATE_ROOT_FIELDS = frozenset({"Customer", "Campaign"})
+LEGACY_TEMPLATE_FIELDS = {
+    "Subscriber": "Customer",
+    "UnsubscribeURL": "none in campaign content; use the {{ UnsubscribeURL }} helper the server appends to the shell template",
+    "Message": "campaign shell fields are not exposed to content",
+    "Tx": "tx data is only available to transactional templates",
+    "OptinURL": "none in campaign content",
+}
+_FIELD_REF_RE = re.compile(r"(?<![\w.$])\.([A-Za-z_]\w*)")
+_ACTION_RE = re.compile(r"{{.*?}}", re.S)
+_SUPPORTED_SUMMARY = ".Customer(.Name / .Email / .Attribs.key) and .Campaign(.Name / .Subject)"
+
+
+def find_unsupported_template_fields(body: str | None) -> list[dict[str, Any]]:
+    """Locate root template fields that the campaign render context does not expose.
+
+    Only `{{ ... }}` actions are scanned, so CSS class selectors and plain HTML
+    text cannot trigger false positives.
+    """
+    if not body:
+        return []
+    findings: list[dict[str, Any]] = []
+    seen: set[tuple[str, int]] = set()
+    for action in _ACTION_RE.finditer(body):
+        for match in _FIELD_REF_RE.finditer(action.group(0)):
+            field = match.group(1)
+            if field in TEMPLATE_ROOT_FIELDS:
+                continue
+            offset = action.start() + match.start()
+            line = body.count("\n", 0, offset) + 1
+            column = offset - body.rfind("\n", 0, offset)
+            key = (field, line)
+            if key in seen:
+                continue
+            seen.add(key)
+            finding: dict[str, Any] = {"field": f".{field}", "line": line, "column": column}
+            hint = LEGACY_TEMPLATE_FIELDS.get(field)
+            if hint:
+                finding["hint"] = hint
+            findings.append(finding)
+    return findings
+
+
+def validate_campaign_body_vars(body: str | None) -> None:
+    """Fail fast on template fields the campaign render root does not have."""
+    findings = find_unsupported_template_fields(body)
+    if not findings:
+        return
+    first = findings[0]
+    detail = ", ".join(f"{item['field']} (line {item['line']}, column {item['column']})" for item in findings[:5])
+    message = (
+        f"campaign body references template fields that the render root does not expose: {detail}. "
+        f"Root fields are {_SUPPORTED_SUMMARY}; the render root is *manager.CampaignMessage, "
+        f"which has no .Subscriber (upstream listmonk naming) and no .UnsubscribeURL/.Message/.Tx. "
+        f"Fix {first['field']}"
+    )
+    hint = first.get("hint")
+    if hint:
+        message += f" -> {hint}"
+    message += ". Verify with POST /api/campaigns/{id}/preview or scripts/preview_campaign.py."
+    raise ValueError(message)
 
 
 INHERITED_CAMPAIGN_FIELDS = (

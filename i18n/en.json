@@ -600,6 +600,7 @@
     "campaigns.subject": "Subject",
     "campaigns.templatingRef": "Templating reference",
     "campaigns.templateAttachments": "Template attachments",
+    "campaigns.templateHelp": "Email template that wraps this campaign's content. The campaign is render-checked when it is saved or started.",
     "campaigns.testEmails": "Type an e-mail and press Enter",
     "campaigns.testSent": "Test message sent",
     "campaigns.timestamps": "Timestamps",

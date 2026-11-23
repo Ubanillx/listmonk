@@ -31,3 +31,14 @@ tmp/
 frontend/cypress/downloads/
 __pycache__/
 *.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Local QA and design-review artifacts
+.oil-ui/
+
+# Generated platform guide deliverables and their screenshot sources
+# (produced by the local doc generator; not product source)
+outputs/
+guide-assets/
+build_platform_guide.py

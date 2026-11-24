@@ -11,24 +11,24 @@ import (
 	"github.com/paulbellamy/ratecounter"
 )
 
-func TestDailyAllowanceWaitRequeuesAfterWorkerCompletion(t *testing.T) {
+func TestDailyAllowanceWaitResumesAfterWorkerCompletion(t *testing.T) {
 	m := newTestManager()
 	defer m.Close()
 	p := &pipe{m: m, wg: &sync.WaitGroup{}, done: make(chan struct{}), progress: make(chan struct{}, 1)}
-	p.wg.Add(2) // Scheduler reference and a queued delivery.
+	p.wg.Add(1)
 	// Completion before the waiter starts must also wake it; otherwise a fast
 	// worker can strand a campaign at the daily allowance boundary.
 	p.messageDone()
-	go p.waitForProgress()
+	done := make(chan bool, 1)
+	go func() { done <- p.waitForSendProgress() }()
 	select {
-	case got := <-m.nextPipes:
-		if got != p {
-			t.Fatal("requeued another campaign")
+	case ok := <-done:
+		if !ok {
+			t.Fatal("producer did not resume after the delivery completed")
 		}
 	case <-time.After(time.Second):
 		t.Fatal("worker completion did not wake the campaign")
 	}
-	p.wg.Done()
 	p.wg.Wait()
 }
 
@@ -38,18 +38,20 @@ func TestDailyAllowanceWaitStopsOnPauseAndShutdown(t *testing.T) {
 			m := newTestManager()
 			defer m.Close()
 			p := &pipe{m: m, wg: &sync.WaitGroup{}, done: make(chan struct{}), progress: make(chan struct{}, 1)}
-			p.wg.Add(1)
-			done := make(chan struct{})
-			go func() { p.waitForProgress(); p.wg.Wait(); close(done) }()
+			done := make(chan bool, 1)
+			go func() { done <- p.waitForSendProgress() }()
 			if reason == "pause" {
 				p.Stop(stopReasonPause, false)
 			} else {
 				m.Close()
 			}
 			select {
-			case <-done:
+			case ok := <-done:
+				if ok {
+					t.Fatal("stopped campaign resumed its producer")
+				}
 			case <-time.After(time.Second):
-				t.Fatal("stopped campaign retained its scheduler reference")
+				t.Fatal("stopped campaign retained its producer")
 			}
 		})
 	}

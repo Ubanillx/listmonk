@@ -284,9 +284,8 @@ type Manager struct {
 	links    map[string]string
 	linksMut sync.RWMutex
 
-	nextPipes chan *pipe
-	campMsgQ  chan CampaignMessage
-	msgQ      chan models.Message
+	campMsgQ chan CampaignMessage
+	msgQ     chan models.Message
 
 	// done is closed once during shutdown. Queues intentionally remain open:
 	// the scanner and HTTP handlers can race with a reload, and closing a queue
@@ -331,6 +330,10 @@ type CampaignMessage struct {
 	body     []byte
 	altBody  []byte
 	unsubURL string
+
+	// CampaignRateReserved records that the producer already consumed this
+	// message's campaign send slot before queueing it.
+	CampaignRateReserved bool
 
 	pipe *pipe
 }
@@ -427,7 +430,6 @@ func New(cfg Config, store Store, i *i18n.I18n, l *log.Logger) *Manager {
 		pipes:              make(map[int]*pipe),
 		tpls:               make(map[int]*models.Template),
 		links:              make(map[string]string),
-		nextPipes:          make(chan *pipe, 1000),
 		campMsgQ:           make(chan CampaignMessage, cfg.Concurrency*cfg.MessageRate*2),
 		msgQ:               make(chan models.Message, cfg.Concurrency*cfg.MessageRate*2),
 		done:               make(chan struct{}),
@@ -894,16 +896,16 @@ func (m *Manager) GetCampaignStats(id int) CampStats {
 	return CampStats{SendRate: n}
 }
 
-// Run is a blocking function (that should be invoked as a goroutine)
-// that scans the data source at regular intervals for pending campaigns,
-// and queues them for processing. The process queue fetches batches of
-// customers and pushes messages to them for each queued campaign
-// until all customers are exhausted, at which point, a campaign is marked
-// as "finished".
+// Run is a blocking function (that should be invoked as a goroutine) that
+// scans the data source at regular intervals for pending campaigns and starts
+// one producer per campaign. Each producer fetches its own batches and paces
+// its own messages, so a slow or low-rate campaign never delays another
+// campaign's batches. Workers deliver the admitted messages from the shared
+// queue.
 func (m *Manager) Run() {
 	if m.cfg.ScanCampaigns {
-		// Periodically scan campaigns and push running campaigns to nextPipes
-		// to fetch customers from the campaign.
+		// Periodically scan campaigns and start a producer for every running
+		// campaign that does not have one yet.
 		go m.scanCampaigns(m.cfg.ScanInterval)
 	}
 
@@ -912,69 +914,7 @@ func (m *Manager) Run() {
 		go m.worker()
 	}
 
-	// Indefinitely wait on the pipe queue to fetch the next set of customers
-	// for any active campaigns.
-	for {
-		select {
-		case <-m.done:
-			return
-		case p := <-m.nextPipes:
-			if p == nil {
-				continue
-			}
-			// A buffered pipe may become ready at the same time as the shutdown
-			// signal. Do not fetch another customer batch after Close; release
-			// the pipe's scheduler counter so its cleanup goroutine cannot hang.
-			if m.closed.Load() {
-				p.Stop(stopReasonPause, false)
-				p.wg.Done()
-				continue
-			}
-			has, err := p.NextCustomers()
-			if errors.Is(err, ErrCampaignBatchPending) {
-				// Keep this pipe's scheduler reference while its workers settle.
-				// Other campaigns can continue fetching and delivering meanwhile.
-				go p.waitForProgress()
-				continue
-			}
-			if err != nil {
-				m.log.Printf("error processing campaign batch (%s): %v", p.camp.Name, err)
-
-				// If the batch fails, stop the pipe and release it so that it doesn't hang forever.
-				// The cleanup() records the state in DB and scanCampaigns() picks it up at a later point.
-				p.Stop(stopReasonPause, false)
-				p.wg.Done()
-				continue
-			}
-
-			if has {
-				// There are more customers to fetch. Queue again.
-				select {
-				case m.nextPipes <- p:
-				case <-m.done:
-					p.Stop(stopReasonPause, false)
-					p.wg.Done()
-				default:
-					// If the queue is full for any reason, stop the pipe and release it.
-					// The cleanup() records the state in DB and scanCampaigns() picks it up
-					// at a later point.
-					p.Stop(stopReasonPause, false)
-					p.wg.Done()
-				}
-			} else {
-				// The pipe is created with a +1 on the waitgroup pseudo counter
-				// so that it immediately waits. Subsequently, every message created
-				// is incremented in the counter in pipe.newMessage(), and when it's'
-				// processed (or ignored when a campaign is paused or cancelled),
-				// the count is's reduced in worker().
-				//
-				// This marks down the original non-message +1, causing the waitgroup
-				// to be released and the pipe to end, triggering the pg.Wait()
-				// in newPipe() that calls pipe.cleanup().
-				p.wg.Done()
-			}
-		}
-	}
+	<-m.done
 }
 
 // CacheTpl caches a template for ad-hoc use. This is currently only used by tx templates.
@@ -1130,8 +1070,7 @@ func (m *Manager) Close() {
 }
 
 // scanCampaigns is a blocking function that periodically scans the data source
-// for campaigns to process and dispatches them to the manager. It feeds campaigns
-// into nextPipes.
+// for campaigns to process and starts one producer per new campaign pipe.
 func (m *Manager) scanCampaigns(tick time.Duration) {
 	t := time.NewTicker(tick)
 	defer t.Stop()
@@ -1168,21 +1107,9 @@ func (m *Manager) scanCampaigns(tick time.Duration) {
 			m.log.Printf("start processing campaign (%s)", c.Name)
 			m.auditCampaign("campaign.send_started", c, map[string]any{"status": c.Status})
 
-			// If customer processing is busy, move on. Blocking and waiting
-			// can end up in a race condition where the waiting campaign's
-			// state in the data source has changed.
-			select {
-			case m.nextPipes <- p:
-			case <-m.done:
-				p.Stop(stopReasonPause, false)
-				p.wg.Done()
-			default:
-				// If the queue is full for any reason, stop the pipe and release it.
-				// The cleanup() records the state in DB and scanCampaigns() picks it up
-				// at a later point.
-				p.Stop(stopReasonPause, false)
-				p.wg.Done()
-			}
+			// The pipe starts with a single wait-group reference that its
+			// producer releases once no more batches can be fetched.
+			go p.produce()
 		}
 	}
 }
@@ -1210,7 +1137,7 @@ func (m *Manager) worker() {
 			if m.closed.Load() {
 				if msg.pipe != nil {
 					msg.pipe.Stop(stopReasonPause, false)
-					msg.pipe.messageDone()
+					msg.complete()
 				}
 				continue
 			}
@@ -1218,7 +1145,7 @@ func (m *Manager) worker() {
 			// If the campaign has ended or stopped, ignore the message.
 			if msg.pipe != nil && msg.pipe.stopped.Load() {
 				// Reduce the message counter on the pipe.
-				msg.pipe.messageDone()
+				msg.complete()
 				continue
 			}
 
@@ -1233,18 +1160,19 @@ func (m *Manager) worker() {
 			}
 
 			out := models.Message{
-				From:         msg.from,
-				To:           []string{msg.to},
-				Subject:      msg.subject,
-				ContentType:  msg.Campaign.ContentType,
-				Body:         body,
-				AltBody:      altBody,
-				Customer:     msg.Customer,
-				Messenger:    msg.Campaign.Messenger,
-				UseSMTPFrom:  email.IsMessengerName(msg.Campaign.Messenger),
-				UseSMTPQuota: email.IsMessengerName(msg.Campaign.Messenger),
-				Campaign:     msg.Campaign,
-				Attachments:  attachments,
+				From:                 msg.from,
+				To:                   []string{msg.to},
+				Subject:              msg.subject,
+				ContentType:          msg.Campaign.ContentType,
+				Body:                 body,
+				AltBody:              altBody,
+				Customer:             msg.Customer,
+				Messenger:            msg.Campaign.Messenger,
+				UseSMTPFrom:          email.IsMessengerName(msg.Campaign.Messenger),
+				UseSMTPQuota:         email.IsMessengerName(msg.Campaign.Messenger),
+				Campaign:             msg.Campaign,
+				CampaignRateReserved: msg.CampaignRateReserved,
+				Attachments:          attachments,
 			}
 
 			h := textproto.MIMEHeader{}
@@ -1289,7 +1217,7 @@ func (m *Manager) worker() {
 			if m.closed.Load() {
 				if msg.pipe != nil {
 					msg.pipe.Stop(stopReasonPause, false)
-					msg.pipe.messageDone()
+					msg.complete()
 				}
 				continue
 			}
@@ -1398,7 +1326,7 @@ func (m *Manager) worker() {
 				// stop/defer signal have been persisted. Doing this first lets the
 				// cleanup goroutine race ahead and incorrectly mark a quota or SMTP
 				// failure as a naturally finished campaign.
-				msg.pipe.messageDone()
+				msg.complete()
 			}
 
 		// Arbitrary message.

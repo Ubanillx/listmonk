@@ -80,7 +80,7 @@ v6.68.0 同事务安装视图并保守补齐历史确认：必须同时有成功
 
 `campaign_retry_queue` 把私域与公海当前可投递、未完成的快照合并，并从持久 `campaign_send_errors` 计算各收件人的失败次数。普通 SMTP 活动每次只领取全活动最低失败次数的轮次：先完成首次投递，再处理一次失败的收件人，随后处理两次失败的收件人。私域、公海及不同目标组织共享轮次；组织轮询游标和 SMTP 分配规则保持原语义。暂停、恢复、重启、定向补发不清除失败历史；已退订、已转移、分配失效或重试耗尽的收件人不阻塞下一轮。定向补发的轮次只包含选中快照。
 
-尚在 queued 的低轮次收件人也构成屏障；更高轮次不能抢在其 SMTP 结果之前领取。队列因该屏障暂时为空时，`cmd/manager_store.go` 返回已有 `ErrCampaignBatchPending`，Manager 异步等待进度通知，不能误判活动结束。全组织公海在目标组织额度耗尽时按原日历规则延期。每封失败记录与累计上限仍原子保存，原全局错误阈值和 SMTP 结构故障暂停保护继续生效。
+尚在 queued 的低轮次收件人也构成屏障；更高轮次不能抢在其 SMTP 结果之前领取。队列因该屏障暂时为空时，`cmd/manager_store.go` 返回已有 `ErrCampaignBatchPending`，活动 producer 本地等待投递进度通知（短暂兜底回查）后再领取，不能误判活动结束，也不占用其他活动的调度。全组织公海在目标组织额度耗尽时按原日历规则延期。每封失败记录与累计上限仍原子保存，原全局错误阈值和 SMTP 结构故障暂停保护继续生效。
 
 `internal/messenger/email/email.go` 为普通营销投递使用只尝试一次的 SMTP 池，失败立即交还活动队列，不在一封邮件内部重复尝试；非营销、事务、系统和 opt-in 仍采用 `max_msg_retries`。两个连接池共用既有 SMTP 并发门、随机等待和每日额度跟踪。迁移仅安装派生视图，不改写历史或复活 failed/sent。回归：`cmd/campaign_retry_order_test.go`（暂停/在途屏障/混合受众/跨组织轮询/升级一致性）、`internal/messenger/email/campaign_retry_test.go`（真实 TCP 失败尝试数）。
 
@@ -226,7 +226,7 @@ Bulma 入口改用显式路径 `bulma/sass/utilities/all` 与 `bulma/bulma.sass`
 
 `campaigns.send_errors` 保存活动累计失败次数，发送 worker 与收件人渲染失败通过 `CampaignSendErrorStore` 调用 `cmd/manager_store.go::RecordCampaignSendError`，数据库原子递增，普通与公海收件人共用同一活动统计。每日额度耗尽、主动停止和服务关闭不计入；SMTP/回信路由不可用及普通发送失败计入。重试失败重复计数，成功重试、暂停续发及重启不清零；不是当前失败收件人数，也不是退信数。渲染失败归还 pending 并参与单次运行的错误暂停阈值。列表、详情及运行统计 API 返回 `send_errors`；`Campaigns.vue` 使用运行统计轮询展示，暂停后重新读取持久化总数。迁移 `internal/migrations/v6.59.0.go` 为旧活动置零，不从日志或 pending 状态猜测历史错误；新建/克隆活动从零开始。
 
-活动每日上限只按部署时区当天成功发送的邮件计数；queued 收件人仅预占容量，预占满额返回 `ErrCampaignBatchPending`，Manager 异步等待 worker 持久化结果后重新领取，不据此延期，也不阻塞其他活动。失败归还 pending 并释放容量，成功才消耗每日额度；达到成功上限且仍有未发送收件人，或 SMTP 每日额度耗尽，才延至次日 `daily_resume_time`；最后一封恰好达到上限时直接完成。普通与公海收件人的 sent 状态、`campaign_daily_usage` 和累计成功数在同一事务内更新，按活动→收件人锁顺序且已 sent 不重复累计。结果写入或失败归还出错时暂停，避免留下无人处理的 queued 预占。停止/关闭会唤醒等待管道并释放调度引用；无需迁移或重算历史每日使用量。SMTP 额度耗尽只输出延期日志，不打印 `error sending`。普通发送错误达到 `MaxSendErrors` 时暂停，阈值只计算本轮运行。来源：`cmd/{send_limits,manager_store,campaign_daily_limit_test}.go`、`internal/manager/{manager,pipe,daily_limit_test,send_errors_test}.go`、`queries/campaigns.sql`。
+活动每日上限只按部署时区当天成功发送的邮件计数；queued 收件人仅预占容量，预占满额返回 `ErrCampaignBatchPending`，活动 producer 本地等待 worker 持久化结果后重新领取，不据此延期，也不阻塞其他活动。失败归还 pending 并释放容量，成功才消耗每日额度；达到成功上限且仍有未发送收件人，或 SMTP 每日额度耗尽，才延至次日 `daily_resume_time`；最后一封恰好达到上限时直接完成。普通与公海收件人的 sent 状态、`campaign_daily_usage` 和累计成功数在同一事务内更新，按活动→收件人锁顺序且已 sent 不重复累计。结果写入或失败归还出错时暂停，避免留下无人处理的 queued 预占。停止/关闭会中断 producer 的等待与投递进度等待；暂停时未发送的 queued 预占仍由收件人重置释放；无需迁移或重算历史每日使用量。SMTP 额度耗尽只输出延期日志，不打印 `error sending`。普通发送错误达到 `MaxSendErrors` 时暂停，阈值只计算本轮运行。来源：`cmd/{send_limits,manager_store,campaign_daily_limit_test}.go`、`internal/manager/{manager,pipe,daily_limit_test,send_errors_test}.go`、`queries/campaigns.sql`。
 
 ### 错误原因与客户汇总（v6.60.0）
 
@@ -471,7 +471,7 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 
 个人/组织 SMTP 测试共用 `cmd/personal_smtp.go::testOwnedSMTP` 和 `cmd/smtp_errors.go::smtpTestError`。当前 smtppool v2.0.2 将 `wait_timeout` 同时用于连接池等待与新连接创建；隐式 TLS 的 `context deadline exceeded` 表示 TCP 连接/SSL/TLS 握手尚未完成，未进入 SMTP 认证。测试 API 保持 HTTP 500，使用本地化诊断说明目标地址和单次连接时限，并保留内部原始错误；不更改凭据、TLS 校验或全局超时。重试可使请求总时间超过单次时限，本机连接成功不能证明部署服务器的出站网络正常。
 
-投递限速分三层：`campaigns.smtp_rate_limit` 先约束单活动所有 SMTP 的合计发送频率（封/分钟），个人来源默认 5、组织来源默认 200，用户可设 1–1000000；以活动 UUID 共享平滑间隔，全组织公海也共用该活动额度。平台 `app.message_rate` 是所有 SMTP 合计的每秒硬上限，滑动窗口同样为平台总量；`app.concurrency` 同时控制工作线程数和所有 SMTP 的实际投递总并发。超限等待、不丢弃，线程数不乘大发送频率。`internal/messenger/email/delivery_limiter.go` 在实际 SMTP Send 前统一取得活动、平台频率及并发许可，完成或失败时释放并发许可并唤醒队列；`internal/manager/manager.go` 给系统通知、个人/组织缓存池、公海单发件池及临时连接测试挂同一 limiter，因此直接发送的系统通知也受平台限制。单 SMTP 连接、重试、超时和随机延迟仍独立生效。所有限速与发送门为进程内状态，重启重置，多个活动工作进程之间不共享；需要平台合计上限时采用一个活动发送进程。
+投递限速分三层：`campaigns.smtp_rate_limit` 先约束单活动所有 SMTP 的合计发送频率（封/分钟），个人来源默认 5、组织来源默认 200，用户可设 1–1000000；以活动 UUID 共享平滑间隔，全组织公海也共用该活动额度。平台 `app.message_rate` 是所有 SMTP 合计的每秒硬上限，滑动窗口同样为平台总量；`app.concurrency` 同时控制工作线程数和所有 SMTP 的实际投递总并发。超限等待、不丢弃，线程数不乘大发送频率。每个活动由独立的 producer goroutine 领取自己的批次，并在消息进入共享投递队列**之前**用 `DeliveryLimiter.WaitCampaign` 预占活动发送间隔（消息携带 `CampaignRateReserved`，发送前不再二次等待）；同时按活动速率限制“已准入未回执”的在途消息数（约 4 秒额度、至少 1、不超过 `app.concurrency`），使队列拥塞恢复后最多释放约一个短窗口的预准入消息，保持原有平滑语义而不至于突发；慢速活动的等待只阻塞它自己的 producer，不占用工作线程、不阻塞其他活动的批次领取，也不会因为占着队头而让别的活动等待。平台频率与并发许可仍在实际 SMTP Send 前统一取得，`internal/messenger/email/email.go` 依次在发送前才取得活动随机延迟门、平台 limiter 与 SMTP 连接容量，等待限速时不再占住连接。完成或失败时释放并发许可并唤醒队列；`internal/manager/manager.go` 给系统通知、个人/组织缓存池、公海单发件池及临时连接测试挂同一 limiter，因此直接发送的系统通知也受平台限制。单 SMTP 连接、重试、超时和随机延迟仍独立生效。所有限速与发送门为进程内状态，重启重置，多个活动工作进程之间不共享；需要平台合计上限时采用一个活动发送进程。
 
 - 营销活动勾选一级公海时，默认仍是单组织范围（`campaigns.pool_scope = 'organization'`，按当前工作区组织的公海分配解析）。持有专用权限 `campaigns:public_pool_send` 的账号可以把活动创建为 `all_organizations`：受众是该一级公海下**所有活跃组织**的公海分配并集，只接受一级公海列表（显式公海分配列表与普通客户列表都会被拒绝），权限常量在 `internal/auth/models.go`、清单在 `permissions.json`（`campaigns` 组），前端以 `$can('campaigns:public_pool_send')` 控制入口。
 - 组织工作区的新活动通过“公海发送范围”显式选择本组织或全部目标组织，默认本组织；选择全部目标组织后禁止混选私域列表。个人工作区仅允许纯公海受众进入全组织路径。已有活动范围不可修改。发送条件状态绑定已保存活动的发件来源、受众 ID 集合及回信优先级；编辑后隐藏旧状态并提示保存，成功保存后重新检查，异步旧响应不能覆盖新状态。已有全组织活动的 SMTP 概览会验证表单传入的 `customer_list_ids` 授权，但不因受众改变发件归属。

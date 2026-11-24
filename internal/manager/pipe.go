@@ -225,15 +225,36 @@ func (p *pipe) NextCustomers() (bool, error) {
 			return false, nil
 		}
 
+		// Pace the campaign before the message enters the shared delivery queue.
+		// Waiting at admission, instead of inside a delivery worker, means a slow
+		// campaign's send interval never occupies a worker or an SMTP connection
+		// that another running campaign could use.
+		if err := p.admit(&msg); err != nil {
+			p.Stop(stopReasonPause, false)
+			p.wg.Done()
+			return false, nil
+		}
+
+		// The campaign may have been paused while the send slot was awaited.
+		// complete() returns the admission taken by admit() as well as the
+		// message's wait-group reference.
+		if p.stopped.Load() {
+			msg.complete()
+			return false, nil
+		}
+
 		// Push the message to the queue while blocking and waiting until
 		// the queue is drained. During a reload the manager's done signal can
 		// race with this send; select on it so the producer cannot remain stuck
 		// (or write into a queue whose workers have already exited).
 		select {
 		case p.m.campMsgQ <- msg:
+		case <-p.done:
+			msg.complete()
+			return false, nil
 		case <-p.m.done:
 			p.Stop(stopReasonPause, false)
-			p.wg.Done()
+			msg.complete()
 			return false, nil
 		}
 
@@ -242,26 +263,91 @@ func (p *pipe) NextCustomers() (bool, error) {
 	return true, nil
 }
 
-// waitForProgress owns the pipe's scheduler reference until it can be queued
-// again or stopped. Waiting here must not block the manager's other campaigns.
-func (p *pipe) waitForProgress() {
+// produce fetches this campaign's recipient batches and admits the rendered
+// messages to the shared worker queue at the campaign's own send rate. Every
+// pipe has its own producer, so one campaign's pacing, batch fetch or daily
+// allowance can never delay another running campaign.
+func (p *pipe) produce() {
+	// The pipe starts with a single wait-group reference that the previous
+	// serial scheduler released after the final batch. Cleanup waits for this
+	// reference plus every queued message, so release it on every exit path.
+	defer p.wg.Done()
+
+	for {
+		has, err := p.NextCustomers()
+		if errors.Is(err, ErrCampaignBatchPending) {
+			// The remaining daily allowance is fully claimed by queued
+			// recipients. Wait for deliveries to settle instead of holding up
+			// the manager's other campaigns.
+			if !p.waitForSendProgress() {
+				return
+			}
+			continue
+		}
+		if err != nil {
+			p.m.log.Printf("error processing campaign batch (%s): %v", p.camp.Name, err)
+
+			// Stop the pipe and let cleanup persist the paused state. The
+			// scanner picks the campaign up again on a later pass.
+			p.Stop(stopReasonPause, false)
+			return
+		}
+		if !has {
+			return
+		}
+	}
+}
+
+// admit waits for the campaign's own per-minute send slot and marks the
+// message so the shared limiter does not pace it a second time after a worker
+// dequeues it. A message dropped after admission returns its outstanding slot,
+// but the consumed pacing interval is not rewound; a resumed campaign waits at
+// most one interval before its next send.
+func (p *pipe) admit(msg *CampaignMessage) error {
+	if !email.IsMessengerName(p.camp.Messenger) {
+		return nil
+	}
+	if err := p.m.deliveryLimiter.WaitCampaign(p.camp, p.maxOutstanding(), p.done); err != nil {
+		return err
+	}
+	msg.CampaignRateReserved = true
+	return nil
+}
+
+// maxOutstanding keeps at most a few seconds of a campaign's allowance in the
+// shared queue. Slow campaigns therefore hold a single admitted message, so a
+// congested queue cannot later release a batch of pre-admitted messages at the
+// platform rate instead of the campaign rate. Fast campaigns keep enough
+// concurrency to sustain their configured rate when SMTP is slow.
+func (p *pipe) maxOutstanding() int {
+	interval := email.CampaignInterval(p.camp)
+	if interval <= 0 {
+		return 0
+	}
+	burst := int((4 * time.Second) / interval)
+	if burst < 1 {
+		burst = 1
+	}
+	return min(burst, p.m.cfg.Concurrency)
+}
+
+// waitForSendProgress yields the producer until a queued delivery completes so
+// a batch that claimed the remaining daily allowance can be fetched again. The
+// fallback timer recovers from a notification that raced with the channel's
+// single buffered slot; it never blocks another campaign's producer.
+func (p *pipe) waitForSendProgress() bool {
+	timer := time.NewTimer(10 * time.Second)
+	defer timer.Stop()
 	select {
 	case <-p.progress:
+		return true
+	case <-timer.C:
+		return true
 	case <-p.done:
-		p.wg.Done()
-		return
+		return false
 	case <-p.m.done:
 		p.Stop(stopReasonPause, false)
-		p.wg.Done()
-		return
-	}
-	select {
-	case p.m.nextPipes <- p:
-	case <-p.done:
-		p.wg.Done()
-	case <-p.m.done:
-		p.Stop(stopReasonPause, false)
-		p.wg.Done()
+		return false
 	}
 }
 
@@ -273,6 +359,20 @@ func (p *pipe) messageDone() {
 	default:
 	}
 	p.wg.Done()
+}
+
+// complete releases the campaign admission accounted by the producer and the
+// pipe wait-group reference after the delivery result and any scheduling
+// decision are persisted. Messages that never passed admission (for example
+// interactive test sends) only release the wait-group reference.
+func (msg CampaignMessage) complete() {
+	if msg.pipe == nil {
+		return
+	}
+	if msg.CampaignRateReserved && msg.Campaign != nil {
+		msg.pipe.m.deliveryLimiter.ReleaseCampaign(msg.Campaign)
+	}
+	msg.pipe.messageDone()
 }
 
 // OnError keeps track of the number of errors that occur while sending messages

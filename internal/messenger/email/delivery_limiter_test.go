@@ -23,17 +23,17 @@ func TestCampaignPacingDefaultsAndIndependentCampaigns(t *testing.T) {
 		l := NewDeliveryLimiter(1000, 0, 0, nil)
 		now := time.Now()
 		campaign := &models.Campaign{Base: models.Base{ID: 1}, SMTPSource: tc.source, SMTPRateLimit: tc.limit}
-		if d := l.take(now, campaign); d != 0 {
+		if d := l.take(now, campaign, false); d != 0 {
 			t.Fatal(d)
 		}
-		if d := l.take(now, campaign); d != tc.interval {
+		if d := l.take(now, campaign, false); d != tc.interval {
 			t.Fatalf("source=%s limit=%d wait=%s, want %s", tc.source, tc.limit, d, tc.interval)
 		}
 		other := &models.Campaign{Base: models.Base{ID: 2}, SMTPRateLimit: 1}
-		if d := l.take(now, other); d != 0 {
+		if d := l.take(now, other, false); d != 0 {
 			t.Fatalf("another campaign inherited first campaign's limit: %s", d)
 		}
-		if d := l.take(now.Add(tc.interval), campaign); d != 0 {
+		if d := l.take(now.Add(tc.interval), campaign, false); d != 0 {
 			t.Fatalf("campaign did not resume when its interval elapsed: %s", d)
 		}
 	}
@@ -43,20 +43,20 @@ func TestPlatformCapIncludesAllSMTPAndRollingWindow(t *testing.T) {
 	l := NewDeliveryLimiter(2, 3, time.Minute, nil)
 	now := time.Now()
 	for range 2 {
-		if d := l.take(now, nil); d != 0 {
+		if d := l.take(now, nil, false); d != 0 {
 			t.Fatal(d)
 		}
 	}
-	if d := l.take(now, &models.Campaign{UUID: "another", SMTPRateLimit: 100}); d != time.Second {
+	if d := l.take(now, &models.Campaign{UUID: "another", SMTPRateLimit: 100}, false); d != time.Second {
 		t.Fatalf("campaign bypassed global SMTP cap: %s", d)
 	}
-	if d := l.take(now.Add(time.Second), nil); d != 0 {
+	if d := l.take(now.Add(time.Second), nil, false); d != 0 {
 		t.Fatal(d)
 	}
-	if d := l.take(now.Add(2*time.Second), nil); d != 58*time.Second {
+	if d := l.take(now.Add(2*time.Second), nil, false); d != 58*time.Second {
 		t.Fatalf("system mail bypassed platform rolling window: %s", d)
 	}
-	if d := l.take(now.Add(time.Minute), nil); d != 0 {
+	if d := l.take(now.Add(time.Minute), nil, false); d != 0 {
 		t.Fatal(d)
 	}
 }
@@ -155,6 +155,89 @@ func TestSharedSMTPConnectionCapAcrossPools(t *testing.T) {
 	if err := second.servers[0].connections.wait(0, 0, nil, cancel, nil); !errors.Is(err, ErrSendCancelled) {
 		t.Fatal("second pool bypassed connection cap", err)
 	}
+}
+
+func TestAdmittedCampaignMessageSkipsCampaignPacing(t *testing.T) {
+	l := NewDeliveryLimiter(1000, 0, 0, nil)
+	campaign := &models.Campaign{UUID: "campaign", SMTPRateLimit: 5}
+	now := time.Now()
+	if d := l.take(now, campaign, false); d != 0 {
+		t.Fatal(d)
+	}
+	if d := l.take(now, campaign, false); d != 12*time.Second {
+		t.Fatalf("campaign pacing = %s, want 12s", d)
+	}
+	// A producer admits messages only when the campaign slot is free and
+	// already consumed it; the send path must not pace it a second time.
+	if d := l.take(now, campaign, true); d != 0 {
+		t.Fatalf("admitted message was paced twice: %s", d)
+	}
+}
+
+func TestWaitCampaignPacesOnlyItsOwnCampaignAndCancels(t *testing.T) {
+	l := NewDeliveryLimiter(1000, 0, 0, nil)
+	slow := &models.Campaign{UUID: "slow", SMTPRateLimit: 1}
+	if err := l.WaitCampaign(slow, 0, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	cancel := make(chan struct{})
+	waited := make(chan error, 1)
+	go func() { waited <- l.WaitCampaign(slow, 0, cancel) }()
+	select {
+	case err := <-waited:
+		t.Fatalf("campaign rate was not enforced: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	// Another campaign has an independent slot and must not wait behind the
+	// slow campaign's pacing.
+	fast := &models.Campaign{UUID: "fast", SMTPRateLimit: 6000}
+	start := time.Now()
+	if err := l.WaitCampaign(fast, 0, nil); err != nil {
+		t.Fatal(err)
+	}
+	if waitedFor := time.Since(start); waitedFor > time.Second {
+		t.Fatalf("fast campaign waited behind slow campaign: %s", waitedFor)
+	}
+
+	// Pausing the campaign releases its producer immediately.
+	close(cancel)
+	select {
+	case err := <-waited:
+		if !errors.Is(err, ErrSendCancelled) {
+			t.Fatalf("cancelled admission = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("campaign admission was not cancelled")
+	}
+}
+
+func TestWaitCampaignLimitsOutstandingMessages(t *testing.T) {
+	l := NewDeliveryLimiter(1000, 0, 0, nil)
+	campaign := &models.Campaign{UUID: "capped", SMTPRateLimit: 1000000}
+	if err := l.WaitCampaign(campaign, 1, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	waited := make(chan error, 1)
+	go func() { waited <- l.WaitCampaign(campaign, 1, nil) }()
+	select {
+	case err := <-waited:
+		t.Fatalf("second message was admitted above the outstanding cap: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	l.ReleaseCampaign(campaign)
+	select {
+	case err := <-waited:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("release did not admit the next message")
+	}
+	l.ReleaseCampaign(campaign)
 }
 
 func TestPlatformConcurrencyQueuesSystemAndCampaignMail(t *testing.T) {

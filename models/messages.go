@@ -24,6 +24,11 @@ type Message struct {
 	SendCancel     <-chan struct{} `json:"-"`
 	CampaignCancel <-chan struct{} `json:"-"`
 
+	// CampaignRateReserved marks a message whose campaign send slot was already
+	// consumed when it was admitted to the delivery queue. The shared limiter
+	// must not pace it a second time at send time.
+	CampaignRateReserved bool `json:"-"`
+
 	Customer     Customer
 	UseSMTPFrom  bool
 	UseSMTPQuota bool

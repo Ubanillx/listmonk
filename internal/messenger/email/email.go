@@ -291,10 +291,11 @@ func (e *Emailer) Push(m models.Message) (err error) {
 		em.Text = relatedAttachmentsTextBody(m.AltBody, files)
 	}
 
-	if err = srv.connections.wait(0, 0, e.done, m.SendCancel, m.CampaignCancel); err != nil {
-		return err
-	}
-	defer srv.connections.release()
+	// Acquire every permit as late as possible: the account's send-delay gate
+	// first (it only spaces out sends for this account), then the platform rate
+	// and concurrency limits, and the SMTP connection capacity only for the
+	// actual transaction. Waiting for a rate slot must never hold a connection
+	// that another campaign's ready message can use.
 	if srv.gate != nil {
 		if err = srv.gate.wait(srv.SendDelayMin, srv.SendDelayMax, e.done, m.SendCancel, m.CampaignCancel); err != nil {
 			return err
@@ -308,6 +309,10 @@ func (e *Emailer) Push(m models.Message) (err error) {
 		return err
 	}
 	defer e.limiter.Release()
+	if err = srv.connections.wait(0, 0, e.done, m.SendCancel, m.CampaignCancel); err != nil {
+		return err
+	}
+	defer srv.connections.release()
 	pool := srv.pool
 	if m.Campaign != nil && m.Campaign.Type == models.CampaignTypeRegular && srv.campaignPool != nil {
 		pool = srv.campaignPool

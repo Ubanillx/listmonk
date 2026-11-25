@@ -16,6 +16,7 @@ import (
 
 	"github.com/knadh/listmonk/internal/auth"
 	"github.com/knadh/listmonk/internal/core"
+	"github.com/knadh/listmonk/internal/manager"
 	"github.com/knadh/listmonk/internal/messenger/email"
 	"github.com/knadh/listmonk/internal/notifs"
 	"github.com/knadh/listmonk/models"
@@ -221,6 +222,20 @@ func (a *App) PreviewCampaign(c echo.Context) error {
 		}
 	}
 
+	// Attachments are part of the delivered message. A POST carries the
+	// editor's unsaved attachment selection; a GET renders the saved set.
+	var (
+		requestIDs    []int
+		hasRequestIDs bool
+	)
+	if isPost {
+		requestIDs, hasRequestIDs, err = a.parsePreviewMediaIDs(c.FormValue("media"))
+		if err != nil {
+			return err
+		}
+	}
+	a.attachPreviewMedia(c, access, &camp, requestIDs, hasRequestIDs, tplID)
+
 	// Use a dummy campaign ID to prevent views and clicks from {{ TrackView }}
 	// and {{ TrackLink }} being registered on preview.
 	camp.UUID = dummyCustomer.UUID
@@ -244,16 +259,35 @@ func (a *App) renderCampaignPreview(c echo.Context, camp models.Campaign) error 
 			a.i18n.Ts("templates.errorRendering", "error", err.Error()))
 	}
 
+	body := msg.Body()
+	if email.IsMessengerName(camp.Messenger) && len(camp.Attachments) > 0 {
+		// Mirror the sender: attached library files become inline images or
+		// file links appended to the body, not MIME parts.
+		var rootURL string
+		if a.urlCfg != nil {
+			rootURL = a.urlCfg.RootURL
+		}
+		linked, _, _, err := manager.LinkMediaAttachmentsForPreview(body, msg.AltBody(), camp.Attachments,
+			rootURL, camp.ContentType == models.CampaignContentTypePlain)
+		if err != nil {
+			// Preview is a visual aid; send-time media validation still runs
+			// when the campaign is tested or started.
+			a.log.Printf("error linking preview attachments: %v", err)
+		} else {
+			body = linked
+		}
+	}
+
 	// Plaintext headers for plain body.
 	if camp.ContentType == models.CampaignContentTypePlain {
-		return c.String(http.StatusOK, string(msg.Body()))
+		return c.String(http.StatusOK, string(body))
 	}
 
 	// Preview renders user-authored HTML. The UI loads it in a sandboxed
 	// iframe; the response header applies the same isolation when the URL is
 	// opened directly.
 	c.Response().Header().Set("Content-Security-Policy", cspSandboxScripts)
-	return c.HTML(http.StatusOK, string(msg.Body()))
+	return c.HTML(http.StatusOK, string(body))
 }
 
 // PreviewNewCampaign renders a preview of an unsaved campaign. The selected
@@ -307,10 +341,152 @@ func (a *App) PreviewNewCampaign(c echo.Context) error {
 		}
 	}
 
+	requestIDs, hasRequestIDs, err := a.parsePreviewMediaIDs(c.FormValue("media"))
+	if err != nil {
+		return err
+	}
+	a.attachPreviewMedia(c, access, &camp, requestIDs, hasRequestIDs, tplID)
+
 	// Use a dummy campaign ID to prevent views and clicks from {{ TrackView }}
 	// and {{ TrackLink }} being registered on preview.
 	camp.UUID = dummyCustomer.UUID
 	return a.renderCampaignPreview(c, camp)
+}
+
+// maxPreviewMediaIDs bounds the untrusted attachment list an editor may submit
+// for a preview; the body limit alone would allow millions of IDs.
+const maxPreviewMediaIDs = 200
+
+// parsePreviewMediaIDs reads the optional JSON attachment ID list sent by the
+// admin UI. The second return value distinguishes an explicit (possibly empty)
+// selection from an omitted field, which asks the server to use the saved set.
+func (a *App) parsePreviewMediaIDs(raw string) ([]int, bool, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, false, nil
+	}
+	var ids []int
+	if err := json.Unmarshal([]byte(raw), &ids); err != nil || ids == nil {
+		return nil, false, echo.NewHTTPError(http.StatusBadRequest,
+			a.i18n.Ts("globals.messages.errorInvalidIDs", "error", "media"))
+	}
+	if len(ids) > maxPreviewMediaIDs {
+		return nil, false, echo.NewHTTPError(http.StatusBadRequest,
+			a.i18n.Ts("globals.messages.errorInvalidIDs", "error", "too many media IDs"))
+	}
+	return ids, true, nil
+}
+
+// attachPreviewMedia resolves the attachments a campaign preview must render.
+// Library media are never sent as MIME parts: the sender rewrites inline
+// references and appends file links, so the preview reuses the same attachment
+// metadata. A preview never reads blobs or issues per-recipient delivery
+// links; the library file URL stands in for the delivery link so previewing
+// has no write side effects.
+//
+// Candidate IDs come from three places with different trust: the campaign's
+// saved media set (already workspace-scoped by the preview query), the
+// selected template's media (gated by the same template-media rule the sender
+// uses), and the editor's unsaved selection, which needs the ordinary media
+// read permission so a campaign reader cannot probe the library. Unresolvable
+// media is skipped; the send paths keep enforcing the full association.
+func (a *App) attachPreviewMedia(c echo.Context, access models.WorkspaceAccess, camp *models.Campaign, requestIDs []int, requestIsAuthoritative bool, tplID int) {
+	if camp == nil || !email.IsMessengerName(camp.Messenger) || a.core == nil {
+		return
+	}
+
+	associated := make(map[int]struct{}, len(camp.MediaIDs))
+	for _, id := range camp.MediaIDs {
+		if id > 0 {
+			associated[int(id)] = struct{}{}
+		}
+	}
+
+	// Template attachments are delivered with every message of a campaign even
+	// though the editor keeps them outside the campaign's attachment field.
+	if tplID < 1 && camp.TemplateID.Valid {
+		tplID = int(camp.TemplateID.Int)
+	}
+	templateIDs := make(map[int]struct{})
+	if tplID > 0 && a.db != nil {
+		var ids []int64
+		if err := a.db.Select(&ids,
+			`SELECT media_id FROM template_media WHERE template_id = $1 AND media_id IS NOT NULL ORDER BY media_id`, tplID); err != nil {
+			a.log.Printf("error loading preview template media: %v", err)
+		}
+		for _, id := range ids {
+			if id > 0 {
+				templateIDs[int(id)] = struct{}{}
+			}
+		}
+	}
+
+	ids := make([]int, 0, len(camp.MediaIDs)+len(requestIDs))
+	seen := make(map[int]struct{}, cap(ids))
+	add := func(id int) {
+		if id < 1 {
+			return
+		}
+		if _, ok := seen[id]; ok {
+			return
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	if requestIsAuthoritative {
+		for _, id := range requestIDs {
+			add(id)
+		}
+	} else {
+		for _, id := range camp.MediaIDs {
+			add(int(id))
+		}
+	}
+	for id := range templateIDs {
+		add(id)
+	}
+	// Delivery orders attachments by media ID; keep the preview cards in the
+	// same order regardless of the order the editor selected them.
+	slices.Sort(ids)
+
+	user := auth.GetUser(c)
+	mediaReadable := user.HasPerm(auth.PermMediaGet)
+	attachments := make([]models.Attachment, 0, len(ids))
+	for _, id := range ids {
+		_, isAssociated := associated[id]
+		_, isTemplate := templateIDs[id]
+		if !isAssociated && !isTemplate && !mediaReadable {
+			a.log.Printf("skipping preview attachment %d: media permission required", id)
+			continue
+		}
+		if isTemplate && !isAssociated {
+			allowed, err := a.core.CanUseTemplateMedia(access, tplID, id)
+			if err != nil {
+				a.log.Printf("skipping preview attachment %d: %v", id, err)
+				continue
+			}
+			if !allowed {
+				a.log.Printf("skipping preview attachment %d: not usable by template %d", id, tplID)
+				continue
+			}
+		}
+		m, err := a.core.GetWorkspaceMediaByID(access, id)
+		if err != nil {
+			// A stale or unreadable attachment must not hide the rest of the
+			// preview; the send paths keep enforcing the association.
+			a.log.Printf("skipping preview attachment %d: %v", id, err)
+			continue
+		}
+		source := personalMediaSourceURL(m.ID, m.Filename)
+		attachments = append(attachments, models.Attachment{
+			Name:        m.Filename,
+			MediaID:     m.ID,
+			Header:      manager.MakeAttachmentHeader(m.Filename, "base64", m.ContentType),
+			SourceURL:   source,
+			DeliveryURL: source,
+		})
+	}
+	camp.Attachments = attachments
 }
 
 // loadCampaignTemplateBody attaches the selected template body to the campaign

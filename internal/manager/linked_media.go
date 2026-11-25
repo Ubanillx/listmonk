@@ -17,6 +17,20 @@ import (
 // represents other library files with links. Raw, one-off system attachments
 // are preserved. No media-library binary is sent as a MIME part.
 func LinkMediaAttachments(body, altBody []byte, attachments []models.Attachment, rootURL string, plain bool) ([]byte, []byte, []models.Attachment, error) {
+	return linkMediaAttachments(body, altBody, attachments, rootURL, plain, true, false)
+}
+
+// LinkMediaAttachmentsForPreview applies the same link and file-card
+// rewriting for an author-facing preview. Recipient validation is skipped
+// because the preview deliberately links to the protected library URL instead
+// of issuing delivery links. Those links stay site-relative so the admin UI
+// can inline them with the session, whatever origin app.root_url names; the
+// preview must therefore not require a public root URL.
+func LinkMediaAttachmentsForPreview(body, altBody []byte, attachments []models.Attachment, rootURL string, plain bool) ([]byte, []byte, []models.Attachment, error) {
+	return linkMediaAttachments(body, altBody, attachments, rootURL, plain, false, true)
+}
+
+func linkMediaAttachments(body, altBody []byte, attachments []models.Attachment, rootURL string, plain, validate, relative bool) ([]byte, []byte, []models.Attachment, error) {
 	hasMedia := false
 	for _, a := range attachments {
 		if a.MediaID > 0 {
@@ -25,7 +39,7 @@ func LinkMediaAttachments(body, altBody []byte, attachments []models.Attachment,
 		}
 	}
 	if !hasMedia {
-		if !plain {
+		if validate && !plain {
 			if err := validateRecipientMedia(body, attachments, rootURL); err != nil {
 				return nil, nil, nil, err
 			}
@@ -33,8 +47,20 @@ func LinkMediaAttachments(body, altBody []byte, attachments []models.Attachment,
 		return body, altBody, attachments, nil
 	}
 	root, err := url.Parse(strings.TrimRight(rootURL, "/") + "/")
-	if err != nil || root.Host == "" || (root.Scheme != "https" && root.Scheme != "http") {
+	if err != nil {
+		root = &url.URL{}
+	}
+	if !relative && (root.Host == "" || (root.Scheme != "https" && root.Scheme != "http")) {
 		return nil, nil, nil, fmt.Errorf("a valid public root URL is required for email media")
+	}
+	linkURL := func(deliveryURL string) string {
+		if relative {
+			if strings.HasPrefix(deliveryURL, "/") {
+				return deliveryURL
+			}
+			return "/" + deliveryURL
+		}
+		return strings.TrimRight(rootURL, "/") + "/" + strings.TrimLeft(deliveryURL, "/")
 	}
 	urls := make([]string, len(attachments))
 	used := make([]bool, len(attachments))
@@ -47,7 +73,7 @@ func LinkMediaAttachments(body, altBody []byte, attachments []models.Attachment,
 		if a.DeliveryURL == "" {
 			return nil, nil, nil, fmt.Errorf("media %d has no recipient link", a.MediaID)
 		}
-		urls[i] = strings.TrimRight(rootURL, "/") + "/" + strings.TrimLeft(a.DeliveryURL, "/")
+		urls[i] = linkURL(a.DeliveryURL)
 	}
 	if !plain {
 		body, err = media.TransformReferences(body, func(ref media.Reference) (string, error) {
@@ -110,7 +136,7 @@ func LinkMediaAttachments(body, altBody []byte, attachments []models.Attachment,
 		out = append(out, extraFiles.Bytes()...)
 		body = append(out, body[insert:]...)
 	}
-	if !plain {
+	if validate && !plain {
 		if err := validateRecipientMedia(body, remaining, rootURL); err != nil {
 			return nil, nil, nil, err
 		}

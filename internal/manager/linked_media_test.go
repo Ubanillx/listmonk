@@ -53,6 +53,41 @@ func TestLinkedMediaDisplaysRemoteImagesAndFileLinks(t *testing.T) {
 	}
 }
 
+func TestLinkedMediaPreviewUsesLibraryLinksWithoutRecipientValidation(t *testing.T) {
+	// A preview has no per-recipient delivery links; the library URL stands in
+	// for them, so the resulting protected references are expected and must not
+	// fail the send-time recipient check. Links stay site-relative so the admin
+	// UI can inline them even when app.root_url names another origin.
+	media := linkedTestMedia()
+	for i := range media {
+		media[i].DeliveryURL = media[i].SourceURL
+	}
+	body, alt, remaining, err := LinkMediaAttachmentsForPreview(
+		[]byte(`<html><body><img src="/api/media/file/7/photo.png"><img src="https://example.com/api/media/file/7/photo.png"><img src="/api/media/file/99/unselected.png"></body></html>`),
+		[]byte("Hello"), media, "https://example.com", false)
+	if err != nil || len(remaining) != 0 {
+		t.Fatalf("preview linking: %v %+v", err, remaining)
+	}
+	for _, want := range []string{
+		`src="/api/media/file/7/photo.png"><img src="/api/media/file/7/photo.png"`,
+		`src="/api/media/file/99/unselected.png"`,
+		`href="/api/media/file/8/catalog.pdf"`,
+		`href="/api/media/file/8/catalog.pdf?download=1"`,
+		">catalog.pdf</a>",
+		"附件资料",
+	} {
+		if !strings.Contains(string(body), want) {
+			t.Fatalf("missing %q in preview body: %s", want, body)
+		}
+	}
+	if strings.Contains(string(body), `https://example.com/api/media/file/`) {
+		t.Fatalf("preview links must stay site-relative: %s", body)
+	}
+	if !strings.Contains(string(alt), "catalog.pdf: /api/media/file/8/catalog.pdf") {
+		t.Fatalf("preview alt body lost the file link: %s", alt)
+	}
+}
+
 func TestLinkedMediaFileCardsKeepEachNameAndType(t *testing.T) {
 	files := []struct {
 		name, contentType, label, color string

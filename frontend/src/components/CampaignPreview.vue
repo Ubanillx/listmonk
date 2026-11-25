@@ -154,6 +154,10 @@ export default {
       if (this.autoTrackLinks !== null) data.set('auto_track_links', this.autoTrackLinks);
       if (this.nameFallback) data.set('name_fallback', JSON.stringify(this.nameFallback));
       if (this.body) data.set('body', this.body);
+      // The server renders the attachment section from this unsaved selection.
+      if (this.type === 'campaign' && !this.isArchive) {
+        data.set('media', JSON.stringify(this.media.map((item) => item.id).filter(Boolean)));
+      }
     }
     try {
       const response = await this.$api.renderPreview(this.previewURL, data);

@@ -371,6 +371,8 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 
 `CampaignPreview.vue` 通过带工作区的登录请求获取渲染结果，只对当前活动/所选模板已关联或表单明确选择的媒体读取二进制，将图片转换为预览专用 data URL 后放入 `sandbox="allow-scripts"` 的 `srcdoc`。ID 与文件名同时匹配媒体元数据，旧文件名链接也解析为已关联的精确 ID；未关联图片与外域 URL 不触发父页面的鉴权读取。文件接口继续执行媒体角色、工作区和派生关联校验，隔离窗口不取得登录 Cookie，保存正文仍保留保护 URL，纯文本预览保留转义显示。活动列表、编辑器、归档与模板预览共用此路径。
 
+活动预览同时展示附件投递效果：`cmd/campaigns.go::attachPreviewMedia` 解析附件元数据（仅 POST 预览的 `media` JSON 数组优先，含空数组且最多 200 个，用于反映编辑器内未保存的附件增删；缺省或 GET 时使用已保存的 `campaign_media`，并始终并入所选模板的 `template_media`）。候选 ID 按来源分级：已保存关联按活动读取范围；模板附件走发送侧同一 `CanUseTemplateMedia` 规则；未保存且未关联的 ID 额外要求 `media:get`，避免活动只读者探测媒体库；不可读或跨工作区媒体跳过并记日志。`renderCampaignPreview` 复用 `internal/manager/linked_media.go::LinkMediaAttachmentsForPreview` 生成与发送相同的图片内嵌与“附件资料”文件卡片，按媒体 ID 排序与投递顺序一致。预览不读取二进制、不签发 `/email-media` 投递令牌，链接保持站点相对路径，使 `app.root_url` 与后台域名不同时仍能由上述 data URL 步骤内嵌；收件人侧“未关联媒体”校验只在发送路径执行。
+
 媒体文件夹是工作区内的数据库逻辑容器，不改变 filesystem 或 S3 provider 中的对象名。这样历史邮件正文中的媒体 URL、缩略图和跨 provider 行为不受影响。`media.folder_id` 指向 `media_folders`；`NULL` 表示根目录，`parent_id` 只形成同一工作区的树。v6.51.0 增加独立 `visibility`：`private`（个人）只对当前工作区的创建者可见，`organization`（组织）对当前组织成员可见，`global`（全体）对所有登录用户跨工作区可见；平台管理员可在所选工作区审查个人目录。个人工作区不能选择组织权限。迁移将既有个人目录回填为 `private`、组织目录回填为 `organization`，重复执行保留显式权限。
 
 `internal/core/media_folder_permissions.go` 与 `media_folders.go` 对每个目录递归检查全部祖先的可见性及组织活动状态，目录内媒体的库查询、明细、保护 URL 和发送关联使用目录权限；根目录媒体保留原资源策略，不能直接设为全局。媒体 API 返回目录对应的有效 `visibility`，但不改变媒体所有权。目录改名、权限编辑、移动和删除只允许创建者或所选工作区的平台管理员，并继续要求 `media:manage`；目录上传和嵌套创建可由本工作区的可读目录成员执行，全体共享不会赋予其它工作区写入权。发送关联在锁定媒体行后以 `FOR SHARE` 锁定祖先目录并重验权限，权限修改和移动使用 `FOR UPDATE`。模板/活动的历史派生保护 URL 仅对根目录媒体生效，目录内媒体不能借关联绕过目录权限。

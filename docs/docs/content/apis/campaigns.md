@@ -1,5 +1,11 @@
 # API / Campaigns
 
+## Campaign preview attachments (2026-11-25)
+
+Campaign previews render attachments the way the sender delivers them. Attached images that are not referenced in the body are appended as `<img>`; other attached files are appended as the localized "附件资料" link-card section, exactly like a real send. The preview uses the site-relative protected library URL `/api/media/file/{id}/{filename}` in place of the per-recipient `/email-media/` link (relative so the admin UI can inline it whatever origin `app.root_url` names), issues no delivery token and reads no blob.
+
+`POST /api/campaigns/{id}/preview` and `POST /api/campaigns/preview` accept an optional `media` form field: a JSON array of up to 200 media IDs such as `[12,15]`. When present (including `[]`) it replaces the campaign's saved `campaign_media` for that render, so unsaved attachment changes in the editor appear immediately. When omitted, the saved set is used. The selected template's `template_media` is always included, matching delivery. `GET /api/campaigns/{id}/preview` renders the saved set; a `media` query parameter is ignored. Saved campaign/template attachments follow their read rules; an unsaved `media` ID outside those associations also requires the `media:get` permission. Unreadable or out-of-workspace media is skipped, and malformed, `null` or oversized lists return HTTP 400.
+
 ## Unsaved campaign preview and render validation (2026-11-20)
 
 `POST /api/campaigns/preview` renders an unsaved campaign without persisting anything. It accepts form fields `template_id`, `content_type`, `body`, and `auto_track_links`. The selected template must be readable in the active workspace, and the caller needs campaign management permission plus a `campaigns:write` API key scope. The response is the rendered HTML with the sandbox CSP header, or plain text when `content_type=plain`. Compile and render failures return HTTP 400 with the `templates.errorCompiling` / `templates.errorRendering` message. Saved campaigns keep using `GET|POST /api/campaigns/{id}/preview`, which remains read-only (`campaigns:read`).

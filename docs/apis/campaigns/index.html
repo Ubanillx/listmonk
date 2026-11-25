@@ -1185,6 +1185,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#campaign-preview-attachments-2026-11-25" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Campaign preview attachments (2026-11-25)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#unsaved-campaign-preview-and-render-validation-2026-11-20" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2835,6 +2846,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#campaign-preview-attachments-2026-11-25" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Campaign preview attachments (2026-11-25)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#unsaved-campaign-preview-and-render-validation-2026-11-20" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3852,6 +3874,9 @@
 
 
 <h1 id="api-campaigns">API / Campaigns<a class="headerlink" href="#api-campaigns" title="Permanent link">&para;</a></h1>
+<h2 id="campaign-preview-attachments-2026-11-25">Campaign preview attachments (2026-11-25)<a class="headerlink" href="#campaign-preview-attachments-2026-11-25" title="Permanent link">&para;</a></h2>
+<p>Campaign previews render attachments the way the sender delivers them. Attached images that are not referenced in the body are appended as <code>&lt;img&gt;</code>; other attached files are appended as the localized "附件资料" link-card section, exactly like a real send. The preview uses the site-relative protected library URL <code>/api/media/file/{id}/{filename}</code> in place of the per-recipient <code>/email-media/</code> link (relative so the admin UI can inline it whatever origin <code>app.root_url</code> names), issues no delivery token and reads no blob.</p>
+<p><code>POST /api/campaigns/{id}/preview</code> and <code>POST /api/campaigns/preview</code> accept an optional <code>media</code> form field: a JSON array of up to 200 media IDs such as <code>[12,15]</code>. When present (including <code>[]</code>) it replaces the campaign's saved <code>campaign_media</code> for that render, so unsaved attachment changes in the editor appear immediately. When omitted, the saved set is used. The selected template's <code>template_media</code> is always included, matching delivery. <code>GET /api/campaigns/{id}/preview</code> renders the saved set; a <code>media</code> query parameter is ignored. Saved campaign/template attachments follow their read rules; an unsaved <code>media</code> ID outside those associations also requires the <code>media:get</code> permission. Unreadable or out-of-workspace media is skipped, and malformed, <code>null</code> or oversized lists return HTTP 400.</p>
 <h2 id="unsaved-campaign-preview-and-render-validation-2026-11-20">Unsaved campaign preview and render validation (2026-11-20)<a class="headerlink" href="#unsaved-campaign-preview-and-render-validation-2026-11-20" title="Permanent link">&para;</a></h2>
 <p><code>POST /api/campaigns/preview</code> renders an unsaved campaign without persisting anything. It accepts form fields <code>template_id</code>, <code>content_type</code>, <code>body</code>, and <code>auto_track_links</code>. The selected template must be readable in the active workspace, and the caller needs campaign management permission plus a <code>campaigns:write</code> API key scope. The response is the rendered HTML with the sandbox CSP header, or plain text when <code>content_type=plain</code>. Compile and render failures return HTTP 400 with the <code>templates.errorCompiling</code> / <code>templates.errorRendering</code> message. Saved campaigns keep using <code>GET|POST /api/campaigns/{id}/preview</code>, which remains read-only (<code>campaigns:read</code>).</p>
 <p><code>POST /api/campaigns</code> and <code>PUT /api/campaigns/{id}</code> now compile and render the campaign against a sample customer before saving. <code>PUT /api/campaigns/{id}/status</code> to <code>scheduled</code> or <code>running</code> renders first, using the same default-template fallback as the sender. Broken template expressions are rejected with HTTP 400 instead of failing per recipient during delivery. In this fork the campaign render context is <code>*manager.CampaignMessage</code> with the <code>.Campaign</code> and <code>.Customer</code> fields; legacy upstream <code>.Subscriber.*</code> expressions fail validation.</p>

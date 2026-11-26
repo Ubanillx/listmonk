@@ -171,7 +171,9 @@ CREATE TABLE campaigns (
     smtp_source     TEXT NOT NULL DEFAULT 'personal',
     smtp_pool_id    BIGINT,
     pool_reply_priority TEXT NOT NULL DEFAULT 'contact_first',
-    pool_scope      TEXT NOT NULL DEFAULT 'organization'
+    pool_scope      TEXT NOT NULL DEFAULT 'organization',
+    attachment_lang TEXT NOT NULL DEFAULT 'en'
+        CHECK (attachment_lang IN ('en','zh-CN','zh-TW','es','fr','de','pt','it','ru','ja','ko'))
 );
 
 CREATE TABLE campaign_pool_org_orders (

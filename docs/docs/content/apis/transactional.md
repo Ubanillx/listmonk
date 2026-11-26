@@ -12,6 +12,8 @@ Allows sending transactional messages to one or more customers via a preconfigur
 
 When `messenger` is `email` or `email-*`, the selected SMTP's sender configuration overrides `from_email`, and the request is subject to SMTP daily quota checks. If no SMTP has quota left, the API returns HTTP `429 Too Many Requests`.
 
+Media already attached to the template uses recipient links. In HTML email, template images appear inline, and other files that aren't already linked in the body appear in an English attachment section. In plain text, the template media appears as file links. A file uploaded with this request remains a separate MIME attachment.
+
 ##### Parameters
 
 | Name              | Type       | Required | Description                                                                |

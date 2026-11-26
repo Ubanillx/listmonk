@@ -26,7 +26,7 @@ func TestEmailMediaRejectsUnresolvedSources(t *testing.T) {
 		`<img src="signature.jpg">`,
 	} {
 		t.Run(body, func(t *testing.T) {
-			_, _, _, err := LinkMediaAttachments([]byte(body), nil, nil, "https://mail.test", false)
+			_, _, _, err := LinkMediaAttachments([]byte(body), nil, nil, "https://mail.test", false, "")
 			if err == nil {
 				t.Fatal("unresolved image was allowed to reach email delivery")
 			}
@@ -67,7 +67,7 @@ func TestSchedulerRejectsMissingTemplateImageBeforeCreatingPipe(t *testing.T) {
 
 func TestLinkMediaIncludesBackgroundSrcsetAndOutlookSources(t *testing.T) {
 	body := `<td background="/uploads/photo.png" style="background:url('/uploads/photo.png')"><img srcset="/uploads/photo.png 1x, /api/media/file/7/photo.png 2x"><!--[if mso]><v:fill src="/uploads/photo.png"><![endif]-->`
-	out, _, _, err := LinkMediaAttachments([]byte(body), nil, linkedTestMedia(), "https://mail.test", false)
+	out, _, _, err := LinkMediaAttachments([]byte(body), nil, linkedTestMedia(), "https://mail.test", false, "")
 	if err != nil || strings.Contains(string(out), "/uploads/") || strings.Contains(string(out), "/api/media/file/") {
 		t.Fatalf("background, srcset or Outlook image was left protected: %s %v", out, err)
 	}
@@ -122,7 +122,7 @@ func TestWorkerBlocksUnassociatedImageAndPreservesRecipient(t *testing.T) {
 	if !s.pending || !p.stopped.Load() || s.failure.Category != "media" || !strings.Contains(s.failure.Error, "95") {
 		t.Fatalf("failure must pause, preserve pending recipient and report media ID: pending=%t stopped=%t failure=%+v", s.pending, p.stopped.Load(), s.failure)
 	}
-	if _, _, _, err := LinkMediaAttachments([]byte(`<img src="/uploads/missing.png">`), nil, nil, "https://mail.test", false); !errors.Is(err, ErrUnresolvedMedia) {
+	if _, _, _, err := LinkMediaAttachments([]byte(`<img src="/uploads/missing.png">`), nil, nil, "https://mail.test", false, ""); !errors.Is(err, ErrUnresolvedMedia) {
 		t.Fatalf("expected a typed media error: %v", err)
 	}
 }

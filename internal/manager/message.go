@@ -2,16 +2,27 @@ package manager
 
 import (
 	"bytes"
+	"crypto/rand"
 	"fmt"
 	"regexp"
 	"strings"
 
+	"github.com/knadh/listmonk/internal/messenger/email"
 	"github.com/knadh/listmonk/models"
 )
 
 var reAutoTrackHREF = regexp.MustCompile(`(?i)(href\s*=\s*)(['"])(https?://[^"'<>]+)(['"])`)
 
 const trackingLinkMarker = "__listmonk_link_uuid__"
+
+// CompileCampaignTemplate marks the content boundary only for campaign delivery and its preview.
+func (m *Manager) CompileCampaignTemplate(c *models.Campaign) error {
+	funcs := m.TemplateFuncs(c)
+	if !email.IsMessengerName(c.Messenger) || c.ContentType == models.CampaignContentTypePlain || len(c.Attachments)+len(c.MediaIDs) == 0 {
+		return c.CompileTemplate(funcs)
+	}
+	return c.CompileTemplateWithAttachmentSlot(funcs, attachmentSlotPrefix+rand.Text())
+}
 
 // NewCampaignMessage creates and returns a CampaignMessage that is made available
 // to message templates while they're compiled. It represents a message from
@@ -42,6 +53,9 @@ func (m *Manager) NewCampaignMessage(c *models.Campaign, s models.Customer) (Cam
 
 	if err := msg.render(); err != nil {
 		return msg, err
+	}
+	if c.AttachmentSlot != "" {
+		msg.body = placeRenderedAttachmentSlot(msg.body, c.AttachmentSlot, msg.unsubURL)
 	}
 	m.autoTrackMessageLinks(&msg)
 
@@ -159,9 +173,22 @@ func (m *CampaignMessage) Subject() string {
 
 // Body returns a copy of the message body.
 func (m *CampaignMessage) Body() []byte {
-	out := make([]byte, len(m.body))
-	copy(out, m.body)
-	return out
+	if m.Campaign == nil || m.Campaign.AttachmentSlot == "" {
+		return bytes.Clone(m.body)
+	}
+	return bytes.ReplaceAll(m.body, []byte(attachmentSlotComment(m.Campaign.AttachmentSlot)), nil)
+}
+
+func (m *CampaignMessage) linkAttachments(rootURL string, preview bool) ([]byte, []byte, []models.Attachment, error) {
+	c := m.Campaign
+	return linkMediaAttachments(m.body, m.altBody, c.Attachments, rootURL, c.ContentType == models.CampaignContentTypePlain,
+		!preview, preview, c.AttachmentLang, attachmentSlotComment(c.AttachmentSlot))
+}
+
+// PreviewBodyWithAttachments renders library links without minting delivery URLs.
+func (m *CampaignMessage) PreviewBodyWithAttachments(rootURL string) ([]byte, error) {
+	body, _, _, err := m.linkAttachments(rootURL, true)
+	return body, err
 }
 
 // AltBody returns a copy of the message's alt body.

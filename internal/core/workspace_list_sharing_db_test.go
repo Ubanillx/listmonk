@@ -21,7 +21,6 @@ ALTER TABLE customer_lists
 ALTER TABLE customer_lists
     ADD COLUMN optin customer_list_optin NOT NULL DEFAULT 'single',
     ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private',
-    ADD COLUMN transfer_pending_at TIMESTAMPTZ,
     ADD COLUMN tags VARCHAR(100)[],
     ADD COLUMN created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     ADD COLUMN updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();

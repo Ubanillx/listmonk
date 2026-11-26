@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"net/mail"
 	"net/textproto"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -25,6 +26,7 @@ import (
 	"github.com/knadh/listmonk/internal/media/providers/filesystem"
 	"github.com/knadh/listmonk/internal/messenger/email"
 	"github.com/knadh/listmonk/internal/notifs"
+	"github.com/knadh/listmonk/internal/subimporter"
 	"github.com/knadh/listmonk/models"
 	"github.com/knadh/smtppool/v2"
 	"github.com/labstack/echo/v4"
@@ -73,12 +75,21 @@ func TestStartedCampaignResumesWithRemoteMedia(t *testing.T) {
 			} else if source == "cid" {
 				imageSource = fmt.Sprintf("cid:media-%d@listmonk", mediaIDs[0])
 			}
+			wrapper, err := os.ReadFile("../static/email-templates/default.tpl")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var templateID int
+			if err := a.db.Get(&templateID, `INSERT INTO templates(name,type,subject,body,owner_user_id)
+				VALUES('Default email','campaign','Resume media',$1,1) RETURNING id`, string(wrapper)); err != nil {
+				t.Fatal(err)
+			}
 			originalBody := `<p>Existing campaign</p><img width="300" src="` + imageSource + `">`
 			started := time.Date(2026, 9, 1, 8, 0, 0, 0, time.UTC)
 			var campaignID int
 			if err := a.db.Get(&campaignID, `INSERT INTO campaigns(uuid,name,subject,from_email,body,content_type,messenger,
-				status,owner_user_id,started_at,to_send,sent,smtp_rate_limit) VALUES(gen_random_uuid(),'Historical campaign','Resume media',
-				'sender@example.test',$1,'html','email','running',1,$2,3,1,1000000) RETURNING id`, originalBody, started); err != nil {
+				status,owner_user_id,started_at,to_send,sent,smtp_rate_limit,template_id) VALUES(gen_random_uuid(),'Historical campaign','Resume media',
+				'sender@example.test',$1,'html','email','running',1,$2,3,1,1000000,$3) RETURNING id`, originalBody, started, templateID); err != nil {
 				t.Fatal(err)
 			}
 			for i, id := range mediaIDs {
@@ -188,6 +199,12 @@ func TestStartedCampaignResumesWithRemoteMedia(t *testing.T) {
 					}
 					seen[to.Address] = true
 					body := resumeMediaHTML(t, textproto.MIMEHeader(msg.Header), msg.Body)
+					footer := strings.Index(body, `<div class="footer"`)
+					cover := strings.Index(body, `class="listmonk-attachment-cover"`)
+					if cover < 0 || footer < cover || !strings.Contains(body[:footer], `>catalog.pdf</a>`) ||
+						!strings.HasSuffix(strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(body[:footer]), "</div>")), "</table>") {
+						t.Fatalf("SMTP message did not place the file cover inside the default wrapper: %s", body)
+					}
 					for _, file := range files {
 						var link string
 						if err := a.db.Get(&link, `SELECT '/email-media/'||token::text||'/'||filename FROM email_media_links WHERE filename=$1`, file.name); err != nil {
@@ -252,6 +269,164 @@ func TestStartedCampaignResumesWithRemoteMedia(t *testing.T) {
 				t.Fatalf("already sent recipient was changed: %v %v", historicalSent, err)
 			}
 		})
+	}
+}
+
+func TestCampaignTestDeliversAttachmentsToEveryRecipient(t *testing.T) {
+	for _, tc := range []struct {
+		name                                     string
+		explicitTemplate, startNow, withoutMedia bool
+	}{
+		{"queued with a different template", true, false, false},
+		{"queued with saved template", false, false, false},
+		{"worker active during test request", false, true, false},
+		{"worker active without attachments", false, true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, received := newAttachmentDeliveryTestApp(t)
+			f := seedCampaignPreviewMediaFixtures(t, a.db)
+			if _, err := a.db.Exec(`UPDATE campaigns SET owner_user_id=1, attachment_lang='de' WHERE id=$1`, f.campaignID); err != nil {
+				t.Fatal(err)
+			}
+			list := seedDeletionList(t, a, "Attachment QA audience", "private", 1)
+			for _, name := range []string{"first", "second"} {
+				if _, err := a.db.Exec(`INSERT INTO customers(uuid,email,name,owner_user_id)
+					VALUES(gen_random_uuid(),$1,$2,1)`, name+"@example.test", name); err != nil {
+					t.Fatal(err)
+				}
+			}
+			files := map[string]string{"price-list.pdf": "application/pdf", "brochure.docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
+			templateField, templateFile := "", "brochure.docx"
+			mediaField := fmt.Sprint(f.pdfID)
+			if tc.explicitTemplate {
+				templateFile = "alternate.pdf"
+				var templateID int
+				if err := a.db.Get(&templateID, `INSERT INTO templates(name,type,subject,body,owner_user_id)
+					VALUES('Alternate','campaign','Alternate',$1,1) RETURNING id`,
+					`<div class="wrap">Alternate wrapper {{ template "content" . }}</div><div class="footer">Footer</div>`); err != nil {
+					t.Fatal(err)
+				}
+				fileID := insertPrivatePreviewMedia(t, a.db, templateFile, 1)
+				if _, err := a.db.Exec(`INSERT INTO template_media(template_id,media_id,filename) VALUES($1,$2,$3)`, templateID, fileID, templateFile); err != nil {
+					t.Fatal(err)
+				}
+				files[templateFile] = "application/pdf"
+				templateField = fmt.Sprintf(`,"template_id":%d`, templateID)
+			}
+			if tc.withoutMedia {
+				if _, err := a.db.Exec(`DELETE FROM template_media WHERE template_id=$1`, f.templateID); err != nil {
+					t.Fatal(err)
+				}
+				files, mediaField = nil, ""
+			}
+			for name, mediaType := range files {
+				if _, err := a.media.Put(name, mediaType, strings.NewReader("fixture")); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tc.startNow {
+				go a.manager.Run()
+			}
+			body := fmt.Sprintf(`{"name":"Attachment test","subject":"Test {{ .Customer.Name }}","content_type":"html",
+				"body":"<p>Hello {{ .Customer.Name }}</p>","customer_list_ids":[%d],"media":[%s],"smtp_rate_limit":60000,
+				"customers":["first@example.test","second@example.test"]%s}`, list, mediaField, templateField)
+			req := httptest.NewRequest(http.MethodPost, "/api/campaigns/1/test", strings.NewReader(body))
+			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+			rec := httptest.NewRecorder()
+			c := echo.New().NewContext(req, rec)
+			c.Set("id", f.campaignID)
+			c.Set(auth.UserHTTPCtxKey, superAdminUser())
+			if err := a.TestCampaign(c); err != nil || rec.Code != http.StatusOK {
+				t.Fatalf("test send: HTTP %d, %v", rec.Code, err)
+			}
+
+			// Drain the queued variants after both messages so stale compile markers are deterministic.
+			if !tc.startNow {
+				go a.manager.Run()
+			}
+			seen := make(map[string]bool)
+			for range 2 {
+				msg := readAttachmentDelivery(t, received)
+				to, err := mail.ParseAddress(msg.Header.Get("To"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				name, _, _ := strings.Cut(to.Address, "@")
+				if seen[name] || (name != "first" && name != "second") {
+					t.Fatalf("unexpected test recipient %q", to.Address)
+				}
+				seen[name] = true
+				html := resumeMediaHTML(t, textproto.MIMEHeader(msg.Header), msg.Body)
+				greeting := strings.Index(html, "<p>Hello "+name+"</p>")
+				cover := strings.Index(html, `class="listmonk-attachment-cover"`)
+				footer := strings.Index(html, `<div class="footer"`)
+				if greeting < 0 || footer <= greeting || strings.Contains(html, "listmonk-attachment-tail-") ||
+					msg.Header.Get("Subject") != "Test "+name || strings.Contains(html, "Alternate wrapper") != tc.explicitTemplate {
+					t.Fatalf("test message for %s did not have the personalized subject and correct wrapper", name)
+				}
+				if tc.withoutMedia {
+					if cover >= 0 || strings.Contains(html, "/email-media/") {
+						t.Fatalf("test message for %s with no selected media unexpectedly has attachments", name)
+					}
+					continue
+				}
+				if cover <= greeting || footer <= cover ||
+					!strings.HasSuffix(strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(html[cover:footer]), "</div>")), "</table>") {
+					t.Fatalf("test message for %s did not place the attachment section inside the body before the footer", name)
+				}
+				if !strings.Contains(html, ">Anhänge<") || !strings.Contains(html, ">price-list.pdf</a>") ||
+					!strings.Contains(html, ">"+templateFile+"</a>") || strings.Contains(html, "catalog.png") ||
+					(tc.explicitTemplate && strings.Contains(html, "brochure.docx")) {
+					t.Fatalf("test attachments for %s did not match the selected files, effective template and saved language", name)
+				}
+			}
+		})
+	}
+}
+
+func newAttachmentDeliveryTestApp(t *testing.T) (*App, <-chan []byte) {
+	t.Helper()
+	a := newOrgPoolAllocationTestApp(t)
+	seedOrgPoolAllocationFixtures(t, a.db)
+	a.queries = prepareQueries(readTestQueries(t), a.db, koanf.New("."))
+	a.cfg = &Config{FromEmail: "sender@example.test"}
+	a.importer = subimporter.New(subimporter.Options{}, a.db.DB, a.i18n)
+	provider, err := filesystem.New(filesystem.Opts{UploadPath: t.TempDir(), UploadURI: "/uploads"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.media = provider
+	server, received := resumeMediaSMTP(t, nil)
+	if _, err := a.db.Exec(`INSERT INTO user_smtp_servers(uuid,user_id,host,port,auth_protocol,tls_type)
+		VALUES(gen_random_uuid(),1,$1,$2,'none','none')`, server.Host, server.Port); err != nil {
+		t.Fatal(err)
+	}
+	a.manager = manager.New(manager.Config{
+		RootURL: "https://example.test", UnsubURL: "https://example.test/unsub/%s/%s",
+		Concurrency: 1, MessageRate: 100, DisableTracking: true,
+		PersonalSMTP: func(userID int) (*email.Emailer, error) {
+			if userID != 1 {
+				return nil, fmt.Errorf("unexpected owner %d", userID)
+			}
+			return email.New(email.MessengerName, server)
+		},
+	}, newManagerStore(a.queries, a.core, provider, a.db), a.i18n, a.log)
+	t.Cleanup(a.manager.Close)
+	return a, received
+}
+
+func readAttachmentDelivery(t *testing.T, received <-chan []byte) *mail.Message {
+	t.Helper()
+	select {
+	case raw := <-received:
+		msg, err := mail.ReadMessage(bytes.NewReader(raw))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return msg
+	case <-time.After(5 * time.Second):
+		t.Fatal("local SMTP received no message")
+		return nil
 	}
 }
 

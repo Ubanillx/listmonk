@@ -299,6 +299,7 @@ func installCampaign(campTplID, archiveTplID int, q *models.Queries) {
 		// like every other caller or the fresh install aborts here.
 		models.CampaignPoolScopeOrganization,
 		"personal", nil, models.DefaultPersonalSMTPRateLimit, "contact_first",
+		models.CampaignAttachmentLangDefault,
 	); err != nil {
 		lo.Fatalf("error creating sample campaign: %v", err)
 	}

@@ -189,6 +189,12 @@ CREATE TABLE campaigns (
     auto_track_links    BOOLEAN NOT NULL DEFAULT false,
     tracking_links_mapped BOOLEAN NOT NULL DEFAULT true,
 
+    -- Manual, campaign-wide language of the attachment section appended to
+    -- e-mail bodies. Every recipient sees this language; it is not detected
+    -- from customer data.
+    attachment_lang TEXT NOT NULL DEFAULT 'en'
+        CHECK (attachment_lang IN ('en','zh-CN','zh-TW','es','fr','de','pt','it','ru','ja','ko')),
+
     started_at       TIMESTAMP WITH TIME ZONE,
     created_at       TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at       TIMESTAMP WITH TIME ZONE DEFAULT NOW()

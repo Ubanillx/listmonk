@@ -179,21 +179,21 @@ func (c *Core) CloneCampaignForWorkspaceWithSource(sourceID int, sourceAccess, t
 			daily_resume_time, tags, messenger, template_id, to_send, sent,
 			max_customer_id, last_customer_id, archive, archive_slug,
 			archive_template_id, archive_meta, auto_track_links,
-			organization_id, owner_user_id, original_owner_user_id, visibility, name_fallback, smtp_source, smtp_pool_id, smtp_rate_limit, pool_reply_priority
+			organization_id, owner_user_id, original_owner_user_id, visibility, name_fallback, smtp_source, smtp_pool_id, smtp_rate_limit, pool_reply_priority, attachment_lang
 		) VALUES (
 			$1, $2, $3, $4, '', $5, $6, $7,
 			$8, NULL, $9, $10, 'draft', $11,
 			$12, $13, $14, $15, 0, 0,
 			0, 0, FALSE, NULL,
 			NULL, '{}'::JSONB, $16,
-			$17, $18, $19, 'private', $20::jsonb, CASE WHEN $17::BIGINT IS NULL OR $17::BIGINT IS DISTINCT FROM $23::BIGINT THEN 'personal' ELSE $21 END, CASE WHEN $17::BIGINT IS NOT DISTINCT FROM $23::BIGINT THEN $22::BIGINT ELSE NULL END, $24, COALESCE(NULLIF($25::TEXT,''),'contact_first')
+			$17, $18, $19, 'private', $20::jsonb, CASE WHEN $17::BIGINT IS NULL OR $17::BIGINT IS DISTINCT FROM $23::BIGINT THEN 'personal' ELSE $21 END, CASE WHEN $17::BIGINT IS NOT DISTINCT FROM $23::BIGINT THEN $22::BIGINT ELSE NULL END, $24, COALESCE(NULLIF($25::TEXT,''),'contact_first'), $26
 		) RETURNING id`,
 		newUUID, source.Type, source.Name, source.Subject, source.Body,
 		source.BodySource, source.AltBody, source.ContentType, headers,
 		source.Attribs, dailySendLimit, source.DailyResumeTime,
 		pq.StringArray(normalizeTags(source.Tags)), messenger, newTemplateID,
 		source.AutoTrackLinks, targetScope.OrganizationID, targetScope.OwnerUserID,
-		targetScope.OriginalOwnerUserID, source.NameFallback.ValueForDB(), source.SMTPSource, source.SMTPPoolID, source.OrganizationID, source.SMTPRateLimit, source.PoolReplyPriority); err != nil {
+		targetScope.OriginalOwnerUserID, source.NameFallback.ValueForDB(), source.SMTPSource, source.SMTPPoolID, source.OrganizationID, source.SMTPRateLimit, source.PoolReplyPriority, source.AttachmentLang); err != nil {
 		return models.Campaign{}, workspaceQueryError("creating campaign clone", err)
 	}
 

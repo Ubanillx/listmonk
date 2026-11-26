@@ -357,7 +357,8 @@
 
       <b-tab-item :label="$t('campaigns.content')" icon="text" :disabled="isNew" value="content">
         <editor v-if="data.id" v-model="form.content" :id="data.id" :title="data.name" :disabled="!canEdit"
-          :templates="templates" :content-types="contentTypes" :auto-track-links="form.autoTrackLinks" :media="form.media" ref="contentEditor"
+          :templates="templates" :content-types="contentTypes" :auto-track-links="form.autoTrackLinks" :media="form.media"
+          :attachment-lang="form.attachmentLang" ref="contentEditor"
           @template-media="onTemplateMedia" @template-attachments="onTemplateAttachments"
           @media-selected="onMediaSelect" @focus="isAltBodyFocused = false" />
 
@@ -386,6 +387,14 @@
               expanded data-cy="media">
               <b-taginput v-model="form.media" name="media" ellipsis icon="tag-outline" ref="media" field="filename"
                 @focus="onOpenAttach" :disabled="!canEdit" />
+            </b-field>
+
+            <b-field v-if="form.messenger === 'email'" :label="$t('campaigns.attachmentLang')"
+              :message="$t('campaigns.attachmentLangHelp')" label-position="on-border"
+              class="mt-4" data-cy="attachment-lang">
+              <b-select v-model="form.attachmentLang" :disabled="!canEdit" expanded>
+                <option v-for="lang in attachmentLangOptions" :key="lang.value" :value="lang.value">{{ lang.label }}</option>
+              </b-select>
             </b-field>
           </div>
           <div class="column has-text-right">
@@ -528,7 +537,7 @@
     <campaign-preview v-if="isPreviewingDraft" @close="onToggleDraftPreview" type="campaign" :id="0"
       :title="form.subject || form.name || $t('campaigns.preview')" :content-type="form.content.contentType"
       :template-id="form.content.templateId" :body="form.content.body" :auto-track-links="form.autoTrackLinks"
-      :media="form.media" is-post />
+      :attachment-lang="form.attachmentLang" :media="form.media" is-post />
   </section>
 </template>
 
@@ -573,6 +582,22 @@ export default Vue.extend({
         plain: this.$t('campaigns.plainText'),
         visual: this.$t('campaigns.visual'),
       }),
+
+      // Recipient-facing languages the attachment section can use. Native
+      // names keep the list readable whatever the admin language is.
+      attachmentLangOptions: Object.freeze([
+        { value: 'en', label: 'English' },
+        { value: 'zh-CN', label: '简体中文' },
+        { value: 'zh-TW', label: '繁體中文' },
+        { value: 'es', label: 'Español' },
+        { value: 'fr', label: 'Français' },
+        { value: 'de', label: 'Deutsch' },
+        { value: 'pt', label: 'Português' },
+        { value: 'it', label: 'Italiano' },
+        { value: 'ru', label: 'Русский' },
+        { value: 'ja', label: '日本語' },
+        { value: 'ko', label: '한국어' },
+      ]),
 
       isNew: false,
       isEditing: false,
@@ -622,6 +647,7 @@ export default Vue.extend({
         attribsStr: '{}',
         messenger: 'email',
         autoTrackLinks: true,
+        attachmentLang: 'en',
         visibility: organizationWorkspace ? 'organization' : 'private',
         dailySendLimit: DEFAULT_PERSONAL_SMTP_DAILY_PER_SENDER,
         dailyResumeTime: '09:00',
@@ -820,6 +846,7 @@ export default Vue.extend({
         messenger: this.form.messenger,
         media: this.form.media.map((item) => item.id),
         autoTrackLinks: this.form.autoTrackLinks,
+        attachmentLang: this.form.attachmentLang,
         fromEmail: this.form.fromEmail,
       });
     },
@@ -1005,6 +1032,7 @@ export default Vue.extend({
           smtpPoolId: data.smtpPoolId || null,
           smtpRateLimit: data.smtpRateLimit || this.defaultSMTPRateLimit(data.smtpSource),
           poolReplyPriority: data.poolReplyPriority || 'contact_first',
+          attachmentLang: data.attachmentLang || 'en',
           attribsStr: data.attribs ? JSON.stringify(data.attribs, null, 4) : '{}',
 
           // The structure that is populated by editor input event.
@@ -1043,6 +1071,7 @@ export default Vue.extend({
         smtp_rate_limit: this.isSMTPMessenger ? this.form.smtpRateLimit : 0,
         smtp_pool_id: this.campaignSMTPPoolID,
         auto_track_links: this.form.autoTrackLinks,
+        attachment_lang: this.form.attachmentLang,
         type: 'regular',
         headers: this.form.headers,
         tags: this.form.tags,
@@ -1081,6 +1110,7 @@ export default Vue.extend({
         smtp_rate_limit: this.isSMTPMessenger ? this.form.smtpRateLimit : 0,
         smtp_pool_id: this.campaignSMTPPoolID,
         auto_track_links: this.form.autoTrackLinks,
+        attachment_lang: this.form.attachmentLang,
         type: 'regular',
         tags: this.form.tags,
         send_at: this.form.sendLater ? this.form.sendAtDate : null,
@@ -1122,6 +1152,7 @@ export default Vue.extend({
         smtp_rate_limit: this.isSMTPMessenger ? this.form.smtpRateLimit : 0,
         smtp_pool_id: this.campaignSMTPPoolID,
         auto_track_links: this.form.autoTrackLinks,
+        attachment_lang: this.form.attachmentLang,
         type: 'regular',
         tags: this.form.tags,
         send_at: this.form.sendLater ? this.form.sendAtDate : null,

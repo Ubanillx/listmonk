@@ -276,25 +276,8 @@ func (a *App) SendTxMessage(c echo.Context) error {
 		msg.UseSMTPFrom = email.IsMessengerName(rendered.Messenger)
 		msg.Body = rendered.Body
 		msg.AltBody = []byte(rendered.AltBody)
-		for _, a := range templateAttachments {
-			msg.Attachments = append(msg.Attachments, models.Attachment{
-				Name:      a.Name,
-				Header:    a.Header,
-				Content:   a.Content,
-				MediaID:   a.MediaID,
-				SourceURL: a.SourceURL,
-			})
-		}
-		for _, a := range rendered.Attachments {
-			msg.Attachments = append(msg.Attachments, models.Attachment{
-				Name:    a.Name,
-				Header:  a.Header,
-				Content: a.Content,
-			})
-		}
-		if msg.ContentType != models.CampaignContentTypePlain && email.IsMessengerName(msg.Messenger) {
-			msg.Body, msg.Attachments = manager.InlineMediaImages(msg.Body, msg.Attachments)
-		}
+		msg.Attachments = append(msg.Attachments, templateAttachments...)
+		msg.Attachments = append(msg.Attachments, rendered.Attachments...)
 
 		// Optional headers.
 		if len(rendered.Headers) != 0 {

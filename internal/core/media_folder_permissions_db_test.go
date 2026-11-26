@@ -24,7 +24,7 @@ CREATE TABLE media (
 CREATE TABLE templates (id INT, organization_id BIGINT, owner_user_id INT, visibility TEXT, transfer_pending_at TIMESTAMPTZ);
 CREATE TABLE template_media (template_id INT, media_id INT);
 CREATE TABLE campaign_media (campaign_id INT, media_id INT);
-ALTER TABLE campaigns ADD COLUMN owner_user_id INT, ADD COLUMN visibility TEXT, ADD COLUMN transfer_pending_at TIMESTAMPTZ;
+ALTER TABLE campaigns ADD COLUMN visibility TEXT, ADD COLUMN transfer_pending_at TIMESTAMPTZ;
 `)
 	env.exec(`INSERT INTO users(id) VALUES(2),(3);
 INSERT INTO organizations(id,name) VALUES(7,'Current'),(8,'Other');

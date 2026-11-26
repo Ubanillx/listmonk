@@ -12,7 +12,6 @@ func TestWorkspaceCustomerCodeSearch(t *testing.T) {
 	env := newPoolRecipientsTestEnvWithDDL(t, poolRecipientsTestDDL+`
 CREATE TYPE customer_status AS ENUM ('enabled', 'disabled', 'blocklisted');
 CREATE TYPE subscription_status AS ENUM ('unconfirmed', 'confirmed', 'unsubscribed');
-ALTER TABLE customer_lists ADD COLUMN transfer_pending_at TIMESTAMPTZ;
 CREATE TABLE customers (
     id SERIAL PRIMARY KEY,
     uuid UUID NOT NULL DEFAULT gen_random_uuid(),

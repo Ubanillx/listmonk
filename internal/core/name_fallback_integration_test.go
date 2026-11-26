@@ -112,7 +112,8 @@ func TestTemplateNameFallbackPersistence(t *testing.T) {
 		t.Fatal(err)
 	}
 	camp, err := c.CreateCampaignInWorkspace(access, models.Campaign{Type: "regular", Name: "visual import", Subject: "Hello", FromEmail: "test@example.invalid",
-		ContentType: "visual", Messenger: "email", DailySendLimit: 300, DailyResumeTime: "09:00", Headers: models.Headers{}, Attribs: models.JSON{},
+		ContentType: "visual", Messenger: "email", PoolScope: models.CampaignPoolScopeOrganization,
+		DailySendLimit: 300, DailyResumeTime: "09:00", Headers: models.Headers{}, Attribs: models.JSON{},
 		ArchiveMeta: json.RawMessage(`{}`), TemplateID: null.IntFrom(visual.ID)}, nil, nil, scope)
 	if err != nil {
 		t.Fatal(err)

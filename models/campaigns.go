@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 	txttpl "text/template"
+	"text/template/parse"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/jmoiron/sqlx/types"
@@ -44,6 +45,11 @@ const (
 	// through the target organization's member SMTP pool.
 	CampaignPoolScopeOrganization     = "organization"
 	CampaignPoolScopeAllOrganizations = "all_organizations"
+
+	// CampaignAttachmentLangDefault is the language of the appended attachment
+	// section when the campaign does not choose one. The language applies to
+	// every recipient of the campaign.
+	CampaignAttachmentLangDefault = "en"
 )
 
 // Campaigns represents a slice of Campaigns.
@@ -79,16 +85,19 @@ type Campaign struct {
 	// SMTPRateLimit is the campaign-wide SMTP send cap per minute. A zero value
 	// is treated as the source default (5 for personal SMTP, 200 for an
 	// organization pool) for legacy rows created before this field existed.
-	SMTPRateLimit     int             `db:"smtp_rate_limit" json:"smtp_rate_limit"`
-	NextResumeAt      null.Time       `db:"next_resume_at" json:"next_resume_at"`
-	UnsentCount       int             `db:"unsent_count" json:"unsent_count"`
-	SendErrors        int             `db:"send_errors" json:"send_errors"`
-	Tags              pq.StringArray  `db:"tags" json:"tags"`
-	Headers           Headers         `db:"headers" json:"headers"`
-	Attribs           JSON            `db:"attribs" json:"attribs"`
-	TemplateID        null.Int        `db:"template_id" json:"template_id"`
-	Messenger         string          `db:"messenger" json:"messenger"`
-	AutoTrackLinks    bool            `db:"auto_track_links" json:"auto_track_links"`
+	SMTPRateLimit  int            `db:"smtp_rate_limit" json:"smtp_rate_limit"`
+	NextResumeAt   null.Time      `db:"next_resume_at" json:"next_resume_at"`
+	UnsentCount    int            `db:"unsent_count" json:"unsent_count"`
+	SendErrors     int            `db:"send_errors" json:"send_errors"`
+	Tags           pq.StringArray `db:"tags" json:"tags"`
+	Headers        Headers        `db:"headers" json:"headers"`
+	Attribs        JSON           `db:"attribs" json:"attribs"`
+	TemplateID     null.Int       `db:"template_id" json:"template_id"`
+	Messenger      string         `db:"messenger" json:"messenger"`
+	AutoTrackLinks bool           `db:"auto_track_links" json:"auto_track_links"`
+	// AttachmentLang is the manual, campaign-wide language of the attachment
+	// section appended to e-mail bodies. It applies to every recipient.
+	AttachmentLang    string          `db:"attachment_lang" json:"attachment_lang"`
 	Archive           bool            `db:"archive" json:"archive"`
 	ArchiveSlug       null.String     `db:"archive_slug" json:"archive_slug"`
 	ArchiveTemplateID null.Int        `db:"archive_template_id" json:"archive_template_id"`
@@ -124,6 +133,8 @@ type Campaign struct {
 
 	// Fetched bodies of the attachments.
 	Attachments []Attachment `json:"-" db:"-"`
+
+	AttachmentSlot string `json:"-" db:"-"`
 
 	// Pseudofield for getting the total number of customers
 	// in searches and queries.
@@ -214,6 +225,12 @@ func (camps Campaigns) LoadStats(stmt *sqlx.Stmt) error {
 // CompileTemplate compiles a campaign body template into its base
 // template and sets the resultant template to Campaign.Tpl.
 func (c *Campaign) CompileTemplate(f template.FuncMap) error {
+	return c.CompileTemplateWithAttachmentSlot(f, "")
+}
+
+// CompileTemplateWithAttachmentSlot tags the parsed content template, not its wrapper.
+func (c *Campaign) CompileTemplateWithAttachmentSlot(f template.FuncMap, slot string) error {
+	c.AttachmentSlot = slot
 	// If the subject line has a template string, compile it.
 	if strings.Contains(c.Subject, "{{") {
 		subj := c.Subject
@@ -268,6 +285,10 @@ func (c *Campaign) CompileTemplate(f template.FuncMap) error {
 	msgTpl, err := template.New(ContentTpl).Funcs(f).Parse(body)
 	if err != nil {
 		return fmt.Errorf("error compiling message: %v", err)
+	}
+	if slot != "" {
+		root := msgTpl.Tree.Root
+		root.Nodes = append(root.Nodes, &parse.TextNode{NodeType: parse.NodeText, Text: []byte(slot)})
 	}
 
 	out, err := baseTPL.AddParseTree(ContentTpl, msgTpl.Tree)

@@ -521,8 +521,7 @@ func (m *Manager) PushCampaignMessage(msg CampaignMessage) error {
 	// Interactive test sends have no lifecycle pipe. Validate synchronously so
 	// the API cannot report success merely because an invalid message queued.
 	if msg.pipe == nil && email.IsMessengerName(msg.Campaign.Messenger) {
-		if _, _, _, err := LinkMediaAttachments(msg.body, msg.altBody, msg.Campaign.Attachments,
-			m.cfg.RootURL, msg.Campaign.ContentType == models.CampaignContentTypePlain); err != nil {
+		if _, _, _, err := msg.linkAttachments(m.cfg.RootURL, false); err != nil {
 			return err
 		}
 	}
@@ -769,8 +768,13 @@ func (m *Manager) resolveMessenger(msg models.Message) (Messenger, error) {
 func (m *Manager) pushMessage(msg models.Message) error {
 	if email.IsMessengerName(msg.Messenger) {
 		var err error
+		lang := ""
+		if msg.Campaign != nil {
+			lang = msg.Campaign.AttachmentLang
+		}
 		msg.Body, msg.AltBody, msg.Attachments, err = LinkMediaAttachments(
-			msg.Body, msg.AltBody, msg.Attachments, m.cfg.RootURL, msg.ContentType == models.CampaignContentTypePlain)
+			msg.Body, msg.AltBody, msg.Attachments, m.cfg.RootURL,
+			msg.ContentType == models.CampaignContentTypePlain, lang)
 		if err != nil {
 			return err
 		}
@@ -1155,8 +1159,7 @@ func (m *Manager) worker() {
 			attachments := msg.Campaign.Attachments
 			var mediaErr error
 			if email.IsMessengerName(msg.Campaign.Messenger) {
-				body, altBody, attachments, mediaErr = LinkMediaAttachments(
-					body, altBody, attachments, m.cfg.RootURL, msg.Campaign.ContentType == models.CampaignContentTypePlain)
+				body, altBody, attachments, mediaErr = msg.linkAttachments(m.cfg.RootURL, false)
 			}
 
 			out := models.Message{
@@ -1510,7 +1513,7 @@ func (m *Manager) attachMedia(c *models.Campaign) error {
 	if c == nil {
 		return errors.New("campaign is nil")
 	}
-	if len(c.Attachments) > 0 {
+	if len(c.Attachments) > 0 || len(c.MediaIDs) == 0 {
 		return nil
 	}
 

@@ -85,7 +85,7 @@
     <!-- campaign preview //-->
     <campaign-preview v-if="isPreviewing" is-post @close="onTogglePreview" type="campaign" :id="id" :title="title"
       :content-type="self.contentType" :template-id="templateId" :body="self.body"
-      :auto-track-links="autoTrackLinks" :media="previewMedia" />
+      :auto-track-links="autoTrackLinks" :attachment-lang="attachmentLang" :media="previewMedia" />
   </section>
 </template>
 
@@ -120,6 +120,7 @@ export default {
     disabled: { type: Boolean, default: false },
     templates: { type: Array, default: null },
     autoTrackLinks: { type: Boolean, default: false },
+    attachmentLang: { type: String, default: 'en' },
     media: { type: Array, default: () => [] },
 
     // value is provided by the parent component.

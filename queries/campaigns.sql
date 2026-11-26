@@ -63,7 +63,7 @@ camp AS (
     INSERT INTO campaigns (uuid, type, name, subject, from_email, body, altbody,
         content_type, daily_send_limit, daily_resume_time, send_at, headers, attribs, tags, messenger, template_id, to_send,
         max_customer_id, archive, archive_slug, archive_template_id, archive_meta, body_source, auto_track_links,
-        organization_id, owner_user_id, original_owner_user_id, visibility, name_fallback, pool_scope, smtp_source, smtp_pool_id, smtp_rate_limit, pool_reply_priority)
+        organization_id, owner_user_id, original_owner_user_id, visibility, name_fallback, pool_scope, smtp_source, smtp_pool_id, smtp_rate_limit, pool_reply_priority, attachment_lang)
         SELECT $1, $2, $3, $4, $5,
             -- body
             COALESCE(NULLIF($6, ''), (SELECT body FROM tpl), ''),
@@ -83,7 +83,8 @@ camp AS (
             COALESCE($23, (SELECT body_source FROM tpl)),
             $24,
             $25, $26, $27, $28, COALESCE((SELECT name_fallback FROM tpl), '{}'::jsonb),
-            $29::TEXT, COALESCE(NULLIF($30::TEXT, ''), 'personal'), $31, $32, COALESCE(NULLIF($33::TEXT, ''), 'contact_first')
+            $29::TEXT, COALESCE(NULLIF($30::TEXT, ''), 'personal'), $31, $32, COALESCE(NULLIF($33::TEXT, ''), 'contact_first'),
+            COALESCE(NULLIF($34::TEXT, ''), 'en')
         WHERE (SELECT valid FROM valid_lists)
         RETURNING id
 ),
@@ -1683,6 +1684,7 @@ WITH camp AS (
         smtp_pool_id=$25,
         smtp_rate_limit=$26,
         pool_reply_priority=COALESCE(NULLIF($27::TEXT, ''), 'contact_first'),
+        attachment_lang=COALESCE(NULLIF($28::TEXT, ''), attachment_lang),
         updated_at=NOW()
     WHERE id = $1 RETURNING id
 ),

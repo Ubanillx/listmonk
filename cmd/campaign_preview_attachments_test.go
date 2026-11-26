@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +20,7 @@ import (
 	"github.com/knadh/listmonk/internal/core"
 	"github.com/knadh/listmonk/internal/i18n"
 	"github.com/knadh/listmonk/internal/manager"
+	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
 )
 
@@ -41,7 +43,7 @@ func TestCampaignPreviewRendersAttachments(t *testing.T) {
 			t.Fatalf("preview lost the campaign body: %s", body)
 		}
 		for _, want := range []string{
-			"附件资料", "price-list.pdf", "brochure.docx",
+			"Attachments", "price-list.pdf", "brochure.docx",
 			// Unreferenced image attachments render as images, not file cards.
 			fmt.Sprintf(`<img src="/api/media/file/%d/catalog.png"`, f.imageID),
 			// Preview links stay site-relative so a different app.root_url origin
@@ -52,8 +54,16 @@ func TestCampaignPreviewRendersAttachments(t *testing.T) {
 				t.Fatalf("saved preview missing %q: %s", want, body)
 			}
 		}
-		if strings.Contains(body, "example.test") {
+		if strings.Contains(body, "https://example.test/api/media/file/") {
 			t.Fatalf("saved preview leaked absolute app.root_url media URLs: %s", body)
+		}
+		cover := strings.Index(body, `class="listmonk-attachment-cover"`)
+		footer := strings.Index(body, `<div class="footer"`)
+		pdf := strings.Index(body, `>price-list.pdf</a>`)
+		doc := strings.Index(body, `>brochure.docx</a>`)
+		if cover < 0 || pdf < cover || doc < pdf || footer < doc || strings.Contains(body, `/email-media/`) ||
+			!strings.HasSuffix(strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(body[doc:footer]), "</div>")), "</table>") {
+			t.Fatalf("file cover did not render before the default footer: %s", body)
 		}
 	})
 
@@ -103,9 +113,57 @@ func TestCampaignPreviewRendersAttachments(t *testing.T) {
 		}
 		rec := callCampaignPreview(t, a.PreviewCampaign, http.MethodPost, "/api/campaigns/1/preview", f.campaignID, form)
 		body := rec.Body.String()
-		if rec.Code != http.StatusOK || strings.Count(body, "附件资料") != 1 ||
+		if rec.Code != http.StatusOK || strings.Count(body, "Attachments") != 1 ||
 			strings.Count(body, ">price-list.pdf</a>") != 1 || strings.Contains(body, "999999") {
 			t.Fatalf("duplicate or unknown media was not converged: %d %s", rec.Code, body)
+		}
+	})
+
+	t.Run("preview renders the selected attachment language", func(t *testing.T) {
+		form := url.Values{
+			"content_type":    {"html"},
+			"body":            {"<p>Deutsch</p>"},
+			"media":           {fmt.Sprintf(`[%d]`, f.pdfID)},
+			"attachment_lang": {"DE"},
+		}
+		rec := callCampaignPreview(t, a.PreviewCampaign, http.MethodPost, "/api/campaigns/1/preview", f.campaignID, form)
+		body := rec.Body.String()
+		// The template's own attachment is part of delivery, so the German
+		// preview counts the PDF plus the template DOCX.
+		if rec.Code != http.StatusOK || !strings.Contains(body, "Anhänge") || !strings.Contains(body, "2 Dateien") {
+			t.Fatalf("preview ignored the attachment language: %d %s", rec.Code, body)
+		}
+	})
+
+	t.Run("both preview endpoints reject an unsupported language", func(t *testing.T) {
+		for _, tc := range []struct {
+			handler echo.HandlerFunc
+			path    string
+			id      int
+		}{
+			{a.PreviewCampaign, "/api/campaigns/1/preview", f.campaignID},
+			{a.PreviewNewCampaign, "/api/campaigns/preview", 0},
+		} {
+			form := url.Values{"content_type": {"html"}, "body": {"<p>Hello</p>"}, "attachment_lang": {"auto"}}
+			_, err := callCampaignPreviewAs(tc.handler, http.MethodPost, tc.path, tc.id, superAdminUser(), form)
+			var httpErr *echo.HTTPError
+			if !errors.As(err, &httpErr) || httpErr.Code != http.StatusBadRequest || httpErr.Message != a.i18n.T("campaigns.fieldInvalidAttachmentLang") {
+				t.Fatalf("invalid language at %s: %v", tc.path, err)
+			}
+		}
+	})
+
+	t.Run("saved preview uses the stored attachment language", func(t *testing.T) {
+		if _, err := a.db.Exec(`UPDATE campaigns SET attachment_lang='ja' WHERE id=$1`, f.campaignID); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			a.db.Exec(`UPDATE campaigns SET attachment_lang='en' WHERE id=$1`, f.campaignID)
+		})
+		rec := callCampaignPreview(t, a.PreviewCampaign, http.MethodGet, "/api/campaigns/1/preview", f.campaignID, nil)
+		body := rec.Body.String()
+		if rec.Code != http.StatusOK || !strings.Contains(body, "添付ファイル") || strings.Contains(body, ">Attachments<") {
+			t.Fatalf("saved preview ignored the stored language: %d %s", rec.Code, body)
 		}
 	})
 
@@ -239,7 +297,163 @@ func TestCampaignPreviewRendersAttachments(t *testing.T) {
 		if !strings.Contains(body, "own-attachment.pdf") || strings.Contains(body, "foreign-secret.pdf") {
 			t.Fatalf("workspace boundary failed: %s", body)
 		}
+
+		unassociatedID := insertPrivatePreviewMedia(t, a.db, "unassociated.pdf", readerID)
+		form := url.Values{
+			"content_type": {"html"}, "body": {"<p>Reader edit</p>"},
+			"media": {fmt.Sprintf(`[%d,%d,%d]`, ownID, unassociatedID, foreignID)},
+		}
+		for _, mediaScope := range []bool{false, true} {
+			handler := apiKeyScope(a.PreviewCampaign, apiKeyScopeCampaignsRead)
+			rec, err := callCampaignPreviewAs(func(c echo.Context) error {
+				token := auth.IntegrationToken{Kind: auth.IntegrationTokenKindPersonal, Scopes: []string{apiKeyScopeCampaignsRead}}
+				if mediaScope {
+					token.Scopes = append(token.Scopes, apiKeyScopeMediaRead)
+				}
+				c.Set(auth.IntegrationTokenHTTPCtxKey, token)
+				return handler(c)
+			}, http.MethodPost, "/api/campaigns/1/preview", campID, reader, form)
+			if err != nil || rec.Code != http.StatusOK {
+				t.Fatalf("preview with personal key (media scope=%t): %v, HTTP %d", mediaScope, err, rec.Code)
+			}
+			body = rec.Body.String()
+			if !strings.Contains(body, "own-attachment.pdf") || strings.Contains(body, "foreign-secret.pdf") ||
+				strings.Contains(body, "unassociated.pdf") != mediaScope {
+				t.Fatalf("incorrect preview attachment set for personal key (media scope=%t)", mediaScope)
+			}
+		}
 	})
+}
+
+func TestCampaignAttachmentLanguageWrites(t *testing.T) {
+	a := newCampaignPreviewAttachmentTestApp(t)
+	owner := insertPreviewTestUser(t, a.db, "language-owner")
+	access := models.WorkspaceAccess{UserID: owner, Workspace: models.Workspace{Personal: true}}
+	scope := core.ApplyWorkspaceScope(access, models.ResourceVisibilityPrivate)
+	camp, err := a.core.CreateCampaignInWorkspace(access, models.Campaign{
+		Type: models.CampaignTypeRegular, Name: "Attachment language", Subject: "Catalogue", FromEmail: "sender@example.test",
+		ContentType: models.CampaignContentTypeHTML, Messenger: "email", PoolScope: models.CampaignPoolScopeOrganization,
+		DailySendLimit: 300, DailyResumeTime: "09:00", Headers: models.Headers{}, Attribs: models.JSON{}, ArchiveMeta: []byte(`{}`),
+	}, nil, nil, scope)
+	if err != nil || camp.AttachmentLang != "en" {
+		t.Fatalf("create without language = %q, %v; want en", camp.AttachmentLang, err)
+	}
+	camp.AttachmentLang = "de"
+	camp, err = a.core.UpdateCampaignInWorkspace(access, camp.ID, camp, nil, nil, "")
+	if err != nil || camp.AttachmentLang != "de" {
+		t.Fatalf("set language = %q, %v; want de", camp.AttachmentLang, err)
+	}
+	camp.AttachmentLang = ""
+	camp, err = a.core.UpdateCampaignInWorkspace(access, camp.ID, camp, nil, nil, "")
+	if err != nil || camp.AttachmentLang != "de" {
+		t.Fatalf("update without language = %q, %v; want saved de", camp.AttachmentLang, err)
+	}
+	clone, err := a.core.CloneCampaignForWorkspace(camp.ID, access, "Copy")
+	if err != nil || clone.AttachmentLang != "de" {
+		t.Fatalf("cloned language = %q, %v; want de", clone.AttachmentLang, err)
+	}
+}
+
+func TestUpdateCampaignPreservesConcurrentAttachmentLanguageWhenOmitted(t *testing.T) {
+	a := newCampaignPreviewAttachmentTestApp(t)
+	owner := insertPreviewTestUser(t, a.db, "update-language-owner")
+	listID := seedDeletionList(t, a, "Language audience", models.CustomerListTypePrivate, owner)
+	var id int
+	if err := a.db.Get(&id, `INSERT INTO campaigns(uuid, name, subject, from_email, body, content_type, messenger, owner_user_id, attachment_lang)
+		VALUES(gen_random_uuid(), 'Attachment language', 'Catalogue', 'Sender <sender@example.test>', 'Catalogue', 'plain', 'email', $1, 'de')
+		RETURNING id`, owner); err != nil {
+		t.Fatalf("seeding campaign: %v", err)
+	}
+
+	const subject = "Updated catalogue"
+	body := &campaignUpdateBodyReader{
+		Reader: strings.NewReader(fmt.Sprintf(`{"subject":%q,"customer_list_ids":[%d]}`, subject, listID)),
+		onFirstRead: func() {
+			// The handler has fetched the old campaign but has not decoded the body yet.
+			if _, err := a.db.Exec(`UPDATE campaigns SET attachment_lang='ja' WHERE id=$1`, id); err != nil {
+				t.Fatalf("committing concurrent attachment language: %v", err)
+			}
+		},
+	}
+	req := httptest.NewRequest(http.MethodPut, fmt.Sprintf("/api/campaigns/%d", id), body)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := echo.New().NewContext(req, rec)
+	c.Set("id", id)
+	c.Set(auth.UserHTTPCtxKey, auth.User{Base: auth.Base{ID: owner}, UserRoleID: auth.SuperAdminRoleID})
+	if err := a.UpdateCampaign(c); err != nil || rec.Code != http.StatusOK {
+		t.Fatalf("update campaign: %v, HTTP %d: %s", err, rec.Code, rec.Body)
+	}
+
+	var out struct{ Data models.Campaign }
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decoding campaign response: %v", err)
+	}
+	if out.Data.Subject != subject || out.Data.AttachmentLang != "ja" {
+		t.Fatalf("updated subject and language = %q, %q; want %q, ja", out.Data.Subject, out.Data.AttachmentLang, subject)
+	}
+}
+
+type campaignUpdateBodyReader struct {
+	io.Reader
+	onFirstRead func()
+}
+
+func (r *campaignUpdateBodyReader) Read(p []byte) (int, error) {
+	if f := r.onFirstRead; f != nil {
+		r.onFirstRead = nil
+		f()
+	}
+	return r.Reader.Read(p)
+}
+
+func TestTestAttachmentLangOverride(t *testing.T) {
+	for raw, want := range map[string]string{
+		"":        "",
+		"   ":     "",
+		"de":      "de",
+		"pt_BR":   "pt",
+		"zh-HK":   "zh-TW",
+		"klingon": "",
+		"auto":    "",
+	} {
+		if got := testAttachmentLangOverride(raw); got != want {
+			t.Fatalf("testAttachmentLangOverride(%q) = %q, want %q", raw, got, want)
+		}
+	}
+}
+
+func TestValidateCampaignFieldsValidatesAttachmentLang(t *testing.T) {
+	a := newCampaignTemplateTestApp(t)
+	base := func(lang string) campReq {
+		return campReq{
+			CustomerListIDs: []int{1},
+			Campaign: models.Campaign{
+				Name:           "Language campaign",
+				Subject:        "Subject",
+				FromEmail:      "Sender <sender@example.test>",
+				Body:           "<p>Hello</p>",
+				ContentType:    models.CampaignContentTypeHTML,
+				Messenger:      "email",
+				DailySendLimit: 300,
+				AttachmentLang: lang,
+			},
+		}
+	}
+
+	if _, err := a.validateCampaignFields(base("klingon")); err == nil ||
+		!strings.Contains(strings.ToLower(err.Error()), "attachment language") {
+		t.Fatalf("unsupported language = %v, want a validation error", err)
+	}
+	if got, err := a.validateCampaignFields(base("DE")); err != nil || got.AttachmentLang != "de" {
+		t.Fatalf("regional language = %q, %v, want normalized de", got.AttachmentLang, err)
+	}
+	if got, err := a.validateCampaignFields(base("")); err != nil || got.AttachmentLang != "en" {
+		t.Fatalf("omitted language = %q, %v, want default en", got.AttachmentLang, err)
+	}
+	if _, err := a.validateCampaignFields(base("auto")); err == nil {
+		t.Fatal("removed automatic mode was accepted")
+	}
 }
 
 func newCampaignPreviewAttachmentTestApp(t *testing.T) *App {
@@ -360,9 +574,12 @@ func seedCampaignPreviewMediaFixtures(t *testing.T, db *sqlx.DB) campaignPreview
 	}
 	docID := insertMedia("brochure.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
+	wrapper, err := os.ReadFile(filepath.Join("..", "static", "email-templates", "default.tpl"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := db.Get(&f.templateID, `INSERT INTO templates(name, type, subject, body)
-		VALUES('Preview wrapper', 'campaign', 'Subject', '<html><body>{{ template "content" . }}</body></html>')
-		RETURNING id`); err != nil {
+		VALUES('Preview wrapper', 'campaign', 'Subject', $1) RETURNING id`, string(wrapper)); err != nil {
 		t.Fatalf("seeding template: %v", err)
 	}
 	if _, err := db.Exec(`INSERT INTO template_media(template_id, media_id, filename) VALUES($1, $2, $3)`,

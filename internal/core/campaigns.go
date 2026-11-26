@@ -317,66 +317,6 @@ func (c *Core) GetArchivedCampaigns(offset, limit int) (models.Campaigns, int, e
 	return out, total, nil
 }
 
-// CreateCampaign creates a new campaign.
-func (c *Core) CreateCampaign(o models.Campaign, customerListIDs []int, mediaIDs []int, scope models.ResourceScope) (models.Campaign, error) {
-	uu, err := uuid.NewV4()
-	if err != nil {
-		c.log.Printf("error generating UUID: %v", err)
-		return models.Campaign{}, echo.NewHTTPError(http.StatusInternalServerError,
-			c.i18n.Ts("globals.messages.errorUUID", "error", err.Error()))
-	}
-
-	// Insert and read ID.
-	var newID int
-	if err := c.q.CreateCampaign.Get(&newID,
-		uu,
-		o.Type,
-		o.Name,
-		o.Subject,
-		o.FromEmail,
-		o.Body,
-		o.AltBody,
-		o.ContentType,
-		o.DailySendLimit,
-		o.DailyResumeTime,
-		o.SendAt,
-		o.Headers,
-		o.Attribs,
-		pq.StringArray(normalizeTags(o.Tags)),
-		o.Messenger,
-		o.TemplateID,
-		pq.Array(customerListIDs),
-		o.Archive,
-		o.ArchiveSlug,
-		o.ArchiveTemplateID,
-		o.ArchiveMeta,
-		pq.Array(mediaIDs),
-		o.BodySource,
-		o.AutoTrackLinks,
-		scope.OrganizationID,
-		scope.OwnerUserID,
-		scope.OriginalOwnerUserID,
-		scope.Visibility,
-		o.PoolScope,
-		o.SMTPSource, o.SMTPPoolID, o.SMTPRateLimit, o.PoolReplyPriority,
-	); err != nil {
-		if err == sql.ErrNoRows {
-			return models.Campaign{}, echo.NewHTTPError(http.StatusBadRequest, c.i18n.T("campaigns.noSubs"))
-		}
-
-		c.log.Printf("error creating campaign: %v", err)
-		return models.Campaign{}, echo.NewHTTPError(http.StatusInternalServerError,
-			c.i18n.Ts("globals.messages.errorCreating", "name", "{globals.terms.campaign}", "error", pqErrMsg(err)))
-	}
-
-	out, err := c.GetCampaign(newID, "", "")
-	if err != nil {
-		return models.Campaign{}, err
-	}
-
-	return out, nil
-}
-
 // CreateCampaignInWorkspace keeps campaign creation and all requested
 // customer_list/media/template associations behind the active workspace lock. This is
 // the creation counterpart to UpdateCampaignInWorkspace; it prevents a stale
@@ -491,7 +431,7 @@ func (c *Core) createCampaignTx(tx *sqlx.Tx, access models.WorkspaceAccess, o mo
 		scope.OwnerUserID,
 		scope.OriginalOwnerUserID,
 		scope.Visibility,
-		o.PoolScope, o.SMTPSource, o.SMTPPoolID, o.SMTPRateLimit, o.PoolReplyPriority); err != nil {
+		o.PoolScope, o.SMTPSource, o.SMTPPoolID, o.SMTPRateLimit, o.PoolReplyPriority, o.AttachmentLang); err != nil {
 		if err == sql.ErrNoRows {
 			return 0, echo.NewHTTPError(http.StatusBadRequest, c.i18n.T("campaigns.noSubs"))
 		}
@@ -529,7 +469,7 @@ func (c *Core) UpdateCampaign(id int, o models.Campaign, customerListIDs []int, 
 		o.ArchiveMeta,
 		pq.Array(mediaIDs),
 		o.BodySource,
-		o.AutoTrackLinks, o.SMTPSource, o.SMTPPoolID, o.SMTPRateLimit, o.PoolReplyPriority)
+		o.AutoTrackLinks, o.SMTPSource, o.SMTPPoolID, o.SMTPRateLimit, o.PoolReplyPriority, o.AttachmentLang)
 	if err != nil {
 		c.log.Printf("error updating campaign: %v", err)
 		return models.Campaign{}, echo.NewHTTPError(http.StatusInternalServerError,

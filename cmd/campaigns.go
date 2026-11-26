@@ -220,6 +220,14 @@ func (a *App) PreviewCampaign(c echo.Context) error {
 				camp.NameFallback = camp.TemplateNameFallback
 			}
 		}
+
+		if raw := strings.TrimSpace(c.FormValue("attachment_lang")); raw != "" {
+			lang, ok := manager.NormalizeAttachmentLang(raw)
+			if !ok {
+				return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("campaigns.fieldInvalidAttachmentLang"))
+			}
+			camp.AttachmentLang = lang
+		}
 	}
 
 	// Attachments are part of the delivered message. A POST carries the
@@ -245,7 +253,7 @@ func (a *App) PreviewCampaign(c echo.Context) error {
 // renderCampaignPreview compiles and renders a campaign for preview responses,
 // shared by the saved and unsaved campaign preview handlers.
 func (a *App) renderCampaignPreview(c echo.Context, camp models.Campaign) error {
-	if err := camp.CompileTemplate(a.manager.TemplateFuncs(&camp)); err != nil {
+	if err := a.manager.CompileCampaignTemplate(&camp); err != nil {
 		a.log.Printf("error compiling template: %v", err)
 		return echo.NewHTTPError(http.StatusBadRequest,
 			a.i18n.Ts("templates.errorCompiling", "error", err.Error()))
@@ -267,8 +275,7 @@ func (a *App) renderCampaignPreview(c echo.Context, camp models.Campaign) error 
 		if a.urlCfg != nil {
 			rootURL = a.urlCfg.RootURL
 		}
-		linked, _, _, err := manager.LinkMediaAttachmentsForPreview(body, msg.AltBody(), camp.Attachments,
-			rootURL, camp.ContentType == models.CampaignContentTypePlain)
+		linked, err := msg.PreviewBodyWithAttachments(rootURL)
 		if err != nil {
 			// Preview is a visual aid; send-time media validation still runs
 			// when the campaign is tested or started.
@@ -312,11 +319,16 @@ func (a *App) PreviewNewCampaign(c echo.Context) error {
 	if contentType == "" {
 		contentType = models.CampaignContentTypeRichtext
 	}
+	lang, ok := manager.NormalizeAttachmentLang(c.FormValue("attachment_lang"))
+	if !ok {
+		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("campaigns.fieldInvalidAttachmentLang"))
+	}
 	camp := models.Campaign{
-		Type:        models.CampaignTypeRegular,
-		Messenger:   emailMsgr,
-		ContentType: contentType,
-		Body:        c.FormValue("body"),
+		Type:           models.CampaignTypeRegular,
+		Messenger:      emailMsgr,
+		ContentType:    contentType,
+		Body:           c.FormValue("body"),
+		AttachmentLang: lang,
 	}
 	if v := c.FormValue("auto_track_links"); v != "" {
 		camp.AutoTrackLinks, _ = strconv.ParseBool(v)
@@ -450,7 +462,7 @@ func (a *App) attachPreviewMedia(c echo.Context, access models.WorkspaceAccess, 
 	slices.Sort(ids)
 
 	user := auth.GetUser(c)
-	mediaReadable := user.HasPerm(auth.PermMediaGet)
+	mediaReadable := user.HasPerm(auth.PermMediaGet) && auth.HasIntegrationTokenScope(c, apiKeyScopeMediaRead)
 	attachments := make([]models.Attachment, 0, len(ids))
 	for _, id := range ids {
 		_, isAssociated := associated[id]
@@ -807,9 +819,11 @@ func (a *App) UpdateCampaign(c echo.Context) error {
 	// This allows updating of values that have been sent whereas fields
 	// that are not in the request retain the old values.
 	o := campReq{Campaign: cm}
+	o.AttachmentLang = "" // Detect omission instead of inheriting the snapshot value.
 	if err := c.Bind(&o); err != nil {
 		return err
 	}
+	hasAttachmentLang := strings.TrimSpace(o.AttachmentLang) != ""
 
 	// Pool scope is immutable after creation: the request value is normalized
 	// against the saved campaign so an audience edit can never smuggle a
@@ -858,6 +872,10 @@ func (a *App) UpdateCampaign(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	} else {
 		o = c
+	}
+	if !hasAttachmentLang {
+		// Undo the validation default so SQL preserves the current row value.
+		o.AttachmentLang = ""
 	}
 
 	if err := a.loadCampaignTemplateBody(access, &o.Campaign); err != nil {
@@ -1330,6 +1348,10 @@ func (a *App) TestCampaign(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return err
 	}
+	// Validation fills an omitted attachment language with the create/update
+	// default; remember the raw value so an omitted field keeps the saved
+	// campaign language instead of being overridden by that default.
+	requestedAttachmentLang := req.AttachmentLang
 	// Test sends use the saved, immutable audience scope just like updates.
 	// A request must not widen or downgrade its public-pool authorization.
 	saved, err := a.core.GetWorkspaceCampaign(access, id)
@@ -1439,7 +1461,12 @@ func (a *App) TestCampaign(c echo.Context) error {
 	if req.SMTPRateLimit > 0 {
 		camp.SMTPRateLimit = req.SMTPRateLimit
 	}
-	camp.TemplateID = req.TemplateID
+	if tplID > 0 {
+		camp.TemplateID = req.TemplateID
+	}
+	if lang := testAttachmentLangOverride(requestedAttachmentLang); lang != "" {
+		camp.AttachmentLang = lang
+	}
 	if camp.ContentType == models.CampaignContentTypeVisual && tplID > 0 {
 		camp.NameFallback = camp.TemplateNameFallback
 	}
@@ -1471,11 +1498,20 @@ func (a *App) TestCampaign(c echo.Context) error {
 		return err
 	}
 
-	// Send the test messages.
-	for _, s := range subs {
-		sub := s
-
-		if err := a.sendTestMessage(sub, &camp); err != nil {
+	// The queue retains the campaign pointer; compile before publishing it to any worker.
+	if err := a.manager.CompileCampaignTemplate(&camp); err != nil {
+		a.log.Printf("error compiling test campaign: %v", err)
+		return echo.NewHTTPError(http.StatusInternalServerError,
+			a.i18n.Ts("templates.errorCompiling", "error", err.Error()))
+	}
+	for _, sub := range subs {
+		msg, err := a.manager.NewCampaignMessage(&camp, sub)
+		if err != nil {
+			a.log.Printf("error rendering test message: %v", err)
+			return echo.NewHTTPError(http.StatusInternalServerError,
+				a.i18n.Ts("templates.errorRendering", "error", err.Error()))
+		}
+		if err := a.manager.PushCampaignMessage(msg); err != nil {
 			a.log.Printf("error sending test message: %v", err)
 			return echo.NewHTTPError(http.StatusInternalServerError,
 				a.i18n.Ts("campaigns.errorSendTest", "error", err.Error()))
@@ -1483,6 +1519,19 @@ func (a *App) TestCampaign(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, okResp{true})
+}
+
+// testAttachmentLangOverride validates an explicitly supplied attachment
+// language for a test send. An omitted field returns "", so the saved campaign
+// language applies; validation has already rejected unusable values with 400.
+func testAttachmentLangOverride(raw string) string {
+	if strings.TrimSpace(raw) == "" {
+		return ""
+	}
+	if lang, ok := manager.NormalizeAttachmentLang(raw); ok {
+		return lang
+	}
+	return ""
 }
 
 // A highest administrator may act for another campaign owner from an interactive
@@ -2057,24 +2106,6 @@ func (a *App) getManagedCampaignReportIDs(c echo.Context, access models.Workspac
 	return out, nil
 }
 
-// sendTestMessage takes a campaign and a customer and sends out a sample campaign message.
-func (a *App) sendTestMessage(sub models.Customer, camp *models.Campaign) error {
-	if err := camp.CompileTemplate(a.manager.TemplateFuncs(camp)); err != nil {
-		a.log.Printf("error compiling template: %v", err)
-		return echo.NewHTTPError(http.StatusInternalServerError,
-			a.i18n.Ts("templates.errorCompiling", "error", err.Error()))
-	}
-
-	// Create a sample campaign message.
-	msg, err := a.manager.NewCampaignMessage(camp, sub)
-	if err != nil {
-		a.log.Printf("error rendering message: %v", err)
-		return echo.NewHTTPError(http.StatusNotFound, a.i18n.Ts("templates.errorRendering", "error", err.Error()))
-	}
-
-	return a.manager.PushCampaignMessage(msg)
-}
-
 // preloadTestCampaignMedia validates and materializes every media reference
 // used by a test campaign.  Campaign-owned media must be directly usable in
 // the active workspace.  A private image owned by the author of a shared
@@ -2401,6 +2432,14 @@ func (a *App) validateCampaignFields(c campReq) (campReq, error) {
 		c.ContentType != models.CampaignContentTypeMarkdown {
 		c.ContentType = models.CampaignContentTypeRichtext
 	}
+
+	// The attachment-section language is rendered when a message is sent; store
+	// only canonical codes so the sender never has to guess at an unknown value.
+	attachmentLang, ok := manager.NormalizeAttachmentLang(c.AttachmentLang)
+	if !ok {
+		return c, errors.New(a.i18n.T("campaigns.fieldInvalidAttachmentLang"))
+	}
+	c.AttachmentLang = attachmentLang
 
 	if c.ContentType != models.CampaignContentTypeVisual {
 		c.BodySource.Valid = false

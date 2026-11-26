@@ -324,7 +324,7 @@ func campaignListColumns(noBody bool) string {
 	return `c.id, c.uuid, c.type, c.name, c.subject, c.from_email, ` + body + `,
 		c.altbody, c.send_at, c.status, c.content_type, c.daily_send_limit, c.daily_resume_time,
 		c.smtp_rate_limit, c.next_resume_at, c.send_errors, c.tags, c.headers, c.attribs,
-		c.template_id, c.messenger, c.auto_track_links, c.archive, c.archive_slug,
+		c.template_id, c.messenger, c.auto_track_links, c.attachment_lang, c.archive, c.archive_slug,
 		c.archive_template_id, c.archive_meta, c.reply_mailbox_id, c.pool_reply_priority,
 		c.pool_scope, c.smtp_source, c.smtp_pool_id, c.pool_next_org_index, c.name_fallback,
 		c.to_send, c.sent, c.started_at,

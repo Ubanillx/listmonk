@@ -49,6 +49,7 @@ export default {
     contentType: { type: String, default: '' },
     templateId: { type: [Number, null], default: null },
     autoTrackLinks: { type: [Boolean, null], default: null },
+    attachmentLang: { type: String, default: 'en' },
     isArchive: { type: Boolean, default: false },
   },
 
@@ -157,6 +158,7 @@ export default {
       // The server renders the attachment section from this unsaved selection.
       if (this.type === 'campaign' && !this.isArchive) {
         data.set('media', JSON.stringify(this.media.map((item) => item.id).filter(Boolean)));
+        data.set('attachment_lang', this.attachmentLang || 'en');
       }
     }
     try {

@@ -149,7 +149,7 @@ func (c *Core) updateCampaignTx(tx *sqlx.Tx, access models.WorkspaceAccess, id i
 		o.ArchiveMeta,
 		pq.Array(mediaIDs),
 		o.BodySource,
-		o.AutoTrackLinks, o.SMTPSource, o.SMTPPoolID, o.SMTPRateLimit, o.PoolReplyPriority)
+		o.AutoTrackLinks, o.SMTPSource, o.SMTPPoolID, o.SMTPRateLimit, o.PoolReplyPriority, o.AttachmentLang)
 	if err != nil {
 		return workspaceQueryError("updating campaign", err)
 	}

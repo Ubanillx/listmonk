@@ -92,7 +92,7 @@ func (m *Manager) newPipe(c *models.Campaign) (*pipe, error) {
 	}
 
 	// Load the template.
-	if err := c.CompileTemplate(m.TemplateFuncs(c)); err != nil {
+	if err := m.CompileCampaignTemplate(c); err != nil {
 		// The scheduler may already have changed a scheduled/deferred campaign to
 		// running before template compilation.  Always leave a failed claim in a
 		// retryable state instead of allowing it to remain running forever.

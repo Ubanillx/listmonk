@@ -125,8 +125,7 @@ func TestWorkspacePoolListDashboardCountsDescribeBindings(t *testing.T) {
 
 func TestWorkspaceDashboardCountsSeparateCustomerGroups(t *testing.T) {
 	env := newPoolRecipientsTestEnvWithDDL(t, poolRecipientsTestDDL+`
-ALTER TABLE customer_lists ADD COLUMN optin TEXT NOT NULL DEFAULT 'single',
-    ADD COLUMN transfer_pending_at TIMESTAMPTZ;
+ALTER TABLE customer_lists ADD COLUMN optin TEXT NOT NULL DEFAULT 'single';
 CREATE TABLE customers (
     id SERIAL PRIMARY KEY,
     status TEXT NOT NULL DEFAULT 'enabled',
@@ -140,7 +139,6 @@ CREATE TABLE customer_list_memberships (
 );
 ALTER TABLE campaigns ADD COLUMN status TEXT NOT NULL DEFAULT 'draft',
     ADD COLUMN sent INTEGER NOT NULL DEFAULT 0,
-    ADD COLUMN owner_user_id INTEGER,
     ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private',
     ADD COLUMN transfer_pending_at TIMESTAMPTZ;
 `)

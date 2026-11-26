@@ -2,11 +2,18 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
+	"mime"
+	"mime/multipart"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/knadh/listmonk/internal/auth"
 	"github.com/knadh/listmonk/models"
 	"github.com/labstack/echo/v4"
 )
@@ -33,6 +40,102 @@ func httpCodeOf(t *testing.T, err error) int {
 
 func attachment(name string, size int) models.Attachment {
 	return models.Attachment{Name: name, Content: bytes.Repeat([]byte("a"), size)}
+}
+
+func TestTxTemplateMediaAndUploadedFileReachSMTP(t *testing.T) {
+	a, received := newAttachmentDeliveryTestApp(t)
+	addMedia := func(name, mediaType string) int {
+		t.Helper()
+		var id int
+		if err := a.db.Get(&id, `INSERT INTO media(uuid,filename,content_type,thumb,owner_user_id)
+			VALUES(gen_random_uuid(),$1,$2,'',1) RETURNING id`, name, mediaType); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := a.media.Put(name, mediaType, strings.NewReader("template media")); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	imgID := addMedia("tx-photo.png", "image/png")
+	pdfID := addMedia("tx-catalog.pdf", "application/pdf")
+	tpl := models.Template{Subject: "Receipt", Body: fmt.Sprintf(`<html><body><p>Thank you</p><img src="/api/media/file/%d/tx-photo.png"></body></html>`, imgID)}
+	if err := a.db.Get(&tpl.ID, `INSERT INTO templates(name,type,subject,body,owner_user_id)
+		VALUES('Receipt','tx',$1,$2,1) RETURNING id`, tpl.Subject, tpl.Body); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Exec(`INSERT INTO template_media(template_id,media_id,filename)
+		VALUES($1,$2,'tx-photo.png'),($1,$3,'tx-catalog.pdf')`, tpl.ID, imgID, pdfID); err != nil {
+		t.Fatal(err)
+	}
+	if err := tpl.Compile(a.manager.GenericTemplateFuncs()); err != nil {
+		t.Fatal(err)
+	}
+	a.manager.CacheTpl(tpl.ID, &tpl)
+
+	var payload bytes.Buffer
+	form := multipart.NewWriter(&payload)
+	if err := form.WriteField("data", fmt.Sprintf(`{"template_id":%d,"customer_mode":"external",
+		"customer_email":"receipt@example.test","content_type":"html"}`, tpl.ID)); err != nil {
+		t.Fatal(err)
+	}
+	const rawContents = "one-off invoice"
+	file, err := form.CreateFormFile("file", "invoice.dat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.WriteString(file, rawContents); err != nil {
+		t.Fatal(err)
+	}
+	if err := form.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/tx", &payload)
+	req.Header.Set(echo.HeaderContentType, form.FormDataContentType())
+	rec := httptest.NewRecorder()
+	c := echo.New().NewContext(req, rec)
+	c.Set(auth.UserHTTPCtxKey, superAdminUser())
+	if err := a.SendTxMessage(c); err != nil || rec.Code != http.StatusOK {
+		t.Fatalf("transactional send: HTTP %d, %v", rec.Code, err)
+	}
+
+	go a.manager.Run()
+	msg := readAttachmentDelivery(t, received)
+	if msg.Header.Get("Subject") != "Receipt" {
+		t.Fatalf("unexpected subject %q", msg.Header.Get("Subject"))
+	}
+	contentType, params, err := mime.ParseMediaType(msg.Header.Get("Content-Type"))
+	if err != nil || contentType != "multipart/mixed" {
+		t.Fatalf("one-off file did not reach MIME: %q, %v", contentType, err)
+	}
+	parts := multipart.NewReader(msg.Body, params["boundary"])
+	var html string
+	var files []string
+	for {
+		part, err := parts.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if filename := part.FileName(); filename != "" {
+			files = append(files, filename)
+			body, err := io.ReadAll(base64.NewDecoder(base64.StdEncoding, part))
+			if err != nil || string(body) != rawContents {
+				t.Fatalf("one-off attachment payload changed: %v", err)
+			}
+		} else {
+			html += resumeMediaHTML(t, part.Header, part)
+		}
+	}
+	if len(files) != 1 || files[0] != "invoice.dat" {
+		t.Fatalf("expected only the one-off MIME attachment, got %v", files)
+	}
+	if !strings.Contains(html, `src="https://example.test/email-media/`) || !strings.Contains(html, `/tx-photo.png"`) ||
+		!strings.Contains(html, `href="https://example.test/email-media/`) || !strings.Contains(html, `/tx-catalog.pdf?download=1`) ||
+		!strings.Contains(html, ">Attachments<") || strings.Contains(html, "cid:") || strings.Contains(html, "/api/media/file/") {
+		t.Fatal("transactional template media did not render exclusively as recipient links")
+	}
 }
 
 // TestValidateTxMessageAttachmentLimits locks the caps that keep one /api/tx

@@ -1185,6 +1185,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#campaign-attachment-section-language-2026-11-26" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Campaign attachment section language (2026-11-26)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#campaign-preview-attachments-2026-11-25" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2846,6 +2857,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#campaign-attachment-section-language-2026-11-26" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Campaign attachment section language (2026-11-26)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#campaign-preview-attachments-2026-11-25" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3874,11 +3896,14 @@
 
 
 <h1 id="api-campaigns">API / Campaigns<a class="headerlink" href="#api-campaigns" title="Permanent link">&para;</a></h1>
+<h2 id="campaign-attachment-section-language-2026-11-26">Campaign attachment section language (2026-11-26)<a class="headerlink" href="#campaign-attachment-section-language-2026-11-26" title="Permanent link">&para;</a></h2>
+<p><code>POST /api/campaigns</code>, <code>PUT /api/campaigns/{id}</code> and campaign test sends accept <code>attachment_lang</code>: one of <code>en</code> (default), <code>zh-CN</code>, <code>zh-TW</code>, <code>es</code>, <code>fr</code>, <code>de</code>, <code>pt</code>, <code>it</code>, <code>ru</code>, <code>ja</code>, <code>ko</code>. The language is a campaign-level manual choice: every recipient sees it, and it is not detected from customer attributes. Regional spellings such as <code>en-US</code>, <code>zh_HK</code> or <code>pt-BR</code> are normalized to the canonical code; any other value, including the removed <code>auto</code> mode, returns HTTP 400. Responses and clones expose <code>attachment_lang</code>.</p>
+<p>Preview POSTs accept the same form field and reject unsupported values with HTTP 400. If omitted, a saved preview uses the campaign's language, and a new draft preview uses English. GET previews only use the saved value. Updates and test sends preserve the saved language when the field is omitted. A test send that omits <code>template_id</code> uses both the saved template's body and its media.</p>
 <h2 id="campaign-preview-attachments-2026-11-25">Campaign preview attachments (2026-11-25)<a class="headerlink" href="#campaign-preview-attachments-2026-11-25" title="Permanent link">&para;</a></h2>
-<p>Campaign previews render attachments the way the sender delivers them. Attached images that are not referenced in the body are appended as <code>&lt;img&gt;</code>; other attached files are appended as the localized "附件资料" link-card section, exactly like a real send. The preview uses the site-relative protected library URL <code>/api/media/file/{id}/{filename}</code> in place of the per-recipient <code>/email-media/</code> link (relative so the admin UI can inline it whatever origin <code>app.root_url</code> names), issues no delivery token and reads no blob.</p>
-<p><code>POST /api/campaigns/{id}/preview</code> and <code>POST /api/campaigns/preview</code> accept an optional <code>media</code> form field: a JSON array of up to 200 media IDs such as <code>[12,15]</code>. When present (including <code>[]</code>) it replaces the campaign's saved <code>campaign_media</code> for that render, so unsaved attachment changes in the editor appear immediately. When omitted, the saved set is used. The selected template's <code>template_media</code> is always included, matching delivery. <code>GET /api/campaigns/{id}/preview</code> renders the saved set; a <code>media</code> query parameter is ignored. Saved campaign/template attachments follow their read rules; an unsaved <code>media</code> ID outside those associations also requires the <code>media:get</code> permission. Unreadable or out-of-workspace media is skipped, and malformed, <code>null</code> or oversized lists return HTTP 400.</p>
+<p>Campaign previews use the same attachment layout as delivery. Unreferenced attached images appear as <code>&lt;img&gt;</code>; the first unreferenced non-image file gets the cover and the rest appear as compact rows. The section follows the campaign content inside the email column, before the template footer. A standalone HTML email without a discernible column uses its HTML body. Preview labels follow the campaign's <code>attachment_lang</code> (English by default). The preview uses the site-relative protected library URL <code>/api/media/file/{id}/{filename}</code> in place of the per-recipient <code>/email-media/</code> link (relative so the admin UI can inline it whatever origin <code>app.root_url</code> names), issues no delivery token and reads no blob.</p>
+<p><code>POST /api/campaigns/{id}/preview</code> and <code>POST /api/campaigns/preview</code> accept an optional <code>media</code> form field: a JSON array of up to 200 media IDs such as <code>[12,15]</code>. When present (including <code>[]</code>) it replaces the campaign's saved <code>campaign_media</code> for that render, so unsaved attachment changes in the editor appear immediately. When omitted, the saved set is used. The selected template's <code>template_media</code> is always included, matching delivery. <code>GET /api/campaigns/{id}/preview</code> renders the saved set; a <code>media</code> query parameter is ignored. Saved campaign/template attachments follow their read rules; an unsaved <code>media</code> ID outside those associations also requires the <code>media:get</code> permission and, for a personal API key, the <code>media:read</code> scope. Unreadable or out-of-workspace media is skipped, and malformed, <code>null</code> or oversized lists return HTTP 400.</p>
 <h2 id="unsaved-campaign-preview-and-render-validation-2026-11-20">Unsaved campaign preview and render validation (2026-11-20)<a class="headerlink" href="#unsaved-campaign-preview-and-render-validation-2026-11-20" title="Permanent link">&para;</a></h2>
-<p><code>POST /api/campaigns/preview</code> renders an unsaved campaign without persisting anything. It accepts form fields <code>template_id</code>, <code>content_type</code>, <code>body</code>, and <code>auto_track_links</code>. The selected template must be readable in the active workspace, and the caller needs campaign management permission plus a <code>campaigns:write</code> API key scope. The response is the rendered HTML with the sandbox CSP header, or plain text when <code>content_type=plain</code>. Compile and render failures return HTTP 400 with the <code>templates.errorCompiling</code> / <code>templates.errorRendering</code> message. Saved campaigns keep using <code>GET|POST /api/campaigns/{id}/preview</code>, which remains read-only (<code>campaigns:read</code>).</p>
+<p><code>POST /api/campaigns/preview</code> renders an unsaved campaign without persisting anything. It accepts form fields <code>template_id</code>, <code>content_type</code>, <code>body</code>, and <code>auto_track_links</code>; <code>media</code> and <code>attachment_lang</code> were added later (see the 2026-11-25 sections above). The selected template must be readable in the active workspace, and the caller needs campaign management permission plus a <code>campaigns:write</code> API key scope. The response is the rendered HTML with the sandbox CSP header, or plain text when <code>content_type=plain</code>. Compile and render failures return HTTP 400 with the <code>templates.errorCompiling</code> / <code>templates.errorRendering</code> message. Saved campaigns keep using <code>GET|POST /api/campaigns/{id}/preview</code>, which remains read-only (<code>campaigns:read</code>).</p>
 <p><code>POST /api/campaigns</code> and <code>PUT /api/campaigns/{id}</code> now compile and render the campaign against a sample customer before saving. <code>PUT /api/campaigns/{id}/status</code> to <code>scheduled</code> or <code>running</code> renders first, using the same default-template fallback as the sender. Broken template expressions are rejected with HTTP 400 instead of failing per recipient during delivery. In this fork the campaign render context is <code>*manager.CampaignMessage</code> with the <code>.Campaign</code> and <code>.Customer</code> fields; legacy upstream <code>.Subscriber.*</code> expressions fail validation.</p>
 <h2 id="v66902026-10-30">营销活动分组统计（v6.69.0，2026-10-30）<a class="headerlink" href="#v66902026-10-30" title="Permanent link">&para;</a></h2>
 <p>采用 B 方案，将列表分为营销活动、发送情况、客户互动、发送错误、退订相关人数；归属、受众及状态集中在活动信息，日期位于进度下方。错误列仅显示「有发送错误 / 无发送错误」，沿用原明细权限及历史诊断，不展示累计尝试数。退订区域分别展示点击人数和确认人数，两项分别按收件人去重，允许同一客户同时计入两项；零值显示 0，不改变订阅状态。</p>

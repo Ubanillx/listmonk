@@ -2038,6 +2038,7 @@
 <h4 id="post-apitx">POST /api/tx<a class="headerlink" href="#post-apitx" title="Permanent link">&para;</a></h4>
 <p>Allows sending transactional messages to one or more customers via a preconfigured transactional template.</p>
 <p>When <code>messenger</code> is <code>email</code> or <code>email-*</code>, the selected SMTP's sender configuration overrides <code>from_email</code>, and the request is subject to SMTP daily quota checks. If no SMTP has quota left, the API returns HTTP <code>429 Too Many Requests</code>.</p>
+<p>Media already attached to the template uses recipient links. In HTML email, template images appear inline, and other files that aren't already linked in the body appear in an English attachment section. In plain text, the template media appears as file links. A file uploaded with this request remains a separate MIME attachment.</p>
 <h5 id="parameters">Parameters<a class="headerlink" href="#parameters" title="Permanent link">&para;</a></h5>
 <table>
 <thead>

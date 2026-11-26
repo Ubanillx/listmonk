@@ -33,7 +33,7 @@ Personal keys cannot configure SMTP or reply mailboxes, call `/api/dashboard/*`,
 
 For today's delivery and engagement, call `/api/campaigns/report/summary` (and `timeseries`, `links`, `geo`, or `recipients`) with explicit timezone-aware `from`/`to` values. Repeat `id` for selected campaigns or omit IDs for the authorized workspace report set. Do not filter by campaign creation time: older campaigns can produce events today. Date-only endpoints are midnight boundaries, not whole-day expansions.
 
-The repository bundles `skills/listmonk-openclaw-marketing/SKILL.md`, a maintained API reference, workflow examples, and Python scripts. The report CLI supports a single campaign, multiple campaign IDs, or the authorized workspace, optional geographic aggregates, and explicit recipient pagination.
+The repository bundles `skills/listmonk-marketing/SKILL.md`, a maintained API reference, workflow examples, and Python scripts. The report CLI supports a single campaign, multiple campaign IDs, or the authorized workspace, optional geographic aggregates, and explicit recipient pagination.
 
 ## Interacting directly with the DB
 

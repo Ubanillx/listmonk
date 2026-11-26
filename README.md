@@ -16,7 +16,7 @@
 [![API](https://img.shields.io/badge/API-REST%20%2B%20Swagger-85EA2D?logo=swagger&logoColor=black)](docs/swagger/)
 [![E2E](https://img.shields.io/badge/E2E-Cypress%20x49-17202C?logo=cypress&logoColor=white)](frontend/cypress/e2e)
 [![Migrations](https://img.shields.io/badge/Migrations-76-7a5af8)](internal/migrations)
-[![Agent Skill](https://img.shields.io/badge/Agent%20Skill-OpenClaw-6f42c1)](skills/listmonk-openclaw-marketing)
+[![Agent Skill](https://img.shields.io/badge/Agent%20Skill-OpenClaw-6f42c1)](skills/listmonk-marketing)
 [![i18n](https://img.shields.io/badge/i18n-zh--CN%20%7C%20zh--TW%20%7C%20en-ff6b6b)](i18n)
 
 [亮点](#highlights) · [功能概览](#features) · [智能体接入](#agents) · [界面导览](#screenshots) · [系统架构](#architecture) · [快速开始](#quickstart) · [技术文档](#techdocs) · [文档索引](#index)
@@ -258,7 +258,7 @@
 
 ## 智能体接入
 
-仓库自带一个可直接投喂给智能体平台的 **Skill**：`skills/listmonk-openclaw-marketing`。
+仓库自带一个可直接投喂给智能体平台的 **Skill**：`skills/listmonk-marketing`。
 它把本部署的 REST 接口、权限边界和操作顺序固化成文档和脚本，
 让 OpenClaw 一类的智能体不必猜测参数就能完成营销操作。
 
@@ -294,9 +294,9 @@
 ### 接入步骤
 
 1. 在 **Profile → API Keys** 创建个人 Key，勾选所需 scope（最小权限即可）。
-2. 把 `skills/listmonk-openclaw-marketing` 整个目录放进智能体平台的技能目录，
+2. 把 `skills/listmonk-marketing` 整个目录放进智能体平台的技能目录，
    或将 `SKILL.md` 及其 `references/` 作为上下文加载。
-3. 在技能目录复制 [`.env.example`](skills/listmonk-openclaw-marketing/.env.example) 为 `.env` 并填写：
+3. 在技能目录复制 [`.env.example`](skills/listmonk-marketing/.env.example) 为 `.env` 并填写：
 
 ```dotenv
 LISTMONK_BASE_URL=https://listmonk.example.com
@@ -320,8 +320,8 @@ LISTMONK_BEARER_TOKEN=lmpk_...
 > 智能体做的是「按既定流程调用 API」。发送、补发、拉黑这类不可撤回的动作，
 > 仍应在人工确认后再触发。
 
-详见 [SKILL.md](skills/listmonk-openclaw-marketing/SKILL.md) 与 
-[API reference](skills/listmonk-openclaw-marketing/references/api-reference.md)。
+详见 [SKILL.md](skills/listmonk-marketing/SKILL.md) 与 
+[API reference](skills/listmonk-marketing/references/api-reference.md)。
 
 <a id="screenshots"></a>
 

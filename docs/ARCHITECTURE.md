@@ -359,9 +359,13 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 
 `EmlImport.vue` 提供非可视化正文的“导入邮件”入口，接受 `.eml` 和 `.msg`。`msgParser.worker.js` 使用 MsgReader 在独立 Worker 内解析 Outlook MSG，`msgParser.js` 将 Unicode/ANSI 正文、二进制 HTML、Internet/消息代码页与 CID 图片附件规范化为公共邮件结构；支持 UTF-8、GB18030 等编码，HTML 优先、纯文本回退，不展开附加邮件，最多 200 个附件并限制累计附件 32 MiB。仅有压缩 RTF 或加密内容且无 HTML/纯文本正文的 MSG 会提示无可导入正文，不以原始 RTF 代替正文。Vite 的 Buffer/StringDecoder 浏览器别名用于 MsgReader 的字符解码，MSG 解析代码只在选用 MSG 时加载。两种格式共用原文件大小与 30 秒 Worker 超时，以及后续净化、上传和草稿保护流程。`emlParser.worker.js` 使用 Postal MIME 在浏览器 Worker 内解析原始字节，处理 multipart/alternative、related、Base64、quoted-printable 和字符集。限制原文件 32 MiB、嵌套 20 层、200 个 MIME part、累计头部 256 KiB 和 30 秒解析时间；附加的 message/rfc822 不合并为正文。`importEml.js` 在上传前验证全部内嵌图片引用，按 CID 或唯一附件文件名匹配，重复引用共用一份上传，data URL 同样入库；普通附件不上传，远程 HTTP(S) 图片保留链接。DOMPurify 去除脚本、事件、表单、嵌入对象和样式表，行内 CSS 仅保留排版白名单，图片地址替换后再次净化。不新增后端接口，图片复用 `POST /api/media` 的工作区与权限检查。仅全部图片上传成功才替换正文并关联媒体；过程中禁用编辑、保存和预览，失败保留原正文，已经上传的素材留在媒体库。导入不改变主题、收件人或活动状态，不自动保存。回归入口：`frontend/cypress/e2e/campaign-eml-import.cy.js`。
 
-自 v6.58.0 起，实际邮件投递通过 `internal/manager/linked_media.go::LinkMediaAttachments` 将关联图片的 `src`、背景图及文件 `href` 转换为 `app.root_url` 下的收件人链接，不发送媒体库文件的 CID 或附件 MIME。正文图片保留原位置自动远程加载，未引用的图片以正文图片补充；未在正文引用的其他文件在邮件末尾归入同一个“附件资料”区，显示文件数量，逐行提供仅用图标颜色区分的类型标识及真实文件名，支持 PDF、Word、表格、演示文稿、压缩包和文本文件，未知类型显示通用文件标识。Word/Excel/PowerPoint 的查看入口把收件人能力链接 URL 编码后交给微软 Office Web Viewer；PDF 直接查看，其他类型只下载。下载入口仍走同一个 `/email-media/` 文件路由，`download=1` 强制按原文件名下载，媒体库受保护 URL 不外泄。微软预览需要其服务器能访问 `app.root_url`，会向微软提供该收件人链接及文件。整个资料区使用邮件兼容的表格与行内样式，不依赖远程图标；纯文本和已有替代正文仍补充文件 URL。正文已引用的文件链接只替换目标 URL，不再重复追加卡片。新发、测试、暂停恢复、延迟续发与事务模板媒体共用此处理；系统客户数据导出与事务 API 的临时原始附件仍遵守原消息契约。外部图片 URL 保留，历史本机 `/uploads/` 与 ID/文件名保护 URL 在已授权的媒体集合内匹配，带 ID 的引用不回退到同名克隆。
+自 v6.58.0 起，实际邮件投递通过 `internal/manager/linked_media.go::LinkMediaAttachments` 将关联图片的 `src`、背景图及文件 `href` 转换为 `app.root_url` 下的收件人链接，不发送媒体库文件的 CID 或附件 MIME。正文图片保留原位置自动远程加载，未引用的图片以正文图片补充；未在正文引用的普通文件按媒体 ID 排序，集中显示在一个附件区；第一份文件用浅纸色封面呈现，显示类型、完整文件名和蓝色下载按钮，其余文件用紧凑行，不重复说明。PDF、Word、表格、演示文稿、压缩包和文本文件沿用原类型识别，未知类型显示通用文件标识。Word/Excel/PowerPoint 的查看入口把收件人能力链接 URL 编码后交给微软 Office Web Viewer；PDF 直接查看，其他类型只下载。下载入口仍走同一个 `/email-media/` 文件路由，`download=1` 强制按原文件名下载，媒体库受保护 URL 不外泄。微软预览需要其服务器能访问 `app.root_url`，会向微软提供该收件人链接及文件。整个资料区使用邮件兼容的表格与行内样式，不依赖远程图标；纯文本和已有替代正文仍补充文件 URL。正文已引用的文件链接只替换目标 URL，不再重复追加卡片。新发、测试、暂停恢复、延迟续发与事务模板媒体共用此处理；系统客户数据导出与事务 API 的临时原始附件仍遵守原消息契约。外部图片 URL 保留，历史本机 `/uploads/` 与 ID/文件名保护 URL 在已授权的媒体集合内匹配，带 ID 的引用不回退到同名克隆。
+
+`Manager.CompileCampaignTemplate` 在已解析的正文模板末尾加入本次编译专用的纯文本标记，不改变模板转义上下文，不写回模板。渲染后移除标题、属性等位置的标记，只在有效的正文位置留下一个内部插入点。独立 HTML 使用可辨认的正文栏（唯一可见的 `main` 或可视化编辑器的内容单元格），优先在显式页脚或末尾退订块之前插入；没有独立正文栏时用 HTML 正文作为边界。`CampaignMessage` 的预览与发送共享位置和样式：隐藏区域与表格结构中不能容纳正文块的位置不作为插槽，定位成功后只插入一份并清除内部标记。试发在加载已选模板及媒体后只编译一次，所有收件人共用同一份只读活动；请求未指定模板时，沿用所存模板及其附件。自动补入的图片在内容栏内按比例缩小，正文已有图片的样式不改。附件区用行内样式隔离包裹模板的通用表格边框、间距和对齐规则，不影响正文原有的表格。已有正文引用、纯文本、归档、匿名媒体能力链接和工作区授权不改。
 
 已开始且部分投递的历史活动暂停后恢复时，调度器重新加载活动与已关联素材，剩余收件人走上述链接转换，包含旧 `/uploads/`、保护 URL 与 CID 图片引用；无需重新创建活动、修改正文或重置进度。已发送的收件人不重复投递，原始 `started_at` 与已发送记录保留，旧队列中的未发送收件人可继续领取。真实数据库与 SMTP MIME 的完整恢复回归见 `cmd/email_media_resume_test.go::TestStartedCampaignResumesWithRemoteMedia`。
+
+自 2026-11-26 起，附件资料区文案内置 en、zh-CN、zh-TW、es、fr、de、pt、it、ru、ja、ko 十一种语言（`internal/manager/attachment_lang.go`）。语言由活动 `campaigns.attachment_lang`（v6.75.0，默认 `en`，API/UI 只接受规范化后的代码）统一决定，对活动内所有收件人一致，不读取客户属性；常规发送、试发、暂停恢复和预览按活动语言渲染；事务模板走同一媒体渲染流程，没有活动语言时使用英文。不支持的语言在预览和保存、试发中均拒绝，编辑时未传语言则保留已选值。邮件正文无法按收件设备语言自动切换（邮件客户端不执行 JS、不向发件方传递语言），所以语言只能在发送前由运营手动选择。
 
 活动控制 API 的数据库状态变更和 `StopCampaign` 信号通过 `Manager.WithCampaignStatusChange` 与本进程后台完成/自动暂停/延迟互斥；锁不覆盖 SMTP 投递或通知发送。显式暂停/取消优先于旧管道尚未清理的 SMTP/错误停止原因；旧管道在最终读取活动后重验停止状态，快速暂停再继续时先清理旧队列，再由调度器重新加载活动，不误标为完成。后台完成和错误暂停仅通过 `store.UpdateRunningCampaignStatus` 改动仍为 running、归属有效的记录；额度延迟也要求 running，活动状态、次日时间及普通/公海 pending 收件人变更在同一事务内完成，拒绝过期工作覆盖手动状态。暂停不强行中断已进入 SMTP 网络投递的消息，投递成功仍记为 sent；未投递 queued 恢复 pending，继续只领取 pending/deferred，且重新验证当前 SMTP、回信路由和受众，保留历史额度与进度。回归：`cmd/campaign_pause_test.go`、`cmd/email_media_resume_test.go`、`internal/manager/pause_test.go`。
 
@@ -371,7 +375,7 @@ v3→v4 浏览器 BasicAuth/session Cookie 升级兼容窗口已结束。请求�
 
 `CampaignPreview.vue` 通过带工作区的登录请求获取渲染结果，只对当前活动/所选模板已关联或表单明确选择的媒体读取二进制，将图片转换为预览专用 data URL 后放入 `sandbox="allow-scripts"` 的 `srcdoc`。ID 与文件名同时匹配媒体元数据，旧文件名链接也解析为已关联的精确 ID；未关联图片与外域 URL 不触发父页面的鉴权读取。文件接口继续执行媒体角色、工作区和派生关联校验，隔离窗口不取得登录 Cookie，保存正文仍保留保护 URL，纯文本预览保留转义显示。活动列表、编辑器、归档与模板预览共用此路径。
 
-活动预览同时展示附件投递效果：`cmd/campaigns.go::attachPreviewMedia` 解析附件元数据（仅 POST 预览的 `media` JSON 数组优先，含空数组且最多 200 个，用于反映编辑器内未保存的附件增删；缺省或 GET 时使用已保存的 `campaign_media`，并始终并入所选模板的 `template_media`）。候选 ID 按来源分级：已保存关联按活动读取范围；模板附件走发送侧同一 `CanUseTemplateMedia` 规则；未保存且未关联的 ID 额外要求 `media:get`，避免活动只读者探测媒体库；不可读或跨工作区媒体跳过并记日志。`renderCampaignPreview` 复用 `internal/manager/linked_media.go::LinkMediaAttachmentsForPreview` 生成与发送相同的图片内嵌与“附件资料”文件卡片，按媒体 ID 排序与投递顺序一致。预览不读取二进制、不签发 `/email-media` 投递令牌，链接保持站点相对路径，使 `app.root_url` 与后台域名不同时仍能由上述 data URL 步骤内嵌；收件人侧“未关联媒体”校验只在发送路径执行。
+活动预览同时展示附件投递效果：`cmd/campaigns.go::attachPreviewMedia` 解析附件元数据（仅 POST 预览的 `media` JSON 数组优先，含空数组且最多 200 个，用于反映编辑器内未保存的附件增删；缺省或 GET 时使用已保存的 `campaign_media`，并始终并入所选模板的 `template_media`）。候选 ID 按来源分级：已保存关联按活动读取范围；模板附件走发送侧同一 `CanUseTemplateMedia` 规则；未保存且未关联的 ID 额外要求 `media:get`，避免活动只读者探测媒体库；不可读或跨工作区媒体跳过并记日志。`renderCampaignPreview` 调用 `CampaignMessage.PreviewBodyWithAttachments`，与发送共享 `internal/manager/linked_media.go` 的拼接和封面渲染：附件文件按媒体 ID 排序，标题、数量及动作由活动 `attachment_lang` 决定（默认英文）。预览不读取二进制、不签发 `/email-media` 投递令牌，链接保持站点相对路径，使 `app.root_url` 与后台域名不同时仍能由上述 data URL 步骤内嵌；收件人侧“未关联媒体”校验只在发送路径执行。
 
 媒体文件夹是工作区内的数据库逻辑容器，不改变 filesystem 或 S3 provider 中的对象名。这样历史邮件正文中的媒体 URL、缩略图和跨 provider 行为不受影响。`media.folder_id` 指向 `media_folders`；`NULL` 表示根目录，`parent_id` 只形成同一工作区的树。v6.51.0 增加独立 `visibility`：`private`（个人）只对当前工作区的创建者可见，`organization`（组织）对当前组织成员可见，`global`（全体）对所有登录用户跨工作区可见；平台管理员可在所选工作区审查个人目录。个人工作区不能选择组织权限。迁移将既有个人目录回填为 `private`、组织目录回填为 `organization`，重复执行保留显式权限。
 
@@ -529,14 +533,14 @@ AI 调用前重验全局开关；副作用事务按组织、设置、事件、�
 
 ### OpenClaw 营销技能
 
-`skills/listmonk-openclaw-marketing/` 是外部自动化工具集，不进入产品前后端构建。
+`skills/listmonk-marketing/` 是外部自动化工具集，不进入产品前后端构建。
 `SKILL.md` 提供任务路由与工作流，`references/api-reference.md` 按实际
 `cmd/handlers.go`、`cmd/api_keys.go` 和处理器维护参数、scope、返回结构与工作区边界；
 `references/rest-workflow.md` 维护 CLI 参数和操作示例。个人 Key 可读跨活动报表，
 但仍不能使用 dashboard、邮箱配置、pools 或 org-pool-allocations 路径。
 Python 草稿创建支持显式 SMTP 来源/组织池/频率与回信邮箱，内容蓝本不继承这些发送配置；
 报表支持单活动、多个 ID 或工作区授权集合、可选 geo 及指定收件人页。
-测试运行 `python -m pytest skills/listmonk-openclaw-marketing/tests -q`；不需要真实 Key 或发送邮件。
+测试运行 `python -m pytest skills/listmonk-marketing/tests -q`；不需要真实 Key 或发送邮件。
 
 在 Bash 兼容终端运行以下命令：
 

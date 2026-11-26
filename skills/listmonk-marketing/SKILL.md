@@ -1,5 +1,5 @@
 ---
-name: listmonk-openclaw-marketing
+name: listmonk-marketing
 description: Operate this Listmonk deployment from OpenClaw through workspace-bound personal API keys. Use for customer lists and imports, media uploads with inline images or attachments, marketing templates, campaign drafts and delivery, SMTP source and send-limit defaults, send-failure diagnosis and selective retry, confirmed unsubscribe and cross-campaign analytics (including open locations), reply-mailbox bounce data, and reading AI-classified inbound replies. 适用于 Listmonk 营销自动化、客户导入、图片/附件与邮件草稿、活动排期、发送失败排查与补发、确认退订与效果报表、回信退信核对和 AI 回信分类结果；公海管理、delivery-provider 与 AI 调试须先核对个人 Key 的接口边界。
 ---
 
@@ -339,6 +339,7 @@ CLI 未封装的新能力：确认退订名单、失败/失败客户 Excel 导�
 | 全局退信处理 | `bounce.enabled` 默认 **false**；未开启时 POP3、Webhook 和回信邮箱 DSN 都不处理 |
 | 错误阈值 | `app.max_send_errors` 默认 **1000** 次/单次运行，超过自动暂停 |
 | `auto_track_links` | REST 新建缺省 **false**；管理端表单默认 true |
+| `attachment_lang` | 附件资料区语言，活动级手动选择，默认 **en**；可选 en/zh-CN/zh-TW/es/fr/de/pt/it/ru/ja/ko，所有收件人一致 |
 | `type` / `content_type` / `messenger` | `regular` / `richtext` / `email` |
 | `visibility` | REST 缺省 **private**；组织空间管理端表单默认 organization；global 仅活动/模板适用 |
 | `pool_scope` | 默认 `organization`，创建后不可改；`all_organizations` 需专用权限 |

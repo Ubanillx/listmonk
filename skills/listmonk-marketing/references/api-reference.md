@@ -268,7 +268,7 @@ Hello {{ if .Customer.Name }}{{ .Customer.Name }}{{ else }}there{{ end }},
 | POST | `/api/campaigns` | 创建草稿；参数见下表 |
 | PUT | `/api/campaigns/{id}` | 更新可编辑活动；先取详情再合并配置，不作为任意字段 PATCH |
 | POST | `/api/campaigns/{id}/clone` | 服务端快照复制；可选 name、target_organization_id；返回新草稿；个人 Key 不能跨绑定空间 |
-| GET / POST | `/api/campaigns/{id}/preview` | 邮件 HTML 预览；POST 使用 form 字段 body、content_type、template_id、auto_track_links、name_fallback、preview_name_mode/preview_name |
+| GET / POST | `/api/campaigns/{id}/preview` | 邮件 HTML 预览；POST 使用 form 字段 body、content_type、template_id、auto_track_links、name_fallback、preview_name_mode/preview_name，以及未保存的 media（媒体 ID JSON 数组）和 attachment_lang |
 | POST | `/api/campaigns/{id}/text` | 文本预览；同 preview 的 form 字段 |
 | POST | `/api/campaigns/{id}/preview/archive` | form 字段 template_id、archive_meta（JSON 字符串）；返回 HTML |
 | POST | `/api/campaigns/{id}/content` | body/from/to；目前用于 markdown → html/richtext 内容转换 |
@@ -318,6 +318,7 @@ Hello {{ if .Customer.Name }}{{ .Customer.Name }}{{ else }}there{{ end }},
 | pool_reply_priority | string | contact_first 默认 / organization_first，公海逐收件人回信地址优先级 |
 | visibility | string | REST 缺省 private、organization、global；组织可见性要求组织空间；管理端组织工作区新建默认 organization |
 | auto_track_links | bool | 自动转换链接追踪；直接 REST 新建省略为 false，管理端表单默认 true |
+| attachment_lang | string | 附件资料区语言，活动级手动选择，默认 en；可选 en/zh-CN/zh-TW/es/fr/de/pt/it/ru/ja/ko，所有收件人一致 |
 | tags / attribs / headers | array / object / array | 标签、自定义活动属性、SMTP 头（例 `[{"X-Custom":"value"}]`） |
 | name_fallback | object | visual 活动的称呼兜底快照，结构同模板 |
 | archive / archive_template_id / archive_meta / archive_slug | bool / int / object / string | 公开归档配置；仅按任务要求启用 |

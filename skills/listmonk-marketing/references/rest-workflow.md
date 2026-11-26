@@ -546,7 +546,7 @@ DSN 明细（`reply_bounce_events`）和“最近退信处理历史”属于 `/a
 技能代码验证（在仓库根目录）：
 
 ```shell
-python -m pytest skills/listmonk-openclaw-marketing/tests -q
+python -m pytest skills/listmonk-marketing/tests -q
 python scripts/check_docs.py
 ```
 

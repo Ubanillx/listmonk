@@ -111,7 +111,7 @@ Create and update accept `pool_reply_priority`; responses and clones retain it. 
 | `contact_first` (default) | Imported customer `reply_to` → verified active organization mailbox |
 | `organization_first` | Verified active organization mailbox → imported customer `reply_to` |
 
-The first available address is used separately for each customer. Invalid priority values return 400. An omitted field on update keeps the saved order. This applies to organization and all-organization public-pool campaigns; ordinary private-customer campaigns retain their selected campaign mailbox. Actual send snapshots save the selected address/source and do not rewrite queued or delivered history.
+The winning source is resolved separately for each customer. When the imported customer source wins, the whole `reply_to` list is used and every listed address receives the reply; when the organization source wins, its single mailbox is used. Invalid priority values return 400. An omitted field on update keeps the saved order. This applies to organization and all-organization public-pool campaigns; ordinary private-customer campaigns retain their selected campaign mailbox. Actual send snapshots save the selected address/source and do not rewrite queued or delivered history.
 
 The admin form calls the imported source **List reply mailbox** and compares it with **Organization reply mailbox**. The list source is still each imported row's `reply_to`; the API values above remain the same. Configuration is grouped into Basics, Recipients, Sender & replies, and Delivery. Tags, messenger and custom headers are under More settings; test sending becomes available after saving the campaign.
 

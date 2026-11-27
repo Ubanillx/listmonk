@@ -272,8 +272,8 @@ export const getAllocationMembers = (id, params) => http.get(`/api/pools/allocat
 export const changeAllocationMembers = (id, data) => http.post(`/api/pools/allocations/${id}/manage-members`, data);
 export const getAllocationEvents = (id, params) => http.get(`/api/pools/allocations/${id}/events`, { params });
 export const getPoolImportConflicts = (id) => http.get(`/api/pools/${id}/import-conflicts`);
-export const createPoolContact = (id, data) => http.post(`/api/customer-lists/${id}/pool-contacts`, data);
-export const updatePoolContact = (listID, contactID, data) => http.put(`/api/customer-lists/${listID}/pool-contacts/${contactID}`, data);
+export const createPoolContact = (id, data, config) => http.post(`/api/customer-lists/${id}/pool-contacts`, data, config);
+export const updatePoolContact = (listID, contactID, data, config) => http.put(`/api/customer-lists/${listID}/pool-contacts/${contactID}`, data, config);
 export const createOrgPoolAllocation = (data) => http.post('/api/org-pool-allocations', data);
 export const assignPoolContact = (data) => http.post('/api/org-pool-allocations/members', data);
 export const importOrgPoolAllocationMembers = (allocationID, file) => {

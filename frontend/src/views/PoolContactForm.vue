@@ -24,7 +24,7 @@
         </b-field>
 
         <b-field :label="$t('pool.tableReplyTo')" :message="$t('import.mapReplyToFieldHelp')">
-          <b-input v-model.trim="form.reply_to" type="email" :disabled="isEditing && nameOnly" data-cy="pool-form-reply-to" />
+          <b-input v-model.trim="form.reply_to" type="text" :disabled="isEditing && nameOnly" data-cy="pool-form-reply-to" />
         </b-field>
 
         <b-field :label="$t('pool.tableDepartment')"
@@ -127,20 +127,46 @@ export default Vue.extend({
   },
 
   methods: {
+    // Rejects only what the server is guaranteed to reject as well: non-ASCII,
+    // quotes and anything but one "@". Full validation and normalization stay
+    // server-side; its 400 is shown with the localized message below.
+    validReplyTo(value) {
+      if (!value) return true;
+      const parts = value.split(/[,;，；]/).map((part) => part.trim()).filter(Boolean);
+      return parts.length > 0 && parts.every((part) => /^[\x21-\x7e]+$/.test(part)
+        && !/[<>"]/.test(part) && part.split('@').length === 2);
+    },
+
     onSubmit() {
       if (!this.targetPoolID || (!this.nameOnly && !this.form.email)) {
         return;
       }
+      // Name-only editors never change the routing list; the server keeps the
+      // stored value, including legacy rows the current rule would reject.
+      if (!this.nameOnly && !this.validReplyTo(this.form.reply_to)) {
+        this.$utils.toast(this.$t('import.poolIssueInvalidReplyTo'), 'is-danger');
+        return;
+      }
       this.loading = true;
+      const config = { disableToast: true };
       const request = this.isEditing
-        ? this.$api.updatePoolContact(this.targetPoolID, this.contact.id, this.form)
-        : this.$api.createPoolContact(this.targetPoolID, this.form);
+        ? this.$api.updatePoolContact(this.targetPoolID, this.contact.id, this.form, config)
+        : this.$api.createPoolContact(this.targetPoolID, this.form, config);
       request.then(() => {
         this.$utils.toast(this.$t(this.isEditing ? 'globals.messages.updated' : 'pool.toastContactCreated', {
           name: this.form.name || this.form.email,
         }));
         this.$emit('finished');
         this.$parent.close();
+      }).catch((err) => {
+        const status = err && err.response && err.response.status;
+        const message = (err && err.response && err.response.data && err.response.data.message) || err.toString();
+        // The interceptor already redirects invalid sessions without a toast.
+        if ((status === 401 || status === 403) && message.toLowerCase().includes('invalid session')) {
+          return;
+        }
+        this.$utils.toast(message.toLowerCase().includes('reply_to')
+          ? this.$t('import.poolIssueInvalidReplyTo') : message, 'is-danger');
       }).finally(() => {
         this.loading = false;
       });

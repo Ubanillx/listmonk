@@ -45,11 +45,12 @@ const replyAIDeliverySQL = `
 		COALESCE(cpr.allocation_id,0), cpr.organization_id
 	FROM reply_mailboxes m
 	JOIN campaign_pool_recipients cpr ON cpr.organization_id=m.organization_id
-		AND LOWER(cpr.reply_to_snapshot)=LOWER(m.email)
+		AND LOWER(m.email) IN (
+			SELECT BTRIM(LOWER(split.part)) FROM regexp_split_to_table(cpr.reply_to_snapshot, '[,;，；]') AS split(part)
+		)
 	JOIN pool_contacts pc ON pc.id=cpr.pool_contact_id AND pc.status='active'
 	JOIN campaigns c ON c.id=cpr.campaign_id
 	WHERE m.id=$1 AND cpr.status='sent' AND LOWER(cpr.email_snapshot)=LOWER($2)
-		AND LOWER(cpr.reply_to_snapshot)=LOWER(m.email)
 		AND ($3=0 OR cpr.campaign_id=$3)
 	ORDER BY campaign_id DESC`
 

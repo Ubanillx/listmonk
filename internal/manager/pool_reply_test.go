@@ -38,6 +38,7 @@ func TestWorkerSendsPoolReplySnapshotAfterCustomHeaders(t *testing.T) {
 		snapshot, want string
 	}{
 		{1, "imported@example.com", "imported@example.com"},
+		{1, "first@example.com, second@example.com", "first@example.com, second@example.com"},
 		{1, "", ""},
 		{0, "", "campaign@example.com"},
 	} {

@@ -2,7 +2,7 @@
 
 ## Optional public-pool reply email
 
-Map `params.field_map.reply_to` to a column name or spreadsheet letter. Values must be a single bare email address; blank or absent values are accepted. Invalid values produce `invalid_reply_to` row issues. Reimporting the same customer code/email/name/department updates this routing field, including clearing it with a blank value, without creating another contact. It does not clear blocklisting or organization exclusions.
+Map `params.field_map.reply_to` to a column name or spreadsheet letter. A value is one or more bare email addresses separated by commas or semicolons (full-width separators are accepted); it is normalized to `a@example.com, b@example.com` and duplicate addresses are ignored case-insensitively. When the customer source wins the campaign priority, the full list is written to the outgoing `Reply-To`, so a reply goes to every listed address; `organization_first` uses the organization's single address instead. Blank or absent values are accepted. Invalid values produce `invalid_reply_to` row issues. Reimporting the same customer code/email/name/department updates this routing field, including clearing it with a blank value, without creating another contact. It does not clear blocklisting or organization exclusions.
 
 The default campaign order is customer reply email → verified active organization mailbox. Campaigns can reverse it using `pool_reply_priority=organization_first`. Imported addresses set Reply-To only; configure a corresponding organization mailbox separately to collect replies.
 
@@ -89,7 +89,7 @@ or whitespace-only and are stored as empty strings. Email and allocation
 department values remain required in both subscribe and blocklist modes.
 Empty codes remain part of the full contact identity used for deduplication;
 distinct contacts with empty codes do not generate customer-code conflicts.
-An optional `reply_to` column (aliases `回信邮箱`, `回件邮箱`, `回复邮箱`, `reply-to`, `reply_email`) supplies the customer-specific Reply-To address; other extra columns are ignored. The allocation department must match an
+An optional `reply_to` column (aliases `回信邮箱`, `回件邮箱`, `回复邮箱`, `reply-to`, `reply_email`) supplies the customer-specific Reply-To address list, separated by commas or semicolons; other extra columns are ignored. The allocation department must match an
 active organization name in the system; an unknown or archived department is
 reported as an invalid row and is not written to the pool. A valid department
 is saved on the pool contact. If the matching organization already has a

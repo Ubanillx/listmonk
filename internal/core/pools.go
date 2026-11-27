@@ -759,10 +759,11 @@ func (c *Core) CreatePoolContact(poolID int, p models.PoolContact) (models.PoolC
 	p.Email = strings.TrimSpace(p.Email)
 	p.Name = strings.TrimSpace(p.Name)
 	p.AllocationDepartment = strings.TrimSpace(p.AllocationDepartment)
-	p.ReplyTo = strings.TrimSpace(p.ReplyTo)
-	if err := validatePoolReplyTo(p.ReplyTo); err != nil {
+	replyTo, err := normalizePoolReplyTo(p.ReplyTo)
+	if err != nil {
 		return models.PoolContact{}, err
 	}
+	p.ReplyTo = replyTo
 	if p.Email == "" {
 		return models.PoolContact{}, echo.NewHTTPError(http.StatusBadRequest, "email is required")
 	}
@@ -828,10 +829,6 @@ func (c *Core) UpdatePoolContact(poolID int, contactID int64, p models.PoolConta
 	p.Email = strings.TrimSpace(p.Email)
 	p.Name = strings.TrimSpace(p.Name)
 	p.AllocationDepartment = strings.TrimSpace(p.AllocationDepartment)
-	p.ReplyTo = strings.TrimSpace(p.ReplyTo)
-	if err := validatePoolReplyTo(p.ReplyTo); err != nil {
-		return models.PoolContact{}, err
-	}
 	tx, err := c.db.Beginx()
 	if err != nil {
 		return models.PoolContact{}, err
@@ -862,6 +859,16 @@ func (c *Core) UpdatePoolContact(poolID int, contactID int64, p models.PoolConta
 	// shared plaintext address.
 	if strings.Contains(p.Email, "*") {
 		p.Email = current.Email
+	}
+	// Normalize the effective value. A name-only editor never changes the
+	// routing list, so a legacy row stays editable instead of failing on a
+	// value the caller did not submit.
+	if !nameOnly {
+		replyTo, err := normalizePoolReplyTo(p.ReplyTo)
+		if err != nil {
+			return models.PoolContact{}, err
+		}
+		p.ReplyTo = replyTo
 	}
 	if p.Email == "" && !nameOnly {
 		return models.PoolContact{}, echo.NewHTTPError(http.StatusBadRequest, "email is required")
@@ -978,12 +985,14 @@ func (c *Core) ImportPoolContacts(poolID, userID int, rows []models.PoolContactI
 			continue
 		}
 
-		if err := validatePoolReplyTo(replyTo); err != nil {
+		normalizedReplyTo, replyErr := normalizePoolReplyTo(replyTo)
+		if replyErr != nil {
 			result.Invalid++
 			issue.Reason = "invalid_reply_to"
 			addIssue(issue)
 			continue
 		}
+		replyTo = normalizedReplyTo
 
 		key := code + "\x00" + strings.ToLower(email) + "\x00" + name + "\x00" + department + "\x00" + strings.ToLower(replyTo)
 		if _, ok := seen[key]; ok {

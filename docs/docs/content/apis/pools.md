@@ -72,9 +72,9 @@ Permission names and dependencies are documented in
 
 ## Customer reply routing (v6.55.0)
 
-Contact APIs, the aggregate pool view, first-level and allocation contact tables, and Excel exports include `reply_to`. It is an internal routing address and is not masked; recipient `email` remains masked for non-platform administrators. `order_by=reply_to` is supported. Single-contact creation accepts optional `reply_to` with the same email validation as import.
+Contact APIs, the aggregate pool view, first-level and allocation contact tables, and Excel exports include `reply_to`. It is an internal routing address list and is not masked; recipient `email` remains masked for non-platform administrators. `order_by=reply_to` is supported. Single-contact creation accepts an optional `reply_to` with the same validation as import: one or more bare addresses separated by commas or semicolons, normalized to a comma-space list; every listed address receives the reply.
 
-Campaign `pool_reply_priority` defaults to `contact_first`; `organization_first` reverses the two sources. The first available address is used for each customer. An organization mailbox must be active; AI-enabled mailboxes also require connection verification. Customer addresses do not require mailbox registration for sending. A recipient without either address blocks preview/send. The snapshot links the matching available mailbox in the target organization. Automatic reply synchronization additionally requires AI receiving credentials, successful connection verification, and enabled global AI settings.
+Campaign `pool_reply_priority` defaults to `contact_first`; `organization_first` reverses the two sources. The priority selects one source per customer: when the customer list is selected, every listed address is used and all of them receive the reply; when the organization source is selected, only its single address is used. An organization mailbox must be active; AI-enabled mailboxes also require connection verification. Customer addresses do not require mailbox registration for sending. A recipient without either address blocks preview/send. The snapshot links the matching available mailbox in the target organization. Automatic reply synchronization additionally requires AI receiving credentials, successful connection verification, and enabled global AI settings.
 
 
 Public customer pools are first-class `customer_list` types (`pool` and
@@ -122,7 +122,7 @@ Key endpoints:
   `customer_list_ids` contains exactly one first-level `pool`, the first CSV
   sheet or XLSX worksheet must map `customer_code`, `name`, `email` and
   `allocation_department`. Chinese template headers `客户编号`/`客户编码`,
-  `姓名`, `邮箱`, `分配部门` are recognized; optional `回信邮箱`/`reply_to` is supported and other columns are ignored.
+  `姓名`, `邮箱`, `分配部门` are recognized; optional `回信邮箱`/`reply_to` is supported (multiple addresses may be comma- or semicolon-separated) and other columns are ignored.
   The customer code and name columns are required, but their values may be empty
   or whitespace-only; they are stored as empty strings. This applies to both
   normal and blocklist imports. Email and allocation department values remain

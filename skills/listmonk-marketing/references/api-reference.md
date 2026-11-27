@@ -660,7 +660,7 @@ disabled 但仍绑定的分配可读。该边界适用于成员、管理员和�
 
 统一公海导入走 `POST /api/import/customers`：Key 需 customers:import，用户需
 pools:master_manage；只选一个一级 pool，无二级分配或私域混合，不用任何 overwrite。
-field_map 额外支持 allocation_department、reply_to；reply_to 是单邮箱，
+field_map 额外支持 allocation_department、reply_to；reply_to 可为一个或多个裸邮箱，用逗号或分号分隔（发信时整串写入 Reply-To，全部地址都会收到回信），
 只提供 Reply-To 来源，不创建收件邮箱或凭据。
 普通脚本不封装此路径，按公海规则直接构造 multipart 请求。
 

@@ -2277,7 +2277,7 @@
 
 <h1 id="api-import">API / Import<a class="headerlink" href="#api-import" title="Permanent link">&para;</a></h1>
 <h2 id="optional-public-pool-reply-email">Optional public-pool reply email<a class="headerlink" href="#optional-public-pool-reply-email" title="Permanent link">&para;</a></h2>
-<p>Map <code>params.field_map.reply_to</code> to a column name or spreadsheet letter. Values must be a single bare email address; blank or absent values are accepted. Invalid values produce <code>invalid_reply_to</code> row issues. Reimporting the same customer code/email/name/department updates this routing field, including clearing it with a blank value, without creating another contact. It does not clear blocklisting or organization exclusions.</p>
+<p>Map <code>params.field_map.reply_to</code> to a column name or spreadsheet letter. A value is one or more bare email addresses separated by commas or semicolons (full-width separators are accepted); it is normalized to <code>a@example.com, b@example.com</code> and duplicate addresses are ignored case-insensitively. When the customer source wins the campaign priority, the full list is written to the outgoing <code>Reply-To</code>, so a reply goes to every listed address; <code>organization_first</code> uses the organization's single address instead. Blank or absent values are accepted. Invalid values produce <code>invalid_reply_to</code> row issues. Reimporting the same customer code/email/name/department updates this routing field, including clearing it with a blank value, without creating another contact. It does not clear blocklisting or organization exclusions.</p>
 <p>The default campaign order is customer reply email → verified active organization mailbox. Campaigns can reverse it using <code>pool_reply_priority=organization_first</code>. Imported addresses set Reply-To only; configure a corresponding organization mailbox separately to collect replies.</p>
 <table>
 <thead>
@@ -2362,7 +2362,7 @@ or whitespace-only and are stored as empty strings. Email and allocation
 department values remain required in both subscribe and blocklist modes.
 Empty codes remain part of the full contact identity used for deduplication;
 distinct contacts with empty codes do not generate customer-code conflicts.
-An optional <code>reply_to</code> column (aliases <code>回信邮箱</code>, <code>回件邮箱</code>, <code>回复邮箱</code>, <code>reply-to</code>, <code>reply_email</code>) supplies the customer-specific Reply-To address; other extra columns are ignored. The allocation department must match an
+An optional <code>reply_to</code> column (aliases <code>回信邮箱</code>, <code>回件邮箱</code>, <code>回复邮箱</code>, <code>reply-to</code>, <code>reply_email</code>) supplies the customer-specific Reply-To address list, separated by commas or semicolons; other extra columns are ignored. The allocation department must match an
 active organization name in the system; an unknown or archived department is
 reported as an invalid row and is not written to the pool. A valid department
 is saved on the pool contact. If the matching organization already has a

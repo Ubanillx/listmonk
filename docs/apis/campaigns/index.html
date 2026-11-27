@@ -3978,7 +3978,7 @@ recipient counts from older campaign-only error totals.</p>
 </tr>
 </tbody>
 </table>
-<p>The first available address is used separately for each customer. Invalid priority values return 400. An omitted field on update keeps the saved order. This applies to organization and all-organization public-pool campaigns; ordinary private-customer campaigns retain their selected campaign mailbox. Actual send snapshots save the selected address/source and do not rewrite queued or delivered history.</p>
+<p>The winning source is resolved separately for each customer. When the imported customer source wins, the whole <code>reply_to</code> list is used and every listed address receives the reply; when the organization source wins, its single mailbox is used. Invalid priority values return 400. An omitted field on update keeps the saved order. This applies to organization and all-organization public-pool campaigns; ordinary private-customer campaigns retain their selected campaign mailbox. Actual send snapshots save the selected address/source and do not rewrite queued or delivered history.</p>
 <p>The admin form calls the imported source <strong>List reply mailbox</strong> and compares it with <strong>Organization reply mailbox</strong>. The list source is still each imported row's <code>reply_to</code>; the API values above remain the same. Configuration is grouped into Basics, Recipients, Sender &amp; replies, and Delivery. Tags, messenger and custom headers are under More settings; test sending becomes available after saving the campaign.</p>
 <table>
 <thead>
